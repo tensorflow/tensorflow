@@ -62,7 +62,7 @@ Install TensorFlow:
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and cuDNN v4.
 # For other versions, see "Install from sources" below.
 $ sudo pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
@@ -77,7 +77,7 @@ For python3:
 # Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and cuDNN v4.
 # For other versions, see "Install from sources" below.
 $ sudo pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
@@ -137,7 +137,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and cuDNN v4.
 # For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
@@ -155,7 +155,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh
 # Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and cuDNN v4.
 # For other versions, see "Install from sources" below.
 (tensorflow)$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
@@ -228,7 +228,7 @@ $ source activate tensorflow
 # Ubuntu/Linux 64-bit, CPU only, Python 2.7:
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and CuDNN v4.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 2.7. Requires CUDA toolkit 7.5 and cuDNN v4.
 # For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
 
@@ -245,7 +245,7 @@ $ source activate tensorflow
 # Ubuntu/Linux 64-bit, CPU only, Python 3.4:
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
-# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and CuDNN v4.
+# Ubuntu/Linux 64-bit, GPU enabled, Python 3.4. Requires CUDA toolkit 7.5 and cuDNN v4.
 # For other versions, see "Install from sources" below.
 (tensorflow)$ pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.8.0-cp34-cp34m-linux_x86_64.whl
 
@@ -314,7 +314,7 @@ $ docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow
 
 The option `-p 8888:8888` is used to publish the Docker container᾿s internal port to the host machine, in this case to ensure Jupyter notebook connection.
 
-The format of the port mapping `hostPort:containerPort`. You can speficy any valid port number for the host port but has to be `8888` for the container port portion.
+The format of the port mapping is `hostPort:containerPort`. You can specify any valid port number for the host port but have to use `8888` for the container port portion.
 
 If you're using a container with GPU support, some additional flags must be
 passed to expose the GPU device to the container. For the default config, we
@@ -526,7 +526,7 @@ empty to use system default]: 7.5
 Please specify the location where CUDA 7.5 toolkit is installed. Refer to
 README.md for more details. [default is: /usr/local/cuda]: /usr/local/cuda
 
-Please specify the Cudnn version you want to use. [Leave empty to use system
+Please specify the cuDNN version you want to use. [Leave empty to use system
 default]: 4.0.4
 
 Please specify the location where the cuDNN 4.0.4 library is installed. Refer to
@@ -549,7 +549,7 @@ Configuration finished
 
 This creates a canonical set of symbolic links to the Cuda libraries on your system.
 Every time you change the Cuda library paths you need to run this step again before
-you invoke the bazel build command. For the Cudnn libraries, use '6.5' for R2, '7.0'
+you invoke the bazel build command. For the cuDNN libraries, use '6.5' for R2, '7.0'
 for R3, and '4.0.4' for R4-RC.
 
 
@@ -672,7 +672,7 @@ GPU support will be enabled for TensorFlow
 Please specify which gcc nvcc should use as the host compiler. [Default is /usr/bin/gcc]:
 Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: 7.5
 Please specify the location where CUDA 7.5 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
-Please specify the Cudnn version you want to use. [Leave empty to use system default]: 5
+Please specify the cuDNN version you want to use. [Leave empty to use system default]: 5
 Please specify the location where cuDNN 5 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.

@@ -25,6 +25,12 @@ limitations under the License.
 #define EIGEN_HAS_CUDA_FP16
 #endif
 
+#if CUDA_VERSION >= 8000
+#define SE_CUDA_DATA_HALF CUDA_R_16F
+#else
+#define SE_CUDA_DATA_HALF CUBLAS_DATA_HALF
+#endif
+
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
 
 #include <dlfcn.h>
@@ -1680,10 +1686,10 @@ bool CUDABlas::DoBlasGemm(
   return DoBlasInternal(
       dynload::cublasSgemmEx, stream, true /* = pointer_mode_host */,
       CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
-      CUDAMemory(a), CUBLAS_DATA_HALF, lda,
-      CUDAMemory(b), CUBLAS_DATA_HALF, ldb,
+      CUDAMemory(a), SE_CUDA_DATA_HALF, lda,
+      CUDAMemory(b), SE_CUDA_DATA_HALF, ldb,
       &beta,
-      CUDAMemoryMutable(c), CUBLAS_DATA_HALF, ldc);
+      CUDAMemoryMutable(c), SE_CUDA_DATA_HALF, ldc);
 #else
   LOG(ERROR) << "fp16 sgemm is not implemented in this cuBLAS version "
              << "(need at least CUDA 7.5)";

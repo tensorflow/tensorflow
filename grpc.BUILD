@@ -145,6 +145,12 @@ cc_library(
     "include",
     ".",
   ],
+  defines = [
+    "GPR_BACKWARDS_COMPATIBILITY_MODE",
+  ],
+  copts = [
+    "-std=c99",
+  ],
   deps = [
   ],
 )
