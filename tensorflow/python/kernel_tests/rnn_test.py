@@ -1154,13 +1154,15 @@ class BidirectionalRNNTest(tf.test.TestCase):
     inputs_c = tf.pack(inputs)
     if not use_time_major:
       inputs_c = tf.transpose(inputs_c, [1, 0, 2])
-    outputs, state_fw, state_bw = tf.nn.bidirectional_dynamic_rnn(
+    outputs, states = tf.nn.bidirectional_dynamic_rnn(
         cell_fw,
         cell_bw,
         inputs_c,
         sequence_length,
         dtype=tf.float32,
         time_major=use_time_major)
+    outputs = tf.concat(2, outputs)
+    state_fw, state_bw = states
     outputs_shape = [None, max_length, 2 * num_units]
     if use_shape:
       outputs_shape[0] = batch_size
@@ -1171,7 +1173,6 @@ class BidirectionalRNNTest(tf.test.TestCase):
         outputs_shape)
 
     input_value = np.random.randn(batch_size, input_size)
-    outputs = tf.pack(outputs)
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 

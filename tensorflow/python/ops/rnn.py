@@ -467,16 +467,15 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               initial_state_fw=None, initial_state_bw=None,
                               dtype=None, parallel_iterations=None,
                               swap_memory=False, time_major=False, scope=None):
-  """Creates a bidirectional recurrent neural network, dynamic version.
+  """Creates a dynamic version of bidirectional recurrent neural network.
 
   Similar to the unidirectional case above (rnn) but takes input and builds
-  independent forward and backward RNNs with the final forward and backward
-  outputs depth-concatenated, such that the output will have the format
-  [time][batch][cell_fw.output_size + cell_bw.output_size]. The input_size of
-  forward and backward cell must match. The initial state for both directions
-  is zero by default (but can be set optionally) and no intermediate states are
-  ever returned -- the network is fully unrolled for the given (passed in)
-  length(s) of the sequence(s) or completely unrolled if length(s) is not given.
+  independent forward and backward RNNs. The input_size of forward and
+  backward cell must match. The initial state for both directions is zero by
+  default (but can be set optionally) and no intermediate states are ever
+  returned -- the network is fully unrolled for the given (passed in)
+  length(s) of the sequence(s) or completely unrolled if length(s) is not
+  given.
 
   Args:
     cell_fw: An instance of RNNCell, to be used for forward direction.
@@ -520,18 +519,22 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     scope: VariableScope for the created subgraph; defaults to "BiRNN"
 
   Returns:
-    A tuple (outputs, output_state_fw, output_state_bw) where:
-      outputs: The RNN output `Tensor`.
-        If time_major == False (default), this will be a `Tensor` shaped:
+    A tuple (outputs, output_states) where:
+      outputs: A tuple of the forward and the backward rnn output `Tensor`.
+        If time_major == False (default),
+          each element will be a `Tensor` shaped:
           `[batch_size, max_time, cell.output_size]`.
-        If time_major == True, this will be a `Tensor` shaped:
+        If time_major == True, each element will be a `Tensor` shaped:
           `[max_time, batch_size, cell.output_size]`.
-      output_state_fw is the final state of the forward rnn.
-      output_state_bw is the final state of the backward rnn.
+        It returns a tuple instead of a single concatenated `Tensor`, unlike
+        in the `bidirectional_rnn`. If the concatenated one is preferred,
+        the forward and backward outputs can be concatenated as
+        `tf.concat(2, outputs)`.
+      output_states: A tuple of final states of the forward and the backward
+        rnn.
 
   Raises:
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
-    ValueError: If inputs is None or an empty list.
   """
 
   if not isinstance(cell_fw, rnn_cell.RNNCell):
@@ -560,10 +563,11 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
         parallel_iterations, swap_memory, time_major, scope=bw_scope)
   output_bw = array_ops.reverse_sequence(
       tmp, sequence_length, time_dim, batch_dim)
-  # Concat each of the forward/backward outputs
-  outputs = array_ops.concat(2, [output_fw, output_bw])
 
-  return (outputs, output_state_fw, output_state_bw)
+  outputs = (output_fw, output_bw)
+  output_states = (output_state_fw, output_state_bw)
+
+  return (outputs, output_states)
 
 
 def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
