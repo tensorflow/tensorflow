@@ -13,42 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module for constructing RNN Cells.
-
-## Base interface for all RNN Cells
-
-@@RNNCell
-
-## RNN Cells for use with TensorFlow's core RNN methods
-
-@@BasicRNNCell
-@@BasicLSTMCell
-@@GRUCell
-@@LSTMCell
-
-## Classes storing split `RNNCell` state
-
-@@LSTMStateTuple
-
-## RNN Cell wrappers (RNNCells that wrap other RNNCells)
-
-@@MultiRNNCell
-@@DropoutWrapper
-@@EmbeddingWrapper
-@@InputProjectionWrapper
-@@OutputProjectionWrapper
-"""
+"""Module for constructing RNN Cells."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import collections
 import math
+import numpy as np
 
 import six
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import embedding_ops
@@ -157,28 +133,6 @@ def _packed_state(structure, state):
   return _sequence_like(structure, packed)
 
 
-def _state_size_with_prefix(state_size, prefix=None):
-  """Helper function that enables int or TensorShape shape specification.
-
-  This function takes a size specification, which can be an integer or a
-  TensorShape, and converts it into a list of integers. One may specify any
-  additional dimensions that precede the final state size specification.
-
-  Args:
-    state_size: TensorShape or int that specifies the size of a tensor.
-    prefix: optional additional list of dimensions to prepend.
-
-  Returns:
-    result_state_size: list of dimensions the resulting tensor size.
-  """
-  result_state_size = tensor_shape.as_shape(state_size).as_list()
-  if prefix is not None:
-    if not isinstance(prefix, list):
-      raise TypeError("prefix of _state_size_with_prefix should be a list.")
-    result_state_size = prefix + result_state_size
-  return result_state_size
-
-
 class RNNCell(object):
   """Abstract object representing an RNN cell.
 
@@ -219,16 +173,12 @@ class RNNCell(object):
 
   @property
   def state_size(self):
-    """size(s) of state(s) used by this cell.
-
-    It can be represented by an Integer, a TensorShape or a tuple of Integers
-    or TensorShapes.
-    """
+    """Integer or tuple of integers: size(s) of state(s) used by this cell."""
     raise NotImplementedError("Abstract method")
 
   @property
   def output_size(self):
-    """Integer or TensorShape: size of outputs produced by this cell."""
+    """Integer: size of outputs produced by this cell."""
     raise NotImplementedError("Abstract method")
 
   def zero_state(self, batch_size, dtype):
@@ -239,8 +189,8 @@ class RNNCell(object):
       dtype: the data type to use for the state.
 
     Returns:
-      If `state_size` is an int or TensorShape, then the return value is a
-      `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
+      If `state_size` is an int, then the return value is a `2-D` tensor of
+      shape `[batch_size x state_size]` filled with zeros.
 
       If `state_size` is a nested list or tuple, then the return value is
       a nested list or tuple (of the same structure) of `2-D` tensors with
@@ -250,17 +200,15 @@ class RNNCell(object):
     if _is_sequence(state_size):
       state_size_flat = _unpacked_state(state_size)
       zeros_flat = [
-          array_ops.zeros(
-              array_ops.pack(_state_size_with_prefix(s, prefix=[batch_size])),
-              dtype=dtype)
+          array_ops.zeros(array_ops.pack([batch_size, s]), dtype=dtype)
           for s in state_size_flat]
       for s, z in zip(state_size_flat, zeros_flat):
-        z.set_shape(_state_size_with_prefix(s, prefix=[None]))
+        z.set_shape([None, s])
       zeros = _packed_state(structure=state_size, state=zeros_flat)
     else:
-      zeros_size = _state_size_with_prefix(state_size, prefix=[batch_size])
-      zeros = array_ops.zeros(array_ops.pack(zeros_size), dtype=dtype)
-      zeros.set_shape(_state_size_with_prefix(state_size, prefix=[None]))
+      zeros = array_ops.zeros(
+          array_ops.pack([batch_size, state_size]), dtype=dtype)
+      zeros.set_shape([None, state_size])
 
     return zeros
 
@@ -268,12 +216,14 @@ class RNNCell(object):
 class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
-  def __init__(self, num_units, input_size=None, activation=tanh):
+  def __init__(self, num_units, input_size=None, activation=tanh,
+                     initializer = None, trainable = True):
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated." % self)
-    self._num_units = num_units
-    self._activation = activation
-
+    self._num_units   = num_units
+    self._activation  = activation
+    self._initializer = initializer
+    self._trainable   = trainable
   @property
   def state_size(self):
     return self._num_units
@@ -285,7 +235,11 @@ class BasicRNNCell(RNNCell):
   def __call__(self, inputs, state, scope=None):
     """Most basic RNN: output = new_state = activation(W * input + U * state + B)."""
     with vs.variable_scope(scope or type(self).__name__):  # "BasicRNNCell"
-      output = self._activation(_linear([inputs, state], self._num_units, True))
+      output = self._activation(_linear([inputs, state], 
+                                        self._num_units, 
+                                        True,
+                                        initializer = self._initializer,
+                                        trainable   = self._trainable))
     return output, output
 
 
@@ -316,7 +270,8 @@ class GRUCell(RNNCell):
         r, u = sigmoid(r), sigmoid(u)
       with vs.variable_scope("Candidate"):
         c = self._activation(_linear([inputs, r * state],
-                                     self._num_units, True))
+                                      self._num_units, 
+                                      True))
       new_h = u * state + (1 - u) * c
     return new_h, new_h
 
@@ -880,7 +835,7 @@ class MultiRNNCell(RNNCell):
     return cur_inp, new_states
 
 
-class _SlimRNNCell(RNNCell):
+class SlimRNNCell(RNNCell):
   """A simple wrapper for slim.rnn_cells."""
 
   def __init__(self, cell_fn):
@@ -925,7 +880,8 @@ class _SlimRNNCell(RNNCell):
     return output, state
 
 
-def _linear(args, output_size, bias, bias_start=0.0, scope=None):
+def _linear(args, output_size, bias, bias_start=0.0, scope=None,
+            initializer=None, trainable=True):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
   Args:
@@ -934,6 +890,13 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
     bias: boolean, whether to add a bias term or not.
     bias_start: starting value to initialize the bias; 0 by default.
     scope: VariableScope for the created subgraph; defaults to "Linear".
+    initializer: Initial weight tensor. Can be a list with up to 2 tensors. 
+                 If both tensors are 2D, an element wise multiplication 
+                 will be applied. If the first tensor is 2D and the second 1D, 
+                 innder product will be applied. Ws have to have inner dimension
+                 equal to total_arg_size.
+    trainable: True if the variable is trainable. Can be a list with 
+               same dimension as initializer.
 
   Returns:
     A 2D Tensor with shape [batch x output_size] equal to
@@ -956,11 +919,53 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
     if not shape[1]:
       raise ValueError("Linear expects shape[1] of arguments: %s" % str(shapes))
     else:
-      total_arg_size += shape[1]
+      total_arg_size += shape[1]   
+
+  if not np.shape(initializer) and not np.shape(trainable):
+    trainLen = initLen = 0
+  elif not np.shape(trainable):
+    initLen  = np.shape(initializer)[0]
+    trainLen = 1
+  else:
+    initLen  = len(initializer)
+    trainLen = len(trainable)
+
+  if initLen != trainLen:
+    raise ValueError("`initializer`(len: %s) and `trainable`(len: %s) must be the same len."
+                      % (str(initLen), str(trainLen)))
 
   # Now the computation.
   with vs.variable_scope(scope or "Linear"):
-    matrix = vs.get_variable("Matrix", [total_arg_size, output_size])
+    if not initializer:
+      matrix = vs.get_variable("Matrix", [total_arg_size, output_size], 
+                                 trainable = trainable)
+    else:
+      if initLen == 1: 
+        matrix = vs.get_variable("Matrix",initializer = initializer,
+                                          trainable   = trainable)
+      elif initLen == 2:
+        init0Shape = initializer[0].get_shape().as_list()
+        init1Shape = initializer[1].get_shape().as_list() 
+        
+        if init0Shape[0] !=total_arg_size:
+          raise ValueError(
+    "`initializer` first dimension (%s,) should be equal to the `input` inner dimension (%s,)."
+                            % (str(init0Shape[0]),str(total_arg_size)))
+
+        matrix0 = vs.get_variable("Matrix0",initializer = initializer[0],
+                                            trainable   = trainable[0]  )
+        matrix1 = vs.get_variable("Matrix1",initializer = initializer[1],
+                                            trainable   = trainable[1]  )            
+        if init0Shape[1] > init1Shape[1]:
+          matrix = math_ops.matmul(matrix0,matrix1)
+        elif init0Shape[1] == init1Shape[1]:
+          matrix = math_ops.mul(matrix0,matrix1)
+        else:
+          raise ValueError("First matrix in `initializer` should be equal or bigger \
+                            than the second matrix")
+      else:
+        raise ValueError("`initializer`and `trainable` must be lists of 2 elements \
+                               maximum") 
     if len(args) == 1:
       res = math_ops.matmul(args[0], matrix)
     else:
@@ -969,5 +974,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
       return res
     bias_term = vs.get_variable(
         "Bias", [output_size],
-        initializer=init_ops.constant_initializer(bias_start))
+        initializer = init_ops.constant_initializer(bias_start))
   return res + bias_term
+
+
