@@ -246,10 +246,10 @@ def _Check3DImage(image, require_static=True):
       known and non-zero.
 
   Raises:
-    ValueError: if image.shape is not a [3] vector.
+    ValueError: if `image.shape` is not a 3-vector.
 
   Returns:
-    An empty list, if image has fully defined dimensions. Otherwise, a list
+    An empty list, if `image` has fully defined dimensions. Otherwise, a list
     containing an assert op is returned.
   """
   try:
@@ -562,7 +562,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     array_ops.pack([target_height, target_width, -1]))
 
   cropped_shape = [None if is_tensor(i) else i
-                  for i in [target_height, target_width, depth]]
+                   for i in [target_height, target_width, depth]]
   cropped.set_shape(cropped_shape)
 
   return cropped
@@ -603,13 +603,12 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
   image = control_flow_ops.with_dependencies(assert_ops, image)
   # `crop_to_bounding_box` and `pad_to_bounding_box` have their own checks.
-  # Make sure our checks comes first, so that error messages are clearer.
+  # Make sure our checks come first, so that error messages are clearer.
   if is_tensor(target_height):
     target_height = control_flow_ops.with_dependencies(
       assert_ops, target_height)
   if is_tensor(target_width):
-    target_width = control_flow_ops.with_dependencies(
-      assert_ops, target_width)
+    target_width = control_flow_ops.with_dependencies(assert_ops, target_width)
 
   def max_(x, y):
     if is_tensor(x) or is_tensor(y):
