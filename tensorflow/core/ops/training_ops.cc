@@ -341,6 +341,7 @@ REGISTER_OP("ApplyMomentum")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .Doc(R"doc(
 Update '*var' according to the momentum scheme.
 

@@ -176,9 +176,15 @@ struct ApplyMomentum<CPUDevice, T> {
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
-                  typename TTypes<T>::ConstScalar momentum) {
-    accum.device(d) = accum * momentum() + grad;
-    var.device(d) -= accum * lr();
+                  typename TTypes<T>::ConstScalar momentum,
+		  bool use_nesterov) {
+    if(use_nesterov){
+    	accum.device(d) = accum * momentum() + grad;
+    	var.device(d) -= grad * lr() + accum * momentum() * lr();
+    }else{
+    	accum.device(d) = accum * momentum() + grad;
+    	var.device(d) -= accum * lr();
+    }
   }
 };
 
@@ -1515,6 +1521,7 @@ class ApplyMomentumOp : public OpKernel {
  public:
   explicit ApplyMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_)); 
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1554,12 +1561,13 @@ class ApplyMomentumOp : public OpKernel {
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyMomentum<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
                                         lr.scalar<T>(), grad.flat<T>(),
-                                        momentum.scalar<T>());
+                                        momentum.scalar<T>(), use_nesterov_);
     ctx->forward_ref_input_to_ref_output(0, 0);
   }
 
  private:
   bool use_exclusive_lock_;
+  bool use_nesterov_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
