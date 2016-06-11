@@ -29,6 +29,9 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
+from tensorflow.python.ops.rnn_cell import LSTMStateTuple
+from tensorflow.python.ops.rnn_cell import _is_sequence
+from tensorflow.python.ops.rnn_cell import _linear as linear
 
 
 def _get_concat_variable(name, shape, dtype, num_shards):
@@ -478,3 +481,143 @@ class GridLSTMCell(rnn_cell.RNNCell):
                                   [-1, self._feature_size])
       freq_inputs.append(cur_input)
     return freq_inputs
+
+class MultiGFRNNCell(rnn_cell.MultiRNNCell):
+  """Gated Feedback RNN MultiCell implementation based on:
+
+  Junyoung Chung, Caglar Gulcehre, Kyunghyun Cho, Yoshua Bengio
+  Gated Feedback Recurrent Neural Networks, 2015
+  https://arxiv.org/abs/1502.02367
+
+  It differs from MultiRNNCell because it passes the whole state of the previous
+  hidden layer inside each cell. It only accepts GFLSTMCells or wrapped GFLSTMCells.
+  """
+
+  def __init__(self, cells, state_is_tuple=False):
+    """Create a RNN cell composed sequentially of a number of GFRNNCells.
+
+    Args:
+      cells: list of GFLSTMCells that will be composed in this order.
+      state_is_tuple: If True, accepted and returned states are n-tuples, where
+        `n = len(cells)`.  By default (False), the states are all
+        concatenated along the column axis.
+
+    Raises:
+      ValueError: if cells is empty (not allowed), or at least one of the cells
+        returns a state tuple but the flag `state_is_tuple` is `False` or one
+        of the cells is not a GFLSTMCell
+    """
+
+    # TODO Must check somehow that the cells are instances of GFLSTMCell
+    # even if they're wrapped
+    # Can potentially accept more types of GF cells if they get implemented.
+    # GFGRUCell or GFRNNCell are candidates.
+    for cell in cells:
+      if not isinstance(cell, GFLSTMCell):
+        raise ValueError("Cells must be of type GFLSTMCell")
+
+      super().__init__(cells, state_is_tuple)
+
+  def __call__(self, inputs, state, scope=None):
+    """Run the multi-layer cell on inputs, starting from state.
+    The hidden hs from state get passed inside each cell.
+    """
+    with vs.variable_scope(scope or type(self).__name__):  # "MultiGFLSTMCell"
+      curr_state_pos = 0
+      prev_states = []
+      # We accumulate the prev_states in a list
+      for i, cell in enumerate(self._cells):
+        with tf.name_scope("Cell%d" % i):
+          if self._state_is_tuple:
+            if not _is_sequence(state):
+              raise ValueError(
+                  "Expected state to be a tuple of length %d, but received: %s"
+                  % (len(self.state_size), state))
+            prev_state = state[i]
+          else:
+            prev_state = array_ops.slice(state, [0, curr_state_pos], [-1, cell.state_size])
+            curr_state_pos += cell.state_size
+          prev_states.append(prev_state)
+
+      cur_inp = inputs
+      new_states = []
+      for i, cell in enumerate(self._cells):
+        with vs.variable_scope("Cell%d" % i):
+          # Each cell gets the whole list of previous states and an
+          # index for it's own previous state
+          cur_inp, new_state = cell(cur_inp, (i, prev_states))
+          new_states.append(new_state)
+
+      if self._state_is_tuple:
+          return cur_inp, tuple(new_states)
+      else:
+          return cur_inp, array_ops.concat(1, new_states)
+
+
+class GFLSTMCell(rnn_cell.BasicLSTMCell):
+  """Gated Feedback LSTM MultiCell implementation based on:
+
+  Junyoung Chung, Caglar Gulcehre, Kyunghyun Cho, Yoshua Bengio
+  Gated Feedback Recurrent Neural Networks, 2015
+  https://arxiv.org/abs/1502.02367
+  """
+
+  def __init__(self, num_units, forget_bias=1.0, input_size=None,
+                 state_is_tuple=False, activation=tanh):
+    """Initialize the GFLSTMCell.
+      Args:
+        num_units: int, The number of units in the LSTM cell.
+        forget_bias: float, The bias added to forget gates (see above).
+        input_size: Deprecated and unused.
+        state_is_tuple: If True, accepted and returned states are 2-tuples of
+          the `c_state` and `m_state`.  By default (False), they are concatenated
+          along the column axis.  This default behavior will soon be deprecated.
+        activation: Activation function of the inner states.
+      """
+    self._num_units = num_units
+    self._forget_bias = forget_bias
+    self._state_is_tuple = state_is_tuple
+    self._activation = activation
+
+  def __call__(self, inputs, state, scope=None):
+    """Gated Feedback LSTM Cell."""
+    with vs.variable_scope(scope or type(self).__name__):  # "GFLSTMCell"
+      prev_state, prev_hs = state
+      state_idx, prev_states = state
+      prev_state = prev_states[state_idx]
+
+      if self._state_is_tuple:
+        c, h = prev_state
+      else:
+        c, h = array_ops.split(1, 2, prev_state)
+      # We no longer compute j in the first linear transform
+      concat = linear([inputs, h], 3 * self._num_units, True)
+
+      # i = input_gate f = forget_gate, o = output_gate
+      i_g, f_g, o_g = array_ops.split(1, 3, concat)
+
+      with vs.variable_scope("gij"):
+        gij = tf.sigmoid(linear([inputs, tf.concat(1, prev_hs)], 1, True))
+      summation = []
+      for i, s_i in enumerate(prev_states):
+        if cell._state_is_tuple:
+          _, h_i = s_i
+        else:
+          _, h_i = array_ops.split(1, 2, s_i)
+
+        with vs.variable_scope("sum_term_%d" % i):
+          summation_term = linear(h_i, self._num_units, True)
+          summation.append(gij * summation_term)
+      with vs.variable_scope("candidate_output"):
+        j = tanh(linear(inputs, self._num_units, True) + tf.add_n(summation))
+
+      new_c = (c * sigmoid(f_g + self._forget_bias) +
+               sigmoid(i_g) * self._activation(j))
+      new_h = self._activation(new_c) * sigmoid(o_g)
+
+      if self._state_is_tuple:
+        new_state = LSTMStateTuple(new_c, new_h)
+      else:
+        new_state = array_ops.concat(1, [new_c, new_h])
+
+      return new_h, new_state
