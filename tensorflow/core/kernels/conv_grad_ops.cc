@@ -531,12 +531,12 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     // The output offset corresponding to a single output image.
     const int output_offset = out_rows * out_cols * out_depth;
 
-    auto* filter_data = filter.template flat<T>().data();
-    auto* col_buffer_data = col_buffer.template flat<T>().data();
-    auto* out_backprop_data = out_backprop.template flat<T>().data();
+    const T* filter_data = filter.template flat<T>().data();
+    T* col_buffer_data = col_buffer.template flat<T>().data();
+    const T* out_backprop_data = out_backprop.template flat<T>().data();
 
     auto in_backprop_flat = in_backprop->template flat<T>();
-    auto* input_backprop_data = in_backprop_flat.data();
+    T* input_backprop_data = in_backprop_flat.data();
     in_backprop_flat.device(context->eigen_device<Device>()) =
         in_backprop_flat.constant(T(0));
 
@@ -791,10 +791,10 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     // The output offset corresponding to a single output image.
     const int output_offset = out_rows * out_cols * out_depth;
 
-    auto* input_data = input.template flat<T>().data();
-    auto* col_buffer_data = col_buffer.template flat<T>().data();
-    auto* out_backprop_data = out_backprop.template flat<T>().data();
-    auto* filter_backprop_data = filter_backprop->template flat<T>().data();
+    const T* input_data = input.template flat<T>().data();
+    T* col_buffer_data = col_buffer.template flat<T>().data();
+    const T* out_backprop_data = out_backprop.template flat<T>().data();
+    T* filter_backprop_data = filter_backprop->template flat<T>().data();
 
     typedef Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>,
                              Eigen::Unaligned>
