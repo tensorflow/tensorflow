@@ -218,7 +218,7 @@ def with_same_shape(expected_tensor, tensor):
 
 def is_tensor(x):
   """Check for tensor types.
-  If the object represents a tensor, returns True. Equivalent to
+  Check whether an object represents a tensor. Equivalent to
   `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 
   Args:
