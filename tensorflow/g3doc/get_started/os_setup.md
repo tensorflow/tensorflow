@@ -356,7 +356,7 @@ $ docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow
 
 The option `-p 8888:8888` is used to publish the Docker container᾿s internal port to the host machine, in this case to ensure Jupyter notebook connection.
 
-The format of the port mapping `hostPort:containerPort`. You can speficy any valid port number for the host port but has to be `8888` for the container port portion.
+The format of the port mapping is `hostPort:containerPort`. You can specify any valid port number for the host port but have to use `8888` for the container port portion.
 
 For NVidia GPU support install latest NVidia drivers and
 [nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
@@ -568,7 +568,7 @@ empty to use system default]: 7.5
 Please specify the location where CUDA 7.5 toolkit is installed. Refer to
 README.md for more details. [default is: /usr/local/cuda]: /usr/local/cuda
 
-Please specify the Cudnn version you want to use. [Leave empty to use system
+Please specify the cuDNN version you want to use. [Leave empty to use system
 default]: 4.0.4
 
 Please specify the location where the cuDNN 4.0.4 library is installed. Refer to
@@ -591,7 +591,7 @@ Configuration finished
 
 This creates a canonical set of symbolic links to the Cuda libraries on your system.
 Every time you change the Cuda library paths you need to run this step again before
-you invoke the bazel build command. For the Cudnn libraries, use '6.5' for R2, '7.0'
+you invoke the bazel build command. For the cuDNN libraries, use '6.5' for R2, '7.0'
 for R3, and '4.0.4' for R4-RC.
 
 
@@ -714,7 +714,7 @@ GPU support will be enabled for TensorFlow
 Please specify which gcc nvcc should use as the host compiler. [Default is /usr/bin/gcc]:
 Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: 7.5
 Please specify the location where CUDA 7.5 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
-Please specify the Cudnn version you want to use. [Leave empty to use system default]: 5
+Please specify the cuDNN version you want to use. [Leave empty to use system default]: 5
 Please specify the location where cuDNN 5 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
