@@ -558,12 +558,12 @@
   * [`main`](../../api_docs/python/test.md#main)
 
 * **[BayesFlow Stochastic Graph (contrib)](../../api_docs/python/contrib.bayesflow.stochastic_graph.md)**:
-  * [`additional_score_function_losses`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#additional_score_function_losses)
   * [`DistributionTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#DistributionTensor)
   * [`get_current_value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#get_current_value_type)
   * [`MeanValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#MeanValue)
   * [`SampleAndReshapeValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#SampleAndReshapeValue)
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#StochasticTensor)
+  * [`surrogate_losses`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_losses)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#value_type)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
