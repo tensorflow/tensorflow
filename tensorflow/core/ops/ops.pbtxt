@@ -12416,6 +12416,36 @@ op {
   description: "Note that by convention, all sparse ops preserve the canonical ordering along\nincreasing dimension number. The only time ordering can be violated is during\nmanual manipulation of the indices and values vectors to add entries.\n\nReordering does not affect the shape of the SparseTensor.\n\nIf the tensor has rank `R` and `N` non-empty values, `input_indices` has\nshape `[N, R]`, input_values has length `N`, and input_shape has length `R`."
 }
 op {
+  name: "SparseReshape"
+  input_arg {
+    name: "input_indices"
+    description: "2-D.  `N x R_in` matrix with the indices of non-empty values in a\nSparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "input_shape"
+    description: "1-D.  `R_in` vector with the input SparseTensor\'s dense shape."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "new_shape"
+    description: "1-D.  `R_out` vector with the requested new dense shape."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    description: "2-D.  `N x R_out` matrix with the updated indices of non-empty\nvalues in the output SparseTensor."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_shape"
+    description: "1-D.  `R_out` vector with the full dense shape of the output\nSparseTensor.  This is the same as `new_shape` but with any -1 dimensions\nfilled in."
+    type: DT_INT64
+  }
+  summary: "Reshapes a SparseTensor to represent values in a new dense shape."
+  description: "This operation has the same semantics as reshape on the represented dense\ntensor.  The `input_indices` are recomputed based on the requested `new_shape`.\n\nIf one component of `new_shape` is the special value -1, the size of that\ndimension is computed so that the total dense size remains constant.  At\nmost one component of `new_shape` can be -1.  The number of dense elements\nimplied by `new_shape` must be the same as the number of dense elements\noriginally implied by `input_shape`.\n\nReshaping does not affect the order of values in the SparseTensor.\n\nIf the input tensor has rank `R_in` and `N` non-empty values, and `new_shape`\nhas length `R_out`, then `input_indices` has shape `[N, R_in]`,\n`input_shape` has length `R_in`, `output_indices` has shape `[N, R_out]`, and\n`output_shape` has length `R_out`."
+}
+op {
   name: "SparseSegmentMean"
   input_arg {
     name: "data"
