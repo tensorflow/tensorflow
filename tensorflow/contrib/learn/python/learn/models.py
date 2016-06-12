@@ -374,6 +374,7 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
       cell_fn = nn.rnn_cell.BasicLSTMCell
     else:
       raise ValueError('cell_type {} is not supported. '.format(cell_type))
+    # TODO: state_is_tuple=False is deprecated
     if bidirectional:
       # forward direction cell
       fw_cell = cell_fn(rnn_size)
