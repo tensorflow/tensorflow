@@ -1483,6 +1483,7 @@ tf_kernel_libraries(
         "sparse_reduce_sum_op",
         "sparse_dense_binary_op_shared",
         "sparse_reorder_op",
+        "sparse_reshape_op",
         "sparse_softmax",
         "sparse_split_op",
         "sparse_tensor_dense_add_op",
