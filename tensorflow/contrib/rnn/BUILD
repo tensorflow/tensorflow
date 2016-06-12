@@ -25,7 +25,6 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["manual"],  # http://b/29251407
 )
 
 filegroup(

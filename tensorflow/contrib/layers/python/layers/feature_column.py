@@ -33,7 +33,7 @@ Typical usage example:
   ```python
   # Define features and transformations
   country = sparse_column_with_keys("country", ["US", "BRA", ...])
-  country_embedding = embedding_column(query_word, dimension=3, combiner="sum")
+  country_embedding = embedding_column(country, dimension=3, combiner="sum")
   query_word = sparse_column_with_hash_bucket(
     "query_word", hash_bucket_size=int(1e6))
   query_embedding = embedding_column(query_word, dimension=16, combiner="sum")

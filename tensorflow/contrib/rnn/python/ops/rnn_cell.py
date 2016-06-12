@@ -27,8 +27,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops.math_ops import reduce_sum
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
+from tensorflow.python.ops.nn_ops import conv2d
+from tensorflow.python.ops.nn_ops import softmax
+
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _get_concat_variable(name, shape, dtype, num_shards):
@@ -478,3 +483,131 @@ class GridLSTMCell(rnn_cell.RNNCell):
                                   [-1, self._feature_size])
       freq_inputs.append(cur_input)
     return freq_inputs
+
+
+# pylint: disable=protected-access
+_is_sequence = rnn_cell._is_sequence
+_linear = rnn_cell._linear
+_unpacked_state = rnn_cell._unpacked_state
+# pylint: enable=protected-access
+
+
+class AttentionCellWrapper(rnn_cell.RNNCell):
+  """Basic attention cell wrapper.
+
+  Implementation based on https://arxiv.org/pdf/1601.06733.pdf.
+  """
+
+  def __init__(self, cell, attn_length, attn_size=None, attn_vec_size=None,
+               input_size=None, state_is_tuple=False):
+    """Create a cell with attention.
+
+    Args:
+      cell: an RNNCell, an attention is added to it.
+      attn_length: integer, the size of an attention window.
+      attn_size: integer, the size of an attention vector. Equal to
+          cell.output_size by default.
+      attn_vec_size: integer, the number of convolutional features calculated
+          on attention state and a size of the hidden layer built from
+          base cell state. Equal attn_size to by default.
+      input_size: integer, the size of a hidden linear layer,
+          built from inputs and attention. Derived from the input tensor
+          by default.
+      state_is_tuple: If True, accepted and returned states are n-tuples, where
+        `n = len(cells)`.  By default (False), the states are all
+        concatenated along the column axis.
+
+    Raises:
+      TypeError: if cell is not an RNNCell.
+      ValueError: if cell returns a state tuple but the flag
+          `state_is_tuple` is `False` or if attn_length is zero or less.
+    """
+    if not isinstance(cell, rnn_cell.RNNCell):
+      raise TypeError("The parameter cell is not RNNCell.")
+    if _is_sequence(cell.state_size) and not state_is_tuple:
+      raise ValueError("Cell returns tuple of states, but the flag "
+                       "state_is_tuple is not set. State size is: %s"
+                       % str(cell.state_size))
+    if attn_length <= 0:
+      raise ValueError("attn_length should be greater than zero, got %s"
+                       % str(attn_length))
+    if not state_is_tuple:
+      logging.warn(
+          "%s: Using a concatenated state is slower and will soon be "
+          "deprecated.  Use state_is_tuple=True." % self)
+    if attn_size is None:
+      attn_size = cell.output_size
+    if attn_vec_size is None:
+      attn_vec_size = attn_size
+    self._state_is_tuple = state_is_tuple
+    self._cell = cell
+    self._attn_vec_size = attn_vec_size
+    self._input_size = input_size
+    self._attn_size = attn_size
+    self._attn_length = attn_length
+
+  @property
+  def state_size(self):
+    size = (self._cell.state_size, self._attn_size,
+            self._attn_size * self._attn_length)
+    if self._state_is_tuple:
+      return size
+    else:
+      return sum(list(size))
+
+  @property
+  def output_size(self):
+    return self._attn_size
+
+  def __call__(self, inputs, state, scope=None):
+    """Long short-term memory cell with attention (LSTMA)."""
+    with vs.variable_scope(scope or type(self).__name__):
+      if self._state_is_tuple:
+        state, attns, attn_states = state
+      else:
+        states = state
+        state = array_ops.slice(states, [0, 0], [-1, self._cell.state_size])
+        attns = array_ops.slice(
+            states, [0, self._cell.state_size], [-1, self._attn_size])
+        attn_states = array_ops.slice(
+            states, [0, self._cell.state_size + self._attn_size],
+            [-1, self._attn_size * self._attn_length])
+      attn_states = array_ops.reshape(attn_states,
+                                      [-1, self._attn_length, self._attn_size])
+      input_size = self._input_size
+      if input_size is None:
+        input_size = inputs.get_shape().as_list()[1]
+      inputs = _linear([inputs, attns], input_size, True)
+      lstm_output, new_state = self._cell(inputs, state)
+      if self._state_is_tuple:
+        new_state_cat = array_ops.concat(1, _unpacked_state(new_state))
+      else:
+        new_state_cat = new_state
+      new_attns, new_attn_states = self._attention(new_state_cat, attn_states)
+      with vs.variable_scope("AttnOutputProjection"):
+        output = _linear([lstm_output, new_attns], self._attn_size, True)
+      new_attn_states = array_ops.concat(1, [new_attn_states,
+                                             array_ops.expand_dims(output, 1)])
+      new_attn_states = array_ops.reshape(
+          new_attn_states, [-1, self._attn_length * self._attn_size])
+      new_state = (new_state, new_attns, new_attn_states)
+      if not self._state_is_tuple:
+        new_state = array_ops.concat(1, list(new_state))
+      return output, new_state
+
+  def _attention(self, query, attn_states):
+    with vs.variable_scope("Attention"):
+      k = vs.get_variable("AttnW", [1, 1, self._attn_size, self._attn_vec_size])
+      v = vs.get_variable("AttnV", [self._attn_vec_size])
+      hidden = array_ops.reshape(attn_states,
+                                 [-1, self._attn_length, 1, self._attn_size])
+      hidden_features = conv2d(hidden, k, [1, 1, 1, 1], "SAME")
+      y = _linear(query, self._attn_vec_size, True)
+      y = array_ops.reshape(y, [-1, 1, 1, self._attn_vec_size])
+      s = reduce_sum(v * tanh(hidden_features + y), [2, 3])
+      a = softmax(s)
+      d = reduce_sum(
+          array_ops.reshape(a, [-1, self._attn_length, 1, 1]) * hidden, [1, 2])
+      new_attns = array_ops.reshape(d, [-1, self._attn_size])
+      new_attn_states = array_ops.slice(attn_states, [0, 1, 0], [-1, -1, -1])
+      return new_attns, new_attn_states
