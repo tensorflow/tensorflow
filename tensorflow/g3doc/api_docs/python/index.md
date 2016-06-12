@@ -125,6 +125,7 @@
   * [`extract_image_patches`](../../api_docs/python/array_ops.md#extract_image_patches)
   * [`gather`](../../api_docs/python/array_ops.md#gather)
   * [`gather_nd`](../../api_docs/python/array_ops.md#gather_nd)
+  * [`meshgrid`](../../api_docs/python/array_ops.md#meshgrid)
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)

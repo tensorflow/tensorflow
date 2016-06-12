@@ -419,6 +419,10 @@ The default value of 1e-8 for epsilon might not be a good default in
 general. For example, when training an Inception network on ImageNet a
 current good choice is 1.0 or 0.1.
 
+Note that in dense implement of this algorithm, m_t, v_t and variable will
+update even if g is zero, but in sparse implement, m_t, v_t and variable
+will not update in iterations g is zero.
+
 ##### Args:
 
 
@@ -485,6 +489,10 @@ See the [paper]
 #### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
 
 Construct a new RMSProp optimizer.
+
+Note that in dense implement of this algorithm, m_t and v_t will
+update even if g is zero, but in sparse implement, m_t and v_t
+will not update in iterations g is zero.
 
 ##### Args:
 

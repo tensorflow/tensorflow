@@ -402,8 +402,9 @@ class Supervisor(object):
 
     Args:
       local_init_op: `Operation` run for every new supervisor instance. If set
-      to USE_DEFAULT create an op based on the `LOCAL_INITIALIZERS` graph
-      collection.
+      to USE_DEFAULT, use the first op from the GraphKeys.LOCAL_INIT_OP
+      collection. If the collection is empty, create an op that initializes
+      all local variables and all tables.
     """
     if local_init_op is Supervisor.USE_DEFAULT:
       local_init_op = self._get_first_op_from_collection(
