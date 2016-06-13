@@ -238,17 +238,27 @@ def abs(x, name=None):
   number.
 
   Args:
-    x: A `Tensor` of type `float`, `double`, `int32`, or `int64`.
+    x: A `Tensor` or `SparseTensor` of type `float`, `double`, `int32`, or
+      `int64`.
     name: A name for the operation (optional).
 
   Returns:
-     A `Tensor` the same size and type as `x` with absolute values.
+    A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
+      values.
   """
   with ops.op_scope([x], name, "Abs") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    if x.dtype in (dtypes.complex64, dtypes.complex128):
-      return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
-    return gen_math_ops._abs(x, name=name)
+    if isinstance(x, ops.SparseTensor):
+      if x.values.dtype in (dtypes.complex64, dtypes.complex128):
+        x_abs = gen_math_ops.complex_abs(x.values,
+            Tout=x.values.dtype.real_dtype, name=name)
+        return ops.SparseTensor(indices=x.indices, values=x_abs, shape=x.shape)
+      x_abs = gen_math_ops._abs(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_abs, shape=x.shape)
+    else:
+      x = ops.convert_to_tensor(x, name="x")
+      if x.dtype in (dtypes.complex64, dtypes.complex128):
+        return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
+      return gen_math_ops._abs(x, name=name)
 
 
 def complex_abs(x, name=None):
