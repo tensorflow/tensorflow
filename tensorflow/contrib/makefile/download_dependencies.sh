@@ -25,11 +25,12 @@ curl "https://bitbucket.org/eigen/eigen/get/${EIGEN_HASH}.tar.gz" \
 -o /tmp/eigen-${EIGEN_HASH}.tar.gz
 tar xzf /tmp/eigen-${EIGEN_HASH}.tar.gz -C ${DOWNLOADS_DIR}
 
-# Link to the downloaded Eigen library from a permanent directory name, since
-# the downloaded name changes with every version.
-rm -rf ${DOWNLOADS_DIR}/eigen-latest
-ln -s ${DOWNLOADS_DIR}/eigen-eigen-${EIGEN_HASH} ${DOWNLOADS_DIR}/eigen-latest
-
 git clone https://github.com/google/re2.git ${DOWNLOADS_DIR}/re2
 git clone https://github.com/google/gemmlowp.git ${DOWNLOADS_DIR}/gemmlowp
 git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
+
+# Link to the downloaded Eigen library from a permanent directory name, since
+# the downloaded name changes with every version.
+cd ${DOWNLOADS_DIR}
+rm -rf eigen-latest
+ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
