@@ -126,6 +126,17 @@ class InferenceContext {
   Status Merge(const Dimension* d0, const Dimension* d1,
                const Dimension** out) TF_MUST_USE_RESULT;
 
+  // Returns in <*out> a sub-shape of <s>, with dimensions at index [s[start],
+  // ..).
+  // Returns an error if the rank of <s> is < <start>.
+  Status Subshape(const Shape* s, int start,
+                  const Shape** out) TF_MUST_USE_RESULT;
+
+  // Returns in <*out> the result of appending the dimensions of <s2> to those
+  // of <s1>.
+  Status Concatenate(const Shape* s1, const Shape* s2,
+                     const Shape** out) TF_MUST_USE_RESULT;
+
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
   const Shape* CreateShape(const std::vector<const Dimension*>& dims);
@@ -137,6 +148,16 @@ class InferenceContext {
   const Dimension* CreateUnknownDim();
 
  private:
+  Status ReturnUnknownShape(const Shape** out) {
+    *out = CreateUnknownShape();
+    return Status::OK();
+  }
+  Status ReturnCreatedShape(const std::vector<const Dimension*>& dims,
+                            const Shape** out) {
+    *out = CreateShape(dims);
+    return Status::OK();
+  }
+
   std::vector<Shape*> all_shapes_;    // values are owned.
   std::vector<Dimension*> all_dims_;  // values are owned.
 

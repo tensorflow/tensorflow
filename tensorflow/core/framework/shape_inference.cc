@@ -191,8 +191,50 @@ Status InferenceContext::Merge(const Shape* s0, const Shape* s1,
     // Invariant for merge was checked earlier, so CHECK is ok.
     TF_CHECK_OK(Merge(Dim(s0, i), Dim(s1, i), &dims[i]));
   }
-  *out = CreateShape(dims);
-  return Status::OK();
+  return ReturnCreatedShape(dims, out);
+}
+
+Status InferenceContext::Subshape(const Shape* s, int start,
+                                  const Shape** out) {
+  if (start < 0) {
+    *out = nullptr;
+    return errors::InvalidArgument("Negative start is not implemented; got ",
+                                   start);
+  }
+  if (start == 0) {
+    *out = s;
+    return Status::OK();
+  }
+  const int32 rank = Rank(s);
+  if (!RankKnown(s)) {
+    return ReturnUnknownShape(out);
+  }
+  if (rank < start) {
+    *out = nullptr;
+    return errors::InvalidArgument("Shape must have rank >= ", start,
+                                   ", but is ", rank);
+  }
+  std::vector<const Dimension*> dims;
+  dims.reserve(rank - start);
+  for (int i = start; i < rank; ++i) {
+    dims.push_back(Dim(s, i));
+  }
+  return ReturnCreatedShape(dims, out);
+}
+
+Status InferenceContext::Concatenate(const Shape* s1, const Shape* s2,
+                                     const Shape** out) {
+  if (!RankKnown(s1) || !RankKnown(s2)) {
+    return ReturnUnknownShape(out);
+  }
+  const int32 s1_rank = Rank(s1);
+  const int32 s2_rank = Rank(s2);
+  const int32 rank = s1_rank + s2_rank;
+  std::vector<const Dimension*> dims;
+  dims.reserve(rank);
+  for (int i = 0; i < s1_rank; ++i) dims.push_back(Dim(s1, i));
+  for (int i = 0; i < s2_rank; ++i) dims.push_back(Dim(s2, i));
+  return ReturnCreatedShape(dims, out);
 }
 
 const Shape* InferenceContext::CreateShape(
