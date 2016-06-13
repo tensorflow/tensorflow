@@ -108,8 +108,9 @@ class ShuffleBatch(AbstractBatchTransform):
                seed=None):
     super(ShuffleBatch, self).__init__(batch_size, output_names, num_threads,
                                        queue_capacity)
-    self._min_after_dequeue = (self.queue_capacity / 4 if
-                               min_after_dequeue is None else min_after_dequeue)
+    self._min_after_dequeue = int(self.queue_capacity / 4
+                                  if min_after_dequeue is None
+                                  else min_after_dequeue)
     self._seed = seed
 
   @transform.parameter
