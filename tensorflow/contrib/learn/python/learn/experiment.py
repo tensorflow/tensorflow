@@ -35,17 +35,20 @@ class Experiment(object):
                eval_steps=100,
                train_monitors=None,
                local_train_step=1000):
-    """Constructor for Experiment.
+    """Constructor for `Experiment`.
 
     Args:
       estimator: `Estimator` object.
       train_input_fn: function, returns features and targets for training.
-      eval_input_fn: function, returns features and targets for evaluation.
+      eval_input_fn: function, returns features and targets for evaluation. If
+        `eval_steps` is `None`, this should be configured only to produce for a
+        finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
         is used.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.
-      eval_steps: Run this many steps of evaluation.
+      eval_steps: `evaluate` runs until input is exhausted (or another exception
+        is raised), or for `eval_steps` steps, if specified.
       train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
         function.
       local_train_step: Perform this many training steps when running local.
@@ -85,7 +88,8 @@ class Experiment(object):
     """Evaluate on the evaluation data.
 
     Runs evaluation on the evaluation data and returns the result. If `steps`
-    is given, only run for this many steps. Start the evaluation after
+    is given, only run for this many steps. Otherwise run until input is
+    exhausted, or another exception is raised. Start the evaluation after
     `delay_secs` seconds.
 
     Args:
