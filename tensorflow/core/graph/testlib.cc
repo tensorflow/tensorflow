@@ -188,6 +188,16 @@ Node* TruncatedNormal(Graph* g, Node* input, DataType dtype) {
   return RandomNumberGenerator("TruncatedNormal", g, input, dtype);
 }
 
+Node* RandomGamma(Graph* g, Node* shape, Node* alpha) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomGamma")
+                  .Input(shape)
+                  .Input(alpha)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())

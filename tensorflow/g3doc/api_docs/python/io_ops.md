@@ -226,6 +226,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -405,6 +406,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -584,6 +586,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -763,6 +766,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -939,6 +943,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 
@@ -1118,6 +1123,7 @@ Returns up to num_records (key, value pairs) produced by a reader.
 Will dequeue a work unit from queue if necessary (e.g., when the
 Reader needs to start reading from a new file since it has
 finished with the previous file).
+It may return less than num_records even before the last batch.
 
 ##### Args:
 

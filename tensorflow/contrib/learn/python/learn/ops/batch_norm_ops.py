@@ -54,22 +54,31 @@ def batch_normalize(tensor_in,
         initializer=init_ops.random_normal_initializer(1., 0.02))
     beta = vs.get_variable("beta", [shape[-1]],
                            initializer=init_ops.constant_initializer(0.))
-    ema = moving_averages.ExponentialMovingAverage(decay=decay)
-    if convnet:
-      assign_mean, assign_var = nn.moments(tensor_in, [0, 1, 2])
-    else:
-      assign_mean, assign_var = nn.moments(tensor_in, [0])
-    ema_assign_op = ema.apply([assign_mean, assign_var])
-    ema_mean, ema_var = ema.average(assign_mean), ema.average(assign_var)
+    moving_mean = vs.get_variable(
+        'moving_mean',
+        shape=[shape[-1]],
+        initializer=init_ops.zeros_initializer,
+        trainable=False)
+    moving_var = vs.get_variable(
+        'moving_var',
+        shape=[shape[-1]],
+        initializer=init_ops.ones_initializer,
+        trainable=False)
 
     def _update_mean_var():
       """Internal function that updates mean and variance during training."""
-      with ops.control_dependencies([ema_assign_op]):
-        return array_ops_.identity(assign_mean), array_ops_.identity(assign_var)
+      axis = [0, 1, 2] if convnet else [0]
+      mean, var = nn.moments(tensor_in, axis)
+      update_moving_mean = moving_averages.assign_moving_average(
+          moving_mean, mean, decay)
+      update_moving_var = moving_averages.assign_moving_average(
+          moving_var, var, decay)
+      with ops.control_dependencies([update_moving_mean, update_moving_var]):
+        return array_ops_.identity(mean), array_ops_.identity(var)
 
     is_training = array_ops_.squeeze(ops.get_collection("IS_TRAINING"))
     mean, variance = control_flow_ops.cond(is_training, _update_mean_var,
-                                           lambda: (ema_mean, ema_var))
+                                           lambda: (moving_mean, moving_var))
     return nn.batch_norm_with_global_normalization(
         tensor_in,
         mean,

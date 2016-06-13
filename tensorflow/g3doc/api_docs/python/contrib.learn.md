@@ -851,9 +851,13 @@ Parameters:
   activation_fn: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
   dropout: When not None, the probability we will drop out a given coordinate.
+  gradient_clip_norm: A float > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See tf.clip_by_global_norm
+    for more details.
+  config: RunConfig object to configure the runtime settings.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNClassifier.__init__}
 
 
 
@@ -2685,9 +2689,13 @@ Parameters:
     will be multiplied by the loss of the example.
   optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
     will use an Ftrl optimizer.
+  gradient_clip_norm: A float > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See tf.clip_by_global_norm
+    for more details.
+  config: RunConfig object to configure the runtime settings.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearRegressor.__init__}
 
 
 
@@ -4591,7 +4599,7 @@ Extracts numpy matrix from pandas DataFrame.
 
 - - -
 
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, name=None)` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, name=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -4619,6 +4627,8 @@ All ops are added to the default graph.
     `tf.initialize_all_variables()` as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
+*  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
+    records to read at once
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:

@@ -304,8 +304,9 @@ class _VariableStore(object):
       return existing_var
 
     if should_check and reuse:
-      raise ValueError("PartitionedVariable %s does not exist, disallowed."
-                       " Did you mean to set reuse=None in VarScope?" % name)
+      raise ValueError("PartitionedVariable %s does not exist, or was not "
+                       "created with tf.get_variable(). Did you mean to set "
+                       "reuse=None in VarScope?" % name)
 
     slice_dim, slice_shape = _compute_slice_dim_and_shape(
         shape.as_list(), partitions)
@@ -375,7 +376,7 @@ class _VariableStore(object):
       vs.append(var)
       # pylint: enable=protected-access
 
-    # pylint: disable=protected-access
+      # pylint: disable=protected-access
     partitioned_var = variables._PartitionedVariable(name=name,
                                                      shape=shape,
                                                      dtype=dtype,
@@ -450,8 +451,9 @@ class _VariableStore(object):
 
     # The code below handles only the case of creating a new variable.
     if should_check and reuse:
-      raise ValueError("Variable %s does not exist, disallowed."
-                       " Did you mean to set reuse=None in VarScope?" % name)
+      raise ValueError("Variable %s does not exist, or was not created with "
+                       "tf.get_variable(). Did you mean to set reuse=None in "
+                       "VarScope?" % name)
     if not shape.is_fully_defined() and not initializing_from_value:
       raise ValueError("Shape of a new variable (%s) must be fully defined, "
                        "but instead was %s." % (name, shape))

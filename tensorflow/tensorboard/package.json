@@ -4,7 +4,8 @@
   "description": "Visualizers for TensorFlow",
   "scripts": {
     "test": "gulp test",
-    "prepare": "npm install && bower install && typings install"
+    "prepare": "npm install && bower install && typings install",
+    "compile": "gulp compile"
   },
   "keywords": [
     "tensorflow"

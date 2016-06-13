@@ -42,7 +42,10 @@ py_library(
     name = "platform",
     srcs = glob(["platform/*.py"]),
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/core:protos_all_py"],
+    deps = [
+        ":pywrap_tensorflow",
+        "//tensorflow/core:protos_all_py",
+    ],
 )
 
 py_library(
@@ -699,6 +702,7 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "random_ops",
     hidden = [
+        "RandomGamma",
         "RandomUniform",
         "RandomUniformInt",
         "RandomShuffle",
@@ -1107,6 +1111,7 @@ medium_kernel_test_list = glob([
     "kernel_tests/fft_ops_test.py",
     "kernel_tests/pooling_ops_test.py",
     "kernel_tests/rnn_test.py",
+    "kernel_tests/random_gamma_test.py",
     "kernel_tests/scatter_ops_test.py",
     "kernel_tests/seq2seq_test.py",
     "kernel_tests/slice_op_test.py",

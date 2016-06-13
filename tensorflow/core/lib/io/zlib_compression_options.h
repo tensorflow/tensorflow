@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_MULTI_OP_ACTIVATION_H_
-#define TENSORFLOW_STREAM_EXECUTOR_CUDA_MULTI_OP_ACTIVATION_H_
+#ifndef TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
+#define TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 
-namespace perftools {
-namespace gputools {
-namespace cuda {
+#include <zlib.h>
 
-// Type-safe boolean wrapper: denotes whether a ScopedActivateExecutorContext
-// may have other ScopedActivateExecutorContexts nested within it.
-enum class MultiOpActivation { kNo = false, kYes = true };
+namespace tensorflow {
+namespace io {
+class ZlibCompressionOptions {
+ public:
+  uint8 flush_mode = Z_SYNC_FLUSH;
+};
+}
+}
 
-}  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
-
-#endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_MULTI_OP_ACTIVATION_H_
+#endif  // TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_

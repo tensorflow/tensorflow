@@ -393,8 +393,12 @@ Status GcsFileSystem::GetChildren(const string& dirname,
       return errors::Internal(
           "Unexpected JSON format: 'items.name' is missing or not a string.");
     }
-    result->push_back(
-        strings::StrCat("gs://", bucket, "/", name.asString().c_str()));
+    // The names should be relative to the 'dirname'. That means the
+    // 'object_prefix', which is part of 'dirname', should be removed from the
+    // beginning of 'name'.
+    string name_str(name.asString());
+    result->emplace_back(name_str.begin() + object_prefix.size(),
+                         name_str.end());
   }
   return Status::OK();
 }

@@ -183,6 +183,9 @@ def random_uniform(shape, minval=0, maxval=None,
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
+ops.NoGradient("RandomUniform")
+
+
 def random_shuffle(value, seed=None, name=None):
   """Randomly shuffles a tensor along its first dimension.
 
@@ -292,7 +295,78 @@ def _MultinomialShape(op):  # pylint: disable=invalid-name
 ops.NoGradient("Multinomial")
 
 
-ops.NoGradient("RandomUniform")
+def random_gamma(shape,
+                 alpha,
+                 beta=None,
+                 dtype=dtypes.float32,
+                 seed=None,
+                 name=None):
+  """Draws `shape` samples from each of the given Gamma distribution(s).
+
+  `alpha` is the shape parameter describing the distribution(s), and `beta` is
+  the inverse scale parameter(s).
+
+  Example:
+
+    samples = tf.random_gamma([10], [0.5, 1.5])
+    # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+    # the samples drawn from each distribution
+
+    samples = tf.random_gamma([7, 5], [0.5, 1.5])
+    # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+    # represents the 7x5 samples drawn from each of the two distributions
+
+    samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
+    # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
+
+  Args:
+    shape: A 1-D integer Tensor or Python array. The shape of the output samples
+      to be drawn per alpha/beta-parameterized distribution.
+    alpha: A Tensor or Python value or N-D array of type `dtype`. `alpha`
+      provides the shape parameter(s) describing the gamma distribution(s) to
+      sample. Must be broadcastable with `beta`.
+    beta: A Tensor or Python value or N-D array of type `dtype`. Defaults to 1.
+      `beta` provides the inverse scale parameter(s) of the gamma
+      distribution(s) to sample. Must be broadcastable with `alpha`.
+    dtype: The type of alpha, beta, and the output: `float16`, `float32`, or
+      `float64`.
+    seed: A Python integer. Used to create a random seed for the distributions.
+      See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
+      values of type `dtype`.
+  """
+  with ops.op_scope([shape, alpha, beta], name, "random_gamma"):
+    shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
+    alpha = ops.convert_to_tensor(alpha, name="alpha", dtype=dtype)
+    beta = ops.convert_to_tensor(beta if beta is not None else 1,
+                                 name="beta",
+                                 dtype=dtype)
+    alpha_broadcast = alpha + array_ops.zeros_like(beta)
+    seed1, seed2 = random_seed.get_seed(seed)
+    return gen_random_ops._random_gamma(shape,
+                                        alpha_broadcast,
+                                        seed=seed1,
+                                        seed2=seed2) / beta
+
+
+@ops.RegisterShape("RandomGamma")
+def _RandomGammaShape(op):  # pylint: disable=invalid-name
+  alphas_shape = op.inputs[1].get_shape()
+  shape_val = tensor_util.constant_value(op.inputs[0])
+  if shape_val is not None:
+    return [tensor_shape.TensorShape(shape_val).concatenate(alphas_shape)]
+  else:
+    shape_shape = op.inputs[0].get_shape().with_rank(1)
+    return [tensor_shape.unknown_shape(
+        ndims=shape_shape[0].value).concatenate(alphas_shape)]
+
+
+ops.NoGradient("RandomGamma")
 
 
 @ops.RegisterShape("TruncatedNormal")

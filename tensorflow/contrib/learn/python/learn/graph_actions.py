@@ -395,7 +395,7 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
         isinstance(eval_results[key], float)):
       value.simple_value = float(eval_results[key])
   summary_writer.add_summary(summary, current_global_step)
-  summary_writer.close()
+  summary_writer.flush()
 
 
 # TODO(ptucker): Add unit test.

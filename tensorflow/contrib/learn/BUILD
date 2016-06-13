@@ -65,7 +65,7 @@ py_test(
 
 py_test(
     name = "dataframe_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/tests/dataframe/dataframe_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -179,6 +179,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/tests/early_stopping_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/28555477
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -235,7 +236,7 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -283,7 +284,7 @@ py_test(
 
 py_test(
     name = "linear_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -334,6 +335,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/tests/nonlinear_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/29220227
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -455,6 +457,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/io/graph_io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/29229547
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
