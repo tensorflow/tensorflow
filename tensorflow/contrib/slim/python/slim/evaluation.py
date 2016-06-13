@@ -56,6 +56,7 @@ import time
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
@@ -100,7 +101,7 @@ def evaluation(
     global_step=None):
   """Performs a single evaluation run.
 
-  A single evaluation consistents of several steps run in the following order:
+  A single evaluation consists of several steps run in the following order:
   (1) an initialization op, (2) an evaluation op which is executed `num_evals`
   times (3) a finalization op and (4) the execution of a summary op which is
   written out using a summary writer.
@@ -136,7 +137,7 @@ def evaluation(
       logging.info('Executing eval_op %d/%d', i+1, num_evals)
       sess.run(eval_op, eval_op_feed_dict)
 
-  if final_op:
+  if final_op is not None:
     final_op_value = sess.run(final_op, final_op_feed_dict)
   else:
     final_op_value = None
@@ -183,7 +184,7 @@ def evaluation_loop(master, checkpoint_dir, logdir, num_evals=1,
   init_op = control_flow_ops.group(
       tf_variables.initialize_all_variables(),
       tf_variables.initialize_local_variables(),
-      tf_variables.initialize_all_tables())
+      data_flow_ops.initialize_all_tables())
 
   saver = tf_saver.Saver(
       variables_to_restore or variables.get_variables_to_restore())
