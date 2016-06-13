@@ -131,8 +131,8 @@ def enqueue_data(data,
   placeholders = [array_ops.placeholder(*type_and_shape)
                   for type_and_shape in zip(types, shapes)]
   if shuffle:
-    min_after_dequeue = (capacity / 4 if min_after_dequeue is None else
-                         min_after_dequeue)
+    min_after_dequeue = int(capacity / 4 if min_after_dequeue is None else
+                            min_after_dequeue)
     queue = data_flow_ops.RandomShuffleQueue(capacity,
                                              min_after_dequeue,
                                              dtypes=types,

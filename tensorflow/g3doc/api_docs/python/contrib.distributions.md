@@ -609,7 +609,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, name='Categorical', dtype=tf.int32)` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -621,6 +621,7 @@ Initialize Categorical distributions using class log-probabilities.
       batch of independent distributions and the last dimension indexes
       into the classes.
 *  <b>`name`</b>: A name for this distribution (optional).
+*  <b>`dtype`</b>: The type of the event samples (default: int32).
 
 
 - - -
@@ -702,7 +703,7 @@ Log-probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor.
+*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -754,7 +755,7 @@ Probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor.
+*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -3175,47 +3176,5 @@ will broadcast in the case of multidimensional sets of parameters.
 
 *  <b>`TypeError`</b>: if dtype of `s` does not match `dtype`, or `prior` is not a
     Normal object.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.contrib.distributions.batch_index(vectors, indices, name=None)` {#batch_index}
-
-Indexes into a batch of vectors.
-
-##### Args:
-
-
-*  <b>`vectors`</b>: An N-D Tensor.
-*  <b>`indices`</b>: A K-D integer Tensor, K <= N. The first K - 1 dimensions of indices
-      must be broadcastable to the first N - 1 dimensions of vectors.
-*  <b>`name`</b>: A name for this operation (optional).
-
-##### Returns:
-
-  An N-D Tensor comprised of one element selected from each of the vectors.
-
-##### Example usage:
-
-  vectors = [[[1, 2, 3], [4, 5, 6]],
-             [[7, 8, 9], [1, 2, 3]]]
-
-  batch_index(vectors, 0)
-  => [[1, 4],
-      [7, 1]]
-
-  batch_index(vectors, [0])
-  => [[[1], [4]],
-      [[7], [1]]]
-
-  batch_index(vectors, [0, 0, 2, 2])
-  => [[[1, 1, 3, 3], [4, 4, 6, 6]],
-      [[7, 7, 9, 9], [1, 1, 3, 3]]]
-
-  batch_index(vectors, [[0, 0, 2, 2], [0, 1, 2, 0]])
-  => [[[1, 1, 3, 3], [4, 5, 6, 4]],
-      [[7, 7, 9, 9], [1, 2, 3, 1]]]
 
 
