@@ -569,7 +569,6 @@
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
-  * [`batch_index`](../../api_docs/python/contrib.distributions.md#batch_index)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
   * [`ContinuousDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousDistribution)
