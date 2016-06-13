@@ -35,6 +35,7 @@ dimension, and dense along all other dimensions.
 
 @@sparse_concat
 @@sparse_reorder
+@@sparse_reshape
 @@sparse_split
 @@sparse_retain
 @@sparse_reset_shape
@@ -403,6 +404,75 @@ def _SparseReorderShape(op):
   unused_shape_shape = op.inputs[2].get_shape().with_rank(1)
 
   return [input_indices_shape, input_values_shape]
+
+
+def sparse_reshape(sp_input, shape, name=None):
+  """Reshapes a `SparseTensor` to represent values in a new dense shape.
+
+  This operation has the same semantics as `reshape` on the represented dense
+  tensor.  The indices of non-empty values in `sp_input` are recomputed based
+  on the new dense shape, and a new `SparseTensor` is returned containing the
+  new indices and new shape.  The order of non-empty values in `sp_input` is
+  unchanged.
+
+  If one component of `shape` is the special value -1, the size of that
+  dimension is computed so that the total dense size remains constant.  At
+  most one component of `shape` can be -1.  The number of dense elements
+  implied by `shape` must be the same as the number of dense elements
+  originally represented by `sp_input`.
+
+  For example, if `sp_input` has shape `[2, 3, 6]` and `indices` / `values`:
+
+      [0, 0, 0]: a
+      [0, 0, 1]: b
+      [0, 1, 0]: c
+      [1, 0, 0]: d
+      [1, 2, 3]: e
+
+  and `shape` is `[9, -1]`, then the output will be a `SparseTensor` of
+  shape `[9, 4]` and `indices` / `values`:
+
+      [0, 0]: a
+      [0, 1]: b
+      [1, 2]: c
+      [4, 2]: d
+      [8, 1]: e
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    shape: A 1-D (vector) int64 `Tensor` specifying the new dense shape of the
+      represented `SparseTensor`.
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A `SparseTensor` with the same non-empty values but with indices calculated
+    by the new dense shape.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  if not isinstance(sp_input, ops.SparseTensor):
+    raise TypeError("Input must be a SparseTensor")
+
+  with ops.op_scope([sp_input], name, "SparseReshape") as name:
+    reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
+        sp_input.indices, sp_input.shape, shape, name=name)
+
+    return ops.SparseTensor(reshaped_ind, array_ops.identity(sp_input.values),
+                            reshaped_shape)
+
+
+@ops.RegisterShape("SparseReshape")
+def _SparseReshapeShape(op):  # pylint: disable=invalid-name
+  """Shape function for SparseReshape op."""
+  input_indices_shape = op.inputs[0].get_shape().with_rank(2)
+  unused_input_shape_shape = op.inputs[1].get_shape().with_rank(1)
+  new_shape_shape = op.inputs[2].get_shape().with_rank(1)
+
+  new_indices_shape = tensor_shape.matrix(input_indices_shape[0],
+                                          new_shape_shape[0])
+
+  return [new_indices_shape, new_shape_shape]
 
 
 def sparse_split(split_dim, num_split, sp_input, name=None):

@@ -136,9 +136,9 @@ class ValueTypeTest(tf.test.TestCase):
       sg.get_current_value_type()
 
 
-class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
+class TestSurrogateLosses(tf.test.TestCase):
 
-  def testPathwiseDerivativeDoesNotAddScoreFunctionLosses(self):
+  def testPathwiseDerivativeDoesNotAddSurrogateLosses(self):
     with self.test_session():
       mu = [0.0, 0.1, 0.2]
       sigma = tf.constant([1.1, 1.2, 1.3])
@@ -152,9 +152,9 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
       loss = tf.square(tf.identity(likelihood) - [0.0, 0.1, 0.2])
       sum_loss = tf.reduce_sum(loss)
 
-      surrogate_from_loss = sg.additional_score_function_losses([loss])
-      surrogate_from_sum_loss = sg.additional_score_function_losses([sum_loss])
-      surrogate_from_both = sg.additional_score_function_losses(
+      surrogate_from_loss = sg.surrogate_losses([loss])
+      surrogate_from_sum_loss = sg.surrogate_losses([sum_loss])
+      surrogate_from_both = sg.surrogate_losses(
           [loss, sum_loss])
 
       # Pathwise derivative terms do not require score function
@@ -163,8 +163,8 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
       self.assertEqual(surrogate_from_sum_loss, [])
       self.assertEqual(surrogate_from_both, [])
 
-  def _testScoreFunction(self, session, losses, expected, xs):
-    sf_losses = sg.additional_score_function_losses(losses)
+  def _testSurrogateLoss(self, session, losses, expected, xs):
+    sf_losses = sg.surrogate_losses(losses)
     n = len(expected)
     self.assertEqual(len(expected), len(sf_losses))
     values = session.run(list(expected) + sf_losses)
@@ -188,7 +188,7 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
     grad_values = session.run(expected_grads + sf_grads)
     self.assertAllClose(grad_values[:n_grad], grad_values[n_grad:])
 
-  def testScoreFunction(self):
+  def testSurrogateLoss(self):
     with self.test_session() as sess:
       mu = tf.constant([0.0, 0.1, 0.2])
       sigma = tf.constant([1.1, 1.2, 1.3])
@@ -209,7 +209,7 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
       sum_loss_nograd = tf.stop_gradient(sum_loss)
 
       # These score functions should ignore prior_2
-      self._testScoreFunction(
+      self._testSurrogateLoss(
           session=sess,
           losses=[loss],
           expected=set([
@@ -217,7 +217,7 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
               prior.distribution.log_pdf(prior.value()) * loss_nograd]),
           xs=[mu, sigma])
 
-      self._testScoreFunction(
+      self._testSurrogateLoss(
           session=sess,
           losses=[loss, part_loss],
           expected=set([
@@ -226,7 +226,7 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
                * tf.stop_gradient(part_loss + loss))]),
           xs=[mu, sigma])
 
-      self._testScoreFunction(
+      self._testSurrogateLoss(
           session=sess,
           losses=[sum_loss],
           expected=set([
@@ -235,7 +235,7 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
               prior.distribution.log_pdf(prior.value()) * sum_loss_nograd]),
           xs=[mu, sigma])
 
-      self._testScoreFunction(
+      self._testSurrogateLoss(
           session=sess,
           losses=[loss, sum_loss],
           expected=set([
@@ -246,7 +246,7 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
           xs=[mu, sigma])
 
       # These score functions should ignore prior and likelihood
-      self._testScoreFunction(
+      self._testSurrogateLoss(
           session=sess,
           losses=[loss_nodeps],
           expected=[prior_2.distribution.log_pdf(prior_2.value())
@@ -254,7 +254,7 @@ class TestAdditionalScoreFunctionLosses(tf.test.TestCase):
           xs=[mu, sigma])
 
       # These score functions should include all terms selectively
-      self._testScoreFunction(
+      self._testSurrogateLoss(
           session=sess,
           losses=[loss, loss_nodeps],
           # We can't guarantee ordering of output losses in this case.

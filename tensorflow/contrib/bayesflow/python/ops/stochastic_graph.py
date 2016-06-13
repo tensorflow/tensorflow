@@ -28,7 +28,7 @@
 
 ## Stochastic Computation Graph Helper Functions
 
-@@additional_score_function_losses
+@@surrogate_losses
 """
 
 from __future__ import absolute_import
@@ -83,8 +83,25 @@ class StochasticTensor(object):
     pass
 
   @abc.abstractmethod
-  def score_function(self, sample_losses, **kwargs):
-    raise NotImplementedError("score_function not implemented")
+  def surrogate_loss(self, sample_losses):
+    """Returns the surrogate loss given the list of sample_losses.
+
+    This method is called by `surrogate_losses`.  The input `sample_losses`
+    presumably have already had `stop_gradient` applied to them.  This is
+    because the surrogate_loss usually provides a monte carlo sample term
+    of the form `differentiable_surrogate * sum(sample_losses)` where
+    `sample_losses` is considered constant with respect to the input
+    for purposes of the gradient.
+
+    Args:
+      sample_losses: a list of Tensors, the sample losses downstream of this
+        `StochasticTensor`.
+
+    Returns:
+      Either either `None` or a `Tensor` whose gradient is the
+       score function.
+    """
+    raise NotImplementedError("surrogate_loss not implemented")
 
   @staticmethod
   def _tensor_conversion_function(v, dtype=None, name=None, as_ref=False):
@@ -245,7 +262,6 @@ class DistributionTensor(StochasticTensor):
   def __init__(self, dist_cls, name=None, dist_value_type=None, **dist_args):
     self._dist_cls = dist_cls
     self._dist_args = dist_args
-    self._evaluated_args = {}
     if dist_value_type is not None:
       # We want to enforce a value type here, but use the value_type()
       # context manager to enforce some error checking.
@@ -256,16 +272,14 @@ class DistributionTensor(StochasticTensor):
 
     with ops.op_scope(dist_args.values(), name, "DistributionTensor") as scope:
       self._name = scope
-      for (k, v) in dist_args.items():
-        self._evaluated_args[k] = ops.convert_to_tensor(v, name=k)
-      self._dist = dist_cls(**self._evaluated_args)
+      self._dist = dist_cls(**dist_args)
       self._value = self._create_value()
 
     super(DistributionTensor, self).__init__()
 
   @property
   def input_dict(self):
-    return self._evaluated_args
+    return self._dist_args
 
   @property
   def distribution(self):
@@ -340,7 +354,7 @@ class DistributionTensor(StochasticTensor):
   def value(self, name="value"):
     return self._value
 
-  def score_function(self, losses, name=None, **kwargs):
+  def surrogate_loss(self, losses, name=None):
     # Return a loss term based on losses and the distribution.  Return
     # None if pathwise derivatives are supported
     if (isinstance(self._dist, distributions.ContinuousDistribution)
@@ -396,7 +410,7 @@ def _stochastic_dependencies_map(fixed_losses):
   return stoch_dependencies_map
 
 
-def additional_score_function_losses(sample_losses, name=None):
+def surrogate_losses(sample_losses, name=None):
   with ops.op_scope(sample_losses, name, "SampleLosses"):
     fixed_losses = []
     if not isinstance(sample_losses, (list, tuple)):
@@ -416,14 +430,14 @@ def additional_score_function_losses(sample_losses, name=None):
           "No collection of Stochastic Tensors found for current graph.")
       return []
 
-    score_function_losses = []
+    surrogate_loss_losses = []
 
     # Iterate through all of the stochastic dependencies, adding
     # surrogate terms where necessary.
     for (stoch_node, dependent_losses) in stoch_dependencies_map.items():
-      score_function = stoch_node.score_function(list(dependent_losses))
-      if score_function is not None:
-        with ops.name_scope("ScoreFunction_%s" % stoch_node.name):
-          score_function_losses.append(array_ops.identity(score_function))
+      surrogate_loss = stoch_node.surrogate_loss(list(dependent_losses))
+      if surrogate_loss is not None:
+        with ops.name_scope("SurrogateLoss_%s" % stoch_node.name):
+          surrogate_loss_losses.append(array_ops.identity(surrogate_loss))
 
-    return score_function_losses
+    return surrogate_loss_losses

@@ -24,118 +24,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
-
-
-# TODO(ysulsky): Move batch_index into array_ops.
-def batch_index(vectors, indices, name=None):
-  """Indexes into a batch of vectors.
-
-  Args:
-    vectors: An N-D Tensor.
-    indices: A K-D integer Tensor, K <= N. The first K - 1 dimensions of indices
-        must be broadcastable to the first N - 1 dimensions of vectors.
-    name: A name for this operation (optional).
-
-  Returns:
-    An N-D Tensor comprised of one element selected from each of the vectors.
-
-  Example usage:
-    vectors = [[[1, 2, 3], [4, 5, 6]],
-               [[7, 8, 9], [1, 2, 3]]]
-
-    batch_index(vectors, 0)
-    => [[1, 4],
-        [7, 1]]
-
-    batch_index(vectors, [0])
-    => [[[1], [4]],
-        [[7], [1]]]
-
-    batch_index(vectors, [0, 0, 2, 2])
-    => [[[1, 1, 3, 3], [4, 4, 6, 6]],
-        [[7, 7, 9, 9], [1, 1, 3, 3]]]
-
-    batch_index(vectors, [[0, 0, 2, 2], [0, 1, 2, 0]])
-    => [[[1, 1, 3, 3], [4, 5, 6, 4]],
-        [[7, 7, 9, 9], [1, 2, 3, 1]]]
-  """
-  with ops.op_scope([vectors, indices], name, "BatchIndex"):
-    vectors = ops.convert_to_tensor(vectors, name="vectors")
-    vectors_shape = array_ops.shape(vectors)
-    vectors_rank = array_ops.size(vectors_shape)
-
-    indices = ops.convert_to_tensor(indices, name="indices")
-    indices_shape = array_ops.shape(indices)
-    indices_rank = array_ops.size(indices_shape)
-
-    # Support scalar indices.
-    indices_are_scalar = None
-    indices_are_scalar_tensor = math_ops.equal(0, indices_rank)
-    if indices.get_shape().ndims is not None:
-      indices_are_scalar = indices.get_shape().ndims == 0
-
-    if indices_are_scalar is None:
-      indices, num_selected = control_flow_ops.cond(
-          indices_are_scalar_tensor,
-          lambda: [array_ops.expand_dims(indices, 0),  # pylint: disable=g-long-lambda
-                   array_ops.constant(1, dtype=indices_shape.dtype)],
-          lambda: [indices, array_ops.gather(indices_shape, indices_rank - 1)])
-    elif indices_are_scalar:
-      num_selected = 1
-      indices = array_ops.expand_dims(indices, 0)
-    else:
-      num_selected = array_ops.gather(indices_shape, indices_rank - 1)
-
-    # The batch shape is the first N-1 dimensions of `vectors`.
-    batch_shape = array_ops.slice(
-        vectors_shape, [0], array_ops.pack([vectors_rank - 1]))
-    batch_size = math_ops.reduce_prod(batch_shape)
-
-    # Broadcast indices to have shape `batch_shape + [num_selected]`
-    bcast_shape = array_ops.concat(0, [batch_shape, [1]])
-    bcast_indices = indices + array_ops.zeros(bcast_shape, dtype=indices.dtype)
-
-    # At this point, the first N-1 dimensions of `vectors` and
-    # `bcast_indices` agree, and we're almost ready to call
-    # `gather_nd`. But first we need to assign each index to a batch,
-    # and we do that below by counting up to `batch_size`, repeating
-    # each element `num_selected` times.
-    batch_count = array_ops.tile(
-        array_ops.expand_dims(math_ops.range(batch_size), 1),
-        array_ops.pack([1, num_selected]))
-    batch_count.set_shape([vectors.get_shape()[:-1].num_elements(),
-                           indices.get_shape()[-1]])
-
-    # Flatten the batch dimensions and gather.
-    nd_indices = array_ops.concat(
-        1, [array_ops.reshape(batch_count, [-1, 1]),
-            array_ops.reshape(bcast_indices, [-1, 1])])
-    nd_batches = array_ops.reshape(vectors, array_ops.pack([batch_size, -1]))
-    ret = array_ops.gather_nd(nd_batches, nd_indices)
-
-    # Reshape the output.
-    if indices_are_scalar is None:
-      ret = control_flow_ops.cond(
-          indices_are_scalar_tensor,
-          lambda: array_ops.reshape(ret, batch_shape),
-          lambda: array_ops.reshape(  # pylint: disable=g-long-lambda
-              ret,
-              array_ops.concat(
-                  0, [batch_shape, array_ops.expand_dims(num_selected, 0)])))
-    elif indices_are_scalar:
-      ret = array_ops.reshape(ret, batch_shape)
-      ret.set_shape(vectors.get_shape()[:-1])
-    else:
-      ret = array_ops.reshape(
-          ret,
-          array_ops.concat(
-              0, [batch_shape, array_ops.expand_dims(num_selected, 0)]))
-      ret.set_shape(vectors.get_shape()[:-1]
-                    .concatenate(indices.get_shape()[-1:]))
-    return ret
 
 
 class Categorical(distribution.DiscreteDistribution):
@@ -150,7 +41,7 @@ class Categorical(distribution.DiscreteDistribution):
     * log_cdf
   """
 
-  def __init__(self, logits, name="Categorical"):
+  def __init__(self, logits, name="Categorical", dtype=dtypes.int32):
     """Initialize Categorical distributions using class log-probabilities.
 
     Args:
@@ -159,11 +50,12 @@ class Categorical(distribution.DiscreteDistribution):
           batch of independent distributions and the last dimension indexes
           into the classes.
       name: A name for this distribution (optional).
+      dtype: The type of the event samples (default: int32).
     """
     self._name = name
+    self._dtype = dtype
     with ops.op_scope([logits], name):
       self._logits = ops.convert_to_tensor(logits, name="logits")
-      self._histogram = math_ops.exp(self._logits, name="histogram")
       logits_shape = array_ops.shape(self._logits)
       self._batch_rank = array_ops.size(logits_shape) - 1
       self._batch_shape = array_ops.slice(
@@ -176,7 +68,7 @@ class Categorical(distribution.DiscreteDistribution):
 
   @property
   def dtype(self):
-    return dtypes.int64
+    return self._dtype
 
   @property
   def is_reparameterized(self):
@@ -204,35 +96,35 @@ class Categorical(distribution.DiscreteDistribution):
   def logits(self):
     return self._logits
 
-  def pmf(self, k, name="pmf"):
-    """Probability of class `k`.
-
-    Args:
-      k: `int32` or `int64` Tensor.
-      name: A name for this operation (optional).
-
-    Returns:
-      The probabilities of the classes indexed by `k`
-    """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self._histogram, k], name):
-        k = ops.convert_to_tensor(k, name="k")
-        return batch_index(self._histogram, k)
-
   def log_pmf(self, k, name="log_pmf"):
     """Log-probability of class `k`.
 
     Args:
-      k: `int32` or `int64` Tensor.
+      k: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
       name: A name for this operation (optional).
 
     Returns:
       The log-probabilities of the classes indexed by `k`
     """
     with ops.name_scope(self.name):
+      k = ops.convert_to_tensor(k, name="k")
+      k.set_shape(self.get_batch_shape())
+      return -nn_ops.sparse_softmax_cross_entropy_with_logits(
+          self.logits, k, name=name)
+
+  def pmf(self, k, name="pmf"):
+    """Probability of class `k`.
+
+    Args:
+      k: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+      name: A name for this operation (optional).
+
+    Returns:
+      The probabilities of the classes indexed by `k`
+    """
+    with ops.name_scope(self.name):
       with ops.op_scope([self.logits, k], name):
-        k = ops.convert_to_tensor(k, name="k")
-        return batch_index(self.logits, k)
+        return math_ops.exp(self.log_pmf(k))
 
   def sample(self, n, seed=None, name="sample"):
     """Sample `n` observations from the Categorical distribution.
@@ -251,6 +143,7 @@ class Categorical(distribution.DiscreteDistribution):
         logits_2d = array_ops.reshape(
             self.logits, array_ops.pack([-1, self.num_classes]))
         samples = random_ops.multinomial(logits_2d, n, seed=seed)
+        samples = math_ops.cast(samples, self._dtype)
         ret = array_ops.reshape(
             array_ops.transpose(samples),
             array_ops.concat(
@@ -262,9 +155,12 @@ class Categorical(distribution.DiscreteDistribution):
   def entropy(self, name="sample"):
     with ops.name_scope(self.name):
       with ops.op_scope([], name):
-        ret = -math_ops.reduce_sum(
-            self._histogram * self._logits,
-            array_ops.pack([self._batch_rank]))
+        logits_2d = array_ops.reshape(
+            self.logits, array_ops.pack([-1, self.num_classes]))
+        histogram_2d = nn_ops.softmax(logits_2d)
+        ret = array_ops.reshape(
+            nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),
+            self.batch_shape())
         ret.set_shape(self.get_batch_shape())
         return ret
 
@@ -272,5 +168,6 @@ class Categorical(distribution.DiscreteDistribution):
     with ops.name_scope(self.name):
       with ops.op_scope([], name):
         ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
+        ret = math_ops.cast(ret, self._dtype)
         ret.set_shape(self.get_batch_shape())
         return ret

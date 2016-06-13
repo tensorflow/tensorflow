@@ -64,7 +64,7 @@ The DistributionTensor is a StochasticTensor backed by a distribution.
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.DistributionTensor.score_function(losses, name=None, **kwargs)` {#DistributionTensor.score_function}
+#### `tf.contrib.bayesflow.stochastic_graph.DistributionTensor.surrogate_loss(losses, name=None)` {#DistributionTensor.surrogate_loss}
 
 
 

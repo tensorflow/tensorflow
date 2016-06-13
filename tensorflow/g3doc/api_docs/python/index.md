@@ -366,6 +366,7 @@
   * [`sparse_reduce_sum`](../../api_docs/python/sparse_ops.md#sparse_reduce_sum)
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
   * [`sparse_reset_shape`](../../api_docs/python/sparse_ops.md#sparse_reset_shape)
+  * [`sparse_reshape`](../../api_docs/python/sparse_ops.md#sparse_reshape)
   * [`sparse_retain`](../../api_docs/python/sparse_ops.md#sparse_retain)
   * [`sparse_softmax`](../../api_docs/python/sparse_ops.md#sparse_softmax)
   * [`sparse_split`](../../api_docs/python/sparse_ops.md#sparse_split)
@@ -558,17 +559,16 @@
   * [`main`](../../api_docs/python/test.md#main)
 
 * **[BayesFlow Stochastic Graph (contrib)](../../api_docs/python/contrib.bayesflow.stochastic_graph.md)**:
-  * [`additional_score_function_losses`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#additional_score_function_losses)
   * [`DistributionTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#DistributionTensor)
   * [`get_current_value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#get_current_value_type)
   * [`MeanValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#MeanValue)
   * [`SampleAndReshapeValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#SampleAndReshapeValue)
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#StochasticTensor)
+  * [`surrogate_losses`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_losses)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#value_type)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
-  * [`batch_index`](../../api_docs/python/contrib.distributions.md#batch_index)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
   * [`ContinuousDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousDistribution)

@@ -9,7 +9,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, name='Categorical', dtype=tf.int32)` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -21,6 +21,7 @@ Initialize Categorical distributions using class log-probabilities.
       batch of independent distributions and the last dimension indexes
       into the classes.
 *  <b>`name`</b>: A name for this distribution (optional).
+*  <b>`dtype`</b>: The type of the event samples (default: int32).
 
 
 - - -
@@ -102,7 +103,7 @@ Log-probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor.
+*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -154,7 +155,7 @@ Probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor.
+*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
