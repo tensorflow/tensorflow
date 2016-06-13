@@ -67,8 +67,9 @@ class ReaderSource(transform.Transform):
     self._queue_capacity = (batch_size * 64
                             if queue_capacity is None else queue_capacity)
     self._shuffle = shuffle
-    self._min_after_dequeue = (self.queue_capacity / 4 if
-                               min_after_dequeue is None else min_after_dequeue)
+    self._min_after_dequeue = int(self.queue_capacity / 4
+                                  if min_after_dequeue is None
+                                  else min_after_dequeue)
     self._num_threads = num_threads
     self._seed = seed
 
