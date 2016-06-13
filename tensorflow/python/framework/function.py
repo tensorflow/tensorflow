@@ -428,7 +428,7 @@ class Defun(object):
   argument of the function to decorate, with the expected type of the argument
   as value.
 
-  For example if the function to decorate accepts to `tf.float32` arguments
+  For example if the function to decorate accepts two `tf.float32` arguments
   named `x` and `y`, call the decorator with:
 
       @Defun(tf.float32, tf.float32)
