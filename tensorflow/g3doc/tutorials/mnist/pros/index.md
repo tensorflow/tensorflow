@@ -22,7 +22,7 @@ TensorFlow session.
 For your convenience, we've included
 [a script](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/input_data.py)
 which will help you download and import the MNIST dataset. Run the following commands to create a
-directory `'MNIST_data'` in the current folder, the data files will be stored inside of such directory.
+directory `'MNIST_data'` in the current folder, the data files will be stored inside that directory.
 
 ```python
 from tensorflow.examples.tutorials.mnist import input_data
