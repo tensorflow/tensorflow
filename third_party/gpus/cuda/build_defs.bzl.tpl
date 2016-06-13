@@ -8,7 +8,7 @@ def if_cuda(if_true, if_false = []):
 
     """
     return select({
-        "//third_party/gpus/cuda:using_nvcc": if_true,
-        "//third_party/gpus/cuda:using_gcudacc": if_true,
+        "@local_config_cuda//cuda:using_nvcc": if_true,
+        "@local_config_cuda//cuda:using_gcudacc": if_true,
         "//conditions:default": if_false
     })
