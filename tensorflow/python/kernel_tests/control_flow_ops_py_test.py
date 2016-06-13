@@ -25,6 +25,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.framework import function
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -1714,6 +1715,29 @@ class TupleTest(tf.test.TestCase):
       t.eval()
 
       self.assertEquals(1, var.eval())
+
+  def testWhilePyFuncBasic(self):
+    def func(x):
+      return np.square(x)
+
+    with self.test_session():
+      r = tf.while_loop(
+          lambda i, v: i < 4,
+          lambda i, v: [i + 1, tf.py_func(func, [v], [tf.float32])[0]],
+          [tf.constant(0), tf.constant(2.0, tf.float32)])
+      self.assertEqual(r[1].eval(), 65536.0)
+
+  def testWhileFuncBasic(self):
+    @function.Defun(tf.float32)
+    def func(x):
+      return tf.square(x)
+
+    with self.test_session():
+      r = tf.while_loop(
+          lambda i, v: i < 4,
+          lambda i, v: [i + 1, func(v)],
+          [tf.constant(0), tf.constant(2.0, tf.float32)])
+      self.assertEqual(r[1].eval(), 65536.0)
 
 if __name__ == "__main__":
   tf.test.main()
