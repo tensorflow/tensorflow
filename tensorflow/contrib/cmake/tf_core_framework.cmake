@@ -121,7 +121,10 @@ target_include_directories(tf_protos_cc PUBLIC
 target_link_libraries(tf_protos_cc PUBLIC
     ${PROTOBUF_LIBRARIES}
 )
-
+# C++11
+target_compile_features(tf_protos_cc PRIVATE
+    cxx_rvalue_references
+)
 
 ########################################################
 # tf_core_lib library
@@ -154,11 +157,6 @@ target_include_directories(tf_core_lib PUBLIC
     ${jsoncpp_INCLUDE_DIR}
     ${boringssl_INCLUDE_DIR}
 )
-#target_link_libraries(tf_core_lib
-#    ${CMAKE_THREAD_LIBS_INIT}
-#    ${PROTOBUF_LIBRARIES}
-#    tf_protos_cc
-#)
 target_compile_options(tf_core_lib PRIVATE
     -fno-exceptions
     -DEIGEN_AVOID_STL_ARRAY
@@ -188,6 +186,10 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/client/tensor_c_api.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
     "${tensorflow_source_dir}/public/*.h"
 )
 
@@ -204,7 +206,10 @@ file(GLOB_RECURSE tf_core_framework_test_srcs
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
 
-add_library(tf_core_framework OBJECT ${tf_core_framework_srcs} ${PROTO_TEXT_HDRS})
+add_library(tf_core_framework OBJECT
+    ${tf_core_framework_srcs}
+    ${PROTO_TEXT_HDRS}
+    ${PROTO_TEXT_SRCS})
 target_include_directories(tf_core_framework PUBLIC
     ${tensorflow_source_dir}
     ${eigen_INCLUDE_DIRS}
