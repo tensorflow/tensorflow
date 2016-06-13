@@ -13,30 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/port.h"
+#ifndef CUDA_CUDA_CONFIG_H_
+#define CUDA_CUDA_CONFIG_H_
 
-#if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#endif
+#define TF_CUDA_CAPABILITIES %{cuda_compute_capabilities}
 
-namespace tensorflow {
+#define TF_CUDA_VERSION "%{cuda_version}"
+#define TF_CUDNN_VERSION "%{cudnn_version}"
 
-bool IsGoogleCudaEnabled() {
-#if GOOGLE_CUDA
-  return true;
-#else
-  return false;
-#endif
-}
-
-bool CudaSupportsHalfMatMulAndConv() {
-#if GOOGLE_CUDA
-  // NOTE: We check compile-time and not runtime, since the check for
-  // whether we include the fp16 kernels or not is compile-time.
-  return CUDA_VERSION >= 7050;
-#else
-  return false;
-#endif
-}
-
-}  // end namespace tensorflow
+#endif  // CUDA_CUDA_CONFIG_H_
