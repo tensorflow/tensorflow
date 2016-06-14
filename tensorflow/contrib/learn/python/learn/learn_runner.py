@@ -48,7 +48,7 @@ def run(experiment_fn):
     learn_runner.run(experiment_fn=_create_my_experiment)
   ```
   Args:
-    experiment_fn: A function creates an Experiment. It should accept an
+    experiment_fn: A function that creates an `Experiment`. It should accept an
       argument `output_dir` which should be used to create the Estimator (passed
       as `model_dir` to its constructor). It must return an Experiment.
 
