@@ -70,6 +70,7 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -
