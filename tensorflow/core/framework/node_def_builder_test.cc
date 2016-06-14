@@ -32,7 +32,9 @@ class NodeDefBuilderTest : public ::testing::Test {
  protected:
   // Specify an OpDef via an OpDefBuilder.
   void Op(const OpDefBuilder& op_def_builder) {
-    TF_EXPECT_OK(op_def_builder.Finalize(&op_def_));
+    OpRegistrationData op_reg_data;
+    TF_EXPECT_OK(op_def_builder.Finalize(&op_reg_data));
+    op_def_ = op_reg_data.op_def;
   }
 
   // Resets builder_ with a new NodeDefBuilder using the Op from the last call

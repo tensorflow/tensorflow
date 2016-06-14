@@ -91,8 +91,9 @@ class InferenceContext {
   // not available at the time of shape inference.
   const Tensor* input_tensor(int idx) const { return input_tensors_[idx]; }
 
-  void set_output(int idx, const Shape* shape);
+  void set_output(int idx, const Shape* shape) { outputs_[idx] = shape; }
   int num_outputs() const { return outputs_.size(); }
+  const Shape* output(int idx) { return outputs_[idx]; }
 
   // idx can be negative for an offset from end of dimensions.
   const Dimension* Dim(const Shape* s, int32 idx) { return s->dims_[idx]; }
