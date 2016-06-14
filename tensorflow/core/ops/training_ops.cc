@@ -134,7 +134,7 @@ REGISTER_OP("SparseApplyAdadelta")
     .Attr("use_locking: bool = false")
     .Doc(R"doc(
 var: Should be from a Variable().
-accum_grad: Should be from a Variable().
+accum: Should be from a Variable().
 accum_update:: Should be from a Variable().
 lr: Learning rate. Must be a scalar.
 rho: Decay factor. Must be a scalar.

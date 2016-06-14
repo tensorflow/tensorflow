@@ -828,8 +828,8 @@ In detail, the grayscale morphological 2-D dilation is the max-sum correlation
 Max-pooling is a special case when the filter has size equal to the pooling
 kernel size and contains all zeros.
 
-Duality: The dilation of `input` by the `filter` is equal to the negation of
-the erosion of `-input` by the reflected `filter`.
+Note on duality: The dilation of `input` by the `filter` is equal to the
+negation of the erosion of `-input` by the reflected `filter`.
 
 input: 4-D with shape `[batch, in_height, in_width, depth]`.
 filter: 3-D with shape `[filter_height, filter_width, depth]`.
