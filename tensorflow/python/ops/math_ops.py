@@ -261,6 +261,27 @@ def abs(x, name=None):
       return gen_math_ops._abs(x, name=name)
 
 
+def neg(x, name=None):
+  """Computes numerical negative value element-wise.
+
+  I.e., \\(y = -x\\).
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+  """
+  with ops.op_scope([x], name, "Neg") as name:
+    if isinstance(x, ops.SparseTensor):
+      x_neg = gen_math_ops.neg(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_neg, shape=x.shape)
+    else:
+      return gen_math_ops.neg(x, name=name)
+
+
 def complex_abs(x, name=None):
   r"""Computes the complex absolute value of a tensor.
 
