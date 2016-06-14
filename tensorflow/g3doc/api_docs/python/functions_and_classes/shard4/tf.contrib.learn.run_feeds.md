@@ -2,8 +2,8 @@
 
 Run `output_dict` tensors with each input in `feed_dicts`.
 
-If `checkpoint_path` is supplied, restore from checkpoint. Otherwise, init all
-variables.
+If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
+init all variables.
 
 ##### Args:
 
