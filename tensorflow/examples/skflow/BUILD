@@ -25,6 +25,25 @@ py_binary(
 )
 
 py_binary(
+    name = "dnn_autoencoder_iris",
+    srcs = ["dnn_autoencoder_iris.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "hdf5_classification",
+    srcs = ["hdf5_classification.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/h5py",
+    ],
+)
+
+py_binary(
     name = "iris",
     srcs = ["iris.py"],
     srcs_version = "PY2AND3",
@@ -221,6 +240,18 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+sh_test(
+    name = "examples_test",
+    size = "medium",
+    srcs = ["examples_test.sh"],
+    deps = [
+        ":boston",
+        ":iris",
+        ":iris_custom_model",
+        "//util/shell/gbash:unit",
     ],
 )
 

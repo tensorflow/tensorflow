@@ -21,9 +21,11 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 
 
@@ -72,9 +74,15 @@ class TensorSignature(collections.namedtuple(
                                  shape=[None] + list(self.shape[1:]))
 
   def get_feature_spec(self):
+    dtype = self.dtype
+    # Convert, because example parser only supports float32, int64 and string.
+    if dtype == dtypes.int32:
+      dtype = dtypes.int64
+    if dtype == dtypes.float64:
+      dtype = dtypes.float32
     if self.is_sparse:
-      return parsing_ops.VarLenFeature(dtype=self.dtype)
-    return parsing_ops.FixedLenFeature(shape=self.shape[1:], dtype=self.dtype)
+      return parsing_ops.VarLenFeature(dtype=dtype)
+    return parsing_ops.FixedLenFeature(shape=self.shape[1:], dtype=dtype)
 
 
 def tensors_compatible(tensors, signatures):
@@ -154,4 +162,15 @@ def create_example_parser_from_signatures(signatures, examples_batch,
   else:
     feature_spec = {key: signatures[key].get_feature_spec()
                     for key in signatures}
-  return parsing_ops.parse_example(examples_batch, feature_spec)
+  features = parsing_ops.parse_example(examples_batch, feature_spec)
+  if not isinstance(signatures, dict):
+    # Returns single feature, casts if needed.
+    features = features[single_feature_name]
+    if not signatures.dtype.is_compatible_with(features.dtype):
+      features = math_ops.cast(features, signatures.dtype)
+    return features
+  # Returns dict of features, casts if needed.
+  for name in features:
+    if not signatures[name].dtype.is_compatible_with(features[name].dtype):
+      features[name] = math_ops.cast(features[name], signatures[name].dtype)
+  return features

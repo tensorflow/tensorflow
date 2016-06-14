@@ -857,10 +857,10 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
-        "@zlib_archive//:zlib",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
+        "@zlib_archive//:zlib",
     ],
 )
 

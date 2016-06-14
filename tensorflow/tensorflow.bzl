@@ -71,11 +71,13 @@ def tf_android_core_proto_sources_relative():
         "util/saved_tensor_slice.proto",
   ]
 
-# Returns the list of pb.h headers that are generated for
+# Returns the list of pb.h and proto.h headers that are generated for
 # tf_android_core_proto_sources().
 def tf_android_core_proto_headers():
-  return ["//tensorflow/core/" + p.replace(".proto", ".pb.h")
-          for p in tf_android_core_proto_sources_relative()]
+  return (["//tensorflow/core/" + p.replace(".proto", ".pb.h")
+          for p in tf_android_core_proto_sources_relative()] +
+         ["//tensorflow/core/" + p.replace(".proto", ".proto.h")
+          for p in tf_android_core_proto_sources_relative()])
 
 # Returns the list of protos for which proto_text headers should be generated.
 def tf_proto_text_protos_relative():

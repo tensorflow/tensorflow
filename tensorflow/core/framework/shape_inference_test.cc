@@ -222,6 +222,68 @@ TEST(ShapeInferenceTest, MergeShape) {
   EXPECT_TRUE(out == nullptr);
 }
 
+TEST(ShapeInferenceTest, Subshape) {
+  InferenceContext c({"[1,2,3,?,5]", "?"}, 2 /* num_outputs */);
+
+  const Shape* unknown = c.input(1);
+  const Shape* out;
+  EXPECT_TRUE(c.Subshape(unknown, 0, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out == unknown);
+  EXPECT_TRUE(c.Subshape(unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+  EXPECT_TRUE(c.Subshape(unknown, 200, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+
+  auto in0 = c.input(0);
+  EXPECT_TRUE(c.Subshape(in0, 0, &out).ok());
+  EXPECT_EQ("[1,2,3,?,5]", c.DebugString(out));
+  EXPECT_TRUE(out == in0);
+  for (int i = 1; i <= 5; ++i) {
+    EXPECT_TRUE(c.Subshape(in0, i, &out).ok());
+    EXPECT_EQ(5 - i, c.Rank(out));
+    for (int j = 0; j < c.Rank(out); ++j) {
+      EXPECT_TRUE(c.Dim(in0, i + j) == c.Dim(out, j));
+    }
+  }
+  // Errors.
+  out = unknown;
+  EXPECT_EQ("Invalid argument: Negative start is not implemented; got -1",
+            c.Subshape(in0, -1, &out).ToString());
+  EXPECT_TRUE(out == nullptr);
+  out = unknown;
+  EXPECT_EQ("Invalid argument: Shape must have rank >= 6, but is 5",
+            c.Subshape(in0, 6, &out).ToString());
+  EXPECT_TRUE(out == nullptr);
+}
+
+TEST(ShapeInferenceTest, Concatenate) {
+  InferenceContext c({"[1,?,3]", "[4,5]", "?"}, 2 /* num_outputs */);
+
+  auto in0 = c.input(0);
+  auto in1 = c.input(1);
+  const Shape* unknown = c.input(2);
+  const Shape* out;
+  EXPECT_TRUE(c.Concatenate(unknown, unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+  EXPECT_TRUE(c.Concatenate(unknown, in0, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+
+  EXPECT_TRUE(c.Concatenate(in0, in1, &out).ok());
+  EXPECT_EQ("[1,?,3,4,5]", c.DebugString(out));
+  int out_i = 0;
+  for (int i = 0; i < c.Rank(in0); ++i, ++out_i) {
+    EXPECT_TRUE(c.Dim(in0, i) == c.Dim(out, out_i));
+  }
+  for (int i = 0; i < c.Rank(in1); ++i, ++out_i) {
+    EXPECT_TRUE(c.Dim(in1, i) == c.Dim(out, out_i));
+  }
+}
+
 TEST(ShapeInferenceTest, CreateShape) {
   InferenceContext c({"[1,2,3,?,5]"}, 2 /* num_outputs */);
 

@@ -137,8 +137,8 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
-        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
+        "@protobuf//:protobuf",
     ],
 )
 

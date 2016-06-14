@@ -413,7 +413,9 @@ def evaluate(graph,
 
   Given `graph`, a directory to write summaries to (`output_dir`), a checkpoint
   to restore variables from, and a `dict` of `Tensor`s to evaluate, run an eval
-  loop for `max_steps` steps.
+  loop for `max_steps` steps, or until an exception (generally, an
+  end-of-input signal from a reader operation) is raised from running
+  `eval_dict`.
 
   In each step of evaluation, all tensors in the `eval_dict` are evaluated, and
   every `log_every_steps` steps, they are logged. At the very end of evaluation,
@@ -428,7 +430,9 @@ def evaluate(graph,
       Can be `None` if the graph doesn't require loading any variables.
     eval_dict: A `dict` mapping string names to tensors to evaluate. It is
       evaluated in every logging step. The result of the final evaluation is
-      returned. If update_op is None, then it's evaluated in every step.
+      returned. If `update_op` is None, then it's evaluated in every step. If
+      `max_steps` is `None`, this should depend on a reader that will raise an
+      end-of-inupt exception when the inputs are exhausted.
     update_op: A `Tensor` which is run in every step.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.
