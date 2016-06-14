@@ -26,7 +26,6 @@ from __future__ import print_function
 
 from collections import namedtuple
 from math import sqrt
-import os
 
 from sklearn import metrics
 import tensorflow as tf
@@ -118,16 +117,16 @@ def res_net(x, y, activation=tf.nn.relu):
       # residual function (identity shortcut)
       net = conv + net
 
-      try:
-        # upscale to the next block size
-        next_block = blocks[block_i + 1]
-        with tf.variable_scope('block_%d/conv_upscale' % block_i):
-          net = learn.ops.conv2d(net, next_block.num_filters,
-                                 [1, 1], [1, 1, 1, 1],
-                                 bias=False,
-                                 padding='SAME')
-      except IndexError:
-        pass
+    try:
+      # upscale to the next block size
+      next_block = blocks[block_i + 1]
+      with tf.variable_scope('block_%d/conv_upscale' % block_i):
+        net = learn.ops.conv2d(net, next_block.num_filters,
+                               [1, 1], [1, 1, 1, 1],
+                               bias=False,
+                               padding='SAME')
+    except IndexError:
+      pass
 
   net_shape = net.get_shape().as_list()
   net = tf.nn.avg_pool(net,
@@ -143,19 +142,23 @@ def res_net(x, y, activation=tf.nn.relu):
 # Download and load MNIST data.
 mnist = input_data.read_data_sets('MNIST_data')
 
-# Restore model if graph is saved into a folder.
-if os.path.exists('models/resnet/graph.pbtxt'):
-  classifier = learn.TensorFlowEstimator.restore('models/resnet/')
-else:
+# Path where model graph and checkpoints should be saved
+PATH = '/tmp/tf_examples/resnet/'
+
+try:
+  # Restore model.
+  # Raise ValueError if PATH does not contain a model definition.
+  # Raise NotImplementedError if _restore() is not yet implemented.
+  classifier = learn.TensorFlowEstimator.restore(PATH)
+except (ValueError, NotImplementedError) as e:
   # Create a new resnet classifier.
   classifier = learn.TensorFlowEstimator(
       model_fn=res_net, n_classes=10, batch_size=100, steps=100,
       learning_rate=0.001, continue_training=True)
 
 while True:
-  # Train model and save summaries into logdir.
-  classifier.fit(
-      mnist.train.images, mnist.train.labels, logdir='models/resnet/')
+  # Train model.
+  classifier.fit(mnist.train.images, mnist.train.labels)
 
   # Calculate accuracy.
   score = metrics.accuracy_score(
@@ -163,4 +166,4 @@ while True:
   print('Accuracy: {0:f}'.format(score))
 
   # Save model graph and checkpoints.
-  classifier.save('models/resnet/')
+  classifier.save(PATH)
