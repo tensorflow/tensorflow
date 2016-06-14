@@ -95,6 +95,7 @@ print(sess.run(var))
 @@random_shuffle
 @@random_crop
 @@multinomial
+@@random_gamma
 @@set_random_seed
 """
 
