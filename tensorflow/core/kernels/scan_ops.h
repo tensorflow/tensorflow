@@ -28,20 +28,16 @@ template <typename Device, typename Reducer, typename T, int Dims>
 struct Scan {
   void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor in,
                   typename TTypes<T, Dims>::Tensor out, const Reducer& reducer,
-                  const Index& axis, bool reverse) {
-    if (reverse) {
-      // Perform the reverse ops directly with Eigen, which avoids copying the
-      // tensor twice compared to executing this as individual ops.
-      Eigen::array<bool, Dims> dims;
-      for (int i = 0; i < dims.size(); i++) {
-        dims[i] = (i == axis);
-      }
-      To32Bit(out).device(d) = To32Bit(in).reverse(dims)
-                                          .scan(axis, reducer)
-                                          .reverse(dims);
-    } else {
-      To32Bit(out).device(d) = To32Bit(in).scan(axis, reducer);
+                  const Index& axis, const bool reverse, const bool exclusive) {
+    // Perform the reverse ops directly with Eigen, which avoids copying the
+    // tensor twice compared to using individual ops.
+    Eigen::array<bool, Dims> dims;
+    for (int i = 0; i < dims.size(); i++) {
+      dims[i] = reverse && (i == axis);
     }
+    To32Bit(out).device(d) = To32Bit(in).reverse(dims)
+                                        .scan(axis, reducer, exclusive)
+                                        .reverse(dims);
   }
 };
 

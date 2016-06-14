@@ -842,17 +842,19 @@ def _CrossGrad(op, grad):
 @ops.RegisterGradient("Cumsum")
 def _CumsumGrad(op, grad):
   axis = op.inputs[1]
+  exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
-  return [math_ops.cumsum(grad, axis=axis, reverse=(not reverse)), None]
+  return [math_ops.cumsum(grad, axis, exclusive, (not reverse)), None]
 
 
 @ops.RegisterGradient("Cumprod")
 def _CumprodGrad(op, grad):
   x = op.inputs[0]
   axis = op.inputs[1]
+  exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
 
   # TODO This fails when x contains 0 and should be fixed
-  prod = math_ops.cumprod(x, axis=axis, reverse=reverse)
-  out = math_ops.cumsum(prod * grad, axis=axis, reverse=(not reverse))
+  prod = math_ops.cumprod(x, axis, exclusive, reverse)
+  out = math_ops.cumsum(prod * grad, axis, exclusive, (not reverse))
   return [out / x, None]

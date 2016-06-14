@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from itertools import combinations
+
 import numpy as np
 import tensorflow as tf
 
@@ -28,6 +30,22 @@ def numpy_reverse(x, axis):
         if i == axis else slice(None) for i in range(len(x.shape))]
   return x[ix]
 
+def handle_options(func, x, axis, exclusive, reverse):
+  """Adds tf options to numpy scan ops"""
+  if reverse:
+    x = numpy_reverse(x, axis)
+
+  if exclusive:
+    ix = [slice(0, 1) if i == axis else slice(None)
+            for i in range(len(x.shape))]
+    init = np.ones_like(x[ix])
+    x = np.concatenate([init, func(x[:-1], axis)], axis=axis)
+  else:
+    x = func(x)
+
+  if reverse:
+    x = numpy_reverse(x, axis)
+  return x
 
 class CumsumTest(tf.test.TestCase):
 
@@ -35,23 +53,15 @@ class CumsumTest(tf.test.TestCase):
                   np.float64, np.complex64, np.complex128]
 
   def _compare(self, x, axis, reverse, use_gpu=False):
-    np_out = x
-    if reverse:
-      np_out = numpy_reverse(np_out, axis)
-    np_out = np.cumsum(np_out, axis=axis)
-    if reverse:
-      np_out = numpy_reverse(np_out, axis)
-
+    np_out = handle_options(np.cumsum, x, axis, exclusive, reverse)
     with self.test_session(use_gpu=use_gpu):
-      tf_out = tf.cumsum(x, axis, reverse).eval()
+      tf_out = tf.cumsum(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
 
   def _compareAll(self, x, axis):
-    self._compare(x, axis, False, False)
-    self._compare(x, axis, True, False)
-    self._compare(x, axis, False, True)
-    self._compare(x, axis, True, True)
+    for exclusive, reverse, use_gpu in combinations([True, False], 3):
+      self._compare(x, axis, exclusive, reverse, use_gpu)
 
   def test1D(self):
     for dtype in self.valid_dtypes:
@@ -94,11 +104,11 @@ class CumsumTest(tf.test.TestCase):
           lambda e: "axis must be a scalar" in str(e)):
         tf.cumsum(input_tensor, [0]).eval()
 
-  def _compareGradient(self, shape, axis, reverse):
+  def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(0, 50).reshape(shape).astype(np.float64)
     with self.test_session():
       t = tf.convert_to_tensor(x)
-      result = tf.cumsum(t, axis, reverse)
+      result = tf.cumsum(t, axis, exclusive, reverse)
       jacob_t, jacob_n = tf.test.compute_gradient(t,
                                                   shape,
                                                   result,
@@ -108,16 +118,26 @@ class CumsumTest(tf.test.TestCase):
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient(self):
-    self._compareGradient([50], 0, False)
+    self._compareGradient([50], 0, False, False)
 
   def testGradientReverse(self):
-    self._compareGradient([50], 0, True)
+    self._compareGradient([50], 0, False, True)
+
+  def testGradientExclusive(self):
+    self._compareGradient([50], 0, True, False)
+
+  def testGradientExclusiveReverse(self):
+    self._compareGradient([50], 0, True, True)
 
   def testGradient2D(self):
-    self._compareGradient([5, 10], 0, False)
-    self._compareGradient([5, 10], 1, False)
-    self._compareGradient([5, 10], 0, True)
-    self._compareGradient([5, 10], 1, True)
+    self._compareGradient([5, 10], 0, False, False)
+    self._compareGradient([5, 10], 1, False, False)
+    self._compareGradient([5, 10], 0, True, False)
+    self._compareGradient([5, 10], 1, True, False)
+    self._compareGradient([5, 10], 0, False, True)
+    self._compareGradient([5, 10], 1, False, True)
+    self._compareGradient([5, 10], 0, True, True)
+    self._compareGradient([5, 10], 1, True, True)
 
 
 class CumprodTest(tf.test.TestCase):
@@ -125,24 +145,16 @@ class CumprodTest(tf.test.TestCase):
   valid_dtypes = [np.int32, np.int64, np.float16, np.float32,
                   np.float64, np.complex64, np.complex128]
 
-  def _compare(self, x, axis, reverse, use_gpu=False):
-    np_out = x
-    if reverse:
-      np_out = numpy_reverse(np_out, axis)
-    np_out = np.cumprod(np_out, axis=axis)
-    if reverse:
-      np_out = numpy_reverse(np_out, axis)
-
+  def _compare(self, x, axis, exclusive, reverse, use_gpu=False):
+    np_out = handle_options(np.cumprod, x, axis, exclusive, reverse)
     with self.test_session(use_gpu=use_gpu):
-      tf_out = tf.cumprod(x, axis, reverse).eval()
+      tf_out = tf.cumprod(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
 
   def _compareAll(self, x, axis):
-    self._compare(x, axis, False, False)
-    self._compare(x, axis, True, False)
-    self._compare(x, axis, False, True)
-    self._compare(x, axis, True, True)
+    for exclusive, reverse, use_gpu in combinations([True, False], 3):
+      self._compare(x, axis, exclusive, reverse, use_gpu)
 
   def test1D(self):
     for dtype in self.valid_dtypes:
@@ -185,11 +197,11 @@ class CumprodTest(tf.test.TestCase):
           lambda e: "axis must be a scalar" in str(e)):
         tf.cumprod(input_tensor, [0]).eval()
 
-  def _compareGradient(self, shape, axis, reverse):
+  def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(1, 9).reshape(shape).astype(np.float64)
     with self.test_session():
       t = tf.convert_to_tensor(x)
-      result = tf.cumprod(t, axis, reverse)
+      result = tf.cumprod(t, axis, exclusive, reverse)
       jacob_t, jacob_n = tf.test.compute_gradient(t,
                                                   shape,
                                                   result,
@@ -199,16 +211,26 @@ class CumprodTest(tf.test.TestCase):
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testGradient(self):
-    self._compareGradient([8], 0, False)
+    self._compareGradient([8], 0, False, False)
 
   def testGradientReverse(self):
-    self._compareGradient([8], 0, True)
+    self._compareGradient([8], 0, False, True)
+
+  def testGradientExclusive(self):
+    self._compareGradient([8], 0, True, False)
+
+  def testGradientExclusiveReverse(self):
+    self._compareGradient([8], 0, True, True)
 
   def testGradient2D(self):
-    self._compareGradient([2, 4], 0, False)
-    self._compareGradient([2, 4], 1, False)
-    self._compareGradient([2, 4], 0, True)
-    self._compareGradient([2, 4], 1, True)
+    self._compareGradient([2, 4], 0, False, False)
+    self._compareGradient([2, 4], 1, False, False)
+    self._compareGradient([2, 4], 0, True, False)
+    self._compareGradient([2, 4], 1, True, False)
+    self._compareGradient([2, 4], 0, False, True)
+    self._compareGradient([2, 4], 1, False, True)
+    self._compareGradient([2, 4], 0, True, True)
+    self._compareGradient([2, 4], 1, True, True)
 
 
 if __name__ == "__main__":
