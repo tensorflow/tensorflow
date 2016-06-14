@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
 from tensorflow.contrib.learn.python.learn.ops import dnn_ops
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
+from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
@@ -331,7 +332,8 @@ def bidirectional_rnn(cell_fw,
 
 
 def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
-                  target_predictor_fn, sequence_length, initial_state):
+                  target_predictor_fn, sequence_length, initial_state,
+                  attn_length, attn_size, attn_vec_size):
   """Returns a function that creates a RNN TensorFlow subgraph.
 
   Args:
@@ -348,12 +350,14 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
                          that takes `x`, `y` and returns predictions and loss
                          tensors.
     sequence_length: If sequence_length is provided, dynamic calculation is
-      performed.
-                     This saves computational time when unrolling past max
-                       sequence length.
-                      Required for bidirectional RNNs.
+      performed. This saves computational time when unrolling past max sequence
+      length. Required for bidirectional RNNs.
     initial_state: An initial state for the RNN. This must be a tensor of
       appropriate type and shape [batch_size x cell.state_size].
+    attn_length: integer, the size of attention vector attached to rnn cells.
+    attn_size: integer, the size of an attention window attached to rnn cells.
+    attn_vec_size: integer, the number of convolutional features calculated on
+      attention state and the size of the hidden layer built from base cell state.
 
   Returns:
     A function that creates the subgraph.
@@ -370,11 +374,22 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
       cell_fn = nn.rnn_cell.BasicLSTMCell
     else:
       raise ValueError('cell_type {} is not supported. '.format(cell_type))
+    # TODO: state_is_tuple=False is deprecated
     if bidirectional:
       # forward direction cell
-      rnn_fw_cell = nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+      fw_cell = cell_fn(rnn_size)
+      bw_cell = cell_fn(rnn_size)
+      # attach attention cells if specified
+      if attn_length is not None:
+        fw_cell = contrib_rnn.AttentionCellWrapper(
+          fw_cell, attn_length=attn_length, attn_size=attn_size,
+          attn_vec_size=attn_vec_size, state_is_tuple=False)
+        bw_cell = contrib_rnn.AttentionCellWrapper(
+          fw_cell, attn_length=attn_length, attn_size=attn_size,
+          attn_vec_size=attn_vec_size, state_is_tuple=False)
+      rnn_fw_cell = nn.rnn_cell.MultiRNNCell([fw_cell] * num_layers)
       # backward direction cell
-      rnn_bw_cell = nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+      rnn_bw_cell = nn.rnn_cell.MultiRNNCell([bw_cell] * num_layers)
       # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
       _, encoding = bidirectional_rnn(rnn_fw_cell,
                                       rnn_bw_cell,
@@ -384,7 +399,12 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
                                       initial_state_fw=initial_state,
                                       initial_state_bw=initial_state)
     else:
-      cell = nn.rnn_cell.MultiRNNCell([cell_fn(rnn_size)] * num_layers)
+      rnn_cell = cell_fn(rnn_size)
+      if attn_length is not None:
+        rnn_cell = contrib_rnn.AttentionCellWrapper(
+            rnn_cell, attn_length=attn_length, attn_size=attn_size,
+            attn_vec_size=attn_vec_size, state_is_tuple=False)
+      cell = nn.rnn_cell.MultiRNNCell([rnn_cell] * num_layers)
       _, encoding = nn.rnn(cell,
                            x,
                            dtype=dtypes.float32,
