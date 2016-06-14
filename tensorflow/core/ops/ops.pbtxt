@@ -3217,7 +3217,7 @@ op {
   }
   input_arg {
     name: "filter"
-    description: "Shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.\n`in_channels` must match between `input` and `filter`."
+    description: "Shape `[filter_depth, filter_height, filter_width, in_channels,\nout_channels]`. `in_channels` must match between `input` and `filter`."
     type_attr: "T"
   }
   output_arg {
@@ -3281,7 +3281,7 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`."
+    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols,\nout_channels]`."
     type_attr: "T"
   }
   output_arg {
@@ -3328,7 +3328,74 @@ op {
       }
     }
   }
-  summary: "Computes the gradients of 3D convolution with respect to the filter."
+  summary: "Computes the gradients of 3-D convolution with respect to the filter."
+  deprecation {
+    version: 10
+    explanation: "Use Conv3DBackpropFilterV2"
+  }
+}
+op {
+  name: "Conv3DBackpropFilterV2"
+  input_arg {
+    name: "input"
+    description: "Shape `[batch, depth, rows, cols, in_channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter_sizes"
+    description: "An integer vector representing the tensor shape of `filter`,\nwhere `filter` is a 5-D\n`[filter_depth, filter_height, filter_width, in_channels, out_channels]`\ntensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols,\nout_channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes the gradients of 3-D convolution with respect to the filter."
 }
 op {
   name: "Conv3DBackpropInput"
@@ -3344,7 +3411,7 @@ op {
   }
   input_arg {
     name: "out_backprop"
-    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`."
+    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols,\nout_channels]`."
     type_attr: "T"
   }
   output_arg {
@@ -3391,7 +3458,74 @@ op {
       }
     }
   }
-  summary: "Computes the gradients of 3D convolution with respect to the input."
+  summary: "Computes the gradients of 3-D convolution with respect to the input."
+  deprecation {
+    version: 10
+    explanation: "Use Conv3DBackpropInputV2"
+  }
+}
+op {
+  name: "Conv3DBackpropInputV2"
+  input_arg {
+    name: "input_sizes"
+    description: "An integer vector representing the tensor shape of `input`,\nwhere `input` is a 5-D\n`[batch, depth, rows, cols, in_channels]` tensor."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filter"
+    description: "Shape `[depth, rows, cols, in_channels, out_channels]`.\n`in_channels` must match between `input` and `filter`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "Backprop signal of shape `[batch, out_depth, out_rows, out_cols,\nout_channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Computes the gradients of 3-D convolution with respect to the input."
 }
 op {
   name: "Cos"
