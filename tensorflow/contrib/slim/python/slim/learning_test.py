@@ -180,6 +180,128 @@ def LogisticClassifier(inputs):
       inputs, 1, activation_fn=tf.sigmoid)
 
 
+def BatchNormClassifier(inputs):
+  inputs = slim.batch_norm(inputs, decay=0.1)
+  return slim.fully_connected(inputs, 1, activation_fn=tf.sigmoid)
+
+
+class TrainBNClassifierTest(tf.test.TestCase):
+
+  def setUp(self):
+    # Create an easy training set:
+    np.random.seed(0)
+
+    self._inputs = np.zeros((16, 4))
+    self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
+    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_bnlogs/')
+
+    for i in range(16):
+      j = int(2 * self._labels[i] + np.random.randint(0, 2))
+      self._inputs[i, j] = 1
+
+  def testTrainWithNoInitAssignCanAchieveZeroLoss(self):
+    g = tf.Graph()
+    with g.as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      tf_predictions = BatchNormClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(
+          total_loss, optimizer)
+
+      loss = slim.learning.train(
+          train_op, self._logdir, number_of_steps=300, log_every_n_steps=10)
+      self.assertLess(loss, .1)
+
+
+class CreateTrainOpTest(tf.test.TestCase):
+
+  def setUp(self):
+    # Create an easy training set:
+    np.random.seed(0)
+    self._inputs = np.random.rand(16, 4).astype(np.float32)
+    self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
+
+  def testUseUpdateOps(self):
+    g = tf.Graph()
+    with g.as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      expected_mean = np.mean(self._inputs, axis=(0))
+      expected_var = np.var(self._inputs, axis=(0))
+
+      tf_predictions = BatchNormClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+      moving_mean = tf.contrib.framework.get_variables_by_name('moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables_by_name(
+          'moving_variance')[0]
+
+      with tf.Session() as sess:
+        # Initialize all variables
+        sess.run(tf.initialize_all_variables())
+        mean, variance = sess.run([moving_mean, moving_variance])
+        # After initialization moving_mean == 0 and moving_variance == 1.
+        self.assertAllClose(mean, [0] * 4)
+        self.assertAllClose(variance, [1] * 4)
+
+        for _ in range(10):
+          sess.run([train_op])
+        mean = moving_mean.eval()
+        variance = moving_variance.eval()
+        # After 10 updates with decay 0.1 moving_mean == expected_mean and
+        # moving_variance == expected_var.
+        self.assertAllClose(mean, expected_mean)
+        self.assertAllClose(variance, expected_var)
+
+  def testEmptyUpdateOps(self):
+    g = tf.Graph()
+    with g.as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      tf_predictions = BatchNormClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(total_loss, optimizer,
+                                               update_ops=[])
+
+      moving_mean = tf.contrib.framework.get_variables_by_name('moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables_by_name(
+          'moving_variance')[0]
+
+      with tf.Session() as sess:
+        # Initialize all variables
+        sess.run(tf.initialize_all_variables())
+        mean, variance = sess.run([moving_mean, moving_variance])
+        # After initialization moving_mean == 0 and moving_variance == 1.
+        self.assertAllClose(mean, [0] * 4)
+        self.assertAllClose(variance, [1] * 4)
+
+        for _ in range(10):
+          sess.run([train_op])
+        mean = moving_mean.eval()
+        variance = moving_variance.eval()
+        # Since we skip update_ops the moving_vars are not updated.
+        self.assertAllClose(mean, [0] * 4)
+        self.assertAllClose(variance, [1] * 4)
+
+
 class TrainTest(tf.test.TestCase):
 
   def setUp(self):
@@ -202,8 +324,8 @@ class TrainTest(tf.test.TestCase):
       tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
       tf_predictions = LogisticClassifier(tf_inputs)
-      log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
-      total_loss = slim.losses.get_total_loss([log_loss])
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
 
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
 
@@ -211,7 +333,7 @@ class TrainTest(tf.test.TestCase):
           total_loss, optimizer)
 
       loss = slim.learning.train(
-          train_op, self._logdir, number_of_steps=300)
+          train_op, self._logdir, number_of_steps=300, log_every_n_steps=10)
       self.assertLess(loss, .015)
 
   def testResumeTrainAchievesRoughlyTheSameLoss(self):
@@ -225,8 +347,8 @@ class TrainTest(tf.test.TestCase):
         tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
         tf_predictions = LogisticClassifier(tf_inputs)
-        log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
-        total_loss = slim.losses.get_total_loss([log_loss])
+        slim.losses.log_loss(tf_predictions, tf_labels)
+        total_loss = slim.losses.get_total_loss()
 
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
 
@@ -234,7 +356,8 @@ class TrainTest(tf.test.TestCase):
             total_loss, optimizer)
 
         loss = slim.learning.train(
-            train_op, self._logdir, number_of_steps=number_of_steps[i])
+            train_op, self._logdir, number_of_steps=number_of_steps[i],
+            log_every_n_steps=10)
         self.assertLess(loss, .015)
 
   def create_train_op(self):
@@ -242,8 +365,8 @@ class TrainTest(tf.test.TestCase):
     tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
     tf_predictions = LogisticClassifier(tf_inputs)
-    log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
-    total_loss = slim.losses.get_total_loss([log_loss])
+    slim.losses.log_loss(tf_predictions, tf_labels)
+    total_loss = slim.losses.get_total_loss()
 
     optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
 
@@ -272,7 +395,7 @@ class TrainTest(tf.test.TestCase):
       tf.set_random_seed(1)
       train_op = self.create_train_op()
       loss = slim.learning.train(
-          train_op, logdir1, number_of_steps=300)
+          train_op, logdir1, number_of_steps=300, log_every_n_steps=10)
       self.assertLess(loss, .02)
 
     # Finally, advance the model a single step and validate that the loss is
@@ -324,7 +447,7 @@ class TrainTest(tf.test.TestCase):
       tf.set_random_seed(1)
       train_op = self.create_train_op()
       loss = slim.learning.train(
-          train_op, logdir1, number_of_steps=300)
+          train_op, logdir1, number_of_steps=300, log_every_n_steps=10)
       self.assertLess(loss, .015)
 
     # Finally, advance the model a single step and validate that the loss is
@@ -352,8 +475,8 @@ class TrainTest(tf.test.TestCase):
     tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
     tf_predictions = LogisticClassifier(tf_inputs)
-    log_loss = slim.losses.log_loss(tf_predictions, tf_labels)
-    return slim.losses.get_total_loss([log_loss])
+    slim.losses.log_loss(tf_predictions, tf_labels)
+    return slim.losses.get_total_loss()
 
   def  testTrainAllVarsHasLowerLossThanTrainSubsetOfVars(self):
     logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs3/')
@@ -374,7 +497,7 @@ class TrainTest(tf.test.TestCase):
           variables_to_train=weights)
 
       loss = slim.learning.train(
-          train_op, logdir1, number_of_steps=200)
+          train_op, logdir1, number_of_steps=200, log_every_n_steps=10)
       self.assertGreater(loss, .015)
       self.assertLess(loss, .05)
 
@@ -392,7 +515,7 @@ class TrainTest(tf.test.TestCase):
           variables_to_train=biases)
 
       loss = slim.learning.train(
-          train_op, logdir1, number_of_steps=300)
+          train_op, logdir1, number_of_steps=300, log_every_n_steps=10)
       self.assertGreater(loss, .015)
       self.assertLess(loss, .05)
 
@@ -405,7 +528,7 @@ class TrainTest(tf.test.TestCase):
 
       train_op = slim.learning.create_train_op(total_loss, optimizer)
       loss = slim.learning.train(
-          train_op, logdir1, number_of_steps=400)
+          train_op, logdir1, number_of_steps=400, log_every_n_steps=10)
 
       self.assertLess(loss, .015)
 

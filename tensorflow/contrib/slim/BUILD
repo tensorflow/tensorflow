@@ -44,17 +44,21 @@ py_library(
 )
 
 # TODO(nsilberman): Fix this test and re-enable.
-#py_test(
-#    name = "learning_test",
-#    srcs = ["python/slim/learning_test.py"],
-#    srcs_version = "PY2AND3",
-#    deps = [
-#        "//tensorflow:tensorflow_py",
-#        "//tensorflow/contrib/slim",
-#        "//tensorflow/python:framework_test_lib",
-#        "//tensorflow/python:platform_test",
-#    ],
-#)
+py_test(
+    name = "learning_test",
+    srcs = ["python/slim/learning_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/slim",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
 
 py_library(
     name = "queues",
