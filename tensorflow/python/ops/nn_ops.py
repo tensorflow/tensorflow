@@ -885,35 +885,39 @@ def _Pool3DShape(op):
                                     channels])]
 
 
-def _ShapeOrUnknown(input_shape, ndims=5):
-  if input_shape == None:  # pylint:disable=g-equals-none
-    return [tensor_shape.unknown_shape(ndims=ndims)]
-  else:
-    return [input_shape]
-
-
 @ops.RegisterShape("Conv3DBackpropFilter")
 def _Conv3DBackpropFilterShape(op):
   """Shape function for the Conv3DBackpropFilter op."""
   filter_shape = op.inputs[1].get_shape()
-  return _ShapeOrUnknown(filter_shape)
+  return [filter_shape.with_rank(5)]
 
 
 @ops.RegisterShape("Conv3DBackpropInput")
 def _Conv3DBackpropInputShape(op):
   """Shape function for the Conv3DBackpropInput op."""
   input_shape = op.inputs[0].get_shape()
-  return _ShapeOrUnknown(input_shape)
+  return [input_shape.with_rank(5)]
+
+
+@ops.RegisterShape("Conv3DBackpropFilterV2")
+def _Conv3DBackpropFilterShapeV2(op):
+  """Shape function for the Conv3DBackpropFilterV2 op."""
+  filter_shape = tensor_util.constant_value(op.inputs[1])
+  return [tensor_shape.TensorShape(filter_shape).with_rank(5)]
+
+
+@ops.RegisterShape("Conv3DBackpropInputV2")
+def _Conv3DBackpropInputShapeV2(op):
+  """Shape function for the Conv3DBackpropInputV2 op."""
+  input_shape = tensor_util.constant_value(op.inputs[0])
+  return [tensor_shape.TensorShape(input_shape).with_rank(5)]
 
 
 @ops.RegisterShape("AvgPool3DGrad")
 def _AvgPool3DGradShape(op):
   """Shape function for the AvgPool3DGrad op."""
   orig_input_shape = tensor_util.constant_value(op.inputs[0])
-  if orig_input_shape != None:  # pylint:disable=g-equals-none
-    return [tensor_shape.TensorShape(orig_input_shape.tolist())]
-  else:
-    return [tensor_shape.unknown_shape(ndims=5)]
+  return [tensor_shape.TensorShape(orig_input_shape).with_rank(5)]
 
 
 @ops.RegisterShape("MaxPool3DGrad")

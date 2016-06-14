@@ -433,8 +433,8 @@ is also known as a sliding dot product or sliding inner-product.
 Our Conv3D implements a form of cross-correlation.
 
 input: Shape `[batch, in_depth, in_height, in_width, in_channels]`.
-filter: Shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.
-  `in_channels` must match between `input` and `filter`.
+filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
+  out_channels]`. `in_channels` must match between `input` and `filter`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -449,13 +449,15 @@ REGISTER_OP("Conv3DBackpropInput")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Deprecated(10, "Use Conv3DBackpropInputV2")
     .Doc(R"doc(
-Computes the gradients of 3D convolution with respect to the input.
+Computes the gradients of 3-D convolution with respect to the input.
 
 input: Shape `[batch, depth, rows, cols, in_channels]`.
 filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
   `in_channels` must match between `input` and `filter`.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
@@ -470,13 +472,63 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Deprecated(10, "Use Conv3DBackpropFilterV2")
     .Doc(R"doc(
-Computes the gradients of 3D convolution with respect to the filter.
+Computes the gradients of 3-D convolution with respect to the filter.
 
 input: Shape `[batch, depth, rows, cols, in_channels]`.
 filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
   `in_channels` must match between `input` and `filter`.
-out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols, out_channels]`.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
+strides: 1-D tensor of length 5. The stride of the sliding window for each
+  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+padding: The type of padding algorithm to use.
+
+)doc");
+
+REGISTER_OP("Conv3DBackpropInputV2")
+    .Input("input_sizes: int32")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradients of 3-D convolution with respect to the input.
+
+input_sizes: An integer vector representing the tensor shape of `input`,
+   where `input` is a 5-D
+   `[batch, depth, rows, cols, in_channels]` tensor.
+filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
+  `in_channels` must match between `input` and `filter`.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
+strides: 1-D tensor of length 5. The stride of the sliding window for each
+  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+padding: The type of padding algorithm to use.
+
+)doc");
+
+REGISTER_OP("Conv3DBackpropFilterV2")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Computes the gradients of 3-D convolution with respect to the filter.
+
+input: Shape `[batch, depth, rows, cols, in_channels]`.
+filter_sizes: An integer vector representing the tensor shape of `filter`,
+  where `filter` is a 5-D
+  `[filter_depth, filter_height, filter_width, in_channels, out_channels]`
+  tensor.
+out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+  out_channels]`.
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
