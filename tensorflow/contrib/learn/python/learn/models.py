@@ -154,7 +154,7 @@ def logistic_regression(x,
                                   bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
-    if class_weight is not None:
+    if not class_weight:
       try:
         class_weight = ops.get_default_graph().get_tensor_by_name(
             'class_weight:0')
