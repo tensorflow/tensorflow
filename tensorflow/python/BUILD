@@ -938,6 +938,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "quantize_training_test",
+    size = "small",
+    srcs = [
+        "client/quantize_training_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "device_lib",
     srcs = ["client/device_lib.py"],
@@ -982,6 +997,7 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",
+        "client/quantize_training.i",
         "client/tf_session.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
