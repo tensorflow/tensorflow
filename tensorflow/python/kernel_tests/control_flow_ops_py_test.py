@@ -1269,6 +1269,21 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), r.eval())
 
+  def testCallGradInLoop(self):
+    with self.test_session() as sess:
+      i0 = tf.constant(0)
+      params = tf.constant(5.0)
+      params_1 = tf.square(params)
+      def c(i, _):
+        return i < 10
+      def b(i, x):
+        data = tf.constant([1.0, 2.0, 3.0])
+        data = tf.mul(data, params_1)
+        x1 = x + tf.gradients(data, params)[0]
+        return i + 1, x1
+      output_grad = tf.while_loop(c, b, [i0, tf.constant(0.0)])
+      self.assertAllClose(600.0, sess.run(output_grad)[1])
+
   def testWhileGradGrad(self):
     theta = tf.Variable(initial_value=1.)
     def fn(x, prev):

@@ -29,12 +29,12 @@ py_library(
         ":client_testlib",
         ":framework",
         ":framework_test_lib",
-        ":kernel_tests/gradient_checker",
         ":platform",
         ":platform_test",
         ":summary",
         ":training",
         "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/kernel_tests:gradient_checker",
     ],
 )
 
@@ -1100,99 +1100,6 @@ py_test(
     ],
 )
 
-py_library(
-    name = "kernel_tests/gradient_checker",
-    srcs = ["kernel_tests/gradient_checker.py"],
-    srcs_version = "PY2AND3",
-)
-
-medium_kernel_test_list = glob([
-    "kernel_tests/concat_op_test.py",
-    "kernel_tests/division_future_test.py",
-    "kernel_tests/fft_ops_test.py",
-    "kernel_tests/pooling_ops_test.py",
-    "kernel_tests/rnn_test.py",
-    "kernel_tests/random_gamma_test.py",
-    "kernel_tests/scatter_ops_test.py",
-    "kernel_tests/seq2seq_test.py",
-    "kernel_tests/slice_op_test.py",
-    "kernel_tests/sparse_ops_test.py",
-    "kernel_tests/sparse_matmul_op_test.py",
-    "kernel_tests/sparse_tensor_dense_matmul_op_test.py",
-])
-
-sharded_kernel_test_list = glob([
-    "kernel_tests/batch_matrix_band_part_op_test.py",
-    "kernel_tests/cwise_ops_test.py",
-    "kernel_tests/embedding_ops_test.py",
-    "kernel_tests/linalg_grad_test.py",
-    "kernel_tests/conv_ops_3d_test.py",
-])
-
-cpu_only_kernel_test_list = glob([
-    "kernel_tests/attention_ops_test.py",
-    "kernel_tests/barrier_ops_test.py",
-    "kernel_tests/bcast_ops_test.py",
-    "kernel_tests/benchmark_test.py",
-    "kernel_tests/candidate_sampler_ops_test.py",
-    "kernel_tests/cholesky_op_test.py",
-    "kernel_tests/clip_ops_test.py",
-    "kernel_tests/decode_csv_op_test.py",
-    "kernel_tests/decode_raw_op_test.py",
-    "kernel_tests/determinant_op_test.py",
-    "kernel_tests/diag_op_test.py",
-    "kernel_tests/edit_distance_op_test.py",
-    "kernel_tests/fifo_queue_test.py",
-    "kernel_tests/identity_op_py_test.py",
-    "kernel_tests/in_topk_op_test.py",
-    "kernel_tests/io_ops_test.py",
-    "kernel_tests/listdiff_op_test.py",
-    "kernel_tests/logging_ops_test.py",
-    "kernel_tests/lookup_table_op_test.py",
-    "kernel_tests/lrn_op_py_test.py",
-    "kernel_tests/matrix_inverse_op_test.py",
-    "kernel_tests/matrix_solve_op_test.py",
-    "kernel_tests/matrix_triangular_solve_op_test.py",
-    "kernel_tests/matrix_solve_ls_op_test.py",
-    "kernel_tests/mutex_ops_test.py",
-    "kernel_tests/parsing_ops_test.py",
-    "kernel_tests/partitioned_variables_test.py",
-    "kernel_tests/queue_ops_test.py",
-    "kernel_tests/random_shuffle_queue_test.py",
-    "kernel_tests/save_restore_ops_test.py",
-    "kernel_tests/segment_reduction_ops_test.py",
-    "kernel_tests/self_adjoint_eig_op_test.py",
-    "kernel_tests/sparse_add_op_test.py",
-    "kernel_tests/sparse_concat_op_test.py",
-    "kernel_tests/sparse_split_op_test.py",
-    "kernel_tests/sparse_reorder_op_test.py",
-    "kernel_tests/sparse_reshape_op_test.py",
-    "kernel_tests/sparse_to_dense_op_test.py",
-    "kernel_tests/sparsemask_op_test.py",
-    "kernel_tests/summary_ops_test.py",
-    "kernel_tests/template_test.py",
-    "kernel_tests/topk_op_test.py",
-    "kernel_tests/unique_op_test.py",
-    "kernel_tests/variable_scope_test.py",
-    "kernel_tests/variables_test.py",
-    "kernel_tests/where_op_test.py",
-])
-
-py_tests(
-    name = "cpu_only_kernel_tests",
-    size = "small",
-    srcs = cpu_only_kernel_test_list,
-)
-
-py_tests(
-    name = "reader_ops_test",
-    size = "small",
-    srcs = ["kernel_tests/reader_ops_test.py"],
-    additional_deps = [
-        ":lib",
-    ],
-)
-
 cuda_py_tests(
     name = "op_tests",
     size = "small",
@@ -1218,30 +1125,6 @@ cuda_py_tests(
         "ops/nn_test.py",
         "ops/nn_xent_test.py",
     ],
-)
-
-cuda_py_tests(
-    name = "kernel_tests",
-    size = "small",
-    srcs = glob(
-        ["kernel_tests/*_test.py"],
-        exclude = [
-            "**/reader_ops_test.py",
-        ] + cpu_only_kernel_test_list + medium_kernel_test_list + sharded_kernel_test_list,
-    ),
-)
-
-cuda_py_tests(
-    name = "medium_kernel_tests",
-    size = "medium",
-    srcs = medium_kernel_test_list,
-)
-
-cuda_py_tests(
-    name = "kernel_tests_with_sharding",
-    size = "medium",
-    srcs = sharded_kernel_test_list,
-    shard_count = 50,
 )
 
 cuda_py_tests(
