@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Non-linear estimator tests."""
+"""RNN estimator tests."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,6 +23,7 @@ import random
 
 import numpy as np
 import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squared_error
 
@@ -30,19 +31,23 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squar
 def rnn_input_fn(x):
   return tf.split(1, 5, x)
 
-data = np.array(
-    list([[2, 1, 2, 2, 3], [2, 2, 3, 4, 5], [3, 3, 1, 2, 1], [2, 4, 5, 4, 1]
-         ]),
-    dtype=np.float32)
+
+data = np.array(list([[2, 1, 2, 2, 3],
+                      [2, 2, 3, 4, 5],
+                      [3, 3, 1, 2, 1],
+                      [2, 4, 5, 4, 1]]),
+                dtype=np.float32)
 # labels for classification
 labels = np.array(list([1, 0, 1, 0]), dtype=np.float32)
 # targets for regression
 targets = np.array(list([10, 16, 10, 16]), dtype=np.float32)
-test_data = np.array(list([[1, 3, 3, 2, 1], [2, 3, 4, 5, 6]]),
+test_data = np.array(list([[1, 3, 3, 2, 1],
+                           [2, 3, 4, 5, 6]]),
                      dtype=np.float32)
 
+
 class RNNTest(tf.test.TestCase):
-  """Non-linear estimator tests."""
+  """RNN estimator tests."""
 
   def setUp(self):
     random.seed(42)
@@ -85,7 +90,7 @@ class RNNTest(tf.test.TestCase):
     # pylint: enable=pointless-statement
     predictions = regressor.predict(test_data)
 
-    # bidirectional rnn with attention
+    # rnn with attention
     classifier = tf.contrib.learn.TensorFlowRNNClassifier(rnn_size=2,
                                                           cell_type="lstm",
                                                           n_classes=2,

@@ -107,5 +107,6 @@ class NonLinearTest(tf.test.TestCase):
   #       9.74681854e-01, 1.19209290e-07]])
   #   self.assertAllClose(transformed, expected)
 
+
 if __name__ == "__main__":
   tf.test.main()
