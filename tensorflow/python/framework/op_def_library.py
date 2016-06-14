@@ -31,7 +31,6 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import constant_op
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 

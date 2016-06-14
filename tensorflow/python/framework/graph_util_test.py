@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 

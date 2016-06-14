@@ -28,6 +28,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -35,7 +36,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops

@@ -23,13 +23,14 @@ import warnings
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
@@ -37,7 +38,6 @@ from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
-from tensorflow.python.ops.constant_op import constant
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 
 from tensorflow.python.ops.nn_ops import bias_add
