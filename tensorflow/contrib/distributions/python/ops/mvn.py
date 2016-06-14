@@ -82,13 +82,13 @@ def _assert_batch_positive_definite(sigma_chol):
        sigma_batch_diag, " shaped: ", array_ops.shape(sigma_batch_diag)])
 
 
-def _determinant_from_sigma_chol(sigma_chol):
+def _log_determinant_from_sigma_chol(sigma_chol):
   det_last_dim = array_ops.rank(sigma_chol) - 2
   sigma_batch_diag = array_ops.batch_matrix_diag_part(sigma_chol)
-  det = math_ops.square(math_ops.reduce_prod(
-      sigma_batch_diag, reduction_indices=det_last_dim))
-  det.set_shape(sigma_chol.get_shape()[:-2])
-  return det
+  log_det = 2.0 * math_ops.reduce_sum(
+      math_ops.log(sigma_batch_diag), reduction_indices=det_last_dim)
+  log_det.set_shape(sigma_chol.get_shape()[:-2])
+  return log_det
 
 
 class MultivariateNormal(object):
@@ -212,22 +212,24 @@ class MultivariateNormal(object):
           # Ensure we only keep the lower triangular part.
           sigma_chol = array_ops.batch_matrix_band_part(
               sigma_chol, num_lower=-1, num_upper=0)
-          sigma_det = _determinant_from_sigma_chol(sigma_chol)
+          log_sigma_det = _log_determinant_from_sigma_chol(sigma_chol)
           with ops.control_dependencies([
               _assert_batch_positive_definite(sigma_chol)]):
             self._sigma = math_ops.batch_matmul(
                 sigma_chol, sigma_chol, adj_y=True, name="sigma")
             self._sigma_chol = array_ops.identity(sigma_chol, "sigma_chol")
-            self._sigma_det = array_ops.identity(sigma_det, "sigma_det")
+            self._log_sigma_det = array_ops.identity(
+                log_sigma_det, "log_sigma_det")
             self._mu = array_ops.identity(mu, "mu")
         else:  # sigma is not None
           sigma_chol = linalg_ops.batch_cholesky(sigma)
-          sigma_det = _determinant_from_sigma_chol(sigma_chol)
+          log_sigma_det = _log_determinant_from_sigma_chol(sigma_chol)
           # batch_cholesky checks for PSD; so we can just use it here.
           with ops.control_dependencies([sigma_chol]):
             self._sigma = array_ops.identity(sigma, "sigma")
             self._sigma_chol = array_ops.identity(sigma_chol, "sigma_chol")
-            self._sigma_det = array_ops.identity(sigma_det, "sigma_det")
+            self._log_sigma_det = array_ops.identity(
+                log_sigma_det, "log_sigma_det")
             self._mu = array_ops.identity(mu, "mu")
 
   @property
@@ -248,7 +250,7 @@ class MultivariateNormal(object):
 
   @property
   def sigma_det(self):
-    return self._sigma_det
+    return math_ops.exp(self._log_sigma_det)
 
   def log_pdf(self, x, name=None):
     """Log pdf of observations `x` given these Multivariate Normals.
@@ -283,6 +285,8 @@ class MultivariateNormal(object):
       # then transpose and reshape x_whitened back to one of the shapes:
       #   [D, E, F, ..., k], or [1, 1, F, ..., k], or
       #   [A, B, C, D, E, F, ..., k]
+      # Note that if rank(x) <= rank(sigma) - 1, the first dimensions of
+      # x_centered will match sigma exactly because x_centered = x - self.mu.
 
       # This helper handles the case where rank(x_centered) < rank(sigma)
       def _broadcast_x_not_higher_rank_than_sigma():
@@ -361,7 +365,7 @@ class MultivariateNormal(object):
       log_two_pi = constant_op.constant(math.log(2 * math.pi), dtype=self.dtype)
       k = math_ops.cast(self._k, self.dtype)
       log_pdf_value = (
-          -math_ops.log(self._sigma_det) -k * log_two_pi - x_whitened_norm) / 2
+          -self._log_sigma_det -(k * log_two_pi) - x_whitened_norm) / 2
       final_shaped_value = control_flow_ops.cond(
           x_rank <= sigma_rank - 1,
           lambda: log_pdf_value,
@@ -402,8 +406,8 @@ class MultivariateNormal(object):
       # Use broadcasting rules to calculate the full broadcast sigma.
       k = math_ops.cast(self._k, dtype=self.dtype)
       entropy_value = (
-          k * one_plus_log_two_pi + math_ops.log(self._sigma_det)) / 2
-      entropy_value.set_shape(self._sigma_det.get_shape())
+          k * one_plus_log_two_pi + self._log_sigma_det) / 2
+      entropy_value.set_shape(self._log_sigma_det.get_shape())
       return entropy_value
 
   def sample(self, n, seed=None, name=None):

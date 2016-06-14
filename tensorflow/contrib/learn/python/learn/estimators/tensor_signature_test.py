@@ -103,6 +103,35 @@ class TensorSignatureTest(tf.test.TestCase):
     self.assertTrue(isinstance(placeholder, tf.SparseTensor))
     self.assertEqual(placeholder.values.dtype, tensor.values.dtype)
 
+  def testTensorSignatureExampleParserSingle(self):
+    examples = tf.placeholder(name='example', shape=[None], dtype=tf.string)
+    placeholder_a = tf.placeholder(name='test',
+                                   shape=[None, 100],
+                                   dtype=tf.int32)
+    signatures = tensor_signature.create_signatures(placeholder_a)
+    result = tensor_signature.create_example_parser_from_signatures(
+        signatures, examples)
+    self.assertTrue(tensor_signature.tensors_compatible(result, signatures))
+    new_signatures = tensor_signature.create_signatures(result)
+    self.assertTrue(new_signatures.is_compatible_with(signatures))
+
+  def testTensorSignatureExampleParserDict(self):
+    examples = tf.placeholder(name='example', shape=[None], dtype=tf.string)
+    placeholder_a = tf.placeholder(name='test',
+                                   shape=[None, 100],
+                                   dtype=tf.int32)
+    placeholder_b = tf.placeholder(name='bb',
+                                   shape=[None, 100],
+                                   dtype=tf.float64)
+    inputs = {'a': placeholder_a, 'b': placeholder_b}
+    signatures = tensor_signature.create_signatures(inputs)
+    result = tensor_signature.create_example_parser_from_signatures(
+        signatures, examples)
+    self.assertTrue(tensor_signature.tensors_compatible(result, signatures))
+    new_signatures = tensor_signature.create_signatures(result)
+    self.assertTrue(new_signatures['a'].is_compatible_with(signatures['a']))
+    self.assertTrue(new_signatures['b'].is_compatible_with(signatures['b']))
+
 
 if __name__ == '__main__':
   tf.test.main()

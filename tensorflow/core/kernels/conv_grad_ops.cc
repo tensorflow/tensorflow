@@ -345,22 +345,6 @@ typedef Eigen::GpuDevice GPUDevice;
           << ", strides_rows = " << strides[1]                                 \
           << ", strides_cols = " << strides[2]
 
-namespace {
-Status VectorToShape(const TTypes<int32>::ConstVec& sizes, TensorShape* out) {
-  using Index = TTypes<int32>::ConstVec::Index;
-  const Index dims = sizes.size();
-  for (Index i = 0; i < dims; ++i) {
-    if (sizes(i) >= 0) {
-      out->AddDim(sizes(i));
-    } else {
-      return errors::InvalidArgument("Dimension ", sizes(i), " must be >= 0");
-    }
-  }
-
-  return Status::OK();
-}
-}  // namespace
-
 // The fast versions using eigen computations directly. They are only enabled
 // for CPU for now since nvcc times out when trying to compile them.
 // TODO(yangke): enable them for GPUs when we have a faster compiler.
@@ -397,8 +381,8 @@ class Conv2DFastBackpropInputOp : public OpKernel {
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
             input_sizes.dims()));
     TensorShape input_shape;
-    OP_REQUIRES_OK(context,
-                   VectorToShape(input_sizes.vec<int32>(), &input_shape));
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                input_sizes.vec<int32>(), &input_shape));
     const TensorShape& filter_shape = filter.shape();
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropInput");
@@ -452,8 +436,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
             input_sizes.dims()));
     TensorShape input_shape;
-    OP_REQUIRES_OK(context,
-                   VectorToShape(input_sizes.vec<int32>(), &input_shape));
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                input_sizes.vec<int32>(), &input_shape));
     const TensorShape& filter_shape = filter.shape();
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropInput");
@@ -675,8 +659,8 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
             filter_sizes.dims()));
     const TensorShape& input_shape = input.shape();
     TensorShape filter_shape;
-    OP_REQUIRES_OK(context,
-                   VectorToShape(filter_sizes.vec<int32>(), &filter_shape));
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                filter_sizes.vec<int32>(), &filter_shape));
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropFilter");
     Tensor* filter_backprop = nullptr;
@@ -732,8 +716,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
             filter_sizes.dims()));
     const TensorShape& input_shape = input.shape();
     TensorShape filter_shape;
-    OP_REQUIRES_OK(context,
-                   VectorToShape(filter_sizes.vec<int32>(), &filter_shape));
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                filter_sizes.vec<int32>(), &filter_shape));
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DCustomBackpropFilter");
     Tensor* filter_backprop;
@@ -915,8 +899,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
             input_sizes.dims()));
     TensorShape input_shape;
-    OP_REQUIRES_OK(context,
-                   VectorToShape(input_sizes.vec<int32>(), &input_shape));
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                input_sizes.vec<int32>(), &input_shape));
     const TensorShape& filter_shape = filter.shape();
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropInput");
@@ -1227,8 +1211,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
             filter_sizes.dims()));
     const TensorShape& input_shape = input.shape();
     TensorShape filter_shape;
-    OP_REQUIRES_OK(context,
-                   VectorToShape(filter_sizes.vec<int32>(), &filter_shape));
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                filter_sizes.vec<int32>(), &filter_shape));
 
     EXTRACT_AND_VERIFY_DIMENSIONS("Conv2DBackpropFilter");
     Tensor* filter_backprop = nullptr;

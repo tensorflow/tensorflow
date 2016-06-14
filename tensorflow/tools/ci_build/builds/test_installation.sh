@@ -80,8 +80,8 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/framework/ops_test.py:"\
 "tensorflow/python/util/protobuf/compare_test.py:"\
 "tensorflow/python/framework/device_test.py:"\
-"tensorflow/python/framework/file_system_test.py"\
 "tensorflow/python/framework/file_system_test.py:"\
+"tensorflow/contrib/learn:early_stopping_test.py:"\
 "tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\

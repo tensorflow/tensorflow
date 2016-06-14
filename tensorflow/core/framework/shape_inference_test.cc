@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -222,6 +223,68 @@ TEST(ShapeInferenceTest, MergeShape) {
   EXPECT_TRUE(out == nullptr);
 }
 
+TEST(ShapeInferenceTest, Subshape) {
+  InferenceContext c({"[1,2,3,?,5]", "?"}, 2 /* num_outputs */);
+
+  const Shape* unknown = c.input(1);
+  const Shape* out;
+  EXPECT_TRUE(c.Subshape(unknown, 0, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out == unknown);
+  EXPECT_TRUE(c.Subshape(unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+  EXPECT_TRUE(c.Subshape(unknown, 200, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+
+  auto in0 = c.input(0);
+  EXPECT_TRUE(c.Subshape(in0, 0, &out).ok());
+  EXPECT_EQ("[1,2,3,?,5]", c.DebugString(out));
+  EXPECT_TRUE(out == in0);
+  for (int i = 1; i <= 5; ++i) {
+    EXPECT_TRUE(c.Subshape(in0, i, &out).ok());
+    EXPECT_EQ(5 - i, c.Rank(out));
+    for (int j = 0; j < c.Rank(out); ++j) {
+      EXPECT_TRUE(c.Dim(in0, i + j) == c.Dim(out, j));
+    }
+  }
+  // Errors.
+  out = unknown;
+  EXPECT_EQ("Invalid argument: Negative start is not implemented; got -1",
+            c.Subshape(in0, -1, &out).ToString());
+  EXPECT_TRUE(out == nullptr);
+  out = unknown;
+  EXPECT_EQ("Invalid argument: Shape must have rank >= 6, but is 5",
+            c.Subshape(in0, 6, &out).ToString());
+  EXPECT_TRUE(out == nullptr);
+}
+
+TEST(ShapeInferenceTest, Concatenate) {
+  InferenceContext c({"[1,?,3]", "[4,5]", "?"}, 2 /* num_outputs */);
+
+  auto in0 = c.input(0);
+  auto in1 = c.input(1);
+  const Shape* unknown = c.input(2);
+  const Shape* out;
+  EXPECT_TRUE(c.Concatenate(unknown, unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+  EXPECT_TRUE(c.Concatenate(unknown, in0, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != unknown);
+
+  EXPECT_TRUE(c.Concatenate(in0, in1, &out).ok());
+  EXPECT_EQ("[1,?,3,4,5]", c.DebugString(out));
+  int out_i = 0;
+  for (int i = 0; i < c.Rank(in0); ++i, ++out_i) {
+    EXPECT_TRUE(c.Dim(in0, i) == c.Dim(out, out_i));
+  }
+  for (int i = 0; i < c.Rank(in1); ++i, ++out_i) {
+    EXPECT_TRUE(c.Dim(in1, i) == c.Dim(out, out_i));
+  }
+}
+
 TEST(ShapeInferenceTest, CreateShape) {
   InferenceContext c({"[1,2,3,?,5]"}, 2 /* num_outputs */);
 
@@ -251,6 +314,41 @@ TEST(ShapeInferenceTest, CreateUnknownShape) {
   EXPECT_TRUE(u0 != u1);  // different pointers
 }
 
+TEST(ShapeInferenceTest, CreateShapeFromShapeTensor) {
+  auto create = [](Tensor* t) {
+    InferenceContext c({"?"}, 0 /* num_outputs */, {t});
+    const Shape* out;
+    Status s = c.CreateShapeFromShapeTensor(0, &out);
+    if (s.ok()) {
+      return c.DebugString(out);
+    } else {
+      EXPECT_TRUE(out == nullptr);
+      return s.error_message();
+    }
+  };
+
+  Tensor t;
+  EXPECT_EQ("?", create(nullptr));
+
+  t = ::tensorflow::test::AsTensor<int32>({1, 2, 3});
+  EXPECT_EQ("[1,2,3]", create(&t));
+
+  t = ::tensorflow::test::AsTensor<int64>({3, 2, 1});
+  EXPECT_EQ("[3,2,1]", create(&t));
+
+  t = ::tensorflow::test::AsTensor<int64>({});
+  EXPECT_EQ("[]", create(&t));
+
+  t = ::tensorflow::test::AsTensor<float>({1, 2, 3});
+  EXPECT_EQ("Input tensor must be int32 or int64, but was float", create(&t));
+
+  t = ::tensorflow::test::AsScalar<int32>(1);
+  EXPECT_EQ("Input tensor must be rank 1, but was rank 0", create(&t));
+
+  t = ::tensorflow::test::AsTensor<int32>({1, 2}, TensorShape{2, 1});
+  EXPECT_EQ("Input tensor must be rank 1, but was rank 2", create(&t));
+}
+
 TEST(ShapeInferenceTest, CreateDim) {
   InferenceContext c({}, 2 /* num_outputs */);
 
@@ -271,6 +369,16 @@ TEST(ShapeInferenceTest, CreateUnknownDim) {
   EXPECT_EQ("?", c.DebugString(d0));
   EXPECT_EQ("?", c.DebugString(d1));
   EXPECT_TRUE(d0 != d1);  // different pointers
+}
+
+TEST(ShapeInferenceTest, InputTensors) {
+  const Tensor t1 = tensorflow::test::AsTensor<float>({10});
+  const Tensor t2 = tensorflow::test::AsTensor<float>({20, 30});
+  InferenceContext c({"[1]", "[2]", "[3]"}, 2 /* num_outputs */, {&t1, &t2});
+
+  EXPECT_TRUE(c.input_tensor(0) == &t1);
+  EXPECT_TRUE(c.input_tensor(1) == &t2);
+  EXPECT_TRUE(c.input_tensor(2) == nullptr);
 }
 
 }  // namespace shape_inference
