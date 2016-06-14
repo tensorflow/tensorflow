@@ -32,9 +32,11 @@ class BaseInMemorySource(transform.Transform):
                queue_capacity=None,
                shuffle=False,
                min_after_dequeue=None,
-               seed=None):
+               seed=None,
+               data_name="in_memory_data"):
     super(BaseInMemorySource, self).__init__()
     self._data = data
+    self._data_name = data_name
     self._batch_size = (1 if batch_size is None else batch_size)
     self._queue_capacity = (self._batch_size * 10 if queue_capacity is None
                             else queue_capacity)
@@ -46,6 +48,10 @@ class BaseInMemorySource(transform.Transform):
   @transform.parameter
   def data(self):
     return self._data
+
+  @transform.parameter
+  def data_name(self):
+    return self._data_name
 
   @transform.parameter
   def batch_size(self):
@@ -73,7 +79,8 @@ class BaseInMemorySource(transform.Transform):
 
   def _apply_transform(self, transform_input):
     queue = feeding_functions.enqueue_data(
-        self.data, self.queue_capacity, self.shuffle, self.min_after_dequeue)
+        self.data, self.queue_capacity, self.shuffle, self.min_after_dequeue,
+        seed=self.seed, name=self.data_name)
 
     dequeued = queue.dequeue_many(self.batch_size)
 
@@ -107,11 +114,13 @@ class PandasSource(BaseInMemorySource):
                queue_capacity=None,
                shuffle=False,
                min_after_dequeue=None,
-               seed=None):
+               seed=None,
+               data_name="pandas_data"):
     if "index" in dataframe.columns:
       raise ValueError("Column name `index` is reserved.")
     super(PandasSource, self).__init__(dataframe, batch_size, queue_capacity,
-                                       shuffle, min_after_dequeue, seed)
+                                       shuffle, min_after_dequeue, seed,
+                                       data_name)
 
   @property
   def name(self):
