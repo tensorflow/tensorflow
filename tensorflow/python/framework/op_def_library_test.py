@@ -25,9 +25,9 @@ from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops.op_def_library import OpDefLibrary
+from tensorflow.python.framework import test_util
+from tensorflow.python.framework.op_def_library import OpDefLibrary
 from tensorflow.python.platform import googletest
 
 
@@ -303,8 +303,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       attr { key: 'T' value { type: DT_STRING } }
       """, out.op.node_def)
 
-    out = self._lib.apply_op("PolymorphicDefaultOut", T=dtypes.bool,
-                            name="q")
+    out = self._lib.apply_op("PolymorphicDefaultOut", T=dtypes.bool, name="q")
     self.assertEqual(dtypes.bool, out.dtype)
     self.assertProtoEquals("""
       name: 'q' op: 'PolymorphicDefaultOut'
@@ -338,8 +337,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                      "Expected string, got 12 of type 'int' instead.")
 
     with self.assertRaises(TypeError) as cm:
-      self._lib.apply_op("Binary", a=self.Tensor(dtypes.string),
-                        b=self.Tensor(dtypes.int32))
+      self._lib.apply_op("Binary",
+                         a=self.Tensor(dtypes.string),
+                         b=self.Tensor(dtypes.int32))
     self.assertEqual(str(cm.exception),
                      "Input 'b' of 'Binary' Op has type int32 "
                      "that does not match type string of argument 'a'.")
@@ -412,8 +412,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                  "input_arg { name: 'b' type_list_attr: 'T' } "
                  "attr { name: 'T' type: 'list(type)' }")
 
-    op = self._lib.apply_op("TypeListTwice", a=["foo", True], b=["bar", False],
-                           name="z")
+    op = self._lib.apply_op("TypeListTwice",
+                            a=["foo", True],
+                            b=["bar", False],
+                            name="z")
     self.assertProtoEquals("""
       name: 'z' op: 'TypeListTwice'
       input: 'z/a_0' input: 'z/a_1' input: 'z/b_0' input: 'z/b_1'
@@ -445,8 +447,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       """, out.op.node_def)
 
     out1, out2 = self._lib.apply_op("OutTypeList",
-                                   T=[dtypes.int32, dtypes.bool],
-                                   name="w")
+                                    T=[dtypes.int32, dtypes.bool],
+                                    name="w")
     self.assertEqual(dtypes.int32, out1.dtype)
     self.assertEqual(dtypes.bool, out2.dtype)
     self.assertProtoEquals("""
@@ -486,8 +488,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                  "  type: DT_STRING type: DT_BOOL } } }")
 
     out1, out2 = self._lib.apply_op("OutTypeListRestrict",
-                                   t=[dtypes.bool, dtypes.string],
-                                   name="u")
+                                    t=[dtypes.bool, dtypes.string],
+                                    name="u")
     self.assertEqual(dtypes.bool, out1.dtype)
     self.assertEqual(dtypes.string, out2.dtype)
     self.assertProtoEquals("""
@@ -496,8 +498,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       """, out1.op.node_def)
 
     with self.assertRaises(TypeError) as cm:
-      self._lib.apply_op("OutTypeListRestrict",
-                        t=[dtypes.string, dtypes.int32])
+      self._lib.apply_op("OutTypeListRestrict", t=[dtypes.string, dtypes.int32])
     self.assertEqual(str(cm.exception),
                      "DataType int32 for attr 't' "
                      "not in list of allowed values: string, bool")
@@ -774,7 +775,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     #                  "Don't know how to convert 5 to a TensorShapeProto for "
     #                  "argument 'a'")
 
-    with self.assertRaises(TypeError) as cm:
+    with self.assertRaises(TypeError):
       self._lib.apply_op("AttrPartialShape", a="ABC")
 
   def testAttrPartialShapeList(self):
@@ -892,8 +893,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                      "[string, string] that do not match expected type int32.")
 
     with self.assertRaises(TypeError) as cm:
-      self._lib.apply_op("NIntsIn", a=[self.Tensor(dtypes.string),
-                                      self.Tensor(dtypes.string)])
+      self._lib.apply_op("NIntsIn",
+                         a=[self.Tensor(dtypes.string),
+                            self.Tensor(dtypes.string)])
     self.assertEqual(str(cm.exception),
                      "Tensors in list passed to 'a' of 'NIntsIn' Op have "
                      "types [string, string] that do not match expected type "
@@ -913,8 +915,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                      "[int32, string] that do not match expected type int32.")
 
     with self.assertRaises(TypeError) as cm:
-      self._lib.apply_op("NIntsIn", a=[self.Tensor(dtypes.int32),
-                                      self.Tensor(dtypes.string)])
+      self._lib.apply_op("NIntsIn",
+                         a=[self.Tensor(dtypes.int32),
+                            self.Tensor(dtypes.string)])
     self.assertEqual(str(cm.exception),
                      "Tensors in list passed to 'a' of 'NIntsIn' Op "
                      "have types [int32, string] that do not match expected "
@@ -955,8 +958,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       """, op.node_def)
 
     op = self._lib.apply_op("NPolymorphicIn",
-                           a=[1, self.Tensor(dtypes.float32, name="x")],
-                           name="q")
+                            a=[1, self.Tensor(dtypes.float32, name="x")],
+                            name="q")
     self.assertProtoEquals("""
       name: 'q' op: 'NPolymorphicIn' input: 'q/a_0' input: 'x'
       attr { key: 'T' value { type: DT_FLOAT } }
@@ -986,8 +989,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                      "have types [int32, string] that don't all match.")
 
     with self.assertRaises(TypeError) as cm:
-      self._lib.apply_op("NPolymorphicIn",
-                        a=[38, self.Tensor(dtypes.string)])
+      self._lib.apply_op("NPolymorphicIn", a=[38, self.Tensor(dtypes.string)])
     self.assertEqual(str(cm.exception),
                      "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
                      "have types [int32, string] that don't all match.")
@@ -1001,7 +1003,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("NPolymorphicIn",
-                        a=["abcd", self.Tensor(dtypes.int32)])
+                         a=["abcd", self.Tensor(dtypes.int32)])
     self.assertEqual(str(cm.exception),
                      "Tensors in list passed to 'a' of 'NPolymorphicIn' Op "
                      "have types [string, int32] that don't all match.")
@@ -1027,8 +1029,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       attr { key: 'N' value { i: 2 } }
       """, op.node_def)
 
-    op = self._lib.apply_op("NPolymorphicRestrictIn", a=[False, True, False],
-                           name="b")
+    op = self._lib.apply_op("NPolymorphicRestrictIn",
+                            a=[False, True, False],
+                            name="b")
     self.assertProtoEquals("""
       name: 'b' op: 'NPolymorphicRestrictIn'
       input: 'b/a_0' input: 'b/a_1' input: 'b/a_2'
@@ -1098,8 +1101,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("NInPolymorphicTwice",
-                        a=[self.Tensor(dtypes.int32)],
-                        b=[self.Tensor(dtypes.string)])
+                         a=[self.Tensor(dtypes.int32)],
+                         b=[self.Tensor(dtypes.string)])
     self.assertEqual(str(cm.exception),
                      "Tensors in list passed to 'b' of "
                      "'NInPolymorphicTwice' Op have types [string] that do not "
@@ -1113,8 +1116,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                  "attr { name: 'T' type: 'type' } "
                  "attr { name: 'N' type: 'int' has_minimum: true minimum: 0 }")
 
-    op = self._lib.apply_op("NInTwoTypeVariables", a=[1, 2], b=[True, False],
-                           name="n")
+    op = self._lib.apply_op("NInTwoTypeVariables",
+                            a=[1, 2],
+                            b=[True, False],
+                            name="n")
     self.assertProtoEquals("""
       name: 'n' op: 'NInTwoTypeVariables'
       input: 'n/a_0' input: 'n/a_1' input: 'n/b_0' input: 'n/b_1'
@@ -1133,9 +1138,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       """, op.node_def)
 
     op = self._lib.apply_op("NInTwoTypeVariables",
-                           a=[self.Tensor(dtypes.int32, name="q")],
-                           b=[self.Tensor(dtypes.string, name="r")],
-                           name="p")
+                            a=[self.Tensor(dtypes.int32, name="q")],
+                            b=[self.Tensor(dtypes.string, name="r")],
+                            name="p")
     self.assertProtoEquals("""
       name: 'p' op: 'NInTwoTypeVariables' input: 'q' input: 'r'
       attr { key: 'S' value { type: DT_INT32 } }
@@ -1190,8 +1195,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("InPolymorphicTwice",
-                        a=[self.Tensor(dtypes.int32)],
-                        b=[self.Tensor(dtypes.string)])
+                         a=[self.Tensor(dtypes.int32)],
+                         b=[self.Tensor(dtypes.string)])
     self.assertEqual(str(cm.exception),
                      "Tensors in list passed to 'b' of 'InPolymorphicTwice' "
                      "Op have types [string] that do not match type int32 "
@@ -1258,8 +1263,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                  "attr { name: 'T' type: 'type' } "
                  "attr { name: 'N' type: 'int' has_minimum: true minimum: 2 }")
 
-    out1, out2 = self._lib.apply_op("NPolymorphicOut", N=2,
-                                   T=dtypes.int32, name="n")
+    out1, out2 = self._lib.apply_op("NPolymorphicOut",
+                                    N=2,
+                                    T=dtypes.int32,
+                                    name="n")
     self.assertEqual(dtypes.int32, out1.dtype)
     self.assertEqual(dtypes.int32, out2.dtype)
     self.assertProtoEquals("""
@@ -1461,7 +1468,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
                     [dtypes.int32],
                     [dtypes.int32, dtypes.float32]]:
           a, b, c = self._lib.apply_op("ComplexStruct",
-                                      n_a=n_a, n_b=n_b, t_c=t_c)
+                                       n_a=n_a,
+                                       n_b=n_b,
+                                       t_c=t_c)
 
           self.assertEqual(n_a, len(a))
           self.assertTrue(all(x.dtype == dtypes.int32 for x in a))
