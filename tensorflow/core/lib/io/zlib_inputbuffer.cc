@@ -41,8 +41,7 @@ ZlibInputBuffer::ZlibInputBuffer(
   z_stream_->next_in = Z_NULL;
   z_stream_->avail_in = 0;
 
-  // TODO(srbs): Move windowBits to compression options.
-  int status = inflateInit2(z_stream_.get(), -MAX_WBITS);
+  int status = inflateInit2(z_stream_.get(), zlib_options_.window_bits);
   if (status != Z_OK) {
     LOG(FATAL) << "inflateInit failed with status " << status;
     z_stream_.reset(NULL);

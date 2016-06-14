@@ -1256,6 +1256,7 @@ tf_cc_tests(
         "lib/io/path_test.cc",
         "lib/io/recordio_test.cc",
         "lib/io/table_test.cc",
+        "lib/io/zlib_buffers_test.cc",
         "lib/random/distribution_sampler_test.cc",
         "lib/random/philox_random_test.cc",
         "lib/random/random_distributions_test.cc",
