@@ -49,11 +49,18 @@ from tensorflow.python.training import session_manager as session_manager_lib
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor as tf_supervisor
 
-# Singletone for SummaryWriter per logdir folder.
+# Singleton for SummaryWriter per logdir folder.
 _SUMMARY_WRITERS = {}
 
 # Lock protecting _SUMMARY_WRITERS
 _summary_writer_lock = threading.Lock()
+
+
+def clear_summary_writers():
+  """Clear cached summary writers. Currently only used for unit tests."""
+  _summary_writer_lock.acquire()
+  _SUMMARY_WRITERS.clear()
+  _summary_writer_lock.release()
 
 
 def get_summary_writer(logdir):
@@ -398,7 +405,6 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
   summary_writer.flush()
 
 
-# TODO(ptucker): Add unit test.
 def evaluate(graph,
              output_dir,
              checkpoint_path,
@@ -563,8 +569,8 @@ def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
 def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
   """Run `output_dict` tensors with each input in `feed_dicts`.
 
-  If `checkpoint_path` is supplied, restore from checkpoint. Otherwise, init all
-  variables.
+  If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
+  init all variables.
 
   Args:
     output_dict: A `dict` mapping string names to `Tensor` objects to run.
@@ -609,6 +615,26 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
 
 
 def infer(restore_checkpoint_path, output_dict, feed_dict=None):
+  """Restore graph from `restore_checkpoint_path` and run `output_dict` tensors.
+
+  If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
+  init all variables.
+
+  Args:
+    restore_checkpoint_path: A string containing the path to a checkpoint to
+      restore.
+    output_dict: A `dict` mapping string names to `Tensor` objects to run.
+      Tensors must all be from the same graph.
+    feed_dict: `dict` object mapping `Tensor` objects to input values to feed.
+
+  Returns:
+    Dict of values read from `output_dict` tensors. Keys are the same as
+    `output_dict`, values are the results read from the corresponding `Tensor`
+    in `output_dict`.
+
+  Raises:
+    ValueError: if `output_dict` or `feed_dicts` is None or empty.
+  """
   return run_feeds(output_dict=output_dict,
                    feed_dicts=[feed_dict] if feed_dict is not None else [None],
                    restore_checkpoint_path=restore_checkpoint_path)[0]
