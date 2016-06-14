@@ -6,14 +6,17 @@ Concrete implementation of this class should provide following functions:
   * _get_predict_ops
 
 `Estimator` implemented below is a good example of how to use this class.
-
-Parameters:
-  model_dir: Directory to save model parameters, graph and etc.
 - - -
 
 #### `tf.contrib.learn.BaseEstimator.__init__(model_dir=None, config=None)` {#BaseEstimator.__init__}
 
+Initializes a BaseEstimator instance.
 
+##### Args:
+
+
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`config`</b>: A RunConfig instance.
 
 
 - - -

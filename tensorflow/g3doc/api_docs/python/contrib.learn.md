@@ -27,10 +27,11 @@ Concrete implementation of this class should provide following functions:
 
 Initializes a BaseEstimator instance.
 
-##### Parameters:
+##### Args:
 
 
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`config`</b>: A RunConfig instance.
 
 
 - - -
@@ -293,15 +294,20 @@ Constructs an Estimator instance.
                    (depending on data passed to `fit`),
               * `targets` are `Tensor` or
                   `dict` of `Tensor`s (for multi-head model).
-              * `mode` represents if this training, evaluation or prediction.
-                  See `ModeKeys` for example keys.
-              * `params` is a `dict` of hyperparameters. Will receive what is
-                  passed to Estimator in `params` parameter. This allows to
-                  configure Estimators from hyper parameter tunning.
+              * `mode` represents if this training, evaluation or
+                  prediction. See `ModeKeys` for example keys.
+              * `params` is a `dict` of hyperparameters. Will receive what
+                  is passed to Estimator in `params` parameter. This allows
+                  to configure Estimators from hyper parameter tunning.
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: parameters of `model_fn` don't match `params`.
 
 
 - - -
