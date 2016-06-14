@@ -33,8 +33,7 @@ class Experiment(object):
                eval_metrics=None,
                train_steps=None,
                eval_steps=100,
-               train_monitors=None,
-               local_train_step=1000):
+               train_monitors=None):
     """Constructor for `Experiment`.
 
     Args:
@@ -51,7 +50,6 @@ class Experiment(object):
         is raised), or for `eval_steps` steps, if specified.
       train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
         function.
-      local_train_step: Perform this many training steps when running local.
     """
     super(Experiment, self).__init__()
     self._estimator = estimator
@@ -61,7 +59,6 @@ class Experiment(object):
     self._train_steps = train_steps
     self._eval_steps = eval_steps
     self._train_monitors = train_monitors
-    self._local_train_step = local_train_step
 
   def train(self, delay_secs=0):
     """Fit the estimator using the training data.
@@ -114,10 +111,8 @@ class Experiment(object):
     Returns:
       The result of the `evaluate` call to the `Estimator`.
     """
-    orig_train_steps = self._train_steps
-    self._train_steps = self._local_train_step
+    # TODO(ipolosukhin): Add a ValidationMonitor to run in-training evaluation.
     self.train()
-    self._train_steps = orig_train_steps
     return self.evaluate()
 
   def _continuous_eval(self,

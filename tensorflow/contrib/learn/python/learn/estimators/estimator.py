@@ -275,6 +275,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     Raises:
       ValueError: If at least one of `x` or `y` is provided, and at least one of
           `input_fn` or `feed_fn` is provided.
+          Or if `metrics` is not `None` or `dict`.
     """
     if input_fn is None:
       if x is None:
@@ -286,6 +287,9 @@ class BaseEstimator(sklearn.BaseEstimator):
       raise ValueError('Can not provide both input_fn and either of x and y.')
     elif batch_size is not None:
       raise ValueError('Can not provide both input_fn and batch_size.')
+    if metrics is not None and not isinstance(metrics, dict):
+      raise ValueError('Metrics argument should be None or dict. '
+                       'Got %s.' % metrics)
     return self._evaluate_model(input_fn=input_fn,
                                 feed_fn=feed_fn,
                                 steps=steps,
@@ -713,6 +717,9 @@ class Estimator(BaseEstimator):
 
     Returns:
       metrics: `dict` of `Tensor` objects.
+
+    Raises:
+      ValueError: if `metrics` don't match `targets`.
     """
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': loss}
@@ -723,9 +730,25 @@ class Estimator(BaseEstimator):
     for name, metric in six.iteritems(metrics):
       if isinstance(name, tuple):
         # Multi-head metrics.
-        result[name[0]] = metric(predictions[name[1]], targets)
+        if not isinstance(predictions, dict):
+          raise ValueError(
+              'Metrics passed provide (name, prediction), '
+              'but predictions are not dict. '
+              'Metrics: %s, Predictions: %s.' % (metrics, predictions))
+        # Here are two options: targets are single Tensor or a dict.
+        if isinstance(targets, dict) and name[1] in targets:
+          # If targets are dict and the prediction name is in it, apply metric.
+          result[name[0]] = metric(predictions[name[1]], targets[name[1]])
+        else:
+          # Otherwise pass the targets to the metric.
+          result[name[0]] = metric(predictions[name[1]], targets)
       else:
         # Single head metrics.
+        if isinstance(predictions, dict):
+          raise ValueError(
+              'Metrics passed provide only name, no prediction, '
+              'but predictions are dict. '
+              'Metrics: %s, Targets: %s.' % (metrics, targets))
         result[name] = metric(predictions, targets)
     return result
 
