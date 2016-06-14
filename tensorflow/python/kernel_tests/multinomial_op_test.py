@@ -76,6 +76,17 @@ class MultinomialTest(tf.test.TestCase):
       sample1, sample2 = sess.run([sample_op1, sample_op2])
       self.assertAllEqual(sample1, sample2)
 
+  def testLargeLogits(self):
+    for neg in [True, False]:
+      with self.test_session(use_gpu=self.use_gpu):
+        logits = np.array([[1000.] * 5])
+        if neg:
+          logits *= -1
+        samples = tf.multinomial(logits, 10).eval()
+      # Sampled classes should be in-range.
+      self.assertTrue((samples >= 0).all())
+      self.assertTrue((samples < 5).all())
+
   def testSamplingCorrectness(self):
     np.random.seed(1618)  # Make it reproducible.
     num_samples = 21000
