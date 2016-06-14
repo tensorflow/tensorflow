@@ -24,8 +24,10 @@ namespace shape_inference {
 constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
-InferenceContext::InferenceContext(const std::vector<string>& input_shapes,
-                                   int num_outputs) {
+InferenceContext::InferenceContext(
+    const std::vector<string>& input_shapes, int num_outputs,
+    const std::vector<const Tensor*>& input_tensors)
+    : input_tensors_(input_tensors) {
   for (const string& spec : input_shapes) {
     if (spec == "?") {
       inputs_.push_back(CreateUnknownShape());
@@ -57,6 +59,9 @@ InferenceContext::InferenceContext(const std::vector<string>& input_shapes,
       inputs_.push_back(CreateShape(dims));
     }
   }
+
+  CHECK_LE(input_tensors_.size(), input_shapes.size());
+  input_tensors_.resize(input_shapes.size());
 
   for (int i = 0; i < num_outputs; ++i) {
     outputs_.push_back(CreateUnknownShape());
@@ -191,8 +196,50 @@ Status InferenceContext::Merge(const Shape* s0, const Shape* s1,
     // Invariant for merge was checked earlier, so CHECK is ok.
     TF_CHECK_OK(Merge(Dim(s0, i), Dim(s1, i), &dims[i]));
   }
-  *out = CreateShape(dims);
-  return Status::OK();
+  return ReturnCreatedShape(dims, out);
+}
+
+Status InferenceContext::Subshape(const Shape* s, int start,
+                                  const Shape** out) {
+  if (start < 0) {
+    *out = nullptr;
+    return errors::InvalidArgument("Negative start is not implemented; got ",
+                                   start);
+  }
+  if (start == 0) {
+    *out = s;
+    return Status::OK();
+  }
+  const int32 rank = Rank(s);
+  if (!RankKnown(s)) {
+    return ReturnUnknownShape(out);
+  }
+  if (rank < start) {
+    *out = nullptr;
+    return errors::InvalidArgument("Shape must have rank >= ", start,
+                                   ", but is ", rank);
+  }
+  std::vector<const Dimension*> dims;
+  dims.reserve(rank - start);
+  for (int i = start; i < rank; ++i) {
+    dims.push_back(Dim(s, i));
+  }
+  return ReturnCreatedShape(dims, out);
+}
+
+Status InferenceContext::Concatenate(const Shape* s1, const Shape* s2,
+                                     const Shape** out) {
+  if (!RankKnown(s1) || !RankKnown(s2)) {
+    return ReturnUnknownShape(out);
+  }
+  const int32 s1_rank = Rank(s1);
+  const int32 s2_rank = Rank(s2);
+  const int32 rank = s1_rank + s2_rank;
+  std::vector<const Dimension*> dims;
+  dims.reserve(rank);
+  for (int i = 0; i < s1_rank; ++i) dims.push_back(Dim(s1, i));
+  for (int i = 0; i < s2_rank; ++i) dims.push_back(Dim(s2, i));
+  return ReturnCreatedShape(dims, out);
 }
 
 const Shape* InferenceContext::CreateShape(
@@ -204,6 +251,38 @@ const Shape* InferenceContext::CreateShape(
 const Shape* InferenceContext::CreateUnknownShape() {
   all_shapes_.push_back(new Shape());
   return all_shapes_.back();
+}
+
+Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
+                                                    const Shape** out) {
+  const Tensor* t = input_tensor(input_idx);
+  if (t == nullptr) {
+    return ReturnUnknownShape(out);
+  }
+  if (t->shape().dims() != 1) {
+    *out = nullptr;
+    return errors::InvalidArgument("Input tensor must be rank 1, but was rank ",
+                                   t->shape().dims());
+  }
+  std::vector<const Dimension*> dims;
+  if (t->dtype() == DataType::DT_INT32) {
+    auto flat_t = t->flat<int32>();
+    for (int i = 0; i < flat_t.size(); ++i) {
+      dims.push_back(CreateDim(flat_t(i)));
+    }
+  } else if (t->dtype() == DataType::DT_INT64) {
+    auto flat_t = t->flat<int64>();
+    for (int i = 0; i < flat_t.size(); ++i) {
+      dims.push_back(CreateDim(flat_t(i)));
+    }
+  } else {
+    *out = nullptr;
+    return errors::InvalidArgument(
+        "Input tensor must be int32 or int64, but was ",
+        DataTypeString(t->dtype()));
+  }
+
+  return ReturnCreatedShape(dims, out);
 }
 
 const Dimension* InferenceContext::CreateDim(int64 value) {
