@@ -78,11 +78,18 @@ class InferenceContext {
   //               unknown (? for unknown #1 - multiple dimensions can be
   //               labeled with the same unknown number, and are deduplicated to
   //               the same Dimension*.
-  InferenceContext(const std::vector<string>& input_shapes, int num_outputs);
+  //
+  // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
+  InferenceContext(const std::vector<string>& input_shapes, int num_outputs,
+                   const std::vector<const Tensor*>& input_tensors = {});
   ~InferenceContext();
 
   const Shape* input(int idx) const { return inputs_[idx]; }
   int num_inputs() const { return inputs_.size(); }
+
+  // Returns the input tensor at index <idx>, or nullptr if the input tensor is
+  // not available at the time of shape inference.
+  const Tensor* input_tensor(int idx) const { return input_tensors_[idx]; }
 
   void set_output(int idx, const Shape* shape);
   int num_outputs() const { return outputs_.size(); }
@@ -142,6 +149,11 @@ class InferenceContext {
   const Shape* CreateShape(const std::vector<const Dimension*>& dims);
   const Shape* CreateUnknownShape();
 
+  // Returns in <out> a new shape whose dimension sizes come from input tensor
+  // <input_idx>. The tensor must be a 1-dimensional int32 or int64 tensor.  If
+  // the input tensor is NULL, then an unknown shape is returned.
+  Status CreateShapeFromShapeTensor(int input_idx, const Shape** out);
+
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
   const Dimension* CreateDim(int64 value);
@@ -163,6 +175,7 @@ class InferenceContext {
 
   // inputs_ and outputs_ refer to values from all_shapes_.
   std::vector<const Shape*> inputs_;
+  std::vector<const Tensor*> input_tensors_;
   std::vector<const Shape*> outputs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);

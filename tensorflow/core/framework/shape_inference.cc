@@ -24,8 +24,10 @@ namespace shape_inference {
 constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
-InferenceContext::InferenceContext(const std::vector<string>& input_shapes,
-                                   int num_outputs) {
+InferenceContext::InferenceContext(
+    const std::vector<string>& input_shapes, int num_outputs,
+    const std::vector<const Tensor*>& input_tensors)
+    : input_tensors_(input_tensors) {
   for (const string& spec : input_shapes) {
     if (spec == "?") {
       inputs_.push_back(CreateUnknownShape());
@@ -57,6 +59,9 @@ InferenceContext::InferenceContext(const std::vector<string>& input_shapes,
       inputs_.push_back(CreateShape(dims));
     }
   }
+
+  CHECK_LE(input_tensors_.size(), input_shapes.size());
+  input_tensors_.resize(input_shapes.size());
 
   for (int i = 0; i < num_outputs; ++i) {
     outputs_.push_back(CreateUnknownShape());
@@ -246,6 +251,38 @@ const Shape* InferenceContext::CreateShape(
 const Shape* InferenceContext::CreateUnknownShape() {
   all_shapes_.push_back(new Shape());
   return all_shapes_.back();
+}
+
+Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
+                                                    const Shape** out) {
+  const Tensor* t = input_tensor(input_idx);
+  if (t == nullptr) {
+    return ReturnUnknownShape(out);
+  }
+  if (t->shape().dims() != 1) {
+    *out = nullptr;
+    return errors::InvalidArgument("Input tensor must be rank 1, but was rank ",
+                                   t->shape().dims());
+  }
+  std::vector<const Dimension*> dims;
+  if (t->dtype() == DataType::DT_INT32) {
+    auto flat_t = t->flat<int32>();
+    for (int i = 0; i < flat_t.size(); ++i) {
+      dims.push_back(CreateDim(flat_t(i)));
+    }
+  } else if (t->dtype() == DataType::DT_INT64) {
+    auto flat_t = t->flat<int64>();
+    for (int i = 0; i < flat_t.size(); ++i) {
+      dims.push_back(CreateDim(flat_t(i)));
+    }
+  } else {
+    *out = nullptr;
+    return errors::InvalidArgument(
+        "Input tensor must be int32 or int64, but was ",
+        DataTypeString(t->dtype()));
+  }
+
+  return ReturnCreatedShape(dims, out);
 }
 
 const Dimension* InferenceContext::CreateDim(int64 value) {

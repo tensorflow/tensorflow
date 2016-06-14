@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -313,6 +314,41 @@ TEST(ShapeInferenceTest, CreateUnknownShape) {
   EXPECT_TRUE(u0 != u1);  // different pointers
 }
 
+TEST(ShapeInferenceTest, CreateShapeFromShapeTensor) {
+  auto create = [](Tensor* t) {
+    InferenceContext c({"?"}, 0 /* num_outputs */, {t});
+    const Shape* out;
+    Status s = c.CreateShapeFromShapeTensor(0, &out);
+    if (s.ok()) {
+      return c.DebugString(out);
+    } else {
+      EXPECT_TRUE(out == nullptr);
+      return s.error_message();
+    }
+  };
+
+  Tensor t;
+  EXPECT_EQ("?", create(nullptr));
+
+  t = ::tensorflow::test::AsTensor<int32>({1, 2, 3});
+  EXPECT_EQ("[1,2,3]", create(&t));
+
+  t = ::tensorflow::test::AsTensor<int64>({3, 2, 1});
+  EXPECT_EQ("[3,2,1]", create(&t));
+
+  t = ::tensorflow::test::AsTensor<int64>({});
+  EXPECT_EQ("[]", create(&t));
+
+  t = ::tensorflow::test::AsTensor<float>({1, 2, 3});
+  EXPECT_EQ("Input tensor must be int32 or int64, but was float", create(&t));
+
+  t = ::tensorflow::test::AsScalar<int32>(1);
+  EXPECT_EQ("Input tensor must be rank 1, but was rank 0", create(&t));
+
+  t = ::tensorflow::test::AsTensor<int32>({1, 2}, TensorShape{2, 1});
+  EXPECT_EQ("Input tensor must be rank 1, but was rank 2", create(&t));
+}
+
 TEST(ShapeInferenceTest, CreateDim) {
   InferenceContext c({}, 2 /* num_outputs */);
 
@@ -333,6 +369,16 @@ TEST(ShapeInferenceTest, CreateUnknownDim) {
   EXPECT_EQ("?", c.DebugString(d0));
   EXPECT_EQ("?", c.DebugString(d1));
   EXPECT_TRUE(d0 != d1);  // different pointers
+}
+
+TEST(ShapeInferenceTest, InputTensors) {
+  const Tensor t1 = tensorflow::test::AsTensor<float>({10});
+  const Tensor t2 = tensorflow::test::AsTensor<float>({20, 30});
+  InferenceContext c({"[1]", "[2]", "[3]"}, 2 /* num_outputs */, {&t1, &t2});
+
+  EXPECT_TRUE(c.input_tensor(0) == &t1);
+  EXPECT_TRUE(c.input_tensor(1) == &t2);
+  EXPECT_TRUE(c.input_tensor(2) == nullptr);
 }
 
 }  // namespace shape_inference
