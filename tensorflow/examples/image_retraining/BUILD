@@ -17,12 +17,39 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "retrain_with_summaries",
+    srcs = [
+        "retrain_with_summaries.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "retrain_test",
     size = "small",
     srcs = [
         "retrain.py",
         "retrain_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "retrain_with_summaries_test",
+    size = "small",
+    srcs = [
+        "retrain_with_summaries.py",
+        "retrain_with_summaries_test.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
