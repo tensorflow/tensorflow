@@ -830,9 +830,14 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
     vocab_size = self.length * self.source_column.dimension
 
     return _create_embedding_lookup(
-        sparse_id_values, vocab_size, num_outputs,
-        _add_variable_collection(weight_collections), 0., "sum",
-        trainable, self.name + "_weights")
+        input_tensor=sparse_id_values,
+        vocab_size=vocab_size,
+        dimension=num_outputs,
+        weight_collections=_add_variable_collection(weight_collections),
+        initializer=init_ops.zeros_initializer,
+        combiner="sum",
+        trainable=trainable,
+        name=self.name + "_weights")
 
 
 def bucketized_column(source_column, boundaries):
