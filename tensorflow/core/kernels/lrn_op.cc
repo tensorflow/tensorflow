@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -40,20 +41,22 @@ const int kSingleThreadedLRNDepthCutoff = 384;
 
 // Create a depth-by-depth band matrix with 1s along a swath of size (2 *
 // depth_radius + 1) around the diagonal.
+template <typename T>
 void GetBandMatrix(int depth, int depth_radius,
-                   Eigen::Tensor<float, 2, Eigen::RowMajor>* result) {
+                   Eigen::Tensor<T, 2, Eigen::RowMajor>* result) {
   result->setZero();
   for (int row = 0; row < depth; ++row) {
     const int begin = std::max<int>(0, row - depth_radius);
     const int end = std::min<int>(depth, row + depth_radius + 1);
     Eigen::DSizes<Eigen::DenseIndex, 2> start(row, begin);
     Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, end - begin);
-    result->slice(start, sizes).setConstant(1.0f);
+    result->slice(start, sizes).setConstant(T(1));
   }
 }
 
 }  // namespace
 
+template <typename T>
 class LRNOp : public OpKernel {
  public:
   explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -64,9 +67,13 @@ class LRNOp : public OpKernel {
                 errors::InvalidArgument("depth_radius = ", depth_radius64,
                                         " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
-    OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
-    OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
+    float tmp;
+    OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
+    bias_ = T(tmp);
+    OP_REQUIRES_OK(context, context->GetAttr("alpha", &tmp));
+    alpha_ = T(tmp);
+    OP_REQUIRES_OK(context, context->GetAttr("beta", &tmp));
+    beta_ = T(tmp);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -91,12 +98,12 @@ class LRNOp : public OpKernel {
     SingleThreadedLRN(in, batch, rows, cols, depth, output);
 #else
     if (depth > kSingleThreadedLRNDepthCutoff &&
-        (beta_ == 0.5f || beta_ == 1.0f)) {
+        (beta_ == T(0.5) || beta_ == T(1))) {
       SingleThreadedLRN(in, batch, rows, cols, depth, output);
       return;
     }
 
-    auto in_shaped = in.shaped<float, 2>({nodes * batch, depth});
+    auto in_shaped = in.shaped<T, 2>({nodes * batch, depth});
 
     OP_REQUIRES(context,
                 (depth + depth_radius_) <= std::numeric_limits<int>::max(),
@@ -104,16 +111,16 @@ class LRNOp : public OpKernel {
                                         depth_radius_, " exceeds int max."));
     // Multiplying the input with the band matrix has the effect of reducing the
     // correct patch along the depth.
-    Eigen::Tensor<float, 2, Eigen::RowMajor> multiplier(depth, depth);
-    GetBandMatrix(depth, depth_radius_, &multiplier);
+    Eigen::Tensor<T, 2, Eigen::RowMajor> multiplier(depth, depth);
+    GetBandMatrix<T>(depth, depth_radius_, &multiplier);
 
-    auto out_shaped = output->shaped<float, 2>({nodes * batch, depth});
+    auto out_shaped = output->shaped<T, 2>({nodes * batch, depth});
     Eigen::array<DimPair, 1> dims = {{DimPair(1, 0)}};
     auto tmp = in_shaped.square().contract(multiplier, dims) * alpha_ + bias_;
-    if (beta_ == 1.0f) {
+    if (beta_ == T(1)) {
       out_shaped.device(context->eigen_cpu_device()) =
           in_shaped * tmp.inverse();
-    } else if (beta_ == 0.5f) {
+    } else if (beta_ == T(0.5)) {
       out_shaped.device(context->eigen_cpu_device()) = in_shaped * tmp.rsqrt();
     } else {
       out_shaped.device(context->eigen_cpu_device()) =
@@ -123,18 +130,19 @@ class LRNOp : public OpKernel {
   }
 
  private:
-  typedef Eigen::Tensor<float, 1, Eigen::RowMajor>::DimensionPair DimPair;
+  typedef typename Eigen::Tensor<T, 1, Eigen::RowMajor>::DimensionPair DimPair;
 
   void SingleThreadedLRN(const Tensor& in, const int batch, const int rows,
                          const int cols, const int depth, Tensor* out) {
-    Eigen::Map<const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>>
-    data_in(in.flat<float>().data(), depth, batch * rows * cols);
+    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> data_in(
+        in.flat<T>().data(), depth, batch * rows * cols);
 
-    Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>> data_out(
-        out->flat<float>().data(), depth, batch * rows * cols);
+    Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>> data_out(
+        out->flat<T>().data(), depth, batch * rows * cols);
 
     const int double_depth_radius = depth_radius_ * 2;
-    Eigen::VectorXf padded_square(data_in.rows() + double_depth_radius);
+    Eigen::Matrix<T, Eigen::Dynamic, 1> padded_square(data_in.rows() +
+                                                      double_depth_radius);
     padded_square.setZero();
     for (int r = 0; r < data_in.cols(); ++r) {
       // Do local response normalization for data_in(:, r). First, compute the
@@ -142,7 +150,7 @@ class LRNOp : public OpKernel {
       padded_square.block(depth_radius_, 0, data_out.rows(), 1) =
           data_in.col(r).cwiseProduct(data_in.col(r)) * alpha_;
       // Then, compute the scale and write it to data_out.
-      float accumulated_scale = 0;
+      T accumulated_scale(0);
       for (int i = 0; i < double_depth_radius; ++i) {
         accumulated_scale += padded_square(i);
       }
@@ -153,9 +161,9 @@ class LRNOp : public OpKernel {
       }
     }
 
-    if (beta_ == 1) {
+    if (beta_ == T(1)) {
       data_out.array() = data_in.array() * data_out.array().inverse();
-    } else if (beta_ == 0.5) {
+    } else if (beta_ == T(0.5)) {
       data_out.array() = data_in.array() * data_out.array().rsqrt();
     } else {
       data_out.array() =
@@ -164,15 +172,22 @@ class LRNOp : public OpKernel {
   }
 
   int depth_radius_;
-  float bias_;
-  float alpha_;
-  float beta_;
+  T bias_;
+  T alpha_;
+  T beta_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("LRN").Device(DEVICE_CPU), LRNOp);
+#define REGISTER_CPU(T)    \
+  REGISTER_KERNEL_BUILDER( \
+      Name("LRN").Device(DEVICE_CPU).TypeConstraint<T>("T"), LRNOp<T>);
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_half(REGISTER_CPU);
+
+#undef REGISTER_CPU
 
 #if !defined(IS_MOBILE_PLATFORM)
 
+template <typename T>
 class LRNGradOp : public OpKernel {
  public:
   explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -183,9 +198,13 @@ class LRNGradOp : public OpKernel {
                 errors::InvalidArgument("depth_radius = ", depth_radius64,
                                         " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
-    OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
-    OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
+    float tmp;
+    OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
+    bias_ = T(tmp);
+    OP_REQUIRES_OK(context, context->GetAttr("alpha", &tmp));
+    alpha_ = T(tmp);
+    OP_REQUIRES_OK(context, context->GetAttr("beta", &tmp));
+    beta_ = T(tmp);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -209,15 +228,15 @@ class LRNGradOp : public OpKernel {
             "input_grads, input_image, and out_image should have the same "
             "shape"));
     const auto nodes = cols * rows;
-    auto grads_shaped = in_grads.shaped<float, 2>({nodes * batch, depth});
-    auto in_shaped = in_image.shaped<float, 2>({nodes * batch, depth});
-    auto activations = out_image.shaped<float, 2>({nodes * batch, depth});
+    auto grads_shaped = in_grads.shaped<T, 2>({nodes * batch, depth});
+    auto in_shaped = in_image.shaped<T, 2>({nodes * batch, depth});
+    auto activations = out_image.shaped<T, 2>({nodes * batch, depth});
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(
                        0, TensorShape({batch, rows, cols, depth}), &output));
-    auto out_shaped = output->shaped<float, 2>({nodes * batch, depth});
+    auto out_shaped = output->shaped<T, 2>({nodes * batch, depth});
     out_shaped.setZero();
 
     auto shard = [this, activations, in_shaped, grads_shaped, out_shaped,
@@ -243,20 +262,20 @@ class LRNGradOp : public OpKernel {
           int64 depth_begin = std::max<int64>(0, j - depth_radius_);
           int64 depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
 
-          float norm = 0.0f;
+          T norm(0);
           for (int64 k = depth_begin; k < depth_end; ++k) {
             norm += in_shaped(i, k) * in_shaped(i, k);
           }
           norm = alpha_ * norm + bias_;
-          DCHECK_GT(norm, 1e-6);
+          DCHECK_GT(norm, T(1e-6));
           for (int64 k = depth_begin; k < depth_end; ++k) {
-            float dyi = -2.0f * alpha_ * beta_ * in_shaped(i, k) *
-                        activations(i, j) / norm;
+            T dyi = T(-2) * alpha_ * beta_ * in_shaped(i, k) *
+                    activations(i, j) / norm;
             if (k == j) {
-              dyi += std::pow(norm, -beta_);
+              dyi += Eigen::numext::pow(norm, -beta_);
             }
             dyi *= grads_shaped(i, j);
-            const_cast<TTypes<float, 2>::Tensor&>(out_shaped)(i, k) += dyi;
+            const_cast<typename TTypes<T, 2>::Tensor&>(out_shaped)(i, k) += dyi;
           }
         }
       }
@@ -267,15 +286,22 @@ class LRNGradOp : public OpKernel {
   }
 
  private:
-  typedef Eigen::Tensor<float, 1, Eigen::RowMajor>::DimensionPair DimPair;
+  typedef typename Eigen::Tensor<T, 1, Eigen::RowMajor>::DimensionPair DimPair;
 
   int depth_radius_;
-  float bias_;
-  float alpha_;
-  float beta_;
+  T bias_;
+  T alpha_;
+  T beta_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("LRNGrad").Device(DEVICE_CPU), LRNGradOp);
+#define REGISTER_CPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("LRNGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      LRNGradOp<T>);
+TF_CALL_float(REGISTER_CPU);
+TF_CALL_half(REGISTER_CPU);
+
+#undef REGISTER_CPU
 
 #endif  // !defined(IS_MOBILE_PLATFORM)
 

@@ -34,7 +34,7 @@ from tensorflow.python.ops.nn_ops import conv2d
 from tensorflow.python.ops.nn_ops import softmax
 
 from tensorflow.python.platform import tf_logging as logging
-
+from tensorflow.python.util import nest
 
 def _get_concat_variable(name, shape, dtype, num_shards):
   """Get a sharded variable concatenated into one tensor."""
@@ -486,9 +486,7 @@ class GridLSTMCell(rnn_cell.RNNCell):
 
 
 # pylint: disable=protected-access
-_is_sequence = rnn_cell._is_sequence
 _linear = rnn_cell._linear
-_unpacked_state = rnn_cell._unpacked_state
 # pylint: enable=protected-access
 
 
@@ -524,7 +522,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
     """
     if not isinstance(cell, rnn_cell.RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
-    if _is_sequence(cell.state_size) and not state_is_tuple:
+    if nest.is_sequence(cell.state_size) and not state_is_tuple:
       raise ValueError("Cell returns tuple of states, but the flag "
                        "state_is_tuple is not set. State size is: %s"
                        % str(cell.state_size))
@@ -580,7 +578,7 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       inputs = _linear([inputs, attns], input_size, True)
       lstm_output, new_state = self._cell(inputs, state)
       if self._state_is_tuple:
-        new_state_cat = array_ops.concat(1, _unpacked_state(new_state))
+        new_state_cat = array_ops.concat(1, nest.flatten(new_state))
       else:
         new_state_cat = new_state
       new_attns, new_attn_states = self._attention(new_state_cat, attn_states)

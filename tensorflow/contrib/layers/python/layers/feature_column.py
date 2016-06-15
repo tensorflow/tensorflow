@@ -261,9 +261,14 @@ class _SparseColumn(_FeatureColumn,
                       weight_collections=None,
                       trainable=True):
     return _create_embedding_lookup(
-        input_tensor, self.length, num_outputs,
-        _add_variable_collection(weight_collections), 0., self.combiner,
-        trainable, self.name + "_weights")
+        input_tensor=input_tensor,
+        vocab_size=self.length,
+        dimension=num_outputs,
+        weight_collections=_add_variable_collection(weight_collections),
+        initializer=init_ops.zeros_initializer,
+        combiner=self.combiner,
+        trainable=trainable,
+        name=self.name + "_weights")
 
 
 class _SparseColumnIntegerized(_SparseColumn):
@@ -441,7 +446,7 @@ def sparse_column_with_keys(column_name,
 
 class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     "_EmbeddingColumn",
-    ["sparse_id_column", "dimension", "combiner", "stddev"])):
+    ["sparse_id_column", "dimension", "combiner", "initializer"])):
   """Represents an embedding column.
 
   Args:
@@ -455,15 +460,27 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
       For more information: `tf.embedding_lookup_sparse`.
-    stddev: the standard deviation to be used in embedding initialization.
-      Default is 1/sqrt(sparse_id_column.length).
+    initializer: A variable initializer function to be used in embedding
+      variable initialization. If not specified, defaults to
+      `tf.truncated_normal_initializer` with mean 0.0 and standard deviation
+      1/sqrt(sparse_id_column.length).
   """
 
-  def __new__(cls, sparse_id_column, dimension, combiner="mean", stddev=None):
-    if stddev is None:
+  def __new__(cls,
+              sparse_id_column,
+              dimension,
+              combiner="mean",
+              initializer=None):
+    if initializer is not None and not callable(initializer):
+      raise ValueError("initializer must be callable if specified.")
+    if initializer is None:
       stddev = 1 / math.sqrt(sparse_id_column.length)
+      # TODO(b/25671353): Better initial value?
+      initializer = init_ops.truncated_normal_initializer(mean=0.0,
+                                                          stddev=stddev)
     return super(_EmbeddingColumn, cls).__new__(cls, sparse_id_column,
-                                                dimension, combiner, stddev)
+                                                dimension, combiner,
+                                                initializer)
 
   @property
   def name(self):
@@ -481,7 +498,22 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
   @property
   def key(self):
     """Returns a string which will be used as a key when we do sorting."""
-    return "{}".format(self)
+    fields_values = []
+    # pylint: disable=protected-access
+    for k, v in self._asdict().items():
+      if k == "initializer":
+        # Excludes initializer from the key since we don't support allowing
+        # users to specify different initializers for the same embedding column.
+        # Special treatment is needed since the default str form of a
+        # function contains its address, which could introduce non-determinism
+        # in sorting.
+        continue
+      fields_values.append("{}={}".format(k, v))
+    # pylint: enable=protected-access
+
+    # This is effectively the same format as str(self), except with our special
+    # treatment.
+    return "_EmbeddingColumn(%s)" % ", ".join(fields_values)
 
   def insert_transformed_feature(self, columns_to_tensors):
     self.sparse_id_column.insert_transformed_feature(columns_to_tensors)
@@ -492,9 +524,14 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
                          weight_collections=None,
                          trainable=True):
     output, _ = _create_embedding_lookup(
-        input_tensor, self.length, self.dimension,
-        _add_variable_collection(weight_collections), self.stddev,
-        self.combiner, trainable, self.name + "_weights")
+        input_tensor=input_tensor,
+        vocab_size=self.length,
+        dimension=self.dimension,
+        weight_collections=_add_variable_collection(weight_collections),
+        initializer=self.initializer,
+        combiner=self.combiner,
+        trainable=trainable,
+        name=self.name + "_weights")
     return output
 
   # pylint: disable=unused-argument
@@ -507,7 +544,10 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
                      "Please use sparse_column.".format(self))
 
 
-def embedding_column(sparse_id_column, dimension, combiner="mean", stddev=None):
+def embedding_column(sparse_id_column,
+                     dimension,
+                     combiner="mean",
+                     initializer=None):
   """Creates an _EmbeddingColumn.
 
   Args:
@@ -521,13 +561,15 @@ def embedding_column(sparse_id_column, dimension, combiner="mean", stddev=None):
         * "mean": do l1 normalization
         * "sqrtn": do l2 normalization
       For more information: `tf.embedding_lookup_sparse`.
-    stddev: the standard deviation to be used in embedding initialization.
-      Default is 1/sqrt(sparse_id_column.length).
+    initializer: A variable initializer function to be used in embedding
+      variable initialization. If not specified, defaults to
+      `tf.truncated_normal_initializer` with mean 0.0 and standard deviation
+      1/sqrt(sparse_id_column.length).
 
   Returns:
     An _EmbeddingColumn.
   """
-  return _EmbeddingColumn(sparse_id_column, dimension, combiner, stddev)
+  return _EmbeddingColumn(sparse_id_column, dimension, combiner, initializer)
 
 
 class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
@@ -788,9 +830,14 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
     vocab_size = self.length * self.source_column.dimension
 
     return _create_embedding_lookup(
-        sparse_id_values, vocab_size, num_outputs,
-        _add_variable_collection(weight_collections), 0., "sum",
-        trainable, self.name + "_weights")
+        input_tensor=sparse_id_values,
+        vocab_size=vocab_size,
+        dimension=num_outputs,
+        weight_collections=_add_variable_collection(weight_collections),
+        initializer=init_ops.zeros_initializer,
+        combiner="sum",
+        trainable=trainable,
+        name=self.name + "_weights")
 
 
 def bucketized_column(source_column, boundaries):
@@ -944,9 +991,14 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
                       weight_collections=None,
                       trainable=True):
     return _create_embedding_lookup(
-        input_tensor, self.length, num_outputs,
-        _add_variable_collection(weight_collections), -1, self.combiner,
-        trainable, self.name + "_weights")
+        input_tensor=input_tensor,
+        vocab_size=self.length,
+        dimension=num_outputs,
+        weight_collections=_add_variable_collection(weight_collections),
+        initializer=init_ops.zeros_initializer,
+        combiner=self.combiner,
+        trainable=trainable,
+        name=self.name + "_weights")
 
 
 def crossed_column(columns, hash_bucket_size, combiner="sum"):
@@ -1120,8 +1172,8 @@ def _max_size_embedding_partitioner(max_shard_bytes=(64 << 20) - 1):
 
 
 def _create_embedding_lookup(input_tensor, vocab_size, dimension,
-                             weight_collections, stddev, combiner, trainable,
-                             name):
+                             weight_collections, initializer, combiner,
+                             trainable, name):
   """Creates embedding variable and does a lookup.
 
   Args:
@@ -1129,7 +1181,8 @@ def _create_embedding_lookup(input_tensor, vocab_size, dimension,
     vocab_size: An integer specifying the vocabulary size.
     dimension: An integer specifying the embedding vector dimension.
     weight_collections: List of graph collections to which weights are added.
-    stddev: the standard deviation to be used in embedding initialization.
+    initializer: A variable initializer function to be used in embedding
+      variable initialization.
     combiner: A string specifying how to reduce if the sparse column is
       multivalent. Currently "mean", "sqrtn" and "sum" are supported:
         * "sum": do not normalize features in the column
@@ -1142,14 +1195,17 @@ def _create_embedding_lookup(input_tensor, vocab_size, dimension,
 
   Returns:
     A Tensor with shape [batch_size, dimension] and embedding Variable.
+
+  Raises:
+    ValueError: If initializer is None or not callable.
   """
   slicing = _max_size_embedding_partitioner()(vocab_size, dimension)
   logging.info("Slicing=%s for name=%s, vocab_size=%d, embed_dim=%d",
                str(slicing), name, vocab_size, dimension)
-  if stddev > 0:
-    initializer = init_ops.truncated_normal_initializer(stddev=stddev)
-  else:
-    initializer = init_ops.zeros_initializer
+  if not initializer:
+    raise ValueError("initializer must be defined.")
+  if not callable(initializer):
+    raise ValueError("initializer must be callable.")
   embeddings = partitioned_variables.create_partitioned_variables(
       shape=[vocab_size, dimension],
       slicing=slicing,
