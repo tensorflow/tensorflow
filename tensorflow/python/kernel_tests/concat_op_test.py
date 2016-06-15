@@ -286,6 +286,11 @@ class ConcatOpTest(tf.test.TestCase):
       tf.concat(3, [tf.constant(10.0, shape=[4, 4, 4]),
                            tf.constant(20.0, shape=[4, 4, 4])])
 
+    # concat_dim < 0
+    with self.assertRaises(ValueError):
+      tf.concat(-1, [tf.constant(10.0, shape=[4, 4, 4]),
+                           tf.constant(20.0, shape=[4, 4, 4])])
+
   def testShapeWithUnknownConcatDim(self):
     p1 = tf.placeholder(tf.float32)
     c1 = tf.constant(10.0, shape=[4, 4, 4, 4])

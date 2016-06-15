@@ -525,14 +525,14 @@ def _ConcatShape(op):
     # output shape.
     concat_dim = int(concat_dim)
     if concat_dim < 0:
-        raise ValueError("Expected concat_dim >= 0, but got %d" % concat_dim)
+      raise ValueError("Expected concat_dim >= 0, but got %d" % concat_dim)
 
     output_shape = op.inputs[1].get_shape()
     for value in op.inputs[2:]:
       value_shape = value.get_shape()
       if value_shape.ndims is not None and concat_dim >= value_shape.ndims:
         raise ValueError("Expected concat_dim in range [0, %d), but got %d" %
-                (concat_dim, value_shape.ndims))
+                         (value_shape.ndims, concat_dim))
       before = output_shape[:concat_dim].merge_with(value_shape[:concat_dim])
       at = output_shape[concat_dim] + value_shape[concat_dim]
       after = output_shape[
