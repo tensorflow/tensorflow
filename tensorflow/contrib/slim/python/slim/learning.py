@@ -286,9 +286,23 @@ def train_loop(sv,
   try:
     while not sv.should_stop():
       start_time = time.time()
-      total_loss, np_global_step, np_should_log, np_should_stop = sess.run(
-          [train_op, global_step, should_log_op, should_stop_op])
+      total_loss, np_global_step = sess.run([train_op, global_step])
       time_elapsed = time.time() - start_time
+
+      # TODO(nsilberman): figure out why we can't put this into sess.run. The
+      # issue right now is that the stop check depends on the global step. The
+      # increment of global step often happens via the train op, which used
+      # created using optimizer.apply_gradients.
+      #
+      # Since running `train_op` causes the global step to be incremented, one
+      # would expected that using a control dependency would allow the
+      # should_stop check to be run in the same session.run call:
+      #
+      #   with ops.control_dependencies([train_op]):
+      #     should_stop_op = ...
+      #
+      # However, this actually seems not to work on certain platforms.
+      np_should_stop, np_should_log = sess.run([should_stop_op, should_log_op])
 
       if np_should_log:
         logging.info('global step %d: loss = %.4f (%.2f sec)',
@@ -404,15 +418,12 @@ def train(
     cleanup_op = sync_optimizer.get_clean_up_op()
 
   if number_of_steps:
-    # Need to subtract 1 since the check for greater/equality is done
-    # concurrently with the increment of global_step.
-    # TODO(nsilberman): add a dependency to ensure the order of operations.
-    should_stop_op = math_ops.greater_equal(global_step, number_of_steps-1)
+    should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
   else:
     should_stop_op = constant_op.constant(False)
 
-  should_log_op = math_ops.equal(math_ops.mod(global_step, log_every_n_steps),
-                                 0)
+  should_log_op = math_ops.equal(
+      math_ops.mod(global_step, log_every_n_steps), 0)
 
   sv = supervisor.Supervisor(
       graph=graph,
