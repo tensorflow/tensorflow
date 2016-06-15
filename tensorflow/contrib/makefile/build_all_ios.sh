@@ -16,10 +16,22 @@
 
 set -e
 
+# Make sure we're on OS X.
+if [[ $(uname) != "Darwin" ]]; then
+    echo "ERROR: This makefile build requires OS X, which the current system "\
+    "is not."
+    exit 1
+fi
+
+# Make sure we're in the correct directory, at the root of the source tree.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd ${SCRIPT_DIR}/../../../
+
 # Remove any old files first.
 make -f tensorflow/contrib/makefile/Makefile clean
 rm -rf tensorflow/contrib/makefile/downloads
 
+# Pull down the required versions of the frameworks we need.
 tensorflow/contrib/makefile/download_dependencies.sh
 
 # Make sure the installed system version of protobuf is up to date.
