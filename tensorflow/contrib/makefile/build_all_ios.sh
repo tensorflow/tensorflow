@@ -47,3 +47,6 @@ tensorflow/contrib/makefile/compile_ios_protobuf.sh
 
 # Build the iOS TensorFlow libraries.
 tensorflow/contrib/makefile/compile_ios_tensorflow.sh
+
+# Creates a static universal library in 
+# tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a
