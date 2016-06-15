@@ -360,7 +360,7 @@ class TrainTest(tf.test.TestCase):
             log_every_n_steps=10)
         self.assertLess(loss, .015)
 
-  def create_train_op(self):
+  def create_train_op(self, learning_rate=1.0, gradient_multiplier=1.0):
     tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
     tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
@@ -368,9 +368,18 @@ class TrainTest(tf.test.TestCase):
     slim.losses.log_loss(tf_predictions, tf_labels)
     total_loss = slim.losses.get_total_loss()
 
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+    optimizer = tf.train.GradientDescentOptimizer(
+        learning_rate=learning_rate)
 
-    return slim.learning.create_train_op(total_loss, optimizer)
+    if gradient_multiplier != 1.0:
+      variables = tf.trainable_variables()
+      gradient_multipliers = {var: gradient_multiplier for var in variables}
+    else:
+      gradient_multipliers = None
+
+    return slim.learning.create_train_op(
+        total_loss, optimizer,
+        gradient_multipliers=gradient_multipliers)
 
   def testTrainWithInitFromCheckpoint(self):
     logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs1/')
@@ -478,7 +487,7 @@ class TrainTest(tf.test.TestCase):
     slim.losses.log_loss(tf_predictions, tf_labels)
     return slim.losses.get_total_loss()
 
-  def  testTrainAllVarsHasLowerLossThanTrainSubsetOfVars(self):
+  def testTrainAllVarsHasLowerLossThanTrainSubsetOfVars(self):
     logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs3/')
     if tf.gfile.Exists(logdir1):  # For running on jenkins.
       tf.gfile.DeleteRecursively(logdir1)
@@ -585,6 +594,51 @@ class TrainTest(tf.test.TestCase):
         # Check that the biases have been updated, but weights have not.
         self.assertAlmostEqual(np.linalg.norm(weights_values - new_weights), 0)
         self.assertGreater(np.linalg.norm(biases_values - new_biases), 0)
+
+  def testTrainWithAlteredGradients(self):
+    # Use the same learning rate but different gradient multipliers
+    # to train two models. Model with equivalently larger learning
+    # rate (i.e., learning_rate * gradient_multiplier) has smaller
+    # training loss.
+    logdir1 = os.path.join(self.get_temp_dir(), 'tmp_logs6/')
+    logdir2 = os.path.join(self.get_temp_dir(), 'tmp_logs7/')
+    if tf.gfile.Exists(logdir1):  # For running on jenkins.
+      tf.gfile.DeleteRecursively(logdir1)
+    if tf.gfile.Exists(logdir2):  # For running on jenkins.
+      tf.gfile.DeleteRecursively(logdir2)
+
+    multipliers = [1., 1000.]
+    number_of_steps = 10
+    losses = []
+    learning_rate = 0.001
+
+    # First, train the model with equivalently smaller learning rate.
+    g = tf.Graph()
+    with g.as_default():
+      tf.set_random_seed(0)
+      train_op = self.create_train_op(
+          learning_rate=learning_rate,
+          gradient_multiplier=multipliers[0])
+      loss = slim.learning.train(
+          train_op, logdir1, number_of_steps=number_of_steps)
+      losses.append(loss)
+      self.assertGreater(loss, .5)
+
+    # Second, train the model with equivalently larger learning rate.
+    g = tf.Graph()
+    with g.as_default():
+      tf.set_random_seed(0)
+      train_op = self.create_train_op(
+          learning_rate=learning_rate,
+          gradient_multiplier=multipliers[1])
+      loss = slim.learning.train(
+          train_op, logdir2, number_of_steps=number_of_steps)
+      losses.append(loss)
+      self.assertLess(loss, .5)
+
+    # The loss of the model trained with larger learning rate should
+    # be smaller.
+    self.assertGreater(losses[0], losses[1])
 
 
 if __name__ == '__main__':
