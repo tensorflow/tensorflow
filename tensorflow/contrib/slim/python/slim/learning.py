@@ -163,7 +163,8 @@ def create_train_op(
     summarize_gradients=False,
     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
     aggregation_method=None,
-    colocate_gradients_with_ops=False):
+    colocate_gradients_with_ops=False,
+    gradient_multipliers=None):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -185,7 +186,9 @@ def create_train_op(
       Valid values are defined in the class `AggregationMethod`.
     colocate_gradients_with_ops: Whether or not to try colocating the gradients
       with the ops that generated them.
-
+    gradient_multipliers: A dictionary of either `Variables` or `Variable` op
+      names to the coefficient by which the associated gradient should be
+      scaled.
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
@@ -225,6 +228,10 @@ def create_train_op(
       total_loss, variables_to_train, gate_gradients=gate_gradients,
       aggregation_method=aggregation_method,
       colocate_gradients_with_ops=colocate_gradients_with_ops)
+
+  # Scale gradients.
+  if gradient_multipliers:
+    grads = multiply_gradients(grads, gradient_multipliers)
 
   # Clip gradients.
   if clip_gradient_norm > 0:
