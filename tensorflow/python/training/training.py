@@ -188,6 +188,7 @@ from tensorflow.python.training.summary_io import SummaryWriter
 from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
+from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 
 
@@ -230,6 +231,7 @@ __all__.extend([
     "LooperThread",
     "SaverDef",
     "SequenceExample",
+    "do_quantize_training_on_graphdef",
     "export_meta_graph",
     "generate_checkpoint_state_proto",
     "import_meta_graph",

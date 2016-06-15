@@ -75,17 +75,17 @@ from __future__ import print_function
 import sys
 import numpy as np
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
+# 'Constant' gets imported in the module 'array_ops'.
+from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
-# 'Constant' gets imported in the module 'array_ops'.
-from tensorflow.python.ops.constant_op import constant
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *

@@ -553,7 +553,7 @@ The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
 This op is equivalent to applying the normal `tf.nn.softmax()` to each innermost
 logical submatrix with shape `[B, C]`, but with the catch that *the implicitly
 zero elements do not participate*.  Specifically, the algorithm is equivalent
-to:
+to the following:
 
   (1) Applies `tf.nn.softmax()` to a densified view of each innermost submatrix
       with shape `[B, C]`, along the size-C dimension;

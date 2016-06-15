@@ -187,7 +187,7 @@ Outputs random values from the Gamma distribution(s) described by alpha.
 
 This op uses the algorithm by Marsaglia et al. to acquire samples via
 transformation-rejection from pairs of uniform and normal random variables.
-http://dl.acm.org/citation.cfm?id=358414
+See http://dl.acm.org/citation.cfm?id=358414
 
 shape: 1-D integer tensor. Shape of independent samples to draw from each
   distribution described by the shape parameters given in alpha.

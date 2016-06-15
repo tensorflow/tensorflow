@@ -100,10 +100,10 @@ from tensorflow.python.util.all_util import make_all
 
 # Import modules whose docstrings contribute, for use by make_all below.
 from tensorflow.python.client import client_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops

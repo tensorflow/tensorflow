@@ -32,6 +32,12 @@ namespace tensorflow {
 //    - g is null.
 //    - More than 1 unknown ops encountered.
 Status DoQuantizeTraining(int32 num_bits, Graph* g);
+
+// Converts a input GraphDef and returns a rewritten GraphDef with the
+// quantized training.
+Status DoQuantizeTrainingOnSerializedGraphDef(const string& input_graph,
+                                              int32 num_bits,
+                                              string* result_graph);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_GRAPH_QUANTIZE_TRAINING_H_

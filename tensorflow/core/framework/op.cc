@@ -32,38 +32,51 @@ namespace tensorflow {
 
 OpRegistryInterface::~OpRegistryInterface() {}
 
+Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
+                                        const OpDef** op_def) const {
+  *op_def = nullptr;
+  const OpRegistrationData* op_reg_data = nullptr;
+  TF_RETURN_IF_ERROR(LookUp(op_type_name, &op_reg_data));
+  *op_def = &op_reg_data->op_def;
+  return Status::OK();
+}
+
 OpRegistry::OpRegistry() : initialized_(false) {}
 
-void OpRegistry::Register(const OpDef& op_def) {
+OpRegistry::~OpRegistry() {
+  for (const auto& e : registry_) delete e.second;
+}
+
+void OpRegistry::Register(std::unique_ptr<OpRegistrationData> op_reg_data) {
+  OpRegistrationData* raw_ptr = op_reg_data.get();
+
   mutex_lock lock(mu_);
   if (initialized_) {
-    TF_QCHECK_OK(RegisterAlreadyLocked(op_def)) << "Attempting to register: "
-                                                << SummarizeOpDef(op_def);
+    TF_QCHECK_OK(RegisterAlreadyLocked(std::move(op_reg_data)));
   } else {
-    deferred_.push_back(op_def);
+    deferred_.push_back(std::move(op_reg_data));
   }
   if (watcher_) {
-    watcher_(op_def);
+    watcher_(raw_ptr->op_def);
   }
 }
 
-const OpDef* OpRegistry::LookUp(const string& op_type_name,
-                                Status* status) const {
-  const OpDef* op_def = nullptr;
+Status OpRegistry::LookUp(const string& op_type_name,
+                          const OpRegistrationData** op_reg_data) const {
+  *op_reg_data = nullptr;
+  const OpRegistrationData* res = nullptr;
+
   bool first_call = false;
   {  // Scope for lock.
     mutex_lock lock(mu_);
     first_call = CallDeferred();
-    op_def = gtl::FindWithDefault(registry_, op_type_name, nullptr);
+    res = gtl::FindWithDefault(registry_, op_type_name, nullptr);
     // Note: Can't hold mu_ while calling Export() below.
   }
   if (first_call) {
     TF_QCHECK_OK(ValidateKernelRegistrations(*this));
   }
-  if (op_def == nullptr) {
-    status->Update(
-        errors::NotFound("Op type not registered '", op_type_name, "'"));
-    VLOG(1) << status->ToString();
+  if (res == nullptr) {
     static bool first_unregistered = true;
     if (first_unregistered) {
       OpList op_list;
@@ -74,15 +87,20 @@ const OpDef* OpRegistry::LookUp(const string& op_type_name,
       }
       first_unregistered = false;
     }
+    Status status =
+        errors::NotFound("Op type not registered '", op_type_name, "'");
+    VLOG(1) << status.ToString();
+    return status;
   }
-  return op_def;
+  *op_reg_data = res;
+  return Status::OK();
 }
 
 void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
   mutex_lock lock(mu_);
   CallDeferred();
-  for (auto p : registry_) {
-    op_defs->push_back(*p.second);
+  for (const auto& p : registry_) {
+    op_defs->push_back(p.second->op_def);
   }
 }
 
@@ -100,8 +118,8 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
   mutex_lock lock(mu_);
   CallDeferred();
 
-  std::vector<std::pair<string, const OpDef*>> sorted(registry_.begin(),
-                                                      registry_.end());
+  std::vector<std::pair<string, const OpRegistrationData*>> sorted(
+      registry_.begin(), registry_.end());
   std::sort(sorted.begin(), sorted.end());
 
   auto out = ops->mutable_op();
@@ -110,7 +128,7 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
 
   for (const auto& item : sorted) {
     if (include_internal || !StringPiece(item.first).starts_with("_")) {
-      *out->Add() = *item.second;
+      *out->Add() = item.second->op_def;
     }
   }
 }
@@ -128,23 +146,23 @@ string OpRegistry::DebugString(bool include_internal) const {
 bool OpRegistry::CallDeferred() const {
   if (initialized_) return false;
   initialized_ = true;
-  for (const auto& op_def : deferred_) {
-    TF_QCHECK_OK(RegisterAlreadyLocked(op_def)) << "Attempting to register: "
-                                                << SummarizeOpDef(op_def);
+  for (int i = 0; i < deferred_.size(); ++i) {
+    TF_QCHECK_OK(RegisterAlreadyLocked(std::move(deferred_[i])));
   }
   deferred_.clear();
   return true;
 }
 
-Status OpRegistry::RegisterAlreadyLocked(const OpDef& def) const {
-  TF_RETURN_IF_ERROR(ValidateOpDef(def));
+Status OpRegistry::RegisterAlreadyLocked(
+    std::unique_ptr<OpRegistrationData> op_reg_data) const {
+  TF_RETURN_IF_ERROR(ValidateOpDef(op_reg_data->op_def));
 
-  std::unique_ptr<OpDef> copy(new OpDef(def));
-  if (gtl::InsertIfNotPresent(&registry_, def.name(), copy.get())) {
-    copy.release();  // Ownership transferred to op_registry
+  if (gtl::InsertIfNotPresent(&registry_, op_reg_data->op_def.name(),
+                              op_reg_data.get())) {
+    op_reg_data.release();  // Ownership transferred to op_registry
     return Status::OK();
   } else {
-    return errors::AlreadyExists("Op with name ", def.name());
+    return errors::AlreadyExists("Op with name ", op_reg_data->op_def.name());
   }
 }
 
@@ -158,19 +176,25 @@ OpRegistry* OpRegistry::Global() {
 
 OpListOpRegistry::OpListOpRegistry(const OpList* op_list) {
   for (const OpDef& op_def : op_list->op()) {
-    index_[op_def.name()] = &op_def;
+    auto* op_reg_data = new OpRegistrationData();
+    op_reg_data->op_def = op_def;
+    index_[op_def.name()] = op_reg_data;
   }
 }
 
-const OpDef* OpListOpRegistry::LookUp(const string& op_type_name,
-                                      Status* status) const {
+OpListOpRegistry::~OpListOpRegistry() {
+  for (const auto& e : index_) delete e.second;
+}
+
+Status OpListOpRegistry::LookUp(const string& op_type_name,
+                                const OpRegistrationData** op_reg_data) const {
   auto iter = index_.find(op_type_name);
   if (iter == index_.end()) {
-    status->Update(
-        errors::NotFound("Op type not registered '", op_type_name, "'"));
-    return nullptr;
+    *op_reg_data = nullptr;
+    return errors::NotFound("Op type not registered '", op_type_name, "'");
   }
-  return iter->second;
+  *op_reg_data = iter->second;
+  return Status::OK();
 }
 
 // Other registration ---------------------------------------------------------
@@ -178,9 +202,9 @@ const OpDef* OpListOpRegistry::LookUp(const string& op_type_name,
 namespace register_op {
 OpDefBuilderReceiver::OpDefBuilderReceiver(
     const OpDefBuilderWrapper<true>& wrapper) {
-  OpDef op_def;
-  wrapper.builder().Finalize(&op_def);
-  OpRegistry::Global()->Register(op_def);
+  std::unique_ptr<OpRegistrationData> data(new OpRegistrationData);
+  wrapper.builder().Finalize(data.get());
+  OpRegistry::Global()->Register(std::move(data));
 }
 }  // namespace register_op
 

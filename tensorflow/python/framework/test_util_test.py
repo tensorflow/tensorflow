@@ -27,11 +27,11 @@ import tensorflow as tf
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import logging_ops
 
 

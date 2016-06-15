@@ -4962,6 +4962,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {
@@ -7445,6 +7447,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {
@@ -8924,20 +8928,20 @@ op {
   attr {
     name: "ksizes"
     type: "list(int)"
-    default_value {
-    }
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "strides"
     type: "list(int)"
-    default_value {
-    }
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "rates"
     type: "list(int)"
-    default_value {
-    }
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "T"
@@ -20210,6 +20214,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {
@@ -20229,6 +20235,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {

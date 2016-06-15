@@ -45,7 +45,7 @@ import copy
 import tensorflow as tf
 
 from google.protobuf import text_format
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 
 
 FLAGS = tf.app.flags.FLAGS

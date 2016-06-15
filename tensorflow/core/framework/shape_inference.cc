@@ -125,8 +125,8 @@ Status InferenceContext::WithValue(const Dimension* dim, int64 value,
     return Status::OK();
   }
   *out = nullptr;
-  return errors::InvalidArgument("Dimension must be size ", value,
-                                 " but is size ", existing);
+  return errors::InvalidArgument("Dimension must be ", value, " but is ",
+                                 existing);
 }
 
 Status InferenceContext::Merge(const Dimension* d0, const Dimension* d1,
@@ -142,7 +142,7 @@ Status InferenceContext::Merge(const Dimension* d0, const Dimension* d1,
     return Status::OK();
   } else {
     *out = nullptr;
-    return errors::InvalidArgument("Dimensions must be equal size, but are ",
+    return errors::InvalidArgument("Dimensions must be equal, but are ",
                                    Value(d0), " and ", Value(d1));
   }
 }
@@ -181,7 +181,8 @@ Status InferenceContext::Merge(const Shape* s0, const Shape* s1,
       return_s1 = false;
     } else if (v0 != v1) {
       *out = nullptr;
-      return errors::InvalidArgument("Dimensions must be equal size, but are ",
+      return errors::InvalidArgument("Dimension ", i,
+                                     " in both shapes must be equal, but are ",
                                      Value(d0), " and ", Value(d1));
     }
   }

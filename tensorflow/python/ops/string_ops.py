@@ -36,10 +36,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import common_shapes
 # pylint: disable=unused-import
 from tensorflow.python.ops import gen_string_ops
 # pylint: enable=unused-import

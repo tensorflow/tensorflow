@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+typedef shape_inference::Dimension Dimension;
+typedef shape_inference::InferenceContext InferenceContext;
+typedef shape_inference::Shape Shape;
 
 REGISTER_OP("AddN")
     .Input("inputs: N * T")
@@ -25,6 +30,16 @@ REGISTER_OP("AddN")
     .Attr("T: numbertype")
     .SetIsCommutative()
     .SetIsAggregate()
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* cur = c->input(c->num_inputs() - 1);
+      for (int i = c->num_inputs() - 2; i >= 0; --i) {
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
+                                        "From merging shape ", i,
+                                        " with other shapes.");
+      }
+      c->set_output(0, cur);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Add all input tensors element wise.
 

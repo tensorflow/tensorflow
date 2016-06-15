@@ -765,21 +765,32 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
                       trainable=True):
     """Returns a Tensor as linear predictions and a list of created Variable."""
     dimension = self.source_column.dimension
-    bucket_size = len(self.boundaries) + 1
-    weight = variables.Variable(
-        array_ops.zeros([bucket_size * dimension, num_outputs]),
-        collections=_add_variable_collection(weight_collections),
-        name=self.name + "_weight")
-    # input has the shape of [batch_size, dimension].
-    one_hot = array_ops.one_hot(
-        math_ops.to_int64(input_tensor), bucket_size, 1, 0)
-    # one_hot has the shape of [batch_size, bucket_size * dimension, 1].
-    one_hot = array_ops.reshape(one_hot, [-1, bucket_size * dimension, 1])
-    # feature_by_dim has the shape of [batch_size, bucket_size * dimension,
-    # num_classes].
-    feature_by_dim = weight * math_ops.to_float(one_hot)
-    return array_ops.reshape(
-        math_ops.reduce_sum(feature_by_dim, 1), [-1, num_outputs]), [weight]
+    batch_size = array_ops.shape(input_tensor)[0]
+
+    if dimension > 1:
+      i1 = array_ops.reshape(array_ops.tile(array_ops.expand_dims(
+          math_ops.range(0, batch_size), 1), [1, dimension]), [-1])
+      i2 = array_ops.tile(math_ops.range(0, dimension), [batch_size])
+      # Flatten the bucket indices and unique them across dimensions
+      # E.g. 2nd dimension indices will range from k to 2*k-1 with k buckets
+      # TODO(chapelle): move that logic to insert_transformed_feature to ensure
+      #   unique buckets across dimensions after crossing.
+      bucket_indices = array_ops.reshape(input_tensor, [-1]) + self.length * i2
+    else:
+      # Simpler indices when dimension=1
+      i1 = math_ops.range(0, batch_size)
+      i2 = array_ops.zeros([batch_size], dtype=dtypes.int32)
+      bucket_indices = array_ops.reshape(input_tensor, [-1])
+
+    indices = math_ops.to_int64(array_ops.transpose(array_ops.pack((i1, i2))))
+    shape = math_ops.to_int64(array_ops.pack([batch_size, 1]))
+    sparse_id_values = ops.SparseTensor(indices, bucket_indices, shape)
+    vocab_size = self.length * self.source_column.dimension
+
+    return _create_embedding_lookup(
+        sparse_id_values, vocab_size, num_outputs,
+        _add_variable_collection(weight_collections), 0., "sum",
+        trainable, self.name + "_weights")
 
 
 def bucketized_column(source_column, boundaries):

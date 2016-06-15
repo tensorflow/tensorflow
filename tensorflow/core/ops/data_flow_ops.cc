@@ -473,11 +473,10 @@ Furthermore, the size of the forward TensorArray is frozen by this call.
 As a result, the flow is used to ensure that the call to generate the gradient
 TensorArray only happens after all writes are executed.
 
-In terms of e.g. python TensorArray sugar wrappers when using dynamically sized
-TensorArrays:  Gradients should only be called on read operations that have
-themselves been chained via flow to occur only after all writes have executed.
-That way the final size of the forward TensorArray is known when this operation
-is called.
+In the case of dynamically sized TensorArrays, gradient computation should
+only be performed on read operations that have themselves been chained via
+flow to occur only after all writes have executed. That way the final size
+of the forward TensorArray is known when this operation is called.
 
 **A note about the source attribute:**
 

@@ -21,11 +21,11 @@ from __future__ import print_function
 import collections
 import re
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import logging_ops
