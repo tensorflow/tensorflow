@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.layers.python.layers import feature_column_ops
@@ -256,6 +257,48 @@ class InputLayerTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
+  def testEmbeddingColumnWithInitializer(self):
+    hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
+    wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
+                                  indices=[[0, 0], [1, 0], [1, 1]],
+                                  shape=[2, 2])
+    features = {"wire": wire_tensor}
+    init_value = 133.7
+    embeded_sparse = tf.contrib.layers.embedding_column(
+        hashed_sparse,
+        10, initializer=tf.constant_initializer(init_value))
+    output = tf.contrib.layers.input_from_feature_columns(features,
+                                                          [embeded_sparse])
+
+    with self.test_session():
+      tf.initialize_all_variables().run()
+      output_eval = output.eval()
+      self.assertAllEqual(output_eval.shape, [2, 10])
+      self.assertAllClose(output_eval, np.tile(init_value, [2, 10]))
+
+  def testEmbeddingColumnWithMultipleInitializers(self):
+    hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
+    wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
+                                  indices=[[0, 0], [1, 0], [1, 1]],
+                                  shape=[2, 2])
+    features = {"wire": wire_tensor}
+    embedded_sparse = tf.contrib.layers.embedding_column(
+        hashed_sparse,
+        10,
+        initializer=tf.truncated_normal_initializer(mean=42,
+                                                    stddev=1337))
+    embedded_sparse_alternate = tf.contrib.layers.embedding_column(
+        hashed_sparse,
+        10,
+        initializer=tf.truncated_normal_initializer(mean=1337,
+                                                    stddev=42))
+
+    # Makes sure that trying to use different initializers with the same
+    # embedding column explicitly fails.
+    with self.assertRaises(ValueError):
+      tf.contrib.layers.input_from_feature_columns(
+          features, [embedded_sparse, embedded_sparse_alternate])
+
   def testSparseColumn(self):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
@@ -294,7 +337,9 @@ class InputLayerTest(tf.test.TestCase):
                                 indices=[[0, 0], [1, 0], [2, 0]],
                                 shape=[3, 1])
     }
-    embeded_sparse = tf.contrib.layers.embedding_column(hashed_sparse, 10)
+    embeded_sparse = tf.contrib.layers.embedding_column(
+        hashed_sparse,
+        10, initializer=tf.constant_initializer(133.7))
     output = tf.contrib.layers.input_from_feature_columns(
         features, [real_valued, bucket, embeded_sparse])
     with self.test_session():
