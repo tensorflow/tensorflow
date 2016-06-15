@@ -226,7 +226,7 @@ __all__.extend([
     'uint8_ref',
 ])
 
-# Export modules.
+# Export modules and constants.
 __all__.extend([
     'app',
     'contrib',
@@ -235,6 +235,7 @@ __all__.extend([
     'gfile',
     'image',
     'logging',
+    'newaxis',
     'nn',
     'python_io',
     'resource_loader',
