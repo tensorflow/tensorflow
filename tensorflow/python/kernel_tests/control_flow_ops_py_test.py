@@ -1606,29 +1606,32 @@ class ControlFlowTest(tf.test.TestCase):
     index = tf.placeholder(tf.int32)
 
     # All inputs unknown.
-    p1 = tf.placeholder(tf.float32_ref)
-    p2 = tf.placeholder(tf.float32_ref)
-    p3 = tf.placeholder(tf.float32_ref)
-    s = control_flow_ops.ref_select(index, [p1, p2, p3])
+    p1 = tf.placeholder(tf.float32)
+    p2 = tf.placeholder(tf.float32)
+    p3 = tf.placeholder(tf.float32)
+    v1 = tf.Variable(p1, validate_shape=False)
+    v2 = tf.Variable(p2, validate_shape=False)
+    v3 = tf.Variable(p3, validate_shape=False)
+    s = control_flow_ops.ref_select(index, [v1, v2, v3])
     self.assertIs(None, s.get_shape().ndims)
 
     # All inputs known but different.
-    p1 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    p2 = tf.placeholder(tf.float32_ref, shape=[2, 1])
-    s = control_flow_ops.ref_select(index, [p1, p2])
+    v1 = tf.Variable([[1, 2]])
+    v2 = tf.Variable([[2], [1]])
+    s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertIs(None, s.get_shape().ndims)
 
-    # All inputs known but same.
-    p1 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    p2 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    s = control_flow_ops.ref_select(index, [p1, p2])
+    # All inputs known and same.
+    v1 = tf.Variable([[1, 2]])
+    v2 = tf.Variable([[1, 2]])
+    s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual([1, 2], s.get_shape())
 
     # Possibly the same but not guaranteed.
-    p1 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    p2 = tf.placeholder(tf.float32_ref)
-    p2.set_shape([None, 2])
-    s = control_flow_ops.ref_select(index, [p1, p2])
+    v1 = tf.Variable([[1., 2.]])
+    p2 = tf.placeholder(tf.float32, shape=[None, 2])
+    v2 = tf.Variable(p2, validate_shape=False)
+    s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual(None, s.get_shape())
 
   def testRunLoopTensor(self):
