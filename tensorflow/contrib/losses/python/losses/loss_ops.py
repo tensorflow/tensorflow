@@ -268,7 +268,7 @@ def absolute_difference(predictions, targets, weight=1.0, scope=None):
       if the shape of `weight` is invalid.
   """
   with ops.op_scope([predictions, targets],
-                    scope, "sum_of_squares_loss") as scope:
+                    scope, "absolute_difference") as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
       raise ValueError("`weight` cannot be None")
