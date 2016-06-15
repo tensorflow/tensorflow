@@ -107,6 +107,31 @@ class DistributionTensorTest(tf.test.TestCase):
       prior_double_value_val = sess.run([prior_double_value])[0]
       self.assertEqual(prior_double_value_val.shape, (4, 3))
 
+  def testSampleValue(self):
+    with self.test_session() as sess:
+      mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
+      sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
+
+      with sg.value_type(sg.SampleValue()):
+        prior_single = sg.DistributionTensor(
+            distributions.Normal, mu=mu, sigma=sigma)
+
+      prior_single_value = prior_single.value()
+      self.assertEqual(prior_single_value.get_shape(), (1, 2, 3))
+
+      prior_single_value_val = sess.run([prior_single_value])[0]
+      self.assertEqual(prior_single_value_val.shape, (1, 2, 3))
+
+      with sg.value_type(sg.SampleValue(n=2)):
+        prior_double = sg.DistributionTensor(
+            distributions.Normal, mu=mu, sigma=sigma)
+
+      prior_double_value = prior_double.value()
+      self.assertEqual(prior_double_value.get_shape(), (2, 2, 3))
+
+      prior_double_value_val = sess.run([prior_double_value])[0]
+      self.assertEqual(prior_double_value_val.shape, (2, 2, 3))
+
   def testDistributionEntropy(self):
     with self.test_session() as sess:
       mu = [0.0, -1.0, 1.0]
@@ -126,11 +151,14 @@ class ValueTypeTest(tf.test.TestCase):
 
   def testValueType(self):
     type_mean = sg.MeanValue()
-    type_one = sg.SampleAndReshapeValue()
+    type_reshape = sg.SampleAndReshapeValue()
+    type_full = sg.SampleValue()
     with sg.value_type(type_mean):
       self.assertEqual(sg.get_current_value_type(), type_mean)
-      with sg.value_type(type_one):
-        self.assertEqual(sg.get_current_value_type(), type_one)
+      with sg.value_type(type_reshape):
+        self.assertEqual(sg.get_current_value_type(), type_reshape)
+      with sg.value_type(type_full):
+        self.assertEqual(sg.get_current_value_type(), type_full)
       self.assertEqual(sg.get_current_value_type(), type_mean)
     with self.assertRaisesRegexp(ValueError, 'No value type currently set'):
       sg.get_current_value_type()

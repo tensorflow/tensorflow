@@ -21,6 +21,11 @@ from __future__ import print_function
 
 from tensorflow.python.platform import flags
 
+flags.DEFINE_string('output_dir', '', 'Base output directory. Made '
+                    'available to the experiment builder function passed '
+                    'to run(). All files written by the Experiment are '
+                    'expected to be written into this directory.')
+
 flags.DEFINE_string('schedule', 'local_run',
                     'Schedule to run for this experiment. '
                     'A schedule identifies a method on the Experiment '

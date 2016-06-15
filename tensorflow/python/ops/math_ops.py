@@ -202,13 +202,13 @@ from __future__ import print_function
 import numpy as np
 import six.moves
 
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -1715,8 +1715,6 @@ def _SparseSegmentReductionShape(op):
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
 @ops.RegisterShape("SparseSegmentSqrtNGrad")
-
-
 # pylint: disable=invalid-name
 def _SparseSegmentReductionGradShape(op):
   """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""
@@ -1759,7 +1757,7 @@ def reduced_shape(input_shape, axes):
   Returns:
     A 1-D Tensor, the output shape as if keep_dims were set to True.
   """
-                                            # Example:
+  # Example:
   # cast needed for SparseTensor reductions
   input_shape = to_int32(input_shape)       # [2, 3, 5, 7]
   axes = to_int32(axes)                     # [1, 2]

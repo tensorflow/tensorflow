@@ -22,6 +22,7 @@
 ## Stochastic Computation Value Types
 
 @@MeanValue
+@@SampleValue
 @@SampleAndReshapeValue
 @@value_type
 @@get_current_value_type
@@ -142,6 +143,45 @@ class MeanValue(_StochasticValueType):
 
   def __init__(self, stop_gradient=False):
     self._stop_gradient = stop_gradient
+
+  @property
+  def stop_gradient(self):
+    return self._stop_gradient
+
+
+class SampleValue(_StochasticValueType):
+  """Draw n samples along a new outer dimension.
+
+  This ValueType draws `n` samples from StochasticTensors run within its
+  context, increasing the rank by one along a new outer dimension.
+
+  Example:
+
+  ```python
+  mu = tf.zeros((2,3))
+  sigma = tf.ones((2, 3))
+  with sg.value_type(sg.SampleValue(n=4)):
+    dt = sg.DistributionTensor(
+      distributions.Normal, mu=mu, sigma=sigma)
+  # draws 4 samples each with shape (2, 3) and concatenates
+  assertEqual(dt.value().get_shape(), (4, 2, 3))
+  ```
+  """
+
+  def __init__(self, n=1, stop_gradient=False):
+    """Sample `n` times and concatenate along a new outer dimension.
+
+    Args:
+      n: A python integer or int32 tensor. The number of samples to take.
+      stop_gradient: If `True`, StochasticTensors' values are wrapped in
+        `stop_gradient`, to avoid backpropagation through.
+    """
+    self._n = n
+    self._stop_gradient = stop_gradient
+
+  @property
+  def n(self):
+    return self._n
 
   @property
   def stop_gradient(self):
@@ -293,6 +333,8 @@ class DistributionTensor(StochasticTensor):
 
     if isinstance(self._value_type, MeanValue):
       value_tensor = self._dist.mean()
+    elif isinstance(self._value_type, SampleValue):
+      value_tensor = self._dist.sample(self._value_type.n)
     elif isinstance(self._value_type, SampleAndReshapeValue):
       if self._value_type.n == 1:
         value_tensor = array_ops.squeeze(self._dist.sample(1), [0])
@@ -365,6 +407,8 @@ class DistributionTensor(StochasticTensor):
     with ops.op_scope(losses, name, "DistributionSurrogateLoss"):
       if isinstance(self._value_type, SampleAndReshapeValue):
         # TODO(ebrevdo): use add_n instead of sum(losses) if shapes all match?
+        return self._dist.log_likelihood(self._value) * sum(losses)
+      elif isinstance(self._value_type, SampleValue):
         return self._dist.log_likelihood(self._value) * sum(losses)
       elif isinstance(self._value_type, MeanValue):
         return None  # MeanValue generally provides its own gradient

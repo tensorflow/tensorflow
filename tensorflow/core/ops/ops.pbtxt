@@ -2239,7 +2239,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "4-D with shape `[batch, height, width, depth]`, where:\n\n      height = height_pad - crop_top - crop_bottom\n      width = width_pad - crop_left - crop_right\n\nThe attr `block_size` must be greater than one. It indicates the block size."
+    description: "4-D with shape `[batch, height, width, depth]`, where:\n\n      height = height_pad - crop_top - crop_bottom\n      width = width_pad - crop_left - crop_right\n\nThe attr `block_size` must be greater than one. It indicates the block size.\n\nSome examples:\n\n(1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\nThe output tensor has shape `[1, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\n(2) For the following input of shape `[4, 1, 1, 3]` and block_size of 2:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\nThe output tensor has shape `[1, 2, 2, 3]` and value:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\n(3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\nThe output tensor has shape `[1, 4, 4, 1]` and value:\n\n```prettyprint\nx = [[[1],   [2],  [3],  [4]],\n     [[5],   [6],  [7],  [8]],\n     [[9],  [10], [11],  [12]],\n     [[13], [14], [15],  [16]]]\n```\n\n(4) For the following input of shape `[8, 1, 2, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],\n     [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]\n```\n\nThe output tensor has shape `[2, 2, 4, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```"
     type_attr: "T"
   }
   attr {
@@ -2249,6 +2249,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
   summary: "BatchToSpace for 4-D tensors of type T."
   description: "Rearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
@@ -2457,7 +2459,7 @@ op {
     }
   }
   summary: "Bitcasts a tensor from one type to another without copying data."
-  description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...]."
+  description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...].\n\n*NOTE*: Bitcast is implemented as a low-level cast, so machines with different\nendian orderings will give different results."
 }
 op {
   name: "BroadcastGradientArgs"
@@ -2939,6 +2941,7 @@ op {
   }
   output_arg {
     name: "offset"
+    description: "The `N` int32 vectors representing the starting offset\n        of input tensors within the concatenated output.\n\nThis is typically used by gradient computations for a concat operation."
     type: DT_INT32
     number_attr: "N"
   }
@@ -3832,6 +3835,8 @@ op {
     name: "block_size"
     type: "int"
     description: "The size of the spatial block, same as in Space2Depth."
+    has_minimum: true
+    minimum: 2
   }
   summary: "DepthToSpace for tensors of type T."
   description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and that `block_size * block_size` be a divisor of the\ninput depth.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:\n\n```prettyprint\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```prettyprint\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```prettyprint\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```prettyprint\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```prettyprint\nx = [[ [1],   [2],  [5],  [6]],\n     [ [3],   [4],  [7],  [8]],\n     [ [9],  [10], [13],  [14]],\n     [ [11], [12], [15],  [16]]]\n\n```"
@@ -4113,14 +4118,17 @@ op {
   name: "Dilation2D"
   input_arg {
     name: "input"
+    description: "4-D with shape `[batch, in_height, in_width, depth]`."
     type_attr: "T"
   }
   input_arg {
     name: "filter"
+    description: "3-D with shape `[filter_height, filter_width, depth]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
+    description: "4-D with shape `[batch, out_height, out_width, depth]`."
     type_attr: "T"
   }
   attr {
@@ -4143,18 +4151,21 @@ op {
   attr {
     name: "strides"
     type: "list(int)"
+    description: "The stride of the sliding window for each dimension of the input\ntensor. Must be: `[1, stride_height, stride_width, 1]`."
     has_minimum: true
     minimum: 4
   }
   attr {
     name: "rates"
     type: "list(int)"
+    description: "The input stride for atrous morphological dilation. Must be:\n`[1, rate_height, rate_width, 1]`."
     has_minimum: true
     minimum: 4
   }
   attr {
     name: "padding"
     type: "string"
+    description: "The type of padding algorithm to use."
     allowed_values {
       list {
         s: "SAME"
@@ -4163,7 +4174,7 @@ op {
     }
   }
   summary: "Computes the grayscale dilation of 4-D `input` and 3-D `filter` tensors."
-  description: "The `input` tensor has shape `[batch, in_height, in_width, depth]` and the\n`filter` tensor has shape `[filter_height, filter_width, depth]`, i.e., each\ninput channel is processed independently of the others with its own structuring\nfunction. The `output` tensor has shape\n`[batch, out_height, out_width, depth]`. The spatial dimensions of the output\ntensor depend on the `padding` algorithm. We currently only support the default\n\"NHWC\" `data_format`.\n\nIn detail, the grayscale morphological 2-D dilation is the max-sum correlation\n(for consistency with `conv2d`, we use unmirrored filters):\n\n    output[b, y, x, c] =\n       max_{dy, dx} input[b,\n                          strides[1] * y + rates[1] * dy,\n                          strides[2] * x + rates[2] * dx,\n                          c] +\n                    filter[dy, dx, c]\n\nMax-pooling is a special case when the filter has size equal to the pooling\nkernel size and contains all zeros."
+  description: "The `input` tensor has shape `[batch, in_height, in_width, depth]` and the\n`filter` tensor has shape `[filter_height, filter_width, depth]`, i.e., each\ninput channel is processed independently of the others with its own structuring\nfunction. The `output` tensor has shape\n`[batch, out_height, out_width, depth]`. The spatial dimensions of the output\ntensor depend on the `padding` algorithm. We currently only support the default\n\"NHWC\" `data_format`.\n\nIn detail, the grayscale morphological 2-D dilation is the max-sum correlation\n(for consistency with `conv2d`, we use unmirrored filters):\n\n    output[b, y, x, c] =\n       max_{dy, dx} input[b,\n                          strides[1] * y + rates[1] * dy,\n                          strides[2] * x + rates[2] * dx,\n                          c] +\n                    filter[dy, dx, c]\n\nMax-pooling is a special case when the filter has size equal to the pooling\nkernel size and contains all zeros.\n\nNote on duality: The dilation of `input` by the `filter` is equal to the\nnegation of the erosion of `-input` by the reflected `filter`."
 }
 op {
   name: "Dilation2DBackpropFilter"
@@ -4860,18 +4871,22 @@ op {
   name: "ExtractGlimpse"
   input_arg {
     name: "input"
+    description: "A 4-D float tensor of shape `[batch_size, height, width, channels]`."
     type: DT_FLOAT
   }
   input_arg {
     name: "size"
+    description: "A 1-D tensor of 2 elements containing the size of the glimpses\nto extract.  The glimpse height must be specified first, following\nby the glimpse width."
     type: DT_INT32
   }
   input_arg {
     name: "offsets"
+    description: "A 2-D integer tensor of shape `[batch_size, 2]` containing\nthe x, y locations of the center of each window."
     type: DT_FLOAT
   }
   output_arg {
     name: "glimpse"
+    description: "A tensor representing the glimpses `[batch_size,\nglimpse_height, glimpse_width, channels]`."
     type: DT_FLOAT
   }
   attr {
@@ -4880,6 +4895,7 @@ op {
     default_value {
       b: true
     }
+    description: "indicates if the offset coordinates are centered relative to\nthe image, in which case the (0, 0) offset is relative to the center\nof the input images. If false, the (0,0) offset corresponds to the\nupper left corner of the input images."
   }
   attr {
     name: "normalized"
@@ -4887,6 +4903,7 @@ op {
     default_value {
       b: true
     }
+    description: "indicates if the offset coordinates are normalized."
   }
   attr {
     name: "uniform_noise"
@@ -4894,9 +4911,10 @@ op {
     default_value {
       b: true
     }
+    description: "indicates if the noise should be generated using a\nuniform distribution or a gaussian distribution."
   }
   summary: "Extracts a glimpse from the input tensor."
-  description: "Returns a set of windows called glimpses extracted at location\n`offsets` from the input tensor. If the windows only partially\noverlaps the inputs, the non overlapping areas will be filled with\nrandom noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the\nsame as that of the input tensor. The height and width of the output\nwindows are specified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are"
+  description: "Returns a set of windows called glimpses extracted at location\n`offsets` from the input tensor. If the windows only partially\noverlaps the inputs, the non overlapping areas will be filled with\nrandom noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the\nsame as that of the input tensor. The height and width of the output\nwindows are specified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are built:\n\n* If the coordinates are normalized but not centered, 0.0 and 1.0\n  correspond to the minimum and maximum of each height and width\n  dimension.\n* If the coordinates are both normalized and centered, they range from\n  -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper\n  left corner, the lower right corner is located at (1.0, 1.0) and the\n  center is at (0, 0).\n* If the coordinates are not normalized they are interpreted as\n  numbers of pixels."
 }
 op {
   name: "ExtractImagePatches"
@@ -4913,23 +4931,23 @@ op {
   attr {
     name: "ksizes"
     type: "list(int)"
-    default_value {
-    }
     description: "The size of the sliding window for each dimension of `images`."
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "strides"
     type: "list(int)"
-    default_value {
-    }
     description: "1-D of length 4. How far the centers of two consecutive patches are in\nthe images. Must be: `[1, stride_rows, stride_cols, 1]`."
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "rates"
     type: "list(int)"
-    default_value {
-    }
     description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by\nsubsampling them spatially by a factor of `rates`."
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "T"
@@ -8795,14 +8813,17 @@ op {
   name: "RandomGamma"
   input_arg {
     name: "shape"
+    description: "1-D integer tensor. Shape of independent samples to draw from each\ndistribution described by the shape parameters given in alpha."
     type_attr: "S"
   }
   input_arg {
     name: "alpha"
+    description: "A tensor in which each scalar is a \"shape\" parameter describing the\nassociated gamma distribution."
     type_attr: "T"
   }
   output_arg {
     name: "output"
+    description: "A tensor with shape `shape + shape(alpha)`. Each slice\n`[:, ..., :, i0, i1, ...iN]` contains the samples drawn for\n`alpha[i0, i1, ...iN]`. The dtype of the output matches the dtype of alpha."
     type_attr: "T"
   }
   attr {
@@ -8811,6 +8832,7 @@ op {
     default_value {
       i: 0
     }
+    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
   }
   attr {
     name: "seed2"
@@ -8818,6 +8840,7 @@ op {
     default_value {
       i: 0
     }
+    description: "A second seed to avoid seed collision."
   }
   attr {
     name: "S"
@@ -8841,7 +8864,7 @@ op {
     }
   }
   summary: "Outputs random values from the Gamma distribution(s) described by alpha."
-  description: "This op uses the algorithm by Marsaglia et al. to acquire samples via\ntransformation-rejection from pairs of uniform and normal random variables."
+  description: "This op uses the algorithm by Marsaglia et al. to acquire samples via\ntransformation-rejection from pairs of uniform and normal random variables.\nSee http://dl.acm.org/citation.cfm?id=358414"
   is_stateful: true
 }
 op {
@@ -11375,7 +11398,7 @@ op {
   }
   input_arg {
     name: "paddings"
-    description: "2-D tensor of non-negative integers with shape `[2, 2]`. It specifies\n  the padding of the input with zeros across the spatial dimensions as follows:\n\n      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]\n\n  The effective spatial dimensions of the zero-padded input tensor will be:\n\n      height_pad = pad_top + height + pad_bottom\n      width_pad = pad_left + width + pad_right\n\nThe attr `block_size` must be greater than one. It indicates the block size.\n\n  * Non-overlapping blocks of size `block_size x block size` in the height and\n    width dimensions are rearranged into the batch dimension at each location.\n  * The batch of the output tensor is `batch * block_size * block_size`.\n  * Both height_pad and width_pad must be divisible by block_size.\n\nThe shape of the output will be:\n\n    [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,\n     depth]"
+    description: "2-D tensor of non-negative integers with shape `[2, 2]`. It specifies\n  the padding of the input with zeros across the spatial dimensions as follows:\n\n      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]\n\n  The effective spatial dimensions of the zero-padded input tensor will be:\n\n      height_pad = pad_top + height + pad_bottom\n      width_pad = pad_left + width + pad_right\n\nThe attr `block_size` must be greater than one. It indicates the block size.\n\n  * Non-overlapping blocks of size `block_size x block size` in the height and\n    width dimensions are rearranged into the batch dimension at each location.\n  * The batch of the output tensor is `batch * block_size * block_size`.\n  * Both height_pad and width_pad must be divisible by block_size.\n\nThe shape of the output will be:\n\n    [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,\n     depth]\n\nSome examples:\n\n(1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 1]` and value:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\n(2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 3]` and value:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\n(3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]],\n      [[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[4, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\n(4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[8, 1, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],\n     [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]\n```\n\nAmong others, this operation is useful for reducing atrous convolution into\nregular convolution."
     type: DT_INT32
   }
   output_arg {
@@ -11389,6 +11412,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
   summary: "SpaceToBatch for 4-D tensors of type T."
   description: "Zero-pads and then rearranges (permutes) blocks of spatial data into batch.\nMore specifically, this op outputs a copy of the input tensor where values from\nthe `height` and `width` dimensions are moved to the `batch` dimension. After\nthe zero-padding, both `height` and `width` of the input must be divisible by the\nblock size."
@@ -11411,6 +11436,8 @@ op {
     name: "block_size"
     type: "int"
     description: "The size of the spatial block."
+    has_minimum: true
+    minimum: 2
   }
   summary: "SpaceToDepth for tensors of type T."
   description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```prettyprint\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```prettyprint\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```prettyprint\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
@@ -11572,36 +11599,44 @@ op {
   }
   input_arg {
     name: "accum"
+    description: "Should be from a Variable()."
     type_attr: "T"
     is_ref: true
   }
   input_arg {
     name: "accum_update"
+    description: ": Should be from a Variable()."
     type_attr: "T"
     is_ref: true
   }
   input_arg {
     name: "lr"
+    description: "Learning rate. Must be a scalar."
     type_attr: "T"
   }
   input_arg {
     name: "rho"
+    description: "Decay factor. Must be a scalar."
     type_attr: "T"
   }
   input_arg {
     name: "epsilon"
+    description: "Constant factor. Must be a scalar."
     type_attr: "T"
   }
   input_arg {
     name: "grad"
+    description: "The gradient."
     type_attr: "T"
   }
   input_arg {
     name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
     type_attr: "Tindices"
   }
   output_arg {
     name: "out"
+    description: "Same as \"var\"."
     type_attr: "T"
     is_ref: true
   }
@@ -11643,6 +11678,7 @@ op {
     default_value {
       b: false
     }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
   }
   summary: "var: Should be from a Variable()."
 }
@@ -12770,18 +12806,22 @@ op {
   name: "SparseSoftmax"
   input_arg {
     name: "sp_indices"
+    description: "2-D.  `NNZ x R` matrix with the indices of non-empty values in a\nSparseTensor, in canonical ordering."
     type: DT_INT64
   }
   input_arg {
     name: "sp_values"
+    description: "1-D.  `NNZ` non-empty values corresponding to `sp_indices`."
     type_attr: "T"
   }
   input_arg {
     name: "sp_shape"
+    description: "1-D.  Shape of the input SparseTensor."
     type: DT_INT64
   }
   output_arg {
     name: "output"
+    description: "1-D.  The `NNZ` values for the result `SparseTensor`."
     type_attr: "T"
   }
   attr {
@@ -12795,7 +12835,7 @@ op {
     }
   }
   summary: "Applies softmax to a batched N-D `SparseTensor`."
-  description: "The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`\n(where `N >= 2`), and with indices sorted in the canonical lexicographic order.\n\nThis op is equivalent to applying the normal `tf.nn.softmax()` to each innermost\nlogical submatrix with shape `[B, C]`, but with the catch that *the implicitly\nzero elements do not participate*.  Specifically, the algorithm is equivalent"
+  description: "The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`\n(where `N >= 2`), and with indices sorted in the canonical lexicographic order.\n\nThis op is equivalent to applying the normal `tf.nn.softmax()` to each innermost\nlogical submatrix with shape `[B, C]`, but with the catch that *the implicitly\nzero elements do not participate*.  Specifically, the algorithm is equivalent\nto the following:\n\n  (1) Applies `tf.nn.softmax()` to a densified view of each innermost submatrix\n      with shape `[B, C]`, along the size-C dimension;\n  (2) Masks out the original implicitly-zero locations;\n  (3) Renormalizes the remaining elements.\n\nHence, the `SparseTensor` result has exactly the same non-zero indices and\nshape."
 }
 op {
   name: "SparseSoftmaxCrossEntropyWithLogits"
@@ -13752,11 +13792,13 @@ op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
+    description: "The handle to the forward TensorArray."
     type: DT_STRING
     is_ref: true
   }
   input_arg {
     name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
     type: DT_FLOAT
   }
   output_arg {
@@ -13767,9 +13809,10 @@ op {
   attr {
     name: "source"
     type: "string"
+    description: "The gradient source string, used to decide which gradient TensorArray\nto return."
   }
   summary: "Creates a TensorArray for storing the gradients of values in the given handle."
-  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nLocks the size of the original TensorArray by disabling its dynamic size flag.\n\n**A note about the input flow_in:**\n\nThe handle flow_in forces the execution of the gradient lookup to occur\nonly after certain other operations have occurred.  For example, when\nthe forward TensorArray is dynamically sized, writes to this TensorArray\nmay resize the object.  The gradient TensorArray is statically sized based\non the size of the forward TensorArray when this operation executes.\nFurthermore, the size of the forward TensorArray is frozen by this call.\nAs a result, the flow is used to ensure that the call to generate the gradient\nTensorArray only happens after all writes are executed.\n\nIn terms of e.g. python TensorArray sugar wrappers when using dynamically sized"
+  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nLocks the size of the original TensorArray by disabling its dynamic size flag.\n\n**A note about the input flow_in:**\n\nThe handle flow_in forces the execution of the gradient lookup to occur\nonly after certain other operations have occurred.  For example, when\nthe forward TensorArray is dynamically sized, writes to this TensorArray\nmay resize the object.  The gradient TensorArray is statically sized based\non the size of the forward TensorArray when this operation executes.\nFurthermore, the size of the forward TensorArray is frozen by this call.\nAs a result, the flow is used to ensure that the call to generate the gradient\nTensorArray only happens after all writes are executed.\n\nIn the case of dynamically sized TensorArrays, gradient computation should\nonly be performed on read operations that have themselves been chained via\nflow to occur only after all writes have executed. That way the final size\nof the forward TensorArray is known when this operation is called.\n\n**A note about the source attribute:**\n\nTensorArray gradient calls use an accumulator TensorArray object.  If\nmultiple gradients are calculated and run in the same session, the multiple\ngradient nodes may accidentally flow throuth the same accumulator TensorArray.\nThis double counts and generally breaks the TensorArray gradient flow.\n\nThe solution is to identify which gradient call this particular\nTensorArray gradient is being called in.  This is performed by identifying\na unique string (e.g. \"gradients\", \"gradients_1\", ...) from the input\ngradient Tensor\'s name.  This string is used as a suffix when creating\nthe TensorArray gradient object here (the attribute `source`).\n\nThe attribute `source` is added as a suffix to the forward TensorArray\'s\nname when performing the creation / lookup, so that each separate gradient\ncalculation gets its own TensorArray accumulator."
   is_stateful: true
 }
 op {

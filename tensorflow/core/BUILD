@@ -543,6 +543,7 @@ cc_library(
         "common_runtime/kernel_benchmark_testlib.h",
         "framework/fake_input.h",
         "framework/function_testlib.h",
+        "framework/shape_inference_testutil.h",
         "framework/tensor_testutil.h",
         "graph/testlib.h",
         # TODO(josh11b): Drop this once users are depending on
@@ -559,6 +560,7 @@ cc_library(
         ":lib",
         ":proto_text",
         ":protos_all_cc",
+        ":shape_inference_testutil",
         ":tensor_testutil",
         ":test",
         "//tensorflow/core/kernels:constant_op",
@@ -748,6 +750,8 @@ filegroup(
     srcs = [
         "//tensorflow/core:framework/fake_input.cc",
         "//tensorflow/core:framework/fake_input.h",
+        "//tensorflow/core:framework/shape_inference_testutil.cc",
+        "//tensorflow/core:framework/shape_inference_testutil.h",
         "//tensorflow/core:framework/tensor_testutil.cc",
         "//tensorflow/core:framework/tensor_testutil.h",
         "//tensorflow/core:platform/test.h",
@@ -1204,6 +1208,19 @@ cc_library(
     testonly = 1,
     srcs = ["framework/tensor_testutil.cc"],
     hdrs = ["framework/tensor_testutil.h"],
+    copts = tf_copts(),
+    deps = [
+        ":framework",
+        ":lib",
+        ":test",
+    ],
+)
+
+cc_library(
+    name = "shape_inference_testutil",
+    testonly = 1,
+    srcs = ["framework/shape_inference_testutil.cc"],
+    hdrs = ["framework/shape_inference_testutil.h"],
     copts = tf_copts(),
     deps = [
         ":framework",

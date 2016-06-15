@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -42,11 +43,14 @@ class OpRegistryInterface {
  public:
   virtual ~OpRegistryInterface();
 
-  // Returns nullptr and sets *status if no OpDef is registered under that
-  // name, otherwise returns the registered OpDef.
+  // Returns an error status and sets *op_reg_data to nullptr if no OpDef is
+  // registered under that name, otherwise returns the registered OpDef.
   // Caller must not delete the returned pointer.
-  virtual const OpDef* LookUp(const string& op_type_name,
-                              Status* status) const = 0;
+  virtual Status LookUp(const string& op_type_name,
+                        const OpRegistrationData** op_reg_data) const = 0;
+
+  // Shorthand for calling LookUp to get the OpDef.
+  Status LookUpOpDef(const string& op_type_name, const OpDef** op_def) const;
 };
 
 // The standard implementation of OpRegistryInterface, along with a
@@ -62,17 +66,13 @@ class OpRegistryInterface {
 class OpRegistry : public OpRegistryInterface {
  public:
   OpRegistry();
-  ~OpRegistry() override {}
+  ~OpRegistry() override;
 
-  // Calls func() and registers the returned OpDef.  Since Register()
-  // is normally called during program initialization (before main()),
-  // we defer calling func() until the first call to LookUp() or
-  // Export() (if one of those has already been called, func() is
-  // called immediately).
-  void Register(const OpDef& op_def);
+  // Calls watcher and registers the passed OpDef.
+  void Register(std::unique_ptr<OpRegistrationData> op_data);
 
-  const OpDef* LookUp(const string& op_type_name,
-                      Status* status) const override;
+  Status LookUp(const string& op_type_name,
+                const OpRegistrationData** op_reg_data) const override;
 
   // Fills *ops with all registered OpDefs (except those with names
   // starting with '_' if include_internal == false).
@@ -111,15 +111,19 @@ class OpRegistry : public OpRegistryInterface {
   // time it is called.
   bool CallDeferred() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Add 'def' to the registry.  On failure, or if there is already an
-  // OpDef with that name registered, returns a non-okay status.
-  Status RegisterAlreadyLocked(const OpDef& def) const
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Add 'def' to the registry with additional data 'data'. On failure, or if
+  // there is already an OpDef with that name registered, returns a non-okay
+  // status.
+  Status RegisterAlreadyLocked(std::unique_ptr<OpRegistrationData> op_data)
+      const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
-  mutable std::vector<OpDef> deferred_ GUARDED_BY(mu_);
-  mutable std::unordered_map<string, OpDef*> registry_ GUARDED_BY(mu_);
+  mutable std::vector<std::unique_ptr<OpRegistrationData>> deferred_
+      GUARDED_BY(mu_);
+  // Values are owned.
+  mutable std::unordered_map<string, const OpRegistrationData*> registry_
+      GUARDED_BY(mu_);
   mutable bool initialized_ GUARDED_BY(mu_);
 
   // Registry watcher.
@@ -127,16 +131,21 @@ class OpRegistry : public OpRegistryInterface {
 };
 
 // An adapter to allow an OpList to be used as an OpRegistryInterface.
+//
+// Note that shape inference functions are not passed in to OpListOpRegistry, so
+// it will return an unusable shape inference function for every op it supports;
+// therefore, it should only be used in contexts where this is okay.
 class OpListOpRegistry : public OpRegistryInterface {
  public:
   // Does not take ownership of op_list, *op_list must outlive *this.
   OpListOpRegistry(const OpList* op_list);
-  ~OpListOpRegistry() override {}
-  const OpDef* LookUp(const string& op_type_name,
-                      Status* status) const override;
+  ~OpListOpRegistry() override;
+  Status LookUp(const string& op_type_name,
+                const OpRegistrationData** op_reg_data) const override;
 
  private:
-  std::unordered_map<string, const OpDef*> index_;
+  // Values are owned.
+  std::unordered_map<string, const OpRegistrationData*> index_;
 };
 
 // Treats 'registry_ptr' as a pointer to OpRegistry, and calls
@@ -217,6 +226,10 @@ class OpDefBuilderWrapper<true> {
     builder_.Doc(text);
     return *this;
   }
+  OpDefBuilderWrapper<true>& SetShapeFn(const OpShapeInferenceFn& fn) {
+    builder_.SetShapeFn(fn);
+    return *this;
+  }
   const ::tensorflow::OpDefBuilder& builder() const { return builder_; }
 
  private:
@@ -237,6 +250,9 @@ class OpDefBuilderWrapper<false> {
   OpDefBuilderWrapper<false>& SetAllowsUninitializedInput() { return *this; }
   OpDefBuilderWrapper<false>& Deprecated(int, StringPiece) { return *this; }
   OpDefBuilderWrapper<false>& Doc(StringPiece text) { return *this; }
+  OpDefBuilderWrapper<false>& SetShapeFn(const OpShapeInferenceFn& fn) {
+    return *this;
+  }
 };
 
 struct OpDefBuilderReceiver {

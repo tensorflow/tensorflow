@@ -757,9 +757,9 @@ Status SupportedDeviceTypesForNode(
   // DynamicPlacer) to consider the possibility that 'def' is call to
   // a user-defined function and only calls this
   // SupportedDeviceTypesForNode for primitive ops.
-  Status s;
-  const OpDef* op_def = OpRegistry::Global()->LookUp(def.op(), &s);
-  if (op_def) {
+  const OpRegistrationData* op_reg_data;
+  const Status s = OpRegistry::Global()->LookUp(def.op(), &op_reg_data);
+  if (s.ok()) {
     for (const DeviceType& device_type : prioritized_types) {
       const KernelRegistration* reg = nullptr;
       TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, def, &reg));
@@ -790,9 +790,9 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
 
   // Look up the Op registered for this op name.
-  Status s;
-  const OpDef* op_def = OpRegistry::Global()->LookUp(node_def.op(), &s);
-  if (op_def == nullptr) return s;
+  const OpDef* op_def = nullptr;
+  Status s = OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def);
+  if (!s.ok()) return s;
 
   // Validate node_def against OpDef.
   s = ValidateNodeDef(node_def, *op_def);
@@ -858,22 +858,23 @@ bool FindArgInOp(StringPiece arg_name,
 }  // namespace
 
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
-  Status unused_status;
   for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
     const KernelDef& kernel_def(key_registration.second.def);
-    const OpDef* op_def = op_registry.LookUp(kernel_def.op(), &unused_status);
-    if (op_def == nullptr) {
+    const OpRegistrationData* op_reg_data;
+    const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);
+    if (!status.ok()) {
       // TODO(josh11b): Make this a hard error.
       LOG(ERROR) << "OpKernel ('" << ProtoShortDebugString(kernel_def)
                  << "') for unknown op: " << kernel_def.op();
       continue;
     }
+    const OpDef& op_def = op_reg_data->op_def;
     for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
-      if (!FindArgInOp(host_memory_arg, op_def->input_arg()) &&
-          !FindArgInOp(host_memory_arg, op_def->output_arg())) {
+      if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
+          !FindArgInOp(host_memory_arg, op_def.output_arg())) {
         return errors::InvalidArgument("HostMemory arg '", host_memory_arg,
                                        "' not found in OpDef: ",
-                                       SummarizeOpDef(*op_def));
+                                       SummarizeOpDef(op_def));
       }
     }
   }

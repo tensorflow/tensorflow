@@ -113,11 +113,11 @@ TEST(ShapeInferenceTest, WithValue) {
 
   // WithRank on dimension with known size.
   out1 = d0;
-  EXPECT_EQ("Invalid argument: Dimension must be size 0 but is size 1",
+  EXPECT_EQ("Invalid argument: Dimension must be 0 but is 1",
             c.WithValue(d0, 0, &out1).ToString());
   EXPECT_TRUE(out1 == nullptr);
   out1 = d0;
-  EXPECT_EQ("Invalid argument: Dimension must be size 2 but is size 1",
+  EXPECT_EQ("Invalid argument: Dimension must be 2 but is 1",
             c.WithValue(d0, 2, &out1).ToString());
   EXPECT_TRUE(out1 == nullptr);
   EXPECT_TRUE(c.WithValue(d0, 1, &out1).ok());
@@ -159,10 +159,10 @@ TEST(ShapeInferenceTest, MergeDim) {
   EXPECT_TRUE(d2_b == out);
 
   // Merging inequal values is an error.
-  EXPECT_EQ("Invalid argument: Dimensions must be equal size, but are 2 and 1",
+  EXPECT_EQ("Invalid argument: Dimensions must be equal, but are 2 and 1",
             c.Merge(d2, d1, &out).ToString());
   EXPECT_TRUE(out == nullptr);
-  EXPECT_EQ("Invalid argument: Dimensions must be equal size, but are 1 and 2",
+  EXPECT_EQ("Invalid argument: Dimensions must be equal, but are 1 and 2",
             c.Merge(d1, d2, &out).ToString());
   EXPECT_TRUE(out == nullptr);
 }
@@ -210,11 +210,13 @@ TEST(ShapeInferenceTest, MergeShape) {
 
   // Incompatible merges give errors and set out to nullptr.
   out = s_unknown;
-  EXPECT_EQ("Invalid argument: Dimensions must be equal size, but are 2 and 3",
+  EXPECT_EQ(("Invalid argument: Dimension 1 in both shapes must be equal, but "
+             "are 2 and 3"),
             c.Merge(s_u_2, s_1_3, &out).ToString());
   EXPECT_TRUE(out == nullptr);
   out = s_unknown;
-  EXPECT_EQ("Invalid argument: Dimensions must be equal size, but are 3 and 2",
+  EXPECT_EQ(("Invalid argument: Dimension 1 in both shapes must be equal, but "
+             "are 3 and 2"),
             c.Merge(s_1_3, s_u_2, &out).ToString());
   EXPECT_TRUE(out == nullptr);
   out = s_unknown;

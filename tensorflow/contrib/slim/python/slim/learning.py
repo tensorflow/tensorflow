@@ -42,10 +42,10 @@ import sys
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -193,11 +193,19 @@ def create_train_op(
   if global_step is None:
     global_step = variables.get_or_create_global_step()
 
-  update_ops = set(update_ops or [])
+  # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
+  global_update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
+  if update_ops is None:
+    update_ops = global_update_ops
+  else:
+    update_ops = set(update_ops)
+  if not global_update_ops.issubset(update_ops):
+    logging.warning('update_ops in create_train_op does not contain all the '
+                    ' update_ops in GraphKeys.UPDATE_OPS')
 
   # Make sure update_ops are computed before total_loss.
   if update_ops:
-    with control_flow_ops.control_dependencies(update_ops):
+    with ops.control_dependencies(update_ops):
       barrier = control_flow_ops.no_op(name='update_barrier')
     total_loss = control_flow_ops.with_dependencies([barrier], total_loss)
 
