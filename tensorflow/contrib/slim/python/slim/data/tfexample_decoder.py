@@ -26,11 +26,13 @@ from __future__ import print_function
 import abc
 
 from tensorflow.contrib.slim.python.slim.data import data_decoder
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import sparse_ops
 
 
 class ItemHandler(object):
@@ -95,13 +97,115 @@ class ItemHandlerCallback(ItemHandler):
 
 
 class Tensor(ItemHandler):
-  """An ItemHandler that returns a parsed Tensor."""
+  """An ItemHandler that returns a parsed Tensor or SparseTensor."""
 
-  def __init__(self, key):
-    super(Tensor, self).__init__([key])
+  def __init__(self, tensor_key, shape_key=None, shape=None, default_value=0):
+    """Initializes the Tensor handler.
+
+    Tensors are, by default, returned without any reshaping. However, there are
+    two mechanisms which allow reshaping to occur at load time. If `shape_key`
+    is provided, both the `Tensor` corresponding to `tensor_key` and `shape_key`
+    is loaded and the former `Tensor` is reshaped with the values of the latter.
+    Alternatively, if a fixed `shape` is provided, the `Tensor` corresponding to
+    `tensor_key` is loaded and reshape appropriately. If neither `shape_key` nor
+    `shape` are provided, the `Tensor` will be returned without any reshaping.
+
+    Args:
+      tensor_key: the name of the `TFExample` feature to read the tensor from.
+      shape_key: Optional name of the TF-Example feature in which the tensor
+        shape is stored.
+      shape: Optional output shape of the Tensor. If provided, the `Tensor` is
+        reshaped accordingly.
+      default_value: Scalar value to set when making dense for indices not
+        specified in the `SparseTensor`.
+
+    Raises:
+      ValueError: if both `shape_key` and `shape` are specified.
+    """
+    if shape_key and shape is not None:
+      raise ValueError('Cannot specify both shape_key and shape parameters.')
+    self._tensor_key = tensor_key
+    self._shape_key = shape_key
+    self._shape = shape
+    self._default_value = default_value
+    keys = [tensor_key]
+    if shape_key:
+      keys.append(shape_key)
+    super(Tensor, self).__init__(keys)
 
   def tensors_to_item(self, keys_to_tensors):
-    return list(keys_to_tensors.values())[0]
+    tensor = keys_to_tensors[self._tensor_key]
+    shape = self._shape
+    if self._shape_key:
+      shape = keys_to_tensors[self._shape_key]
+      if isinstance(shape, ops.SparseTensor):
+        shape = sparse_ops.sparse_tensor_to_dense(shape)
+    if isinstance(tensor, ops.SparseTensor):
+      if shape is not None:
+        tensor = sparse_ops.sparse_reshape(tensor, shape)
+      tensor = sparse_ops.sparse_tensor_to_dense(tensor, self._default_value)
+    else:
+      if shape is not None:
+        tensor = array_ops.reshape(tensor, shape)
+    return tensor
+
+
+class SparseTensor(ItemHandler):
+  """An ItemHandler for SparseTensors."""
+
+  def __init__(self, indices_key=None, values_key=None, shape_key=None,
+               shape=None, densify=False, default_value=0):
+    """Initializes the Tensor handler.
+
+    Args:
+      indices_key: the name of the TF-Example feature that contains the ids.
+        Defaults to 'indices'.
+      values_key: the name of the TF-Example feature that contains the values.
+        Defaults to 'values'.
+      shape_key: the name of the TF-Example feature that contains the shape.
+        If provided it would be used.
+      shape: the output shape of the SparseTensor. If `shape_key` is not
+        provided this `shape` would be used.
+      densify: whether to convert the SparseTensor into a dense Tensor.
+      default_value: Scalar value to set when making dense for indices not
+        specified in the `SparseTensor`.
+    """
+    indices_key = indices_key or 'indices'
+    values_key = values_key or 'values'
+    self._indices_key = indices_key
+    self._values_key = values_key
+    self._shape_key = shape_key
+    self._shape = shape
+    self._densify = densify
+    self._default_value = default_value
+    keys = [indices_key, values_key]
+    if shape_key:
+      keys.append(shape_key)
+    super(SparseTensor, self).__init__(keys)
+
+  def tensors_to_item(self, keys_to_tensors):
+    indices = keys_to_tensors[self._indices_key]
+    values = keys_to_tensors[self._values_key]
+    if self._shape_key:
+      shape = keys_to_tensors[self._shape_key]
+      if isinstance(shape, ops.SparseTensor):
+        shape = sparse_ops.sparse_tensor_to_dense(shape)
+    elif self._shape:
+      shape = self._shape
+    else:
+      shape = indices.shape
+    indices_shape = array_ops.shape(indices.indices)
+    rank = indices_shape[1]
+    ids = math_ops.to_int64(indices.values)
+    indices_columns_to_preserve = array_ops.slice(
+        indices.indices, [0, 0], array_ops.pack([-1, rank - 1]))
+    new_indices = array_ops.concat(1, [indices_columns_to_preserve,
+                                       array_ops.reshape(ids, [-1, 1])])
+
+    tensor = ops.SparseTensor(new_indices, values.values, shape)
+    if self._densify:
+      tensor = sparse_ops.sparse_tensor_to_dense(tensor, self._default_value)
+    return tensor
 
 
 class Image(ItemHandler):
