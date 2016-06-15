@@ -473,9 +473,10 @@ def cast(x, dtype, name=None):
   Raises:
     TypeError: If `x` cannot be cast to the `dtype`.
   """
+  base_type = dtypes.as_dtype(dtype).base_dtype
   with ops.op_scope([x], name, "Cast") as name:
     if isinstance(x, ops.SparseTensor):
-      values_cast = cast(x.values, dtype, name=name)
+      values_cast = cast(x.values, base_type, name=name)
       return ops.SparseTensor(x.indices, values_cast, x.shape)
     else:
       # TODO(touts): Handle what Josh said.
@@ -484,9 +485,9 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g.  casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.base_dtype == dtype:
+      if x.dtype.base_dtype == base_type:
         return x
-      return gen_math_ops.cast(x, dtype, name=name)
+      return gen_math_ops.cast(x, base_type, name=name)
 
 
 def saturate_cast(value, dtype, name=None):
