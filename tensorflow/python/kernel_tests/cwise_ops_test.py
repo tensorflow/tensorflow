@@ -207,6 +207,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(y, np.sign, tf.sign)
 
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
@@ -242,6 +243,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.sign, tf.sign)
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
@@ -276,6 +278,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(y, np.sign, tf.sign)
 
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
@@ -305,6 +308,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(y, np.sign, tf.sign)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
@@ -317,6 +321,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.sign, tf.sign)
 
   def testInt64Basic(self):
     x = np.arange(
@@ -330,6 +335,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.sign, tf.sign)
 
   def testComplex64Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
@@ -357,6 +363,7 @@ class UnaryOpTest(tf.test.TestCase):
     def complex_sign(x):
       return x / np.abs(x)
     self._compareCpu(y, complex_sign, tf.sign)
+    self._compareBothSparse(y, complex_sign, tf.sign)
 
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
@@ -384,6 +391,7 @@ class UnaryOpTest(tf.test.TestCase):
     def complex_sign(x):
       return x / np.abs(x)
     self._compareCpu(y, complex_sign, tf.sign)
+    self._compareBothSparse(y, complex_sign, tf.sign)
 
 
 class BinaryOpTest(tf.test.TestCase):
