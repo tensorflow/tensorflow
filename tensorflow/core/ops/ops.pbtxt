@@ -13377,6 +13377,70 @@ op {
   description: "When executed in a graph, this op outputs its input tensor as-is.\n\nWhen building ops to compute gradients, this op prevents the contribution of\nits inputs to be taken into account.  Normally, the gradient generator adds ops\nto a graph to compute the derivatives of a specified \'loss\' by recursively\nfinding out inputs that contributed to its computation.  If you insert this op\nin the graph it inputs are masked from the gradient generator.  They are not\ntaken into account for computing gradients.\n\nThis is useful any time you want to compute a value with TensorFlow but need\nto pretend that the value was a constant. Some examples include:\n\n*  The *EM* algorithm where the *M-step* should not involve backpropagation\n   through the output of the *E-step*.\n*  Contrastive divergence training of Boltzmann machines where, when\n   differentiating the energy function, the training must not backpropagate\n   through the graph that generated the samples from the model.\n*  Adversarial training, where no backprop should happen through the adversarial\n   example generation process."
 }
 op {
+  name: "StridedSlice"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "begin"
+    description: "`begin[i]` specifies the offset into the `i`th dimension of\n`input` to slice from."
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "end"
+    description: "`end[i]` specifies the first offset into the `i`th dimension of\n`input` that will not be extracted. Out or range values are\nclamped to `[0,dim[i]) if slice[i] > 0` or `[-1,dim[i]-1]`\n`if slice[i] < 0`"
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "strides"
+    description: "`strides[i]` specifies the increment in the `i`th dimension\nafter extracting a given element. Negative indices will reverse\nthe original order. Out or range values are\nclamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`"
+    type_attr: "Index"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Index"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "begin_mask"
+    type: "int"
+    description: "a bitmask where a bit i being 1 means to ignore the begin\nvalue and instead use the largest interval possible. At runtime\nbegin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or\n`[-1, n-1]` if `stride[i] < 0`"
+  }
+  attr {
+    name: "end_mask"
+    type: "int"
+    description: "analogous to `begin_mask`"
+  }
+  attr {
+    name: "ellipse_mask"
+    type: "int"
+  }
+  attr {
+    name: "new_axis_mask"
+    type: "int"
+  }
+  attr {
+    name: "shrink_axis_mask"
+    type: "int"
+  }
+  summary: "Return a strided slice from `input`."
+  description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
+}
+op {
   name: "StringToHashBucket"
   input_arg {
     name: "string_tensor"
