@@ -1745,14 +1745,21 @@ class TupleTest(tf.test.TestCase):
   def testWhileFuncBasic(self):
     @function.Defun(tf.float32)
     def func(x):
-      return tf.square(x)
+      return tf.square(tf.square(x))
 
     with self.test_session():
+      x = tf.constant(2.0, tf.float32)
       r = tf.while_loop(
-          lambda i, v: i < 4,
+          lambda i, v: i < 2,
           lambda i, v: [i + 1, func(v)],
-          [tf.constant(0), tf.constant(2.0, tf.float32)])
+          [tf.constant(0), x])
       self.assertEqual(r[1].eval(), 65536.0)
+
+      r = tf.gradients(r, x)[0]
+      self.assertEqual(r.eval(), 524288.0)
+      self.assertEqual(len([op for op in x.graph.get_operations()
+                            if op.type == "Stack"]),
+                       1)
 
 if __name__ == "__main__":
   tf.test.main()
