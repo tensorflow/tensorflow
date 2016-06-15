@@ -168,6 +168,18 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(exc_predicate):
         c.eval()
 
+  def testFetchNone(self):
+    with session.Session() as s:
+      a = constant_op.constant(1.0)
+      with self.assertRaises(TypeError):
+        s.run(None)
+      with self.assertRaises(TypeError):
+        s.run([None])
+      with self.assertRaises(TypeError):
+        s.run({'b': None})
+      with self.assertRaises(TypeError):
+        s.run({'a': a, 'b': None})
+
   def testFetchTensorObject(self):
     with session.Session() as s:
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1066,7 +1078,7 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testFeedDictKeyException(self):
     with session.Session() as sess:
       a = constant_op.constant(1.0, dtypes.float32, name='a')
-      with self.assertRaisesRegexp(TypeError, "Cannot interpret feed_dict"):
+      with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
         sess.run(a, feed_dict={'a': [2.0]})
 
   def testPerStepTrace(self):
