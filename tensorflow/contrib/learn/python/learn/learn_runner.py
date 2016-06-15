@@ -24,9 +24,6 @@ from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 
-flags.DEFINE_string('output_dir', '', 'Base output directory. Made '
-                    'available to the experiment builder function passed '
-                    'to run(). All files written by the Experiment are ')
 
 FLAGS = flags.FLAGS
 
