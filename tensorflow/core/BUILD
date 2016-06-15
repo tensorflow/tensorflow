@@ -101,7 +101,6 @@ tf_proto_library(
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
-    py_api_version = 0,
     visibility = ["//visibility:public"],
 )
 
