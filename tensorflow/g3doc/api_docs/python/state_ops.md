@@ -1185,6 +1185,13 @@ Gets an existing variable with this name or create a new one.
 
 - - -
 
+#### `tf.VariableScope.original_name_scope` {#VariableScope.original_name_scope}
+
+
+
+
+- - -
+
 #### `tf.VariableScope.partitioner` {#VariableScope.partitioner}
 
 
@@ -1370,7 +1377,6 @@ def my_op_with_vars(a, b, scope=None):
 *  <b>`partitioner`</b>: The default partitioner for variables within this scope.
 *  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
-
 
 ##### Returns:
 

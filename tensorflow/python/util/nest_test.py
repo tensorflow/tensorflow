@@ -69,6 +69,23 @@ class NestTest(tf.test.TestCase):
     self.assertFalse(nest.is_sequence(tf.tanh(ones)))
     self.assertFalse(nest.is_sequence(np.ones((4, 5))))
 
+  def testFlattenDictItems(self):
+    dictionary = {(4, 5, (6, 8)): ("a", "b", ("c", "d"))}
+    flat = {4: "a", 5: "b", 6: "c", 8: "d"}
+    self.assertEqual(nest.flatten_dict_items(dictionary), flat)
+
+    with self.assertRaises(TypeError):
+      nest.flatten_dict_items(4)
+
+    bad_dictionary = {(4, 5, (4, 8)): ("a", "b", ("c", "d"))}
+    with self.assertRaisesRegexp(ValueError, "not unique"):
+      nest.flatten_dict_items(bad_dictionary)
+
+    another_bad_dictionary = {(4, 5, (6, 8)): ("a", "b", ("c", ("d", "e")))}
+    with self.assertRaisesRegexp(
+        ValueError, "Key had [0-9]* elements, but value had [0-9]* elements"):
+      nest.flatten_dict_items(another_bad_dictionary)
+
 
 if __name__ == "__main__":
   tf.test.main()

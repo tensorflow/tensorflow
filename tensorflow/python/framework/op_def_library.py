@@ -171,7 +171,7 @@ def _MakeBool(v, arg_name):
 
 def _MakeType(v, attr_def):
   try:
-    v = dtypes.as_dtype(v)
+    v = dtypes.as_dtype(v).base_dtype
   except TypeError:
     raise TypeError("Expected DataType for argument '%s' not %s." %
                     (attr_def.name, repr(v)))

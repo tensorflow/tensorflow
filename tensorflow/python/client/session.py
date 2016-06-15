@@ -23,6 +23,7 @@ import re
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
@@ -31,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 class SessionInterface(object):
@@ -69,22 +71,11 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
                   [feed.values, feed.indices, feed.dense_shape], feed_val))
 
 
-def _flatten1(seq):
-  """Flattens one level of nested sequences."""
-  ret = []
-  for el in seq:
-    if isinstance(el, (list, tuple)):
-      ret.extend(el)
-    else:
-      ret.append(el)
-  return ret
-
-
 def _unflatten_fetches(fetches, flat_values):
   """Creates a dictionary mapping fetched keys to values.
 
   Args:
-    fetches: A heterogeneous list of either graph elements or lists/tuples
+    fetches: A dictionary of either graph elements or lists/tuples
       of graph elements.
     flat_values: A flat list of fetched values.
 
@@ -94,10 +85,11 @@ def _unflatten_fetches(fetches, flat_values):
   """
   used = 0
   ret = {}
-  for key, fetch in fetches.items():
+  for key, fetch in six.iteritems(fetches):
     if isinstance(fetch, (list, tuple)):
-      start, used = used, used + len(fetch)
-      ret[key] = flat_values[start : used]
+      flat_fetch_values = nest.flatten(fetch)
+      start, used = used, used + len(flat_fetch_values)
+      ret[key] = nest.pack_sequence_as(fetch, flat_values[start:used])
     else:
       ret[key] = flat_values[used]
       used += 1
@@ -292,10 +284,10 @@ class BaseSession(SessionInterface):
     and evaluate every `Tensor` in `fetches`, substituting the values in
     `feed_dict` for the corresponding input values.
 
-    The `fetches` argument may be a single graph element, a list of
-    graph elements, or a dictionary whose values are the above. The type of
-    `fetches` determines the return value of this
-    method. A graph element can be one of the following types:
+    The `fetches` argument may be a single graph element, an arbitrarily nested
+    list of graph elements, or a dictionary whose values are the above. The type
+    of `fetches` determines the return value of this method. A graph element can
+    be one of the following types:
 
     * If an element of `fetches` is an
       [`Operation`](../../api_docs/python/framework.md#Operation), the
@@ -326,6 +318,9 @@ class BaseSession(SessionInterface):
       [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
       the value should be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
+    * If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value
+      should be a nested tuple with the same structure that maps to their
+      corresponding values as above.
 
     Each value in `feed_dict` must be convertible to a numpy array of the dtype
     of the corresponding key.
@@ -569,11 +564,15 @@ class BaseSession(SessionInterface):
     # Flatten/unflatten fetched values.
     if isinstance(fetches, (list, tuple)):
       # fetches is already a list or tuple; nothing to do.
-      unflatten = lambda fetched: fetched
+      orig_fetches, fetches = fetches, nest.flatten(fetches)
+      unflatten = lambda fetched: nest.pack_sequence_as(orig_fetches, fetched)
     elif isinstance(fetches, dict):
       # fetches is a dictionary; flatten the values and map fetched
       # values back into to a dictionary.
-      orig_fetches, fetches = fetches, _flatten1(fetches.values())
+      # nest.flatten does not accept iterators, next line is for python3
+      # compatibility.
+      fetches_values = list(fetches.values())
+      orig_fetches, fetches = fetches, nest.flatten(fetches_values)
       unflatten = lambda fetched: _unflatten_fetches(orig_fetches, fetched)
     else:
       # fetches is a singleton.
@@ -593,6 +592,7 @@ class BaseSession(SessionInterface):
 
     # Validate and process feed_dict.
     if feed_dict:
+      feed_dict = nest.flatten_dict_items(feed_dict)
       for feed, feed_val in feed_dict.items():
         for subfeed, subfeed_val in _feed_fn(feed, feed_val):
           try:

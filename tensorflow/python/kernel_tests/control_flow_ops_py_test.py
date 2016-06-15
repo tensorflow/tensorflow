@@ -1606,29 +1606,32 @@ class ControlFlowTest(tf.test.TestCase):
     index = tf.placeholder(tf.int32)
 
     # All inputs unknown.
-    p1 = tf.placeholder(tf.float32_ref)
-    p2 = tf.placeholder(tf.float32_ref)
-    p3 = tf.placeholder(tf.float32_ref)
-    s = control_flow_ops.ref_select(index, [p1, p2, p3])
+    p1 = tf.placeholder(tf.float32)
+    p2 = tf.placeholder(tf.float32)
+    p3 = tf.placeholder(tf.float32)
+    v1 = tf.Variable(p1, validate_shape=False)
+    v2 = tf.Variable(p2, validate_shape=False)
+    v3 = tf.Variable(p3, validate_shape=False)
+    s = control_flow_ops.ref_select(index, [v1, v2, v3])
     self.assertIs(None, s.get_shape().ndims)
 
     # All inputs known but different.
-    p1 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    p2 = tf.placeholder(tf.float32_ref, shape=[2, 1])
-    s = control_flow_ops.ref_select(index, [p1, p2])
+    v1 = tf.Variable([[1, 2]])
+    v2 = tf.Variable([[2], [1]])
+    s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertIs(None, s.get_shape().ndims)
 
-    # All inputs known but same.
-    p1 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    p2 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    s = control_flow_ops.ref_select(index, [p1, p2])
+    # All inputs known and same.
+    v1 = tf.Variable([[1, 2]])
+    v2 = tf.Variable([[1, 2]])
+    s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual([1, 2], s.get_shape())
 
     # Possibly the same but not guaranteed.
-    p1 = tf.placeholder(tf.float32_ref, shape=[1, 2])
-    p2 = tf.placeholder(tf.float32_ref)
-    p2.set_shape([None, 2])
-    s = control_flow_ops.ref_select(index, [p1, p2])
+    v1 = tf.Variable([[1., 2.]])
+    p2 = tf.placeholder(tf.float32, shape=[None, 2])
+    v2 = tf.Variable(p2, validate_shape=False)
+    s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual(None, s.get_shape())
 
   def testRunLoopTensor(self):
@@ -1745,14 +1748,21 @@ class TupleTest(tf.test.TestCase):
   def testWhileFuncBasic(self):
     @function.Defun(tf.float32)
     def func(x):
-      return tf.square(x)
+      return tf.square(tf.square(x))
 
     with self.test_session():
+      x = tf.constant(2.0, tf.float32)
       r = tf.while_loop(
-          lambda i, v: i < 4,
+          lambda i, v: i < 2,
           lambda i, v: [i + 1, func(v)],
-          [tf.constant(0), tf.constant(2.0, tf.float32)])
+          [tf.constant(0), x])
       self.assertEqual(r[1].eval(), 65536.0)
+
+      r = tf.gradients(r, x)[0]
+      self.assertEqual(r.eval(), 524288.0)
+      self.assertEqual(len([op for op in x.graph.get_operations()
+                            if op.type == "Stack"]),
+                       1)
 
 if __name__ == "__main__":
   tf.test.main()
