@@ -100,7 +100,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_LE(8, cm->MaxMemorySize(node, 0));
         EXPECT_EQ(7, cm->AllocationId(node, 0));
       }
-      EXPECT_LE(1, cm->MaxExecutionTime(node));
+      EXPECT_LE(0, cm->MaxExecutionTime(node));
       EXPECT_GE(run_duration_micros, cm->MaxExecutionTime(node));
     }
     graph_cnt++;
