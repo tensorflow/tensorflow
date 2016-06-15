@@ -296,7 +296,7 @@ class VariableScopeTest(tf.test.TestCase):
         with tf.variable_scope(tower):
           with tf.name_scope(tower.original_name_scope):
             with tf.name_scope("bar") as sc3:
-              self.assertEqual(sc3, "scope1/tower/bar/")
+              self.assertEqual(sc3, "scope1/tower/bar_1/")
 
   def testVarScopeObjectReuse(self):
     with self.test_session():
