@@ -54,6 +54,21 @@ class _VariableStore(object):
     """Create a variable store."""
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
+    self._variable_scopes_count = {}  # Count re-used variable scopes.
+
+  def open_variable_scope(self, scope_name):
+    if scope_name in self._variable_scopes_count:
+      self._variable_scopes_count[scope_name] += 1
+    else:
+      self._variable_scopes_count[scope_name] = 1
+
+  def close_variable_subscopes(self, scope_name):
+    for k in self._variable_scopes_count:
+      if k != scope_name and scope_name in k:
+        self._variable_scopes_count[k] = 0
+
+  def variable_scope_count(self, scope_name):
+    return self._variable_scopes_count.get(scope_name, 0)
 
   def get_variable(self, name, shape=None, dtype=dtypes.float32,
                    initializer=None, regularizer=None, reuse=None,
@@ -534,6 +549,10 @@ class VariableScope(object):
     return self._name
 
   @property
+  def original_name_scope(self):
+    return self._name_scope
+
+  @property
   def reuse(self):
     return self._reuse
 
@@ -813,7 +832,7 @@ def _get_partitioned_variable(
 @contextlib.contextmanager
 def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
                          regularizer=None, caching_device=None,
-                         partitioner=None):
+                         partitioner=None, old_name_scope=None):
   """Creates a context for the variable_scope, see `variable_scope` for docs.
 
   Note: this does not create a name scope.
@@ -826,6 +845,7 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
     regularizer: default regularizer for variables within this scope.
     caching_device: default caching device for variables within this scope.
     partitioner: default partitioner for variables within this scope.
+    old_name_scope: the original name scope when re-entering a variable scope.
 
   Yields:
     A scope that can be to captured and reused.
@@ -840,7 +860,13 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
   # Get the reference to the collection as we want to modify it in place.
   default_varscope = ops.get_collection_ref(_VARSCOPE_KEY)
   old = default_varscope[0]
+  var_store = _get_default_variable_store()
+  if isinstance(name_or_scope, VariableScope):
+    new_name = name_or_scope.name
+  else:
+    new_name = old.name + "/" + name_or_scope if old.name else name_or_scope
   try:
+    var_store.open_variable_scope(new_name)
     if isinstance(name_or_scope, VariableScope):
       name_scope = name_or_scope._name_scope  # pylint: disable=protected-access
       # Handler for the case when we jump to a shared scope.
@@ -849,10 +875,11 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
       #   and initializer, if the user requested this.
       default_varscope[0] = VariableScope(
           name_or_scope.reuse if reuse is None else reuse,
-          name=name_or_scope.name,
+          name=new_name,
           initializer=name_or_scope.initializer,
           regularizer=name_or_scope.regularizer,
           caching_device=name_or_scope.caching_device,
+          partitioner=name_or_scope.partitioner,
           name_scope=name_scope)
       if initializer is not None:
         default_varscope[0].set_initializer(initializer)
@@ -867,7 +894,6 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
       # Handler for the case when we just prolong current variable scope.
       #   VariableScope with name extended by the provided one, and inherited
       #   reuse and initializer (except if the user provided values to set).
-      new_name = old.name + "/" + name_or_scope if old.name else name_or_scope
       reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
       default_varscope[0] = VariableScope(
           reuse, name=new_name,
@@ -875,7 +901,7 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
           regularizer=old.regularizer,
           caching_device=old.caching_device,
           partitioner=old.partitioner,
-          name_scope=name_or_scope)
+          name_scope=old_name_scope or name_or_scope)
       if initializer is not None:
         default_varscope[0].set_initializer(initializer)
       if regularizer is not None:
@@ -886,7 +912,21 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
         default_varscope[0].set_partitioner(partitioner)
       yield default_varscope[0]
   finally:
+    var_store.close_variable_subscopes(new_name)
     default_varscope[0] = old
+
+
+def _get_unique_variable_scope(prefix):
+  """Get a name with the given prefix unique in the current variable scope."""
+  var_store = _get_default_variable_store()
+  current_scope = get_variable_scope()
+  name = current_scope.name + "/" + prefix if current_scope.name else prefix
+  if var_store.variable_scope_count(name) == 0:
+    return prefix
+  idx = 1
+  while var_store.variable_scope_count(name + ("_%d" % idx)) > 0:
+    idx += 1
+  return prefix + ("_%d" % idx)
 
 
 # pylint: disable=g-doc-return-or-yield
@@ -969,18 +1009,23 @@ def variable_scope(name_or_scope, reuse=None, initializer=None,
     TypeError: when the types of some arguments are not appropriate.
   """
   if not isinstance(name_or_scope, (VariableScope,) + six.string_types):
-    raise TypeError("VariableScope: name_scope must be a string or "
+    raise TypeError("VariableScope: name_or_scope must be a string or "
                     "VariableScope.")
   if isinstance(name_or_scope, six.string_types):
-    name = name_or_scope
+    name_scope = name_or_scope
   else:
-    name = name_or_scope._name_scope  # pylint: disable=protected-access
-  if name:
-    with ops.name_scope(name), _pure_variable_scope(
-        name_or_scope, reuse=reuse, initializer=initializer,
-        regularizer=regularizer, caching_device=caching_device,
-        partitioner=partitioner) as vs:
-      yield vs
+    name_scope = name_or_scope.name.split("/")[-1]
+  if name_scope:
+    with ops.name_scope(name_scope) as cur_name_scope:
+      if isinstance(name_or_scope, six.string_types):
+        old_name_scope = cur_name_scope
+      else:
+        old_name_scope = name_or_scope.original_name_scope
+      with _pure_variable_scope(
+          name_or_scope, reuse=reuse, initializer=initializer,
+          regularizer=regularizer, caching_device=caching_device,
+          partitioner=partitioner, old_name_scope=old_name_scope) as vs:
+        yield vs
   else:
     # This can only happen if someone is entering the root variable scope.
     with _pure_variable_scope(
@@ -1035,7 +1080,6 @@ def variable_op_scope(values, name_or_scope, default_name=None,
     reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
       well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 
-
   Returns:
     A context manager for use in defining a Python op.
 
@@ -1058,12 +1102,11 @@ def variable_op_scope(values, name_or_scope, default_name=None,
       if reuse:
         raise ValueError("reuse=True cannot be used without a name_or_scope")
       with ops.name_scope(default_name) as scope:
-        count = len(default_name.split("/"))
-        scoped_name = "/".join(scope.split("/")[-count - 1:-1])
+        unique_default_name = _get_unique_variable_scope(default_name)
         with _pure_variable_scope(
-            scoped_name, initializer=initializer,
+            unique_default_name, initializer=initializer,
             regularizer=regularizer, caching_device=caching_device,
-            partitioner=partitioner) as vs:
+            partitioner=partitioner, old_name_scope=scope) as vs:
           yield vs
 
 

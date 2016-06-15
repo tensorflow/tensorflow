@@ -103,7 +103,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/dummy:0", v1.name)
-    self.assertEqual("s1_2/dummy:0", v3.name)
+    self.assertEqual("s1_1/dummy:0", v3.name)
 
   def test_template_in_scope(self):
     tmpl1 = template.make_template("s1", var_scoped_function)
@@ -131,7 +131,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/test/dummy:0", v1.name)
-    self.assertEqual("s1_2/test/dummy:0", v3.name)
+    self.assertEqual("s1_1/test/dummy:0", v3.name)
 
     with self.assertRaises(ValueError):
       tmpl1("not_test")
@@ -153,7 +153,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/test/dummy:0", v1.name)
-    self.assertEqual("s1_2/test/dummy:0", v3.name)
+    self.assertEqual("s1_1/test/dummy:0", v3.name)
 
   def test_enforces_no_extra_trainable_variables(self):
     tmpl = template.make_template("s", function_with_create, trainable=True)
@@ -184,7 +184,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/nested/x:0", v1.name)
-    self.assertEqual("s1_2/nested/x:0", v3.name)
+    self.assertEqual("s1_1/nested/x:0", v3.name)
 
   def test_nested_templates(self):
     def nested_template():
@@ -204,7 +204,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/nested_1/dummy:0", v1.name)
-    self.assertEqual("s1_2/nested_1/dummy:0", v3.name)
+    self.assertEqual("s1_1/nested_1/dummy:0", v3.name)
 
   def test_immediate_scope_creation(self):
     # Create templates in scope a then call in scope b. make_template should
