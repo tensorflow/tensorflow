@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 
-from tensorflow.examples.image_retraining import retrain_with_summaries
+from tensorflow.examples.image_retraining import retrain_with_summaries as retrain
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
