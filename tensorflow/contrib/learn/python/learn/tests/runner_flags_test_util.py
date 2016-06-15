@@ -13,24 +13,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Defines FLAGS for running learn.Experiment."""
+"""learn_runner flags test."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.platform import flags
+import tensorflow as tf
+from tensorflow.contrib.learn.python.learn import learn_runner
 
-flags.DEFINE_string('output_dir', '', 'Base output directory. Made '
-                    'available to the experiment builder function passed '
-                    'to run(). All files written by the Experiment are '
-                    'expected to be written into this directory.')
 
-flags.DEFINE_string('schedule', 'local_run',
-                    'Schedule to run for this experiment. '
-                    'A schedule identifies a method on the Experiment '
-                    'instance returned by the function passed to the '
-                    'run() call')
+class TestExperiment(tf.contrib.learn.Experiment):
 
-# TODO(ispir): Remove once we migrated customer pipilines.
-flags.DEFINE_string('execution_mode', 'all', 'Deprecated. Use FLAGS.schedule')
+  def __init__(self, default=None):
+    self.default = default
+
+  def local_run(self):
+    pass
+
+  def local_test(self):
+    pass
+
+
+# pylint: disable=unused-argument
+def build_experiment(output_dir):
+  tf.logging.info("In default build_experiment.")
+  return TestExperiment()
+
+
+def main(argv):
+  learn_runner.run(build_experiment)
+
+
+if __name__ == "__main__":
+  tf.app.run()
+
+
