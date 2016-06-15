@@ -640,12 +640,13 @@ output: 0-D.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("LRN")
-    .Input("input: float")
-    .Output("output: float")
+    .Input("input: T")
+    .Output("output: T")
     .Attr("depth_radius: int = 5")
     .Attr("bias: float = 1.0")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Local Response Normalization.
 
@@ -670,14 +671,15 @@ beta: An exponent.
 )doc");
 
 REGISTER_OP("LRNGrad")
-    .Input("input_grads: float")
-    .Input("input_image: float")
-    .Input("output_image: float")
-    .Output("output: float")
+    .Input("input_grads: T")
+    .Input("input_image: T")
+    .Input("output_image: T")
+    .Output("output: T")
     .Attr("depth_radius: int = 5")
     .Attr("bias: float = 1.0")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Gradients for Local Response Normalization.
 
