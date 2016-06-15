@@ -50,6 +50,7 @@ cpu_only_kernel_test_list = [
     "cholesky_op_test.py",
     "clip_ops_test.py",
     "decode_csv_op_test.py",
+    "decode_png_op_test.py",
     "decode_raw_op_test.py",
     "determinant_op_test.py",
     "diag_op_test.py",
