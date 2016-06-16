@@ -1102,14 +1102,12 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "timeline_test",
     size = "small",
     srcs = ["client/timeline_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":timeline",
-        "//tensorflow:tensorflow_py",
     ],
 )
 
