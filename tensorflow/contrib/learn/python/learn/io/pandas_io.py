@@ -54,7 +54,14 @@ def extract_pandas_data(data):
 
 
 def extract_pandas_matrix(data):
-  """Extracts numpy matrix from pandas DataFrame."""
+  """Extracts numpy matrix from pandas DataFrame.
+
+  Args:
+    data: `pandas.DataFrame` containing the data to be extracted.
+
+  Returns:
+    A numpy `ndarray` of the DataFrame's values.
+  """
   if not isinstance(data, pd.DataFrame):
     return data
 
