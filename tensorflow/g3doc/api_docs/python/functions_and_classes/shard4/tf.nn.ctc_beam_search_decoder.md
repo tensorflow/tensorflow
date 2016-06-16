@@ -2,11 +2,17 @@
 
 Performs beam search decoding on the logits given in input.
 
-If `merge_repeated` is `True`, merge repeated classes in output.
+**Note** The `ctc_greedy_decoder` is a special case of the
+`ctc_beam_search_decoder` with `top_paths=1` (but that decoder is faster
+for this special case).
+
+If `merge_repeated` is `True`, merge repeated classes in the output beams.
 This means that if consecutive entries in a beam are the same,
 only the first of these is emitted.  That is, when the top path
-is `A B B B B`, `A B` is returned if `merge_repeated = True`
-but `A B B B B` is returned if `merge_repeated = False`.
+is `A B B B B`, the return value is:
+
+  * `A B` if `merge_repeated = True`.
+  * `A B B B B` if `merge_repeated = False`.
 
 ##### Args:
 

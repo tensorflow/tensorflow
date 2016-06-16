@@ -2,11 +2,13 @@
 
 Computes the CTC (Connectionist Temporal Classification) Loss.
 
-See the article:
+This op implements the CTC loss as presented in the article:
 
 A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
 Connectionist Temporal Classification: Labelling Unsegmented Sequence Data
 with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.
+
+http://www.cs.toronto.edu/~graves/icml_2006.pdf
 
 Input requirements:
 
@@ -20,31 +22,36 @@ max(labels.indices(labels.indices[:, 1] == b, 2))
 Regarding the arguments `preprocess_collapse_repeated` and
 `ctc_merge_repeated`:
 
+If `preprocess_collapse_repeated` is True, then a preprocessing step runs
+before loss calculation, wherein repeated labels passed to the loss
+are merged into single labels.  This is useful if the training labels come
+from, e.g., forced alignments and therefore have unnecessary repetitions.
+
 If `ctc_merge_repeated` is set False, then deep within the CTC calculation,
 repeated non-blank labels will not be merged and are interpreted
 as individual labels.  This is a simplified (non-standard) version of CTC.
 
 Here is a table of the (roughly) expected first order behavior:
 
-* `preprocess_collapse_repeated=False, ctc_merge_repeated=True`
+* `preprocess_collapse_repeated=False`, `ctc_merge_repeated=True`
 
-  Classical CTC behavior: Outputs true repeated classes with nulls in
-  between, and can also output repeated classes with no nulls in
+  Classical CTC behavior: Outputs true repeated classes with blanks in
+  between, and can also output repeated classes with no blanks in
   between that need to be collapsed by the decoder.
 
-* `preprocess_collapse_repeated=True, ctc_merge_repeated=False`
+* `preprocess_collapse_repeated=True`, `ctc_merge_repeated=False`
 
-  Never learns repeated class of the same class under any circumstances.
+  Never learns to output repeated classes, as they are collapsed
+  in the input labels before training.
 
-* `preprocess_collapse_repeated=False, ctc_merge_repeated=False`
+* `preprocess_collapse_repeated=False`, `ctc_merge_repeated=False`
 
-  Outputs repeated classes with nulls in between, but generally does not
+  Outputs repeated classes with blanks in between, but generally does not
   require the decoder to collapse/merge repeated classes.
 
-* `preprocess_collapse_repeated=True, ctc_merge_repeated=True`
+* `preprocess_collapse_repeated=True`, `ctc_merge_repeated=True`
 
-  Untested.
-```
+  Untested.  Very likely will not learn to output repeated classes.
 
 ##### Args:
 

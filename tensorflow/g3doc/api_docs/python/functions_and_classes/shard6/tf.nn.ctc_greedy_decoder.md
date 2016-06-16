@@ -8,9 +8,11 @@ new element is emitted.
 
 If `merge_repeated` is `True`, merge repeated classes in output.
 This means that if consecutive logits' maximum indices are the same,
-only the first of these is emitted.  Labeling the blank '*', the sequence
-`A B B * B B` becomes `A B` if `merge_repeated = True` and `A B B B B`
-if `merge_repeated = False`.
+only the first of these is emitted.  The sequence `A B B * B * B` (where '*'
+is the blank label) becomes
+
+  * `A B` if `merge_repeated=True`.
+  * `A B B B B B` if `merge_repeated=False`.
 
 ##### Args:
 

@@ -30,7 +30,7 @@ Create a cell with an added input embedding.
 
 #### `tf.nn.rnn_cell.EmbeddingWrapper.output_size` {#EmbeddingWrapper.output_size}
 
-Integer or TensorShape: size of outputs produced by this cell.
+
 
 
 - - -
