@@ -21,11 +21,11 @@ from __future__ import print_function
 import math
 
 import numpy as np
-
 import tensorflow as tf
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
@@ -206,6 +206,181 @@ class MeshgridTest(test_util.TensorFlowTestCase):
       with self.test_session():
         X, _ = array_ops.meshgrid(x, x)
         X.eval()
+
+
+class StridedSliceChecker(object):
+  """Check a given tensor against the numpy result."""
+
+  REF_TENSOR = np.arange(1, 19, dtype=np.int32).reshape(3, 2, 3)
+  REF_TENSOR_ALIGNED = np.arange(1, 97, dtype=np.int32).reshape(3, 4, 8)
+
+  def __init__(self, test, x):
+    self.test = test
+    self.x = tf.constant(x)
+    self.x_np = np.array(x)
+
+  def __getitem__(self, spec):
+    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
+    # op = self.x[spec]
+    op = array_ops._NewSliceHelper(self.x, spec)
+
+    tensor = op.eval()
+    self.test.assertAllEqual(self.x_np[spec], tensor)
+    self.test.assertAllEqual(tensor.shape, op.get_shape())
+    return tensor
+
+
+class StridedSliceTest(test_util.TensorFlowTestCase):
+  """Test the strided slice operation with variants of slices."""
+
+  def testBasicSlice(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+        _ = checker[:, :, :]
+        # Various ways of representing identity slice
+        _ = checker[:, :, :]
+        _ = checker[::, ::, ::]
+        _ = checker[::1, ::1, ::1]
+        # Not zero slice
+        _ = checker[::1, ::5, ::2]
+        # Reverse in each dimension independently
+        _ = checker[::-1, :, :]
+        _ = checker[:, ::-1, :]
+        _ = checker[:, :, ::-1]
+        ## negative index tests i.e. n-2 in first component
+        _ = checker[-2::-1, :, ::1]
+        # negative index tests i.e. n-2 in first component, and non unit stride
+        _ = checker[-2::-1, :, ::2]
+
+  def testDegenerateSlices(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+        # degenerate by offering a forward interval with a negative stride
+        _ = checker[0:-1:-1, :, :]
+        # degenerate with a reverse interval with a positive stride
+        _ = checker[-1:0, :, :]
+        # empty interval in every dimension
+        _ = checker[-1:0, 2:2, 2:3:-1]
+
+  def testEllipse(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        raw = [[[[[1, 2], [3, 4], [5, 6]]], [[[7, 8], [9, 10], [11, 12]]]]]
+        checker = StridedSliceChecker(self, raw)
+
+        _ = checker[0:]
+        # implicit ellipse
+        _ = checker[0:, ...]
+        # ellipsis alone
+        _ = checker[...]
+        # ellipsis at end
+        _ = checker[0:1, ...]
+        # ellipsis at begin
+        _ = checker[..., 0:1]
+        # ellipsis at middle
+        _ = checker[0:1, ..., 0:1]
+        # multiple ellipsis not allowed
+        with self.assertRaisesRegexp(ValueError,
+                                     "Multiple ellipses not allowed"):
+          _ = checker[..., :, ...].eval()
+
+  def testShrink(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
+                [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]]
+        checker = StridedSliceChecker(self, raw)
+        _ = checker[:, :, :, :, 3]
+        _ = checker[..., 3]
+        _ = checker[:, 0]
+        _ = checker[:, :, 0]
+
+  def testExpand(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
+                [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]]
+        checker = StridedSliceChecker(self, raw)
+        # new axis (followed by implicit ellipsis)
+        _ = checker[np.newaxis]
+        # newaxis after ellipse
+        _ = checker[..., np.newaxis]
+        # newaxis in between ellipse and explicit range
+        _ = checker[..., np.newaxis, :]
+        _ = checker[:, ..., np.newaxis, :, :]
+        # Reverse final dimension with new axis
+        _ = checker[:, :, np.newaxis, :, 2::-1]
+        # Ellipse in middle of two newaxis
+        _ = checker[np.newaxis, ..., np.newaxis]
+
+  def testOptimizedCases(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        checker = StridedSliceChecker(self,
+                                      StridedSliceChecker.REF_TENSOR_ALIGNED)
+        # Identity
+        _ = checker[:]
+        # Identity
+        _ = checker[...]
+        # Identity
+        _ = checker[np.newaxis, ..., np.newaxis]
+        # First axis slice
+        _ = checker[1:]
+        # First axis slice
+        _ = checker[np.newaxis, 1:]
+
+
+class StridedSliceShapeChecker(object):
+
+  def __init__(self, x):
+    self.x = x
+
+  def __getitem__(self, spec):
+    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
+    # op = self.x[spec]
+    op = array_ops._NewSliceHelper(self.x, spec)
+    return op.get_shape()
+
+
+class StridedSliceShapeTest(test_util.TensorFlowTestCase):
+  """Test the shape inference of StridedSliceShapes."""
+
+  def testUnknown(self):
+    with self.test_session(use_gpu=False):
+      uncertain_tensor = tf.placeholder(tf.float32)
+      a = StridedSliceShapeChecker(uncertain_tensor)
+      a_slice_shape = a[...]
+      self.assertAllEqual(a_slice_shape.ndims, None)
+
+  def tensorShapeEqual(self, x, y):
+    self.assertTrue(x is not None and y is not None or x is None and y is None)
+    self.assertEqual(x.as_list(), y.as_list())
+
+  def testTensorShapeUncertain(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        uncertain_tensor = tf.placeholder(tf.float32, shape=(5, None, 7))
+        a = StridedSliceShapeChecker(uncertain_tensor)
+        self.tensorShapeEqual(a[3:5], tensor_shape.TensorShape([2, None, 7]))
+        self.tensorShapeEqual(a[3:5, :, 4], tensor_shape.TensorShape([2, None]))
+        self.tensorShapeEqual(a[3:5, 3:4, 4],
+                              tensor_shape.TensorShape([2, None]))
+        self.tensorShapeEqual(a[3:5, :, 5:10],
+                              tensor_shape.TensorShape([2, None, 2]))
+        self.tensorShapeEqual(a[3:5, :, 50:3],
+                              tensor_shape.TensorShape([2, None, 0]))
+        self.tensorShapeEqual(a[3:5, :, tf.newaxis, 50:3,],
+                              tensor_shape.TensorShape([2, None, 1, 0]))
+        self.tensorShapeEqual(a[1:5:2, :, tf.newaxis, 50:3,],
+                              tensor_shape.TensorShape([2, None, 1, 0]))
+        self.tensorShapeEqual(a[:5:3, :, tf.newaxis, 50:3,],
+                              tensor_shape.TensorShape([2, None, 1, 0]))
+        self.tensorShapeEqual(a[:2:3, :, tf.newaxis, 50:3,],
+                              tensor_shape.TensorShape([1, None, 1, 0]))
+        self.tensorShapeEqual(a[::-1, :, tf.newaxis, ::-2],
+                              tensor_shape.TensorShape([5, None, 1, 4]))
 
 
 if __name__ == "__main__":

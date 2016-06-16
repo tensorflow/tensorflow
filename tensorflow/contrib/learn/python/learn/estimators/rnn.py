@@ -30,45 +30,7 @@ def null_input_op_fn(x):
 
 
 class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
-  """TensorFlow RNN Classifier model.
-
-  Parameters:
-    rnn_size: The size for rnn cell, e.g. size of your word embeddings.
-    cell_type: The type of rnn cell, including rnn, gru, and lstm.
-    num_layers: The number of layers of the rnn model.
-    input_op_fn: Function that will transform the input tensor, such as
-      creating word embeddings, byte list, etc. This takes
-      an argument x for input and returns transformed x.
-    bidirectional: boolean, Whether this is a bidirectional rnn.
-    sequence_length: If sequence_length is provided, dynamic calculation is
-      performed. This saves computational time when unrolling past max sequence
-      length.
-    initial_state: An initial state for the RNN. This must be a tensor of
-      appropriate type and shape [batch_size x cell.state_size].
-    attn_length: integer, the size of attention vector attached to rnn cells.
-    attn_size: integer, the size of an attention window attached to rnn cells.
-    attn_vec_size: integer, the number of convolutional features calculated on
-      attention state and the size of the hidden layer built from base cell state.
-    n_classes: Number of classes in the target.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
-    learning_rate: If this is constant float value, no decay function is
-      used. Instead, a customized decay function can be passed that accepts
-      global_step as parameter and returns a Tensor.
-      e.g. exponential decay function:
-      def exp_decay(global_step):
-          return tf.train.exponential_decay(
-              learning_rate=0.1, global_step,
-              decay_steps=2, decay_rate=0.001)
-    class_weight: None or list of n_classes floats. Weight associated with
-      classes for loss computation. If not given, all classes are
-      supposed to have weight one.
-    continue_training: when continue_training is True, once initialized
-      model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the session,
-      e.g. num_cores, gpu_memory_fraction, etc.
-  """
+  """TensorFlow RNN Classifier model."""
 
   def __init__(self,
                rnn_size,
@@ -91,6 +53,46 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
                continue_training=False,
                config=None,
                verbose=1):
+    """Initializes a TensorFlowRNNClassifier instance.
+
+    Args:
+      rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+      cell_type: The type of rnn cell, including rnn, gru, and lstm.
+      num_layers: The number of layers of the rnn model.
+      input_op_fn: Function that will transform the input tensor, such as
+        creating word embeddings, byte list, etc. This takes
+        an argument x for input and returns transformed x.
+      bidirectional: boolean, Whether this is a bidirectional rnn.
+      sequence_length: If sequence_length is provided, dynamic calculation
+        is performed. This saves computational time when unrolling past max
+        sequence length.
+      initial_state: An initial state for the RNN. This must be a tensor of
+        appropriate type and shape [batch_size x cell.state_size].
+      attn_length: integer, the size of attention vector attached to rnn cells.
+      attn_size: integer, the size of an attention window attached to rnn cells.
+      attn_vec_size: integer, the number of convolutional features calculated on
+        attention state and the size of the hidden layer built from base cell state.
+      n_classes: Number of classes in the target.
+      batch_size: Mini batch size.
+      steps: Number of steps to run over data.
+      optimizer: Optimizer name (or class), for example "SGD", "Adam",
+        "Adagrad".
+      learning_rate: If this is constant float value, no decay function is
+        used. Instead, a customized decay function can be passed that accepts
+        global_step as parameter and returns a Tensor.
+        e.g. exponential decay function:
+        def exp_decay(global_step):
+            return tf.train.exponential_decay(
+                learning_rate=0.1, global_step,
+                decay_steps=2, decay_rate=0.001)
+      class_weight: None or list of n_classes floats. Weight associated with
+        classes for loss computation. If not given, all classes are
+        supposed to have weight one.
+      continue_training: when continue_training is True, once initialized
+        model will be continuely trained on every call of fit.
+      config: RunConfig object that controls the configurations of the session,
+        e.g. num_cores, gpu_memory_fraction, etc.
+    """
 
     self.rnn_size = rnn_size
     self.cell_type = cell_type
@@ -135,45 +137,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
 
 
 class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
-  """TensorFlow RNN Regressor model.
-
-  Parameters:
-    rnn_size: The size for rnn cell, e.g. size of your word embeddings.
-    cell_type: The type of rnn cell, including rnn, gru, and lstm.
-    num_layers: The number of layers of the rnn model.
-    input_op_fn: Function that will transform the input tensor, such as
-      creating word embeddings, byte list, etc. This takes
-      an argument x for input and returns transformed x.
-    bidirectional: boolean, Whether this is a bidirectional rnn.
-    sequence_length: If sequence_length is provided, dynamic calculation is
-      performed. This saves computational time when unrolling past max sequence
-      length.
-    initial_state: An initial state for the RNN. This must be a tensor of
-      appropriate type and shape [batch_size x cell.state_size].
-    attn_length: integer, the size of attention vector attached to rnn cells.
-    attn_size: integer, the size of an attention window attached to rnn cells.
-    attn_vec_size: integer, the number of convolutional features calculated on
-      attention state and the size of the hidden layer built from base cell state.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
-    learning_rate: If this is constant float value, no decay function is
-      used. Instead, a customized decay function can be passed that accepts
-      global_step as parameter and returns a Tensor.
-      e.g. exponential decay function:
-      def exp_decay(global_step):
-          return tf.train.exponential_decay(
-              learning_rate=0.1, global_step,
-              decay_steps=2, decay_rate=0.001)
-    continue_training: when continue_training is True, once initialized
-      model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the
-      session, e.g. num_cores, gpu_memory_fraction, etc.
-    verbose: Controls the verbosity, possible values:
-      0: the algorithm and debug information is muted.
-      1: trainer prints the progress.
-      2: log device placement is printed.
-  """
+  """TensorFlow RNN Regressor model."""
 
   def __init__(self,
                rnn_size,
@@ -195,6 +159,46 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
                continue_training=False,
                config=None,
                verbose=1):
+    """Initializes a TensorFlowRNNRegressor instance.
+
+    Args:
+      rnn_size: The size for rnn cell, e.g. size of your word embeddings.
+      cell_type: The type of rnn cell, including rnn, gru, and lstm.
+      num_layers: The number of layers of the rnn model.
+      input_op_fn: Function that will transform the input tensor, such as
+        creating word embeddings, byte list, etc. This takes
+        an argument x for input and returns transformed x.
+      bidirectional: boolean, Whether this is a bidirectional rnn.
+      sequence_length: If sequence_length is provided, dynamic calculation
+        is performed. This saves computational time when unrolling past max
+        sequence length.
+      attn_length: integer, the size of attention vector attached to rnn cells.
+      attn_size: integer, the size of an attention window attached to rnn cells.
+      attn_vec_size: integer, the number of convolutional features calculated on
+        attention state and the size of the hidden layer built from base cell state.
+      initial_state: An initial state for the RNN. This must be a tensor of
+        appropriate type and shape [batch_size x cell.state_size].
+      batch_size: Mini batch size.
+      steps: Number of steps to run over data.
+      optimizer: Optimizer name (or class), for example "SGD", "Adam",
+        "Adagrad".
+      learning_rate: If this is constant float value, no decay function is
+        used. Instead, a customized decay function can be passed that accepts
+        global_step as parameter and returns a Tensor.
+        e.g. exponential decay function:
+        def exp_decay(global_step):
+            return tf.train.exponential_decay(
+                learning_rate=0.1, global_step,
+                decay_steps=2, decay_rate=0.001)
+      continue_training: when continue_training is True, once initialized
+        model will be continuely trained on every call of fit.
+      config: RunConfig object that controls the configurations of the
+        session, e.g. num_cores, gpu_memory_fraction, etc.
+      verbose: Controls the verbosity, possible values:
+        0: the algorithm and debug information is muted.
+        1: trainer prints the progress.
+        2: log device placement is printed.
+    """
     self.rnn_size = rnn_size
     self.cell_type = cell_type
     self.input_op_fn = input_op_fn

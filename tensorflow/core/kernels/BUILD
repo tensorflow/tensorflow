@@ -46,6 +46,30 @@ cc_library(
 )
 
 tf_kernel_library(
+    name = "strided_slice_op",
+    srcs = [
+        "strided_slice_op.cc",
+    ],
+    hdrs = [
+        "slice_op.h",
+        "strided_slice_op.h",
+    ],
+    gpu_srcs = [
+        "slice_op.h",
+        "strided_slice_op.h",
+        "strided_slice_op_gpu.cu.cc",
+        "slice_op_gpu.cu.cc",
+    ],
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "concat_lib",
     srcs = ["concat_lib_cpu.cc"],
     hdrs = ["concat_lib.h"],
@@ -351,6 +375,7 @@ tf_kernel_libraries(
         ":ops_util",
         ":spacetobatch_op",
         ":split_lib",
+        ":strided_slice_op",
         ":transpose_functor",
         "//tensorflow/core:array_grad",
         "//tensorflow/core:array_ops_op_lib",
@@ -512,6 +537,24 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":slice_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "strided_slice_op_test",
+    size = "small",
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":slice_op",
+        ":strided_slice_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1565,6 +1608,8 @@ tf_kernel_libraries(
     prefixes = [
         "string_to_hash_bucket_op",
         "reduce_join_op",
+        "string_join_op",
+        "as_string_op",
     ],
     deps = [
         "//tensorflow/core:framework",
@@ -1692,6 +1737,8 @@ filegroup(
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
+        "strided_slice_op.cc",
+        "strided_slice_op.h",
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",

@@ -4,6 +4,7 @@ Train a linear regression model to predict target variable value given
 observation of feature values.
 
 Example:
+
 ```python
 installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
 impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
@@ -37,7 +38,7 @@ Input of `fit` and `evaluate` should have following features,
         input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -48,7 +49,6 @@ Construct a `LinearRegressor` estimator object.
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
-*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -57,6 +57,9 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
     to their global norm with this clipping ratio. See
     `tf.clip_by_global_norm` for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:

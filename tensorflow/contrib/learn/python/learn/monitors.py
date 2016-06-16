@@ -91,15 +91,18 @@ class BaseMonitor(object):
 class EveryN(BaseMonitor):
   """Base class for monitors that execute callbacks every n steps.
 
-  Parameters:
-    every_n_steps: int, calls `every_n_step_{begin,end}` every this many steps.
-    first_n_steps: int, calls `every_n_step_{begin,end}` for first n steps.
-
-  TODO(ipolosukhin): Add also every n seconds.
+    TODO(ipolosukhin): Add also every n seconds.
   """
 
   def __init__(
       self, every_n_steps=100, first_n_steps=1):
+    """Initializes an EveryN instance.
+
+    Args:
+      every_n_steps: int, calls `every_n_step_{begin,end}` every this many
+        steps.
+      first_n_steps: int, calls `every_n_step_{begin,end}` for first n steps.
+    """
     self._every_n_steps = every_n_steps
     self._first_n_steps = first_n_steps
     self._max_steps = None

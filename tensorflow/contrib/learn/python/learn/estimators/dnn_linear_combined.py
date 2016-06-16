@@ -30,6 +30,7 @@ from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import logistic_regressor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -58,37 +59,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
           whose `value` is a `SparseTensor`.
         - if `column` is a `RealValuedColumn, a feature with `key=column.name`
           whose `value` is a `Tensor`.
-
-  Parameters:
-    model_dir: Directory to save model parameters, graph and etc.
-    n_classes: number of target classes. Default is binary classification.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    linear_feature_columns: An iterable containing all the feature columns used
-      by linear part of the model. All items in the set should be instances of
-      classes derived from `FeatureColumn`.
-    linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-      the linear part of the model. If `None`, will use a FTRL optimizer.
-    dnn_feature_columns: An iterable containing all the feature columns used by
-      deep part of the model. All items in the set should be instances of
-      classes derived from `FeatureColumn`.
-    dnn_hidden_units: List of hidden units per layer. All layers are fully
-      connected.
-    dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to the
-      deep part of the model. If `None`, will use an Adagrad optimizer.
-    dnn_activation_fn: Activation function applied to each layer. If `None`,
-      will use `tf.nn.relu`.
-    dnn_dropout: When not None, the probability we will drop out
-      a given coordinate.
-    gradient_clip_norm: A float > 0. If provided, gradients are clipped
-      to their global norm with this clipping ratio. See tf.clip_by_global_norm
-      for more details.
-    config: RunConfig object to configure the runtime settings.
-
-    Raises:
-      ValueError: If both linear_feature_columns and dnn_features_columns are
-        empty at the same time.
   """
 
   def __init__(self,
@@ -102,7 +72,44 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
+    """Initializes a _DNNLinearCombinedBaseEstimator instance.
+
+    Args:
+      model_dir: Directory to save model parameters, graph and etc.
+      n_classes: number of target classes. Default is binary classification.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      linear_feature_columns: An iterable containing all the feature columns
+        used by linear part of the model. All items in the set should be
+        instances of classes derived from `FeatureColumn`.
+      linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the linear part of the model. If `None`, will use a FTRL optimizer.
+      dnn_feature_columns: An iterable containing all the feature columns used
+        by deep part of the model. All items in the set should be instances of
+        classes derived from `FeatureColumn`.
+      dnn_hidden_units: List of hidden units per layer. All layers are fully
+        connected.
+      dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the deep part of the model. If `None`, will use an Adagrad optimizer.
+      dnn_activation_fn: Activation function applied to each layer. If `None`,
+        will use `tf.nn.relu`.
+      dnn_dropout: When not None, the probability we will drop out
+        a given coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are clipped
+        to their global norm with this clipping ratio. See
+        tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
+      config: RunConfig object to configure the runtime settings.
+
+      Raises:
+        ValueError: If both linear_feature_columns and dnn_features_columns are
+          empty at the same time.
+    """
     super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
                                                           config=config)
     self._weight_column_name = weight_column_name
@@ -119,6 +126,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._linear_weight_collection = "DNNLinearCombined_linear"
     self._centered_bias_weight_collection = "centered_bias"
     self._gradient_clip_norm = gradient_clip_norm
+    self._enable_centered_bias = enable_centered_bias
 
   @property
   def linear_weights_(self):
@@ -161,8 +169,12 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     global_step = contrib_variables.get_global_step()
     assert global_step
     logits = self._logits(features, is_training=True)
-    with ops.control_dependencies([self._centered_bias_step(
-        targets, self._get_weight_tensor(features))]):
+    if self._enable_centered_bias:
+      centered_bias_step = [self._centered_bias_step(
+          targets, self._get_weight_tensor(features))]
+    else:
+      centered_bias_step = []
+    with ops.control_dependencies(centered_bias_step):
       loss = self._loss(logits, targets, self._get_weight_tensor(features))
     logging_ops.scalar_summary("loss", loss)
 
@@ -313,7 +325,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     else:
       logits = self._linear_logits(features)
 
-    return nn.bias_add(logits, self._centered_bias())
+    if self._enable_centered_bias:
+      return nn.bias_add(logits, self._centered_bias())
+    else:
+      return logits
 
   def _get_weight_tensor(self, features):
     if not self._weight_column_name:
@@ -425,38 +440,6 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
           whose `value` is a `SparseTensor`.
         - if `column` is a `RealValuedColumn, a feature with `key=column.name`
           whose `value` is a `Tensor`.
-
-  Parameters:
-    model_dir: Directory to save model parameters, graph and etc.
-    n_classes: number of target classes. Default is binary classification.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    linear_feature_columns: An iterable containing all the feature columns used
-      by linear part of the model. All items in the set must be instances of
-      classes derived from `FeatureColumn`.
-    linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-      the linear part of the model. If `None`, will use a FTRL optimizer.
-    dnn_feature_columns: An iterable containing all the feature columns used by
-      deep part of the model. All items in the set must be instances of
-      classes derived from `FeatureColumn`.
-    dnn_hidden_units: List of hidden units per layer. All layers are fully
-      connected.
-    dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to the
-      deep part of the model. If `None`, will use an Adagrad optimizer.
-    dnn_activation_fn: Activation function applied to each layer. If `None`,
-      will use `tf.nn.relu`.
-    dnn_dropout: When not None, the probability we will drop out
-      a given coordinate.
-    gradient_clip_norm: A float > 0. If provided, gradients are clipped
-      to their global norm with this clipping ratio. See tf.clip_by_global_norm
-      for more details.
-    config: RunConfig object to configure the runtime settings.
-
-    Raises:
-      ValueError: If both linear_feature_columns and dnn_features_columns are
-        empty at the same time.
-      ValueError: If both n_classes < 2.
   """
 
   def __init__(self,
@@ -471,7 +454,45 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
+    """Constructs a DNNLinearCombinedClassifier instance.
+
+    Args:
+      model_dir: Directory to save model parameters, graph and etc.
+      n_classes: number of target classes. Default is binary classification.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training.
+        It will be multiplied by the loss of the example.
+      linear_feature_columns: An iterable containing all the feature columns
+        used by linear part of the model. All items in the set must be
+        instances of classes derived from `FeatureColumn`.
+      linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the linear part of the model. If `None`, will use a FTRL optimizer.
+      dnn_feature_columns: An iterable containing all the feature columns used
+        by deep part of the model. All items in the set must be instances of
+        classes derived from `FeatureColumn`.
+      dnn_hidden_units: List of hidden units per layer. All layers are fully
+        connected.
+      dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the deep part of the model. If `None`, will use an Adagrad optimizer.
+      dnn_activation_fn: Activation function applied to each layer. If `None`,
+        will use `tf.nn.relu`.
+      dnn_dropout: When not None, the probability we will drop out
+        a given coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are clipped
+        to their global norm with this clipping ratio. See
+        tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
+      config: RunConfig object to configure the runtime settings.
+
+      Raises:
+        ValueError: If both linear_feature_columns and dnn_features_columns are
+          empty at the same time.
+        ValueError: If both n_classes < 2.
+    """
 
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
@@ -489,6 +510,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_activation_fn=dnn_activation_fn,
         dnn_dropout=dnn_dropout,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def predict(self, x=None, input_fn=None, batch_size=None):
@@ -560,13 +582,21 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         logits, targets,
         weight_tensor=self._get_weight_tensor(features)))}
 
-    # Adding default metrics
+    # Adds default metrics.
     if metrics is None:
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics = {("accuracy", "classes"): metrics_lib.streaming_accuracy}
 
+    # Adds additional useful metrics for the special case of binary
+    # classification.
     if self._n_classes == 2:
       predictions = math_ops.sigmoid(logits)
-      result["auc"] = metrics_lib.streaming_auc(predictions, targets)
+      targets_float = math_ops.to_float(targets)
+      default_metrics = (
+          logistic_regressor.LogisticRegressor.get_default_metrics())
+      for metric_name, metric_op in default_metrics.items():
+        result[metric_name] = metric_op(predictions, targets_float)
 
     if metrics:
       class_metrics = {}
@@ -628,7 +658,14 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         # deep settings
         dnn_feature_columns=[installed_emb, impression_emb],
         dnn_hidden_units=[1000, 500, 100],
-        dnn_optimizer=tf.train.AdagradOptimizer(...))
+        dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
+
+    # To apply L1 and L2 regularization, you can set optimizers as follows:
+    tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001,
+        l2_regularization_strength=0.001)
+    # It is same for FtrlOptimizer.
 
     # Input builders
     def input_fn_train: # returns x, y
@@ -649,36 +686,6 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
           whose `value` is a `SparseTensor`.
         - if `column` is a `RealValuedColumn, a feature with `key=column.name`
           whose `value` is a `Tensor`.
-
-  Parameters:
-    model_dir: Directory to save model parameters, graph and etc.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    linear_feature_columns: An iterable containing all the feature columns used
-      by linear part of the model. All items in the set must be instances of
-      classes derived from `FeatureColumn`.
-    linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-      the linear part of the model. If `None`, will use a FTRL optimizer.
-    dnn_feature_columns: An iterable containing all the feature columns used by
-      deep part of the model. All items in the set must be instances of
-      classes derived from `FeatureColumn`.
-    dnn_hidden_units: List of hidden units per layer. All layers are fully
-      connected.
-    dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to the
-      deep part of the model. If `None`, will use an Adagrad optimizer.
-    dnn_activation_fn: Activation function applied to each layer. If None, will
-      use `tf.nn.relu`.
-    dnn_dropout: When not None, the probability we will drop out
-      a given coordinate.
-    gradient_clip_norm: A float > 0. If provided, gradients are clipped
-      to their global norm with this clipping ratio. See tf.clip_by_global_norm
-      for more details.
-    config: RunConfig object to configure the runtime settings.
-
-    Raises:
-      ValueError: If both linear_feature_columns and dnn_features_columns are
-        empty at the same time.
   """
 
   def __init__(self,
@@ -692,7 +699,43 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
+    """Initializes a DNNLinearCombinedRegressor instance.
+
+    Args:
+      model_dir: Directory to save model parameters, graph and etc.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      linear_feature_columns: An iterable containing all the feature columns
+        used by linear part of the model. All items in the set must be
+        instances of classes derived from `FeatureColumn`.
+      linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the linear part of the model. If `None`, will use a FTRL optimizer.
+      dnn_feature_columns: An iterable containing all the feature columns used
+        by deep part of the model. All items in the set must be instances of
+        classes derived from `FeatureColumn`.
+      dnn_hidden_units: List of hidden units per layer. All layers are fully
+        connected.
+      dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
+        the deep part of the model. If `None`, will use an Adagrad optimizer.
+      dnn_activation_fn: Activation function applied to each layer. If None,
+        will use `tf.nn.relu`.
+      dnn_dropout: When not None, the probability we will drop out
+        a given coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are clipped
+        to their global norm with this clipping ratio. See
+        tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
+      config: RunConfig object to configure the runtime settings.
+
+      Raises:
+        ValueError: If both linear_feature_columns and dnn_features_columns are
+          empty at the same time.
+    """
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
@@ -704,6 +747,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_activation_fn=dnn_activation_fn,
         dnn_dropout=dnn_dropout,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def predict(self, x=None, input_fn=None, batch_size=None):

@@ -143,7 +143,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
     ]
 
     self._testCTCDecoder(
-        tf.contrib.ctc.ctc_greedy_decoder,
+        tf.nn.ctc_greedy_decoder,
         inputs, seq_lens, log_prob_truth, decode_truth)
 
   def testCTCDecoderBeamSearch(self):
@@ -191,7 +191,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
     ]
 
     self._testCTCDecoder(
-        tf.contrib.ctc.ctc_beam_search_decoder,
+        tf.nn.ctc_beam_search_decoder,
         inputs, seq_lens, log_prob_truth,
         decode_truth,
         beam_width=2,

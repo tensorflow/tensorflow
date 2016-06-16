@@ -264,7 +264,9 @@
   * [`zeta`](../../api_docs/python/math_ops.md#zeta)
 
 * **[Strings](../../api_docs/python/string_ops.md)**:
+  * [`as_string`](../../api_docs/python/string_ops.md#as_string)
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
+  * [`string_join`](../../api_docs/python/string_ops.md#string_join)
   * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
   * [`string_to_hash_bucket_fast`](../../api_docs/python/string_ops.md#string_to_hash_bucket_fast)
   * [`string_to_hash_bucket_strong`](../../api_docs/python/string_ops.md#string_to_hash_bucket_strong)
@@ -428,6 +430,9 @@
   * [`conv2d`](../../api_docs/python/nn.md#conv2d)
   * [`conv2d_transpose`](../../api_docs/python/nn.md#conv2d_transpose)
   * [`conv3d`](../../api_docs/python/nn.md#conv3d)
+  * [`ctc_beam_search_decoder`](../../api_docs/python/nn.md#ctc_beam_search_decoder)
+  * [`ctc_greedy_decoder`](../../api_docs/python/nn.md#ctc_greedy_decoder)
+  * [`ctc_loss`](../../api_docs/python/nn.md#ctc_loss)
   * [`depthwise_conv2d`](../../api_docs/python/nn.md#depthwise_conv2d)
   * [`depthwise_conv2d_native`](../../api_docs/python/nn.md#depthwise_conv2d_native)
   * [`dilation2d`](../../api_docs/python/nn.md#dilation2d)
@@ -578,10 +583,12 @@
   * [`DiscreteDistribution`](../../api_docs/python/contrib.distributions.md#DiscreteDistribution)
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
   * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
+  * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
   * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
   * [`normal_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_congugates_known_sigma_predictive)
   * [`normal_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_sigma_posterior)
+  * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
 

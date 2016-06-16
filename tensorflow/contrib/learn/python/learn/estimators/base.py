@@ -61,38 +61,7 @@ def _copy_dir(dir_in, dir_out):
 
 
 class TensorFlowEstimator(estimator.Estimator):
-  """Base class for all TensorFlow estimators.
-
-  Parameters:
-    model_fn: Model function, that takes input `x`, `y` tensors and outputs
-      prediction and loss tensors.
-    n_classes: Number of classes in the target.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam",
-      "Adagrad".
-    learning_rate: If this is constant float value, no decay function is used.
-      Instead, a customized decay function can be passed that accepts
-      global_step as parameter and returns a Tensor.
-      e.g. exponential decay function:
-      def exp_decay(global_step):
-          return tf.train.exponential_decay(
-              learning_rate=0.1, global_step,
-              decay_steps=2, decay_rate=0.001)
-    clip_gradients: Clip norm of the gradients to this value to stop
-      gradient explosion.
-    class_weight: None or list of n_classes floats. Weight associated with
-      classes for loss computation. If not given, all classes are supposed to
-      have weight one.
-    continue_training: when continue_training is True, once initialized
-      model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the
-      session, e.g. num_cores, gpu_memory_fraction, etc.
-    verbose: Controls the verbosity, possible values:
-      0: the algorithm and debug information is muted.
-      1: trainer prints the progress.
-      2: log device placement is printed.
-  """
+  """Base class for all TensorFlow estimators."""
 
   def __init__(self,
                model_fn,
@@ -106,6 +75,38 @@ class TensorFlowEstimator(estimator.Estimator):
                continue_training=False,
                config=None,
                verbose=1):
+    """Initializes a TensorFlowEstimator instance.
+
+    Args:
+      model_fn: Model function, that takes input `x`, `y` tensors and outputs
+        prediction and loss tensors.
+      n_classes: Number of classes in the target.
+      batch_size: Mini batch size.
+      steps: Number of steps to run over data.
+      optimizer: Optimizer name (or class), for example "SGD", "Adam",
+        "Adagrad".
+      learning_rate: If this is constant float value, no decay function is used.
+        Instead, a customized decay function can be passed that accepts
+        global_step as parameter and returns a Tensor.
+        e.g. exponential decay function:
+        def exp_decay(global_step):
+            return tf.train.exponential_decay(
+                learning_rate=0.1, global_step,
+                decay_steps=2, decay_rate=0.001)
+      clip_gradients: Clip norm of the gradients to this value to stop
+        gradient explosion.
+      class_weight: None or list of n_classes floats. Weight associated with
+        classes for loss computation. If not given, all classes are supposed to
+        have weight one.
+      continue_training: when continue_training is True, once initialized
+        model will be continuely trained on every call of fit.
+      config: RunConfig object that controls the configurations of the
+        session, e.g. num_cores, gpu_memory_fraction, etc.
+      verbose: Controls the verbosity, possible values:
+        0: the algorithm and debug information is muted.
+        1: trainer prints the progress.
+        2: log device placement is printed.
+    """
     self.class_weight = class_weight
     self.learning_rate = learning_rate
     self.clip_gradients = clip_gradients
@@ -494,4 +495,3 @@ class DeprecatedMixin(object):
     """
     # Copy model dir into new path.
     _copy_dir(self.model_dir, path)
-

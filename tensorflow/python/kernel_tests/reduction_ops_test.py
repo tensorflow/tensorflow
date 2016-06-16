@@ -65,7 +65,8 @@ class ReducedShapeTest(tf.test.TestCase):
 
 class SumReductionTest(tf.test.TestCase):
 
-  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
+  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False,
+               feed_dict=None):
     np_ans = x
     if reduction_axes is None:
       np_ans = np.sum(np_ans, keepdims=keep_dims)
@@ -73,20 +74,20 @@ class SumReductionTest(tf.test.TestCase):
       reduction_axes = np.array(reduction_axes).astype(np.int32)
       for ra in reduction_axes.ravel()[::-1]:
         np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=use_gpu) as sess:
       tf_ans = tf.reduce_sum(x, reduction_axes, keep_dims)
-      out = tf_ans.eval()
+      out = sess.run(tf_ans, feed_dict)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
-  def _compareAll(self, x, reduction_axes):
+  def _compareAll(self, x, reduction_axes, feed_dict=None):
     if reduction_axes is not None and np.shape(reduction_axes) == (1,):
       # Test scalar reduction_axes argument
       self._compareAll(x, reduction_axes[0])
-    self._compare(x, reduction_axes, False, use_gpu=True)
-    self._compare(x, reduction_axes, False, use_gpu=False)
-    self._compare(x, reduction_axes, True, use_gpu=True)
-    self._compare(x, reduction_axes, True, use_gpu=False)
+    self._compare(x, reduction_axes, False, use_gpu=True, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, False, use_gpu=False, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, True, use_gpu=True, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, True, use_gpu=False, feed_dict=feed_dict)
 
   def testFloatReduce1D(self):
     # Create a 1D array of floats
@@ -190,6 +191,38 @@ class SumReductionTest(tf.test.TestCase):
     with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e: "Invalid reduction dimension" in str(e)):
       tf.reduce_sum(input_tensor, [0, 2])
+
+  def testPartialShapes(self):
+    np.random.seed(1618)
+
+    # Input shape is unknown.
+    reduction_axes = [1, 2]
+    c_unknown = tf.placeholder(tf.float32)
+    s_unknown = tf.reduce_sum(c_unknown, reduction_axes)
+    self.assertEqual(tensor_shape.unknown_shape(), s_unknown.get_shape())
+
+    np_input = np.random.randn(3, 3, 3)
+    self._compareAll(np_input, reduction_axes, {c_unknown: np_input})
+
+    # Input shape only has known rank.
+    c_known_rank = tf.placeholder(tf.float32)
+    c_known_rank.set_shape(tensor_shape.unknown_shape(ndims=3))
+    s_known_rank = tf.reduce_sum(c_known_rank, reduction_axes, keep_dims=True)
+    self.assertEqual(3, s_known_rank.get_shape().ndims)
+
+    np_input = np.random.randn(3, 3, 3)
+    self._compareAll(np_input, reduction_axes, {c_known_rank: np_input})
+
+    # Reduction indices are unknown.
+    unknown_indices = tf.placeholder(tf.int32)
+    c_unknown_indices = tf.constant([[10.0], [20.0]])
+    s_unknown_indices = tf.reduce_sum(c_unknown_indices, unknown_indices,
+                                     keep_dims=False)
+    self.assertEqual(tensor_shape.unknown_shape(),
+                     s_unknown_indices.get_shape())
+    s_unknown_indices_keep = tf.reduce_sum(c_unknown_indices, unknown_indices,
+                                          keep_dims=True)
+    self.assertEqual(2, s_unknown_indices_keep.get_shape().ndims)
 
   # Int64??
 
@@ -742,29 +775,6 @@ class AnyReductionTest(tf.test.TestCase):
     self._compareAll(np_arr, [1, 2])
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
-
-  def testPartialShapes(self):
-    # Input shape is unknown.
-    c_unknown = tf.placeholder(tf.float32)
-    s_unknown = tf.reduce_sum(c_unknown, [1, 2])
-    self.assertEqual(tensor_shape.unknown_shape(), s_unknown.get_shape())
-
-    # Input shape only has known rank.
-    c_known_rank = tf.placeholder(tf.float32)
-    c_known_rank.set_shape(tensor_shape.unknown_shape(ndims=3))
-    s_known_rank = tf.reduce_sum(c_known_rank, [1, 2], keep_dims=True)
-    self.assertEqual(3, s_known_rank.get_shape().ndims)
-
-    # Reduction indices are unknown.
-    unknown_indices = tf.placeholder(tf.int32)
-    c_unknown_indices = tf.constant([[10.0], [20.0]])
-    s_unknown_indices = tf.reduce_sum(c_unknown_indices, unknown_indices,
-                                     keep_dims=False)
-    self.assertEqual(tensor_shape.unknown_shape(),
-                     s_unknown_indices.get_shape())
-    s_unknown_indices_keep = tf.reduce_sum(c_unknown_indices, unknown_indices,
-                                          keep_dims=True)
-    self.assertEqual(2, s_unknown_indices_keep.get_shape().ndims)
 
   def testEmpty(self):
     self._compareAll([], [0])

@@ -2513,6 +2513,67 @@ op {
   }
 }
 op {
+  name: "AsString"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_BOOL
+        type: DT_INT8
+      }
+    }
+  }
+  attr {
+    name: "precision"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "scientific"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "shortest"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "width"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "fill"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
   name: "Asin"
   input_arg {
     name: "x"
@@ -15263,6 +15324,62 @@ op {
   is_stateful: true
 }
 op {
+  name: "QuantizeAndDequantize"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "signed_input"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
+  attr {
+    name: "range_given"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "input_min"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "input_max"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "QueueClose"
   input_arg {
     name: "handle"
@@ -23065,6 +23182,88 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "StridedSlice"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "begin"
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "end"
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "strides"
+    type_attr: "Index"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Index"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "begin_mask"
+    type: "int"
+  }
+  attr {
+    name: "end_mask"
+    type: "int"
+  }
+  attr {
+    name: "ellipse_mask"
+    type: "int"
+  }
+  attr {
+    name: "new_axis_mask"
+    type: "int"
+  }
+  attr {
+    name: "shrink_axis_mask"
+    type: "int"
+  }
+}
+op {
+  name: "StringJoin"
+  input_arg {
+    name: "inputs"
+    type: DT_STRING
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "separator"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {

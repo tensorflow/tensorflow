@@ -228,5 +228,29 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual("ctor_scope/a/dummy:0", inner_imm_var.name)
     self.assertEqual("call_scope/b/dummy:0", inner_defer_var.name)
 
+  def test_scope_access(self):
+    # Ensure that we can access the scope inside the template, because the name
+    # of that scope may be different from the name we pass to make_template, due
+    # to having been made unique by variable_op_scope.
+    with tf.variable_scope("foo"):
+      # Create two templates with the same name, ensure scopes are made unique.
+      ta = template.make_template("bar", var_scoped_function, True)
+      tb = template.make_template("bar", var_scoped_function, True)
+
+    # Ensure we can get the scopes before either template is actually called.
+    self.assertEqual(ta.var_scope.name, "foo/bar")
+    self.assertEqual(tb.var_scope.name, "foo/bar_1")
+
+    with tf.variable_scope("foo_2"):
+      # Create a template which defers scope creation.
+      tc = template.make_template("blah", var_scoped_function, False)
+
+    # Before we call the template, the scope property will be set to None.
+    self.assertEqual(tc.var_scope, None)
+    tc()
+
+    # Template is called at the top level, so there is no preceding "foo_2".
+    self.assertEqual(tc.var_scope.name, "blah")
+
 if __name__ == "__main__":
   tf.test.main()

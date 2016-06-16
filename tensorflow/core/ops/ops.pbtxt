@@ -1069,6 +1069,74 @@ op {
   summary: "Returns the index with the smallest value across dimensions of a tensor."
 }
 op {
+  name: "AsString"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_BOOL
+        type: DT_INT8
+      }
+    }
+  }
+  attr {
+    name: "precision"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The post-decimal precision to use for floating point numbers.\nOnly used if precision > -1."
+  }
+  attr {
+    name: "scientific"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use scientific notation for floating point numbers."
+  }
+  attr {
+    name: "shortest"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use shortest representation (either scientific or standard) for\nfloating point numbers."
+  }
+  attr {
+    name: "width"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Pad pre-decimal numbers to this width.\nApplies to both floating point and integer numbers.\nOnly used if width > -1."
+  }
+  attr {
+    name: "fill"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The value to pad if width > -1.  If empty, pads with spaces.\nAnother typical value is \'0\'.  String cannot be longer than 1 character."
+  }
+  summary: "Converts each entry in the given tensor to strings.  Supports many numeric"
+  description: "types and boolean."
+}
+op {
   name: "Asin"
   input_arg {
     name: "x"
@@ -8568,6 +8636,70 @@ op {
   is_stateful: true
 }
 op {
+  name: "QuantizeAndDequantize"
+  input_arg {
+    name: "input"
+    description: "Tensor to quantize and then dequantize."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "signed_input"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If the quantization is signed or unsigned."
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+    description: "The bitwidth of the quantization."
+  }
+  attr {
+    name: "range_given"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If the range is given or should be computed from the tensor."
+  }
+  attr {
+    name: "input_min"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "If range is given, this is the min of the range."
+  }
+  attr {
+    name: "input_max"
+    type: "float"
+    default_value {
+      f: 0
+    }
+    description: "If range is given, this is the max of the range."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Quantizes then dequantizes a tensor."
+  description: "This op simulates the precision loss from the quantized forward pass by:\n1. Quantizing the tensor to fixed point numbers, which should match the target\n   quantization method when it is used in inference.\n2. Dequantizing it back to floating point numbers for the following ops, most\n   likely matmul.\n\nThere are different ways to quantize. This version does not use the full range\nof the output type, choosing to elide the lowest possible value for symmetry\n(e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit\nquantization), so that 0.0 maps to 0.\n\nTo perform this op, we first find the range of values in our tensor. The range\nwe use is always centered on 0, so we find m such that\n\n1. m = max(abs(input_min), abs(input_max)) if range_given is true,\n2. m = max(max(abs(min_elem(input)), abs(max_elem(input))) otherwise.\n\nOur input tensor range is then [-m, m].\n\nNext, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].\nIf signed_input is true, this is\n\n  [min_fixed, max_fixed ] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].\n\nOtherwise, if signed_input is false, the fixed-point range is\n\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].\n\nFrom this we compute our scaling factor, s:\n\n  s = (max_fixed - min_fixed) / (2 * m).\n\nNow we can quantize and dequantize the elements of our tensor.  An element e\nis transformed into e\':\n\n  e\' = (e * s).round_to_nearest() / s.\n\nNote that we have a different number of buckets in the signed vs. unsigned\ncases.  For example, if num_bits == 8, we get 254 buckets in the signed case\nvs. 255 in the unsigned case.\n\nFor example, suppose num_bits = 8 and m = 1.  Then\n\n  [min_fixed, max_fixed] = [-127, 127], and\n  s = (127 + 127) / 2 = 127.\n\nGiven the vector {-1, -0.5, 0, 0.3}, this is quantized to\n{-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}."
+}
+op {
   name: "QueueClose"
   input_arg {
     name: "handle"
@@ -13375,6 +13507,99 @@ op {
   }
   summary: "Stops gradient computation."
   description: "When executed in a graph, this op outputs its input tensor as-is.\n\nWhen building ops to compute gradients, this op prevents the contribution of\nits inputs to be taken into account.  Normally, the gradient generator adds ops\nto a graph to compute the derivatives of a specified \'loss\' by recursively\nfinding out inputs that contributed to its computation.  If you insert this op\nin the graph it inputs are masked from the gradient generator.  They are not\ntaken into account for computing gradients.\n\nThis is useful any time you want to compute a value with TensorFlow but need\nto pretend that the value was a constant. Some examples include:\n\n*  The *EM* algorithm where the *M-step* should not involve backpropagation\n   through the output of the *E-step*.\n*  Contrastive divergence training of Boltzmann machines where, when\n   differentiating the energy function, the training must not backpropagate\n   through the graph that generated the samples from the model.\n*  Adversarial training, where no backprop should happen through the adversarial\n   example generation process."
+}
+op {
+  name: "StridedSlice"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "begin"
+    description: "`begin[i]` specifies the offset into the `i`th dimension of\n`input` to slice from."
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "end"
+    description: "`end[i]` specifies the first offset into the `i`th dimension of\n`input` that will not be extracted. Out or range values are\nclamped to `[0,dim[i]) if slice[i] > 0` or `[-1,dim[i]-1]`\n`if slice[i] < 0`"
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "strides"
+    description: "`strides[i]` specifies the increment in the `i`th dimension\nafter extracting a given element. Negative indices will reverse\nthe original order. Out or range values are\nclamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`"
+    type_attr: "Index"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Index"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "begin_mask"
+    type: "int"
+    description: "a bitmask where a bit i being 1 means to ignore the begin\nvalue and instead use the largest interval possible. At runtime\nbegin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or\n`[-1, n-1]` if `stride[i] < 0`"
+  }
+  attr {
+    name: "end_mask"
+    type: "int"
+    description: "analogous to `begin_mask`"
+  }
+  attr {
+    name: "ellipse_mask"
+    type: "int"
+  }
+  attr {
+    name: "new_axis_mask"
+    type: "int"
+  }
+  attr {
+    name: "shrink_axis_mask"
+    type: "int"
+  }
+  summary: "Return a strided slice from `input`."
+  description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
+}
+op {
+  name: "StringJoin"
+  input_arg {
+    name: "inputs"
+    description: "A list of string tensors.  The tensors must all have the same shape,\nor be scalars.  Scalars may be mixed in; these will be broadcast to the shape\nof non-scalar inputs."
+    type: DT_STRING
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "separator"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "string, an optional join separator."
+  }
+  summary: "Joins the strings in the given list of string tensors into one tensor;"
+  description: "with the given separator (default is an empty separator)."
 }
 op {
   name: "StringToHashBucket"
