@@ -75,6 +75,8 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 
 }  // namespace tensor_array
 
+std::atomic<int64> TensorArray::tensor_array_counter{0};
+
 Status TensorArray::CopyShapesFrom(TensorArray* rhs) {
   mutex_lock l(mu_);
   mutex_lock l_rhs(*rhs->mu());

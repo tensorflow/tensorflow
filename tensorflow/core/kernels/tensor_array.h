@@ -124,6 +124,8 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 //
 class TensorArray : public ResourceBase {
  public:
+  static std::atomic<int64> tensor_array_counter;
+
   // Construct a TensorArray for holding Tensors of type 'dtype' with
   // 'N' elements.  While the underlying storage is a std::vector and
   // can hold more than MAX_INT entries, in practice we do not expect
