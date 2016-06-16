@@ -1069,6 +1069,74 @@ op {
   summary: "Returns the index with the smallest value across dimensions of a tensor."
 }
 op {
+  name: "AsString"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_BOOL
+        type: DT_INT8
+      }
+    }
+  }
+  attr {
+    name: "precision"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The post-decimal precision to use for floating point numbers.\nOnly used if precision > -1."
+  }
+  attr {
+    name: "scientific"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use scientific notation for floating point numbers."
+  }
+  attr {
+    name: "shortest"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Use shortest representation (either scientific or standard) for\nfloating point numbers."
+  }
+  attr {
+    name: "width"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Pad pre-decimal numbers to this width.\nApplies to both floating point and integer numbers.\nOnly used if width > -1."
+  }
+  attr {
+    name: "fill"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The value to pad if width > -1.  If empty, pads with spaces.\nAnother typical value is \'0\'.  String cannot be longer than 1 character."
+  }
+  summary: "Converts each entry in the given tensor to strings.  Supports many numeric"
+  description: "types and boolean."
+}
+op {
   name: "Asin"
   input_arg {
     name: "x"
@@ -13503,6 +13571,35 @@ op {
   }
   summary: "Return a strided slice from `input`."
   description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
+}
+op {
+  name: "StringJoin"
+  input_arg {
+    name: "inputs"
+    description: "A list of string tensors.  The tensors must all have the same shape,\nor be scalars.  Scalars may be mixed in; these will be broadcast to the shape\nof non-scalar inputs."
+    type: DT_STRING
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "separator"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "string, an optional join separator."
+  }
+  summary: "Joins the strings in the given list of string tensors into one tensor;"
+  description: "with the given separator (default is an empty separator)."
 }
 op {
   name: "StringToHashBucket"
