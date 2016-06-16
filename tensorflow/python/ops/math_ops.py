@@ -203,6 +203,7 @@ import numpy as np
 import six.moves
 
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -871,6 +872,16 @@ def _ReductionDims(x, reduction_indices):
   if reduction_indices is not None:
     return reduction_indices
   else:
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+      return constant_op.constant(np.arange(x.get_shape().ndims),
+                                  dtype=dtypes.int32)
+    if (isinstance(x, ops.SparseTensor) and
+        x.shape.get_shape().is_fully_defined()):
+      rank = x.shape.get_shape()[0].value  # sparse.shape is an 1-D tensor.
+      return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
+
+    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
     # TODO(zongheng): remove this once rank() supports SparseTensor.
     if isinstance(x, ops.SparseTensor):
       return range(0, array_ops.size(x.shape))
