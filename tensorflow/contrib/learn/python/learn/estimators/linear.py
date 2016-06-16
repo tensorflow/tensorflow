@@ -93,9 +93,9 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
-    """
-    Construct a `LinearClassifier` estimator object.
+    """Construct a `LinearClassifier` estimator object.
 
     Args:
       feature_columns: An iterable containing all the feature columns used by
@@ -112,6 +112,9 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       gradient_clip_norm: A `float` > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         `tf.clip_by_global_norm` for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
 
     Returns:
@@ -124,6 +127,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         linear_feature_columns=feature_columns,
         linear_optimizer=optimizer,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def _get_train_ops(self, features, targets):
@@ -213,9 +217,9 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
-    """
-    Construct a `LinearRegressor` estimator object.
+    """Construct a `LinearRegressor` estimator object.
 
     Args:
       feature_columns: An iterable containing all the feature columns used by
@@ -231,6 +235,9 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       gradient_clip_norm: A `float` > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         `tf.clip_by_global_norm` for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
 
     Returns:
@@ -242,6 +249,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         linear_feature_columns=feature_columns,
         linear_optimizer=optimizer,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def _get_train_ops(self, features, targets):

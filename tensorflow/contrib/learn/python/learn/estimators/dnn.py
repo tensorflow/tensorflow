@@ -44,6 +44,16 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
           feature_columns=[installed_emb, impression_emb],
           hidden_units=[1024, 512, 256])
 
+      # Or estimator using the ProximalAdagradOptimizer optimizer with
+      # regularization.
+      estimator = DNNClassifier(
+          feature_columns=[installed_emb, impression_emb],
+          hidden_units=[1024, 512, 256],
+          optimizer=tf.train.ProximalAdagradOptimizer(
+            learning_rate=0.1,
+            l1_regularization_strength=0.001
+          ))
+
       # Input builders
       def input_fn_train: # returns x, Y
         pass
@@ -78,6 +88,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
     """Initializes a DNNClassifier instance.
 
@@ -103,18 +114,23 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       gradient_clip_norm: A float > 0. If provided, gradients are
         clipped to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
       config: RunConfig object to configure the runtime settings.
     """
-    super(DNNClassifier, self).__init__(model_dir=model_dir,
-                                        n_classes=n_classes,
-                                        weight_column_name=weight_column_name,
-                                        dnn_feature_columns=feature_columns,
-                                        dnn_optimizer=optimizer,
-                                        dnn_hidden_units=hidden_units,
-                                        dnn_activation_fn=activation_fn,
-                                        dnn_dropout=dropout,
-                                        gradient_clip_norm=gradient_clip_norm,
-                                        config=config)
+    super(DNNClassifier, self).__init__(
+        model_dir=model_dir,
+        n_classes=n_classes,
+        weight_column_name=weight_column_name,
+        dnn_feature_columns=feature_columns,
+        dnn_optimizer=optimizer,
+        dnn_hidden_units=hidden_units,
+        dnn_activation_fn=activation_fn,
+        dnn_dropout=dropout,
+        gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
+        config=config)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
@@ -149,6 +165,16 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
           feature_columns=[installed_emb, impression_emb],
           hidden_units=[1024, 512, 256])
 
+      # Or estimator using the ProximalAdagradOptimizer optimizer with
+      # regularization.
+      estimator = DNNRegressor(
+          feature_columns=[installed_emb, impression_emb],
+          hidden_units=[1024, 512, 256],
+          optimizer=tf.train.ProximalAdagradOptimizer(
+            learning_rate=0.1,
+            l1_regularization_strength=0.001
+          ))
+
       # Input builders
       def input_fn_train: # returns x, Y
         pass
@@ -182,6 +208,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
     """Initializes a `DNNRegressor` instance.
 
@@ -205,6 +232,9 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
       config: RunConfig object to configure the runtime settings.
     """
     super(DNNRegressor, self).__init__(
@@ -216,6 +246,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         dnn_activation_fn=activation_fn,
         dnn_dropout=dropout,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def _get_train_ops(self, features, targets):
