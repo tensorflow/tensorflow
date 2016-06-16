@@ -1,6 +1,8 @@
 # Changes Since Last Release
 
 ## Features & Improvements
+* Connectionist Temporal Classification ops are now "official" (see, e.g.,
+  `tf.nn.ctc_loss`)
 * The RNN api is finally "official" (see, e.g., `tf.nn.dynamic_rnn`,
   `tf.nn.rnn`, and the classes in `tf.nn.rnn_cell`).
 * TensorBoard now has an Audio Dashboard, with associated audio summaries.

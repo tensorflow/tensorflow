@@ -66,7 +66,6 @@ filegroup(
         "//tensorflow/cc:all_files",
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
-        "//tensorflow/contrib/ctc:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",

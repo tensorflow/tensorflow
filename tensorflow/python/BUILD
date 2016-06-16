@@ -776,6 +776,7 @@ py_library(
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",
+        "ops/ctc_ops.py",
         "ops/data_flow_grad.py",
         "ops/data_flow_ops.py",
         "ops/embedding_ops.py",

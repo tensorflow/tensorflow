@@ -29,6 +29,8 @@ py_tests(
         "candidate_sampler_ops_test.py",
         "cholesky_op_test.py",
         "clip_ops_test.py",
+        "ctc_decoder_ops_test.py",
+        "ctc_loss_op_test.py",
         "decode_csv_op_test.py",
         "decode_png_op_test.py",
         "decode_raw_op_test.py",

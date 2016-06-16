@@ -13,42 +13,74 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=unused-import
 """CTC (Connectionist Temporal Classification) Operations."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 
 from tensorflow.python.ops import gen_ctc_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
 
 
-# NOTE(ebrevdo): We redefine CTCLoss from gen_ctc_ops to only return
-# the first output. The second output is only used for the gradient.
 # pylint: disable=protected-access, invalid-name
 def ctc_loss(inputs, labels, sequence_length,
              preprocess_collapse_repeated=False, ctc_merge_repeated=True):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
-  Requires:
-    ```sequence_length(b) <= time for all b
+  This op implements the CTC loss as presented in the article:
 
-    max(labels.indices(labels.indices[:, 1] == b, 2))
-      <= sequence_length(b) for all b.```
+  A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
+  Connectionist Temporal Classification: Labelling Unsegmented Sequence Data
+  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.
 
-  If ctc_merge_repeated is set False, then *during* CTC calculation
+  http://www.cs.toronto.edu/~graves/icml_2006.pdf
+
+  Input requirements:
+
+  ```
+  sequence_length(b) <= time for all b
+
+  max(labels.indices(labels.indices[:, 1] == b, 2))
+    <= sequence_length(b) for all b.
+  ```
+
+  Regarding the arguments `preprocess_collapse_repeated` and
+  `ctc_merge_repeated`:
+
+  If `preprocess_collapse_repeated` is True, then a preprocessing step runs
+  before loss calculation, wherein repeated labels passed to the loss
+  are merged into single labels.  This is useful if the training labels come
+  from, e.g., forced alignments and therefore have unnecessary repetitions.
+
+  If `ctc_merge_repeated` is set False, then deep within the CTC calculation,
   repeated non-blank labels will not be merged and are interpreted
-  as individual labels.  This is a simplified version of CTC.
+  as individual labels.  This is a simplified (non-standard) version of CTC.
 
+  Here is a table of the (roughly) expected first order behavior:
+
+  * `preprocess_collapse_repeated=False`, `ctc_merge_repeated=True`
+
+    Classical CTC behavior: Outputs true repeated classes with blanks in
+    between, and can also output repeated classes with no blanks in
+    between that need to be collapsed by the decoder.
+
+  * `preprocess_collapse_repeated=True`, `ctc_merge_repeated=False`
+
+    Never learns to output repeated classes, as they are collapsed
+    in the input labels before training.
+
+  * `preprocess_collapse_repeated=False`, `ctc_merge_repeated=False`
+
+    Outputs repeated classes with blanks in between, but generally does not
+    require the decoder to collapse/merge repeated classes.
+
+  * `preprocess_collapse_repeated=True`, `ctc_merge_repeated=True`
+
+    Untested.  Very likely will not learn to output repeated classes.
 
   Args:
     inputs: 3-D `float` `Tensor` sized
@@ -62,10 +94,8 @@ def ctc_loss(inputs, labels, sequence_length,
       If True, repeated labels are collapsed prior to the CTC calculation.
     ctc_merge_repeated: Boolean.  Default: True.
 
-
   Returns:
     A 1-D `float` `Tensor`, size `[batch]`, containing logits.
-
 
   Raises:
     TypeError: if labels is not a `SparseTensor`.
@@ -129,12 +159,13 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   given time and batch corresponds to the blank index `(num_classes - 1)`, no
   new element is emitted.
 
-  If merge_repeated is `True`, merge repeated classes in output.
+  If `merge_repeated` is `True`, merge repeated classes in output.
   This means that if consecutive logits' maximum indices are the same,
-  only the first of these is emitted.  Labeling the blank '*', the sequence
-  "A B B * B B" becomes "A B" if `merge_repeated = True` and "A B B B B"
-  if `merge_repeated = False`.
+  only the first of these is emitted.  The sequence `A B B * B * B` (where '*'
+  is the blank label) becomes
 
+    * `A B` if `merge_repeated=True`.
+    * `A B B B B B` if `merge_repeated=False`.
 
   Args:
     inputs: 3-D `float` `Tensor` sized
@@ -142,7 +173,6 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
     sequence_length: 1-D `int32` vector containing sequence lengths,
       having size `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
-
 
   Returns:
     A tuple `(decoded, log_probabilities)` where
@@ -184,12 +214,17 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
                             top_paths=1, merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
 
-  If merge_repeated is `True`, merge repeated classes in output.
+  **Note** The `ctc_greedy_decoder` is a special case of the
+  `ctc_beam_search_decoder` with `top_paths=1` (but that decoder is faster
+  for this special case).
+
+  If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
   only the first of these is emitted.  That is, when the top path
-  is "A B B B B", "A B" is returned if `merge_repeated = True`
-  but "A B B B B" is returned if `merge_repeated = False`.
+  is `A B B B B`, the return value is:
 
+    * `A B` if `merge_repeated = True`.
+    * `A B B B B` if `merge_repeated = False`.
 
   Args:
     inputs: 3-D `float` `Tensor`, size
@@ -199,7 +234,6 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
     beam_width: An int scalar >= 0 (beam search beam width).
     top_paths: An int scalar >= 0, <= beam_width (controls output size).
     merge_repeated: Boolean.  Default: True.
-
 
   Returns:
     A tuple `(decoded, log_probabilities)` where
