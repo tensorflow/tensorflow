@@ -30,6 +30,7 @@ from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import logistic_regressor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -581,13 +582,21 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         logits, targets,
         weight_tensor=self._get_weight_tensor(features)))}
 
-    # Adding default metrics
+    # Adds default metrics.
     if metrics is None:
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
       metrics = {("accuracy", "classes"): metrics_lib.streaming_accuracy}
 
+    # Adds additional useful metrics for the special case of binary
+    # classification.
     if self._n_classes == 2:
       predictions = math_ops.sigmoid(logits)
-      result["auc"] = metrics_lib.streaming_auc(predictions, targets)
+      targets_float = math_ops.to_float(targets)
+      default_metrics = (
+          logistic_regressor.LogisticRegressor.get_default_metrics())
+      for metric_name, metric_op in default_metrics.items():
+        result[metric_name] = metric_op(predictions, targets_float)
 
     if metrics:
       class_metrics = {}
