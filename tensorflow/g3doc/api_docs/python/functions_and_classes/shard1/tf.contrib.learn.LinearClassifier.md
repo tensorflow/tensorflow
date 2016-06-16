@@ -4,6 +4,7 @@ Train a linear model to classify instances into one of multiple possible
 classes. When number of possible classes is 2, this is binary classification.
 
 Example:
+
 ```python
 installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
 impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
@@ -53,7 +54,7 @@ Input of `fit` and `evaluate` should have following features,
       valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -74,6 +75,9 @@ Construct a `LinearClassifier` estimator object.
 *  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
     to their global norm with this clipping ratio. See
     `tf.clip_by_global_norm` for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:

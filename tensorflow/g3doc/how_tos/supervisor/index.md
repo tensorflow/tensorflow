@@ -111,7 +111,7 @@ event files are left in the logdir.  When you restart the program,
 resumes training where it stopped.
 
 A new events file is created.  If you start TensorBoard and point it to the
-logdir, it will know how merge the contents of the two events files and will
+logdir, it will know how to merge the contents of the two events files and will
 show the training resuming at the last global step from the checkpoint.
 
 ## Larger Model Scenario
@@ -163,7 +163,7 @@ logdir.
 To load the pre-trained model, the init function needs a
 [`tf.Saver`](../../api_docs/python/train.md#Saver) object, so you should create
 a saver for this purpose.  This is usually a good idea because the new model
-ay contain variables that are not present in the pre-trained checkpoint: This
+may contain variables that are not present in the pre-trained checkpoint: This
 saver must only restore the pre-trained variables.  If you were using the
 default saver, you could get an error trying to restore all the variables of
 the new model from the pre-trained checkpoint.
@@ -329,7 +329,7 @@ constructor:
    the collection is empty, the supervisor looks for a scalar integer variable
    named `global_step` in the graph.
 
-   If found the global step tensor is used to measure the number of training
+   If found, the global step tensor is used to measure the number of training
    steps executed.  Note that your training op is responsible for incrementing
    the global step value.
 
@@ -347,7 +347,7 @@ following keyword arguments to the `Supervisor()` constructor:
  * `init_op`: Op to run to initialize the model.
 
    If not specified, the supervisor uses the first op in the
-   `tf.GraphKeys.INIT_OP` collection.  If the collection is empty the
+   `tf.GraphKeys.INIT_OP` collection.  If the collection is empty, the
    supervisor adds an op to initialize all the variables in the graph by
    calling `tf.initialize_all_variables()`.
 
@@ -393,7 +393,7 @@ Checkpoint recovery is controlled by the following keyword arguments to the
   checkpoint service saves a metadata file, named "checkpoint", in the
   checkpoint directory that indicates the path to the most recent checkpoint.
 
-  This file is in text format, when in a pinch you can edit it manually to
+  This file is in text format. When in a pinch, you can edit it manually to
   recover from a different checkpoint than the most recent one.
 
  * `ready_op`: (see above).  The ready op is run before and after loading the

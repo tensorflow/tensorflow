@@ -148,7 +148,7 @@ class CastOpTest(tf.test.TestCase):
     self._OpError(np.arange(0, 10), tf.string,
                   "Cast.*int64.*string.*")
 
-  def testCastToVariableType(self):
+  def testCastToTypeOfVariable(self):
     with self.test_session() as sess:
       x = tf.Variable(5, dtype=tf.float32)
       y = tf.Variable(True, dtype=tf.bool)

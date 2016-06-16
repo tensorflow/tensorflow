@@ -221,12 +221,18 @@ Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
 with non-positive weight. For an entry with no features, the embedding vector
 for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
 
+The ids and weights may be multi-dimensional. Embeddings are always aggregated
+along the last dimension.
+
 ##### Args:
 
 
 *  <b>`embedding_weights`</b>: A list of `P` float tensors or values representing
-      partitioned embedding tensors.
-*  <b>`sparse_ids`</b>: `SparseTensor` of shape `[batch_size, ?]` containing the ids.
+      partitioned embedding tensors.  The total unpartitioned shape should be
+      `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
+      `e_1, ..., e_m` are the embedding dimensions.
+*  <b>`sparse_ids`</b>: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
+      ids. `d_0` is typically batch size.
 *  <b>`sparse_weights`</b>: `SparseTensor` of same shape as `sparse_ids`, containing
       float weights corresponding to `sparse_ids`, or `None` if all weights
       are be assumed to be 1.0.
@@ -241,7 +247,7 @@ for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
 
 ##### Returns:
 
-  Dense tensor of shape `[batch_size, embed_dim]`.
+  Dense tensor of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
 
 ##### Raises:
 

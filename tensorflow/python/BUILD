@@ -776,6 +776,7 @@ py_library(
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",
+        "ops/ctc_ops.py",
         "ops/data_flow_grad.py",
         "ops/data_flow_ops.py",
         "ops/embedding_ops.py",
@@ -1102,14 +1103,12 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "timeline_test",
     size = "small",
     srcs = ["client/timeline_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":timeline",
-        "//tensorflow:tensorflow_py",
     ],
 )
 

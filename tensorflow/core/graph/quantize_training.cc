@@ -135,11 +135,11 @@ Status ProcessTargetEdges(Graph* graph,
   for (const EdgeToConvert edge : target_edges) {
     Node* convert_node;
     string name =
-        strings::StrCat(edge.edge->src()->name(), "/_QuantizeAndDequantize");
+        strings::StrCat(edge.edge->src()->name(), "/QuantizeAndDequantize");
 
     auto iter = name_index.find(name);
     if (iter == name_index.end()) {
-      TF_RETURN_IF_ERROR(NodeBuilder(name, "_QuantizeAndDequantize")
+      TF_RETURN_IF_ERROR(NodeBuilder(name, "QuantizeAndDequantize")
                              .Input(edge.edge->src())
                              .Attr("signed_input", edge.signed_input)
                              .Attr("num_bits", edge.num_bits)

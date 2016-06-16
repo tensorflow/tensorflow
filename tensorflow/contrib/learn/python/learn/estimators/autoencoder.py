@@ -27,9 +27,16 @@ from tensorflow.python.ops import nn
 
 
 class TensorFlowDNNAutoencoder(TensorFlowBaseTransformer):
-  """TensorFlow Autoencoder Regressor model.
+  """TensorFlow Autoencoder Regressor model."""
 
-  Parameters:
+  def __init__(self, hidden_units, n_classes=0, batch_size=32,
+               steps=200, optimizer="Adagrad", learning_rate=0.1,
+               clip_gradients=5.0, activation=nn.relu, add_noise=None,
+               continue_training=False, config=None,
+               verbose=1, dropout=None):
+    """Initializes a TensorFlowDNNAutoencoder instance.
+
+    Args:
       hidden_units: List of hidden units per layer.
       batch_size: Mini batch size.
       activation: activation function used to map inner latent layer onto
@@ -58,13 +65,7 @@ class TensorFlowDNNAutoencoder(TensorFlowBaseTransformer):
                2: log device placement is printed.
       dropout: When not None, the probability we will drop out a given
                coordinate.
-  """
-
-  def __init__(self, hidden_units, n_classes=0, batch_size=32,
-               steps=200, optimizer="Adagrad", learning_rate=0.1,
-               clip_gradients=5.0, activation=nn.relu, add_noise=None,
-               continue_training=False, config=None,
-               verbose=1, dropout=None):
+    """
     self.hidden_units = hidden_units
     self.dropout = dropout
     self.activation = activation
@@ -123,4 +124,3 @@ class TensorFlowDNNAutoencoder(TensorFlowBaseTransformer):
           "decoder/dnn/layer%d/Linear/Bias:0" % layer))
     biases.append(self.get_tensor_value("linear_regression/bias:0"))
     return biases
-

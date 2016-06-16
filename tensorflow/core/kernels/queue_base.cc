@@ -357,6 +357,7 @@ Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
     return Status::OK();                                                  \
   }
   HANDLE_TYPE(DT_FLOAT);
+  HANDLE_TYPE(DT_HALF);
   HANDLE_TYPE(DT_DOUBLE);
   HANDLE_TYPE(DT_INT32);
   HANDLE_TYPE(DT_UINT8);
@@ -386,6 +387,7 @@ Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
     return Status::OK();                                                  \
   }
   HANDLE_TYPE(DT_FLOAT);
+  HANDLE_TYPE(DT_HALF);
   HANDLE_TYPE(DT_DOUBLE);
   HANDLE_TYPE(DT_INT32);
   HANDLE_TYPE(DT_UINT8);

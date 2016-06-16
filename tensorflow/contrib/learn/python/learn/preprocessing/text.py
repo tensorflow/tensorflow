@@ -108,23 +108,24 @@ class ByteProcessor(object):
 
 
 class VocabularyProcessor(object):
-  """Maps documents to sequences of word ids.
-
-  Parameters:
-    max_document_length: Maximum length of documents.
-      if documents are longer, they will be trimmed, if shorter - padded.
-    min_frequency: Minimum frequency of words in the vocabulary.
-    vocabulary: CategoricalVocabulary object.
-
-  Attributes:
-    vocabulary_: CategoricalVocabulary object.
-  """
+  """Maps documents to sequences of word ids."""
 
   def __init__(self,
                max_document_length,
                min_frequency=0,
                vocabulary=None,
                tokenizer_fn=None):
+    """Initializes a VocabularyProcessor instance.
+
+    Args:
+      max_document_length: Maximum length of documents.
+        if documents are longer, they will be trimmed, if shorter - padded.
+      min_frequency: Minimum frequency of words in the vocabulary.
+      vocabulary: CategoricalVocabulary object.
+
+    Attributes:
+      vocabulary_: CategoricalVocabulary object.
+    """
     self.max_document_length = max_document_length
     self.min_frequency = min_frequency
     if vocabulary:

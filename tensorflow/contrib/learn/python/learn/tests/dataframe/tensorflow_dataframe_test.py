@@ -152,6 +152,7 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
 
     num_batches = 100
     batch_size = 8
+    enqueue_size = 7
 
     data_path = _make_test_csv()
     default_values = [0, 0.0, 0]
@@ -159,6 +160,7 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
     pandas_df = pd.read_csv(data_path)
     tensorflow_df = df.TensorFlowDataFrame.from_csv(
         [data_path],
+        enqueue_size=enqueue_size,
         batch_size=batch_size,
         shuffle=False,
         default_values=default_values)
@@ -167,8 +169,26 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
                                           num_batches=num_batches,
                                           batch_size=batch_size)
 
+  def testFromCSVLimitEpoch(self):
+    batch_size = 8
+    num_epochs = 17
+    expected_num_batches = (num_epochs * 100) // batch_size
+
+    data_path = _make_test_csv()
+    default_values = [0, 0.0, 0]
+
+    tensorflow_df = df.TensorFlowDataFrame.from_csv(
+        [data_path],
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        shuffle=False,
+        default_values=default_values)
+    actual_num_batches = len(list(tensorflow_df.run()))
+    self.assertEqual(expected_num_batches, actual_num_batches)
+
   def testFromExamples(self):
     num_batches = 77
+    enqueue_size = 11
     batch_size = 13
 
     data_path = _make_test_tfrecord()
@@ -179,10 +199,12 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
         "var_len_int": tf.VarLenFeature(dtype=tf.int64)
     }
 
-    tensorflow_df = df.TensorFlowDataFrame.from_examples(data_path,
-                                                         batch_size=batch_size,
-                                                         features=features,
-                                                         shuffle=False)
+    tensorflow_df = df.TensorFlowDataFrame.from_examples(
+        data_path,
+        enqueue_size=enqueue_size,
+        batch_size=batch_size,
+        features=features,
+        shuffle=False)
 
     # `test.tfrecord` contains 100 records with two features: var_len_int and
     # fixed_len_float. Entry n contains `range(n % 3)` and
