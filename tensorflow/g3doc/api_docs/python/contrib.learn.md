@@ -833,6 +833,16 @@ Example:
       feature_columns=[installed_emb, impression_emb],
       hidden_units=[1024, 512, 256])
 
+  # Or estimator using the ProximalAdagradOptimizer optimizer with
+  # regularization.
+  estimator = DNNClassifier(
+      feature_columns=[installed_emb, impression_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
+
   # Input builders
   def input_fn_train: # returns x, Y
     pass
@@ -857,7 +867,7 @@ Input of `fit` and `evaluate` should have following features,
       valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -885,6 +895,9 @@ Initializes a DNNClassifier instance.
 *  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are
     clipped to their global norm with this clipping ratio. See
     tf.clip_by_global_norm for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
 *  <b>`config`</b>: RunConfig object to configure the runtime settings.
 
 
@@ -1196,6 +1209,16 @@ Example:
       feature_columns=[installed_emb, impression_emb],
       hidden_units=[1024, 512, 256])
 
+  # Or estimator using the ProximalAdagradOptimizer optimizer with
+  # regularization.
+  estimator = DNNRegressor(
+      feature_columns=[installed_emb, impression_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
+
   # Input builders
   def input_fn_train: # returns x, Y
     pass
@@ -1220,7 +1243,7 @@ Input of `fit` and `evaluate` should have following features,
       valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -1246,6 +1269,9 @@ Initializes a `DNNRegressor` instance.
 *  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are clipped
     to their global norm with this clipping ratio. See
     tf.clip_by_global_norm for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
 *  <b>`config`</b>: RunConfig object to configure the runtime settings.
 
 
@@ -2384,7 +2410,7 @@ Input of `fit` and `evaluate` should have following features,
       valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -2405,6 +2431,9 @@ Construct a `LinearClassifier` estimator object.
 *  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
     to their global norm with this clipping ratio. See
     `tf.clip_by_global_norm` for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:
@@ -2743,7 +2772,7 @@ Input of `fit` and `evaluate` should have following features,
         input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -2763,6 +2792,9 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
     to their global norm with this clipping ratio. See
     `tf.clip_by_global_norm` for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:
