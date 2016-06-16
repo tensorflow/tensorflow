@@ -170,7 +170,6 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       return ret
 
 
-# TODO(lif): Add support for higher-rank SparseTensors
 def embedding_lookup_sparse(params, sp_ids, sp_weights,
                             partition_strategy="mod",
                             name=None,
