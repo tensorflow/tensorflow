@@ -232,6 +232,7 @@ sh_test(
         ":boston",
         ":iris",
         ":iris_custom_model",
+        ":text_classification",
     ],
 )
 

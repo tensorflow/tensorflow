@@ -73,6 +73,7 @@ filegroup(
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",
+        "//tensorflow/contrib/learn/python/learn/datasets:all_files",
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/linear_optimizer/kernels:all_files",
         "//tensorflow/contrib/lookup:all_files",
