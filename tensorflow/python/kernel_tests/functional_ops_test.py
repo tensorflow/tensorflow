@@ -142,6 +142,16 @@ class FunctionalOpsTest(tf.test.TestCase):
         self.assertEqual(len(tf.trainable_variables()), 1)
         self.assertAllEqual(doubles, r.eval())
 
+  def testMap_Grad(self):
+    with self.test_session():
+      param = tf.constant(2.0)
+      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+      y = tf.map_fn(lambda x: tf.mul(tf.square(x), param), elems)
+      r = tf.gradients(y, param)[0]
+      self.assertAllEqual(91.0, r.eval())
+      r = tf.gradients(y, elems)[0]
+      self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0], r.eval())
+
   def testMap_SimpleNotTensor(self):
     with self.test_session():
       nums = [1, 2, 3, 4, 5, 6]
@@ -235,7 +245,6 @@ class FunctionalOpsTest(tf.test.TestCase):
       return current_input
     y = tf.scan(fn, x, initializer=initializer)
     self.assertIs(None, y.get_shape().dims)
-
 
 if __name__ == "__main__":
   tf.test.main()
