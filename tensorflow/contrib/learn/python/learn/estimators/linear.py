@@ -213,7 +213,6 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   def __init__(self,
                feature_columns=None,
                model_dir=None,
-               n_classes=2,
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
@@ -226,7 +225,6 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
       model_dir: Directory to save model parameters, graph and etc.
-      n_classes: number of target classes. Default is binary classification.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
