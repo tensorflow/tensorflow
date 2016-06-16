@@ -1,7 +1,7 @@
 TensorFlow RNN Classifier model.
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNClassifier.__init__(rnn_size, n_classes, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNClassifier.__init__}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.__init__(rnn_size, n_classes, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, attn_length=None, attn_size=None, attn_vec_size=None, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNClassifier.__init__}
 
 Initializes a TensorFlowRNNClassifier instance.
 
@@ -20,6 +20,10 @@ Initializes a TensorFlowRNNClassifier instance.
     sequence length.
 *  <b>`initial_state`</b>: An initial state for the RNN. This must be a tensor of
     appropriate type and shape [batch_size x cell.state_size].
+*  <b>`attn_length`</b>: integer, the size of attention vector attached to rnn cells.
+*  <b>`attn_size`</b>: integer, the size of an attention window attached to rnn cells.
+*  <b>`attn_vec_size`</b>: integer, the number of convolutional features calculated on
+    attention state and the size of the hidden layer built from base cell state.
 *  <b>`n_classes`</b>: Number of classes in the target.
 *  <b>`batch_size`</b>: Mini batch size.
 *  <b>`steps`</b>: Number of steps to run over data.

@@ -1,7 +1,7 @@
 TensorFlow RNN Regressor model.
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, attn_length=None, attn_size=None, attn_vec_size=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
 
 Initializes a TensorFlowRNNRegressor instance.
 
@@ -18,6 +18,10 @@ Initializes a TensorFlowRNNRegressor instance.
 *  <b>`sequence_length`</b>: If sequence_length is provided, dynamic calculation
     is performed. This saves computational time when unrolling past max
     sequence length.
+*  <b>`attn_length`</b>: integer, the size of attention vector attached to rnn cells.
+*  <b>`attn_size`</b>: integer, the size of an attention window attached to rnn cells.
+*  <b>`attn_vec_size`</b>: integer, the number of convolutional features calculated on
+    attention state and the size of the hidden layer built from base cell state.
 *  <b>`initial_state`</b>: An initial state for the RNN. This must be a tensor of
     appropriate type and shape [batch_size x cell.state_size].
 *  <b>`batch_size`</b>: Mini batch size.

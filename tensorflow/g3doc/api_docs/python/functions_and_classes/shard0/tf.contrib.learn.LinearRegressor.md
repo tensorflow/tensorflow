@@ -38,7 +38,7 @@ Input of `fit` and `evaluate` should have following features,
         input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -49,7 +49,6 @@ Construct a `LinearRegressor` estimator object.
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
 *  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
-*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
