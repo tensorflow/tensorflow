@@ -58,9 +58,8 @@ struct ApplyAdadelta<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat grad) {
     accum.device(d) =
         accum * rho() + grad.square() * (static_cast<T>(1) - rho());
-    const auto update = 
-	(accum_update + epsilon()).sqrt() *
-	(accum + epsilon()).rsqrt() * grad;
+    const auto update =
+        (accum_update + epsilon()).sqrt() * (accum + epsilon()).rsqrt() * grad;
     accum_update.device(d) =
         accum_update * rho() + update.square() * (static_cast<T>(1) - rho());
     var.device(d) -= update * lr();
@@ -176,14 +175,12 @@ struct ApplyMomentum<CPUDevice, T> {
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
-                  typename TTypes<T>::ConstScalar momentum,
-		  bool use_nesterov) {
-    if(use_nesterov){
-    	accum.device(d) = accum * momentum() + grad;
-    	var.device(d) -= grad * lr() + accum * momentum() * lr();
-    }else{
-    	accum.device(d) = accum * momentum() + grad;
-    	var.device(d) -= accum * lr();
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
+    accum.device(d) = accum * momentum() + grad;
+    if (use_nesterov == true) {
+      var.device(d) -= grad * lr() + accum * momentum() * lr();
+    } else {
+      var.device(d) -= accum * lr();
     }
   }
 };
@@ -1521,7 +1518,7 @@ class ApplyMomentumOp : public OpKernel {
  public:
   explicit ApplyMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_)); 
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1613,6 +1610,7 @@ class SparseApplyMomentumOp : public OpKernel {
  public:
   explicit SparseApplyMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
@@ -1680,7 +1678,12 @@ class SparseApplyMomentumOp : public OpKernel {
         auto g = grad_flat.template chip<0>(i);
         auto v = var_flat.template chip<0>(index);
         a = a * a.constant(momentum_scalar) + g;
-        v -= a.constant(lr_scalar) * a;
+        if (use_nesterov_ == true) {
+          v -= g.constant(lr_scalar) * g +
+               a.constant(lr_scalar) * a.constant(momentum_scalar) * a;
+        } else {
+          v -= a.constant(lr_scalar) * a;
+        }
       }
     }
 
@@ -1689,6 +1692,7 @@ class SparseApplyMomentumOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool use_nesterov_;
 };
 
 #define REGISTER_KERNELS(T, Tindices)                                \

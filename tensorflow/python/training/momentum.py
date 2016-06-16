@@ -74,4 +74,5 @@ class MomentumOptimizer(optimizer.Optimizer):
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         grad.values, grad.indices,
         math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
-        use_locking=self._use_locking).op
+        use_locking=self._use_locking,
+        use_nesterov=self._use_nesterov).op
