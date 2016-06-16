@@ -13866,6 +13866,13 @@ op {
     }
     description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
   }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   summary: "A Reader that outputs the records from a TensorFlow Records file."
   is_stateful: true
 }
