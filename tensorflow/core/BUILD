@@ -99,6 +99,7 @@ tf_proto_library(
         ],
     ),
     cc_api_version = 2,
+    compatible_with = ["//buildenv/target:appengine"],
     go_api_version = 2,
     java_api_version = 2,
     visibility = ["//visibility:public"],
