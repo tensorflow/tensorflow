@@ -30,6 +30,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   """A classifier for TensorFlow DNN models.
 
     Example:
+
       ```
       installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
       impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
@@ -65,29 +66,6 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
           whose `value` is a `Tensor`.
         - if `feauture_columns` is None, then `input` must contains only real
           valued `Tensor`.
-
-  Parameters:
-    hidden_units: List of hidden units per layer. All layers are fully
-      connected. Ex. [64, 32] means first layer has 64 nodes and second one has
-      32.
-    feature_columns: An iterable containing all the feature columns used by the
-      model. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    model_dir: Directory to save model parameters, graph and etc.
-    n_classes: number of target classes. Default is binary classification.
-      It must be greater than 1.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-      will use an Adagrad optimizer.
-    activation_fn: Activation function applied to each layer. If `None`, will
-      use `tf.nn.relu`.
-    dropout: When not None, the probability we will drop out a given coordinate.
-    gradient_clip_norm: A float > 0. If provided, gradients are clipped
-      to their global norm with this clipping ratio. See tf.clip_by_global_norm
-      for more details.
-    config: RunConfig object to configure the runtime settings.
   """
 
   def __init__(self,
@@ -101,6 +79,32 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                dropout=None,
                gradient_clip_norm=None,
                config=None):
+    """Initializes a DNNClassifier instance.
+
+    Args:
+      hidden_units: List of hidden units per layer. All layers are fully
+        connected. Ex. [64, 32] means first layer has 64 nodes and second one
+        has 32.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      model_dir: Directory to save model parameters, graph and etc.
+      n_classes: number of target classes. Default is binary classification.
+        It must be greater than 1.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      optimizer: An instance of `tf.Optimizer` used to train the model. If
+        `None`, will use an Adagrad optimizer.
+      activation_fn: Activation function applied to each layer. If `None`, will
+        use `tf.nn.relu`.
+      dropout: When not None, the probability we will drop out a given
+        coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are
+        clipped to their global norm with this clipping ratio. See
+        tf.clip_by_global_norm for more details.
+      config: RunConfig object to configure the runtime settings.
+    """
     super(DNNClassifier, self).__init__(model_dir=model_dir,
                                         n_classes=n_classes,
                                         weight_column_name=weight_column_name,
@@ -131,6 +135,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """A regressor for TensorFlow DNN models.
 
     Example:
+
       ```
       installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
       impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
@@ -166,29 +171,6 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
           whose `value` is a `Tensor`.
         - if `feauture_columns` is None, then `input` must contains only real
           valued `Tensor`.
-
-
-
-  Parameters:
-    hidden_units: List of hidden units per layer. All layers are fully
-      connected. Ex. [64, 32] means first layer has 64 nodes and second one has
-      32.
-    feature_columns: An iterable containing all the feature columns used by the
-      model. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    model_dir: Directory to save model parameters, graph and etc.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-      will use an Adagrad optimizer.
-    activation_fn: Activation function applied to each layer. If `None`, will
-      use `tf.nn.relu`.
-    dropout: When not None, the probability we will drop out a given coordinate.
-    gradient_clip_norm: A float > 0. If provided, gradients are clipped
-      to their global norm with this clipping ratio. See tf.clip_by_global_norm
-      for more details.
-    config: RunConfig object to configure the runtime settings.
   """
 
   def __init__(self,
@@ -201,6 +183,30 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                dropout=None,
                gradient_clip_norm=None,
                config=None):
+    """Initializes a `DNNRegressor` instance.
+
+    Args:
+      hidden_units: List of hidden units per layer. All layers are fully
+        connected. Ex. [64, 32] means first layer has 64 nodes and second
+        one has 32.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      model_dir: Directory to save model parameters, graph and etc.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      optimizer: An instance of `tf.Optimizer` used to train the model. If
+        `None`, will use an Adagrad optimizer.
+      activation_fn: Activation function applied to each layer. If `None`, will
+        use `tf.nn.relu`.
+      dropout: When not None, the probability we will drop out a given
+        coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are clipped
+        to their global norm with this clipping ratio. See
+        tf.clip_by_global_norm for more details.
+      config: RunConfig object to configure the runtime settings.
+    """
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
