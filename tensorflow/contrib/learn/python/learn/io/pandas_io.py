@@ -43,7 +43,20 @@ PANDAS_DTYPES = {
 
 
 def extract_pandas_data(data):
-  """Extract data from pandas.DataFrame for predictors."""
+  """Extract data from pandas.DataFrame for predictors.
+
+  Given a DataFrame, will extract the values and cast them to float. The
+  DataFrame is expected to contain values of type int, float or bool.
+
+  Args:
+    data: `pandas.DataFrame` containing the data to be extracted.
+
+  Returns:
+    A numpy `ndarray` of the DataFrame's values as floats.
+
+  Raises:
+    ValueError: if data contains types other than int, float or bool.
+  """
   if not isinstance(data, pd.DataFrame):
     return data
 
