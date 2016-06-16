@@ -251,9 +251,11 @@ class RNNCellTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 1], dtype=tf.int32)
         m = tf.zeros([1, 2])
-        g, new_m = tf.nn.rnn_cell.EmbeddingWrapper(
+        embedding_cell = tf.nn.rnn_cell.EmbeddingWrapper(
             tf.nn.rnn_cell.GRUCell(2),
-            embedding_classes=3, embedding_size=2)(x, m)
+            embedding_classes=3, embedding_size=2)
+        self.assertEqual(embedding_cell.output_size, 2)
+        g, new_m = embedding_cell(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1]]),
                                     m.name: np.array([[0.1, 0.1]])})
