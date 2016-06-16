@@ -307,29 +307,42 @@ class TensorFlowDataFrame(df.DataFrame):
   @classmethod
   def from_pandas(cls,
                   pandas_dataframe,
+                  num_threads=None,
+                  enqueue_size=None,
                   batch_size=None,
-                  shuffle=True,
                   queue_capacity=None,
                   min_after_dequeue=None,
-                  seed=None):
+                  shuffle=True,
+                  seed=None,
+                  data_name="pandas_data"):
     """Create a `tf.learn.DataFrame` from a `pandas.DataFrame`.
 
     Args:
       pandas_dataframe: `pandas.DataFrame` that serves as a data source.
+      num_threads: the number of threads to use for enqueueing.
+      enqueue_size: the number of rows to enqueue per step.
       batch_size: desired batch size.
-      shuffle: whether records should be shuffled. Defaults to true.
       queue_capacity: capacity of the queue that will store parsed `Example`s
       min_after_dequeue: minimum number of elements that can be left by a
         dequeue operation. Only used if `shuffle` is true.
+      shuffle: whether records should be shuffled. Defaults to true.
       seed: passed to random shuffle operations. Only used if `shuffle` is true.
+      data_name: a scope name identifying the data.
 
     Returns:
       A `tf.learn.DataFrame` that contains batches drawn from the given
       `pandas_dataframe`.
     """
-    pandas_source = in_memory_source.PandasSource(pandas_dataframe, batch_size,
-                                                  queue_capacity, shuffle,
-                                                  min_after_dequeue, seed)
+    pandas_source = in_memory_source.PandasSource(
+        pandas_dataframe,
+        num_threads=num_threads,
+        enqueue_size=enqueue_size,
+        batch_size=batch_size,
+        queue_capacity=queue_capacity,
+        shuffle=shuffle,
+        min_after_dequeue=min_after_dequeue,
+        seed=seed,
+        data_name=data_name)
     dataframe = cls()
     dataframe.assign(**(pandas_source()._asdict()))
     return dataframe
@@ -337,11 +350,14 @@ class TensorFlowDataFrame(df.DataFrame):
   @classmethod
   def from_numpy(cls,
                  numpy_array,
+                 num_threads=None,
+                 enqueue_size=None,
                  batch_size=None,
-                 shuffle=True,
                  queue_capacity=None,
                  min_after_dequeue=None,
-                 seed=None):
+                 shuffle=True,
+                 seed=None,
+                 data_name="numpy_data"):
     """Creates a `tf.learn.DataFrame` from a `numpy.ndarray`.
 
     The returned `DataFrame` contains two columns: 'index' and 'value'. The
@@ -350,20 +366,30 @@ class TensorFlowDataFrame(df.DataFrame):
 
     Args:
       numpy_array: `numpy.ndarray` that serves as a data source.
+      num_threads: the number of threads to use for enqueueing.
+      enqueue_size: the number of rows to enqueue per step.
       batch_size: desired batch size.
-      shuffle: whether records should be shuffled. Defaults to true.
       queue_capacity: capacity of the queue that will store parsed `Example`s
       min_after_dequeue: minimum number of elements that can be left by a
         dequeue operation. Only used if `shuffle` is true.
+      shuffle: whether records should be shuffled. Defaults to true.
       seed: passed to random shuffle operations. Only used if `shuffle` is true.
+      data_name: a scope name identifying the data.
 
     Returns:
       A `tf.learn.DataFrame` that contains batches drawn from the given
       array.
     """
-    numpy_source = in_memory_source.NumpySource(numpy_array, batch_size,
-                                                queue_capacity, shuffle,
-                                                min_after_dequeue, seed)
+    numpy_source = in_memory_source.NumpySource(
+        numpy_array,
+        num_threads=num_threads,
+        enqueue_size=enqueue_size,
+        batch_size=batch_size,
+        queue_capacity=queue_capacity,
+        shuffle=shuffle,
+        min_after_dequeue=min_after_dequeue,
+        seed=seed,
+        data_name=data_name)
     dataframe = cls()
     dataframe.assign(**(numpy_source()._asdict()))
     return dataframe

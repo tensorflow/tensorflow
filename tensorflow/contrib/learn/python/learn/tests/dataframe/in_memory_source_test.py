@@ -42,7 +42,7 @@ class NumpySourceTestCase(tf.test.TestCase):
     batch_size = 3
     iterations = 1000
     array = np.arange(32).reshape([16, 2])
-    numpy_source = in_memory_source.NumpySource(array, batch_size)
+    numpy_source = in_memory_source.NumpySource(array, batch_size=batch_size)
     index_column = numpy_source().index
     value_column = numpy_source().value
     cache = {}
@@ -76,7 +76,8 @@ class PandasSourceTestCase(tf.test.TestCase):
     a = np.arange(32)
     b = np.arange(32, 64)
     dataframe = pd.DataFrame({"a": a, "b": b}, index=index)
-    pandas_source = in_memory_source.PandasSource(dataframe, batch_size)
+    pandas_source = in_memory_source.PandasSource(dataframe,
+                                                  batch_size=batch_size)
     pandas_columns = pandas_source()
     cache = {}
     with tf.Graph().as_default():
