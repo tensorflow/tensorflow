@@ -4701,6 +4701,23 @@ Extract data from dask.Series for labels.
 
 Extract data from pandas.DataFrame for predictors.
 
+Given a DataFrame, will extract the values and cast them to float. The
+DataFrame is expected to contain values of type int, float or bool.
+
+##### Args:
+
+
+*  <b>`data`</b>: `pandas.DataFrame` containing the data to be extracted.
+
+##### Returns:
+
+  A numpy `ndarray` of the DataFrame's values as floats.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if data contains types other than int, float or bool.
+
 
 - - -
 
@@ -4708,12 +4725,37 @@ Extract data from pandas.DataFrame for predictors.
 
 Extract data from pandas.DataFrame for labels.
 
+##### Args:
+
+
+*  <b>`labels`</b>: `pandas.DataFrame` or `pandas.Series` containing one column of
+    labels to be extracted.
+
+##### Returns:
+
+  A numpy `ndarray` of labels from the DataFrame.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if more than one column is found or type is not int, float or
+    bool.
+
 
 - - -
 
 ### `tf.contrib.learn.extract_pandas_matrix(data)` {#extract_pandas_matrix}
 
 Extracts numpy matrix from pandas DataFrame.
+
+##### Args:
+
+
+*  <b>`data`</b>: `pandas.DataFrame` containing the data to be extracted.
+
+##### Returns:
+
+  A numpy `ndarray` of the DataFrame's values.
 
 
 - - -
