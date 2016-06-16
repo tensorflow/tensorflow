@@ -25,24 +25,6 @@ from tensorflow.python.training import input as input_ops
 
 class ReaderSource(transform.Transform):
   """A `ReaderSource` produces `Tensor`s of keys and values using a `tf.Reader`.
-
-  Parameters:
-    reader_cls: A subclass of `tesorflow.ReaderBase` that will be used to read
-      from `work_units`.
-    work_units: A list that describes the source(s) of data to read. Typically,
-      this is a list of filenames.
-    reader_kwargs: A dictionary of kwargs to be passed to `reader_cls` when it
-      is constructed.
-    batch_size: The desired batch size of output. Defaults to 1.
-    queue_capacity: Capacity of the queue. Defaults to 10 * `batch_size`.
-    shuffle: Whether records will be shuffled before returning. Defaults to
-      false.
-    min_after_dequeue: Minimum number of elements in the queue to allow a
-      dequeue operation. Only used when `shuffle` is true. Defaults to
-      `queue_capacity` / 4.
-    num_threads: Number of threads that will be used for reading. Each thread
-      has its own instance of `reader_cls`.
-    seed: A seed used for shuffling. Only used if `shuffle` is true.
   """
 
   def __init__(self,
@@ -55,6 +37,26 @@ class ReaderSource(transform.Transform):
                min_after_dequeue=None,
                num_threads=1,
                seed=None):
+    """Initializes a ReaderSource instance.
+
+    Args:
+      reader_cls: A subclass of `tesorflow.ReaderBase` that will be used to read
+        from `work_units`.
+      work_units: A list that describes the source(s) of data to read.
+        Typically, this is a list of filenames.
+      reader_kwargs: A dictionary of kwargs to be passed to `reader_cls` when it
+        is constructed.
+      batch_size: The desired batch size of output. Defaults to 1.
+      queue_capacity: Capacity of the queue. Defaults to 10 * `batch_size`.
+      shuffle: Whether records will be shuffled before returning. Defaults to
+        false.
+      min_after_dequeue: Minimum number of elements in the queue to allow a
+        dequeue operation. Only used when `shuffle` is true. Defaults to
+        `queue_capacity` / 4.
+      num_threads: Number of threads that will be used for reading. Each thread
+        has its own instance of `reader_cls`.
+      seed: A seed used for shuffling. Only used if `shuffle` is true.
+    """
     super(ReaderSource, self).__init__()
     self._reader_cls = reader_cls
     self._reader_kwargs = reader_kwargs

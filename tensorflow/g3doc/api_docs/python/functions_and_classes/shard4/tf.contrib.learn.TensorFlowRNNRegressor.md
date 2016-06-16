@@ -1,22 +1,30 @@
 TensorFlow RNN Regressor model.
+- - -
 
-Parameters:
-  rnn_size: The size for rnn cell, e.g. size of your word embeddings.
-  cell_type: The type of rnn cell, including rnn, gru, and lstm.
-  num_layers: The number of layers of the rnn model.
-  input_op_fn: Function that will transform the input tensor, such as
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
+
+Initializes a TensorFlowRNNRegressor instance.
+
+##### Args:
+
+
+*  <b>`rnn_size`</b>: The size for rnn cell, e.g. size of your word embeddings.
+*  <b>`cell_type`</b>: The type of rnn cell, including rnn, gru, and lstm.
+*  <b>`num_layers`</b>: The number of layers of the rnn model.
+*  <b>`input_op_fn`</b>: Function that will transform the input tensor, such as
     creating word embeddings, byte list, etc. This takes
     an argument x for input and returns transformed x.
-  bidirectional: boolean, Whether this is a bidirectional rnn.
-  sequence_length: If sequence_length is provided, dynamic calculation is
-    performed. This saves computational time when unrolling past max sequence
-    length.
-  initial_state: An initial state for the RNN. This must be a tensor of
+*  <b>`bidirectional`</b>: boolean, Whether this is a bidirectional rnn.
+*  <b>`sequence_length`</b>: If sequence_length is provided, dynamic calculation
+    is performed. This saves computational time when unrolling past max
+    sequence length.
+*  <b>`initial_state`</b>: An initial state for the RNN. This must be a tensor of
     appropriate type and shape [batch_size x cell.state_size].
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
-  learning_rate: If this is constant float value, no decay function is
+*  <b>`batch_size`</b>: Mini batch size.
+*  <b>`steps`</b>: Number of steps to run over data.
+*  <b>`optimizer`</b>: Optimizer name (or class), for example "SGD", "Adam",
+    "Adagrad".
+*  <b>`learning_rate`</b>: If this is constant float value, no decay function is
     used. Instead, a customized decay function can be passed that accepts
     global_step as parameter and returns a Tensor.
     e.g. exponential decay function:
@@ -24,19 +32,14 @@ Parameters:
         return tf.train.exponential_decay(
             learning_rate=0.1, global_step,
             decay_steps=2, decay_rate=0.001)
-  continue_training: when continue_training is True, once initialized
+*  <b>`continue_training`</b>: when continue_training is True, once initialized
     model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the
+*  <b>`config`</b>: RunConfig object that controls the configurations of the
     session, e.g. num_cores, gpu_memory_fraction, etc.
-  verbose: Controls the verbosity, possible values:
+*  <b>`verbose`</b>: Controls the verbosity, possible values:
     0: the algorithm and debug information is muted.
     1: trainer prints the progress.
     2: log device placement is printed.
-- - -
-
-#### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
-
-
 
 
 - - -

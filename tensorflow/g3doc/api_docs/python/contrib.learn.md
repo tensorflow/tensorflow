@@ -818,70 +818,74 @@ component of a nested object.
 
 A classifier for TensorFlow DNN models.
 
-  Example:
-    ```
-    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+Example:
 
-    installed_emb = embedding_column(installed_app_id, dimension=16,
-                                     combiner="sum")
-    impression_emb = embedding_column(impression_app_id, dimension=16,
-                                      combiner="sum")
+  ```
+  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
 
-    estimator = DNNClassifier(
-        feature_columns=[installed_emb, impression_emb],
-        hidden_units=[1024, 512, 256])
+  installed_emb = embedding_column(installed_app_id, dimension=16,
+                                   combiner="sum")
+  impression_emb = embedding_column(impression_app_id, dimension=16,
+                                    combiner="sum")
 
-    # Input builders
-    def input_fn_train: # returns x, Y
-      pass
-    estimator.fit(input_fn=input_fn_train)
+  estimator = DNNClassifier(
+      feature_columns=[installed_emb, impression_emb],
+      hidden_units=[1024, 512, 256])
 
-    def input_fn_eval: # returns x, Y
-      pass
-    estimator.evaluate(input_fn=input_fn_eval)
-    estimator.predict(x=x)
-    ```
+  # Input builders
+  def input_fn_train: # returns x, Y
+    pass
+  estimator.fit(input_fn=input_fn_train)
 
-  Input of `fit` and `evaluate` should have following features,
-    otherwise there will be a `KeyError`:
-      if `weight_column_name` is not `None`, a feature with
-        `key=weight_column_name` whose value is a `Tensor`.
-      for each `column` in `feature_columns`:
-      - if `column` is a `SparseColumn`, a feature with `key=column.name`
-        whose `value` is a `SparseTensor`.
-      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is a `Tensor`.
-      - if `feauture_columns` is None, then `input` must contains only real
-        valued `Tensor`.
+  def input_fn_eval: # returns x, Y
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
 
-Parameters:
-  hidden_units: List of hidden units per layer. All layers are fully
-    connected. Ex. [64, 32] means first layer has 64 nodes and second one has
-    32.
-  feature_columns: An iterable containing all the feature columns used by the
-    model. All items in the set should be instances of classes derived from
-    `FeatureColumn`.
-  model_dir: Directory to save model parameters, graph and etc.
-  n_classes: number of target classes. Default is binary classification.
-    It must be greater than 1.
-  weight_column_name: A string defining feature column name representing
-    weights. It is used to down weight or boost examples during training. It
-    will be multiplied by the loss of the example.
-  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-    will use an Adagrad optimizer.
-  activation_fn: Activation function applied to each layer. If `None`, will
-    use `tf.nn.relu`.
-  dropout: When not None, the probability we will drop out a given coordinate.
-  gradient_clip_norm: A float > 0. If provided, gradients are clipped
-    to their global norm with this clipping ratio. See tf.clip_by_global_norm
-    for more details.
-  config: RunConfig object to configure the runtime settings.
+Input of `fit` and `evaluate` should have following features,
+  otherwise there will be a `KeyError`:
+    if `weight_column_name` is not `None`, a feature with
+      `key=weight_column_name` whose value is a `Tensor`.
+    for each `column` in `feature_columns`:
+    - if `column` is a `SparseColumn`, a feature with `key=column.name`
+      whose `value` is a `SparseTensor`.
+    - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+      whose `value` is a `Tensor`.
+    - if `feauture_columns` is None, then `input` must contains only real
+      valued `Tensor`.
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNClassifier.__init__}
 
+Initializes a DNNClassifier instance.
 
+##### Args:
+
+
+*  <b>`hidden_units`</b>: List of hidden units per layer. All layers are fully
+    connected. Ex. [64, 32] means first layer has 64 nodes and second one
+    has 32.
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
+    the model. All items in the set should be instances of classes derived
+    from `FeatureColumn`.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
+    It must be greater than 1.
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+*  <b>`optimizer`</b>: An instance of `tf.Optimizer` used to train the model. If
+    `None`, will use an Adagrad optimizer.
+*  <b>`activation_fn`</b>: Activation function applied to each layer. If `None`, will
+    use `tf.nn.relu`.
+*  <b>`dropout`</b>: When not None, the probability we will drop out a given
+    coordinate.
+*  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are
+    clipped to their global norm with this clipping ratio. See
+    tf.clip_by_global_norm for more details.
+*  <b>`config`</b>: RunConfig object to configure the runtime settings.
 
 
 - - -
@@ -1177,70 +1181,72 @@ component of a nested object.
 
 A regressor for TensorFlow DNN models.
 
-  Example:
-    ```
-    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+Example:
 
-    installed_emb = embedding_column(installed_app_id, dimension=16,
-                                     combiner="sum")
-    impression_emb = embedding_column(impression_app_id, dimension=16,
-                                      combiner="sum")
+  ```
+  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
 
-    estimator = DNNRegressor(
-        feature_columns=[installed_emb, impression_emb],
-        hidden_units=[1024, 512, 256])
+  installed_emb = embedding_column(installed_app_id, dimension=16,
+                                   combiner="sum")
+  impression_emb = embedding_column(impression_app_id, dimension=16,
+                                    combiner="sum")
 
-    # Input builders
-    def input_fn_train: # returns x, Y
-      pass
-    estimator.fit(input_fn=input_fn_train)
+  estimator = DNNRegressor(
+      feature_columns=[installed_emb, impression_emb],
+      hidden_units=[1024, 512, 256])
 
-    def input_fn_eval: # returns x, Y
-      pass
-    estimator.evaluate(input_fn=input_fn_eval)
-    estimator.predict(x=x)
-    ```
+  # Input builders
+  def input_fn_train: # returns x, Y
+    pass
+  estimator.fit(input_fn=input_fn_train)
 
-  Input of `fit` and `evaluate` should have following features,
-    otherwise there will be a `KeyError`:
-      if `weight_column_name` is not `None`, a feature with
-        `key=weight_column_name` whose value is a `Tensor`.
-      for each `column` in `feature_columns`:
-      - if `column` is a `SparseColumn`, a feature with `key=column.name`
-        whose `value` is a `SparseTensor`.
-      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is a `Tensor`.
-      - if `feauture_columns` is None, then `input` must contains only real
-        valued `Tensor`.
+  def input_fn_eval: # returns x, Y
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
 
-
-
-Parameters:
-  hidden_units: List of hidden units per layer. All layers are fully
-    connected. Ex. [64, 32] means first layer has 64 nodes and second one has
-    32.
-  feature_columns: An iterable containing all the feature columns used by the
-    model. All items in the set should be instances of classes derived from
-    `FeatureColumn`.
-  model_dir: Directory to save model parameters, graph and etc.
-  weight_column_name: A string defining feature column name representing
-    weights. It is used to down weight or boost examples during training. It
-    will be multiplied by the loss of the example.
-  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-    will use an Adagrad optimizer.
-  activation_fn: Activation function applied to each layer. If `None`, will
-    use `tf.nn.relu`.
-  dropout: When not None, the probability we will drop out a given coordinate.
-  gradient_clip_norm: A float > 0. If provided, gradients are clipped
-    to their global norm with this clipping ratio. See tf.clip_by_global_norm
-    for more details.
-  config: RunConfig object to configure the runtime settings.
+Input of `fit` and `evaluate` should have following features,
+  otherwise there will be a `KeyError`:
+    if `weight_column_name` is not `None`, a feature with
+      `key=weight_column_name` whose value is a `Tensor`.
+    for each `column` in `feature_columns`:
+    - if `column` is a `SparseColumn`, a feature with `key=column.name`
+      whose `value` is a `SparseTensor`.
+    - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+      whose `value` is a `Tensor`.
+    - if `feauture_columns` is None, then `input` must contains only real
+      valued `Tensor`.
 - - -
 
 #### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, config=None)` {#DNNRegressor.__init__}
 
+Initializes a `DNNRegressor` instance.
 
+##### Args:
+
+
+*  <b>`hidden_units`</b>: List of hidden units per layer. All layers are fully
+    connected. Ex. [64, 32] means first layer has 64 nodes and second
+    one has 32.
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
+    the model. All items in the set should be instances of classes derived
+    from `FeatureColumn`.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+*  <b>`optimizer`</b>: An instance of `tf.Optimizer` used to train the model. If
+    `None`, will use an Adagrad optimizer.
+*  <b>`activation_fn`</b>: Activation function applied to each layer. If `None`, will
+    use `tf.nn.relu`.
+*  <b>`dropout`</b>: When not None, the probability we will drop out a given
+    coordinate.
+*  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See
+    tf.clip_by_global_norm for more details.
+*  <b>`config`</b>: RunConfig object to configure the runtime settings.
 
 
 - - -
@@ -2029,16 +2035,23 @@ component of a nested object.
 ### `class tf.contrib.learn.TensorFlowEstimator` {#TensorFlowEstimator}
 
 Base class for all TensorFlow estimators.
+- - -
 
-Parameters:
-  model_fn: Model function, that takes input `x`, `y` tensors and outputs
+#### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
+
+Initializes a TensorFlowEstimator instance.
+
+##### Args:
+
+
+*  <b>`model_fn`</b>: Model function, that takes input `x`, `y` tensors and outputs
     prediction and loss tensors.
-  n_classes: Number of classes in the target.
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam",
+*  <b>`n_classes`</b>: Number of classes in the target.
+*  <b>`batch_size`</b>: Mini batch size.
+*  <b>`steps`</b>: Number of steps to run over data.
+*  <b>`optimizer`</b>: Optimizer name (or class), for example "SGD", "Adam",
     "Adagrad".
-  learning_rate: If this is constant float value, no decay function is used.
+*  <b>`learning_rate`</b>: If this is constant float value, no decay function is used.
     Instead, a customized decay function can be passed that accepts
     global_step as parameter and returns a Tensor.
     e.g. exponential decay function:
@@ -2046,24 +2059,19 @@ Parameters:
         return tf.train.exponential_decay(
             learning_rate=0.1, global_step,
             decay_steps=2, decay_rate=0.001)
-  clip_gradients: Clip norm of the gradients to this value to stop
+*  <b>`clip_gradients`</b>: Clip norm of the gradients to this value to stop
     gradient explosion.
-  class_weight: None or list of n_classes floats. Weight associated with
+*  <b>`class_weight`</b>: None or list of n_classes floats. Weight associated with
     classes for loss computation. If not given, all classes are supposed to
     have weight one.
-  continue_training: when continue_training is True, once initialized
+*  <b>`continue_training`</b>: when continue_training is True, once initialized
     model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the
+*  <b>`config`</b>: RunConfig object that controls the configurations of the
     session, e.g. num_cores, gpu_memory_fraction, etc.
-  verbose: Controls the verbosity, possible values:
+*  <b>`verbose`</b>: Controls the verbosity, possible values:
     0: the algorithm and debug information is muted.
     1: trainer prints the progress.
     2: log device placement is printed.
-- - -
-
-#### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
-
-
 
 
 - - -
@@ -2326,6 +2334,7 @@ Train a linear model to classify instances into one of multiple possible
 classes. When number of possible classes is 2, this is binary classification.
 
 Example:
+
 ```python
 installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
 impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
@@ -2700,6 +2709,7 @@ Train a linear regression model to predict target variable value given
 observation of feature values.
 
 Example:
+
 ```python
 installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
 impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
@@ -3546,25 +3556,33 @@ component of a nested object.
 ### `class tf.contrib.learn.TensorFlowRNNClassifier` {#TensorFlowRNNClassifier}
 
 TensorFlow RNN Classifier model.
+- - -
 
-Parameters:
-  rnn_size: The size for rnn cell, e.g. size of your word embeddings.
-  cell_type: The type of rnn cell, including rnn, gru, and lstm.
-  num_layers: The number of layers of the rnn model.
-  input_op_fn: Function that will transform the input tensor, such as
+#### `tf.contrib.learn.TensorFlowRNNClassifier.__init__(rnn_size, n_classes, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNClassifier.__init__}
+
+Initializes a TensorFlowRNNClassifier instance.
+
+##### Args:
+
+
+*  <b>`rnn_size`</b>: The size for rnn cell, e.g. size of your word embeddings.
+*  <b>`cell_type`</b>: The type of rnn cell, including rnn, gru, and lstm.
+*  <b>`num_layers`</b>: The number of layers of the rnn model.
+*  <b>`input_op_fn`</b>: Function that will transform the input tensor, such as
     creating word embeddings, byte list, etc. This takes
     an argument x for input and returns transformed x.
-  bidirectional: boolean, Whether this is a bidirectional rnn.
-  sequence_length: If sequence_length is provided, dynamic calculation is
-    performed. This saves computational time when unrolling past max sequence
-    length.
-  initial_state: An initial state for the RNN. This must be a tensor of
+*  <b>`bidirectional`</b>: boolean, Whether this is a bidirectional rnn.
+*  <b>`sequence_length`</b>: If sequence_length is provided, dynamic calculation
+    is performed. This saves computational time when unrolling past max
+    sequence length.
+*  <b>`initial_state`</b>: An initial state for the RNN. This must be a tensor of
     appropriate type and shape [batch_size x cell.state_size].
-  n_classes: Number of classes in the target.
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
-  learning_rate: If this is constant float value, no decay function is
+*  <b>`n_classes`</b>: Number of classes in the target.
+*  <b>`batch_size`</b>: Mini batch size.
+*  <b>`steps`</b>: Number of steps to run over data.
+*  <b>`optimizer`</b>: Optimizer name (or class), for example "SGD", "Adam",
+    "Adagrad".
+*  <b>`learning_rate`</b>: If this is constant float value, no decay function is
     used. Instead, a customized decay function can be passed that accepts
     global_step as parameter and returns a Tensor.
     e.g. exponential decay function:
@@ -3572,18 +3590,13 @@ Parameters:
         return tf.train.exponential_decay(
             learning_rate=0.1, global_step,
             decay_steps=2, decay_rate=0.001)
-  class_weight: None or list of n_classes floats. Weight associated with
+*  <b>`class_weight`</b>: None or list of n_classes floats. Weight associated with
     classes for loss computation. If not given, all classes are
     supposed to have weight one.
-  continue_training: when continue_training is True, once initialized
+*  <b>`continue_training`</b>: when continue_training is True, once initialized
     model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the session,
+*  <b>`config`</b>: RunConfig object that controls the configurations of the session,
     e.g. num_cores, gpu_memory_fraction, etc.
-- - -
-
-#### `tf.contrib.learn.TensorFlowRNNClassifier.__init__(rnn_size, n_classes, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, class_weight=None, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNClassifier.__init__}
-
-
 
 
 - - -
@@ -3855,24 +3868,32 @@ Returns weights of the rnn layer.
 ### `class tf.contrib.learn.TensorFlowRNNRegressor` {#TensorFlowRNNRegressor}
 
 TensorFlow RNN Regressor model.
+- - -
 
-Parameters:
-  rnn_size: The size for rnn cell, e.g. size of your word embeddings.
-  cell_type: The type of rnn cell, including rnn, gru, and lstm.
-  num_layers: The number of layers of the rnn model.
-  input_op_fn: Function that will transform the input tensor, such as
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
+
+Initializes a TensorFlowRNNRegressor instance.
+
+##### Args:
+
+
+*  <b>`rnn_size`</b>: The size for rnn cell, e.g. size of your word embeddings.
+*  <b>`cell_type`</b>: The type of rnn cell, including rnn, gru, and lstm.
+*  <b>`num_layers`</b>: The number of layers of the rnn model.
+*  <b>`input_op_fn`</b>: Function that will transform the input tensor, such as
     creating word embeddings, byte list, etc. This takes
     an argument x for input and returns transformed x.
-  bidirectional: boolean, Whether this is a bidirectional rnn.
-  sequence_length: If sequence_length is provided, dynamic calculation is
-    performed. This saves computational time when unrolling past max sequence
-    length.
-  initial_state: An initial state for the RNN. This must be a tensor of
+*  <b>`bidirectional`</b>: boolean, Whether this is a bidirectional rnn.
+*  <b>`sequence_length`</b>: If sequence_length is provided, dynamic calculation
+    is performed. This saves computational time when unrolling past max
+    sequence length.
+*  <b>`initial_state`</b>: An initial state for the RNN. This must be a tensor of
     appropriate type and shape [batch_size x cell.state_size].
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam", "Adagrad".
-  learning_rate: If this is constant float value, no decay function is
+*  <b>`batch_size`</b>: Mini batch size.
+*  <b>`steps`</b>: Number of steps to run over data.
+*  <b>`optimizer`</b>: Optimizer name (or class), for example "SGD", "Adam",
+    "Adagrad".
+*  <b>`learning_rate`</b>: If this is constant float value, no decay function is
     used. Instead, a customized decay function can be passed that accepts
     global_step as parameter and returns a Tensor.
     e.g. exponential decay function:
@@ -3880,19 +3901,14 @@ Parameters:
         return tf.train.exponential_decay(
             learning_rate=0.1, global_step,
             decay_steps=2, decay_rate=0.001)
-  continue_training: when continue_training is True, once initialized
+*  <b>`continue_training`</b>: when continue_training is True, once initialized
     model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the
+*  <b>`config`</b>: RunConfig object that controls the configurations of the
     session, e.g. num_cores, gpu_memory_fraction, etc.
-  verbose: Controls the verbosity, possible values:
+*  <b>`verbose`</b>: Controls the verbosity, possible values:
     0: the algorithm and debug information is muted.
     1: trainer prints the progress.
     2: log device placement is printed.
-- - -
-
-#### `tf.contrib.learn.TensorFlowRNNRegressor.__init__(rnn_size, cell_type='gru', num_layers=1, input_op_fn=null_input_op_fn, initial_state=None, bidirectional=False, sequence_length=None, n_classes=0, batch_size=32, steps=50, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, continue_training=False, config=None, verbose=1)` {#TensorFlowRNNRegressor.__init__}
-
-
 
 
 - - -

@@ -36,6 +36,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   classes. When number of possible classes is 2, this is binary classification.
 
   Example:
+
   ```python
   installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
   impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
@@ -171,6 +172,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   observation of feature values.
 
   Example:
+
   ```python
   installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
   impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)

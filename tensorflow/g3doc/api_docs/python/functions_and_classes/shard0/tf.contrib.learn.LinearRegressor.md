@@ -4,6 +4,7 @@ Train a linear regression model to predict target variable value given
 observation of feature values.
 
 Example:
+
 ```python
 installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
 impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
