@@ -22,9 +22,28 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 
-RecordWriter::RecordWriter(WritableFile* dest) : dest_(dest) {}
+RecordWriter::RecordWriter(WritableFile* dest,
+                           const RecordWriterOptions& options)
+    : dest_(dest), options_(options) {
+  if (options.compression_type == RecordWriterOptions::ZLIB_COMPRESSION) {
+    zlib_output_buffer_.reset(new ZlibOutputBuffer(
+        dest_, options.zlib_options.input_buffer_size,
+        options.zlib_options.output_buffer_size, options.zlib_options));
+  } else if (options.compression_type == RecordWriterOptions::NONE) {
+    // Nothing to do
+  } else {
+    LOG(FATAL) << "Unspecified compression type :" << options.compression_type;
+  }
+}
 
-RecordWriter::~RecordWriter() {}
+RecordWriter::~RecordWriter() {
+  if (zlib_output_buffer_) {
+    Status s = zlib_output_buffer_->Close();
+    if (!s.ok()) {
+      LOG(ERROR) << "Could not finish writing file: " << s;
+    }
+  }
+}
 
 static uint32 MaskedCrc(const char* data, size_t n) {
   return crc32c::Mask(crc32c::Value(data, n));
@@ -40,17 +59,19 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   core::EncodeFixed64(header + 0, data.size());
   core::EncodeFixed32(header + sizeof(uint64),
                       MaskedCrc(header, sizeof(uint64)));
-  Status s = dest_->Append(StringPiece(header, sizeof(header)));
-  if (!s.ok()) {
-    return s;
-  }
-  s = dest_->Append(data);
-  if (!s.ok()) {
-    return s;
-  }
   char footer[sizeof(uint32)];
   core::EncodeFixed32(footer, MaskedCrc(data.data(), data.size()));
-  return dest_->Append(StringPiece(footer, sizeof(footer)));
+
+  if (zlib_output_buffer_) {
+    TF_RETURN_IF_ERROR(
+        zlib_output_buffer_->Write(StringPiece(header, sizeof(header))));
+    TF_RETURN_IF_ERROR(zlib_output_buffer_->Write(data));
+    return zlib_output_buffer_->Write(StringPiece(footer, sizeof(footer)));
+  } else {
+    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+    TF_RETURN_IF_ERROR(dest_->Append(data));
+    return dest_->Append(StringPiece(footer, sizeof(footer)));
+  }
 }
 
 }  // namespace io

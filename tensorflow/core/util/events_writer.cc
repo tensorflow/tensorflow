@@ -113,6 +113,13 @@ void EventsWriter::WriteEvent(const Event& event) {
 bool EventsWriter::Flush() {
   if (num_outstanding_events_ == 0) return true;
   CHECK(recordio_file_.get() != NULL) << "Unexpected NULL file";
+
+  if (!recordio_writer_->Flush().ok()) {
+    LOG(ERROR) << "Failed to flush " << num_outstanding_events_ << " events to "
+               << filename_;
+    return false;
+  }
+
   // The FileHasDisappeared() condition is necessary because
   // recordio_writer_->Sync() can return true even if the underlying
   // file has been deleted.  EventWriter.FileDeletionBeforeWriting
