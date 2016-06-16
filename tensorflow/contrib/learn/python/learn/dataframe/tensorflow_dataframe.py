@@ -22,26 +22,18 @@ from __future__ import print_function
 import collections
 import csv
 
-import tensorflow as tf
-
 from tensorflow.contrib.learn.python.learn.dataframe import dataframe as df
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import batch
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import csv_parser
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import example_parser
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import reader_source
+from tensorflow.python.client import session as sess
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
-
-
-class FileFormat(object):
-  TEXT = 0
-  TFRECORD = 1
-
-FILE_FORMAT_TO_READER_CLS = {
-    FileFormat.TEXT: io_ops.TextLineReader,
-    FileFormat.TFRECORD: io_ops.TFRecordReader
-}
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner as qr
 
 
 def _expand_file_names(filepatterns):
@@ -76,16 +68,16 @@ class TensorFlowDataFrame(df.DataFrame):
       each column for a single batch.
     """
     if graph is None:
-      graph = tf.get_default_graph()
+      graph = ops.get_default_graph()
     with graph.as_default():
       if session is None:
-        session = tf.Session()
+        session = sess.Session()
       self_built = self.build()
       keys = list(self_built.keys())
       cols = list(self_built.values())
       if start_queues:
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=session, coord=coord)
+        coord = coordinator.Coordinator()
+        threads = qr.start_queue_runners(sess=session, coord=coord)
       i = 0
       while num_batches is None or i < num_batches:
         i += 1
@@ -147,14 +139,15 @@ class TensorFlowDataFrame(df.DataFrame):
   @classmethod
   def from_csv(cls,
                filepatterns,
-               batch_size,
                default_values,
                has_header=True,
                column_names=None,
-               shuffle=True,
                num_threads=1,
+               enqueue_size=None,
+               batch_size=32,
                queue_capacity=None,
                min_after_dequeue=None,
+               shuffle=True,
                seed=None):
     """Create a `DataFrame` from `tensorflow.Example`s.
 
@@ -164,15 +157,16 @@ class TensorFlowDataFrame(df.DataFrame):
 
     Args:
       filepatterns: a list of file patterns that resolve to CSV files.
-      batch_size: desired batch size.
       default_values: a list of default values for each column.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      shuffle: whether records should be shuffled. Defaults to true.
       num_threads: the number of readers that will work in parallel.
+      enqueue_size: block size for each read operation.
+      batch_size: desired batch size.
       queue_capacity: capacity of the queue that will store parsed lines.
       min_after_dequeue: minimum number of elements that can be left by a
         dequeue operation. Only used if `shuffle` is true.
+      shuffle: whether records should be shuffled. Defaults to true.
       seed: passed to random shuffle operations. Only used if `shuffle` is true.
 
     Returns:
@@ -201,6 +195,7 @@ class TensorFlowDataFrame(df.DataFrame):
     index, value = reader_source.TextFileSource(
         filenames,
         reader_kwargs=reader_kwargs,
+        enqueue_size=enqueue_size,
         batch_size=batch_size,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
@@ -220,28 +215,30 @@ class TensorFlowDataFrame(df.DataFrame):
   @classmethod
   def from_examples(cls,
                     filepatterns,
-                    batch_size,
                     features,
-                    file_format=FileFormat.TFRECORD,
-                    shuffle=True,
+                    reader_cls=io_ops.TFRecordReader,
                     num_threads=1,
+                    enqueue_size=None,
+                    batch_size=32,
                     queue_capacity=None,
                     min_after_dequeue=None,
+                    shuffle=True,
                     seed=None):
     """Create a `DataFrame` from `tensorflow.Example`s.
 
     Args:
       filepatterns: a list of file patterns containing `tensorflow.Example`s.
-      batch_size: desired batch size.
       features: a dict mapping feature names to `VarLenFeature` or
         `FixedLenFeature`.
-      file_format: a `FileFormat` indicating the format of the files in
-        `filepatterns`.
-      shuffle: whether records should be shuffled. Defaults to true.
+      reader_cls: a subclass of `tensorflow.ReaderBase` that will be used to
+        read the `Example`s.
       num_threads: the number of readers that will work in parallel.
+      enqueue_size: block size for each read operation.
+      batch_size: desired batch size.
       queue_capacity: capacity of the queue that will store parsed `Example`s
       min_after_dequeue: minimum number of elements that can be left by a
         dequeue operation. Only used if `shuffle` is true.
+      shuffle: whether records should be shuffled. Defaults to true.
       seed: passed to random shuffle operations. Only used if `shuffle` is true.
 
     Returns:
@@ -261,8 +258,9 @@ class TensorFlowDataFrame(df.DataFrame):
           "'index' is reserved and can not be used for a feature name.")
 
     index, record = reader_source.ReaderSource(
-        FILE_FORMAT_TO_READER_CLS[file_format],
+        reader_cls,
         filenames,
+        enqueue_size=enqueue_size,
         batch_size=batch_size,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
@@ -317,7 +315,7 @@ class TensorFlowDataFrame(df.DataFrame):
                  queue_capacity=None,
                  min_after_dequeue=None,
                  seed=None):
-    """Create a `tf.learn.DataFrame` from a `numpy.ndarray`.
+    """Creates a `tf.learn.DataFrame` from a `numpy.ndarray`.
 
     The returned `DataFrame` contains two columns: 'index' and 'value'. The
     'value' column contains a row from the array. The 'index' column contains
