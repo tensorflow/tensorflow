@@ -145,7 +145,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       max_sequence_length = math_ops.reduce_max(sequence_length)
 
     for time, input_ in enumerate(inputs):
-      if time > 0: vs.get_variable_scope().reuse_variables()
+      if time > 0: varscope.reuse_variables()
       # pylint: disable=cell-var-from-loop
       call_cell = lambda: cell(input_, state)
       # pylint: enable=cell-var-from-loop
