@@ -42,7 +42,6 @@ def my_op_with_vars(a, b, scope=None):
 *  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 
-
 ##### Returns:
 
   A context manager for use in defining a Python op.

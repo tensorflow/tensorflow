@@ -596,6 +596,10 @@ def parse_single_sequence_example(
   `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified type.
   The shape will be `(T,) + df.shape` for `FixedLenSequenceFeature` `df`, where
   `T` is the length of the associated `FeatureList` in the `SequenceExample`.
+  For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Tensor` of
+  static shape `[None]` and dynamic shape `[T]`, while
+  `FixedLenSequenceFeature([k])` (for `int k >= 1`) yields a 2-D matrix `Tensor`
+  of static shape `[None, k]` and dynamic shape `[T, k]`.
 
   Each `SparseTensor` corresponding to `sequence_features` represents a ragged
   vector.  Its indices are `[time, index]`, where `time` is the `FeatureList`

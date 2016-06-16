@@ -23,6 +23,7 @@ should be recursive.
 
 @@is_sequence
 @@flatten
+@flatten_dict_items
 @@pack_sequence_as
 """
 
@@ -93,6 +94,62 @@ def flatten(nest):
   if not is_sequence(nest):
     raise TypeError("input must be a sequence, but received %s" % nest)
   return _sequence_like(nest, list(_yield_flat_nest(nest)))
+
+
+def flatten_dict_items(dictionary):
+  """Returns a dictionary with flattened keys and values.
+
+  This function flattens the keys and values of a dictionary, which can be
+  arbitrarily nested structures, and returns the flattened version of such
+  structures:
+
+  ```python
+  example_dictionary = {(4, 5, (6, 8)): ("a", "b", ("c", "d"))}
+  result = {4: "a", 5: "b", 6: "c", 8: "d"}
+  flatten_dict_items(example_dictionary) == result
+  ```
+
+  The input dictionary must satisfy two properties:
+
+  1. Its keys and values should have the same exact nested structure.
+  2. The set of all flattened keys of the dictionary must not contain repeated
+     keys.
+
+  Args:
+    dictionary: the dictionary to zip
+
+  Returns:
+    The zipped dictionary.
+
+  Raises:
+    TypeError: If the input is not a dictionary.
+    ValueError: If any key and value have not the same structure, or if keys are
+      not unique.
+  """
+  if not isinstance(dictionary, dict):
+    raise TypeError("input must be a dictionary")
+  flat_dictionary = {}
+  for i, v in six.iteritems(dictionary):
+    if not is_sequence(i):
+      if i in flat_dictionary:
+        raise ValueError(
+            "Could not flatten dictionary: key %s is not unique." % i)
+      flat_dictionary[i] = v
+    else:
+      flat_i = flatten(i)
+      flat_v = flatten(v)
+      if len(flat_i) != len(flat_v):
+        raise ValueError(
+            "Could not flatten dictionary. Key had %d elements, but value had "
+            "%d elements. Key: %s, value: %s."
+            % (len(flat_i), len(flat_v), flat_i, flat_v))
+      for new_i, new_v in zip(flat_i, flat_v):
+        if new_i in flat_dictionary:
+          raise ValueError(
+              "Could not flatten dictionary: key %s is not unique."
+              % (new_i))
+        flat_dictionary[new_i] = new_v
+  return flat_dictionary
 
 
 def _packed_nest_with_indices(structure, flat, index):

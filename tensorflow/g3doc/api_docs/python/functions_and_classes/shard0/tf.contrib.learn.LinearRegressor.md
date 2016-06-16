@@ -1,57 +1,67 @@
 Linear regressor model.
 
-  Example:
-  ```
-  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+Train a linear regression model to predict target variable value given
+observation of feature values.
 
-  installed_x_impression = crossed_column(
-      [installed_app_id, impression_app_id])
+Example:
+```python
+installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
+impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
 
-  estimator = LinearRegressor(
-      feature_columns=[impression_app_id, installed_x_impression])
+installed_x_impression = crossed_column(
+    [installed_app_id, impression_app_id])
 
-  # Input builders
-  def input_fn_train: # returns x, y
-    ...
-  def input_fn_eval: # returns x, y
-    ...
-  estimator.fit(input_fn=input_fn_train)
-  estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
-  ```
+estimator = LinearRegressor(
+    feature_columns=[impression_app_id, installed_x_impression])
 
-  Input of `fit` and `evaluate` should have following features,
-    otherwise there will be a KeyError:
-      if `weight_column_name` is not None:
-        key=weight_column_name, value=a `Tensor`
-      for column in `feature_columns`:
-      - if isinstance(column, `SparseColumn`):
-          key=column.name, value=a `SparseTensor`
-      - if isinstance(column, `RealValuedColumn`):
-          key=column.name, value=a `Tensor`
-      - if `feauture_columns` is None:
-          input must contains only real valued `Tensor`.
+# Input builders
+def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+  ...
+def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+  ...
+estimator.fit(input_fn=input_fn_train)
+estimator.evaluate(input_fn=input_fn_eval)
+estimator.predict(x=x)
+```
 
-Parameters:
-  feature_columns: An iterable containing all the feature columns used by the
-    model. All items in the set should be instances of classes derived from
-    `FeatureColumn`.
-  model_dir: Directory to save model parameters, graph and etc.
-  weight_column_name: A string defining feature column name representing
-    weights. It is used to down weight or boost examples during training. It
-    will be multiplied by the loss of the example.
-  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-    will use an Ftrl optimizer.
-  gradient_clip_norm: A float > 0. If provided, gradients are clipped
-    to their global norm with this clipping ratio. See tf.clip_by_global_norm
-    for more details.
-  config: RunConfig object to configure the runtime settings.
+Input of `fit` and `evaluate` should have following features,
+  otherwise there will be a KeyError:
+    if `weight_column_name` is not `None`:
+      key=weight_column_name, value=a `Tensor`
+    for column in `feature_columns`:
+    - if isinstance(column, `SparseColumn`):
+        key=column.name, value=a `SparseTensor`
+    - if isinstance(column, `RealValuedColumn`):
+        key=column.name, value=a `Tensor`
+    - if `feauture_columns` is `None`:
+        input must contains only real valued `Tensor`.
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearRegressor.__init__}
 
+Construct a `LinearRegressor` estimator object.
 
+##### Args:
+
+
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
+    the model. All items in the set should be instances of classes derived
+    from `FeatureColumn`.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+*  <b>`optimizer`</b>: An instance of `tf.Optimizer` used to train the model. If
+    `None`, will use an Ftrl optimizer.
+*  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See
+    `tf.clip_by_global_norm` for more details.
+*  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+
+##### Returns:
+
+  A `LinearRegressor` estimator.
 
 
 - - -
