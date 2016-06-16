@@ -82,7 +82,19 @@ def extract_pandas_matrix(data):
 
 
 def extract_pandas_labels(labels):
-  """Extract data from pandas.DataFrame for labels."""
+  """Extract data from pandas.DataFrame for labels.
+
+  Args:
+    labels: `pandas.DataFrame` or `pandas.Series` containing one column of
+      labels to be extracted.
+
+  Returns:
+    A numpy `ndarray` of labels from the DataFrame.
+
+  Raises:
+    ValueError: if more than one column is found or type is not int, float or
+      bool.
+  """
   if isinstance(labels,
                 pd.DataFrame):  # pandas.Series also belongs to DataFrame
     if len(labels.columns) > 1:
