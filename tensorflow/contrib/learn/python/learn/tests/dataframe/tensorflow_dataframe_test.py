@@ -169,6 +169,23 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
                                           num_batches=num_batches,
                                           batch_size=batch_size)
 
+  def testFromCSVLimitEpoch(self):
+    batch_size = 8
+    num_epochs = 17
+    expected_num_batches = (num_epochs * 100) // batch_size
+
+    data_path = _make_test_csv()
+    default_values = [0, 0.0, 0]
+
+    tensorflow_df = df.TensorFlowDataFrame.from_csv(
+        [data_path],
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        shuffle=False,
+        default_values=default_values)
+    actual_num_batches = len(list(tensorflow_df.run()))
+    self.assertEqual(expected_num_batches, actual_num_batches)
+
   def testFromExamples(self):
     num_batches = 77
     enqueue_size = 11

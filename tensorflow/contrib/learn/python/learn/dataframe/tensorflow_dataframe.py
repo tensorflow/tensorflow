@@ -29,8 +29,10 @@ from tensorflow.contrib.learn.python.learn.dataframe.transforms import example_p
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import reader_source
 from tensorflow.python.client import session as sess
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner as qr
@@ -50,11 +52,17 @@ def _expand_file_names(filepatterns):
 class TensorFlowDataFrame(df.DataFrame):
   """TensorFlowDataFrame implements convenience functions using TensorFlow."""
 
-  def run(self, num_batches=None, graph=None, session=None, start_queues=True):
+  def run(self,
+          num_batches=None,
+          graph=None,
+          session=None,
+          start_queues=True,
+          initialize_variables=True):
     """Builds and runs the columns of the `DataFrame` and yields batches.
 
     This is a generator that yields a dictionary mapping column names to
     evaluated columns.
+
     Args:
       num_batches: the maximum number of batches to produce. If none specified,
         the returned value will iterate through infinite batches.
@@ -62,6 +70,7 @@ class TensorFlowDataFrame(df.DataFrame):
       session: the `Session` in which to run the columns of the `DataFrame`.
       start_queues: if true, queues will be started before running and halted
         after producting `n` batches.
+      initialize_variables: if true, variables will be initialized.
 
     Yields:
       A dictionary, mapping column names to the values resulting from running
@@ -75,14 +84,22 @@ class TensorFlowDataFrame(df.DataFrame):
       self_built = self.build()
       keys = list(self_built.keys())
       cols = list(self_built.values())
+      if initialize_variables:
+        if variables.local_variables():
+          session.run(variables.initialize_local_variables())
+        if variables.all_variables():
+          session.run(variables.initialize_all_variables())
       if start_queues:
         coord = coordinator.Coordinator()
         threads = qr.start_queue_runners(sess=session, coord=coord)
       i = 0
       while num_batches is None or i < num_batches:
         i += 1
-        values = session.run(cols)
-        yield collections.OrderedDict(zip(keys, values))
+        try:
+          values = session.run(cols)
+          yield collections.OrderedDict(zip(keys, values))
+        except errors.OutOfRangeError:
+          break
       if start_queues:
         coord.request_stop()
         coord.join(threads)
@@ -142,6 +159,7 @@ class TensorFlowDataFrame(df.DataFrame):
                default_values,
                has_header=True,
                column_names=None,
+               num_epochs=None,
                num_threads=1,
                enqueue_size=None,
                batch_size=32,
@@ -160,6 +178,9 @@ class TensorFlowDataFrame(df.DataFrame):
       default_values: a list of default values for each column.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
+      num_epochs: the number of times that the reader should loop through all
+        the file names. If set to `None`, then the reader will continue
+        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -197,6 +218,7 @@ class TensorFlowDataFrame(df.DataFrame):
         reader_kwargs=reader_kwargs,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
+        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,
@@ -217,6 +239,7 @@ class TensorFlowDataFrame(df.DataFrame):
                     filepatterns,
                     features,
                     reader_cls=io_ops.TFRecordReader,
+                    num_epochs=None,
                     num_threads=1,
                     enqueue_size=None,
                     batch_size=32,
@@ -232,6 +255,9 @@ class TensorFlowDataFrame(df.DataFrame):
         `FixedLenFeature`.
       reader_cls: a subclass of `tensorflow.ReaderBase` that will be used to
         read the `Example`s.
+      num_epochs: the number of times that the reader should loop through all
+        the file names. If set to `None`, then the reader will continue
+        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -262,6 +288,7 @@ class TensorFlowDataFrame(df.DataFrame):
         filenames,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
+        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,
@@ -340,8 +367,3 @@ class TensorFlowDataFrame(df.DataFrame):
     dataframe = cls()
     dataframe.assign(**(numpy_source()._asdict()))
     return dataframe
-
-
-
-
-
