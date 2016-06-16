@@ -276,8 +276,8 @@
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
-					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
 					"$(SRCROOT)/../../makefile/gen/proto",
+					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
@@ -310,8 +310,8 @@
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
-					"$(SRCROOT)/../../makefile/downloads/eigen-eigen-d02e6a705c30",
 					"$(SRCROOT)/../../makefile/gen/proto",
+					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;

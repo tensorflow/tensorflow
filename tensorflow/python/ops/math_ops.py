@@ -239,17 +239,71 @@ def abs(x, name=None):
   number.
 
   Args:
-    x: A `Tensor` of type `float`, `double`, `int32`, or `int64`.
+    x: A `Tensor` or `SparseTensor` of type `float`, `double`, `int32`, or
+      `int64`.
     name: A name for the operation (optional).
 
   Returns:
-     A `Tensor` the same size and type as `x` with absolute values.
+    A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
+      values.
   """
   with ops.op_scope([x], name, "Abs") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    if x.dtype in (dtypes.complex64, dtypes.complex128):
-      return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
-    return gen_math_ops._abs(x, name=name)
+    if isinstance(x, ops.SparseTensor):
+      if x.values.dtype in (dtypes.complex64, dtypes.complex128):
+        x_abs = gen_math_ops.complex_abs(x.values,
+            Tout=x.values.dtype.real_dtype, name=name)
+        return ops.SparseTensor(indices=x.indices, values=x_abs, shape=x.shape)
+      x_abs = gen_math_ops._abs(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_abs, shape=x.shape)
+    else:
+      x = ops.convert_to_tensor(x, name="x")
+      if x.dtype in (dtypes.complex64, dtypes.complex128):
+        return gen_math_ops.complex_abs(x, Tout=x.dtype.real_dtype, name=name)
+      return gen_math_ops._abs(x, name=name)
+
+
+def neg(x, name=None):
+  """Computes numerical negative value element-wise.
+
+  I.e., \\(y = -x\\).
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+  """
+  with ops.op_scope([x], name, "Neg") as name:
+    if isinstance(x, ops.SparseTensor):
+      x_neg = gen_math_ops.neg(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_neg, shape=x.shape)
+    else:
+      return gen_math_ops.neg(x, name=name)
+
+
+def sign(x, name=None):
+  """Returns an element-wise indication of the sign of a number.
+
+  `y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+  For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+  """
+  with ops.op_scope([x], name, "Sign") as name:
+    if isinstance(x, ops.SparseTensor):
+      x_sign = gen_math_ops.sign(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_sign, shape=x.shape)
+    else:
+      return gen_math_ops.sign(x, name=name)
 
 
 def complex_abs(x, name=None):

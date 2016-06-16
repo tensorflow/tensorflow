@@ -41,6 +41,9 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
                initial_state=None,
                bidirectional=False,
                sequence_length=None,
+               attn_length=None,
+               attn_size=None,
+               attn_vec_size=None,
                batch_size=32,
                steps=50,
                optimizer='Adagrad',
@@ -65,6 +68,10 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         sequence length.
       initial_state: An initial state for the RNN. This must be a tensor of
         appropriate type and shape [batch_size x cell.state_size].
+      attn_length: integer, the size of attention vector attached to rnn cells.
+      attn_size: integer, the size of an attention window attached to rnn cells.
+      attn_vec_size: integer, the number of convolutional features calculated on
+        attention state and the size of the hidden layer built from base cell state.
       n_classes: Number of classes in the target.
       batch_size: Mini batch size.
       steps: Number of steps to run over data.
@@ -94,6 +101,9 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
     self.num_layers = num_layers
     self.sequence_length = sequence_length
     self.initial_state = initial_state
+    self.attn_length = attn_length
+    self.attn_size = attn_size
+    self.attn_vec_size = attn_vec_size
     super(TensorFlowRNNClassifier, self).__init__(
         model_fn=self._model_fn,
         n_classes=n_classes,
@@ -111,7 +121,9 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
     return models.get_rnn_model(self.rnn_size, self.cell_type, self.num_layers,
                                 self.input_op_fn, self.bidirectional,
                                 models.logistic_regression,
-                                self.sequence_length, self.initial_state)(x, y)
+                                self.sequence_length, self.initial_state,
+                                self.attn_length, self.attn_size,
+                                self.attn_vec_size)(x, y)
 
   @property
   def bias_(self):
@@ -135,6 +147,9 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
                initial_state=None,
                bidirectional=False,
                sequence_length=None,
+               attn_length=None,
+               attn_size=None,
+               attn_vec_size=None,
                n_classes=0,
                batch_size=32,
                steps=50,
@@ -157,6 +172,10 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
       sequence_length: If sequence_length is provided, dynamic calculation
         is performed. This saves computational time when unrolling past max
         sequence length.
+      attn_length: integer, the size of attention vector attached to rnn cells.
+      attn_size: integer, the size of an attention window attached to rnn cells.
+      attn_vec_size: integer, the number of convolutional features calculated on
+        attention state and the size of the hidden layer built from base cell state.
       initial_state: An initial state for the RNN. This must be a tensor of
         appropriate type and shape [batch_size x cell.state_size].
       batch_size: Mini batch size.
@@ -187,6 +206,9 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
     self.num_layers = num_layers
     self.sequence_length = sequence_length
     self.initial_state = initial_state
+    self.attn_length = attn_length
+    self.attn_size = attn_size
+    self.attn_vec_size = attn_vec_size
     super(TensorFlowRNNRegressor, self).__init__(
         model_fn=self._model_fn,
         n_classes=n_classes,
@@ -203,7 +225,8 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
     return models.get_rnn_model(self.rnn_size, self.cell_type, self.num_layers,
                                 self.input_op_fn, self.bidirectional,
                                 models.linear_regression, self.sequence_length,
-                                self.initial_state)(x, y)
+                                self.initial_state, self.attn_length,
+                                self.attn_size, self.attn_vec_size)(x, y)
 
   @property
   def bias_(self):

@@ -131,7 +131,7 @@ def _compute_weighted_loss(losses, weight):
   total_loss = _scale_losses(losses, weight)
   num_present = _num_present(losses, weight)
   mean_loss = _safe_mean(total_loss, num_present)
-  ops.add_to_collection(ops.GraphKeys.LOSSES, mean_loss)
+  add_loss(mean_loss)
   return mean_loss
 
 
@@ -518,7 +518,7 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
                                 loss,
                                 array_ops.zeros_like(loss),
                                 name="value")
-    ops.add_to_collection(ops.GraphKeys.LOSSES, mean_loss)
+    add_loss(mean_loss)
     return mean_loss
 
 

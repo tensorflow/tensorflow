@@ -295,6 +295,18 @@ py_test(
 )
 
 py_test(
+    name = "rnn_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/rnn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
