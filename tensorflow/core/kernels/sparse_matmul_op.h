@@ -40,6 +40,36 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
   return reinterpret_cast<const float&>(tmp);
 }
 
+// Specialization non-scalar version on non-sse.
+#ifndef EIGEN_VECTORIZE_SSE2
+template <typename Packet>
+EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_l(const Packet4f& from) {
+  Packet4f res;
+  tensorflow::uint32 *p = reinterpret_cast<tensorflow::uint32 *>(&res);
+  const tensorflow::uint32 *r =
+      reinterpret_cast<const tensorflow::uint32 *>(&from);
+  p[0] = static_cast<float>((r[0] << 16) & 0xffff0000);
+  p[1] = static_cast<float>(r[0] & 0xffff0000);
+  p[2] = static_cast<float>((r[1] << 16) & 0xffff0000);
+  p[3] = static_cast<float>(r[1] & 0xffff0000);
+  return res;
+}
+
+template <typename Packet>
+EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_u(const Packet4f& from) {
+  Packet4f res;
+  tensorflow::uint32 *p = reinterpret_cast<tensorflow::uint32 *>(&res);
+  const tensorflow::uint32 *r =
+      reinterpret_cast<const tensorflow::uint32 *>(&from);
+  p[0] = static_cast<float>((r[2] << 16) & 0xffff0000);
+  p[1] = static_cast<float>(r[2] & 0xffff0000);
+  p[2] = static_cast<float>((r[3] << 16) & 0xffff0000);
+  p[3] = static_cast<float>(r[3] & 0xffff0000);
+  return res;
+}
+#endif
+
+
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pinterleave4x64(const Packet& from) {
   return from;
@@ -72,14 +102,14 @@ template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pload4bf16(
     const typename unpacket_traits<Packet>::type* from) {
   assert(false && "Not applicable to Scalar Values");
-  return *from;
+  return Packet();
 }
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pload2bf16(
     const typename unpacket_traits<Packet>::type* from) {
   assert(false && "Not applicable to Scalar Values");
-  return *from;
+  return Packet();
 }
 
 #ifdef EIGEN_VECTORIZE_SSE2
