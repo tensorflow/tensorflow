@@ -90,6 +90,12 @@ class FIFOQueueTest(tf.test.TestCase):
       enqueue_op = q.enqueue((10.0,))
       enqueue_op.run()
 
+  def testEnqueueHalf(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float16)
+      enqueue_op = q.enqueue((10.0,))
+      enqueue_op.run()
+
   def testEnqueueWithShape(self):
     with self.test_session():
       q = tf.FIFOQueue(10, tf.float32, shapes=(3, 2))
@@ -163,6 +169,20 @@ class FIFOQueueTest(tf.test.TestCase):
   def testDequeue(self):
     with self.test_session():
       q = tf.FIFOQueue(10, tf.float32)
+      elems = [10.0, 20.0, 30.0]
+      enqueue_ops = [q.enqueue((x,)) for x in elems]
+      dequeued_t = q.dequeue()
+
+      for enqueue_op in enqueue_ops:
+        enqueue_op.run()
+
+      for i in xrange(len(elems)):
+        vals = dequeued_t.eval()
+        self.assertEqual([elems[i]], vals)
+
+  def testDequeueHalf(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float16)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
       dequeued_t = q.dequeue()
