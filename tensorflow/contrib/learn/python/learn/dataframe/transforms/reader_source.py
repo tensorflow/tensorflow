@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """`ReaderSource` produces `Tensor`s of keys and values using a `tf.Reader`."""
 
 from __future__ import absolute_import
@@ -24,20 +23,20 @@ from tensorflow.python.training import input as input_ops
 
 
 class ReaderSource(transform.Transform):
-  """A `ReaderSource` produces `Tensor`s of keys and values using a `tf.Reader`.
-  """
+  """A `ReaderSource` produces `Tensor`s of keys and values using a `tf.Reader`."""
 
   def __init__(self,
                reader_cls,
                work_units,
                reader_kwargs=None,
+               enqueue_size=None,
                batch_size=1,
                queue_capacity=None,
                shuffle=False,
                min_after_dequeue=None,
                num_threads=1,
                seed=None):
-    """Initializes a ReaderSource instance.
+    """Initializes a ReaderSource.
 
     Args:
       reader_cls: A subclass of `tesorflow.ReaderBase` that will be used to read
@@ -46,6 +45,7 @@ class ReaderSource(transform.Transform):
         Typically, this is a list of filenames.
       reader_kwargs: A dictionary of kwargs to be passed to `reader_cls` when it
         is constructed.
+      enqueue_size: block size for each read operation.
       batch_size: The desired batch size of output. Defaults to 1.
       queue_capacity: Capacity of the queue. Defaults to 10 * `batch_size`.
       shuffle: Whether records will be shuffled before returning. Defaults to
@@ -62,13 +62,15 @@ class ReaderSource(transform.Transform):
     self._reader_kwargs = reader_kwargs
     self._work_units = work_units
     self._reader_kwargs = {} if reader_kwargs is None else reader_kwargs
+    if enqueue_size is None:
+      enqueue_size = max(1, int(batch_size / num_threads))
+    self._enqueue_size = enqueue_size
     self._batch_size = batch_size
-    self._queue_capacity = (batch_size * 64
-                            if queue_capacity is None else queue_capacity)
+    self._queue_capacity = (batch_size * 10 if queue_capacity is None else
+                            queue_capacity)
     self._shuffle = shuffle
-    self._min_after_dequeue = int(self.queue_capacity / 4
-                                  if min_after_dequeue is None
-                                  else min_after_dequeue)
+    self._min_after_dequeue = int(self.queue_capacity / 4 if min_after_dequeue
+                                  is None else min_after_dequeue)
     self._num_threads = num_threads
     self._seed = seed
 
@@ -83,6 +85,10 @@ class ReaderSource(transform.Transform):
   @transform.parameter
   def reader_kwargs(self):
     return self._reader_kwargs
+
+  @transform.parameter
+  def enqueue_size(self):
+    return self._enqueue_size
 
   @transform.parameter
   def batch_size(self):
@@ -127,7 +133,7 @@ class ReaderSource(transform.Transform):
     reader_ops = []
     for _ in range(self.num_threads):
       reader = self._reader_cls(**self._reader_kwargs)
-      reader_ops.append(reader.read(filename_queue))
+      reader_ops.append(reader.read_up_to(filename_queue, self.enqueue_size))
 
     if self.shuffle:
       dequeued = input_ops.shuffle_batch_join(
@@ -136,16 +142,14 @@ class ReaderSource(transform.Transform):
           capacity=self.queue_capacity,
           min_after_dequeue=self.min_after_dequeue,
           seed=self.seed,
-          enqueue_many=False,
-          shapes=[[], []],
+          enqueue_many=True,
           shared_name=None,
           name=None)
     else:
       dequeued = input_ops.batch_join(reader_ops,
                                       self.batch_size,
                                       capacity=self.queue_capacity,
-                                      enqueue_many=False,
-                                      shapes=[[], []],
+                                      enqueue_many=True,
                                       dynamic_pad=False,
                                       shared_name=None,
                                       name=None)
@@ -157,25 +161,41 @@ class ReaderSource(transform.Transform):
 # `ReaderSource`s for common `tf.ReaderBase` types.
 def TextFileSource(file_names,
                    reader_kwargs=None,
+                   enqueue_size=1,
                    batch_size=1,
                    queue_capacity=None,
                    shuffle=False,
                    min_after_dequeue=None,
                    num_threads=1,
                    seed=None):
-  return ReaderSource(io_ops.TextLineReader, file_names, reader_kwargs,
-                      batch_size, queue_capacity, shuffle, min_after_dequeue,
-                      num_threads, seed)
+  return ReaderSource(io_ops.TextLineReader,
+                      work_units=file_names,
+                      reader_kwargs=reader_kwargs,
+                      enqueue_size=enqueue_size,
+                      batch_size=batch_size,
+                      queue_capacity=queue_capacity,
+                      shuffle=shuffle,
+                      min_after_dequeue=min_after_dequeue,
+                      num_threads=num_threads,
+                      seed=seed)
 
 
 def TFRecordSource(file_names,
                    reader_kwargs=None,
+                   enqueue_size=1,
                    batch_size=1,
                    queue_capacity=None,
                    shuffle=False,
                    min_after_dequeue=None,
                    num_threads=1,
                    seed=None):
-  return ReaderSource(io_ops.TFRecordReader, file_names, reader_kwargs,
-                      batch_size, queue_capacity, shuffle, min_after_dequeue,
-                      num_threads, seed)
+  return ReaderSource(io_ops.TFRecordReader,
+                      work_units=file_names,
+                      reader_kwargs=reader_kwargs,
+                      enqueue_size=enqueue_size,
+                      batch_size=batch_size,
+                      queue_capacity=queue_capacity,
+                      shuffle=shuffle,
+                      min_after_dequeue=min_after_dequeue,
+                      num_threads=num_threads,
+                      seed=seed)
