@@ -215,7 +215,7 @@ $ source ~/tensorflow/bin/activate.csh  # If using csh.
 
 [Anaconda](https://www.continuum.io/why-anaconda) is a Python distribution that
 includes a large number of standard numeric and scientific computing packages.
-Anaconda uses a package manager called "conda" that has its own
+Anaconda uses a package manager called ["conda"](http://conda.pydata.org) that has its own
 [environment system](http://conda.pydata.org/docs/using/envs.html) similar to Virtualenv.
 
 As with Virtualenv, conda environments keep the dependencies required by
@@ -246,8 +246,25 @@ $ conda create -n tensorflow python=3.4
 $ conda create -n tensorflow python=3.5
 ```
 
-Activate the environment and use pip to install TensorFlow inside it.
-Use the `--ignore-installed` flag to prevent errors about `easy_install`.
+Activate the environment and use conda or pip to install TensorFlow inside it.
+
+### Using conda
+
+A community maintained conda package is available [from conda-forge](https://github.com/conda-forge/tensorflow-feedstock).
+
+Only the CPU version of TensorFlow is available at the moment and can be installed in the conda environment for Python 2 or Python 3.
+
+```bash
+$ source activate tensorflow
+(tensorflow)$  # Your prompt should change
+
+# Linux/Mac OS X, Python 2.7/3.4/3.5, CPU only:
+(tensorflow)$ conda install -c conda-forge tensorflow
+```
+
+### Using pip
+
+If using pip make sure to use the `--ignore-installed` flag to prevent errors about `easy_install`.
 
 ```bash
 $ source activate tensorflow
@@ -294,6 +311,8 @@ Finally install TensorFlow:
 # Python 3
 (tensorflow)$ pip3 install --upgrade $TF_BINARY_URL
 ```
+
+### Usage
 
 With the conda environment activated, you can now
 [test your installation](#test-the-tensorflow-installation).

@@ -68,6 +68,10 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         sequence length.
       initial_state: An initial state for the RNN. This must be a tensor of
         appropriate type and shape [batch_size x cell.state_size].
+      attn_length: integer, the size of attention vector attached to rnn cells.
+      attn_size: integer, the size of an attention window attached to rnn cells.
+      attn_vec_size: integer, the number of convolutional features calculated on
+        attention state and the size of the hidden layer built from base cell state.
       n_classes: Number of classes in the target.
       batch_size: Mini batch size.
       steps: Number of steps to run over data.
@@ -168,6 +172,10 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
       sequence_length: If sequence_length is provided, dynamic calculation
         is performed. This saves computational time when unrolling past max
         sequence length.
+      attn_length: integer, the size of attention vector attached to rnn cells.
+      attn_size: integer, the size of an attention window attached to rnn cells.
+      attn_vec_size: integer, the number of convolutional features calculated on
+        attention state and the size of the hidden layer built from base cell state.
       initial_state: An initial state for the RNN. This must be a tensor of
         appropriate type and shape [batch_size x cell.state_size].
       batch_size: Mini batch size.
