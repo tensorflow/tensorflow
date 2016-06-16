@@ -71,6 +71,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
     """Initializes a _DNNLinearCombinedBaseEstimator instance.
 
@@ -99,6 +100,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
       config: RunConfig object to configure the runtime settings.
 
       Raises:
@@ -121,6 +125,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._linear_weight_collection = "DNNLinearCombined_linear"
     self._centered_bias_weight_collection = "centered_bias"
     self._gradient_clip_norm = gradient_clip_norm
+    self._enable_centered_bias = enable_centered_bias
 
   @property
   def linear_weights_(self):
@@ -163,8 +168,12 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     global_step = contrib_variables.get_global_step()
     assert global_step
     logits = self._logits(features, is_training=True)
-    with ops.control_dependencies([self._centered_bias_step(
-        targets, self._get_weight_tensor(features))]):
+    if self._enable_centered_bias:
+      centered_bias_step = [self._centered_bias_step(
+          targets, self._get_weight_tensor(features))]
+    else:
+      centered_bias_step = []
+    with ops.control_dependencies(centered_bias_step):
       loss = self._loss(logits, targets, self._get_weight_tensor(features))
     logging_ops.scalar_summary("loss", loss)
 
@@ -315,7 +324,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     else:
       logits = self._linear_logits(features)
 
-    return nn.bias_add(logits, self._centered_bias())
+    if self._enable_centered_bias:
+      return nn.bias_add(logits, self._centered_bias())
+    else:
+      return logits
 
   def _get_weight_tensor(self, features):
     if not self._weight_column_name:
@@ -441,6 +453,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
     """Constructs a DNNLinearCombinedClassifier instance.
 
@@ -469,6 +482,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
       config: RunConfig object to configure the runtime settings.
 
       Raises:
@@ -493,6 +509,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         dnn_activation_fn=dnn_activation_fn,
         dnn_dropout=dnn_dropout,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def predict(self, x=None, input_fn=None, batch_size=None):
@@ -632,7 +649,14 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         # deep settings
         dnn_feature_columns=[installed_emb, impression_emb],
         dnn_hidden_units=[1000, 500, 100],
-        dnn_optimizer=tf.train.AdagradOptimizer(...))
+        dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
+
+    # To apply L1 and L2 regularization, you can set optimizers as follows:
+    tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001,
+        l2_regularization_strength=0.001)
+    # It is same for FtrlOptimizer.
 
     # Input builders
     def input_fn_train: # returns x, y
@@ -666,6 +690,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
     """Initializes a DNNLinearCombinedRegressor instance.
 
@@ -693,6 +718,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
       config: RunConfig object to configure the runtime settings.
 
       Raises:
@@ -710,6 +738,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         dnn_activation_fn=dnn_activation_fn,
         dnn_dropout=dnn_dropout,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def predict(self, x=None, input_fn=None, batch_size=None):
