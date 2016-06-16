@@ -24,15 +24,39 @@ from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 
-flags.DEFINE_string('output_dir', '', 'Base output directory. Made '
-                    'available to the experiment builder function passed '
-                    'to run(). All files written by the Experiment are ')
 
 FLAGS = flags.FLAGS
 
 
 def run(experiment_fn):
-  """Make and run an experiment."""
+  """Make and run an experiment.
+
+  It creates an Experiment by calling experiment_fn. It reads a flag `schedule`.
+    Then it calls the function named as `schedule` of the Experiment.
+
+  Example:
+  ```
+    def _create_my_experiment(output_dir):
+        return tf.contrib.learn.Experiment(
+          estimator=my_estimator(model_dir=output_dir),
+          train_input_fn=my_train_input,
+          eval_input_fn=my_eval_input)
+
+    learn_runner.run(experiment_fn=_create_my_experiment)
+  ```
+  Args:
+    experiment_fn: A function that creates an `Experiment`. It should accept an
+      argument `output_dir` which should be used to create the Estimator (passed
+      as `model_dir` to its constructor). It must return an Experiment.
+
+  Returns:
+    The return value of function `schedule`.
+
+  Raises:
+    RuntimeError: If flags `output_dir` or `schedule` is not specified.
+    ValueError: `schedule` doesn't references a member of `Experiment`.
+    TypeError: `schedule` references non-callable member.
+  """
 
   if not FLAGS.output_dir:
     raise RuntimeError('Must specify an output directory (use --output_dir).')

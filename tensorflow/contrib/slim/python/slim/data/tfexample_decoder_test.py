@@ -31,6 +31,10 @@ class TFExampleDecoderTest(tf.test.TestCase):
     return tf.train.Feature(float_list=tf.train.FloatList(
         value=ndarray.flatten().tolist()))
 
+  def _EncodedInt64Feature(self, ndarray):
+    return tf.train.Feature(int64_list=tf.train.Int64List(
+        value=ndarray.flatten().tolist()))
+
   def _EncodedBytesFeature(self, tf_encoded):
     with self.test_session():
       encoded = tf_encoded.eval()
@@ -169,6 +173,272 @@ class TFExampleDecoderTest(tf.test.TestCase):
       labels = labels.astype(np_array.dtype)
       self.assertTrue(np.array_equal(np_array, labels))
 
+  def testDecodeExampleWithFloatTensor(self):
+    np_array = np.random.rand(2, 3, 1).astype('f')
+
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'array': self._EncodedFloatFeature(np_array),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'array': tf.FixedLenFeature(np_array.shape, tf.float32)
+      }
+      items_to_handlers = {
+          'array': slim.tfexample_decoder.Tensor('array'),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_array] = decoder.decode(serialized_example, ['array'])
+      self.assertAllEqual(tf_array.eval(), np_array)
+
+  def testDecodeExampleWithInt64Tensor(self):
+    np_array = np.random.randint(1, 10, size=(2, 3, 1))
+
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'array': self._EncodedInt64Feature(np_array),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'array': tf.FixedLenFeature(np_array.shape, tf.int64)
+      }
+      items_to_handlers = {
+          'array': slim.tfexample_decoder.Tensor('array'),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_array] = decoder.decode(serialized_example, ['array'])
+      self.assertAllEqual(tf_array.eval(), np_array)
+
+  def testDecodeExampleWithVarLenTensor(self):
+    np_array = np.array([[[1], [2], [3]],
+                         [[4], [5], [6]]])
+
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'labels': self._EncodedInt64Feature(np_array),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'labels': tf.VarLenFeature(dtype=tf.int64),
+      }
+      items_to_handlers = {
+          'labels': slim.tfexample_decoder.Tensor('labels'),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_labels] = decoder.decode(serialized_example, ['labels'])
+      labels = tf_labels.eval()
+      self.assertAllEqual(labels, np_array.flatten())
+
+  def testDecodeExampleWithFixLenTensorWithShape(self):
+    np_array = np.array([[1, 2, 3],
+                         [4, 5, 6]])
+
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'labels': self._EncodedInt64Feature(np_array),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'labels': tf.FixedLenFeature(np_array.shape, dtype=tf.int64),
+      }
+      items_to_handlers = {
+          'labels': slim.tfexample_decoder.Tensor('labels',
+                                                  shape=np_array.shape),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_labels] = decoder.decode(serialized_example, ['labels'])
+      labels = tf_labels.eval()
+      self.assertAllEqual(labels, np_array)
+
+  def testDecodeExampleWithVarLenTensorToDense(self):
+    np_array = np.array([[1, 2, 3],
+                         [4, 5, 6]])
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'labels': self._EncodedInt64Feature(np_array),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'labels': tf.VarLenFeature(dtype=tf.int64),
+      }
+      items_to_handlers = {
+          'labels': slim.tfexample_decoder.Tensor('labels',
+                                                  shape=np_array.shape),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_labels] = decoder.decode(serialized_example, ['labels'])
+      labels = tf_labels.eval()
+      self.assertAllEqual(labels, np_array)
+
+  def testDecodeExampleShapeKeyTensor(self):
+    np_image = np.random.rand(2, 3, 1).astype('f')
+    np_labels = np.array([[[1], [2], [3]],
+                          [[4], [5], [6]]])
+
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'image': self._EncodedFloatFeature(np_image),
+        'image/shape': self._EncodedInt64Feature(np.array(np_image.shape)),
+        'labels': self._EncodedInt64Feature(np_labels),
+        'labels/shape': self._EncodedInt64Feature(np.array(np_labels.shape)),
+
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'image': tf.VarLenFeature(dtype=tf.float32),
+          'image/shape': tf.VarLenFeature(dtype=tf.int64),
+          'labels': tf.VarLenFeature(dtype=tf.int64),
+          'labels/shape': tf.VarLenFeature(dtype=tf.int64),
+      }
+      items_to_handlers = {
+          'image': slim.tfexample_decoder.Tensor('image',
+                                                 shape_key='image/shape'),
+          'labels': slim.tfexample_decoder.Tensor('labels',
+                                                  shape_key='labels/shape'),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_image, tf_labels] = decoder.decode(serialized_example,
+                                             ['image', 'labels'])
+      self.assertAllEqual(tf_image.eval(), np_image)
+      self.assertAllEqual(tf_labels.eval(), np_labels)
+
+  def testDecodeExampleWithSparseTensor(self):
+    np_indices = np.array([[1], [2], [5]])
+    np_values = np.array([0.1, 0.2, 0.6]).astype('f')
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'indices': self._EncodedInt64Feature(np_indices),
+        'values': self._EncodedFloatFeature(np_values),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'indices': tf.VarLenFeature(dtype=tf.int64),
+          'values': tf.VarLenFeature(dtype=tf.float32),
+      }
+      items_to_handlers = {
+          'labels': slim.tfexample_decoder.SparseTensor(),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_labels] = decoder.decode(serialized_example, ['labels'])
+      labels = tf_labels.eval()
+      self.assertAllEqual(labels.indices, np_indices)
+      self.assertAllEqual(labels.values, np_values)
+      self.assertAllEqual(labels.shape, np_values.shape)
+
+  def testDecodeExampleWithSparseTensorWithKeyShape(self):
+    np_indices = np.array([[1], [2], [5]])
+    np_values = np.array([0.1, 0.2, 0.6]).astype('f')
+    np_shape = np.array([6])
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'indices': self._EncodedInt64Feature(np_indices),
+        'values': self._EncodedFloatFeature(np_values),
+        'shape': self._EncodedInt64Feature(np_shape),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'indices': tf.VarLenFeature(dtype=tf.int64),
+          'values': tf.VarLenFeature(dtype=tf.float32),
+          'shape': tf.VarLenFeature(dtype=tf.int64),
+      }
+      items_to_handlers = {
+          'labels': slim.tfexample_decoder.SparseTensor(shape_key='shape'),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_labels] = decoder.decode(serialized_example, ['labels'])
+      labels = tf_labels.eval()
+      self.assertAllEqual(labels.indices, np_indices)
+      self.assertAllEqual(labels.values, np_values)
+      self.assertAllEqual(labels.shape, np_shape)
+
+  def testDecodeExampleWithSparseTensorWithGivenShape(self):
+    np_indices = np.array([[1], [2], [5]])
+    np_values = np.array([0.1, 0.2, 0.6]).astype('f')
+    np_shape = np.array([6])
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'indices': self._EncodedInt64Feature(np_indices),
+        'values': self._EncodedFloatFeature(np_values),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'indices': tf.VarLenFeature(dtype=tf.int64),
+          'values': tf.VarLenFeature(dtype=tf.float32),
+      }
+      items_to_handlers = {
+          'labels': slim.tfexample_decoder.SparseTensor(shape=np_shape),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_labels] = decoder.decode(serialized_example, ['labels'])
+      labels = tf_labels.eval()
+      self.assertAllEqual(labels.indices, np_indices)
+      self.assertAllEqual(labels.values, np_values)
+      self.assertAllEqual(labels.shape, np_shape)
+
+  def testDecodeExampleWithSparseTensorToDense(self):
+    np_indices = np.array([1, 2, 5])
+    np_values = np.array([0.1, 0.2, 0.6]).astype('f')
+    np_shape = np.array([6])
+    np_dense = np.array([0.0, 0.1, 0.2, 0.0, 0.0, 0.6]).astype('f')
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'indices': self._EncodedInt64Feature(np_indices),
+        'values': self._EncodedFloatFeature(np_values),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'indices': tf.VarLenFeature(dtype=tf.int64),
+          'values': tf.VarLenFeature(dtype=tf.float32),
+      }
+      items_to_handlers = {
+          'labels': slim.tfexample_decoder.SparseTensor(shape=np_shape,
+                                                        densify=True),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_labels] = decoder.decode(serialized_example, ['labels'])
+      labels = tf_labels.eval()
+      self.assertAllClose(labels, np_dense)
+
   def testDecodeExampleWithTensor(self):
     tensor_shape = (2, 3, 1)
     np_array = np.random.rand(2, 3, 1)
@@ -188,8 +458,7 @@ class TFExampleDecoderTest(tf.test.TestCase):
       }
 
       items_to_handlers = {
-          'depth': slim.tfexample_decoder.Tensor(
-              'image/depth_map')
+          'depth': slim.tfexample_decoder.Tensor('image/depth_map')
       }
 
       decoder = slim.tfexample_decoder.TFExampleDecoder(

@@ -35,9 +35,10 @@ ZlibOutputBuffer::ZlibOutputBuffer(
   z_stream_->zalloc = Z_NULL;
   z_stream_->zfree = Z_NULL;
   z_stream_->opaque = Z_NULL;
-  // TODO(srbs): Move all these to compression options.
-  int status = deflateInit2(z_stream_.get(), Z_DEFAULT_COMPRESSION, Z_DEFLATED,
-                            -MAX_WBITS, 9, Z_DEFAULT_STRATEGY);
+  int status =
+      deflateInit2(z_stream_.get(), zlib_options.compression_level,
+                   zlib_options.compression_method, zlib_options.window_bits,
+                   zlib_options.mem_level, zlib_options.compression_strategy);
   if (status != Z_OK) {
     LOG(FATAL) << "deflateInit failed with status " << status;
     z_stream_.reset(NULL);

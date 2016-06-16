@@ -26,15 +26,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.ops import rnn_cell
-
-# pylint: disable=protected-access
-_is_sequence = rnn_cell._is_sequence
-_unpacked_state = rnn_cell._unpacked_state
-_packed_state = rnn_cell._packed_state
-# pylint: enable=protected-access
-
-_flatten = _unpacked_state
+from tensorflow.python.util import nest
 
 
 class Plus1RNNCell(tf.nn.rnn_cell.RNNCell):
@@ -111,16 +103,6 @@ class TestStateSaver(object):
   def save_state(self, name, state):
     self.saved_state[name] = state
     return tf.identity(state)
-
-
-class PackStateTest(tf.test.TestCase):
-
-  def testPackUnpackState(self):
-    structure = ((3, 4), 5, (6, 7, (9, 10), 8))
-    flat = ["a", "b", "c", "d", "e", "f", "g", "h"]
-    self.assertEqual(_unpacked_state(structure), [3, 4, 5, 6, 7, 9, 10, 8])
-    self.assertEqual(_packed_state(structure, flat),
-                     (("a", "b"), "c", ("d", "e", ("f", "g"), "h")))
 
 
 class RNNTest(tf.test.TestCase):
@@ -421,13 +403,13 @@ class LSTMTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       input_value = np.random.randn(batch_size, input_size)
       last_states = sess.run(
-          list(_unpacked_state(state)), feed_dict={inputs[0]: input_value})
+          list(nest.flatten(state)), feed_dict={inputs[0]: input_value})
       saved_states = sess.run(
           list(state_saver.saved_state.values()),
           feed_dict={inputs[0]: input_value})
       self.assertEqual(8, len(last_states))
       self.assertEqual(8, len(saved_states))
-      flat_state_names = _unpacked_state(state_names)
+      flat_state_names = nest.flatten(state_names)
       named_saved_states = dict(
           zip(state_saver.saved_state.keys(), saved_states))
 
@@ -841,9 +823,9 @@ class LSTMTest(tf.test.TestCase):
       self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
 
       state_static_v = sess.run(
-          _unpacked_state(state_static), feed_dict={inputs[0]: input_value})
+          nest.flatten(state_static), feed_dict={inputs[0]: input_value})
       state_dynamic_v = sess.run(
-          _unpacked_state(state_dynamic), feed_dict={inputs[0]: input_value})
+          nest.flatten(state_dynamic), feed_dict={inputs[0]: input_value})
       self.assertAllEqual(
           np.hstack(state_static_v), np.hstack(state_dynamic_v))
 
@@ -886,7 +868,7 @@ class LSTMTest(tf.test.TestCase):
           outputs_static + [state_static], [concat_inputs])
 
       # Generate gradients of individual outputs w.r.t. inputs
-      static_individual_gradients = _flatten([
+      static_individual_gradients = nest.flatten([
           tf.gradients(y, [concat_inputs])
           for y in [outputs_static[0],
                     outputs_static[-1],
@@ -897,7 +879,7 @@ class LSTMTest(tf.test.TestCase):
       assert len(trainable_variables) > 1, (
           "Count of trainable variables: %d" % len(trainable_variables))
       # pylint: disable=bad-builtin
-      static_individual_variable_gradients = _flatten([
+      static_individual_variable_gradients = nest.flatten([
           tf.gradients(y, trainable_variables)
           for y in [outputs_static[0],
                     outputs_static[-1],
@@ -943,7 +925,7 @@ class LSTMTest(tf.test.TestCase):
           split_outputs_dynamic + [state_dynamic], [concat_inputs])
 
       # Generate gradients of several individual outputs w.r.t. inputs
-      dynamic_individual_gradients = _flatten([
+      dynamic_individual_gradients = nest.flatten([
           tf.gradients(y, [concat_inputs])
           for y in [split_outputs_dynamic[0],
                     split_outputs_dynamic[-1],
@@ -953,7 +935,7 @@ class LSTMTest(tf.test.TestCase):
       trainable_variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
       assert len(trainable_variables) > 1, (
           "Count of trainable variables: %d" % len(trainable_variables))
-      dynamic_individual_variable_gradients = _flatten([
+      dynamic_individual_variable_gradients = nest.flatten([
           tf.gradients(y, trainable_variables)
           for y in [split_outputs_dynamic[0],
                     split_outputs_dynamic[-1],

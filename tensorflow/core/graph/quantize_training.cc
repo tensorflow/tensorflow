@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -223,6 +224,31 @@ Status DoQuantizeTraining(int32 num_bits, Graph* graph) {
 
   TF_RETURN_IF_ERROR(ProcessTargetEdges(graph, target_edges));
 
+  return Status::OK();
+}
+
+Status DoQuantizeTrainingOnSerializedGraphDef(const string& input_graph,
+                                              int32 num_bits,
+                                              string* result_graph) {
+  // First create the graph from the GraphDef.
+  Graph graph(OpRegistry::Global());
+  GraphConstructorOptions opts;
+  GraphDef input_graphdef;
+  if (!ParseProtoUnlimited(&input_graphdef, input_graph)) {
+    return errors::InvalidArgument("Invalid input graph");
+  }
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, input_graphdef, &graph));
+
+  // Call the rewriter on the graph.
+  TF_RETURN_IF_ERROR(DoQuantizeTraining(num_bits, &graph));
+
+  // Convert the result graph back to a GraphDef.
+  GraphDef output_graphdef;
+  graph.ToGraphDef(&output_graphdef);
+
+  if (!output_graphdef.SerializeToString(result_graph)) {
+    return errors::InvalidArgument("Invalid output graph");
+  }
   return Status::OK();
 }
 

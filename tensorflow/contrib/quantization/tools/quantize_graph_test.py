@@ -24,7 +24,7 @@ import numpy as np
 
 import tensorflow as tf
 from tensorflow.contrib.quantization.tools import quantize_graph
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS

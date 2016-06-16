@@ -220,12 +220,22 @@ struct MultinomialFunctor<CPUDevice, T> {
       for (int64 b = start_row; b < limit_row; ++b) {
         const auto* logits_row = &logits(b, 0);
 
+        // Takes an along-class maximum (for numerical stability).
+        T max = std::numeric_limits<T>::lowest();
+        for (int64 j = 0; j < num_classes; ++j) {
+          if (std::isfinite(static_cast<float>(logits_row[j]))) {
+            max = std::max(max, logits_row[j]);
+          }
+        }
+        const float max_logit = static_cast<float>(max);
+
         // Precompute cumulative probability distribution across classes.
         // Note: This isn't normalized.
         float running_total = 0;
         for (int64 j = 0; j < num_classes; ++j) {
           if (std::isfinite(static_cast<float>(logits_row[j]))) {
-            running_total += std::exp(static_cast<float>(logits_row[j]));
+            running_total +=
+                std::exp(static_cast<float>(logits_row[j]) - max_logit);
           }
           cdf[j] = running_total;
         }

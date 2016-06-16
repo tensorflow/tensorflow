@@ -107,6 +107,13 @@ class SparseReshapeOp : public OpKernel {
                                         "requested shape has ",
                                         output_shape.num_elements()));
 
+    // Optimize for reshaping to the same shape.
+    if (input_shape == output_shape) {
+      context->set_output(0, input_ind_in);
+      context->set_output(1, input_shape_in);
+      return;
+    }
+
     gtl::InlinedVector<int64, 8> input_strides(input_rank);
     input_strides[input_rank - 1] = 1;
     for (int d = input_rank - 2; d >= 0; --d) {

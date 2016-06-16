@@ -23,8 +23,11 @@ import numpy as np
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import queue_runner
 
 # pylint: disable=g-import-not-at-top
@@ -88,7 +91,8 @@ def enqueue_data(data,
                  capacity,
                  shuffle=False,
                  min_after_dequeue=None,
-                 seed=None):
+                 seed=None,
+                 name="enqueue_input"):
   """Creates a queue filled from a numpy array or pandas `DataFrame`.
 
     Returns a queue filled with the rows of the given array or `DataFrame`. In
@@ -105,6 +109,7 @@ def enqueue_data(data,
     after a dequeue operation. Only used when `shuffle` is true. If not set,
     defaults to `capacity` / 4.
     seed: used to seed RandomShuffleQueue. Only used when `shuffle` is True.
+    name: a scope name identifying the data.
 
   Returns:
     A queue filled with the rows of the given array or `DataFrame`.
@@ -112,38 +117,49 @@ def enqueue_data(data,
   Raises:
     TypeError: `data` is not a Pandas `DataFrame` or a numpy `ndarray`.
   """
-  # TODO(jamieas): create multithreaded version of enqueue_data.
-  if isinstance(data, np.ndarray):
-    types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
-    shapes = [(), data.shape[1:]]
-    get_feed_fn = _ArrayFeedFn
-  elif HAS_PANDAS and isinstance(data, pd.DataFrame):
-    types = [dtypes.as_dtype(dt)
-             for dt in [data.index.dtype] + list(data.dtypes)]
-    shapes = [() for _ in types]
-    get_feed_fn = _PandasFeedFn
-  else:
-    raise TypeError(
-        "data must be either a numpy array or pandas DataFrame if pandas is "
-        "installed; got {}".format(
-            type(data).__name__))
+  with ops.op_scope([], name, None) as name:
+    # TODO(jamieas): create multithreaded version of enqueue_data.
+    if isinstance(data, np.ndarray):
+      types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
+      shapes = [(), data.shape[1:]]
+      get_feed_fn = _ArrayFeedFn
+    elif HAS_PANDAS and isinstance(data, pd.DataFrame):
+      types = [dtypes.as_dtype(dt)
+               for dt in [data.index.dtype] + list(data.dtypes)]
+      shapes = [() for _ in types]
+      get_feed_fn = _PandasFeedFn
+    else:
+      raise TypeError(
+          "data must be either a numpy array or pandas DataFrame if pandas is "
+          "installed; got {}".format(type(data).__name__))
 
-  placeholders = [array_ops.placeholder(*type_and_shape)
-                  for type_and_shape in zip(types, shapes)]
-  if shuffle:
-    min_after_dequeue = int(capacity / 4 if min_after_dequeue is None else
-                            min_after_dequeue)
-    queue = data_flow_ops.RandomShuffleQueue(capacity,
-                                             min_after_dequeue,
-                                             dtypes=types,
-                                             shapes=shapes,
-                                             seed=seed)
-  else:
-    queue = data_flow_ops.FIFOQueue(capacity, dtypes=types, shapes=shapes)
-  enqueue_op = queue.enqueue(placeholders)
-  feed_fn = get_feed_fn(placeholders, data)
-  runner = fqr.FeedingQueueRunner(queue=queue,
-                                  enqueue_ops=[enqueue_op],
-                                  feed_fn=feed_fn)
-  queue_runner.add_queue_runner(runner)
-  return queue
+    placeholders = [array_ops.placeholder(*type_and_shape)
+                    for type_and_shape in zip(types, shapes)]
+
+    if shuffle:
+      min_after_dequeue = int(capacity / 4 if min_after_dequeue is None else
+                              min_after_dequeue)
+      queue = data_flow_ops.RandomShuffleQueue(capacity,
+                                               min_after_dequeue,
+                                               dtypes=types,
+                                               shapes=shapes,
+                                               seed=seed)
+    else:
+      min_after_dequeue = 0  # just for the summary text
+      queue = data_flow_ops.FIFOQueue(capacity, dtypes=types, shapes=shapes)
+    enqueue_op = queue.enqueue(placeholders)
+    feed_fn = get_feed_fn(placeholders, data)
+    runner = fqr.FeedingQueueRunner(queue=queue,
+                                    enqueue_ops=[enqueue_op],
+                                    feed_fn=feed_fn)
+    queue_runner.add_queue_runner(runner)
+
+    full = (math_ops.cast(
+        math_ops.maximum(0, queue.size() - min_after_dequeue),
+        dtypes.float32) * (1. / (capacity - min_after_dequeue)))
+    # Note that name contains a '/' at the end so we intentionally do not place
+    # a '/' after %s below.
+    summary_name = ("queue/%sfraction_over_%d_of_%d_full" % (
+        queue.name, min_after_dequeue, capacity - min_after_dequeue))
+    logging_ops.scalar_summary(summary_name, full)
+    return queue

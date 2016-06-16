@@ -102,10 +102,10 @@ running the necessary graph fragment to execute every `Operation`
 and evaluate every `Tensor` in `fetches`, substituting the values in
 `feed_dict` for the corresponding input values.
 
-The `fetches` argument may be a single graph element, a list of
-graph elements, or a dictionary whose values are the above. The type of
-`fetches` determines the return value of this
-method. A graph element can be one of the following types:
+The `fetches` argument may be a single graph element, an arbitrarily nested
+list of graph elements, or a dictionary whose values are the above. The type
+of `fetches` determines the return value of this method. A graph element can
+be one of the following types:
 
 * If an element of `fetches` is an
   [`Operation`](../../api_docs/python/framework.md#Operation), the
@@ -136,6 +136,9 @@ one of the following types:
   [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
   the value should be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue).
+* If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value
+  should be a nested tuple with the same structure that maps to their
+  corresponding values as above.
 
 Each value in `feed_dict` must be convertible to a numpy array of the dtype
 of the corresponding key.

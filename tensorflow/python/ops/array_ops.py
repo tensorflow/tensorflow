@@ -75,17 +75,17 @@ from __future__ import print_function
 import sys
 import numpy as np
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
+# 'Constant' gets imported in the module 'array_ops'.
+from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
-# 'Constant' gets imported in the module 'array_ops'.
-from tensorflow.python.ops.constant_op import constant
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
@@ -524,12 +524,15 @@ def _ConcatShape(op):
     # Merge all the non-concat dims, and sum the concat dim to make an
     # output shape.
     concat_dim = int(concat_dim)
+    if concat_dim < 0:
+      raise ValueError("Expected concat_dim >= 0, but got %d" % concat_dim)
+
     output_shape = op.inputs[1].get_shape()
     for value in op.inputs[2:]:
       value_shape = value.get_shape()
       if value_shape.ndims is not None and concat_dim >= value_shape.ndims:
-        raise ValueError("concat_dim is out of range (values rank = %d)" %
-                         value_shape.ndims)
+        raise ValueError("Expected concat_dim in range [0, %d), but got %d" %
+                         (value_shape.ndims, concat_dim))
       before = output_shape[:concat_dim].merge_with(value_shape[:concat_dim])
       at = output_shape[concat_dim] + value_shape[concat_dim]
       after = output_shape[

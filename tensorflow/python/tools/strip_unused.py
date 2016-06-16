@@ -45,7 +45,7 @@ import copy
 import tensorflow as tf
 
 from google.protobuf import text_format
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -57,7 +57,7 @@ tf.app.flags.DEFINE_boolean("input_binary", False,
 tf.app.flags.DEFINE_string("output_graph", "",
                            """Output 'GraphDef' file name.""")
 tf.app.flags.DEFINE_string("input_node_names", "",
-                           """The name of the output nodes, comma separated.""")
+                           """The name of the input nodes, comma separated.""")
 tf.app.flags.DEFINE_string("output_node_names", "",
                            """The name of the output nodes, comma separated.""")
 tf.app.flags.DEFINE_integer("placeholder_type_enum",

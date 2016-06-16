@@ -4962,6 +4962,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {
@@ -6798,10 +6800,244 @@ op {
   }
 }
 op {
+  name: "Conv3DBackpropFilter"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  deprecation {
+    version: 10
+  }
+}
+op {
+  name: "Conv3DBackpropFilterV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter_sizes"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
   name: "Conv3DBackpropInput"
   input_arg {
     name: "input"
     type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
+  name: "Conv3DBackpropInput"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  deprecation {
+    version: 10
+  }
+}
+op {
+  name: "Conv3DBackpropInputV2"
+  input_arg {
+    name: "input_sizes"
+    type: DT_INT32
   }
   input_arg {
     name: "filter"
@@ -7211,6 +7447,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {
@@ -8690,20 +8928,20 @@ op {
   attr {
     name: "ksizes"
     type: "list(int)"
-    default_value {
-    }
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "strides"
     type: "list(int)"
-    default_value {
-    }
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "rates"
     type: "list(int)"
-    default_value {
-    }
+    has_minimum: true
+    minimum: 4
   }
   attr {
     name: "T"
@@ -10594,6 +10832,58 @@ op {
   }
 }
 op {
+  name: "LRN"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "depth_radius"
+    type: "int"
+    default_value {
+      i: 5
+    }
+  }
+  attr {
+    name: "bias"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "alpha"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "beta"
+    type: "float"
+    default_value {
+      f: 0.5
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
   name: "LRNGrad"
   input_arg {
     name: "input_grads"
@@ -10637,6 +10927,66 @@ op {
     type: "float"
     default_value {
       f: 0.5
+    }
+  }
+}
+op {
+  name: "LRNGrad"
+  input_arg {
+    name: "input_grads"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_image"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "output_image"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "depth_radius"
+    type: "int"
+    default_value {
+      i: 5
+    }
+  }
+  attr {
+    name: "bias"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "alpha"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "beta"
+    type: "float"
+    default_value {
+      f: 0.5
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_HALF
+      }
     }
   }
 }
@@ -19976,6 +20326,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {
@@ -19995,6 +20347,8 @@ op {
   attr {
     name: "block_size"
     type: "int"
+    has_minimum: true
+    minimum: 2
   }
 }
 op {

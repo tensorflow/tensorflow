@@ -101,7 +101,6 @@ tf_proto_library(
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
-    py_api_version = 0,
     visibility = ["//visibility:public"],
 )
 
@@ -543,6 +542,7 @@ cc_library(
         "common_runtime/kernel_benchmark_testlib.h",
         "framework/fake_input.h",
         "framework/function_testlib.h",
+        "framework/shape_inference_testutil.h",
         "framework/tensor_testutil.h",
         "graph/testlib.h",
         # TODO(josh11b): Drop this once users are depending on
@@ -559,6 +559,7 @@ cc_library(
         ":lib",
         ":proto_text",
         ":protos_all_cc",
+        ":shape_inference_testutil",
         ":tensor_testutil",
         ":test",
         "//tensorflow/core/kernels:constant_op",
@@ -748,6 +749,8 @@ filegroup(
     srcs = [
         "//tensorflow/core:framework/fake_input.cc",
         "//tensorflow/core:framework/fake_input.h",
+        "//tensorflow/core:framework/shape_inference_testutil.cc",
+        "//tensorflow/core:framework/shape_inference_testutil.h",
         "//tensorflow/core:framework/tensor_testutil.cc",
         "//tensorflow/core:framework/tensor_testutil.h",
         "//tensorflow/core:platform/test.h",
@@ -857,10 +860,10 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
-        "@zlib_archive//:zlib",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
+        "@zlib_archive//:zlib",
     ],
 )
 
@@ -1212,6 +1215,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shape_inference_testutil",
+    testonly = 1,
+    srcs = ["framework/shape_inference_testutil.cc"],
+    hdrs = ["framework/shape_inference_testutil.h"],
+    copts = tf_copts(),
+    deps = [
+        ":framework",
+        ":lib",
+        ":test",
+    ],
+)
+
 # Main program for tests
 cc_library(
     name = "test_main",
@@ -1256,6 +1272,7 @@ tf_cc_tests(
         "lib/io/path_test.cc",
         "lib/io/recordio_test.cc",
         "lib/io/table_test.cc",
+        "lib/io/zlib_buffers_test.cc",
         "lib/random/distribution_sampler_test.cc",
         "lib/random/philox_random_test.cc",
         "lib/random/random_distributions_test.cc",
@@ -1411,7 +1428,6 @@ tf_cc_tests(
 # GPU-related tests
 tf_cc_tests_gpu(
     size = "small",
-    args = ["--gtest_death_test_style=threadsafe"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     tests = glob(["user_ops/**/*_test.cc"]) + [

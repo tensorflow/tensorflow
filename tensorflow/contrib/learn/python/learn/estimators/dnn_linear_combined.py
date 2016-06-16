@@ -28,6 +28,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -217,13 +218,16 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     raise NotImplementedError
 
   def _get_linear_feature_columns(self):
-    return sorted(
-        set(self._linear_feature_columns),
-        key=lambda x: x.key) if self._linear_feature_columns else None
+    if not self._linear_feature_columns:
+      return None
+    feature_column_ops.check_feature_columns(self._linear_feature_columns)
+    return sorted(set(self._linear_feature_columns), key=lambda x: x.key)
 
   def _get_dnn_feature_columns(self):
-    return sorted(set(
-        self._dnn_feature_columns)) if self._dnn_feature_columns else None
+    if not self._dnn_feature_columns:
+      return None
+    feature_column_ops.check_feature_columns(self._dnn_feature_columns)
+    return sorted(set(self._dnn_feature_columns), key=lambda x: x.key)
 
   def _dnn_logits(self, features, is_training=False):
     net = layers.input_from_feature_columns(
@@ -749,4 +753,3 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                                       self._get_weight_tensor(features)))
 
     return result
-

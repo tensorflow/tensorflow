@@ -526,8 +526,7 @@ glimpse_width, channels]`. The channels and batch dimensions are the
 same as that of the input tensor. The height and width of the output
 windows are specified in the `size` parameter.
 
-The argument `normalized` and `centered` controls how the windows are
-built:
+The argument `normalized` and `centered` controls how the windows are built:
 
 * If the coordinates are normalized but not centered, 0.0 and 1.0
   correspond to the minimum and maximum of each height and width

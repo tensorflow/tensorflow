@@ -189,6 +189,7 @@ ops.register_tensor_conversion_function(
 ops.register_tensor_conversion_function(
     object, _constant_tensor_conversion_function, 200)
 
+
 def _tensor_shape_tensor_conversion_function(s, dtype=None, name=None,
                                              as_ref=False):
   _ = as_ref
@@ -206,6 +207,7 @@ def _tensor_shape_tensor_conversion_function(s, dtype=None, name=None,
 
 ops.register_tensor_conversion_function(
     tensor_shape.TensorShape, _tensor_shape_tensor_conversion_function, 100)
+
 
 def _dimension_tensor_conversion_function(d, dtype=None, name=None,
                                           as_ref=False):

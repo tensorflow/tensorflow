@@ -3620,6 +3620,13 @@ Called when the thread stops.
 
 - - -
 
+### `tf.train.do_quantize_training_on_graphdef(input_graph, num_bits)` {#do_quantize_training_on_graphdef}
+
+
+
+
+- - -
+
 ### `tf.train.generate_checkpoint_state_proto(save_dir, model_checkpoint_path, all_model_checkpoint_paths=None)` {#generate_checkpoint_state_proto}
 
 Generates a checkpoint state proto.

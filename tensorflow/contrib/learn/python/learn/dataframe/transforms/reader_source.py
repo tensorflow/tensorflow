@@ -19,11 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.dataframe import transform
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.training import input as input_ops
-from tensorflow.python.training import queue_runner
 
 
 class ReaderSource(transform.Transform):
@@ -125,27 +122,31 @@ class ReaderSource(transform.Transform):
     filename_queue = input_ops.string_input_producer(self._work_units,
                                                      shuffle=self.shuffle,
                                                      seed=self._seed)
-
-    if self.shuffle:
-      queue = data_flow_ops.RandomShuffleQueue(
-          capacity=self.queue_capacity,
-          min_after_dequeue=self.min_after_dequeue,
-          dtypes=[dtypes.string, dtypes.string],
-          shapes=[[], []],
-          seed=self.seed)
-    else:
-      queue = data_flow_ops.FIFOQueue(capacity=self.queue_capacity,
-                                      dtypes=[dtypes.string, dtypes.string],
-                                      shapes=[[], []])
-
-    enqueue_ops = []
+    reader_ops = []
     for _ in range(self.num_threads):
       reader = self._reader_cls(**self._reader_kwargs)
-      enqueue_ops.append(queue.enqueue(reader.read(filename_queue)))
+      reader_ops.append(reader.read(filename_queue))
 
-    runner = queue_runner.QueueRunner(queue, enqueue_ops)
-    queue_runner.add_queue_runner(runner)
-    dequeued = queue.dequeue_many(self.batch_size)
+    if self.shuffle:
+      dequeued = input_ops.shuffle_batch_join(
+          reader_ops,
+          self.batch_size,
+          capacity=self.queue_capacity,
+          min_after_dequeue=self.min_after_dequeue,
+          seed=self.seed,
+          enqueue_many=False,
+          shapes=[[], []],
+          shared_name=None,
+          name=None)
+    else:
+      dequeued = input_ops.batch_join(reader_ops,
+                                      self.batch_size,
+                                      capacity=self.queue_capacity,
+                                      enqueue_many=False,
+                                      shapes=[[], []],
+                                      dynamic_pad=False,
+                                      shared_name=None,
+                                      name=None)
 
     # pylint: disable=not-callable
     return self.return_type(*dequeued)

@@ -86,7 +86,7 @@ def input_from_feature_columns(columns_to_tensors,
   Raises:
     ValueError: if FeatureColumn cannot be consumed by a neural network.
   """
-
+  check_feature_columns(feature_columns)
   with variable_scope.variable_op_scope(columns_to_tensors.values(), name,
                                         'input_from_feature_columns'):
     output_tensors = []
@@ -94,6 +94,7 @@ def input_from_feature_columns(columns_to_tensors,
     if weight_collections:
       weight_collections = list(set(list(weight_collections) +
                                     [ops.GraphKeys.VARIABLES]))
+
     for column in sorted(set(feature_columns), key=lambda x: x.key):
       transformed_tensor = transformer.transform(column)
       output_tensors.append(column.to_dnn_input_layer(
@@ -162,6 +163,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.
   """
+  check_feature_columns(feature_columns)
   with variable_scope.variable_op_scope(columns_to_tensors.values(), name,
                                         'weighted_sum_from_feature_columns'):
     output_tensors = []
@@ -225,7 +227,7 @@ def parse_feature_columns_from_examples(serialized,
   Returns:
     A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
   """
-
+  check_feature_columns(feature_columns)
   columns_to_tensors = parsing_ops.parse_example(
       serialized=serialized,
       features=fc.create_feature_spec_for_parsing(feature_columns),
@@ -276,6 +278,23 @@ def infer_real_valued_columns(features):
     feature_columns.append(_infer_real_valued_column_for_tensor(key, value))
 
   return feature_columns
+
+
+def check_feature_columns(feature_columns):
+  """Checks the validity of the set of FeatureColumns.
+
+  Args:
+    feature_columns: A set of instances or subclasses of FeatureColumn.
+
+  Raises:
+    ValueError: If there are duplicate feature column keys.
+  """
+  seen_keys = set()
+  for f in feature_columns:
+    key = f.key
+    if key in seen_keys:
+      raise ValueError('Duplicate feature column key found: %s' % key)
+    seen_keys.add(key)
 
 
 class _Transformer(object):

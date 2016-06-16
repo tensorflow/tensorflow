@@ -593,8 +593,8 @@ Our Conv3D implements a form of cross-correlation.
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Shape `[batch, in_depth, in_height, in_width, in_channels]`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
-    Shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.
-    `in_channels` must match between `input` and `filter`.
+    Shape `[filter_depth, filter_height, filter_width, in_channels,
+    out_channels]`. `in_channels` must match between `input` and `filter`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The stride of the sliding window for each
     dimension of `input`. Must have `strides[0] = strides[4] = 1`.
@@ -828,19 +828,30 @@ In detail, the grayscale morphological 2-D dilation is the max-sum correlation
 Max-pooling is a special case when the filter has size equal to the pooling
 kernel size and contains all zeros.
 
+Note on duality: The dilation of `input` by the `filter` is equal to the
+negation of the erosion of `-input` by the reflected `filter`.
+
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+    4-D with shape `[batch, in_height, in_width, depth]`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+    3-D with shape `[filter_height, filter_width, depth]`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
+    The stride of the sliding window for each dimension of the input
+    tensor. Must be: `[1, stride_height, stride_width, 1]`.
 *  <b>`rates`</b>: A list of `ints` that has length `>= 4`.
+    The input stride for atrous morphological dilation. Must be:
+    `[1, rate_height, rate_width, 1]`.
 *  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
+  4-D with shape `[batch, out_height, out_width, depth]`.
 
 
 - - -
@@ -953,7 +964,8 @@ convolutional neural networks (NIPS 2012)]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `float32`. 4-D.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
+    4-D.
 *  <b>`depth_radius`</b>: An optional `int`. Defaults to `5`.
     0-D.  Half-width of the 1-D normalization window.
 *  <b>`bias`</b>: An optional `float`. Defaults to `1`.
@@ -965,7 +977,7 @@ convolutional neural networks (NIPS 2012)]
 
 ##### Returns:
 
-  A `Tensor` of type `float32`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -

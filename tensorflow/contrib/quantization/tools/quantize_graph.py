@@ -32,7 +32,7 @@ import re
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_util
 
 # TODO(petewarden) - Remove this ugly hack to get around Python linking problems
@@ -60,6 +60,8 @@ flags.DEFINE_string("test_input_dims", "1,224,224,3",
                     """ graph loaded from a file.""")
 flags.DEFINE_boolean("strip_redundant_quantization", True,
                      """Removes redundant dequantize/quantize pairs.""")
+flags.DEFINE_boolean("load_quantization_so", True,
+                     """Explicitly load the quantization ops library""")
 
 
 def print_input_nodes(current_node, nodes_map, indent, already_visited):
@@ -286,8 +288,9 @@ class GraphRewriter(object):
     self.nodes_map = self.create_nodes_map(input_graph)
     self.output_graph = None
     self.mode = mode
-    load_quantized_ops_so.Load()
-    load_quantized_kernels_so.Load()
+    if FLAGS.load_quantization_so:
+      load_quantized_ops_so.Load()
+      load_quantized_kernels_so.Load()
 
   def create_nodes_map(self, graph):
     """Builds a mapping of node names to their defs from the graph."""

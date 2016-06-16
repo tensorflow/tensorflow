@@ -19,13 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import logging_ops
@@ -258,11 +258,11 @@ def multinomial(logits, num_samples, seed=None, name=None):
 
   Example:
 
-    samples = tf.multinomial(tf.log([[0.5, 0.5]]), 10)
-    # samples has shape [1, 10], where each value is either 0 or 1.
-
-    samples = tf.multinomial([[1, -1, -1]], 10)
-    # samples is equivalent to tf.zeros([1, 10], dtype=tf.int64).
+  ```python
+  # samples has shape [1, 5], where each value is either 0 or 1 with equal
+  # probability.
+  samples = tf.multinomial(tf.log([[10., 10.]]), 5)
+  ```
 
   Args:
     logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice

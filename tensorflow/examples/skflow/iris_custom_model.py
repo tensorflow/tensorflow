@@ -11,6 +11,8 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+"""Example of Estimator for Iris plant dataset."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,15 +23,29 @@ from tensorflow.contrib import learn
 
 
 def my_model(features, target):
-  """DNN with 10, 20, 10 hidden layers, and dropout of 0.1 probability."""
+  """DNN with three hidden layers, and dropout of 0.1 probability."""
+  # Convert the target to a one-hot tensor of shape (length of features, 3) and
+  # with a on-value of 1 for each one-hot vector of length 3.
   target = tf.one_hot(target, 3, 1, 0)
-  features = layers.stack(features, layers.fully_connected, [10, 20, 10])
+
+  # Create three fully connected layers respectively of size 10, 20, and 10 with
+  # each layer having a dropout probability of 0.1.
+  normalizer_fn = layers.dropout
+  normalizer_params = {'keep_prob': 0.9}
+  features = layers.stack(features, layers.fully_connected, [10, 20, 10],
+                          normalizer_fn=normalizer_fn,
+                          normalizer_params=normalizer_params)
+
+  # Create two tensors respectively for prediction and loss.
   prediction, loss = (
-      tf.contrib.learn.models.logistic_regression_zero_init(features, target)
+      tf.contrib.learn.models.logistic_regression(features, target)
   )
+
+  # Create a tensor for training op.
   train_op = tf.contrib.layers.optimize_loss(
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=0.1)
+
   return {'class': tf.argmax(prediction, 1), 'prob': prediction}, loss, train_op
 
 
