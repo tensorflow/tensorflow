@@ -22,6 +22,7 @@ class FlipGradientOp : public OpKernel {
 
 REGISTER_OP("FlipGradient")
     .Input("input: T")
+    .Input("s: T")
     .Output("output: T")
     .Attr("T: type")
     .Doc(R"Doc(
