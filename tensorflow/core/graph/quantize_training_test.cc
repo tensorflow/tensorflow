@@ -96,7 +96,7 @@ TEST_F(QuantizeTrainingTest, NormalGraph) {
   std::vector<Node*> target_nodes{m1, m2};
   for (Node* n : target_nodes) {
     for (Node* in : n->in_nodes()) {
-      EXPECT_EQ("_QuantizeAndDequantize", in->type_string());
+      EXPECT_EQ("QuantizeAndDequantize", in->type_string());
     }
   }
 
@@ -104,7 +104,7 @@ TEST_F(QuantizeTrainingTest, NormalGraph) {
   std::vector<Node*> target_inputs{relu, identity, c};
   for (Node* n : target_inputs) {
     for (Node* out : n->out_nodes()) {
-      EXPECT_EQ("_QuantizeAndDequantize", out->type_string());
+      EXPECT_EQ("QuantizeAndDequantize", out->type_string());
     }
   }
 

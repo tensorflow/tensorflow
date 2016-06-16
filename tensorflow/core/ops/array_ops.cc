@@ -1915,7 +1915,7 @@ output: The one-hot tensor.
 )doc");
 
 // EXPERIMENTAL. DO NOT USE OR DEPEND ON THIS YET.
-REGISTER_OP("_QuantizeAndDequantize")
+REGISTER_OP("QuantizeAndDequantize")
     .Input("input: T")
     .Attr("signed_input: bool = true")
     .Attr("num_bits: int = 8")

@@ -380,3 +380,8 @@ def _MirrorPadGradGrad(op, grad):
   # pylint: disable=protected-access
   return [gen_array_ops._mirror_pad(grad, op.inputs[1], mode=mode), None]
   # pylint: enable=protected-access
+
+
+@ops.RegisterGradient("QuantizeAndDequantize")
+def _QuantizeAndDequantizeGrad(_, grad):
+  return grad
