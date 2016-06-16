@@ -23,6 +23,7 @@ py_tests(
     name = "cpu_only_kernel_tests",
     size = "small",
     srcs = [
+        "as_string_op_test.py",
         "attention_ops_test.py",
         "bcast_ops_test.py",
         "benchmark_test.py",
@@ -61,6 +62,7 @@ py_tests(
         "sparse_split_op_test.py",
         "sparse_to_dense_op_py_test.py",
         "sparsemask_op_test.py",
+        "string_join_op_test.py",
         "summary_ops_test.py",
         "template_test.py",
         "topk_op_test.py",

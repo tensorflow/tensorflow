@@ -1608,6 +1608,8 @@ tf_kernel_libraries(
     prefixes = [
         "string_to_hash_bucket_op",
         "reduce_join_op",
+        "string_join_op",
+        "as_string_op",
     ],
     deps = [
         "//tensorflow/core:framework",
