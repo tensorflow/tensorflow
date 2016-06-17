@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 import tensorflow as tf
 
@@ -199,9 +200,7 @@ class HashTableOpTest(tf.test.TestCase):
       default_val = -1
       table = tf.contrib.lookup.HashTable(
           tf.contrib.lookup.KeyValueTensorInitializer(
-              ["a"],
-              [1],
-              value_dtype=tf.int64),
+              ["a"], [1], value_dtype=tf.int64),
           default_val)
 
       input_string = tf.constant(["brain", "salad", "surgery"])
@@ -231,8 +230,8 @@ class HashTableOpTest(tf.test.TestCase):
 
       with self.assertRaises(ValueError):
         tf.contrib.lookup.HashTable(
-            tf.contrib.lookup.KeyValueTensorInitializer(keys,
-                                                        values), default_val)
+            tf.contrib.lookup.KeyValueTensorInitializer(keys, values),
+            default_val)
 
 
 class StringToIndexTest(tf.test.TestCase):
@@ -284,7 +283,8 @@ class IndexToStringTest(tf.test.TestCase):
       self.assertRaises(tf.OpError, feats.eval)
       tf.initialize_all_tables().run()
 
-      self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"), feats.eval())
+      self.assertAllEqual(
+          (b"brain", b"salad", b"surgery", b"UNK"), feats.eval())
 
   def test_duplicate_entries(self):
     with self.test_session():
@@ -309,6 +309,303 @@ class IndexToStringTest(tf.test.TestCase):
 
       tf.initialize_all_tables().run()
       self.assertAllEqual((b"salad", b"surgery", default_value), feats.eval())
+
+
+class InitializeTableFromFileOpTest(tf.test.TestCase):
+
+  def _createVocabFile(self, basename):
+    vocabulary_file = os.path.join(self.get_temp_dir(), basename)
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["brain", "salad", "surgery"]) + "\n")
+    return vocabulary_file
+
+  def testInitializeTable(self):
+    vocabulary_file = self._createVocabFile("one_column_1.txt")
+
+    with self.test_session():
+      default_value = -1
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              vocabulary_file, tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER), default_value)
+      table.init.run()
+
+      input_string = tf.constant(["brain", "salad", "tank"])
+      output = table.lookup(input_string)
+
+      result = output.eval()
+      self.assertAllEqual([0, 1, -1], result)
+
+  def testInitializeIndexTable(self):
+    vocabulary_file = self._createVocabFile("one_column_2.txt")
+
+    with self.test_session():
+      default_value = "UNK"
+      key_index = tf.contrib.lookup.TextFileIndex.LINE_NUMBER
+      value_index = tf.contrib.lookup.TextFileIndex.WHOLE_LINE
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(vocabulary_file, tf.int64,
+                                                key_index, tf.string,
+                                                value_index), default_value)
+      table.init.run()
+
+      input_values = tf.constant([0, 1, 2, 3], tf.int64)
+      output = table.lookup(input_values)
+
+      result = output.eval()
+      self.assertAllEqual([b"brain", b"salad", b"surgery", b"UNK"], result)
+
+  def testMultiColumn(self):
+    vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
+
+    with self.test_session():
+      default_value = -1
+      key_index = 1
+      value_index = 2
+
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(vocabulary_file, tf.string,
+                                                key_index, tf.int64,
+                                                value_index), default_value)
+      table.init.run()
+
+      input_string = tf.constant(["brain", "salad", "surgery"])
+      output = table.lookup(input_string)
+
+      result = output.eval()
+      self.assertAllEqual([1, 5, 6], result)
+
+  def testInvalidDataTypeInMultiColumn(self):
+    vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
+
+    with self.test_session():
+      default_value = -1
+      key_index = 2
+      value_index = 1
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(vocabulary_file, tf.string,
+                                                key_index, tf.int64,
+                                                value_index), default_value)
+      with self.assertRaisesOpError("is not a valid"):
+        table.init.run()
+
+  def testInvalidDataType(self):
+    vocabulary_file = self._createVocabFile("one_column_3.txt")
+
+    with self.test_session():
+      default_value = "UNK"
+      key_index = tf.contrib.lookup.TextFileIndex.WHOLE_LINE
+      value_index = tf.contrib.lookup.TextFileIndex.LINE_NUMBER
+
+      with self.assertRaises(ValueError):
+        tf.contrib.lookup.HashTable(
+            tf.contrib.lookup.TextFileInitializer(vocabulary_file, tf.int64,
+                                                  key_index, tf.string,
+                                                  value_index), default_value)
+
+  def testInvalidIndex(self):
+    vocabulary_file = self._createVocabFile("one_column_4.txt")
+    with self.test_session():
+      default_value = -1
+      key_index = 1  # second column of the line
+      value_index = tf.contrib.lookup.TextFileIndex.LINE_NUMBER
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(vocabulary_file, tf.string,
+                                                key_index, tf.int64,
+                                                value_index), default_value)
+
+      with self.assertRaisesOpError("Invalid number of columns"):
+        table.init.run()
+
+  def testInitializeSameTableWithMultipleNodes(self):
+    vocabulary_file = self._createVocabFile("one_column_5.txt")
+
+    with self.test_session() as sess:
+      shared_name = "shared-one-columm"
+      default_value = -1
+      table1 = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              vocabulary_file, tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER),
+          default_value,
+          shared_name=shared_name)
+      table2 = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              vocabulary_file, tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER),
+          default_value,
+          shared_name=shared_name)
+      table3 = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              vocabulary_file, tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER),
+          default_value,
+          shared_name=shared_name)
+
+      tf.initialize_all_tables().run()
+
+      input_string = tf.constant(["brain", "salad", "tank"])
+
+      output1 = table1.lookup(input_string)
+      output2 = table2.lookup(input_string)
+      output3 = table3.lookup(input_string)
+
+      out1, out2, out3 = sess.run([output1, output2, output3])
+      self.assertAllEqual([0, 1, -1], out1)
+      self.assertAllEqual([0, 1, -1], out2)
+      self.assertAllEqual([0, 1, -1], out3)
+
+  def testInitializeTableWithNoFilename(self):
+    with self.test_session():
+      default_value = -1
+      with self.assertRaises(ValueError):
+        tf.contrib.lookup.HashTable(
+            tf.contrib.lookup.TextFileInitializer(
+                "", tf.string, tf.contrib.lookup.TextFileIndex.WHOLE_LINE,
+                tf.int64, tf.contrib.lookup.TextFileIndex.LINE_NUMBER),
+            default_value)
+
+  def testInitializeWithVocabSize(self):
+    with self.test_session():
+      default_value = -1
+      vocab_size = 3
+      vocabulary_file1 = self._createVocabFile("one_column6.txt")
+      table1 = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              vocabulary_file1,
+              tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE,
+              tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER,
+              vocab_size=vocab_size),
+          default_value)
+
+      # Initialize from file.
+      table1.init.run()
+      self.assertEquals(vocab_size, table1.size().eval())
+
+      vocabulary_file2 = self._createVocabFile("one_column7.txt")
+      vocab_size = 5
+      table2 = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              vocabulary_file2,
+              tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE,
+              tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER,
+              vocab_size=vocab_size),
+          default_value)
+      with self.assertRaisesOpError("Invalid vocab_size"):
+        table2.init.run()
+
+      vocab_size = 1
+      vocabulary_file3 = self._createVocabFile("one_column3.txt")
+      table3 = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              vocabulary_file3,
+              tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE,
+              tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER,
+              vocab_size=vocab_size),
+          default_value)
+
+      # Smaller vocab size reads only vocab_size records.
+      table3.init.run()
+      self.assertEquals(vocab_size, table3.size().eval())
+
+  def testFeedVocabularyName(self):
+    vocabulary_file = self._createVocabFile("feed_vocabulary.txt")
+
+    with self.test_session():
+      default_value = -1
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileInitializer(
+              "old_file.txt", tf.string,
+              tf.contrib.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+              tf.contrib.lookup.TextFileIndex.LINE_NUMBER), default_value)
+
+      # Initialize with non existing file (old_file.txt) should fail.
+      # TODO(yleon): Update message, which might change per FileSystem.
+      with self.assertRaisesOpError("old_file.txt"):
+        table.init.run()
+
+      # Initialize the model feeding the vocabulary file.
+      filenames = tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS)
+      table.init.run(feed_dict={filenames[0]: vocabulary_file})
+
+      input_string = tf.constant(["brain", "salad", "tank"])
+      output = table.lookup(input_string)
+
+      result = output.eval()
+      self.assertAllEqual([0, 1, -1], result)
+
+  def testInvalidFilenames(self):
+    vocabulary_file = self._createVocabFile("filename_shape.txt")
+
+    with self.test_session():
+      default_value = -1
+
+      # Invalid data type
+      other_type = tf.constant(1)
+      with self.assertRaises(ValueError):
+        tf.contrib.lookup.HashTable(
+            tf.contrib.lookup.TextFileInitializer(
+                other_type, tf.string,
+                tf.contrib.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+                tf.contrib.lookup.TextFileIndex.LINE_NUMBER), default_value)
+
+      # Non-scalar filename
+      filenames = tf.constant([vocabulary_file, vocabulary_file])
+      with self.assertRaises(ValueError):
+        tf.contrib.lookup.HashTable(
+            tf.contrib.lookup.TextFileInitializer(
+                filenames, tf.string,
+                tf.contrib.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+                tf.contrib.lookup.TextFileIndex.LINE_NUMBER), default_value)
+
+  def testIdToStringTable(self):
+    vocab_file = self._createVocabFile("feat_to_id_1.txt")
+    with self.test_session():
+      default_value = "UNK"
+      vocab_size = 3
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileStringTableInitializer(
+              vocab_file, vocab_size=vocab_size),
+          default_value)
+
+      table.init.run()
+
+      input_values = tf.constant([0, 1, 2, 3], tf.int64)
+
+      out = table.lookup(input_values)
+      self.assertAllEqual([b"brain", b"salad", b"surgery", b"UNK"], out.eval())
+      self.assertEquals(vocab_size, table.size().eval())
+
+  def testStringToIdTable(self):
+    vocab_file = self._createVocabFile("feat_to_id_2.txt")
+    with self.test_session():
+      default_value = -1
+      vocab_size = 3
+      table = tf.contrib.lookup.HashTable(
+          tf.contrib.lookup.TextFileIdTableInitializer(vocab_file,
+                                                       vocab_size=vocab_size),
+          default_value)
+      table.init.run()
+
+      input_string = tf.constant(["brain", "salad", "surgery", "UNK"])
+
+      out = table.lookup(input_string)
+      self.assertAllEqual([0, 1, 2, -1], out.eval())
+      self.assertEquals(vocab_size, table.size().eval())
 
 
 if __name__ == "__main__":

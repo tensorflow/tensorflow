@@ -729,6 +729,7 @@ ops.NoGradient("LookupTableFind")
 ops.NoGradient("LookupTableSize")
 ops.NoGradient("HashTable")
 ops.NoGradient("InitializeTable")
+ops.NoGradient("InitializeTableFromTextFile")
 
 
 ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
@@ -827,4 +828,13 @@ def _InitializeLookupTableShape(op):
   op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
   keys_shape = op.inputs[1].get_shape().with_rank(1)
   op.inputs[2].get_shape().merge_with(keys_shape)
+  return []
+
+
+@ops.RegisterShape("InitializeTableFromTextFile")
+def _InitializeTableFromTextFileShape(op):
+  """Shape function for lookup_ops._initialize_table_from_text_file."""
+  unused_table_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar(
+  ))
+  unused_filename = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
   return []

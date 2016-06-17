@@ -305,6 +305,274 @@ class KeyValueTensorInitializer(TableInitializerBase):
     return init_op
 
 
+class TextFileIndex(object):
+  WHOLE_LINE = -2
+  LINE_NUMBER = -1
+
+
+class TextFileInitializer(TableInitializerBase):
+  """Table initializers from a text file.
+
+  This initializer assigns one entry in the table for each line in the file.
+
+  The key and value type of the table to initialize is given by `key_dtype` and
+  `value_dtype`.
+
+  The key and value content to get from each line is specified by
+  the `key_index` and `value_index`.
+    - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+      expects data type int64.
+    - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+      type string.
+    - A value >=0 means use the index (starting at zero) of the split line based
+      on `delimiter`.
+
+  For example if we have a file with the following content:
+
+  ```
+  emerson 10
+  lake 20
+  palmer 30
+  ```
+
+  The following snippet initializes a table with the first column as keys and
+  second column as values:
+  - emerson -> 10
+  - lake -> 20
+  - palmer -> 30
+
+  ```python
+  table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
+      "test.txt", tf.string, 0, tf.int64, 1, delimiter=" "), -1)
+  ...
+  table.init.run()
+  ```
+
+  Similarly to initialize the whole line as keys and the line number as values.
+  - emerson 10 -> 0
+  - lake 20 -> 1
+  - palmer 30 -> 2
+
+  ```python
+  table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
+      "test.txt", tf.string, tf.contrib.lookup.TextFileIndex.WHOLE_LINE,
+      tf.int64, tf.contrib.lookup.TextFileIndex.LINE_NUMBER, delimiter=" "), -1)
+  ...
+  table.init.run()
+  ```
+  """
+
+  def __init__(self,
+               filename,
+               key_dtype,
+               key_index,
+               value_dtype,
+               value_index,
+               vocab_size=None,
+               delimiter="\t",
+               name=None):
+    """Constructs a table initializer object to populate from a text file.
+
+    It generates one key-value pair per line. The type of table key and
+    value are specified by `key_dtype` and `value_dtype`, respectively.
+    Similarly the content of the key and value are specified by the key_index
+    and value_index.
+
+    - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+      expects data type int64.
+    - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+      type string.
+    - A value >=0 means use the index (starting at zero) of the split line based
+      on `delimiter`.
+
+    Args:
+      filename: The filename of the text file to be used for initialization.
+        The path must be accessible from wherever the graph is initialized
+        (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
+      key_dtype: The `key` data type.
+      key_index: the index that represents information of a line to get the
+        table 'key' values from.
+      value_dtype: The `value` data type.
+      value_index: the index that represents information of a line to get the
+        table 'value' values from.'
+      vocab_size: The number of elements in the file, if known.
+      delimiter: The delimiter to separate fields in a line.
+      name: A name for the operation (optional).
+
+    Raises:
+      ValueError: when the filename is empty, or when the table key and value
+      data types do not match the expected data types.
+    """
+    if not isinstance(filename, ops.Tensor) and not filename:
+      raise ValueError("Filename required for %s." % name)
+
+    key_dtype = dtypes.as_dtype(key_dtype)
+    value_dtype = dtypes.as_dtype(value_dtype)
+
+    if key_index < -2:
+      raise ValueError("Invalid key index %s." % (key_index))
+
+    if key_index == TextFileIndex.LINE_NUMBER and key_dtype != dtypes.int64:
+      raise ValueError("Signature mismatch. Keys must be dtype %s, got %s." %
+                       (dtypes.int64, key_dtype))
+    if key_index == TextFileIndex.WHOLE_LINE and key_dtype != dtypes.string:
+      raise ValueError("Signature mismatch. Keys must be dtype %s, got %s." %
+                       (dtypes.string, key_dtype))
+    if value_index < -2:
+      raise ValueError("Invalid value index %s." % (value_index))
+
+    if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
+      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
+                       (dtypes.int64, value_dtype))
+    if value_index == TextFileIndex.WHOLE_LINE and value_dtype != dtypes.string:
+      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
+                       (dtypes.string, value_dtype))
+
+    if (vocab_size is not None) and (vocab_size <= 0):
+      raise ValueError("Invalid vocab_size %s." % vocab_size)
+
+    self._filename = filename
+    self._key_index = key_index
+    self._value_index = value_index
+    self._vocab_size = vocab_size
+    self._delimiter = delimiter
+    self._name = name
+
+    super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
+
+  def initialize(self, table):
+    """Initializes the table from a text file.
+
+    Args:
+      table: The table to be initialized.
+
+    Returns:
+      The operation that initializes the table.
+
+    Raises:
+      TypeError: when the keys and values data types do not match the table
+      key and value data types.
+    """
+    # pylint: disable=protected-access
+    table._check_table_dtypes(self.key_dtype, self.value_dtype)
+    with ops.op_scope([table], self._name, "text_file_init") as scope:
+      filename = ops.convert_to_tensor(self._filename,
+                                       dtypes.string,
+                                       name="asset_filepath")
+      init_op = gen_data_flow_ops._initialize_table_from_text_file(
+          table.table_ref,
+          filename,
+          self._key_index,
+          self._value_index,
+          -1 if self._vocab_size is None else self._vocab_size,
+          self._delimiter,
+          name=scope)
+    # pylint: enable=protected-access
+    ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
+    return init_op
+
+
+class TextFileStringTableInitializer(TextFileInitializer):
+  """Table initializer for `int64` IDs to string tables from a text file."""
+
+  def __init__(self,
+               filename,
+               key_column_index=TextFileIndex.LINE_NUMBER,
+               value_column_index=TextFileIndex.WHOLE_LINE,
+               vocab_size=None,
+               delimiter="\t",
+               name="text_file_string_table_init"):
+    """Constructs an initializer for an id-to-string table from a text file.
+
+    It populates a table that its key and value types are int64 and string,
+    respectively. It generates one key-value pair per line.
+    The content of the key and value are specified by `key_column_index`
+    and `value_column_index`.
+
+    - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+      expects data type int64.
+    - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+      type string.
+    - A value >=0 means use the index (starting at zero) of the split line based
+      on `delimiter`.
+
+    Args:
+      filename: The filename of the text file to be used for initialization.
+        The path must be accessible from wherever the graph is initialized
+        (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
+      key_column_index: The column index from the text file to get the keys
+        from. The default is 0 that represents the whole line content.
+      value_column_index: The column index from the text file to get the
+        values from. The default is to use the line number, starting from zero.
+      vocab_size: The number of elements in the file, if known.
+      delimiter: The delimiter to separate fields in a line.
+      name: Optional name for the op.
+
+    Raises:
+      TypeError: when the filename is empty, or when the table key and value
+      data types do not match the expected data types.
+    """
+    super(TextFileStringTableInitializer, self).__init__(filename,
+                                                         dtypes.int64,
+                                                         key_column_index,
+                                                         dtypes.string,
+                                                         value_column_index,
+                                                         vocab_size=vocab_size,
+                                                         delimiter=delimiter,
+                                                         name=name)
+
+
+class TextFileIdTableInitializer(TextFileInitializer):
+  """Table initializer for string to `int64` IDs tables from a text file."""
+
+  def __init__(self,
+               filename,
+               key_column_index=TextFileIndex.WHOLE_LINE,
+               value_column_index=TextFileIndex.LINE_NUMBER,
+               vocab_size=None,
+               delimiter="\t",
+               name="text_file_id_table_init"):
+    """Constructs an initializer for an string-to-id table from a text file.
+
+    It populates a table that its key and value types are string and int64,
+    respectively. It generates one key-value pair per line.
+    The content of the key and value are specified by the key_index
+    and value_index.
+
+    - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
+      expects data type int64.
+    - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
+      type string.
+    - A value >=0 means use the index (starting at zero) of the split line based
+      on `delimiter`.
+
+    Args:
+      filename: The filename of the text file to be used for initialization.
+        The path must be accessible from wherever the graph is initialized
+        (eg. trainer or eval workers). The filename may be a scalar `Tensor`.
+      key_column_index: The column index from the text file to get the `key`
+        values from. The default is to use the line number, starting from zero.
+      value_column_index: The column index from the text file ro get the `value`
+        values from. The default is 0 that represents the whole line content.
+      vocab_size: The number of elements in the file, if known.
+      delimiter: The delimiter to separate fields in a line.
+      name: Optional name for the op.
+
+    Raises:
+      TypeError: when the filename is empty, or when the table key and value
+      data types do not match the expected data types.
+    """
+    super(TextFileIdTableInitializer, self).__init__(filename,
+                                                     dtypes.string,
+                                                     key_column_index,
+                                                     dtypes.int64,
+                                                     value_column_index,
+                                                     vocab_size=vocab_size,
+                                                     delimiter=delimiter,
+                                                     name=name)
+
+
 def string_to_index(tensor, mapping, default_value=-1, name=None):
   """Maps `tensor` of strings into `int64` indices based on `mapping`.
 

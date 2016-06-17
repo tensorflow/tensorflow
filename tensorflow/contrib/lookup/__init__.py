@@ -21,6 +21,10 @@
 @@HashTable
 @@TableInitializerBase
 @@KeyValueTensorInitializer
+@@TextFileIndex
+@@TextFileInitializer
+@@TextFileIdTableInitializer
+@@TextFileStringTableInitializer
 
 """
 

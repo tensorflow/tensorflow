@@ -724,6 +724,36 @@ keys: Keys of type Tkey.
 values: Values of type Tval. Same shape as `keys`.
 )doc");
 
+REGISTER_OP("InitializeTableFromTextFile")
+    .Input("table_handle: Ref(string)")
+    .Input("filename: string")
+    .Attr("key_index: int >= -2")
+    .Attr("value_index: int >= -2")
+    .Attr("vocab_size: int >= -1 = -1")
+    .Attr("delimiter: string = '\t'")
+    .Doc(R"doc(
+Initializes a table from a text file.
+
+It inserts one key-value pair into the table for each line of the file.
+The key and value is extracted from the whole line content, elements from the
+split line based on `delimiter` or the line number (starting from zero).
+Where to extract the key and value from a line is specified by `key_index` and
+`value_index`.
+
+- A value of -1 means use the line number(starting from zero), expects `int64`.
+- A value of -2 means use the whole line content, expects `string`.
+- A value >= 0 means use the index (starting at zero) of the split line based
+  on `delimiter`.
+
+table_handle: Handle to a table which will be initialized.
+filename: Filename of a vocabulary text file.
+key_index: Column index in a line to get the table `key` values from.
+value_index: Column index that represents information of a line to get the table
+  `value` values from.
+vocab_size: Number of elements of the file, use -1 if unknown.
+delimiter: Delimiter to separate fields in a line.
+)doc");
+
 REGISTER_OP("GetSessionHandle")
     .Input("value: T")
     .Output("handle: string")

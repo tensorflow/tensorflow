@@ -542,6 +542,7 @@ tf_gen_op_wrapper_py(
         "FIFOQueue",
         "HashTable",
         "InitializeTable",
+        "InitializeTableFromTextFile",
         "LookupTableFind",
         "LookupTableSize",
         "Mutex",
