@@ -11742,6 +11742,30 @@ op {
   }
 }
 op {
+  name: "LookupTableInsert"
+  input_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+}
+op {
   name: "LookupTableSize"
   input_arg {
     name: "table_handle"
@@ -13920,6 +13944,37 @@ op {
         type: DT_HALF
       }
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "MutableHashTable"
+  output_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
   }
   is_stateful: true
 }
