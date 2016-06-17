@@ -66,7 +66,8 @@ HOST_LIBS := \
 -lstdc++ \
 -lprotobuf \
 -lpthread \
--lm
+-lm \
+-lz
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
@@ -115,7 +116,7 @@ PROTOGENDIR := $(GENDIR)proto/
 # Settings for the target compiler.
 CXX := $(CC_PREFIX) gcc
 OPTFLAGS := -O0
-CXXFLAGS := --std=c++11 $(OPTFLAGS)
+CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
 
@@ -367,6 +368,7 @@ TF_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_cc_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
 PROTO_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_proto_files.txt)
 BENCHMARK_SRCS := \
+tensorflow/core/util/reporter.cc \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
 

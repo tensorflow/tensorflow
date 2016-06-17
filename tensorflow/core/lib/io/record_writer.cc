@@ -26,9 +26,14 @@ RecordWriter::RecordWriter(WritableFile* dest,
                            const RecordWriterOptions& options)
     : dest_(dest), options_(options) {
   if (options.compression_type == RecordWriterOptions::ZLIB_COMPRESSION) {
+// We don't have zlib available on all embedded platforms, so fail.
+#if defined(IS_SLIM_BUILD)
+    LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
+#else   // IS_SLIM_BUILD
     zlib_output_buffer_.reset(new ZlibOutputBuffer(
         dest_, options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options));
+#endif  // IS_SLIM_BUILD
   } else if (options.compression_type == RecordWriterOptions::NONE) {
     // Nothing to do
   } else {
@@ -37,12 +42,14 @@ RecordWriter::RecordWriter(WritableFile* dest,
 }
 
 RecordWriter::~RecordWriter() {
+#if !defined(IS_SLIM_BUILD)
   if (zlib_output_buffer_) {
     Status s = zlib_output_buffer_->Close();
     if (!s.ok()) {
       LOG(ERROR) << "Could not finish writing file: " << s;
     }
   }
+#endif  // IS_SLIM_BUILD
 }
 
 static uint32 MaskedCrc(const char* data, size_t n) {
@@ -62,16 +69,20 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   char footer[sizeof(uint32)];
   core::EncodeFixed32(footer, MaskedCrc(data.data(), data.size()));
 
+#if !defined(IS_SLIM_BUILD)
   if (zlib_output_buffer_) {
     TF_RETURN_IF_ERROR(
         zlib_output_buffer_->Write(StringPiece(header, sizeof(header))));
     TF_RETURN_IF_ERROR(zlib_output_buffer_->Write(data));
     return zlib_output_buffer_->Write(StringPiece(footer, sizeof(footer)));
   } else {
+#endif  // IS_SLIM_BUILD
     TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
     TF_RETURN_IF_ERROR(dest_->Append(data));
     return dest_->Append(StringPiece(footer, sizeof(footer)));
+#if !defined(IS_SLIM_BUILD)
   }
+#endif  // IS_SLIM_BUILD
 }
 
 }  // namespace io

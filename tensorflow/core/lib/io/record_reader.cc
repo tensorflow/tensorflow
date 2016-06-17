@@ -29,9 +29,14 @@ RecordReader::RecordReader(RandomAccessFile* file,
                            const RecordReaderOptions& options)
     : src_(file), options_(options) {
   if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
+// We don't have zlib available on all embedded platforms, so fail.
+#if defined(IS_SLIM_BUILD)
+    LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
+#else   // IS_SLIM_BUILD
     zlib_input_buffer_.reset(new ZlibInputBuffer(
         src_, options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options));
+#endif  // IS_SLIM_BUILD
   } else if (options.compression_type == RecordReaderOptions::NONE) {
     // Nothing to do.
   } else {
@@ -53,6 +58,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
   const size_t expected = n + sizeof(uint32);
   storage->resize(expected);
 
+#if !defined(IS_SLIM_BUILD)
   if (zlib_input_buffer_) {
     // If we have a zlib compressed buffer, we assume that the
     // file is being read sequentially, and we use the underlying
@@ -77,6 +83,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     }
     *result = StringPiece(storage->data(), n);
   } else {
+#endif  // IS_SLIM_BUILD
     // This version supports reading from arbitrary offsets
     // since we are accessing the random access file directly.
     StringPiece data;
@@ -93,7 +100,9 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
       return errors::DataLoss("corrupted record at ", offset);
     }
     *result = StringPiece(data.data(), n);
+#if !defined(IS_SLIM_BUILD)
   }
+#endif  // IS_SLIM_BUILD
 
   return Status::OK();
 }

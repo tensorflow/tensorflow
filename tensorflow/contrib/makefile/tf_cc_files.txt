@@ -7,6 +7,7 @@ tensorflow/core/kernels/transpose_functor_cpu.cc
 tensorflow/core/kernels/training_ops.cc
 tensorflow/core/kernels/topk_op.cc
 tensorflow/core/kernels/tile_ops.cc
+tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/stack_ops.cc
 tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_lib_cpu.cc
@@ -25,6 +26,7 @@ tensorflow/core/kernels/reverse_sequence_op.cc
 tensorflow/core/kernels/reverse_op.cc
 tensorflow/core/kernels/restore_op.cc
 tensorflow/core/kernels/resize_nearest_neighbor_op.cc
+tensorflow/core/kernels/resize_bilinear_op.cc
 tensorflow/core/kernels/reshape_op.cc
 tensorflow/core/kernels/relu_op.cc
 tensorflow/core/kernels/reduction_ops_sum.cc
@@ -52,6 +54,7 @@ tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/cwise_ops_common.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
 tensorflow/core/kernels/cwise_op_sub.cc
+tensorflow/core/kernels/cwise_op_squared_difference.cc
 tensorflow/core/kernels/cwise_op_square.cc
 tensorflow/core/kernels/cwise_op_sqrt.cc
 tensorflow/core/kernels/cwise_op_sigmoid.cc
@@ -64,6 +67,7 @@ tensorflow/core/kernels/cwise_op_maximum.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
 tensorflow/core/kernels/cwise_op_isfinite.cc
+tensorflow/core/kernels/cwise_op_inverse.cc
 tensorflow/core/kernels/cwise_op_greater.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_equal_to.cc
@@ -71,6 +75,7 @@ tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_add.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
 tensorflow/core/kernels/conv_ops.cc
+tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/control_flow_ops.cc
 tensorflow/core/kernels/constant_op.cc
 tensorflow/core/kernels/concat_op.cc
@@ -94,7 +99,6 @@ tensorflow/core/util/tensor_format.cc
 tensorflow/core/util/stat_summarizer.cc
 tensorflow/core/util/sparse/group_iterator.cc
 tensorflow/core/util/saved_tensor_slice_util.cc
-tensorflow/core/util/reporter.cc
 tensorflow/core/util/port.cc
 tensorflow/core/util/padding.cc
 tensorflow/core/util/mirror_pad_mode.cc
@@ -179,6 +183,7 @@ tensorflow/core/lib/core/arena.cc
 tensorflow/core/graph/validate.cc
 tensorflow/core/graph/tensor_id.cc
 tensorflow/core/graph/subgraph.cc
+tensorflow/core/graph/quantize_training.cc
 tensorflow/core/graph/optimizer_cse.cc
 tensorflow/core/graph/node_builder.cc
 tensorflow/core/graph/graph_partition.cc
@@ -200,6 +205,7 @@ tensorflow/core/framework/tensor_slice.cc
 tensorflow/core/framework/tensor_shape.cc
 tensorflow/core/framework/tensor_reference.cc
 tensorflow/core/framework/tensor.cc
+tensorflow/core/framework/shape_inference.cc
 tensorflow/core/framework/resource_mgr.cc
 tensorflow/core/framework/rendezvous.cc
 tensorflow/core/framework/reader_op_kernel.cc
