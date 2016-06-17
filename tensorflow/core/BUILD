@@ -1367,6 +1367,7 @@ tf_cc_tests(
         "framework/op_def_builder_test.cc",
         "framework/op_def_util_test.cc",
         "framework/op_kernel_test.cc",
+        "framework/op_registration_test.cc",
         "framework/partial_tensor_shape_test.cc",
         "framework/rendezvous_test.cc",
         "framework/resource_mgr_test.cc",

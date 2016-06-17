@@ -35,64 +35,62 @@ using tensorforest::CheckTensorBounds;
 using tensorforest::Initialize;
 using tensorforest::WeightedGiniImpurity;
 
-
 REGISTER_OP("UpdateFertileSlots")
-  .Attr("max_depth: int32")
-  .Attr("regression: bool = False")
-  .Input("finished: int32")
-  .Input("non_fertile_leaves: int32")
-  .Input("non_fertile_leaf_scores: float")
-  .Input("end_of_tree: int32")
-  .Input("tree_depths: int32")
-  .Input("accumulator_sums: float")
-  .Input("node_to_accumulator: int32")
-  .Output("node_map_updates: int32")
-  .Output("accumulators_cleared: int32")
-  .Output("accumulators_allocated: int32")
-  .Output("new_nonfertile_leaves: int32")
-  .Output("new_nonfertile_leaves_scores: float")
-  .Doc(R"doc(
-  Updates accumulator slots to reflect finished or newly fertile nodes.
+    .Attr("max_depth: int")
+    .Attr("regression: bool = False")
+    .Input("finished: int32")
+    .Input("non_fertile_leaves: int32")
+    .Input("non_fertile_leaf_scores: float")
+    .Input("end_of_tree: int32")
+    .Input("tree_depths: int32")
+    .Input("accumulator_sums: float")
+    .Input("node_to_accumulator: int32")
+    .Output("node_map_updates: int32")
+    .Output("accumulators_cleared: int32")
+    .Output("accumulators_allocated: int32")
+    .Output("new_nonfertile_leaves: int32")
+    .Output("new_nonfertile_leaves_scores: float")
+    .Doc(R"doc(
+Updates accumulator slots to reflect finished or newly fertile nodes.
 
-  Leaves at the depth of the attribute `max_depth` won't be made fertile
-  (i.e., won't be given an accumulator slot.)
+Leaves at the depth of the attribute `max_depth` won't be made fertile
+(i.e., won't be given an accumulator slot.)
 
-  finished:= A 1-d int32 tensor containing the indices of fertile nodes that
-    are ready to decide on a split.
-  non_fertile_leaves:= A 1-d int32 tensor containing the indices of all the
-    currently non-fertile leaves.  If there are free accumulator slots after
-    deallocation, UpdateFertileSlots will consider these nodes (plus the ones
-    in new_leaves) and potentially turn some of them fertile.
-  non_fertile_leaf_scores: `non_fertile_leaf_scores[i]` is the splitting score
-    of the non-fertile leaf `non_fertile_leaves[i]`.
-  end_of_tree: The end of tree tensor from the previous training iteration, used
-    with the finished input to calculate a list of new leaf indices created by
-    GrowTree, which will be considered to become fertile if there are free
-    slots.
-  tree_depths: `tree_depths[i]` is the depth in the tree of node i.
-  accumulator_sums: For classification, `accumulator_sums[a][c]` records how
-    many training examples have class c and have ended up in the fertile node
-    associated with accumulator slot a.  It has the total sum in entry 0 for
-    convenience. For regression, it is the same except it contains the sum
-    of the input labels that have been seen, and entry 0 contains the number
-    of training examples that have been seen.
-  node_to_accumulator: `node_to_accumulator[i]` is the accumulator slot used by
-    fertile node i, or -1 if node i isn't fertile.
-  node_map_updates:= A 2-d int32 tensor describing the changes that need to
-    be applied to the node_to_accumulator map.  Intended to be used with
-    `tf.scatter_update(node_to_accumulator,
-                       node_map_updates[0],
-                       node_map_updates[1])`.
-  accumulators_cleared:= A 1-d int32 tensor containing the indices of all
-    the accumulator slots that need to be cleared.
-  accumulators_allocated:= A 1-d int32 tensor containing the indices of all
-    the accumulator slots that need to be allocated.
-  new_nonfertile_leaves:= A 1-d int32 tensor containing the indices of all the
-    leaves that are now non-fertile.
-  new_nonfertile_leaves_scores: `new_nonfertile_leaves_scores[i]` contains the
-    splitting score for the non-fertile leaf `new_nonfertile_leaves[i]`.
+finished:= A 1-d int32 tensor containing the indices of fertile nodes that
+  are ready to decide on a split.
+non_fertile_leaves:= A 1-d int32 tensor containing the indices of all the
+  currently non-fertile leaves.  If there are free accumulator slots after
+  deallocation, UpdateFertileSlots will consider these nodes (plus the ones
+  in new_leaves) and potentially turn some of them fertile.
+non_fertile_leaf_scores: `non_fertile_leaf_scores[i]` is the splitting score
+  of the non-fertile leaf `non_fertile_leaves[i]`.
+end_of_tree: The end of tree tensor from the previous training iteration, used
+  with the finished input to calculate a list of new leaf indices created by
+  GrowTree, which will be considered to become fertile if there are free
+  slots.
+tree_depths: `tree_depths[i]` is the depth in the tree of node i.
+accumulator_sums: For classification, `accumulator_sums[a][c]` records how
+  many training examples have class c and have ended up in the fertile node
+  associated with accumulator slot a.  It has the total sum in entry 0 for
+  convenience. For regression, it is the same except it contains the sum
+  of the input labels that have been seen, and entry 0 contains the number
+  of training examples that have been seen.
+node_to_accumulator: `node_to_accumulator[i]` is the accumulator slot used by
+  fertile node i, or -1 if node i isn't fertile.
+node_map_updates:= A 2-d int32 tensor describing the changes that need to
+  be applied to the node_to_accumulator map.  Intended to be used with
+  `tf.scatter_update(node_to_accumulator,
+                     node_map_updates[0],
+                     node_map_updates[1])`.
+accumulators_cleared:= A 1-d int32 tensor containing the indices of all
+  the accumulator slots that need to be cleared.
+accumulators_allocated:= A 1-d int32 tensor containing the indices of all
+  the accumulator slots that need to be allocated.
+new_nonfertile_leaves:= A 1-d int32 tensor containing the indices of all the
+  leaves that are now non-fertile.
+new_nonfertile_leaves_scores: `new_nonfertile_leaves_scores[i]` contains the
+  splitting score for the non-fertile leaf `new_nonfertile_leaves[i]`.
 )doc");
-
 
 class UpdateFertileSlots : public OpKernel {
  public:

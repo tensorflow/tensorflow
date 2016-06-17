@@ -32,6 +32,18 @@ py_tests(
     data = [":ackermann_op.so"],
 )
 
+tf_custom_op_library(
+    name = "duplicate_op.so",
+    srcs = ["duplicate_op.cc"],
+)
+
+py_tests(
+    name = "duplicate_op_test",
+    size = "small",
+    srcs = ["duplicate_op_test.py"],
+    data = [":duplicate_op.so"],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
