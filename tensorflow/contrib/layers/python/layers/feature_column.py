@@ -650,7 +650,7 @@ def real_valued_column(column_name,
     dimension: An integer specifying dimension of the real valued column.
       The default is 1. The Tensor representing the _RealValuedColumn
       will have the shape of [batch_size, dimension].
-    default_value: A signle value compatible with dtype or a list of values
+    default_value: A single value compatible with dtype or a list of values
       compatible with dtype which the column takes on if data is missing. If
       None, then tf.parse_example will fail if an example does not contain
       this column. If a single value is provided, the same value will be
