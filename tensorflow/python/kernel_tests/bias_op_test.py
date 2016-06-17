@@ -56,11 +56,15 @@ class BiasAddTest(tf.test.TestCase):
       tf_val = tf.nn.bias_add(np_inputs, np_bias).eval()
     self.assertAllCloseAccordingToType(np_val, tf_val)
 
-  def _NHWCToNCHW(self, np_value):
+  def _AtLeast3d(self, np_value):
     # fill the input value to at least 3-dimension
     if np_value.ndim < 3:
-      np_value = np.reshape(np_value,
-                            (1,) * (3 - np_value.ndim) + np_value.shape)
+      return np.reshape(np_value, (1,) * (3 - np_value.ndim) + np_value.shape)
+    return np_value
+
+  def _NHWCToNCHW(self, np_value):
+    # fill the input value to at least 3-dimension
+    np_value = self._AtLeast3d(np_value)
     # move the last dimension to third-to-last
     np_dim = list(range(np_value.ndim))
     np_dim_new = list(np_dim[0:-3]) + list(np_dim[-1:]) + list(np_dim[-3:-1])
@@ -79,7 +83,7 @@ class BiasAddTest(tf.test.TestCase):
     with self.test_session(use_gpu=use_gpu):
       tf_val = tf.nn.bias_add(np_inputs, np_bias, data_format="NCHW").eval()
     tf_val = self._NCHWToNHWC(tf_val)
-    self.assertAllCloseAccordingToType(np_val, tf_val)
+    self.assertAllCloseAccordingToType(self._AtLeast3d(np_val), tf_val)
 
   def _testAll(self, np_inputs, np_bias):
     self._testBias(np_inputs, np_bias, use_gpu=False)
@@ -162,6 +166,17 @@ class BiasAddTest(tf.test.TestCase):
             [2, 3, 4, 2]).astype(np.float32)
         bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
+
+  def testEmpty(self):
+    np.random.seed(7)
+    for shape in (0, 0), (2, 0), (0, 2), (4, 3, 0), (4, 0, 3), (0, 4, 3):
+      self._testAll(np.random.randn(*shape), np.random.randn(shape[-1]))
+
+  def testEmptyGradient(self):
+    for data_format, use_gpu in GetTestConfigs():
+      for shape in (0, 0), (2, 0), (0, 2), (4, 3, 0), (4, 0, 3), (0, 4, 3):
+        self._testGradient(np.random.randn(*shape), np.random.randn(shape[-1]),
+                           tf.float64, data_format, use_gpu)
 
 
 if __name__ == "__main__":

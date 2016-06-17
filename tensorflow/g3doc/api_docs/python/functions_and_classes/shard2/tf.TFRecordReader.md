@@ -3,7 +3,7 @@ A Reader that outputs the records from a TFRecords file.
 See ReaderBase for supported methods.
 - - -
 
-#### `tf.TFRecordReader.__init__(name=None)` {#TFRecordReader.__init__}
+#### `tf.TFRecordReader.__init__(name=None, options=None)` {#TFRecordReader.__init__}
 
 Create a TFRecordReader.
 
@@ -11,6 +11,7 @@ Create a TFRecordReader.
 
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`options`</b>: A TFRecordOptions object (optional).
 
 
 - - -

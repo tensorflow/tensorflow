@@ -50,6 +50,8 @@ class FixedLengthRecordReader : public ReaderBase {
 
     RandomAccessFile* file = nullptr;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file));
+    file_.reset(file);
+
     input_buffer_.reset(new io::InputBuffer(file, kBufferSize));
     TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(header_bytes_));
     return Status::OK();
@@ -90,6 +92,7 @@ class FixedLengthRecordReader : public ReaderBase {
   Env* const env_;
   int64 file_pos_limit_;
   int64 record_number_;
+  std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
   std::unique_ptr<io::InputBuffer> input_buffer_;
 };
 

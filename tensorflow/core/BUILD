@@ -633,7 +633,6 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "graph/dot.*",
-            "lib/io/zlib*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "util/checkpoint_reader.*",
@@ -688,6 +687,7 @@ cc_library(
     name = "android_tensorflow_lib",
     srcs = if_android([":android_op_registrations_and_gradients"]),
     copts = tf_copts(),
+    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -1270,6 +1270,7 @@ tf_cc_tests(
         "lib/io/inputbuffer_test.cc",
         "lib/io/match_test.cc",
         "lib/io/path_test.cc",
+        "lib/io/record_reader_writer_test.cc",
         "lib/io/recordio_test.cc",
         "lib/io/table_test.cc",
         "lib/io/zlib_buffers_test.cc",

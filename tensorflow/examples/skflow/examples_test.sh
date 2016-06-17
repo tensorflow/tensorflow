@@ -19,7 +19,7 @@ SKFLOW_EXAMPLE_BASE_DIR=$TEST_SRCDIR/tensorflow/examples/skflow
 
 function test() {
   echo "Test "$1":"
-  $SKFLOW_EXAMPLE_BASE_DIR/$1
+  $SKFLOW_EXAMPLE_BASE_DIR/$1 $2
   if [ $? -eq 0 ]
   then
     echo "Test passed."
@@ -35,3 +35,4 @@ function test() {
 test boston
 test iris
 test iris_custom_model
+test text_classification --test_with_fake_data

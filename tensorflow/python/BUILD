@@ -641,6 +641,7 @@ tf_gen_op_wrapper_py(
     name = "math_ops",
     hidden = [
         "Abs",
+        "AddN",
         "All",
         "Any",
         "BatchMatMul",

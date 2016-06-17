@@ -200,8 +200,7 @@ Status ZlibOutputBuffer::Deflate(int flush) {
       (error == Z_STREAM_END && flush == Z_FINISH)) {
     return Status::OK();
   }
-  string error_string = strings::StrCat("deflate() failed with error ",
-                                        std::to_string(error).c_str());
+  string error_string = strings::StrCat("deflate() failed with error ", error);
   if (z_stream_->msg != NULL) {
     strings::StrAppend(&error_string, ": ", z_stream_->msg);
   }

@@ -16,7 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 #define TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 
+// TODO(srbs|vrv): Move to a platform/zlib.h file to centralize all
+// platform-specific includes
+#ifdef __ANDROID__
+#include "zlib.h"
+#else
 #include <zlib.h>
+#endif  // __ANDROID__
 
 namespace tensorflow {
 namespace io {
@@ -27,6 +33,13 @@ class ZlibCompressionOptions {
   static ZlibCompressionOptions GZIP();
 
   int8 flush_mode = Z_NO_FLUSH;
+
+  // Size of the buffer used for caching the data read from source file.
+  int64 input_buffer_size = 256 << 10;
+
+  // Size of the sink buffer where the compressed/decompressed data produced by
+  // zlib is cached.
+  int64 output_buffer_size = 256 << 10;
 
   // The window_bits parameter is the base two logarithm of the window size
   // (the size of the history buffer). Larger values of buffer size result in

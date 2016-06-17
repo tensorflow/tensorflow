@@ -142,6 +142,16 @@ class FunctionalOpsTest(tf.test.TestCase):
         self.assertEqual(len(tf.trainable_variables()), 1)
         self.assertAllEqual(doubles, r.eval())
 
+  def testMap_Grad(self):
+    with self.test_session():
+      param = tf.constant(2.0)
+      elems = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+      y = tf.map_fn(lambda x: tf.mul(tf.square(x), param), elems)
+      r = tf.gradients(y, param)[0]
+      self.assertAllEqual(91.0, r.eval())
+      r = tf.gradients(y, elems)[0]
+      self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0], r.eval())
+
   def testMap_SimpleNotTensor(self):
     with self.test_session():
       nums = [1, 2, 3, 4, 5, 6]
@@ -179,6 +189,28 @@ class FunctionalOpsTest(tf.test.TestCase):
         self.assertEqual(len(tf.trainable_variables()), 1)
         results = np.array([6, 16, 38, 84, 178, 368])
         self.assertAllEqual(results, r.eval())
+
+  def testScanFoldl_Nested(self):
+    with self.test_session():
+      elems = tf.constant([1.0, 2.0, 3.0, 4.0], name="data")
+      inner_elems = tf.constant([0.5, 0.5], name="data")
+
+      def r_inner(a, x):
+        return tf.foldl(lambda b, y: b * y * x, inner_elems, initializer=a)
+
+      r = tf.scan(r_inner, elems)
+
+      # t == 0 (returns 1)
+      # t == 1, a == 1, x == 2 (returns 1)
+      #   t_0 == 0, b == a == 1, y == 0.5, returns b * y * x = 1
+      #   t_1 == 1, b == 1,      y == 0.5, returns b * y * x = 1
+      # t == 2, a == 1, x == 3 (returns 1.5*1.5 == 2.25)
+      #   t_0 == 0, b == a == 1, y == 0.5, returns b * y * x = 1.5
+      #   t_1 == 1, b == 1.5,    y == 0.5, returns b * y * x = 1.5*1.5
+      # t == 3, a == 2.25, x == 4 (returns 9)
+      #   t_0 == 0, b == a == 2.25, y == 0.5, returns b * y * x = 4.5
+      #   t_1 == 1, b == 4.5,       y == 0.5, returns b * y * x = 9
+      self.assertAllClose([1., 1., 2.25, 9.], r.eval())
 
   def testScan_Control(self):
     with self.test_session() as sess:
@@ -235,7 +267,6 @@ class FunctionalOpsTest(tf.test.TestCase):
       return current_input
     y = tf.scan(fn, x, initializer=initializer)
     self.assertIs(None, y.get_shape().dims)
-
 
 if __name__ == "__main__":
   tf.test.main()

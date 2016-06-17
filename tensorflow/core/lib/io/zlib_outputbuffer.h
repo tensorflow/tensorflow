@@ -22,7 +22,14 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+
+// TODO(srbs|vrv): Move to a platform/zlib.h file to centralize all
+// platform-specific includes.
+#ifdef __ANDROID__
+#include "zlib.h"
+#else
 #include <zlib.h>
+#endif  // __ANDROID__
 
 namespace tensorflow {
 namespace io {

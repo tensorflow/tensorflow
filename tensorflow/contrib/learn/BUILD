@@ -7,11 +7,6 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-filegroup(
-    name = "datasets",
-    srcs = glob(["**/*.csv"]),
-)
-
 py_library(
     name = "learn",
     srcs = glob([
@@ -20,9 +15,11 @@ py_library(
         "__init__.py",
         "python/__init__.py",
     ],
-    data = [":datasets"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:framework"],
+    deps = [
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/python:framework",
+    ],
 )
 
 py_test(
@@ -41,6 +38,20 @@ py_test(
     name = "data_feeder_test",
     size = "small",
     srcs = ["python/learn/tests/data_feeder_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "feeding_functions_test",
+    size = "small",
+    srcs = [
+        "python/learn/tests/dataframe/feeding_functions_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
