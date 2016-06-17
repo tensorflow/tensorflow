@@ -225,12 +225,7 @@ OpDefBuilderReceiver::OpDefBuilderReceiver(
     const OpDefBuilderWrapper<true>& wrapper) {
   OpRegistry::Global()->Register(
       [wrapper](OpRegistrationData* op_reg_data) -> Status {
-        wrapper.builder().Finalize(op_reg_data);
-        // TODO(keveman): Add this check back again in a separate CL.
-        // if (!s.ok()) {
-        //   return s;
-        // }
-        return Status::OK();
+        return wrapper.builder().Finalize(op_reg_data);
       });
 }
 }  // namespace register_op
