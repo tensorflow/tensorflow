@@ -28,51 +28,61 @@ from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixi
 class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   """Linear classifier model.
 
-    Example:
-    ```
-    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  Train a linear model to classify instances into one of multiple possible
+  classes. When number of possible classes is 2, this is binary classification.
 
-    installed_x_impression = crossed_column(
-        [installed_app_id, impression_app_id])
+  Example:
 
-    estimator = LinearClassifier(
-        feature_columns=[impression_app_id, installed_x_impression])
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-    # Input builders
-    def input_fn_train: # returns X, Y
-      ...
-    def input_fn_eval: # returns X, Y
-      ...
-    estimator.fit(input_fn=input_fn_train)
-    estimator.evaluate(input_fn=input_fn_eval)
-    estimator.predict(x)
-    ```
+  education_x_occupation = crossed_column(columns=[education, occupation],
+                                          hash_bucket_size=10000)
 
-    Input of `fit`, `train`, and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
-        - if `feauture_columns` is None, then `input` must contains only real
-          valued `Tensor`.
+  # Estimator using the default optimizer.
+  estimator = LinearClassifier(
+      feature_columns=[occupation, education_x_occupation])
 
+  # Or estimator using the FTRL optimizer with regularization.
+  estimator = LinearClassifier(
+      feature_columns=[occupation, education_x_occupation],
+      optimizer=tf.train.FtrlOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
 
-  Parameters:
-    feature_columns: An iterable containing all the feature columns used by the
-      model. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    model_dir: Directory to save model parameters, graph and etc.
-    n_classes: number of target classes. Default is binary classification.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-      will use an Ftrl optimizer.
+  # Or estimator using the SDCAOptimizer.
+  estimator = LinearClassifier(
+     feature_columns=[occupation, education_x_occupation],
+     optimizer=tf.contrib.learn.SDCAOptimizer(
+       example_id_column='example_id',
+       symmetric_l2_regularization=2.0
+     ))
+
+  # Input builders
+  def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+    ...
+  def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+    ...
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
+
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is `None`, then `input` must contains only real
+        valued `Tensor`.
   """
 
   def __init__(self,
@@ -108,49 +118,44 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """Linear regressor model.
 
-    Example:
-    ```
-    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  Train a linear regression model to predict target variable value given
+  observation of feature values.
 
-    installed_x_impression = crossed_column(
-        [installed_app_id, impression_app_id])
+  Example:
 
-    estimator = LinearRegressor(
-        feature_columns=[impression_app_id, installed_x_impression])
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-    # Input builders
-    def input_fn_train: # returns X, Y
-      ...
-    def input_fn_eval: # returns X, Y
-      ...
-    estimator.fit(input_fn=input_fn_train)
-    estimator.evaluate(input_fn=input_fn_eval)
-    estimator.predict(x)
-    ```
+  education_x_occupation = crossed_column(columns=[education, occupation],
+                                          hash_bucket_size=10000)
 
-    Input of `fit`, `train`, and `evaluate` should have following features,
-      otherwise there will be a KeyError:
-        if `weight_column_name` is not None:
-          key=weight_column_name, value=a `Tensor`
-        for column in `feature_columns`:
-        - if isinstance(column, `SparseColumn`):
-            key=column.name, value=a `SparseTensor`
-        - if isinstance(column, `RealValuedColumn`):
-            key=column.name, value=a `Tensor`
-        - if `feauture_columns` is None:
-            input must contains only real valued `Tensor`.
+  estimator = LinearRegressor(
+      feature_columns=[occupation, education_x_occupation])
 
-  Parameters:
-    feature_columns: An iterable containing all the feature columns used by the
-      model. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    model_dir: Directory to save model parameters, graph and etc.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-      will use an Ftrl optimizer.
+  # Input builders
+  def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+    ...
+  def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+    ...
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
+
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a KeyError:
+      if `weight_column_name` is not `None`:
+        key=weight_column_name, value=a `Tensor`
+      for column in `feature_columns`:
+      - if isinstance(column, `SparseColumn`):
+          key=column.name, value=a `SparseTensor`
+      - if isinstance(column, `RealValuedColumn`):
+          key=column.name, value=a `Tensor`
+      - if `feauture_columns` is `None`:
+          input must contains only real valued `Tensor`.
   """
 
   def __init__(self,
