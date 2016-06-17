@@ -25,72 +25,8 @@ import tempfile
 
 import tensorflow as tf
 
+from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
-from tensorflow.core.framework import summary_pb2
-from tensorflow.python.training import summary_io
-
-
-# TODO(ptucker): Replace with contrib.testing.FakeSummaryWriter.
-class _FakeSummaryWriter(object):
-
-  def __init__(self, logdir, graph=None):
-    self._logdir = logdir
-    self._graph = graph
-    self._summaries = {}
-    self._added_graphs = []
-    self._added_session_logs = []
-
-  @property
-  def logdir(self):
-    return self._logdir
-
-  @property
-  def graph(self):
-    return self._graph
-
-  @property
-  def summaries(self):
-    return self._summaries
-
-  @property
-  def added_graphs(self):
-    return self._added_graphs
-
-  @property
-  def added_session_logs(self):
-    return self._added_session_logs
-
-  def add_summary(self, summary, current_global_step):
-    if isinstance(summary, bytes):
-      summary_proto = summary_pb2.Summary()
-      summary_proto.ParseFromString(summary)
-      summary = summary_proto
-    if current_global_step in self._summaries:
-      step_summaries = self._summaries[current_global_step]
-    else:
-      step_summaries = []
-      self._summaries[current_global_step] = step_summaries
-    step_summaries.append(summary)
-    tf.logging.info('step=%s summary=%s.', current_global_step, summary)
-
-  # NOTE: Ignore global_step since its value is non-deterministic.
-  def add_graph(self, graph, global_step=None, graph_def=None):
-    if (global_step is not None) and (global_step < 0):
-      raise ValueError('Invalid global_step %s.' % global_step)
-    if graph_def is not None:
-      raise ValueError('Unexpected graph_def %s.' % graph_def)
-    self._added_graphs.append(graph)
-
-  # NOTE: Ignore global_step since its value is non-deterministic.
-  def add_session_log(self, session_log, global_step=None):
-    # pylint: disable=unused-argument
-    self._added_session_logs.append(session_log)
-
-  def flush(self):
-    pass
-
-  def reopen(self):
-    pass
 
 
 class _Feeder(object):
@@ -115,36 +51,25 @@ class GraphActionsTest(tf.test.TestCase):
 
   def setUp(self):
     learn.graph_actions.clear_summary_writers()
-    self._original_summary_writer = summary_io.SummaryWriter
-    summary_io.SummaryWriter = _FakeSummaryWriter
     self._output_dir = tempfile.mkdtemp()
+    testing.FakeSummaryWriter.install()
 
   def tearDown(self):
+    testing.FakeSummaryWriter.uninstall()
     if self._output_dir:
       shutil.rmtree(self._output_dir)
-    summary_io.SummaryWriter = self._original_summary_writer
     learn.graph_actions.clear_summary_writers()
 
   def _assert_summaries(
       self, output_dir, expected_summaries=None, expected_graphs=None,
       expected_session_logs=None):
     writer = learn.graph_actions.get_summary_writer(output_dir)
-    self.assertTrue(isinstance(writer, _FakeSummaryWriter))
-    self.assertEqual(output_dir, writer.logdir)
-    self.assertTrue(tf.get_default_graph() is writer.graph)
-    expected_summaries = expected_summaries or {}
-    for step in expected_summaries:
-      self.assertTrue(step in writer.summaries)
-      actual_simple_values = {}
-      for step_summary in writer.summaries[step]:
-        for v in step_summary.value:
-          # Ignore global_step/sec since it's written by Supervisor in a
-          # separate thread, so it's non-deterministic how many get written.
-          if 'global_step/sec' != v.tag:
-            actual_simple_values[v.tag] = v.simple_value
-      self.assertEqual(expected_summaries[step], actual_simple_values)
-    self.assertEqual(expected_graphs or [], writer.added_graphs)
-    self.assertEqual(expected_session_logs or [], writer.added_session_logs)
+    self.assertTrue(isinstance(writer, testing.FakeSummaryWriter))
+    writer.assert_summaries(
+        self, expected_logdir=output_dir, expected_graph=tf.get_default_graph(),
+        expected_summaries=expected_summaries,
+        expected_added_graphs=expected_graphs,
+        expected_session_logs=expected_session_logs)
 
   # TODO(ptucker): Test lock, multi-threaded access?
   def test_summary_writer(self):
