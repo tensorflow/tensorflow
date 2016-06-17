@@ -13598,24 +13598,39 @@ op {
   attr {
     name: "begin_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
     description: "a bitmask where a bit i being 1 means to ignore the begin\nvalue and instead use the largest interval possible. At runtime\nbegin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or\n`[-1, n-1]` if `stride[i] < 0`"
   }
   attr {
     name: "end_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
     description: "analogous to `begin_mask`"
   }
   attr {
     name: "ellipse_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
   }
   attr {
     name: "new_axis_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
   }
   attr {
     name: "shrink_axis_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
   }
   summary: "Return a strided slice from `input`."
   description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
