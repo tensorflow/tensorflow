@@ -5960,6 +5960,54 @@ op {
   summary: "Table initializer that takes two tensors for keys and values respectively."
 }
 op {
+  name: "InitializeTableFromTextFile"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to a table which will be initialized."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "filename"
+    description: "Filename of a vocabulary text file."
+    type: DT_STRING
+  }
+  attr {
+    name: "key_index"
+    type: "int"
+    description: "Column index in a line to get the table `key` values from."
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "value_index"
+    type: "int"
+    description: "Column index that represents information of a line to get the table\n`value` values from."
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "vocab_size"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Number of elements of the file, use -1 if unknown."
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "delimiter"
+    type: "string"
+    default_value {
+      s: "\t"
+    }
+    description: "Delimiter to separate fields in a line."
+  }
+  summary: "Initializes a table from a text file."
+  description: "It inserts one key-value pair into the table for each line of the file.\nThe key and value is extracted from the whole line content, elements from the\nsplit line based on `delimiter` or the line number (starting from zero).\nWhere to extract the key and value from a line is specified by `key_index` and\n`value_index`.\n\n- A value of -1 means use the line number(starting from zero), expects `int64`.\n- A value of -2 means use the whole line content, expects `string`.\n- A value >= 0 means use the index (starting at zero) of the split line based\n  on `delimiter`."
+}
+op {
   name: "Inv"
   input_arg {
     name: "x"
