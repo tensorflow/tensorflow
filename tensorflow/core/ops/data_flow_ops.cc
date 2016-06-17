@@ -677,6 +677,23 @@ values: Same shape as `keys`.  Values found in the table, or `default_values`
    for missing keys.
 )doc");
 
+REGISTER_OP("LookupTableInsert")
+    .Input("table_handle: Ref(string)")
+    .Input("keys: Tin")
+    .Input("values: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .Doc(R"doc(
+Updates the table to associates keys with values.
+
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+
+table_handle: Handle to the table.
+keys:  Any shape.  Keys to look up.
+values: Same shape as `keys`.  Values to associate with keys.
+)doc");
+
 REGISTER_OP("LookupTableSize")
     .Input("table_handle: Ref(string)")
     .Output("size: int64")
@@ -700,6 +717,29 @@ Creates a non-initialized hash table.
 This op creates a hash table, specifying the type of its keys and values.
 Before using the table you will have to initialize it.  After initialization the
 table will be immutable.
+
+table_handle: Handle to a table.
+container: If non-empty, this table is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this table is shared under the given name across
+  multiple sessions.
+key_dtype: Type of the table keys.
+value_dtype: Type of the table values.
+)doc");
+
+REGISTER_OP("MutableHashTable")
+    .Output("table_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .SetIsStateful()
+    .Doc(R"doc(
+Creates an empty hash table.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Data can be inserted into the table using the insert operations. It
+does not support the initialization operation.
 
 table_handle: Handle to a table.
 container: If non-empty, this table is placed in the given container.

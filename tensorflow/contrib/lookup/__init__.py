@@ -19,6 +19,7 @@
 @@LookupInterface
 @@InitializableLookupTableBase
 @@HashTable
+@@MutableHashTable
 @@TableInitializerBase
 @@KeyValueTensorInitializer
 @@TextFileIndex
