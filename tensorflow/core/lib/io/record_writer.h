@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -27,19 +29,42 @@ class WritableFile;
 
 namespace io {
 
+class RecordWriterOptions {
+ public:
+  enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
+  CompressionType compression_type = NONE;
+
+  // Options specific to zlib compression.
+  ZlibCompressionOptions zlib_options;
+};
+
 class RecordWriter {
  public:
   // Create a writer that will append data to "*dest".
   // "*dest" must be initially empty.
   // "*dest" must remain live while this Writer is in use.
-  explicit RecordWriter(WritableFile* dest);
+  RecordWriter(WritableFile* dest,
+               const RecordWriterOptions& options = RecordWriterOptions());
 
   ~RecordWriter();
 
   Status WriteRecord(StringPiece slice);
 
+  // Flushes any buffered data held by underlying containers of the
+  // RecordWriter to the WritableFile. Does *not* flush the
+  // WritableFile.
+  Status Flush() {
+    if (zlib_output_buffer_) {
+      return zlib_output_buffer_->Flush();
+    }
+
+    return Status::OK();
+  }
+
  private:
   WritableFile* const dest_;
+  RecordWriterOptions options_;
+  std::unique_ptr<ZlibOutputBuffer> zlib_output_buffer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordWriter);
 };

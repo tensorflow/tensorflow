@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Helper functions for enqueuing data from arrays and pandas `DataFrame`s."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_queue_runner as fqr
@@ -41,49 +41,60 @@ except ImportError:
 class _ArrayFeedFn(object):
   """Creates feed dictionaries from numpy arrays."""
 
-  def __init__(self, placeholders, array):
+  def __init__(self,
+               placeholders,
+               array,
+               batch_size,
+               random_start=False,
+               seed=None):
     if len(placeholders) != 2:
       raise ValueError("_array_feed_fn expects 2 placeholders; got {}.".format(
           len(placeholders)))
     self._placeholders = placeholders
     self._array = array
-    self._reset()
-
-  def _reset(self):
-    self._row_iterator = enumerate(self._array)
+    self._max = len(array)
+    self._batch_size = batch_size
+    random.seed(seed)
+    self._trav = random.randrange(self._max) if random_start else 0
 
   def __call__(self):
-    try:
-      index, row = next(self._row_iterator)
-    except StopIteration:
-      self._reset()
-      index, row = next(self._row_iterator)
-    return {self._placeholders[0]: index, self._placeholders[1]: row}
+    integer_indexes = [j % self._max
+                       for j in range(self._trav, self._trav + self._batch_size)
+                      ]
+    self._trav = (integer_indexes[-1] + 1) % self._max
+    return {self._placeholders[0]: integer_indexes,
+            self._placeholders[1]: self._array[integer_indexes]}
 
 
 class _PandasFeedFn(object):
   """Creates feed dictionaries from pandas `DataFrames`."""
 
-  def __init__(self, placeholders, dataframe):
+  def __init__(self,
+               placeholders,
+               dataframe,
+               batch_size,
+               random_start=False,
+               seed=None):
     if len(placeholders) != len(dataframe.columns) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
           len(dataframe.columns), len(placeholders)))
     self._index_placeholder = placeholders[0]
-    self._row_placeholders = placeholders[1:]
+    self._col_placeholders = placeholders[1:]
     self._dataframe = dataframe
-    self._reset()
-
-  def _reset(self):
-    self._row_iterator = self._dataframe.iterrows()
+    self._max = len(dataframe)
+    self._batch_size = batch_size
+    random.seed(seed)
+    self._trav = random.randrange(self._max) if random_start else 0
 
   def __call__(self):
-    try:
-      index, row = next(self._row_iterator)
-    except StopIteration:
-      self._reset()
-      index, row = next(self._row_iterator)
-    feed_dict = dict(zip(self._row_placeholders, row))
-    feed_dict[self._index_placeholder] = index
+    integer_indexes = [j % self._max
+                       for j in range(self._trav, self._trav + self._batch_size)
+                      ]
+    self._trav = (integer_indexes[-1] + 1) % self._max
+    result = self._dataframe.iloc[integer_indexes]
+    cols = [result[col].values for col in result.columns]
+    feed_dict = dict(zip(self._col_placeholders, cols))
+    feed_dict[self._index_placeholder] = result.index.values
     return feed_dict
 
 
@@ -92,7 +103,8 @@ def enqueue_data(data,
                  shuffle=False,
                  min_after_dequeue=None,
                  seed=None,
-                 name="enqueue_input"):
+                 name="enqueue_input",
+                 enqueue_size=1):
   """Creates a queue filled from a numpy array or pandas `DataFrame`.
 
     Returns a queue filled with the rows of the given array or `DataFrame`. In
@@ -110,6 +122,7 @@ def enqueue_data(data,
     defaults to `capacity` / 4.
     seed: used to seed RandomShuffleQueue. Only used when `shuffle` is True.
     name: a scope name identifying the data.
+    enqueue_size: the number of rows to enqueue per step.
 
   Returns:
     A queue filled with the rows of the given array or `DataFrame`.
@@ -117,24 +130,25 @@ def enqueue_data(data,
   Raises:
     TypeError: `data` is not a Pandas `DataFrame` or a numpy `ndarray`.
   """
-  with ops.op_scope([], name, None) as name:
+  with ops.op_scope([], name, None):
     # TODO(jamieas): create multithreaded version of enqueue_data.
     if isinstance(data, np.ndarray):
       types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
-      shapes = [(), data.shape[1:]]
+      queue_shapes = [(), data.shape[1:]]
       get_feed_fn = _ArrayFeedFn
     elif HAS_PANDAS and isinstance(data, pd.DataFrame):
       types = [dtypes.as_dtype(dt)
                for dt in [data.index.dtype] + list(data.dtypes)]
-      shapes = [() for _ in types]
+      queue_shapes = [() for _ in types]
       get_feed_fn = _PandasFeedFn
     else:
       raise TypeError(
           "data must be either a numpy array or pandas DataFrame if pandas is "
           "installed; got {}".format(type(data).__name__))
 
-    placeholders = [array_ops.placeholder(*type_and_shape)
-                    for type_and_shape in zip(types, shapes)]
+    # Note the placeholders have no shapes, so they will accept any
+    # enqueue_size.  enqueue_many below will break them up.
+    placeholders = [array_ops.placeholder(t) for t in types]
 
     if shuffle:
       min_after_dequeue = int(capacity / 4 if min_after_dequeue is None else
@@ -142,13 +156,20 @@ def enqueue_data(data,
       queue = data_flow_ops.RandomShuffleQueue(capacity,
                                                min_after_dequeue,
                                                dtypes=types,
-                                               shapes=shapes,
+                                               shapes=queue_shapes,
                                                seed=seed)
     else:
       min_after_dequeue = 0  # just for the summary text
-      queue = data_flow_ops.FIFOQueue(capacity, dtypes=types, shapes=shapes)
-    enqueue_op = queue.enqueue(placeholders)
-    feed_fn = get_feed_fn(placeholders, data)
+
+      queue = data_flow_ops.FIFOQueue(capacity,
+                                      dtypes=types,
+                                      shapes=queue_shapes)
+    enqueue_op = queue.enqueue_many(placeholders)
+    feed_fn = get_feed_fn(placeholders,
+                          data,
+                          enqueue_size,
+                          random_start=shuffle,
+                          seed=seed)
     runner = fqr.FeedingQueueRunner(queue=queue,
                                     enqueue_ops=[enqueue_op],
                                     feed_fn=feed_fn)
@@ -159,7 +180,8 @@ def enqueue_data(data,
         dtypes.float32) * (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
-    summary_name = ("queue/%sfraction_over_%d_of_%d_full" % (
-        queue.name, min_after_dequeue, capacity - min_after_dequeue))
+    summary_name = ("queue/%sfraction_over_%d_of_%d_full" %
+                    (queue.name, min_after_dequeue,
+                     capacity - min_after_dequeue))
     logging_ops.scalar_summary(summary_name, full)
     return queue

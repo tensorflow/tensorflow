@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/table.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -32,6 +33,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace table {
+
+namespace {
+typedef std::pair<StringPiece, StringPiece> StringPiecePair;
+}
 
 namespace test {
 static StringPiece RandomString(random::SimplePhilox* rnd, int len,
@@ -299,7 +304,7 @@ class Harness : public ::testing::Test {
     iter->SeekToFirst();
     for (KVMap::const_iterator model_iter = data.begin();
          model_iter != data.end(); ++model_iter) {
-      ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+      ASSERT_EQ(ToStringPiecePair(data, model_iter), ToStringPiecePair(iter));
       iter->Next();
     }
     ASSERT_TRUE(!iter->Valid());
@@ -322,7 +327,8 @@ class Harness : public ::testing::Test {
             if (kVerbose) fprintf(stderr, "Next\n");
             iter->Next();
             ++model_iter;
-            ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+            ASSERT_EQ(ToStringPiecePair(data, model_iter),
+                      ToStringPiecePair(iter));
           }
           break;
         }
@@ -331,7 +337,8 @@ class Harness : public ::testing::Test {
           if (kVerbose) fprintf(stderr, "SeekToFirst\n");
           iter->SeekToFirst();
           model_iter = data.begin();
-          ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+          ASSERT_EQ(ToStringPiecePair(data, model_iter),
+                    ToStringPiecePair(iter));
           break;
         }
 
@@ -341,7 +348,8 @@ class Harness : public ::testing::Test {
           if (kVerbose)
             fprintf(stderr, "Seek '%s'\n", str_util::CEscape(key).c_str());
           iter->Seek(StringPiece(key));
-          ASSERT_EQ(ToString(data, model_iter), ToString(iter));
+          ASSERT_EQ(ToStringPiecePair(data, model_iter),
+                    ToStringPiecePair(iter));
           break;
         }
       }
@@ -349,27 +357,29 @@ class Harness : public ::testing::Test {
     delete iter;
   }
 
-  string ToString(const KVMap& data, const KVMap::const_iterator& it) {
+  StringPiecePair ToStringPiecePair(const KVMap& data,
+                                    const KVMap::const_iterator& it) {
     if (it == data.end()) {
-      return "END";
+      return StringPiecePair("END", "");
     } else {
-      return "'" + it->first + "->" + it->second + "'";
+      return StringPiecePair(it->first, it->second);
     }
   }
 
-  string ToString(const KVMap& data, const KVMap::const_reverse_iterator& it) {
+  StringPiecePair ToStringPiecePair(const KVMap& data,
+                                    const KVMap::const_reverse_iterator& it) {
     if (it == data.rend()) {
-      return "END";
+      return StringPiecePair("END", "");
     } else {
-      return "'" + it->first + "->" + it->second + "'";
+      return StringPiecePair(it->first, it->second);
     }
   }
 
-  string ToString(const Iterator* it) {
+  StringPiecePair ToStringPiecePair(const Iterator* it) {
     if (!it->Valid()) {
-      return "END";
+      return StringPiecePair("END", "");
     } else {
-      return "'" + it->key().ToString() + "->" + it->value().ToString() + "'";
+      return StringPiecePair(it->key(), it->value());
     }
   }
 

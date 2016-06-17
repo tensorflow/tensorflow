@@ -43,6 +43,7 @@ TEST(InputBuffer, ReadLine_Empty) {
     string line;
     io::InputBuffer in(file, buf_size);
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    delete file;
   }
 }
 
@@ -65,6 +66,7 @@ TEST(InputBuffer, ReadLine1) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    delete file;
   }
 }
 
@@ -87,6 +89,7 @@ TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    delete file;
   }
 }
 
@@ -113,6 +116,7 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    delete file;
   }
 }
 
@@ -139,6 +143,7 @@ TEST(InputBuffer, ReadLine_CRLF) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
+    delete file;
   }
 }
 
@@ -174,6 +179,7 @@ TEST(InputBuffer, ReadNBytes) {
     TF_CHECK_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
+    delete file;
   }
 }
 
@@ -209,6 +215,7 @@ TEST(InputBuffer, SkipNBytes) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
+    delete file;
   }
 }
 

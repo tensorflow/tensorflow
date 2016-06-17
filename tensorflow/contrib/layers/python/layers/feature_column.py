@@ -640,7 +640,7 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
 
 
 def real_valued_column(column_name,
-                       dimension=None,
+                       dimension=1,
                        default_value=None,
                        dtype=dtypes.float32):
   """Creates a _RealValuedColumn.
@@ -661,13 +661,19 @@ def real_valued_column(column_name,
   Returns:
     A _RealValuedColumn.
   Raises:
+    TypeError: if dimension is not an int
+    ValueError: if dimension is not a positive integer
     TypeError: if default_value is a list but its length is not equal to the
       value of `dimension`.
     TypeError: if default_value is not compatible with dtype.
     ValueError: if dtype is not convertable to tf.float32.
   """
-  if dimension is None:
-    dimension = 1
+
+  if not isinstance(dimension, int):
+    raise TypeError("dimension must be an integer")
+
+  if dimension < 1:
+    raise ValueError("dimension must be greater than 0")
 
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError("dtype is not convertible to tf.float32. Given {}".format(

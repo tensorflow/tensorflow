@@ -19,6 +19,7 @@ py_library(
         "python/ops/arg_scope.py",
         "python/ops/embedding_ops.py",
         "python/ops/ops.py",
+        "python/ops/sampling_ops.py",
         "python/ops/variables.py",
     ],
     srcs_version = "PY2AND3",
@@ -83,6 +84,18 @@ cuda_py_test(
         ":framework_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "sampling_ops_test",
+    size = "small",
+    srcs = ["python/ops/sampling_ops_test.py"],
+    additional_deps = [
+        ":framework_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 

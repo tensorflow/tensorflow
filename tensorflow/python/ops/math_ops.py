@@ -1366,6 +1366,35 @@ def _as_indexed_slices_list(inputs):
   return casted_outputs
 
 
+def add_n(inputs, name=None):
+  """Adds all input tensors element-wise.
+
+  Args:
+    inputs: A list of `Tensor` objects, each with same shape and type.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of same shape and type as the elements of `inputs`.
+
+  Raises:
+    ValueError: If `inputs` don't all have same shape and dtype or the shape
+    cannot be inferred.
+  """
+  if not inputs or not isinstance(inputs, (list, tuple)):
+    raise ValueError("inputs must be a list of at least one Tensor with the "
+                     "same dtype and shape")
+  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  if not all(isinstance(x, ops.Tensor) for x in inputs):
+    raise ValueError("inputs must be a list of at least one Tensor with the "
+                     "same dtype and shape")
+
+  if len(inputs) == 1:
+    if name:
+      return array_ops.identity(inputs[0], name=name)
+    return inputs[0]
+  return gen_math_ops._add_n(inputs, name=name)
+
+
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
 

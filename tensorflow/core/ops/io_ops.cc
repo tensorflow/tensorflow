@@ -217,6 +217,7 @@ REGISTER_OP("TFRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("compression_type: string = ''")
     .SetIsStateful()
     .Doc(R"doc(
 A Reader that outputs the records from a TensorFlow Records file.

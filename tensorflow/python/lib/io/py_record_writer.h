@@ -33,7 +33,10 @@ class RecordWriter;
 // by multiple threads.
 class PyRecordWriter {
  public:
-  static PyRecordWriter* New(const string& filename);
+  // TODO(vrv): make this take a shared proto to configure
+  // the compression options.
+  static PyRecordWriter* New(const string& filename,
+                             const string& compression_type_string);
   ~PyRecordWriter();
 
   bool WriteRecord(tensorflow::StringPiece record);
