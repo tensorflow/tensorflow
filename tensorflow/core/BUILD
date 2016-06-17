@@ -75,6 +75,7 @@ load(
     "tf_additional_lib_srcs",
     "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
+    "tf_additional_cupti_wrapper_deps",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_kernel_tests_linkstatic",
@@ -1106,12 +1107,12 @@ cc_library(
 )
 
 tf_cuda_library(
-    name = "cupti_wrapper",
+    name = "cupti_wrapper_default",
     srcs = [
-        "common_runtime/gpu/cupti_wrapper.cc",
+        "platform/default/gpu/cupti_wrapper.cc",
     ],
     hdrs = [
-        "common_runtime/gpu/cupti_wrapper.h",
+        "platform/default/gpu/cupti_wrapper.h",
     ],
     copts = tf_copts(),
     cuda_deps = [
@@ -1131,11 +1132,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = [
-        ":cupti_wrapper",
-        "//third_party/gpus/cuda:cuda_headers",
-        "//third_party/gpus/cuda:cupti_headers",
-    ],
+    cuda_deps = tf_additional_cupti_wrapper_deps(),
     deps = [
         ":core_cpu_internal",
         ":lib",

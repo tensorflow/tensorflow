@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_CUPTI_WRAPPER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_CUPTI_WRAPPER_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_CUPTI_WRAPPER_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_CUPTI_WRAPPER_H_
 
 #if GOOGLE_CUDA
 
@@ -23,8 +23,9 @@ limitations under the License.
 
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 
-namespace tensorflow {
-namespace gputracer {
+namespace perftools {
+namespace gputools {
+namespace profiler {
 
 // Wraps the CUPTI API so that we can dynamically load the library.
 class CuptiWrapper {
@@ -67,9 +68,10 @@ class CuptiWrapper {
   CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber);
 };
 
-}  // namespace gputracer
-}  // namespace tensorflow
+}  // namespace profiler
+}  // namespace gputools
+}  // namespace perftools
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_CUPTI_WRAPPER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEFAULT_CUPTI_WRAPPER_H_
