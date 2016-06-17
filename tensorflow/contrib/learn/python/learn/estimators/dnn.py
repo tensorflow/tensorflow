@@ -29,53 +29,55 @@ from tensorflow.python.ops import nn
 class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   """A classifier for TensorFlow DNN models.
 
-    Example:
+  Example:
 
-      ```
-      installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-      impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-      installed_emb = embedding_column(installed_app_id, dimension=16,
-                                       combiner="sum")
-      impression_emb = embedding_column(impression_app_id, dimension=16,
-                                        combiner="sum")
+  education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                   combiner="sum")
+  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                   combiner="sum")
 
-      estimator = DNNClassifier(
-          feature_columns=[installed_emb, impression_emb],
-          hidden_units=[1024, 512, 256])
+  estimator = DNNClassifier(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256])
 
-      # Or estimator using the ProximalAdagradOptimizer optimizer with
-      # regularization.
-      estimator = DNNClassifier(
-          feature_columns=[installed_emb, impression_emb],
-          hidden_units=[1024, 512, 256],
-          optimizer=tf.train.ProximalAdagradOptimizer(
-            learning_rate=0.1,
-            l1_regularization_strength=0.001
-          ))
+  # Or estimator using the ProximalAdagradOptimizer optimizer with
+  # regularization.
+  estimator = DNNClassifier(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
 
-      # Input builders
-      def input_fn_train: # returns x, Y
-        pass
-      estimator.fit(input_fn=input_fn_train)
+  # Input builders
+  def input_fn_train: # returns x, Y
+    pass
+  estimator.fit(input_fn=input_fn_train)
 
-      def input_fn_eval: # returns x, Y
-        pass
-      estimator.evaluate(input_fn=input_fn_eval)
-      estimator.predict(x=x)
-      ```
+  def input_fn_eval: # returns x, Y
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
 
-    Input of `fit` and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
-        - if `feauture_columns` is None, then `input` must contains only real
-          valued `Tensor`.
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is None, then `input` must contains only real
+        valued `Tensor`.
   """
 
   def __init__(self,
@@ -150,53 +152,55 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """A regressor for TensorFlow DNN models.
 
-    Example:
+  Example:
 
-      ```
-      installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-      impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-      installed_emb = embedding_column(installed_app_id, dimension=16,
-                                       combiner="sum")
-      impression_emb = embedding_column(impression_app_id, dimension=16,
-                                        combiner="sum")
+  education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                   combiner="sum")
+  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                   combiner="sum")
 
-      estimator = DNNRegressor(
-          feature_columns=[installed_emb, impression_emb],
-          hidden_units=[1024, 512, 256])
+  estimator = DNNRegressor(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256])
 
-      # Or estimator using the ProximalAdagradOptimizer optimizer with
-      # regularization.
-      estimator = DNNRegressor(
-          feature_columns=[installed_emb, impression_emb],
-          hidden_units=[1024, 512, 256],
-          optimizer=tf.train.ProximalAdagradOptimizer(
-            learning_rate=0.1,
-            l1_regularization_strength=0.001
-          ))
+  # Or estimator using the ProximalAdagradOptimizer optimizer with
+  # regularization.
+  estimator = DNNRegressor(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
 
-      # Input builders
-      def input_fn_train: # returns x, Y
-        pass
-      estimator.fit(input_fn=input_fn_train)
+  # Input builders
+  def input_fn_train: # returns x, Y
+    pass
+  estimator.fit(input_fn=input_fn_train)
 
-      def input_fn_eval: # returns x, Y
-        pass
-      estimator.evaluate(input_fn=input_fn_eval)
-      estimator.predict(x=x)
-      ```
+  def input_fn_eval: # returns x, Y
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
 
-    Input of `fit` and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
-        - if `feauture_columns` is None, then `input` must contains only real
-          valued `Tensor`.
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is None, then `input` must contains only real
+        valued `Tensor`.
   """
 
   def __init__(self,
