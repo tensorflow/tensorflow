@@ -65,10 +65,8 @@ TEST(GcsFileSystemTest, NewRandomAccessFile) {
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)));
 
-  RandomAccessFile* file_ptr;
-  TF_EXPECT_OK(
-      fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file_ptr));
-  std::unique_ptr<RandomAccessFile> file(file_ptr);
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
   char scratch[6];
   StringPiece result;
@@ -95,9 +93,8 @@ TEST(GcsFileSystemTest, NewWritableFile) {
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)));
 
-  WritableFile* file_ptr;
-  TF_EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable.txt", &file_ptr));
-  std::unique_ptr<WritableFile> file(file_ptr);
+  std::unique_ptr<WritableFile> file;
+  TF_EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable.txt", &file));
 
   TF_EXPECT_OK(file->Append("content1,"));
   TF_EXPECT_OK(file->Append("content2"));
@@ -121,10 +118,8 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)));
 
-  WritableFile* file_ptr;
-  TF_EXPECT_OK(
-      fs.NewAppendableFile("gs://bucket/path/appendable.txt", &file_ptr));
-  std::unique_ptr<WritableFile> file(file_ptr);
+  std::unique_ptr<WritableFile> file;
+  TF_EXPECT_OK(fs.NewAppendableFile("gs://bucket/path/appendable.txt", &file));
 
   TF_EXPECT_OK(file->Append("content2"));
   TF_EXPECT_OK(file->Close());
@@ -149,10 +144,9 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)));
 
-  ReadOnlyMemoryRegion* region_ptr;
+  std::unique_ptr<ReadOnlyMemoryRegion> region;
   TF_EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile(
-      "gs://bucket/path/random_access.txt", &region_ptr));
-  std::unique_ptr<ReadOnlyMemoryRegion> region(region_ptr);
+      "gs://bucket/path/random_access.txt", &region));
 
   EXPECT_EQ(content, StringPiece(reinterpret_cast<const char*>(region->data()),
                                  region->length()));

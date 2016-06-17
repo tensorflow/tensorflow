@@ -27,13 +27,13 @@ PyRecordWriter::PyRecordWriter() {}
 
 PyRecordWriter* PyRecordWriter::New(const string& filename,
                                     const string& compression_type_string) {
-  WritableFile* file;
+  std::unique_ptr<WritableFile> file;
   Status s = Env::Default()->NewWritableFile(filename, &file);
   if (!s.ok()) {
     return nullptr;
   }
   PyRecordWriter* writer = new PyRecordWriter;
-  writer->file_ = file;
+  writer->file_ = file.release();
 
   RecordWriterOptions options;
   if (compression_type_string == "ZLIB") {
