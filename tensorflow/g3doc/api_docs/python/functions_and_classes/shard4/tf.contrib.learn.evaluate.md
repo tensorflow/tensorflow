@@ -46,3 +46,8 @@ and written to `output_dir`.
     eval steps were run.
 *  <b>`global_step`</b>: The global step this evaluation corresponds to.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `output_dir` is empty.
+

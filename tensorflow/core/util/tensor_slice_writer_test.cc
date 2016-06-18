@@ -334,9 +334,9 @@ TEST(TensorSliceWriteTest, SizeErrors) {
 
   // Add a large string tensor slice, which will fail.
   {
-    TensorShape shape({100, 1000000});
+    TensorShape shape({256, 1024});
     TensorSlice slice = TensorSlice::ParseOrDie("-:-");
-    const std::vector<string> data(100000000, "rhubarbrhubarb");
+    const std::vector<string> data(256 * 1024, std::string(8192, 'f'));
     Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(StringPiece(s.error_message())

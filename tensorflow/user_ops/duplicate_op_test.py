@@ -12,26 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for lookup operations.
-
-@@string_to_index
-@@index_to_string
-@@LookupInterface
-@@InitializableLookupTableBase
-@@HashTable
-@@MutableHashTable
-@@TableInitializerBase
-@@KeyValueTensorInitializer
-@@TextFileIndex
-@@TextFileInitializer
-@@TextFileIdTableInitializer
-@@TextFileStringTableInitializer
-
-"""
-
+"""Tests for custom user ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.lookup.lookup_ops import *
+import os.path
+
+import tensorflow as tf
+
+
+class DuplicateOpTest(tf.test.TestCase):
+
+  def testBasic(self):
+    library_filename = os.path.join(tf.resource_loader.get_data_files_path(),
+                                    'duplicate_op.so')
+    duplicate = tf.load_op_library(library_filename)
+
+    self.assertEqual(len(duplicate.OP_LIST.op), 0)
+
+    with self.test_session():
+      self.assertEqual(tf.add(1, 41).eval(), 42)
+
+
+if __name__ == '__main__':
+  tf.test.main()

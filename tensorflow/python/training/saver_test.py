@@ -290,17 +290,6 @@ class SaverTest(tf.test.TestCase):
   def testLargeVariable(self):
     save_path = os.path.join(self.get_temp_dir(), "large_variable")
     with tf.Session("", graph=tf.Graph()) as sess:
-      # Declare a variable larger than 2GB.
-      with tf.device("/cpu:0"):
-        var = tf.Variable(tf.constant(-1, shape=[300, 1000000], dtype=tf.int8))
-      save = tf.train.Saver({var.op.name: var})
-      var.initializer.run()
-      with self.assertRaisesRegexp(
-          tf.errors.InvalidArgumentError,
-          "Tensor slice is too large to serialize"):
-        save.save(sess, save_path)
-
-    with tf.Session("", graph=tf.Graph()) as sess:
       # Declare a variable that is exactly 2GB. This should fail,
       # because a serialized checkpoint includes other header
       # metadata.

@@ -237,31 +237,30 @@ GcsFileSystem::GcsFileSystem(
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)) {}
 
-Status GcsFileSystem::NewRandomAccessFile(const string& fname,
-                                          RandomAccessFile** result) {
+Status GcsFileSystem::NewRandomAccessFile(
+    const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
-  *result = new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
-                                    http_request_factory_.get());
+  result->reset(new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
+                                        http_request_factory_.get()));
   return Status::OK();
 }
 
 Status GcsFileSystem::NewWritableFile(const string& fname,
-                                      WritableFile** result) {
+                                      std::unique_ptr<WritableFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
-  *result = new GcsWritableFile(bucket, object, auth_provider_.get(),
-                                http_request_factory_.get());
+  result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
+                                    http_request_factory_.get()));
   return Status::OK();
 }
 
 // Reads the file from GCS in chunks and stores it in a tmp file,
 // which is then passed to GcsWritableFile.
 Status GcsFileSystem::NewAppendableFile(const string& fname,
-                                        WritableFile** result) {
-  RandomAccessFile* reader_ptr;
-  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader_ptr));
-  std::unique_ptr<RandomAccessFile> reader(reader_ptr);
+                                        std::unique_ptr<WritableFile>* result) {
+  std::unique_ptr<RandomAccessFile> reader;
+  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
   std::unique_ptr<char[]> buffer(new char[kBufferSize]);
   Status status;
   uint64 offset = 0;
@@ -289,26 +288,25 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   // Create a writable file and pass the old content to it.
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
-  *result =
-      new GcsWritableFile(bucket, object, auth_provider_.get(),
-                          old_content_filename, http_request_factory_.get());
+  result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
+                                    old_content_filename,
+                                    http_request_factory_.get()));
   return Status::OK();
 }
 
 Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, ReadOnlyMemoryRegion** result) {
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   uint64 size;
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   std::unique_ptr<char[]> data(new char[size]);
 
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
-  std::unique_ptr<RandomAccessFile> file_ptr(file);
 
   StringPiece piece;
   TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
 
-  *result = new GcsReadOnlyMemoryRegion(std::move(data), size);
+  result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
   return Status::OK();
 }
 

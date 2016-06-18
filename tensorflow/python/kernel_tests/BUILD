@@ -96,7 +96,6 @@ cuda_py_tests(
         "check_ops_test.py",
         "constant_op_test.py",
         "control_flow_ops_py_test.py",
-        "conv_ops_test.py",
         "cross_grad_test.py",
         "denormal_test.py",
         "dense_update_ops_no_tsan_test.py",
@@ -164,6 +163,7 @@ cuda_py_tests(
     size = "medium",
     srcs = [
         "concat_op_test.py",
+        "conv_ops_test.py",
         "division_future_test.py",
         "fft_ops_test.py",
         "pooling_ops_test.py",

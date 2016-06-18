@@ -983,11 +983,11 @@ REGISTER_OP("StridedSlice")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Index: {int32, int64}")
-    .Attr("begin_mask: int32 = 0")
-    .Attr("end_mask: int32 = 0")
-    .Attr("ellipse_mask: int32 = 0")
-    .Attr("new_axis_mask: int32 = 0")
-    .Attr("shrink_axis_mask: int32 = 0")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipse_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
     .Doc(R"doc(
 Return a strided slice from `input`.
 

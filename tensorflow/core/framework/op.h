@@ -54,22 +54,23 @@ class OpRegistryInterface {
 };
 
 // The standard implementation of OpRegistryInterface, along with a
-// global singleton used for registering OpDefs via the REGISTER
+// global singleton used for registering ops via the REGISTER
 // macros below.  Thread-safe.
 //
 // Example registration:
-//   OpRegistry::Global()->Register([]()->OpDef{
-//     OpDef def;
-//     // Populate def here.
-//     return def;
+//   OpRegistry::Global()->Register(
+//     [](OpRegistrationData* op_reg_data)->Status {
+//       // Populate *op_reg_data here.
+//       return Status::OK();
 //   });
 class OpRegistry : public OpRegistryInterface {
  public:
+  typedef std::function<Status(OpRegistrationData*)> OpRegistrationDataFactory;
+
   OpRegistry();
   ~OpRegistry() override;
 
-  // Calls watcher and registers the passed OpDef.
-  void Register(std::unique_ptr<OpRegistrationData> op_data);
+  void Register(OpRegistrationDataFactory op_data_factory);
 
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
@@ -89,10 +90,12 @@ class OpRegistry : public OpRegistryInterface {
   void GetRegisteredOps(std::vector<OpDef>* op_defs);
 
   // Watcher, a function object.
-  // watcher_, if not null, is called every time an op is registered via the
-  // Register function. watcher_ is passed the OpDef of the op getting
-  // registered.
-  typedef std::function<void(const OpDef&)> Watcher;
+  // The watcher, if set by SetWatcher(), is called every time an op is
+  // registered via the Register function. The watcher is passed the Status
+  // obtained from building and adding the OpDef to the registry, and the OpDef
+  // itself if it was successfully built. A watcher returns a Status which is in
+  // turn returned as the final registration status.
+  typedef std::function<Status(const Status&, const OpDef&)> Watcher;
 
   // An OpRegistry object has only one watcher. This interface is not thread
   // safe, as different clients are free to set the watcher any time.
@@ -100,10 +103,25 @@ class OpRegistry : public OpRegistryInterface {
   // operations :
   // SetWatcher(a_watcher);
   // Register some ops;
+  // op_registry->ProcessRegistrations();
   // SetWatcher(nullptr);
   // Returns a non-OK status if a non-null watcher is over-written by another
   // non-null watcher.
   Status SetWatcher(const Watcher& watcher);
+
+  // Process the current list of deferred registrations. Note that calls to
+  // Export, LookUp and DebugString would also implicitly process the deferred
+  // registrations.
+  void ProcessRegistrations() const;
+
+  // Defer the registrations until a later call to a function that processes
+  // deferred registrations are made. Normally, registrations that happen after
+  // calls to Export, LookUp, ProcessRegistrations and DebugString are processed
+  // immediately. Call this to defer future registrations.
+  void DeferRegistrations();
+
+  // Clear the registrations that have been deferred.
+  void ClearDeferredRegistrations();
 
  private:
   // Ensures that all the functions in deferred_ get called, their OpDef's
@@ -114,13 +132,12 @@ class OpRegistry : public OpRegistryInterface {
   // Add 'def' to the registry with additional data 'data'. On failure, or if
   // there is already an OpDef with that name registered, returns a non-okay
   // status.
-  Status RegisterAlreadyLocked(std::unique_ptr<OpRegistrationData> op_data)
-      const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status RegisterAlreadyLocked(OpRegistrationDataFactory op_data_factory) const
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
-  mutable std::vector<std::unique_ptr<OpRegistrationData>> deferred_
-      GUARDED_BY(mu_);
+  mutable std::vector<OpRegistrationDataFactory> deferred_ GUARDED_BY(mu_);
   // Values are owned.
   mutable std::unordered_map<string, const OpRegistrationData*> registry_
       GUARDED_BY(mu_);

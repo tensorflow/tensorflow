@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/cupti_wrapper.h"
+#include "tensorflow/core/platform/default/gpu/cupti_wrapper.h"
 
 #if GOOGLE_CUDA
 
@@ -22,8 +22,9 @@ limitations under the License.
 
 #include "tensorflow/core/platform/stream_executor.h"
 
-namespace tensorflow {
-namespace gputracer {
+namespace perftools {
+namespace gputools {
+namespace profiler {
 
 namespace dynload {
 
@@ -123,7 +124,8 @@ CUptiResult CuptiWrapper::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   return dynload::cuptiUnsubscribe(subscriber);
 }
 
-}  // namespace gputracer
-}  // namespace tensorflow
+}  // namespace profiler
+}  // namespace gputools
+}  // namespace perftools
 
 #endif  // GOOGLE_CUDA

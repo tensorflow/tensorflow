@@ -38,19 +38,21 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   Example:
 
   ```python
-  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-  installed_x_impression = crossed_column(
-      [installed_app_id, impression_app_id])
+  education_x_occupation = crossed_column(columns=[education, occupation],
+                                          hash_bucket_size=10000)
 
   # Estimator using the default optimizer.
   estimator = LinearClassifier(
-      feature_columns=[impression_app_id, installed_x_impression])
+      feature_columns=[occupation, education_x_occupation])
 
   # Or estimator using the FTRL optimizer with regularization.
   estimator = LinearClassifier(
-      feature_columns=[impression_app_id, installed_x_impression],
+      feature_columns=[occupation, education_x_occupation],
       optimizer=tf.train.FtrlOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
@@ -58,9 +60,10 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 
   # Or estimator using the SDCAOptimizer.
   estimator = LinearClassifier(
-     feature_columns=[impression_app_id, installed_x_impression],
+     feature_columns=[occupation, education_x_occupation],
      optimizer=tf.contrib.learn.SDCAOptimizer(
-       example_id_column='example_id', symmetric_l2_regularization=2.0
+       example_id_column='example_id',
+       symmetric_l2_regularization=2.0
      ))
 
   # Input builders
@@ -178,14 +181,16 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   Example:
 
   ```python
-  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-  installed_x_impression = crossed_column(
-      [installed_app_id, impression_app_id])
+  education_x_occupation = crossed_column(columns=[education, occupation],
+                                          hash_bucket_size=10000)
 
   estimator = LinearRegressor(
-      feature_columns=[impression_app_id, installed_x_impression])
+      feature_columns=[occupation, education_x_occupation])
 
   # Input builders
   def input_fn_train: # returns x, y, where y is a tensor of dimension 1
