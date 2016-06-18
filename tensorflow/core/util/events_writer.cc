@@ -57,13 +57,11 @@ bool EventsWriter::Init() {
       static_cast<long long>(time_in_seconds), port::Hostname().c_str());
   port::AdjustFilenameForLogging(&filename_);
 
-  WritableFile* file;
-  Status s = env_->NewWritableFile(filename_, &file);
+  Status s = env_->NewWritableFile(filename_, &recordio_file_);
   if (!s.ok()) {
     LOG(ERROR) << "Could not open events file: " << filename_ << ": " << s;
     return false;
   }
-  recordio_file_.reset(file);
   recordio_writer_.reset(new io::RecordWriter(recordio_file_.get()));
   if (recordio_writer_.get() == NULL) {
     LOG(ERROR) << "Could not create record writer";

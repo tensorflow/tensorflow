@@ -398,48 +398,51 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
   """A classifier for TensorFlow Linear and DNN joined training models.
 
   Example:
-    ```
-    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
 
-    installed_x_impression = crossed_column(
-        [installed_app_id, impression_app_id])
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-    installed_emb = embedding_column(installed_app_id, dimension=16,
-                                     combiner="sum")
-    impression_emb = embedding_column(impression_app_id, dimension=16,
-                                      combiner="sum")
+  education_x_occupation = crossed_column(columns=[education, occupation],
+                                          hash_bucket_size=10000)
+  education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                   combiner="sum")
+  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                   combiner="sum")
 
-    estimator = DNNLinearCombinedClassifier(
-        # common settings
-        n_classes, weight_column_name,
-        # wide settings
-        linear_feature_columns=[installed_x_impression],
-        linear_optimizer=tf.train.FtrlOptimizer(...),
-        # deep settings
-        dnn_feature_columns=[installed_emb, impression_emb],
-        dnn_hidden_units=[1000, 500, 100],
-        dnn_optimizer=tf.train.AdagradOptimizer(...))
+  estimator = DNNLinearCombinedClassifier(
+      # common settings
+      n_classes=n_classes,
+      weight_column_name=weight_column_name,
+      # wide settings
+      linear_feature_columns=[education_x_occupation],
+      linear_optimizer=tf.train.FtrlOptimizer(...),
+      # deep settings
+      dnn_feature_columns=[education_emb, occupation_emb],
+      dnn_hidden_units=[1000, 500, 100],
+      dnn_optimizer=tf.train.AdagradOptimizer(...))
 
-    # Input builders
-    def input_fn_train: # returns x, y
-      ...
-    def input_fn_eval: # returns x, y
-      ...
-    estimator.fit(input_fn=input_fn_train)
-    estimator.evaluate(input_fn=input_fn_eval)
-    estimator.predict(x=x)
-    ```
+  # Input builders
+  def input_fn_train: # returns x, y
+    ...
+  def input_fn_eval: # returns x, y
+    ...
+  estimator.fit(input_fn=input_fn_train)
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
 
-    Input of `fit` and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
   """
 
   def __init__(self,
@@ -637,55 +640,58 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
   """A regressor for TensorFlow Linear and DNN joined training models.
 
   Example:
-    ```
-    installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-    impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
 
-    installed_x_impression = crossed_column(
-        [installed_app_id, impression_app_id])
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-    installed_emb = embedding_column(installed_app_id, dimension=16,
-                                     combiner="sum")
-    impression_emb = embedding_column(impression_app_id, dimension=16,
-                                      combiner="sum")
+  education_x_occupation = crossed_column(columns=[education, occupation],
+                                          hash_bucket_size=10000)
+  education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                   combiner="sum")
+  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                   combiner="sum")
 
-    estimator = DNNLinearCombinedClassifier(
-        # common settings
-        n_classes, weight_column_name,
-        # wide settings
-        linear_feature_columns=[installed_x_impression],
-        linear_optimizer=tf.train.FtrlOptimizer(...),
-        # deep settings
-        dnn_feature_columns=[installed_emb, impression_emb],
-        dnn_hidden_units=[1000, 500, 100],
-        dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
+  estimator = DNNLinearCombinedClassifier(
+      # common settings
+      n_classes=n_classes,
+      weight_column_name=weight_column_name,
+      # wide settings
+      linear_feature_columns=[education_x_occupation],
+      linear_optimizer=tf.train.FtrlOptimizer(...),
+      # deep settings
+      dnn_feature_columns=[education_emb, occupation_emb],
+      dnn_hidden_units=[1000, 500, 100],
+      dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
 
-    # To apply L1 and L2 regularization, you can set optimizers as follows:
-    tf.train.ProximalAdagradOptimizer(
-        learning_rate=0.1,
-        l1_regularization_strength=0.001,
-        l2_regularization_strength=0.001)
-    # It is same for FtrlOptimizer.
+  # To apply L1 and L2 regularization, you can set optimizers as follows:
+  tf.train.ProximalAdagradOptimizer(
+      learning_rate=0.1,
+      l1_regularization_strength=0.001,
+      l2_regularization_strength=0.001)
+  # It is same for FtrlOptimizer.
 
-    # Input builders
-    def input_fn_train: # returns x, y
-      ...
-    def input_fn_eval: # returns x, y
-      ...
-    estimator.train(input_fn_train)
-    estimator.evaluate(input_fn_eval)
-    estimator.predict(x)
-    ```
+  # Input builders
+  def input_fn_train: # returns x, y
+    ...
+  def input_fn_eval: # returns x, y
+    ...
+  estimator.train(input_fn_train)
+  estimator.evaluate(input_fn_eval)
+  estimator.predict(x)
+  ```
 
-    Input of `fit`, `train`, and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
+  Input of `fit`, `train`, and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
   """
 
   def __init__(self,

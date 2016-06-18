@@ -28,13 +28,24 @@ from tensorflow.python.training import saver
 from tensorflow.python.training import summary_io
 
 
+# TODO(ptucker): Split each monitor class into a separate file.
+# TODO(ptucker): Fail if epoch or step does not monotonically increase?
 class BaseMonitor(object):
   """Base class for Monitors.
 
   Defines basic interfaces of Monitors.
   """
 
+  def __init__(self):
+    self._begun = False
+    self._current_epoch = None
+    self._current_step = None
+    self._max_steps = None
+    self._estimator = None
+
   def set_estimator(self, estimator):
+    if estimator is None:
+      raise ValueError("Missing estimator.")
     self._estimator = estimator
 
   def begin(self, max_steps=None):
@@ -42,20 +53,56 @@ class BaseMonitor(object):
 
     Args:
       max_steps: Maximum steps this training will run until.
+
+    Raises:
+      ValueError: if we've already begun a run.
     """
-    pass
+    if self._begun:
+      raise ValueError("begin called twice without end.")
+    self._max_steps = max_steps
+    self._begun = True
 
   def end(self):
-    """Callback at the end of training/evaluation."""
-    pass
+    """Callback at the end of training/evaluation.
+
+    Raises:
+      ValueError: if we've not begun a run.
+    """
+    if not self._begun:
+      raise ValueError("end called without begin.")
+    self._max_steps = None
+    self._begun = False
 
   def epoch_begin(self, epoch):
-    pass
+    """Begin epoch.
+
+    Args:
+      epoch: Epoch number.
+
+    Raises:
+      ValueError: if we've already begun an epoch, or `epoch` < 0.
+    """
+    if self._current_epoch is not None:
+      raise ValueError("epoch_begin called twice without epoch_end.")
+    if epoch < 0:
+      raise ValueError("Invalid epoch %s." % epoch)
+    self._current_epoch = epoch
 
   def epoch_end(self, epoch):
-    pass
+    """End epoch.
 
-  def step_begin(self, step):  # pylint: disable=unused-argument
+    Args:
+      epoch: Epoch number.
+
+    Raises:
+      ValueError: if we've not begun an epoch, or `epoch` number does not match.
+    """
+    if self._current_epoch != epoch:
+      raise ValueError(
+          "epoch_end expected %s but got %s.", self._current_epoch, epoch)
+    self._current_epoch = None
+
+  def step_begin(self, step):
     """Callback before training step begins.
 
     Use this callback to:
@@ -65,8 +112,18 @@ class BaseMonitor(object):
       step: int, global step of the model.
 
     Returns:
-      List of `Tensors` that going to be ran.
+      List of `Tensor` objects or string tensor names to be run.
+
+    Raises:
+      ValueError: if we've already begun a step, or `step` < 0, or
+          `step` > `max_steps`.
     """
+    if self._current_step is not None:
+      raise ValueError("step_begin called twice without step_end.")
+    if (step < 0) or (
+        (self._max_steps is not None) and (step > self._max_steps)):
+      raise ValueError("Invalid step %s." % step)
+    self._current_step = step
     return []
 
   def step_end(self, step, output):  # pylint: disable=unused-argument
@@ -84,18 +141,29 @@ class BaseMonitor(object):
 
     Returns:
       `bool`, `True` if model should stop, `False` or `None` if continue.
+
+    Raises:
+      ValueError: if we've not begun a step, or `step` number does not match.
     """
+    if self._current_step != step:
+      raise ValueError(
+          "step_end expected %s but got %s.", self._current_step, step)
+    self._current_step = None
     return False
 
 
 class EveryN(BaseMonitor):
   """Base class for monitors that execute callbacks every n steps.
 
-    TODO(ipolosukhin): Add also every n seconds.
+  `every_n_step_{begin,end}` is called:
+  - For all steps up to and including `first_n_steps`.
+  - Every `every_n_steps` steps after `first_n_steps`.
+  - On the last step (based on `max_steps` passed to `begin`).
+
+  TODO(ipolosukhin): Add also every n seconds.
   """
 
-  def __init__(
-      self, every_n_steps=100, first_n_steps=1):
+  def __init__(self, every_n_steps=100, first_n_steps=1):
     """Initializes an EveryN instance.
 
     Args:
@@ -103,13 +171,14 @@ class EveryN(BaseMonitor):
         steps.
       first_n_steps: int, calls `every_n_step_{begin,end}` for first n steps.
     """
+    super(EveryN, self).__init__()
     self._every_n_steps = every_n_steps
     self._first_n_steps = first_n_steps
-    self._max_steps = None
     self._last_step = 0
+    self._active_step = None
 
   def begin(self, max_steps=None):
-    self._max_steps = max_steps
+    super(EveryN, self).begin(max_steps)
 
   def every_n_step_begin(self, step):  # pylint: disable=unused-argument
     return []
@@ -118,22 +187,28 @@ class EveryN(BaseMonitor):
     return False
 
   def step_begin(self, step):
+    super(EveryN, self).step_begin(step)
     if (step <= self._first_n_steps or
         step >= (self._every_n_steps + self._last_step) or
         step == self._max_steps):
+      if self._active_step is not None:
+        raise ValueError(
+            "Starting step %s, %s still active." % (step, self._active_step))
+      self._active_step = step
       return self.every_n_step_begin(step)
     return []
 
   def step_end(self, step, output):
+    super(EveryN, self).step_end(step, output)
     to_stop = False
-    if (step <= self._first_n_steps or
-        step >= (self._every_n_steps + self._last_step) or
-        step == self._max_steps):
+    if (self._active_step is not None) and (self._active_step == step):
       self._last_step = step
       to_stop = self.every_n_step_end(step, output)
+      self._active_step = None
     return to_stop
 
 
+# TODO(ptucker): Rename to LoggingTensor since it's not writing to stdout.
 class PrintTensor(EveryN):
   """Prints given tensors every N steps.
 
@@ -156,10 +231,12 @@ class PrintTensor(EveryN):
       tensor_names = {item: item for item in tensor_names}
     self._tensor_names = tensor_names
 
-  def every_n_step_begin(self, unused_step):
+  def every_n_step_begin(self, step):
+    super(PrintTensor, self).every_n_step_begin(step)
     return list(self._tensor_names.values())
 
   def every_n_step_end(self, step, outputs):
+    super(PrintTensor, self).every_n_step_end(step, outputs)
     stats = []
     for tag, tensor_name in six.iteritems(self._tensor_names):
       if tensor_name in outputs:
@@ -182,19 +259,23 @@ class SummarySaver(EveryN):
   def set_estimator(self, estimator):
     super(SummarySaver, self).set_estimator(estimator)
     if self._summary_writer is None:
-      self._summary_writer = summary_io.SummaryWriter(self._estimator.model_dir)
+      self._summary_writer = summary_io.SummaryWriter(estimator.model_dir)
 
-  def every_n_step_begin(self, unused_step):
+  def every_n_step_begin(self, step):
+    super(SummarySaver, self).every_n_step_begin(step)
     return [self._summary_op]
 
   def every_n_step_end(self, step, outputs):
+    super(SummarySaver, self).every_n_step_end(step, outputs)
     summary_strs = outputs[self._summary_op.name]
     if self._summary_writer:
       self._summary_writer.add_summary(summary_strs, step)
     return False
 
   def end(self):
-    self._summary_writer.flush()
+    super(SummarySaver, self).end()
+    if self._summary_writer:
+      self._summary_writer.flush()
 
 
 class ValidationMonitor(EveryN):
@@ -268,7 +349,10 @@ class ValidationMonitor(EveryN):
   def best_value(self):
     return self._best_value
 
-  def every_n_step_end(self, step, unused_outputs):
+  def every_n_step_end(self, step, outputs):
+    super(ValidationMonitor, self).every_n_step_end(step, outputs)
+    if self._estimator is None:
+      raise ValueError("Missing call to set_estimator.")
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver.latest_checkpoint(self._estimator.model_dir)
     if latest_path == self._latest_path:
@@ -306,6 +390,8 @@ class ValidationMonitor(EveryN):
     return False
 
 
+# TODO(ptucker): This really reads any tensor, not just vars, and requires the
+# ':0' suffix on var_name.
 class CaptureVariable(EveryN):
   """Capture a variable value into a `list`.
 
@@ -314,14 +400,20 @@ class CaptureVariable(EveryN):
 
   def __init__(self, var_name, every_n=100, first_n=1):
     super(CaptureVariable, self).__init__(every_n, first_n)
-    self.var_name = var_name
-    self.var_values = []
+    self._var_name = var_name
+    self._var_values = {}
 
-  def every_n_step_begin(self, unused_step):
-    return [self.var_name]
+  @property
+  def values(self):
+    return self._var_values
+
+  def every_n_step_begin(self, step):
+    super(CaptureVariable, self).every_n_step_begin(step)
+    return [self._var_name]
 
   def every_n_step_end(self, step, outputs):
-    self.var_values.append(outputs[self.var_name])
+    super(CaptureVariable, self).every_n_step_end(step, outputs)
+    self._var_values[step] = outputs[self._var_name]
 
 
 def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
@@ -353,31 +445,37 @@ class GraphDump(BaseMonitor):
       ignore_ops: `list` of string names of `Operation`s to ignore.
           If `None` GraphDump.IGNORE_OPS list is used.
     """
-    self.ignore_ops = ignore_ops or GraphDump.IGNORE_OPS
-    self._data = []
+    super(GraphDump, self).__init__()
+    self._ignore_ops = ignore_ops or GraphDump.IGNORE_OPS
+    self._data = {}
 
   def begin(self, max_steps):
-    self.tensors = []
+    super(GraphDump, self).begin(max_steps)
+    self._tensors = []
     graph = ops.get_default_graph()
     graph_def = graph.as_graph_def()
     for node in graph_def.node:
-      if node.op in self.ignore_ops:
+      if node.op in self._ignore_ops:
         continue
+      logging.info("op=%s name=%s.", node.op, node.name)
       try:
-        self.tensors.append(graph.get_tensor_by_name(node.name + ":0"))
+        self._tensors.append(graph.get_tensor_by_name(node.name + ":0"))
       except KeyError:
         pass
 
   def step_begin(self, step):
-    return self.tensors
+    super(GraphDump, self).step_begin(step)
+    return self._tensors
 
-  def step_end(self, step, outputs):
-    self._data.append(outputs)
+  def step_end(self, step, output):
+    super(GraphDump, self).step_end(step, output)
+    self._data[step] = output
 
   @property
   def data(self):
     return self._data
 
+  # TODO(ptucker): Handle keys that are in one but not the other.
   def compare(self, other_dump, step, atol=1e-06):
     """Compares two `GraphDump` monitors and returns differences.
 
@@ -389,14 +487,22 @@ class GraphDump(BaseMonitor):
     Returns:
       Returns tuple:
         matched: `list` of keys that matched.
-        non_matched: `dict` of keys to difference.
+        non_matched: `dict` of keys to tuple of 2 mismatched values.
+
+    Raises:
+      ValueError: if a key in `data` is missing from `other_dump` at `step`.
     """
     non_matched = {}
     matched = []
-    for key in self.data[step]:
+    this_output = self.data[step] if step in self.data else {}
+    other_output = other_dump.data[step] if step in other_dump.data else {}
+    for key in this_output:
       if not isinstance(key, str) and not isinstance(key, unicode):
         continue
-      value1, value2 = self.data[step][key], other_dump.data[step][key]
+      if key not in other_output:
+        raise ValueError("%s missing at step %s.", (key, step))
+      value1 = this_output[key]
+      value2 = other_output[key]
       if isinstance(value1, str):
         continue
       if isinstance(value1, np.ndarray):

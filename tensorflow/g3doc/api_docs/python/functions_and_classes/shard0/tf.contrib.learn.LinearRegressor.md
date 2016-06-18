@@ -6,14 +6,16 @@ observation of feature values.
 Example:
 
 ```python
-installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+education = sparse_column_with_hash_bucket(column_name="education",
+                                           hash_bucket_size=1000)
+occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                            hash_bucket_size=1000)
 
-installed_x_impression = crossed_column(
-    [installed_app_id, impression_app_id])
+education_x_occupation = crossed_column(columns=[education, occupation],
+                                        hash_bucket_size=10000)
 
 estimator = LinearRegressor(
-    feature_columns=[impression_app_id, installed_x_impression])
+    feature_columns=[occupation, education_x_occupation])
 
 # Input builders
 def input_fn_train: # returns x, y, where y is a tensor of dimension 1

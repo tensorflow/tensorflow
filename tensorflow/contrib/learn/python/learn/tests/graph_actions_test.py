@@ -20,45 +20,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import shutil
+import tempfile
+
 import tensorflow as tf
 
+from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
-from tensorflow.python.training import summary_io
-
-
-# TODO(ptucker): Replace with mock framework.
-class _FakeSummaryWriter(object):
-
-  def __init__(self, logdir, graph=None):
-    self._logdir = logdir
-    self._graph = graph
-    self._summaries = {}
-    self._flushed = True
-
-  @property
-  def logdir(self):
-    return self._logdir
-
-  @property
-  def graph(self):
-    return self._graph
-
-  @property
-  def summaries(self):
-    return self._summaries
-
-  @property
-  def flushed(self):
-    return self._flushed
-
-  def add_summary(self, summary, current_global_step):
-    if current_global_step in self._summaries:
-      raise ValueError('Dupe summary for step %s.' % current_global_step)
-    self._summaries[current_global_step] = summary
-    self._flushed = False
-
-  def flush(self):
-    self._flushed = True
 
 
 class _Feeder(object):
@@ -83,31 +51,29 @@ class GraphActionsTest(tf.test.TestCase):
 
   def setUp(self):
     learn.graph_actions.clear_summary_writers()
-    self._original_summary_writer = summary_io.SummaryWriter
-    summary_io.SummaryWriter = _FakeSummaryWriter
+    self._output_dir = tempfile.mkdtemp()
+    testing.FakeSummaryWriter.install()
 
   def tearDown(self):
-    summary_io.SummaryWriter = self._original_summary_writer
+    testing.FakeSummaryWriter.uninstall()
+    if self._output_dir:
+      shutil.rmtree(self._output_dir)
     learn.graph_actions.clear_summary_writers()
 
-  def _assert_fake_summary_writer(self, output_dir, expected_summaries=None):
+  def _assert_summaries(
+      self, output_dir, expected_summaries=None, expected_graphs=None,
+      expected_session_logs=None):
     writer = learn.graph_actions.get_summary_writer(output_dir)
-    self.assertTrue(isinstance(writer, _FakeSummaryWriter))
-    self.assertEqual(output_dir, writer.logdir)
-    self.assertTrue(tf.get_default_graph() is writer.graph)
-    self.assertTrue(writer.flushed)
-    expected_summaries = expected_summaries or {}
-    expected_steps = expected_summaries.keys()
-    self.assertEqual(set(expected_steps), set(writer.summaries.keys()))
-    for step in expected_steps:
-      actual_simple_values = {}
-      for v in writer.summaries[step].value:
-        actual_simple_values[v.tag] = v.simple_value
-      self.assertEqual(expected_summaries[step], actual_simple_values)
+    self.assertTrue(isinstance(writer, testing.FakeSummaryWriter))
+    writer.assert_summaries(
+        self, expected_logdir=output_dir, expected_graph=tf.get_default_graph(),
+        expected_summaries=expected_summaries,
+        expected_added_graphs=expected_graphs,
+        expected_session_logs=expected_session_logs)
 
   # TODO(ptucker): Test lock, multi-threaded access?
   def test_summary_writer(self):
-    self._assert_fake_summary_writer('log/dir/0')
+    self._assert_summaries('log/dir/0')
     self.assertTrue(
         learn.graph_actions.get_summary_writer('log/dir/0') is
         learn.graph_actions.get_summary_writer('log/dir/0'))
@@ -115,9 +81,9 @@ class GraphActionsTest(tf.test.TestCase):
         learn.graph_actions.get_summary_writer('log/dir/0') is not
         learn.graph_actions.get_summary_writer('log/dir/1'))
 
-  # TODO(ptucker): Test restore_checkpoint_path.
-  # TODO(ptucker): Test start_queue_runners.
-  # TODO(ptucker): Test coord.request_stop & coord.join.
+  # TODO(ptucker): Test restore_checkpoint_path for eval.
+  # TODO(ptucker): Test start_queue_runners for both eval & train.
+  # TODO(ptucker): Test coord.request_stop & coord.join for eval.
 
   def _build_inference_graph(self):
     """Build simple inference graph.
@@ -168,32 +134,126 @@ class GraphActionsTest(tf.test.TestCase):
           {'c': 9.0},
           learn.graph_actions.infer(None, {'c': out}, feed_dict={in0: 4.0}))
 
-  # TODO(ptucker): Test saver and ckpt_path.
+  # TODO(ptucker): Test saver and ckpt_path for eval & train.
   # TODO(ptucker): Test eval for 1 epoch.
+
+  def test_evaluate_invalid_args(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with self.assertRaisesRegexp(ValueError, 'utput directory'):
+        learn.graph_actions.evaluate(
+            g, output_dir=None, checkpoint_path=None,
+            eval_dict={'a': tf.constant(1.0)})
+      with self.assertRaisesRegexp(ValueError, 'utput directory'):
+        learn.graph_actions.evaluate(
+            g, output_dir='', checkpoint_path=None,
+            eval_dict={'a': tf.constant(1.0)})
 
   def test_evaluate(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       _, _, out = self._build_inference_graph()
-      output_dir = 'out/dir'
-      self._assert_fake_summary_writer(output_dir, {})
+      self._assert_summaries(self._output_dir)
       results = learn.graph_actions.evaluate(
-          g, output_dir=output_dir, checkpoint_path=None, eval_dict={'a': out},
-          max_steps=1)
+          g, output_dir=self._output_dir, checkpoint_path=None,
+          eval_dict={'a': out}, max_steps=1)
       self.assertEqual(({'a': 6.0}, 0), results)
-      self._assert_fake_summary_writer(output_dir, {0: {'a': 6.0}})
+      self._assert_summaries(
+          self._output_dir, expected_summaries={0: {'a': 6.0}})
 
   def test_evaluate_feed_fn(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
-      output_dir = 'out/dir'
-      self._assert_fake_summary_writer(output_dir, {})
+      self._assert_summaries(self._output_dir)
       feeder = _Feeder(in0)
       results = learn.graph_actions.evaluate(
-          g, output_dir=output_dir, checkpoint_path=None, eval_dict={'a': out},
-          feed_fn=feeder.feed_fn, max_steps=3)
+          g, output_dir=self._output_dir, checkpoint_path=None,
+          eval_dict={'a': out}, feed_fn=feeder.feed_fn, max_steps=3)
       self.assertEqual(3, feeder.step)
       self.assertEqual(({'a': 25.0}, 0), results)
-      self._assert_fake_summary_writer(output_dir, {0: {'a': 25.0}})
+      self._assert_summaries(
+          self._output_dir, expected_summaries={0: {'a': 25.0}})
+
+  def test_train_invalid_args(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      train_op = tf.constant(1.0)
+      loss_op = tf.constant(2.0)
+      with self.assertRaisesRegexp(ValueError, 'utput directory'):
+        learn.graph_actions.train(
+            g, output_dir=None, train_op=train_op, loss_op=loss_op)
+      with self.assertRaisesRegexp(ValueError, 'utput directory'):
+        learn.graph_actions.train(
+            g, output_dir='', train_op=tf.constant(1.0),
+            loss_op=tf.constant(2.0))
+      with self.assertRaisesRegexp(ValueError, 'train_op'):
+        learn.graph_actions.train(
+            g, output_dir=self._output_dir, train_op=None, loss_op=loss_op)
+      with self.assertRaisesRegexp(ValueError, 'loss_op'):
+        learn.graph_actions.train(
+            g, output_dir=self._output_dir, train_op=tf.constant(1.0),
+            loss_op=None)
+      with self.assertRaisesRegexp(ValueError, 'global_step'):
+        learn.graph_actions.train(
+            g, output_dir=self._output_dir, train_op=tf.constant(1.0),
+            loss_op=loss_op)
+
+  # TODO(ptucker): Resume training from previous ckpt.
+  # TODO(ptucker): !supervisor_is_chief
+  # TODO(ptucker): Custom init op for training.
+
+  def _expected_train_session_logs(self):
+    return [
+        tf.SessionLog(status=tf.SessionLog.START),
+        tf.SessionLog(
+            status=tf.SessionLog.CHECKPOINT,
+            checkpoint_path='%s/model.ckpt' % self._output_dir),
+    ]
+
+  def test_train(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      self._assert_summaries(self._output_dir)
+      loss = learn.graph_actions.train(
+          g, output_dir=self._output_dir, train_op=train_op,
+          loss_op=tf.constant(2.0), steps=1)
+      self.assertEqual(2.0, loss)
+      self._assert_summaries(
+          self._output_dir,
+          expected_graphs=[g],
+          expected_session_logs=self._expected_train_session_logs())
+
+  def test_train_loss(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      tf.contrib.framework.create_global_step()
+      loss_var = tf.contrib.framework.local_variable(10.0)
+      train_op = tf.group(
+          tf.assign_add(tf.contrib.framework.get_global_step(), 1),
+          tf.assign_add(loss_var, -1.0))
+      self._assert_summaries(self._output_dir)
+      loss = learn.graph_actions.train(
+          g, output_dir=self._output_dir, train_op=train_op,
+          loss_op=loss_var.value(), steps=6)
+      self.assertEqual(4.0, loss)
+      self._assert_summaries(
+          self._output_dir,
+          expected_graphs=[g],
+          expected_session_logs=self._expected_train_session_logs())
+
+  def test_train_summaries(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      loss_op = tf.constant(2.0)
+      tf.scalar_summary('loss', loss_op)
+      self._assert_summaries(self._output_dir)
+      loss = learn.graph_actions.train(
+          g, output_dir=self._output_dir, train_op=train_op, loss_op=loss_op,
+          steps=1)
+      self.assertEqual(2.0, loss)
+      self._assert_summaries(
+          self._output_dir,
+          expected_graphs=[g],
+          expected_session_logs=self._expected_train_session_logs(),
+          expected_summaries={1: {'loss': 2.0}})
 
 
 if __name__ == '__main__':

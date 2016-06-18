@@ -47,6 +47,7 @@ class MultinomialTest(tf.test.TestCase):
   use_gpu = False
 
   def testSmallEntropy(self):
+    tf.set_random_seed(1618)
     with self.test_session(use_gpu=self.use_gpu):
       # A logit value of -10 corresponds to a probability of ~5e-5.
       logits = tf.constant([[-10., 10., -10.], [-10., -10., 10.]])

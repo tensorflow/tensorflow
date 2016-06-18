@@ -936,9 +936,6 @@ def _ReductionDims(x, reduction_indices):
       return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
 
     # Otherwise, we rely on Range and Rank to do the right thing at run-time.
-    # TODO(zongheng): remove this once rank() supports SparseTensor.
-    if isinstance(x, ops.SparseTensor):
-      return range(0, array_ops.size(x.shape))
     return range(0, array_ops.rank(x))
 
 

@@ -84,6 +84,9 @@ class Env {
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
+  Status NewRandomAccessFile(const string& fname,
+                             std::unique_ptr<RandomAccessFile>* result);
+  // NOTE: To be removed, replace with unique_ptr interface above.
   Status NewRandomAccessFile(const string& fname, RandomAccessFile** result);
 
   /// \brief Creates an object that writes to a new file with the specified
@@ -99,6 +102,9 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
+  Status NewWritableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result);
+  // NOTE: To be removed, replace with unique_ptr interface above.
   Status NewWritableFile(const string& fname, WritableFile** result);
 
   /// \brief Creates an object that either appends to an existing file, or
@@ -113,6 +119,9 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
+  Status NewAppendableFile(const string& fname,
+                           std::unique_ptr<WritableFile>* result);
+  // NOTE: To be removed, replace with unique_ptr interface above.
   Status NewAppendableFile(const string& fname, WritableFile** result);
 
   /// \brief Creates a readonly region of memory with the file context.
@@ -126,6 +135,9 @@ class Env {
   /// The ownership of the returned ReadOnlyMemoryRegion is passed to the caller
   /// and the object should be deleted when is not used. The memory region
   /// object shouldn't live longer than the Env object.
+  Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
+  // NOTE: To be removed, replace with unique_ptr interface above.
   Status NewReadOnlyMemoryRegionFromFile(const string& fname,
                                          ReadOnlyMemoryRegion** result);
 

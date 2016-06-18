@@ -44,6 +44,12 @@ class InitializableLookupTable : public LookupInterface {
   Status Find(const Tensor& keys, Tensor* values,
               const Tensor& default_value) final;
 
+  // Returns errors::Unimplemented.
+  Status Insert(const Tensor& keys, const Tensor& values) final {
+    return errors::Unimplemented(
+        "Insert not supported by InitializableLookupTable implementations");
+  }
+
   // Returns whether the table was initialized and is ready to serve lookups.
   bool is_initialized() const { return is_initialized_; }
 

@@ -197,10 +197,13 @@ def _EnterGrad(op, grad):
     return grad
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
-    if isinstance(grad, ops.IndexedSlices):
+    if isinstance(grad, ops.Tensor):
+      result = grad_ctxt.AddBackPropAccumulator(grad)
+    elif isinstance(grad, ops.IndexedSlices):
       result = grad_ctxt.AddBackPropIndexedSlicesAccumulator(grad)
     else:
-      result = grad_ctxt.AddBackPropAccumulator(grad)
+      # TODO(yuanbyu, lukasr): Add support for SparseTensor.
+      raise TypeError("Type %s not supported" % type(grad))
   else:
     result = exit(grad)
     grad_ctxt.ExitResult([result])
