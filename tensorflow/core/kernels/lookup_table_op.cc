@@ -33,14 +33,20 @@ namespace {
 
 // Ensure that the compiler cannot elide a copy into a local, for
 // bounds checking on source tensors that might be updated asynchronously for
-// integral types. However strings variables are not allowed and therefore the
-// local copy is unnecessary.
+// integral types. However non-integer variables are not allowed and therefore
+// the local copy is unnecessary.
 template <typename T>
-T SubtleMustCopyUnlessString(const T& value) {
+T SubtleMustCopyUnlessStringOrFloat(const T& value) {
   return internal::SubtleMustCopy(value);
 }
 
-const string& SubtleMustCopyUnlessString(const string& value) { return value; }
+const string& SubtleMustCopyUnlessStringOrFloat(const string& value) {
+  return value;
+}
+
+const float SubtleMustCopyUnlessStringOrFloat(const float value) {
+  return value;
+}
 
 }  // namespace
 
@@ -100,8 +106,8 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int i = 0; i < key_values.size(); ++i) {
-      const K key = SubtleMustCopyUnlessString(key_values(i));
-      const V value = SubtleMustCopyUnlessString(value_values(i));
+      const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
+      const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
       const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
       if (previous_value != value) {
         return errors::FailedPrecondition(
@@ -120,13 +126,80 @@ class HashTable : public InitializableLookupTable {
 
     for (int i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          *table_, SubtleMustCopyUnlessString(key_values(i)), default_val);
+          *table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
+          default_val);
     }
     return Status::OK();
   }
 
  private:
   std::unique_ptr<std::unordered_map<K, V>> table_;
+};
+
+// Lookup table that wraps an unordered_map, where the key and value data type
+// is specified.
+//
+// This table is mutable and thread safe - Insert can be called at any time.
+//
+// Sample use case:
+//
+// MutableHashTable<int64, int64> table;  // int64 -> int64.
+// // Populate the table, elements could be added in one or multiple calls.
+// table.Insert(key_tensor, value_tensor); // Populate the table.
+//
+// table.Find(in_t, &out_t, default_t)
+//
+template <class K, class V>
+class MutableHashTable : public LookupInterface {
+ public:
+  MutableHashTable() {}
+
+  size_t size() const override {
+    mutex_lock l(mu_);
+    return table_.size();
+  }
+
+  Status Find(const Tensor& key, Tensor* value,
+              const Tensor& default_value) override {
+    TF_RETURN_IF_ERROR(CheckFindArguments(key, *value, default_value));
+
+    const V default_val = default_value.flat<V>()(0);
+    const auto key_values = key.flat<K>();
+    auto value_values = value->flat<V>();
+
+    mutex_lock l(mu_);
+    for (int i = 0; i < key_values.size(); ++i) {
+      value_values(i) = gtl::FindWithDefault(
+          table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
+          default_val);
+    }
+
+    return Status::OK();
+  }
+
+  Status Insert(const Tensor& keys, const Tensor& values) override {
+    TF_RETURN_IF_ERROR(CheckKeyAndValueTensors(keys, values));
+
+    const auto key_values = keys.flat<K>();
+    const auto value_values = values.flat<V>();
+
+    mutex_lock l(mu_);
+    for (int i = 0; i < key_values.size(); ++i) {
+      const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
+      const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
+      gtl::InsertOrUpdate(&table_, key, value);
+    }
+    return Status::OK();
+  }
+
+  DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
+
+  DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
+
+ private:
+  // TODO(andreasst): consider using a read/write lock or a concurrent map
+  mutable mutex mu_;
+  std::unordered_map<K, V> table_;
 };
 
 }  // namespace lookup
@@ -163,6 +236,29 @@ class LookupTableFindOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("LookupTableFind").Device(DEVICE_CPU),
                         LookupTableFindOp);
 
+// Table insert op.
+class LookupTableInsertOp : public OpKernel {
+ public:
+  explicit LookupTableInsertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
+    core::ScopedUnref unref_me(table);
+
+    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+                                      table->value_dtype()};
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
+
+    const Tensor& keys = ctx->input(1);
+    const Tensor& values = ctx->input(2);
+    OP_REQUIRES_OK(ctx, table->Insert(keys, values));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("LookupTableInsert").Device(DEVICE_CPU),
+                        LookupTableInsertOp);
+
 // Op that returns the size of the given table.
 class LookupTableSizeOp : public OpKernel {
  public:
@@ -192,6 +288,22 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableSize").Device(DEVICE_CPU),
       LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
                     value_dtype>)
 
+REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(int64, string);
+
+#undef REGISTER_KERNEL
+
+// Register the MutableHashTable op.
+#define REGISTER_KERNEL(key_dtype, value_dtype)                       \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("MutableHashTable")                                        \
+          .Device(DEVICE_CPU)                                         \
+          .TypeConstraint<key_dtype>("key_dtype")                     \
+          .TypeConstraint<value_dtype>("value_dtype"),                \
+      LookupTableOp<lookup::MutableHashTable<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)
+
+REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
 

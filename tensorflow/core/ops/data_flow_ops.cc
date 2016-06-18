@@ -677,6 +677,23 @@ values: Same shape as `keys`.  Values found in the table, or `default_values`
    for missing keys.
 )doc");
 
+REGISTER_OP("LookupTableInsert")
+    .Input("table_handle: Ref(string)")
+    .Input("keys: Tin")
+    .Input("values: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .Doc(R"doc(
+Updates the table to associates keys with values.
+
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+
+table_handle: Handle to the table.
+keys:  Any shape.  Keys to look up.
+values: Same shape as `keys`.  Values to associate with keys.
+)doc");
+
 REGISTER_OP("LookupTableSize")
     .Input("table_handle: Ref(string)")
     .Output("size: int64")
@@ -710,6 +727,29 @@ key_dtype: Type of the table keys.
 value_dtype: Type of the table values.
 )doc");
 
+REGISTER_OP("MutableHashTable")
+    .Output("table_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .SetIsStateful()
+    .Doc(R"doc(
+Creates an empty hash table.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Data can be inserted into the table using the insert operations. It
+does not support the initialization operation.
+
+table_handle: Handle to a table.
+container: If non-empty, this table is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this table is shared under the given name across
+  multiple sessions.
+key_dtype: Type of the table keys.
+value_dtype: Type of the table values.
+)doc");
+
 REGISTER_OP("InitializeTable")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tkey")
@@ -722,6 +762,36 @@ Table initializer that takes two tensors for keys and values respectively.
 table_handle: Handle to a table which will be initialized.
 keys: Keys of type Tkey.
 values: Values of type Tval. Same shape as `keys`.
+)doc");
+
+REGISTER_OP("InitializeTableFromTextFile")
+    .Input("table_handle: Ref(string)")
+    .Input("filename: string")
+    .Attr("key_index: int >= -2")
+    .Attr("value_index: int >= -2")
+    .Attr("vocab_size: int >= -1 = -1")
+    .Attr("delimiter: string = '\t'")
+    .Doc(R"doc(
+Initializes a table from a text file.
+
+It inserts one key-value pair into the table for each line of the file.
+The key and value is extracted from the whole line content, elements from the
+split line based on `delimiter` or the line number (starting from zero).
+Where to extract the key and value from a line is specified by `key_index` and
+`value_index`.
+
+- A value of -1 means use the line number(starting from zero), expects `int64`.
+- A value of -2 means use the whole line content, expects `string`.
+- A value >= 0 means use the index (starting at zero) of the split line based
+  on `delimiter`.
+
+table_handle: Handle to a table which will be initialized.
+filename: Filename of a vocabulary text file.
+key_index: Column index in a line to get the table `key` values from.
+value_index: Column index that represents information of a line to get the table
+  `value` values from.
+vocab_size: Number of elements of the file, use -1 if unknown.
+delimiter: Delimiter to separate fields in a line.
 )doc");
 
 REGISTER_OP("GetSessionHandle")

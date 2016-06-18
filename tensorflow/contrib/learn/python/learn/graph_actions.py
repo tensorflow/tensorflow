@@ -123,7 +123,6 @@ def _run_with_monitors(session, step, tensors, feed_dict, monitors):
   return outputs, should_stop
 
 
-# TODO(ptucker): Add unit test.
 # TODO(wicke): switch to forced named kwargs
 def train(graph,
           output_dir,
@@ -191,14 +190,18 @@ def train(graph,
     The final loss value.
 
   Raises:
-    ValueError: If `global_step_tensor` is not provided. See
-        `tf.contrib.framework.get_global_step` for how we look it up if not
-        provided explicitly.
+    ValueError: If `output_dir`, `train_op`, `loss_op`, or `global_step_tensor`
+      is not provided. See `tf.contrib.framework.get_global_step` for how we
+      look up the latter if not provided explicitly.
     NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
-        evaluates to `NaN`.
+      evaluates to `NaN`.
   """
   if not output_dir:
-    raise ValueError('Output directory should be non-empty.')
+    raise ValueError('Output directory should be non-empty %s.' % output_dir)
+  if train_op is None:
+    raise ValueError('Missing train_op.')
+  if loss_op is None:
+    raise ValueError('Missing loss_op.')
 
   with graph.as_default():
     global_step_tensor = contrib_variables.assert_or_get_global_step(
@@ -456,7 +459,12 @@ def evaluate(graph,
       that are the result of running eval_dict in the last step. `None` if no
       eval steps were run.
     global_step: The global step this evaluation corresponds to.
+
+  Raises:
+    ValueError: if `output_dir` is empty.
   """
+  if not output_dir:
+    raise ValueError('Output directory should be non-empty %s.' % output_dir)
   with graph.as_default():
     global_step_tensor = contrib_variables.assert_or_get_global_step(
         graph, global_step_tensor)

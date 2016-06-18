@@ -2,39 +2,41 @@ A classifier for TensorFlow DNN models.
 
 Example:
 
-  ```
-  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+```python
+education = sparse_column_with_hash_bucket(column_name="education",
+                                           hash_bucket_size=1000)
+occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                            hash_bucket_size=1000)
 
-  installed_emb = embedding_column(installed_app_id, dimension=16,
-                                   combiner="sum")
-  impression_emb = embedding_column(impression_app_id, dimension=16,
-                                    combiner="sum")
+education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                 combiner="sum")
+occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                 combiner="sum")
 
-  estimator = DNNClassifier(
-      feature_columns=[installed_emb, impression_emb],
-      hidden_units=[1024, 512, 256])
+estimator = DNNClassifier(
+    feature_columns=[education_emb, occupation_emb],
+    hidden_units=[1024, 512, 256])
 
-  # Or estimator using the ProximalAdagradOptimizer optimizer with
-  # regularization.
-  estimator = DNNClassifier(
-      feature_columns=[installed_emb, impression_emb],
-      hidden_units=[1024, 512, 256],
-      optimizer=tf.train.ProximalAdagradOptimizer(
-        learning_rate=0.1,
-        l1_regularization_strength=0.001
-      ))
+# Or estimator using the ProximalAdagradOptimizer optimizer with
+# regularization.
+estimator = DNNClassifier(
+    feature_columns=[education_emb, occupation_emb],
+    hidden_units=[1024, 512, 256],
+    optimizer=tf.train.ProximalAdagradOptimizer(
+      learning_rate=0.1,
+      l1_regularization_strength=0.001
+    ))
 
-  # Input builders
-  def input_fn_train: # returns x, Y
-    pass
-  estimator.fit(input_fn=input_fn_train)
+# Input builders
+def input_fn_train: # returns x, Y
+  pass
+estimator.fit(input_fn=input_fn_train)
 
-  def input_fn_eval: # returns x, Y
-    pass
-  estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
-  ```
+def input_fn_eval: # returns x, Y
+  pass
+estimator.evaluate(input_fn=input_fn_eval)
+estimator.predict(x=x)
+```
 
 Input of `fit` and `evaluate` should have following features,
   otherwise there will be a `KeyError`:

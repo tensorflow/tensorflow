@@ -26,28 +26,27 @@ using tensorforest::CheckTensorBounds;
 using tensorforest::Sum;
 
 REGISTER_OP("FinishedNodes")
-  .Attr("num_split_after_samples: int32")
-  .Input("leaves: int32")
-  .Input("node_to_accumulator: int32")
-  .Input("accumulator_sums: float")
+    .Attr("num_split_after_samples: int")
+    .Input("leaves: int32")
+    .Input("node_to_accumulator: int32")
+    .Input("accumulator_sums: float")
 
-  .Output("finished: int32")
-  .Doc(R"doc(
-  Determines which of the given leaf nodes are done accumulating.
+    .Output("finished: int32")
+    .Doc(R"doc(
+Determines which of the given leaf nodes are done accumulating.
 
-  leaves:= A 1-d int32 tensor.  Lists the nodes that are currently leaves.
-  node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`
-    is it's accumulator slot.  Otherwise, `node_to_accumulator[i]` is -1.
-  accumulator_sums: For classification, `accumulator_sums[a][c]` records how many
-    training examples have class c and have ended up in the fertile node
-    associated with accumulator slot a.  It has the total sum in entry 0 for
-    convenience. For regression, it is the same except it contains the sum
-    of the input labels that have been seen, and entry 0 contains the number
-    of training examples that have been seen.
-  finished:= A 1-d int32 tensor. Contains the nodes that have total split
-   counts greater or equal to the num_split_after_samples attribute.
+leaves:= A 1-d int32 tensor.  Lists the nodes that are currently leaves.
+node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`
+  is it's accumulator slot.  Otherwise, `node_to_accumulator[i]` is -1.
+accumulator_sums: For classification, `accumulator_sums[a][c]` records how many
+  training examples have class c and have ended up in the fertile node
+  associated with accumulator slot a.  It has the total sum in entry 0 for
+  convenience. For regression, it is the same except it contains the sum
+  of the input labels that have been seen, and entry 0 contains the number
+  of training examples that have been seen.
+finished:= A 1-d int32 tensor. Contains the nodes that have total split
+ counts greater or equal to the num_split_after_samples attribute.
 )doc");
-
 
 class FinishedNodes : public OpKernel {
  public:
@@ -128,4 +127,3 @@ REGISTER_KERNEL_BUILDER(Name("FinishedNodes").Device(DEVICE_CPU),
                         FinishedNodes);
 
 }  // namespace tensorflow
-

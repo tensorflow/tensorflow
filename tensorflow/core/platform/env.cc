@@ -85,29 +85,72 @@ Status Env::RegisterFileSystem(const string& scheme,
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
-                                RandomAccessFile** result) {
+                                std::unique_ptr<RandomAccessFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewRandomAccessFile(fname, result);
 }
 
-Status Env::NewWritableFile(const string& fname, WritableFile** result) {
+Status Env::NewReadOnlyMemoryRegionFromFile(
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
+}
+
+Status Env::NewWritableFile(const string& fname,
+                            std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewWritableFile(fname, result);
 }
 
-Status Env::NewAppendableFile(const string& fname, WritableFile** result) {
+Status Env::NewAppendableFile(const string& fname,
+                              std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewAppendableFile(fname, result);
+}
+
+/// Deprecated versions of factories.
+
+Status Env::NewRandomAccessFile(const string& fname,
+                                RandomAccessFile** result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  std::unique_ptr<RandomAccessFile> r;
+  TF_RETURN_IF_ERROR(fs->NewRandomAccessFile(fname, &r));
+  *result = r.release();
+  return Status::OK();
+}
+
+Status Env::NewAppendableFile(const string& fname, WritableFile** result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+
+  std::unique_ptr<WritableFile> w;
+  TF_RETURN_IF_ERROR(fs->NewAppendableFile(fname, &w));
+  *result = w.release();
+  return Status::OK();
+}
+
+Status Env::NewWritableFile(const string& fname, WritableFile** result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  std::unique_ptr<WritableFile> w;
+  TF_RETURN_IF_ERROR(fs->NewWritableFile(fname, &w));
+  *result = w.release();
+  return Status::OK();
 }
 
 Status Env::NewReadOnlyMemoryRegionFromFile(const string& fname,
                                             ReadOnlyMemoryRegion** result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
-  return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
+  std::unique_ptr<ReadOnlyMemoryRegion> r;
+  TF_RETURN_IF_ERROR(fs->NewReadOnlyMemoryRegionFromFile(fname, &r));
+  *result = r.release();
+  return Status::OK();
 }
 
 bool Env::FileExists(const string& fname) {

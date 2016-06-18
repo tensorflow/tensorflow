@@ -47,6 +47,19 @@ class LookupInterface : public ResourceBase {
   virtual Status Find(const Tensor& keys, Tensor* values,
                       const Tensor& default_value) = 0;
 
+  // Inserts elements into the table. Each element of the key tensor is
+  // associated with the corresponding element in the value tensor.
+  // This method is only implemented in mutable tables that can be updated over
+  // the execution of the graph. It returns Status::NotImplemented for read-only
+  // tables that are initialized once before they can be looked up.
+
+  // Returns the following statuses:
+  // - OK: when the insert finishes successfully.
+  // - InvalidArgument: if any of the preconditions on the lookup key or value
+  //   fails.
+  // - Unimplemented: if the table does not support insertions.
+  virtual Status Insert(const Tensor& keys, const Tensor& values) = 0;
+
   // Returns the number of elements in the table.
   virtual size_t size() const = 0;
 

@@ -726,9 +726,12 @@ def initialize_all_tables(name="init_all_tables"):
 
 
 ops.NoGradient("LookupTableFind")
+ops.NoGradient("LookupTableInsert")
 ops.NoGradient("LookupTableSize")
 ops.NoGradient("HashTable")
 ops.NoGradient("InitializeTable")
+ops.NoGradient("InitializeTableFromTextFile")
+ops.NoGradient("MutableHashTable")
 
 
 ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
@@ -808,6 +811,15 @@ def _LookupTableFindShape(op):
   return [shape_in]
 
 
+@ops.RegisterShape("LookupTableInsert")
+def _LookupTableInsertShape(op):
+  """Shape function for data_flow_ops._lookup_table_insert."""
+  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
+  keys_shape = op.inputs[1].get_shape()
+  op.inputs[2].get_shape().merge_with(keys_shape)
+  return []
+
+
 @ops.RegisterShape("LookupTableSize")
 def _LookupTableSizeShape(op):
   """Shape function for data_flow_ops._lookup_table_find."""
@@ -816,6 +828,7 @@ def _LookupTableSizeShape(op):
 
 
 @ops.RegisterShape("HashTable")
+@ops.RegisterShape("MutableHashTable")
 def _HashTableShape(_):
   """Shape function for data_flow_ops._hash_table."""
   return [tensor_shape.scalar()]
@@ -827,4 +840,13 @@ def _InitializeLookupTableShape(op):
   op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
   keys_shape = op.inputs[1].get_shape().with_rank(1)
   op.inputs[2].get_shape().merge_with(keys_shape)
+  return []
+
+
+@ops.RegisterShape("InitializeTableFromTextFile")
+def _InitializeTableFromTextFileShape(op):
+  """Shape function for lookup_ops._initialize_table_from_text_file."""
+  unused_table_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar(
+  ))
+  unused_filename = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
   return []

@@ -5960,6 +5960,54 @@ op {
   summary: "Table initializer that takes two tensors for keys and values respectively."
 }
 op {
+  name: "InitializeTableFromTextFile"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to a table which will be initialized."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "filename"
+    description: "Filename of a vocabulary text file."
+    type: DT_STRING
+  }
+  attr {
+    name: "key_index"
+    type: "int"
+    description: "Column index in a line to get the table `key` values from."
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "value_index"
+    type: "int"
+    description: "Column index that represents information of a line to get the table\n`value` values from."
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "vocab_size"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Number of elements of the file, use -1 if unknown."
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "delimiter"
+    type: "string"
+    default_value {
+      s: "\t"
+    }
+    description: "Delimiter to separate fields in a line."
+  }
+  summary: "Initializes a table from a text file."
+  description: "It inserts one key-value pair into the table for each line of the file.\nThe key and value is extracted from the whole line content, elements from the\nsplit line based on `delimiter` or the line number (starting from zero).\nWhere to extract the key and value from a line is specified by `key_index` and\n`value_index`.\n\n- A value of -1 means use the line number(starting from zero), expects `int64`.\n- A value of -2 means use the whole line content, expects `string`.\n- A value >= 0 means use the index (starting at zero) of the split line based\n  on `delimiter`."
+}
+op {
   name: "Inv"
   input_arg {
     name: "x"
@@ -6674,6 +6722,35 @@ op {
   }
   summary: "Looks up keys in a table, outputs the corresponding values."
   description: "The tensor `keys` must of the same type as the keys of the table.\nThe output `values` is of the type of the table values.\n\nThe scalar `default_value` is the value output for keys not present in the\ntable. It must also be of the same type as the table values."
+}
+op {
+  name: "LookupTableInsert"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    description: "Any shape.  Keys to look up."
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    description: "Same shape as `keys`.  Values to associate with keys."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  summary: "Updates the table to associates keys with values."
+  description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
 }
 op {
   name: "LookupTableSize"
@@ -7810,6 +7887,44 @@ op {
     }
   }
   summary: "Draws samples from a multinomial distribution."
+  is_stateful: true
+}
+op {
+  name: "MutableHashTable"
+  output_arg {
+    name: "table_handle"
+    description: "Handle to a table."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+    description: "Type of the table keys."
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+    description: "Type of the table values."
+  }
+  summary: "Creates an empty hash table."
+  description: "This op creates a mutable hash table, specifying the type of its keys and\nvalues. Data can be inserted into the table using the insert operations. It\ndoes not support the initialization operation."
   is_stateful: true
 }
 op {
@@ -13550,24 +13665,39 @@ op {
   attr {
     name: "begin_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
     description: "a bitmask where a bit i being 1 means to ignore the begin\nvalue and instead use the largest interval possible. At runtime\nbegin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or\n`[-1, n-1]` if `stride[i] < 0`"
   }
   attr {
     name: "end_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
     description: "analogous to `begin_mask`"
   }
   attr {
     name: "ellipse_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
   }
   attr {
     name: "new_axis_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
   }
   attr {
     name: "shrink_axis_mask"
     type: "int"
+    default_value {
+      i: 0
+    }
   }
   summary: "Return a strided slice from `input`."
   description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
