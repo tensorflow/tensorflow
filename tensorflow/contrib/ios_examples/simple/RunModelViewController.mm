@@ -202,7 +202,7 @@ NSString* RunInferenceOnImage() {
       tensorflow::uint8* in_pixel = in_row + (in_x * image_channels);
       float* out_pixel = out_row + (x * wanted_channels);
       for (int c = 0; c < wanted_channels; ++c) {
-        out_pixel[c] = (in_pixel[c] / input_std) - input_mean;
+        out_pixel[c] = (in_pixel[c] - input_mean) / input_std;
       }
     }
   }
