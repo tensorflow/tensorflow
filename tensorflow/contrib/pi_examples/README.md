@@ -36,7 +36,7 @@ I tensorflow/contrib/pi_examples/label_image/label_image.cc:284] bolo tie (940):
 I tensorflow/contrib/pi_examples/label_image/label_image.cc:284] bearskin (849): 0.0143348
 ```
 
-Once you've verified that is working, you can supply your own images with `--image=your_image.jpg`, or even with graphs you've trained yourself with the TensorFlow for Poets tutorial using `--graph=your_graph.pb --input=Mul:0 --output=softmax:0`.
+Once you've verified that is working, you can supply your own images with `--image=your_image.jpg`, or even with graphs you've trained yourself with the TensorFlow for Poets tutorial using `--graph=your_graph.pb --input=Mul:0 --output=final_result:0`.
 
 ## Camera Example
 
