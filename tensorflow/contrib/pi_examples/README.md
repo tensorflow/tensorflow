@@ -37,3 +37,28 @@ I tensorflow/contrib/pi_examples/label_image/label_image.cc:284] bearskin (849):
 ```
 
 Once you've verified that is working, you can supply your own images with `--image=your_image.jpg`, or even with graphs you've trained yourself with the TensorFlow for Poets tutorial using `--graph=your_graph.pb --input=Mul:0 --output=softmax:0`.
+
+## Camera Example
+
+Once you have the simple example running, you can try out a more complex version that
+reads frames from a camera attached to the Pi. You'll need to install and set up your
+camera module first. The example uses Video4Linux, so you'll need to install that first.
+Here's some commands I found necessary to get that set up, and I found more information
+at this blog post: http://www.richardmudhar.com/blog/2015/02/raspberry-pi-camera-and-motion-out-of-the-box-sparrowcam/
+
+```
+sudo bash -c "echo 'bcm2835-v4l2' >> /etc/modules"
+sudo apt-get install libv4l-dev
+```
+
+Once that's working, run the following commands to build and run the camera example:
+
+```bash
+make -f tensorflow/contrib/pi_examples/camera/Makefile
+tensorflow/contrib/pi_examples/camera/gen/bin/camera
+```
+
+You should see it looping over camera frames as they come in, and printing the top labels
+to the command line. This is a great starting point for all sorts of fun image recognition
+applications, especially when you combine it with a custom model you've built using
+something like the TensorFlow for Poets tutorial.
