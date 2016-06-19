@@ -13,7 +13,31 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Module for constructing RNN Cells."""
+"""Module for constructing RNN Cells.
+
+## Base interface for all RNN Cells
+
+@@RNNCell
+
+## RNN Cells for use with TensorFlow's core RNN methods
+
+@@BasicRNNCell
+@@BasicLSTMCell
+@@GRUCell
+@@LSTMCell
+
+## Classes storing split `RNNCell` state
+
+@@LSTMStateTuple
+
+## RNN Cell wrappers (RNNCells that wrap other RNNCells)
+
+@@MultiRNNCell
+@@DropoutWrapper
+@@EmbeddingWrapper
+@@InputProjectionWrapper
+@@OutputProjectionWrapper
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -827,7 +851,7 @@ class MultiRNNCell(RNNCell):
     return cur_inp, new_states
 
 
-class SlimRNNCell(RNNCell):
+class _SlimRNNCell(RNNCell):
   """A simple wrapper for slim.rnn_cells."""
 
   def __init__(self, cell_fn):

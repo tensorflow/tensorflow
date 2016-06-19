@@ -12,6 +12,8 @@
 * Higher level functionality in contrib.{layers,losses,metrics,learn}
 * More features to Tensorboard
 * Improved support for string embedding and sparse features
+* The RNN api is finally "official" (see, e.g., `tf.nn.dynamic_rnn`,
+  `tf.nn.rnn`, and the classes in `tf.nn.rnn_cell`).
 * TensorBoard now has an Audio Dashboard, with associated audio summaries.
 
 ## Big Fixes and Other Changes
