@@ -306,15 +306,8 @@ Status ReadLabelsFile(string file_name, std::vector<string>* result,
 // Given the output of a model run, and the name of a file containing the labels
 // this prints out the top five highest-scoring values.
 Status PrintTopLabels(const std::vector<Tensor>& outputs,
-                      string labels_file_name) {
-  std::vector<string> labels;
-  size_t label_count;
-  Status read_labels_status =
-      ReadLabelsFile(labels_file_name, &labels, &label_count);
-  if (!read_labels_status.ok()) {
-    LOG(ERROR) << read_labels_status;
-    return read_labels_status;
-  }
+                      const std::vector<string>& labels, int label_count,
+                      float print_threshold) {
   const int how_many_labels = std::min(5, static_cast<int>(label_count));
   Tensor indices;
   Tensor scores;
@@ -325,6 +318,10 @@ Status PrintTopLabels(const std::vector<Tensor>& outputs,
     const int label_index = indices_flat(pos);
     const float score = scores_flat(pos);
     LOG(INFO) << labels[label_index] << " (" << label_index << "): " << score;
+    // Print the top label to stdout if it's above a threshold.
+    if ((pos == 0) && (score > print_threshold)) {
+      std::cout << labels[label_index] << std::endl;
+    }
   }
   return Status::OK();
 }
@@ -402,7 +399,7 @@ int main(int argc, char** argv) {
   string graph =
       "tensorflow/contrib/pi_examples/label_image/data/"
       "tensorflow_inception_stripped.pb";
-  string labels =
+  string labels_file_name =
       "tensorflow/contrib/pi_examples/label_image/data/"
       "imagenet_comp_graph_label_strings.txt";
   int32 input_width = 299;
@@ -413,18 +410,20 @@ int main(int argc, char** argv) {
   string output_layer = "softmax";
   int32 video_width = 640;
   int32 video_height = 480;
+  int print_threshold = 50;
   string root_dir = "";
   const bool parse_result = tensorflow::ParseFlags(
-      &argc, argv, {Flag("graph", &graph),                //
-                    Flag("labels", &labels),              //
-                    Flag("input_width", &input_width),    //
-                    Flag("input_height", &input_height),  //
-                    Flag("input_mean", &input_mean),      //
-                    Flag("input_std", &input_std),        //
-                    Flag("input_layer", &input_layer),    //
-                    Flag("output_layer", &output_layer),  //
-                    Flag("video_width", &video_width),    //
-                    Flag("video_height", &video_height),  //
+      &argc, argv, {Flag("graph", &graph),                      //
+                    Flag("labels", &labels_file_name),          //
+                    Flag("input_width", &input_width),          //
+                    Flag("input_height", &input_height),        //
+                    Flag("input_mean", &input_mean),            //
+                    Flag("input_std", &input_std),              //
+                    Flag("input_layer", &input_layer),          //
+                    Flag("output_layer", &output_layer),        //
+                    Flag("video_width", &video_width),          //
+                    Flag("video_height", &video_height),        //
+                    Flag("print_threshold", &print_threshold),  //
                     Flag("root_dir", &root_dir)});
   if (!parse_result) {
     LOG(ERROR) << "Error parsing command-line flags.";
@@ -437,6 +436,15 @@ int main(int argc, char** argv) {
   Status load_graph_status = LoadGraph(graph_path, &session);
   if (!load_graph_status.ok()) {
     LOG(ERROR) << load_graph_status;
+    return -1;
+  }
+
+  std::vector<string> labels;
+  size_t label_count;
+  Status read_labels_status =
+      ReadLabelsFile(labels_file_name, &labels, &label_count);
+  if (!read_labels_status.ok()) {
+    LOG(ERROR) << read_labels_status;
     return -1;
   }
 
@@ -453,8 +461,6 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "SetCameraFormat failed with " << format_status;
     return -1;
   }
-
-  LOG(INFO) << "b";
 
   const int how_many_buffers = 2;
   CameraBuffer* buffers;
@@ -478,7 +484,7 @@ int main(int argc, char** argv) {
 
     std::vector<Tensor> resized_tensors;
     Status tensor_from_frame_status =
-      TensorFromFrame(frame_data, video_width, video_height, 3, input_height,
+        TensorFromFrame(frame_data, video_width, video_height, 3, input_height,
                         input_width, input_mean, input_std, &resized_tensors);
     if (!tensor_from_frame_status.ok()) {
       LOG(ERROR) << tensor_from_frame_status;
@@ -499,12 +505,11 @@ int main(int argc, char** argv) {
     if (!run_status.ok()) {
       LOG(ERROR) << "Running model failed: " << run_status;
       return -1;
-    } else {
-      LOG(INFO) << "Running model succeeded!";
     }
 
     // Do something interesting with the results we've generated.
-    Status print_status = PrintTopLabels(outputs, labels);
+    Status print_status =
+        PrintTopLabels(outputs, labels, label_count, print_threshold * 0.01f);
     if (!print_status.ok()) {
       LOG(ERROR) << "Running print failed: " << print_status;
       return -1;

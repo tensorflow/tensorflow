@@ -62,3 +62,12 @@ You should see it looping over camera frames as they come in, and printing the t
 to the command line. This is a great starting point for all sorts of fun image recognition
 applications, especially when you combine it with a custom model you've built using
 something like the TensorFlow for Poets tutorial.
+
+The example is designed to work with the Flite speech synthesis tool, so that your Pi
+can speak any labels that have a high enough score. To enable this, just install the
+Flite package and then pipe the output of the binary you've built, like this:
+
+```
+sudo apt-get install flite
+tensorflow/contrib/pi_examples/camera/gen/bin/camera | xargs -n1 flite -t
+```
