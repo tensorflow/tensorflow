@@ -64,6 +64,13 @@ class TensorArray(object):
                flow=None, infer_shape=True, name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
+    A note about the parameter `name`:
+
+    The name of the `TensorArray` (even if passed in) is uniquified: each time
+    a new `TensorArray` is created at runtime it is assigned its own name for
+    the duration of the run.  This avoids name collissions if a `TensorArray`
+    is created within a `while_loop`.
+
     Args:
       dtype: (required) data type of the TensorArray.
       size: (optional) int32 scalar `Tensor`: the size of the TensorArray.
@@ -235,7 +242,7 @@ class TensorArray(object):
       value = gen_data_flow_ops._tensor_array_pack(
           handle=self._handle, flow_in=self._flow, dtype=self._dtype,
           name=name)
-      if self._elem_shape and self._elem_shape[0].dims:
+      if self._elem_shape and self._elem_shape[0].dims is not None:
         value.set_shape([None] + self._elem_shape[0].dims)
       return value
 
@@ -255,7 +262,7 @@ class TensorArray(object):
       value, _ = gen_data_flow_ops._tensor_array_concat(
           handle=self._handle, flow_in=self._flow, dtype=self._dtype,
           name=name)
-      if self._elem_shape and self._elem_shape[0].dims:
+      if self._elem_shape and self._elem_shape[0].dims is not None:
         value.set_shape([None] + self._elem_shape[0].dims[1:])
       return value
 
@@ -284,7 +291,7 @@ class TensorArray(object):
       if ta._infer_shape:
         val_shape = flow_out.op.inputs[1].get_shape()
         elem_shape = tensor_shape.unknown_shape()
-        if val_shape.dims:
+        if val_shape.dims is not None:
           elem_shape = tensor_shape.TensorShape(val_shape.dims[1:])
         if ta._elem_shape:
           if not elem_shape == ta._elem_shape[0]:
@@ -326,7 +333,7 @@ class TensorArray(object):
         val_shape = flow_out.op.inputs[1].get_shape()
         clengths = tensor_util.constant_value(flow_out.op.inputs[2])
         elem_shape = tensor_shape.unknown_shape()
-        if val_shape.dims:
+        if val_shape.dims is not None:
           if clengths is not None and clengths.max() == clengths.min():
             elem_shape = tensor_shape.TensorShape(
                 [clengths[0]] + val_shape.dims[1:])

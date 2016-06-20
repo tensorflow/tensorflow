@@ -147,14 +147,18 @@ class TensorArrayOp : public TensorArrayCreationOp {
     const int32 size = tensor_size->scalar<int32>()();
 
     auto handle = tensor_array_output_handle->flat<string>();
+    string unique_tensor_array_name =
+        strings::StrCat(tensor_array_name_, "_",
+                        TensorArray::tensor_array_counter.fetch_add(1));
     handle(0) = "_tensor_arrays";
-    handle(1) = tensor_array_name_;
+    handle(1) = unique_tensor_array_name;
 
     TensorArray* tensor_array = new TensorArray(
         dtype_, *tensor_array_output_handle, size, dynamic_size_,
         false /* multiple_writes_aggregate */, clear_after_read_);
 
-    TF_RETURN_IF_ERROR(rm->Create(handle(0), tensor_array_name_, tensor_array));
+    TF_RETURN_IF_ERROR(
+        rm->Create(handle(0), unique_tensor_array_name, tensor_array));
 
     *output_tensor_array = tensor_array;
 
