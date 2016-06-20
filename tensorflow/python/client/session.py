@@ -731,16 +731,16 @@ class BaseSession(SessionInterface):
     # Ensure any changes to the graph are reflected in the runtime.
     with self._extend_lock:
       if self._graph.version > self._current_version:
-        graph_def = self._graph.as_graph_def(
+        # pylint: disable=protected-access
+        graph_def, self._current_version = self._graph._as_graph_def(
             from_version=self._current_version,
             add_shapes=self._add_shapes)
+        # pylint: enable=protected-access
 
         with errors.raise_exception_on_not_ok_status() as status:
           tf_session.TF_ExtendGraph(
               self._session, graph_def.SerializeToString(), status)
         self._opened = True
-
-        self._current_version = self._graph.version
 
   # The threshold to run garbage collection to delete dead tensors.
   _DEAD_HANDLES_THRESHOLD = 10
