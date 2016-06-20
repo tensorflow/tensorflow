@@ -527,7 +527,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
           `[batch_size, max_time, cell_fw.output_size]`
           and output_bw will be a `Tensor` shaped:
           `[batch_size, max_time, cell_bw.output_size]`.
-        If time_major == True, each element will be a `Tensor` shaped:
+        If time_major == True,
           output_fw will be a `Tensor` shaped:
           `[max_time, batch_size, cell_fw.output_size]`
           and output_bw will be a `Tensor` shaped:
