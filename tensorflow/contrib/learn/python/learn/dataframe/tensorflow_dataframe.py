@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """TensorFlowDataFrame implements convenience functions using TensorFlow."""
 
 from __future__ import absolute_import
@@ -22,16 +21,21 @@ from __future__ import print_function
 import collections
 import csv
 
+import numpy as np
+
 from tensorflow.contrib.learn.python.learn.dataframe import dataframe as df
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import batch
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import csv_parser
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import example_parser
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import reader_source
+from tensorflow.contrib.learn.python.learn.dataframe.transforms import sparsify
 from tensorflow.python.client import session as sess
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import coordinator
@@ -47,6 +51,27 @@ def _expand_file_names(filepatterns):
     names = set(gfile.Glob(filepattern))
     filenames |= names
   return list(filenames)
+
+
+def _dtype_to_nan(dtype):
+  if dtype is dtypes.string:
+    return b""
+  elif dtype.is_integer:
+    return np.nan
+  elif dtype.is_floating:
+    return np.nan
+  elif dtype is dtypes.bool:
+    return np.nan
+  else:
+    raise ValueError("Can't parse type without NaN into sparse tensor: %s" %
+                     dtype)
+
+
+def _get_default_value(feature_spec):
+  if isinstance(feature_spec, parsing_ops.FixedLenFeature):
+    return feature_spec.default_value
+  else:
+    return _dtype_to_nan(feature_spec.dtype)
 
 
 class TensorFlowDataFrame(df.DataFrame):
@@ -154,6 +179,81 @@ class TensorFlowDataFrame(df.DataFrame):
     return dataframe
 
   @classmethod
+  def _from_csv_base(cls, filepatterns, get_default_values, has_header,
+                     column_names, num_epochs, num_threads, enqueue_size,
+                     batch_size, queue_capacity, min_after_dequeue, shuffle,
+                     seed):
+    """Create a `DataFrame` from `tensorflow.Example`s.
+
+    If `has_header` is false, then `column_names` must be specified. If
+    `has_header` is true and `column_names` are specified, then `column_names`
+    overrides the names in the header.
+
+    Args:
+      filepatterns: a list of file patterns that resolve to CSV files.
+      get_default_values: a function that produces a list of default values for
+        each column, given the column names.
+      has_header: whether or not the CSV files have headers.
+      column_names: a list of names for the columns in the CSV files.
+      num_epochs: the number of times that the reader should loop through all
+        the file names. If set to `None`, then the reader will continue
+        indefinitely.
+      num_threads: the number of readers that will work in parallel.
+      enqueue_size: block size for each read operation.
+      batch_size: desired batch size.
+      queue_capacity: capacity of the queue that will store parsed lines.
+      min_after_dequeue: minimum number of elements that can be left by a
+        dequeue operation. Only used if `shuffle` is true.
+      shuffle: whether records should be shuffled. Defaults to true.
+      seed: passed to random shuffle operations. Only used if `shuffle` is true.
+
+    Returns:
+      A `DataFrame` that has columns corresponding to `features` and is filled
+      with `Example`s from `filepatterns`.
+
+    Raises:
+      ValueError: no files match `filepatterns`.
+      ValueError: `features` contains the reserved name 'index'.
+    """
+    filenames = _expand_file_names(filepatterns)
+    if not filenames:
+      raise ValueError("No matching file names.")
+
+    if column_names is None:
+      if not has_header:
+        raise ValueError("If column_names is None, has_header must be true.")
+      with gfile.GFile(filenames[0]) as f:
+        column_names = csv.DictReader(f).fieldnames
+
+    if "index" in column_names:
+      raise ValueError(
+          "'index' is reserved and can not be used for a column name.")
+
+    default_values = get_default_values(column_names)
+
+    reader_kwargs = {"skip_header_lines": (1 if has_header else 0)}
+    index, value = reader_source.TextFileSource(
+        filenames,
+        reader_kwargs=reader_kwargs,
+        enqueue_size=enqueue_size,
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        queue_capacity=queue_capacity,
+        shuffle=shuffle,
+        min_after_dequeue=min_after_dequeue,
+        num_threads=num_threads,
+        seed=seed)()
+    parser = csv_parser.CSVParser(column_names, default_values)
+    parsed = parser(value)
+
+    column_dict = parsed._asdict()
+    column_dict["index"] = index
+
+    dataframe = cls()
+    dataframe.assign(**column_dict)
+    return dataframe
+
+  @classmethod
   def from_csv(cls,
                filepatterns,
                default_values,
@@ -198,40 +298,78 @@ class TensorFlowDataFrame(df.DataFrame):
       ValueError: no files match `filepatterns`.
       ValueError: `features` contains the reserved name 'index'.
     """
-    filenames = _expand_file_names(filepatterns)
-    if not filenames:
-      raise ValueError("No matching file names.")
 
-    if column_names is None:
-      if not has_header:
-        raise ValueError("If column_names is None, has_header must be true.")
-      with gfile.GFile(filenames[0]) as f:
-        column_names = csv.DictReader(f).fieldnames
+    def get_default_values(column_names):
+      # pylint: disable=unused-argument
+      return default_values
 
-    if "index" in column_names:
-      raise ValueError(
-          "'index' is reserved and can not be used for a column name.")
+    return cls._from_csv_base(filepatterns, get_default_values, has_header,
+                              column_names, num_epochs, num_threads,
+                              enqueue_size, batch_size, queue_capacity,
+                              min_after_dequeue, shuffle, seed)
 
-    reader_kwargs = {"skip_header_lines": (1 if has_header else 0)}
-    index, value = reader_source.TextFileSource(
-        filenames,
-        reader_kwargs=reader_kwargs,
-        enqueue_size=enqueue_size,
-        batch_size=batch_size,
-        num_epochs=num_epochs,
-        queue_capacity=queue_capacity,
-        shuffle=shuffle,
-        min_after_dequeue=min_after_dequeue,
-        num_threads=num_threads,
-        seed=seed)()
-    parser = csv_parser.CSVParser(column_names, default_values)
-    parsed = parser(value)
+  @classmethod
+  def from_csv_with_feature_spec(cls,
+                                 filepatterns,
+                                 feature_spec,
+                                 has_header=True,
+                                 column_names=None,
+                                 num_epochs=None,
+                                 num_threads=1,
+                                 enqueue_size=None,
+                                 batch_size=32,
+                                 queue_capacity=None,
+                                 min_after_dequeue=None,
+                                 shuffle=True,
+                                 seed=None):
+    """Create a `DataFrame` from `tensorflow.Example`s.
 
-    column_dict = parsed._asdict()
-    column_dict["index"] = index
+    If `has_header` is false, then `column_names` must be specified. If
+    `has_header` is true and `column_names` are specified, then `column_names`
+    overrides the names in the header.
 
-    dataframe = cls()
-    dataframe.assign(**column_dict)
+    Args:
+      filepatterns: a list of file patterns that resolve to CSV files.
+      feature_spec: a dict mapping column names to `FixedLenFeature` or
+          `VarLenFeature`.
+      has_header: whether or not the CSV files have headers.
+      column_names: a list of names for the columns in the CSV files.
+      num_epochs: the number of times that the reader should loop through all
+        the file names. If set to `None`, then the reader will continue
+        indefinitely.
+      num_threads: the number of readers that will work in parallel.
+      enqueue_size: block size for each read operation.
+      batch_size: desired batch size.
+      queue_capacity: capacity of the queue that will store parsed lines.
+      min_after_dequeue: minimum number of elements that can be left by a
+        dequeue operation. Only used if `shuffle` is true.
+      shuffle: whether records should be shuffled. Defaults to true.
+      seed: passed to random shuffle operations. Only used if `shuffle` is true.
+
+    Returns:
+      A `DataFrame` that has columns corresponding to `features` and is filled
+      with `Example`s from `filepatterns`.
+
+    Raises:
+      ValueError: no files match `filepatterns`.
+      ValueError: `features` contains the reserved name 'index'.
+    """
+
+    def get_default_values(column_names):
+      return [_get_default_value(feature_spec[name]) for name in column_names]
+
+    dataframe = cls._from_csv_base(filepatterns, get_default_values, has_header,
+                                   column_names, num_epochs, num_threads,
+                                   enqueue_size, batch_size, queue_capacity,
+                                   min_after_dequeue, shuffle, seed)
+
+    # replace the dense columns with sparse ones in place in the dataframe
+    for name in dataframe.columns():
+      if name != "index" and isinstance(feature_spec[name],
+                                        parsing_ops.VarLenFeature):
+        strip_value = _get_default_value(feature_spec[name])
+        (dataframe[name],) = sparsify.Sparsify(strip_value)(dataframe[name])
+
     return dataframe
 
   @classmethod
