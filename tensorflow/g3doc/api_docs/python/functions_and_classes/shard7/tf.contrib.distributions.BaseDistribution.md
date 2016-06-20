@@ -77,6 +77,36 @@ cum_prob_per_dist = u.cdf([[4.0, 5.0],
 # INVALID as the `value` argument is not broadcastable to the distribution's
 # shape.
 cum_prob_invalid = u.cdf([4.0, 5.0, 6.0])
+
+### Parameter values leading to undefined statistics or distributions.
+
+Some distributions do not have well-defined statistics for all initialization
+parameter values.  For example, the beta distribution is parameterized by
+positive real numbers `a` and `b`, and does not have well-defined mode if
+`a < 1` or `b < 1`.
+
+The user is given the option of raising an exception or returning `NaN`.
+
+```python
+a = tf.exp(tf.matmul(logits, weights_a))
+b = tf.exp(tf.matmul(logits, weights_b))
+
+# Will raise exception if ANY batch member has a < 1 or b < 1.
+dist = distributions.beta(a, b, allow_nan=False)  # default is False
+mode = dist.mode().eval()
+
+# Will return NaN for batch members with either a < 1 or b < 1.
+dist = distributions.beta(a, b, allow_nan=True)
+mode = dist.mode().eval()
+```
+
+In all cases, an exception is raised if *invalid* parameters are passed, e.g.
+
+```python
+# Will raise an exception if any Op is run.
+negative_a = -1.0 * a  # beta distribution by definition has a > 0.
+dist = distributions.beta(negative_a, b, allow_nan=True)
+dist.mean().eval()
 ```
 - - -
 
