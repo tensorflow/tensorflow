@@ -44,35 +44,30 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
 #ifndef EIGEN_VECTORIZE_SSE2
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_l(const Packet4f& from) {
-  float r[4], p[4];
+  float r[4];
+  tensorflow::uint32 p[4];
   pstoreu(r, from);
-  p[0] = static_cast<float>(
-      (static_cast<tensorflow::uint32>(r[0]) << 16) & 0xffff0000);
-  p[1] = static_cast<float>(
-      static_cast<tensorflow::uint32>(r[0]) & 0xffff0000);
-  p[2] = static_cast<float>(
-      (static_cast<tensorflow::uint32>(r[1]) << 16) & 0xffff0000);
-  p[3] = static_cast<float>(
-      static_cast<tensorflow::uint32>(r[1]) & 0xffff0000);
-  return ploadu<Packet4f>(p);
+  tensorflow::uint32 * ir = reinterpret_cast<tensorflow::uint32 *>(r);
+  p[0] = (ir[0] << 16) & 0xffff0000;
+  p[1] = ir[0]& 0xffff0000;
+  p[2] = (ir[1] << 16) & 0xffff0000;
+  p[3] = ir[1] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));
 }
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_u(const Packet4f& from) {
-  float r[4], p[4];
+  float r[4];
+  tensorflow::uint32 p[4];
   pstoreu(r, from);
-  p[0] = static_cast<float>(
-      (static_cast<tensorflow::uint32>(r[2]) << 16) & 0xffff0000);
-  p[1] = static_cast<float>(
-      static_cast<tensorflow::uint32>(r[2]) & 0xffff0000);
-  p[2] = static_cast<float>(
-      (static_cast<tensorflow::uint32>(r[3]) << 16) & 0xffff0000);
-  p[3] = static_cast<float>(
-      static_cast<tensorflow::uint32>(r[3]) & 0xffff0000);
-  return ploadu<Packet4f>(p);
+  tensorflow::uint32 * ir = reinterpret_cast<tensorflow::uint32 *>(r);
+  p[0] = (ir[2] << 16) & 0xffff0000;
+  p[1] = ir[2] & 0xffff0000;
+  p[2] = (ir[3] << 16) & 0xffff0000;
+  p[3] = ir[3] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));
 }
 #endif
-
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet pinterleave4x64(const Packet& from) {
@@ -115,6 +110,31 @@ EIGEN_DEVICE_FUNC inline Packet pload2bf16(
   assert(false && "Not applicable to Scalar Values");
   return Packet();
 }
+
+// Specialization for pload4bf16 and pload2bf16 for non-sse. 
+#ifndef EIGEN_VECTORIZE_SSE2
+template <>
+EIGEN_STRONG_INLINE Packet4f pload4bf16<Packet4f>(const float* from) {
+  tensorflow::uint32 p[4];
+  const tensorflow::uint32* ir = reinterpret_cast<const tensorflow::uint32 *>(from);
+  p[0] = (ir[0] << 16) & 0xffff0000;
+  p[1] = ir[0]& 0xffff0000;
+  p[2] = (ir[1] << 16) & 0xffff0000;
+  p[3] = ir[1] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));
+}
+
+template <>
+EIGEN_STRONG_INLINE Packet4f pload2bf16<Packet4f>(const float* from) {
+  tensorflow::uint32 p[4];
+  const tensorflow::uint32* ir = reinterpret_cast<const tensorflow::uint32 *>(from);
+  p[0] = (ir[0] << 16) & 0xffff0000;
+  p[1] = ir[0]& 0xffff0000;
+  p[2] = (ir[0] << 16) & 0xffff0000;
+  p[3] = ir[0] & 0xffff0000;
+  return ploadu<Packet4f>(reinterpret_cast<float *>(p));  
+}
+#endif
 
 #ifdef EIGEN_VECTORIZE_SSE2
 // For PacketSize of 4 floats the Packet is not modified
