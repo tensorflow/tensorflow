@@ -32,7 +32,7 @@ import re
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.client import graph_util
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_util
 
 # TODO(petewarden) - Remove this ugly hack to get around Python linking problems

@@ -1,3 +1,4 @@
+#!/bin/bash -eux
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# Bash test for assuring that the runner_flags are imported and learn_runner
+# runs successfully.
+#
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# Helper functions
+# Exit after a failure
+die() {
+  echo "$@"
+  exit 1
+}
 
-from tensorflow.contrib.learn.python.learn import *
+LEARN_DIR="${TEST_SRCDIR}/tensorflow/contrib/learn"
+RUNNER_BIN="${LEARN_DIR}/runner_flags_test_util"
+
+${RUNNER_BIN} --output_dir="/tmp" || die "Test failed, default flag values."
+${RUNNER_BIN} --output_dir="/tmp" \
+    --schedule="local_test" || die "Test failed, local_test schedule."
+
+echo "PASS"

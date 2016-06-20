@@ -38,6 +38,7 @@ of a tensor and change the shape of a tensor.
 @@reshape
 @@squeeze
 @@expand_dims
+@@meshgrid
 
 ## Slicing and Joining
 
@@ -74,17 +75,17 @@ from __future__ import print_function
 import sys
 import numpy as np
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
+# 'Constant' gets imported in the module 'array_ops'.
+from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import logging_ops
-# 'Constant' gets imported in the module 'array_ops'.
-from tensorflow.python.ops.constant_op import constant
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
@@ -98,6 +99,32 @@ _baseslice = slice
 
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
+
+
+def shape(input, name=None):
+  """Returns the shape of a tensor.
+
+  This operation returns a 1-D integer tensor representing the shape of `input`.
+
+  For example:
+
+  ```python
+  # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+  shape(t) ==> [2, 2, 3]
+  ```
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.op_scope([input], name, "Shape") as name:
+    if isinstance(input, ops.SparseTensor):
+      return input.shape
+    else:
+      return gen_array_ops.shape(input, name=name)
 
 
 def rank(input, name=None):
@@ -497,12 +524,15 @@ def _ConcatShape(op):
     # Merge all the non-concat dims, and sum the concat dim to make an
     # output shape.
     concat_dim = int(concat_dim)
+    if concat_dim < 0:
+      raise ValueError("Expected concat_dim >= 0, but got %d" % concat_dim)
+
     output_shape = op.inputs[1].get_shape()
     for value in op.inputs[2:]:
       value_shape = value.get_shape()
       if value_shape.ndims is not None and concat_dim >= value_shape.ndims:
-        raise ValueError("concat_dim is out of range (values rank = %d)" %
-                         value_shape.ndims)
+        raise ValueError("Expected concat_dim in range [0, %d), but got %d" %
+                         (value_shape.ndims, concat_dim))
       before = output_shape[:concat_dim].merge_with(value_shape[:concat_dim])
       at = output_shape[concat_dim] + value_shape[concat_dim]
       after = output_shape[
@@ -1017,6 +1047,82 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
                                      mode="SYMMETRIC",
                                      name=name)
   raise ValueError("Unknown padding mode: %s" % mode)
+
+
+def meshgrid(*args, **kwargs):
+  """Broadcasts parameters for evaluation on an N-D grid.
+
+  Given N one-dimensional coordinate arrays `*args`, returns a list `outputs`
+  of N-D coordinate arrays for evaluating expressions on an N-D grid.
+
+  Notes:
+
+  `meshgrid` supports cartesian ('xy') and matrix ('ij') indexing conventions.
+  When the `indexing` argument is set to 'xy' (the default), the broadcasting
+  instructions for the first two dimensions are swapped.
+
+  Examples:
+
+  Calling `X, Y = meshgrid(x, y)` with the tensors
+  ```prettyprint
+    x = [1, 2, 3]
+    y = [4, 5, 6]
+  ```
+  results in
+  ```prettyprint
+    X = [[1, 1, 1],
+         [2, 2, 2],
+         [3, 3, 3]]
+    Y = [[4, 5, 6],
+         [4, 5, 6],
+         [4, 5, 6]]
+  ```
+
+  Args:
+    *args: `Tensor`s with rank 1
+    indexing: Either 'xy' or 'ij' (optional, default: 'xy')
+    name: A name for the operation (optional).
+
+  Returns:
+    outputs: A list of N `Tensor`s with rank N
+  """
+  indexing = kwargs.pop("indexing", "xy")
+  name = kwargs.pop("name", "meshgrid")
+  if len(kwargs) > 0:
+    key = list(kwargs.keys())[0]
+    raise TypeError("'{}' is an invalid keyword argument "
+                    "for this function".format(key))
+
+  if indexing not in ("xy", "ij"):
+    raise ValueError("indexing parameter must be either 'xy' or 'ij'")
+
+  with ops.op_scope(args, name, "meshgrid") as name:
+    num_inputs = len(args)
+    ones = (1,) * num_inputs
+
+    asserts = [logging_ops.Assert(
+                 gen_math_ops.equal(rank(x), 1),
+                 ["Input %d needs to have rank 1: " % i, rank(x)],
+               ) for i, x in enumerate(args)]
+
+    # Prepare reshape by inserting dimensions with size 1 where needed
+    shapes = [ones[:i] + (-1,) + ones[i + 1:] for i in range(num_inputs)]
+    # Create parameters for broadcasting each tensor to the full size
+    sizes = [size(x) for x in args]
+    bcast = [sizes[:i] + [1] + sizes[i + 1:] for i in range(num_inputs)]
+
+    # By default, the numpy version swaps the instructions
+    # for the first and second dimension
+    if indexing == "xy" and num_inputs > 1:
+      shapes[0], shapes[1] = shapes[1], shapes[0]
+      bcast[0], bcast[1] = bcast[1], bcast[0]
+
+    results = []
+    with ops.control_dependencies(asserts):
+      for a, r, e in zip(args, shapes, bcast):
+        results.append(tile(reshape(a, r), e))
+
+    return results
 
 
 @ops.RegisterShape("Placeholder")

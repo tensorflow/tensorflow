@@ -494,7 +494,7 @@ def fully_connected(inputs,
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
   if not isinstance(num_outputs, int):
-    raise ValueError("num_outputs should be integer, got %s", num_outputs)
+    raise ValueError('num_outputs should be integer, got %s.', num_outputs)
   with variable_scope.variable_op_scope([inputs],
                                         scope,
                                         'fully_connected',
@@ -537,12 +537,12 @@ def fully_connected(inputs,
                                           collections=biases_collections,
                                           trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
+    if activation_fn:
+      outputs = activation_fn(outputs)
     if len(static_shape) > 2:
       # Reshape back outputs
       outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
       outputs.set_shape(static_shape)
-    if activation_fn:
-      outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 

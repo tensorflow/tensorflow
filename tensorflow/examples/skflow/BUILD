@@ -224,6 +224,18 @@ py_binary(
     ],
 )
 
+sh_test(
+    name = "examples_test",
+    size = "medium",
+    srcs = ["examples_test.sh"],
+    data = [
+        ":boston",
+        ":iris",
+        ":iris_custom_model",
+        ":text_classification",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

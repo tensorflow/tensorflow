@@ -134,8 +134,8 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
-        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
+        "@protobuf//:protobuf",
     ],
 )
 
@@ -181,17 +181,16 @@ cc_library(
 py_library(
     name = "framework_for_generated_wrappers",
     srcs = [
+        "framework/constant_op.py",
         "framework/device.py",
         "framework/dtypes.py",
         "framework/function.py",
+        "framework/op_def_library.py",
         "framework/op_def_registry.py",
         "framework/ops.py",
         "framework/registry.py",
         "framework/tensor_shape.py",
         "framework/versions.py",
-        # TODO(josh11b): Move this to the framework directory
-        "ops/op_def_library.py",
-        "ops/constant_op.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -205,16 +204,14 @@ py_library(
 py_library(
     name = "framework",
     srcs = [
-        # TODO(mrry): Move this to the framework directory.
-        "client/graph_util.py",
+        "framework/common_shapes.py",
         "framework/errors.py",
         "framework/framework_lib.py",
+        "framework/graph_util.py",
         "framework/importer.py",
+        "framework/load_library.py",
         "framework/random_seed.py",
         "framework/tensor_util.py",
-        "framework/load_library.py",
-        # TODO(josh11b): Move this to the framework directory
-        "ops/common_shapes.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -463,8 +460,8 @@ py_test(
 py_test(
     name = "op_def_library_test",
     size = "small",
-    srcs = ["ops/op_def_library_test.py"],
-    main = "ops/op_def_library_test.py",
+    srcs = ["framework/op_def_library_test.py"],
+    main = "framework/op_def_library_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
@@ -738,6 +735,7 @@ tf_gen_op_wrapper_py(
         "SparseSplit",
         "SparseSelectLastK",
         "SparseReorder",
+        "SparseReshape",
         "SparseToDense",
         "SparseTensorDenseAdd",
         "SparseTensorDenseMatMul",
@@ -1086,7 +1084,7 @@ py_test(
 py_test(
     name = "graph_util_test",
     size = "small",
-    srcs = ["client/graph_util_test.py"],
+    srcs = ["framework/graph_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
@@ -1159,6 +1157,7 @@ cpu_only_kernel_test_list = glob([
     "kernel_tests/sparse_concat_op_test.py",
     "kernel_tests/sparse_split_op_test.py",
     "kernel_tests/sparse_reorder_op_test.py",
+    "kernel_tests/sparse_reshape_op_test.py",
     "kernel_tests/sparse_to_dense_op_test.py",
     "kernel_tests/sparsemask_op_test.py",
     "kernel_tests/summary_ops_test.py",

@@ -184,7 +184,7 @@ class _VariableStore(object):
 
     If initializer is `None` (the default), the default initializer passed in
     the constructor is used. If that one is `None` too, we use a new
-    `UniformUnitScalingInitializer`. If initializer is a Tensor, we use
+    `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
     it as a value and derive the shape from the initializer.
 
     If the initializer is a callable, then it will be called for each
@@ -679,7 +679,7 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
 
   If initializer is `None` (the default), the default initializer passed in
   the variable scope will be used. If that one is `None` too, a
-  `UniformUnitScalingInitializer` will be used. The initializer can also be
+  `uniform_unit_scaling_initializer` will be used. The initializer can also be
   a Tensor, in which case the variable is initialized to this value and shape.
 
   Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -755,7 +755,7 @@ def _get_partitioned_variable(
 
   If initializer is `None` (the default), the default initializer passed in
   the constructor is used. If that one is `None` too, we use a new
-  `UniformUnitScalingInitializer`. If initializer is a Tensor, we use
+  `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
   it as a value and derive the shape from the initializer.
 
   If the initializer is a callable, then it will be called for each

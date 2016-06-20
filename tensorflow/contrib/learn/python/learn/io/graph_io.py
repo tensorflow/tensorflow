@@ -19,8 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
@@ -30,7 +30,7 @@ from tensorflow.python.training import input as input_ops
 def read_batch_examples(file_pattern, batch_size, reader,
                         randomize_input=True, num_epochs=None,
                         queue_capacity=10000, num_threads=1,
-                        name=None):
+                        read_batch_size=1, name=None):
   """Adds operations to read, queue, batch `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -55,6 +55,8 @@ def read_batch_examples(file_pattern, batch_size, reader,
       `tf.initialize_all_variables()` as shown in the tests.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
+    read_batch_size: An int or scalar `Tensor` specifying the number of
+      records to read at once
     name: Name of resulting op.
 
   Returns:
@@ -87,6 +89,10 @@ def read_batch_examples(file_pattern, batch_size, reader,
     raise ValueError(
         'Invalid batch_size %s, with queue_capacity %s.' %
         (batch_size, queue_capacity))
+  if (read_batch_size is None) or (
+      (not isinstance(read_batch_size, ops.Tensor)) and
+      (read_batch_size <= 0)):
+    raise ValueError('Invalid read_batch_size %s.' % read_batch_size)
   if (not num_threads) or (num_threads <= 0):
     raise ValueError('Invalid num_threads %s.' % num_threads)
   if (num_epochs is not None) and (num_epochs <= 0):
@@ -104,8 +110,14 @@ def read_batch_examples(file_pattern, batch_size, reader,
     with ops.name_scope('read'):
       example_list = []
       for _ in range(num_threads):
-        _, example_proto = reader().read(file_name_queue)
-        example_list.append([example_proto])
+        if read_batch_size > 1:
+          _, examples_proto = reader().read_up_to(file_name_queue,
+                                                  read_batch_size)
+        else:
+          _, examples_proto = reader().read(file_name_queue)
+        example_list.append([examples_proto])
+
+    enqueue_many = read_batch_size > 1
 
     # Setup batching queue given list of read example tensors.
     if randomize_input:
@@ -116,11 +128,11 @@ def read_batch_examples(file_pattern, batch_size, reader,
       examples = input_ops.shuffle_batch_join(
           example_list, batch_size, capacity=queue_capacity,
           min_after_dequeue=min_after_dequeue,
-          name=scope)
+          enqueue_many=enqueue_many, name=scope)
     else:
       examples = input_ops.batch_join(
           example_list, batch_size, capacity=queue_capacity,
-          name=scope)
+          enqueue_many=enqueue_many, name=scope)
 
     return examples
 
@@ -154,7 +166,7 @@ def read_batch_features(file_pattern, batch_size, features, reader,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.initialize_all_variables() as shown in the tests.
+      tf.initialize_local_variables() as shown in the tests.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.
@@ -170,7 +182,8 @@ def read_batch_features(file_pattern, batch_size, features, reader,
     examples = read_batch_examples(
         file_pattern, batch_size, reader, randomize_input=randomize_input,
         num_epochs=num_epochs, queue_capacity=queue_capacity,
-        num_threads=reader_num_threads, name=scope)
+        num_threads=reader_num_threads, read_batch_size=batch_size,
+        name=scope)
 
     if parser_num_threads == 1:
       # Avoid queue overhead for single thread
@@ -207,7 +220,7 @@ def read_batch_record_features(file_pattern, batch_size, features,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If None, cycles through the dataset forever. NOTE - If specified,
       creates a variable that must be initialized, so call
-      tf.initialize_all_variables() as shown in the tests.
+      tf.initialize_local_variables() as shown in the tests.
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.

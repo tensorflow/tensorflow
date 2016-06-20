@@ -3716,6 +3716,8 @@ class GraphKeys(object):
   TRAINABLE_VARIABLES = "trainable_variables"
   # Key to collect local variables that are not saved/restored.
   LOCAL_VARIABLES = "local_variables"
+  # Key to collect model variables defined by layers.
+  MODEL_VARIABLES = "model_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.

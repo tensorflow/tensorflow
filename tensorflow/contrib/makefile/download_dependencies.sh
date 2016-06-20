@@ -34,3 +34,4 @@ git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
 cd ${DOWNLOADS_DIR}
 rm -rf eigen-latest
 ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
+
