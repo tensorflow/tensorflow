@@ -520,7 +520,8 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
 
   Returns:
     A tuple (outputs, output_states) where:
-      outputs: A tuple of the forward and the backward rnn output `Tensor`.
+      outputs: A tuple (output_fw, output_bw) containing the forward and
+        the backward rnn output `Tensor`.
         If time_major == False (default),
           each element will be a `Tensor` shaped:
           `[batch_size, max_time, cell.output_size]`.
@@ -530,8 +531,8 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
         in the `bidirectional_rnn`. If the concatenated one is preferred,
         the forward and backward outputs can be concatenated as
         `tf.concat(2, outputs)`.
-      output_states: A tuple of final states of the forward and the backward
-        rnn.
+      output_states: A tuple (output_state_fw, output_state_bw) containing
+        the forward and the backward final states of bidirectional rnn.
 
   Raises:
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
@@ -546,8 +547,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   # Forward direction
   with vs.variable_scope(name + "_FW") as fw_scope:
     output_fw, output_state_fw = dynamic_rnn(
-        cell_fw, inputs, sequence_length, initial_state_fw, dtype,
-        parallel_iterations, swap_memory, time_major, scope=fw_scope)
+        cell=cell_fw, inputs=inputs, sequence_length=sequence_length,
+        initial_state=initial_state_fw, dtype=dtype,
+        parallel_iterations=parallel_iterations, swap_memory=swap_memory,
+        time_major=time_major, scope=fw_scope)
   # Backward direction
   if not time_major:
     time_dim = 1
@@ -557,12 +560,16 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     batch_dim = 1
   with vs.variable_scope(name + "_BW") as bw_scope:
     inputs_reverse = array_ops.reverse_sequence(
-        inputs, sequence_length, time_dim, batch_dim)
+        input=inputs, seq_lengths=sequence_length,
+        seq_dim=time_dim, batch_dim=batch_dim)
     tmp, output_state_bw = dynamic_rnn(
-        cell_bw, inputs_reverse, sequence_length, initial_state_bw, dtype,
-        parallel_iterations, swap_memory, time_major, scope=bw_scope)
+        cell=cell_bw, inputs=inputs_reverse, sequence_length=sequence_length,
+        initial_state=initial_state_bw, dtype=dtype,
+        parallel_iterations=parallel_iterations, swap_memory=swap_memory,
+        time_major=time_major, scope=bw_scope)
   output_bw = array_ops.reverse_sequence(
-      tmp, sequence_length, time_dim, batch_dim)
+      input=tmp, seq_lengths=sequence_length,
+      seq_dim = time_dim, batch_dim=batch_dim)
 
   outputs = (output_fw, output_bw)
   output_states = (output_state_fw, output_state_bw)
