@@ -523,10 +523,15 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       outputs: A tuple (output_fw, output_bw) containing the forward and
         the backward rnn output `Tensor`.
         If time_major == False (default),
-          each element will be a `Tensor` shaped:
-          `[batch_size, max_time, cell.output_size]`.
+          output_fw will be a `Tensor` shaped:
+          `[batch_size, max_time, cell_fw.output_size]`
+          and output_bw will be a `Tensor` shaped:
+          `[batch_size, max_time, cell_bw.output_size]`.
         If time_major == True, each element will be a `Tensor` shaped:
-          `[max_time, batch_size, cell.output_size]`.
+          output_fw will be a `Tensor` shaped:
+          `[max_time, batch_size, cell_fw.output_size]`
+          and output_bw will be a `Tensor` shaped:
+          `[max_time, batch_size, cell_bw.output_size]`.
         It returns a tuple instead of a single concatenated `Tensor`, unlike
         in the `bidirectional_rnn`. If the concatenated one is preferred,
         the forward and backward outputs can be concatenated as
