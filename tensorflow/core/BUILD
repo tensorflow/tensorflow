@@ -256,6 +256,7 @@ tf_cuda_library(
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
         "framework/cancellation.h",
+        "framework/common_shape_fns.h",
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/device_base.h",
         "framework/function.h",
@@ -1369,6 +1370,7 @@ tf_cc_tests(
         "framework/rendezvous_test.cc",
         "framework/resource_mgr_test.cc",
         "framework/shape_inference_test.cc",
+        "framework/shape_inference_testutil_test.cc",
         "framework/tensor_shape_test.cc",
         "framework/tensor_slice_test.cc",
         "framework/tensor_test.cc",
@@ -1740,6 +1742,28 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:math",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "ops/math_ops_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
         "//third_party/eigen3",
     ],
 )
