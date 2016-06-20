@@ -44,28 +44,32 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
 #ifndef EIGEN_VECTORIZE_SSE2
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_l(const Packet4f& from) {
-  Packet4f res;
-  tensorflow::uint32 *p = reinterpret_cast<tensorflow::uint32 *>(&res);
-  const tensorflow::uint32 *r =
-      reinterpret_cast<const tensorflow::uint32 *>(&from);
-  p[0] = static_cast<float>((r[0] << 16) & 0xffff0000);
-  p[1] = static_cast<float>(r[0] & 0xffff0000);
-  p[2] = static_cast<float>((r[1] << 16) & 0xffff0000);
-  p[3] = static_cast<float>(r[1] & 0xffff0000);
-  return res;
+  float r[4], p[4];
+  pstoreu(r, from);
+  p[0] = static_cast<float>(
+      (static_cast<tensorflow::uint32>(r[0]) << 16) & 0xffff0000);
+  p[1] = static_cast<float>(
+      static_cast<tensorflow::uint32>(r[0]) & 0xffff0000);
+  p[2] = static_cast<float>(
+      (static_cast<tensorflow::uint32>(r[1]) << 16) & 0xffff0000);
+  p[3] = static_cast<float>(
+      static_cast<tensorflow::uint32>(r[1]) & 0xffff0000);
+  return ploadu<Packet4f>(p);
 }
 
 template <typename Packet>
 EIGEN_DEVICE_FUNC inline Packet4f pexpand_bf16_u(const Packet4f& from) {
-  Packet4f res;
-  tensorflow::uint32 *p = reinterpret_cast<tensorflow::uint32 *>(&res);
-  const tensorflow::uint32 *r =
-      reinterpret_cast<const tensorflow::uint32 *>(&from);
-  p[0] = static_cast<float>((r[2] << 16) & 0xffff0000);
-  p[1] = static_cast<float>(r[2] & 0xffff0000);
-  p[2] = static_cast<float>((r[3] << 16) & 0xffff0000);
-  p[3] = static_cast<float>(r[3] & 0xffff0000);
-  return res;
+  float r[4], p[4];
+  pstoreu(r, from);
+  p[0] = static_cast<float>(
+      (static_cast<tensorflow::uint32>(r[2]) << 16) & 0xffff0000);
+  p[1] = static_cast<float>(
+      static_cast<tensorflow::uint32>(r[2]) & 0xffff0000);
+  p[2] = static_cast<float>(
+      (static_cast<tensorflow::uint32>(r[3]) << 16) & 0xffff0000);
+  p[3] = static_cast<float>(
+      static_cast<tensorflow::uint32>(r[3]) & 0xffff0000);
+  return ploadu<Packet4f>(p);
 }
 #endif
 
