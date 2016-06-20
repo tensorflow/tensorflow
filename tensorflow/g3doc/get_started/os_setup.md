@@ -910,6 +910,9 @@ SyntaxError: invalid syntax
 
 Solution: make sure you are using Python 2.7.
 
+If you are using Ubuntu 16.04, you need to patch in pull request #2073 to solve `error: 'memcpy' was not declared in this scope` problem
+
+
 ### Mac OS X: ImportError: No module named copyreg
 
 On Mac OS X, you may encounter the following when importing tensorflow.
