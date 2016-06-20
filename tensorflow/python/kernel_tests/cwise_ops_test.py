@@ -207,6 +207,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(y, np.sign, tf.sign)
 
   def testFloatTanhEdge(self):
@@ -243,6 +244,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sign, tf.sign)
 
   def testDoubleBasic(self):
@@ -278,6 +280,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(y, np.sign, tf.sign)
 
   def testHalfBasic(self):
@@ -308,6 +311,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(y, np.sign, tf.sign)
 
   def testInt32Basic(self):
@@ -321,6 +325,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sign, tf.sign)
 
   def testInt64Basic(self):
@@ -335,6 +340,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sign, tf.sign)
 
   def testComplex64Basic(self):
@@ -358,6 +364,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
 
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):
@@ -386,6 +393,7 @@ class UnaryOpTest(tf.test.TestCase):
 
     self._compareBothSparse(x, np.abs, tf.abs)
     self._compareBothSparse(x, np.negative, tf.neg)
+    self._compareBothSparse(x, np.square, tf.square)
 
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):
