@@ -5639,7 +5639,8 @@ op {
     description: "The inverse 1D Fourier Transform of `input`."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 1-dimensional discrete Fourier Transform."
+  summary: "    .Doc(R\"doc("
+  description: "Compute the inverse 1-dimensional discrete Fourier Transform."
 }
 op {
   name: "IFFT2D"
