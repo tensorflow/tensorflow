@@ -209,6 +209,17 @@ tensors.
 @@embedding_lookup
 @@embedding_lookup_sparse
 
+## Recurrent Neural Networks
+
+TensorFlow provides a number of methods for constructing Recurrent
+Neural Networks.  Most accept an `RNNCell`-subclassed object
+(see the documentation for `tf.nn.rnn_cell`).
+
+@@dynamic_rnn
+@@rnn
+@@state_saving_rnn
+@@bidirectional_rnn
+
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
