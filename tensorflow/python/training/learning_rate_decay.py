@@ -75,7 +75,7 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
     learning rate.
   """
   with ops.op_scope([learning_rate, global_step, decay_steps, decay_rate],
-                   name, "ExponentialDecay") as name:
+                    name, "ExponentialDecay") as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
     global_step = math_ops.cast(global_step, dtype)

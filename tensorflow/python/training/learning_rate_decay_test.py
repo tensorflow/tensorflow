@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.training import initial_learning_rate_decay
 from tensorflow.python.training import learning_rate_decay
 
 
@@ -215,5 +218,42 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
 
+class ExponentialTimeDecayTest(test_util.TensorFlowTestCase):
+
+  def testDecay(self):
+    initial_lr = 0.1
+    k = 0.5
+    with self.test_session():
+      for step in range(1, 11):
+        lr = initial_learning_rate_decay.exponential_time_decay(
+               initial_lr, step, k)
+        self.assertAllClose(initial_lr*math.exp(-k*step), lr.eval())
+
+
+class InverseTimeDecayTest(test_util.TensorFlowTestCase):
+
+  def testDecay(self):
+    initial_lr = 0.1
+    k = 0.5
+    with self.test_session():
+      for step in range(1, 11):
+        lr = initial_learning_rate_decay.inverse_time_decay(
+               initial_lr, step, k)
+        self.assertAllClose(initial_lr/(1+k*step), lr.eval())
+
+
+class StepTimeDecayTest(test_util.TensorFlowTestCase):
+  
+  def testDecay(self):
+    initial_lr = 0.1
+    k = 0.5
+    num_steps = 5
+    with self.test_session():
+      for step in range(1, 11):
+        lr = initial_learning_rate_decay.step_time_decay(
+               initial_lr, step, num_steps, k)
+        self.assertAllClose(0.1*k**(step//num_steps), lr.eval())
+
+        
 if __name__ == "__main__":
   googletest.main()
