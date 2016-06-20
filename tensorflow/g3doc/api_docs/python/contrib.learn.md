@@ -865,7 +865,7 @@ Input of `fit` and `evaluate` should have following features,
       whose `value` is a `SparseTensor`.
     - if `column` is a `RealValuedColumn, a feature with `key=column.name`
       whose `value` is a `Tensor`.
-    - if `feauture_columns` is None, then `input` must contains only real
+    - if `feauture_columns` is `None`, then `input` must contains only real
       valued `Tensor`.
 - - -
 
@@ -877,7 +877,7 @@ Initializes a DNNClassifier instance.
 
 
 *  <b>`hidden_units`</b>: List of hidden units per layer. All layers are fully
-    connected. Ex. [64, 32] means first layer has 64 nodes and second one
+    connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
     has 32.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
@@ -892,7 +892,7 @@ Initializes a DNNClassifier instance.
     `None`, will use an Adagrad optimizer.
 *  <b>`activation_fn`</b>: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
-*  <b>`dropout`</b>: When not None, the probability we will drop out a given
+*  <b>`dropout`</b>: When not `None`, the probability we will drop out a given
     coordinate.
 *  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are
     clipped to their global norm with this clipping ratio. See
@@ -900,7 +900,11 @@ Initializes a DNNClassifier instance.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
-*  <b>`config`</b>: RunConfig object to configure the runtime settings.
+*  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+
+##### Returns:
+
+  A `DNNClassifier` estimator.
 
 
 - - -
@@ -1243,7 +1247,7 @@ Input of `fit` and `evaluate` should have following features,
       whose `value` is a `SparseTensor`.
     - if `column` is a `RealValuedColumn, a feature with `key=column.name`
       whose `value` is a `Tensor`.
-    - if `feauture_columns` is None, then `input` must contains only real
+    - if `feauture_columns` is `None`, then `input` must contains only real
       valued `Tensor`.
 - - -
 
@@ -1255,8 +1259,8 @@ Initializes a `DNNRegressor` instance.
 
 
 *  <b>`hidden_units`</b>: List of hidden units per layer. All layers are fully
-    connected. Ex. [64, 32] means first layer has 64 nodes and second
-    one has 32.
+    connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+    has 32.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
@@ -1268,15 +1272,19 @@ Initializes a `DNNRegressor` instance.
     `None`, will use an Adagrad optimizer.
 *  <b>`activation_fn`</b>: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
-*  <b>`dropout`</b>: When not None, the probability we will drop out a given
+*  <b>`dropout`</b>: When not `None`, the probability we will drop out a given
     coordinate.
-*  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are clipped
+*  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
     to their global norm with this clipping ratio. See
-    tf.clip_by_global_norm for more details.
+    `tf.clip_by_global_norm` for more details.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
-*  <b>`config`</b>: RunConfig object to configure the runtime settings.
+*  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+
+##### Returns:
+
+  A `DNNRegressor` estimator.
 
 
 - - -
