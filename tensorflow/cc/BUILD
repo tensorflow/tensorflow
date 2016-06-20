@@ -24,6 +24,25 @@ cc_library(
     ],
 )
 
+cc_binary(
+    name = "libtensorflow.so",
+    copts = tf_copts(),
+    linkshared = 1,
+    deps = [
+        ":cc_ops",
+        "//tensorflow/core:kernels",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+genrule(
+    name = "libtensorflow_dylib",
+    srcs = ["libtensorflow.so"],
+    outs = ["libtensorflow.dylib"],
+    cmd = "cp $< $@",
+)
+
+
 # Generates a library that contains C++ wrappers for ops.
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
