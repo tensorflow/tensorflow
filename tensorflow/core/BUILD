@@ -105,67 +105,6 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
-    name = "worker_proto",
-    srcs = ["protobuf/worker.proto"],
-    cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-tf_proto_library_cc(
-    name = "worker_service_proto",
-    srcs = ["protobuf/worker_service.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    cc_libs = [":worker_proto_cc"],
-    cc_stubby_versions = ["2"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-tf_proto_library_cc(
-    name = "master_proto",
-    srcs = ["protobuf/master.proto"],
-    cc_api_version = 2,
-    cc_libs = [":protos_all_cc"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-tf_proto_library_cc(
-    name = "master_service_proto",
-    srcs = ["protobuf/master_service.proto"],
-    has_services = 1,
-    cc_api_version = 2,
-    cc_libs = [":master_proto_cc"],
-    cc_stubby_versions = ["2"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
-    name = "proto_text_srcs_all",
-    srcs = tf_proto_text_protos_relative(),
-    srcs_relative_dir = "tensorflow/core/",
-)
-
-cc_library(
-    name = "proto_text",
-    srcs = proto_text_hdrs_and_srcs.srcs,
-    hdrs = proto_text_hdrs_and_srcs.hdrs,
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-    ],
-)
-
 cc_library(
     name = "lib",
     hdrs = [
@@ -815,6 +754,50 @@ cc_library(
 # -----------------------------------------------------------------------------
 # Internal targets
 
+tf_proto_library_cc(
+    name = "worker_proto",
+    srcs = ["protobuf/worker.proto"],
+    cc_api_version = 2,
+    cc_libs = [":protos_all_cc"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+tf_proto_library_cc(
+    name = "worker_service_proto",
+    srcs = ["protobuf/worker_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_libs = [":worker_proto_cc"],
+    cc_stubby_versions = ["2"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+tf_proto_library_cc(
+    name = "master_proto",
+    srcs = ["protobuf/master.proto"],
+    cc_api_version = 2,
+    cc_libs = [":protos_all_cc"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+tf_proto_library_cc(
+    name = "master_service_proto",
+    srcs = ["protobuf/master_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_libs = [":master_proto_cc"],
+    cc_stubby_versions = ["2"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
 cc_library(
     name = "lib_internal",
     srcs = glob(
@@ -866,6 +849,23 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
         "@zlib_archive//:zlib",
+    ],
+)
+
+proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
+    name = "proto_text_srcs_all",
+    srcs = tf_proto_text_protos_relative(),
+    srcs_relative_dir = "tensorflow/core/",
+)
+
+cc_library(
+    name = "proto_text",
+    srcs = proto_text_hdrs_and_srcs.srcs,
+    hdrs = proto_text_hdrs_and_srcs.hdrs,
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
     ],
 )
 
