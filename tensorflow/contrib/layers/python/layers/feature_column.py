@@ -32,26 +32,30 @@ Typical usage example:
 
   ```python
   # Define features and transformations
-  country = sparse_column_with_keys("country", ["US", "BRA", ...])
-  country_embedding = embedding_column(query_word, dimension=3, combiner="sum")
-  query_word = sparse_column_with_hash_bucket(
-    "query_word", hash_bucket_size=int(1e6))
-  query_embedding = embedding_column(query_word, dimension=16, combiner="sum")
-  query_country = crossed_column([query_word, country],
-                                 hash_bucket_size=int(1e6))
+  country = sparse_column_with_keys(column_name="native_country",
+                                    keys=["US", "BRA", ...])
+  country_emb = embedding_column(sparse_id_column=country, dimension=3,
+                                 combiner="sum")
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
+  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                   combiner="sum")
+  occupation_x_country = crossed_column(columns=[occupation, country],
+                                        hash_bucket_size=10000)
   age = real_valued_column("age")
-  age_bucket = bucketized_column(age,
-                                 boundaries=[18+i*5 for i in range(10)])
+  age_buckets = bucketized_column(
+      source_column=age,
+      boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
 
-  my_features = [query_embedding, age_bucket, country_embedding]
+  my_features = [occupation_emb, age_buckets, country_emb]
   # Building model via layers
-  columns_to_tensor = tf.contrib.layers.parse_feature_columns_from_examples(
+  columns_to_tensor = parse_feature_columns_from_examples(
       serialized=my_data,
       feature_columns=my_features)
-  first_layer = tf.contrib.layer.input_from_feature_column(
-      columns_to_tensor,
+  first_layer = input_from_feature_columns(
+      columns_to_tensors=columns_to_tensor,
       feature_columns=my_features)
-  second_layer = tf.contrib.layer.fully_connected(first_layer, ...)
+  second_layer = fully_connected(first_layer, ...)
 
   # Building model via tf.learn.estimators
   estimator = DNNLinearCombinedClassifier(
