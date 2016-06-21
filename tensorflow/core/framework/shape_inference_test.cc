@@ -90,6 +90,40 @@ TEST(ShapeInferenceTest, WithRank) {
   EXPECT_EQ("[1,?,3]", c.DebugString(in1));
 }
 
+TEST(ShapeInferenceTest, WithRankAtLeast) {
+  InferenceContext c({"?", "[1,?,3]"}, 2 /* num_outputs */);
+
+  auto in0 = c.input(0);
+  auto in1 = c.input(1);
+  const Shape* s1 = nullptr;
+  const Shape* s2 = nullptr;
+
+  // WithRankAtLeast on a shape with unknown dimensionality always succeeds.
+  EXPECT_TRUE(c.WithRankAtLeast(in0, 1, &s1).ok());
+  EXPECT_EQ("?", c.DebugString(s1));
+  EXPECT_TRUE(in0 != s1);  // different pointers
+
+  EXPECT_TRUE(c.WithRankAtLeast(in0, 2, &s2).ok());
+  EXPECT_EQ("?", c.DebugString(s2));
+  EXPECT_TRUE(s1 != s2);  // different pointers
+
+  // WithRankAtLeast on shape with known dimensionality.
+  s1 = in1;
+  EXPECT_EQ("Invalid argument: Shape must be at least rank 4 but is rank 3",
+            c.WithRankAtLeast(in1, 4, &s1).ToString());
+  EXPECT_TRUE(s1 == nullptr);
+  EXPECT_TRUE(c.WithRankAtLeast(in1, 3, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+  EXPECT_TRUE(c.WithRankAtLeast(in1, 2, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+  EXPECT_TRUE(c.WithRankAtLeast(in1, 0, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+
+  // Inputs are unchanged.
+  EXPECT_EQ("?", c.DebugString(in0));
+  EXPECT_EQ("[1,?,3]", c.DebugString(in1));
+}
+
 TEST(ShapeInferenceTest, WithValue) {
   InferenceContext c({"[1,?]"}, 2 /* num_outputs */);
 
@@ -98,7 +132,7 @@ TEST(ShapeInferenceTest, WithValue) {
   const Dimension* out1 = nullptr;
   const Dimension* out2 = nullptr;
 
-  // WithRank on a dimension with unknown value always succeeds.
+  // WithValue on a dimension with unknown value always succeeds.
   EXPECT_TRUE(c.WithValue(d1, 1, &out1).ok());
   EXPECT_EQ(1, c.Value(out1));
 
@@ -111,7 +145,7 @@ TEST(ShapeInferenceTest, WithValue) {
   EXPECT_EQ(1, c.Value(out2));
   EXPECT_TRUE(out1 != out2);  // different pointers
 
-  // WithRank on dimension with known size.
+  // WithValue on dimension with known size.
   out1 = d0;
   EXPECT_EQ("Invalid argument: Dimension must be 0 but is 1",
             c.WithValue(d0, 0, &out1).ToString());

@@ -63,6 +63,21 @@ class OptimizersTest(tf.test.TestCase):
                                             learning_rate=0.1,
                                             optimizer=optimizer)
 
+  def testWrongLoss(self):
+    with tf.Graph().as_default() as g:
+      with self.test_session(graph=g):
+        _, _, _, global_step = _setup_model()
+        with self.assertRaises(ValueError):
+          tf.contrib.layers.optimize_loss(None,
+                                          global_step,
+                                          learning_rate=0.1,
+                                          optimizer="SGD")
+        with self.assertRaises(ValueError):
+          tf.contrib.layers.optimize_loss([[1.0]],
+                                          global_step,
+                                          learning_rate=0.1,
+                                          optimizer="SGD")
+
   def testGradientNoise(self):
     tf.set_random_seed(42)
     with self.test_session() as session:

@@ -49,9 +49,10 @@ def _SwitchGrad(op, *grad):
       # the non-exit branch of the Switch, so update the second input
       # to the Merge.
       # TODO: Perform shape inference with this new input.
-      # pylint: disable=protected-access
-      control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
-      # pylint: enable=protected-access
+      if grad[1] is not None:
+        # pylint: disable=protected-access
+        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
+        # pylint: enable=protected-access
       return None, None
     else:
       # This is the first time this Switch is visited. It always comes from

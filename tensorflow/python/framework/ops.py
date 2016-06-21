@@ -1937,6 +1937,7 @@ class Graph(object):
     self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
+    self._version = 0  # GUARDED_BY(self._lock)
     # Current name stack: uniquified names
     self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
@@ -2007,6 +2008,7 @@ class Graph(object):
     if not isinstance(op, (Tensor, Operation)):
       raise TypeError("op must be a Tensor or Operation: %s" % op)
     with self._lock:
+      # pylint: disable=protected-access
       if op._id in self._nodes_by_id:
         raise ValueError("cannot add an op with id %d as it already "
                          "exists in the graph" % op._id)
@@ -2015,6 +2017,8 @@ class Graph(object):
                          "is already used" % op.name)
       self._nodes_by_id[op._id] = op
       self._nodes_by_name[op.name] = op
+      self._version = max(self._version, op._id)
+      # pylint: enable=protected-access
 
   @property
   def version(self):
@@ -2023,7 +2027,8 @@ class Graph(object):
     Note that this is unrelated to the
     [GraphDef version](#Graph.graph_def_version).
     """
-    return self._next_id_counter
+    with self._lock:
+      return self._version
 
   @property
   def graph_def_versions(self):
@@ -2077,7 +2082,7 @@ class Graph(object):
     """
     self._control_flow_context = context
 
-  def as_graph_def(self, from_version=None, add_shapes=False):
+  def _as_graph_def(self, from_version=None, add_shapes=False):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
@@ -2094,11 +2099,14 @@ class Graph(object):
         node with the inferred shapes of each of its outputs.
 
     Returns:
-      A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
-      protocol buffer.
+      A tuple containing a
+      [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      protocol buffer, and the version of the graph to which that
+      `GraphDef` corresponds.
 
     Raises:
       ValueError: If the `graph_def` would be too large.
+
     """
     with self._lock:
       graph = graph_pb2.GraphDef()
@@ -2126,8 +2134,33 @@ class Graph(object):
           grad_def.function_name = func
           grad_def.gradient_func = self._function_gradient[func]
           graph.library.gradient.extend([grad_def])
+      return graph, self._version
 
-    return graph
+  def as_graph_def(self, from_version=None, add_shapes=False):
+    """Returns a serialized `GraphDef` representation of this graph.
+
+    The serialized `GraphDef` can be imported into another `Graph`
+    (using [`import_graph_def()`](#import_graph_def)) or used with the
+    [C++ Session API](../../api_docs/cc/index.md).
+
+    This method is thread-safe.
+
+    Args:
+      from_version: Optional.  If this is set, returns a `GraphDef`
+        containing only the nodes that were added to this graph since
+        its `version` property had the given value.
+      add_shapes: If true, adds an "_output_shapes" list attr to each
+        node with the inferred shapes of each of its outputs.
+
+    Returns:
+      A [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      protocol buffer.
+
+    Raises:
+      ValueError: If the `graph_def` would be too large.
+    """
+    result, _ = self._as_graph_def(from_version, add_shapes)
+    return result
 
   def _is_function(self, name):
     """Tests whether 'name' is registered in this graph's function library.
