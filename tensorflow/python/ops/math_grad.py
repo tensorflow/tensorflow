@@ -60,7 +60,7 @@ def _SumGrad(op, grad):
 
 
 def _MinOrMaxGrad(op, grad):
-  """Gradient for Max or Max. Amazingly it's precisely the same code."""
+  """Gradient for Min or Max. Amazingly it's precisely the same code."""
   input_shape = array_ops.shape(op.inputs[0])
   output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
   y = op.outputs[0]
