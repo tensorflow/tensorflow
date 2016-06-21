@@ -92,8 +92,11 @@ def optimize_loss(loss,
     Training op.
 
   Raises:
-    ValueError: if optimizer is wrong type.
+    ValueError: if `optimizer` is wrong type or `loss` is not 0d Tensor.
   """
+  if not isinstance(loss, ops.Tensor) or loss.get_shape().ndims > 0:
+    raise ValueError("optimize_loss expects loss to be 0d Tensor, "
+                     "got %s" % loss)
   with vs.variable_op_scope([loss, global_step], name, "OptimizeLoss"):
     # Update ops take UPDATE_OPS collection if not provided.
     update_ops = (set(update_ops or []) or

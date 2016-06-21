@@ -83,6 +83,18 @@ class RNNCellTest(tf.test.TestCase):
         # Smoke test
         self.assertAllClose(res[0], [[0.156736, 0.156736]])
 
+  def testGRUCellMismatch(self):
+    with self.test_session():
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([1, 2])
+        x_incorrect = tf.zeros([1, 2, 3])
+        m = tf.zeros([1, 2])
+        m_incorrect = tf.zeros([1, 2, 3])
+        with self.assertRaises(ValueError):
+          tf.nn.rnn_cell.GRUCell(2)(x_incorrect, m)
+        with self.assertRaises(ValueError):
+          tf.nn.rnn_cell.GRUCell(2)(x, m_incorrect)
+
   def testBasicLSTMCell(self):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
