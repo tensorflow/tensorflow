@@ -77,20 +77,45 @@ class EvaluationTest(tf.test.TestCase):
           sess, init_op=init_op, eval_op=update_op)
       self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
 
+  def _create_names_to_metrics(self, predictions, labels):
+    accuracy0, update_op0 = tf.contrib.metrics.streaming_accuracy(
+        predictions, labels)
+    accuracy1, update_op1 = tf.contrib.metrics.streaming_accuracy(
+        predictions+1, labels)
+
+    names_to_values = {'Accuracy': accuracy0, 'Another accuracy': accuracy1}
+    names_to_updates = {'Accuracy': update_op0, 'Another accuracy': update_op1}
+    return names_to_values, names_to_updates
+
+  def _verify_summaries(self, output_dir, names_to_values):
+    """Verifies that the given `names_to_values` are found in the summaries.
+
+    Args:
+      output_dir: An existing directory where summaries are found.
+      names_to_values: A dictionary of strings to values.
+    """
+    # Check that the results were saved. The events file may have additional
+    # entries, e.g. the event version stamp, so have to parse things a bit.
+    output_filepath = glob.glob(os.path.join(output_dir, '*'))
+    self.assertEqual(len(output_filepath), 1)
+
+    events = tf.train.summary_iterator(output_filepath[0])
+    summaries = [e.summary for e in events if e.summary.value]
+    values = []
+    for summary in summaries:
+      for value in summary.value:
+        values.append(value)
+    saved_results = {v.tag: v.simple_value for v in values}
+    for name in names_to_values:
+      self.assertAlmostEqual(names_to_values[name], saved_results[name])
+
   def testSummariesAreFlushedToDisk(self):
     output_dir = os.path.join(self.get_temp_dir(), 'flush_test')
     if tf.gfile.Exists(output_dir):  # For running on jenkins.
       tf.gfile.DeleteRecursively(output_dir)
 
-    accuracy0, update_op0 = tf.contrib.metrics.streaming_accuracy(
+    names_to_metrics, names_to_updates = self._create_names_to_metrics(
         self._predictions, self._labels)
-    accuracy1, update_op1 = tf.contrib.metrics.streaming_accuracy(
-        self._predictions+1, self._labels)
-
-    names_to_metrics = {
-        'Accuracy': accuracy0,
-        'Another accuracy': accuracy1,
-    }
 
     for k in names_to_metrics:
       v = names_to_metrics[k]
@@ -100,7 +125,7 @@ class EvaluationTest(tf.test.TestCase):
 
     init_op = tf.group(tf.initialize_all_variables(),
                        tf.initialize_local_variables())
-    eval_op = tf.group(update_op0, update_op1)
+    eval_op = tf.group(*names_to_updates.values())
 
     with self.test_session() as sess:
       slim.evaluation.evaluation(
@@ -111,20 +136,9 @@ class EvaluationTest(tf.test.TestCase):
           summary_writer=summary_writer,
           global_step=self._global_step)
 
-      # Check that the results were saved. The events file may have additional
-      # entries, e.g. the event version stamp, so have to parse things a bit.
-      output_filepath = glob.glob(os.path.join(output_dir, '*'))
-      self.assertEqual(len(output_filepath), 1)
-      events = tf.train.summary_iterator(output_filepath[0])
-      summaries = [e.summary for e in events if e.summary.value]
-      values = []
-      for summary in summaries:
-        for value in summary.value:
-          values.append(value)
-      saved_results = {v.tag: v.simple_value for v in values}
-      for name in names_to_metrics:
-        self.assertAlmostEqual(names_to_metrics[name].eval(),
-                               saved_results[name])
+      names_to_values = {name: names_to_metrics[name].eval()
+                         for name in names_to_metrics}
+    self._verify_summaries(output_dir, names_to_values)
 
   def testWithFeedDict(self):
     accuracy, update_op = slim.metrics.streaming_accuracy(

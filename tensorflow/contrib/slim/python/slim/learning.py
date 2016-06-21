@@ -265,61 +265,48 @@ def _wait_for_step(sess, global_step, step):
     time.sleep(1.0)
 
 
-def train_loop(sv,
-               sess,
-               train_op,
-               should_stop_op,
-               should_log_op,
-               global_step,
-               cleanup_op=None):
-  """Runs the training loop.
+def train_step(sess, train_op, global_step, train_step_kwargs):
+  """Function that takes a gradient step and specifies whether to stop.
 
   Args:
-    sv: The supervisor instance.
-    sess: The session.
+    sess: The current session.
     train_op: An `Operation` that evaluates the gradients and returns the
       total loss.
-    should_stop_op: A boolean `Tensor` that signals the end of training.
-    should_log_op: A boolean `Tensor` that signals whether or not we should log
-      the global step and current loss.
     global_step: A `Tensor` representing the global training step.
-    cleanup_op: An operation to run if an exception is thrown.
+    train_step_kwargs: A dictionary of keyword arguments.
 
   Returns:
-    total_loss: The total loss value after training.
+    The total loss and a boolean indicating whether or not to stop training.
   """
-  total_loss = 0
+  start_time = time.time()
+  total_loss, np_global_step = sess.run([train_op, global_step])
+  time_elapsed = time.time() - start_time
 
-  try:
-    while not sv.should_stop():
-      start_time = time.time()
-      total_loss, np_global_step = sess.run([train_op, global_step])
-      time_elapsed = time.time() - start_time
+  if 'should_log' in train_step_kwargs:
+    if sess.run(train_step_kwargs['should_log']):
+      logging.info('global step %d: loss = %.4f (%.2f sec)',
+                   np_global_step, total_loss, time_elapsed)
 
-      # TODO(nsilberman): figure out why we can't put this into sess.run. The
-      # issue right now is that the stop check depends on the global step. The
-      # increment of global step often happens via the train op, which used
-      # created using optimizer.apply_gradients.
-      #
-      # Since running `train_op` causes the global step to be incremented, one
-      # would expected that using a control dependency would allow the
-      # should_stop check to be run in the same session.run call:
-      #
-      #   with ops.control_dependencies([train_op]):
-      #     should_stop_op = ...
-      #
-      # However, this actually seems not to work on certain platforms.
-      np_should_stop, np_should_log = sess.run([should_stop_op, should_log_op])
+  # TODO(nsilberman): figure out why we can't put this into sess.run. The
+  # issue right now is that the stop check depends on the global step. The
+  # increment of global step often happens via the train op, which used
+  # created using optimizer.apply_gradients.
+  #
+  # Since running `train_op` causes the global step to be incremented, one
+  # would expected that using a control dependency would allow the
+  # should_stop check to be run in the same session.run call:
+  #
+  #   with ops.control_dependencies([train_op]):
+  #     should_stop_op = ...
+  #
+  # However, this actually seems not to work on certain platforms.
+  if 'should_stop' in train_step_kwargs:
+    should_stop = sess.run(train_step_kwargs['should_stop'])
+  else:
+    should_stop = False
 
-      if np_should_log:
-        logging.info('global step %d: loss = %.4f (%.2f sec)',
-                     np_global_step, total_loss, time_elapsed)
-      if np_should_stop:
-        break
-  finally:
-    if sv.is_chief and cleanup_op is not None:
-      sess.run(cleanup_op)
-  return total_loss
+  return total_loss, should_stop
+
 
 _USE_DEFAULT = 0
 
@@ -327,6 +314,8 @@ _USE_DEFAULT = 0
 def train(
     train_op,
     logdir,
+    train_step_fn=train_step,
+    train_step_kwargs=_USE_DEFAULT,
     log_every_n_steps=1,
     graph=None,
     master='',
@@ -350,7 +339,13 @@ def train(
   Args:
     train_op: A `Tensor` that, when executed, will apply the gradients and
       return the loss value.
-    logdir: the directory where training logs are written to.
+    logdir: The directory where training logs are written to.
+    train_step_fn: The function to call in order to execute a single gradient
+      step. The function must have take exactly four arguments: the current
+      session, the `train_op` `Tensor`, a global step `Tensor` and a dictionary.
+    train_step_kwargs: A dictionary which is passed to the `train_step_fn`. By
+      default, two `Boolean`, scalar ops called "should_stop" and "should_log"
+      are provided.
     log_every_n_steps: The frequency, in terms of global steps, that the loss
       and global step and logged.
     graph: The graph to pass to the supervisor. If no graph is supplied the
@@ -424,13 +419,16 @@ def train(
     chief_queue_runner = sync_optimizer.get_chief_queue_runner()
     cleanup_op = sync_optimizer.get_clean_up_op()
 
-  if number_of_steps:
-    should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
-  else:
-    should_stop_op = constant_op.constant(False)
+  if train_step_kwargs == _USE_DEFAULT:
+    train_step_kwargs = {}
 
-  should_log_op = math_ops.equal(
-      math_ops.mod(global_step, log_every_n_steps), 0)
+    if number_of_steps:
+      should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
+    else:
+      should_stop_op = constant_op.constant(False)
+    train_step_kwargs['should_stop'] = should_stop_op
+    train_step_kwargs['should_log'] = math_ops.equal(
+        math_ops.mod(global_step, log_every_n_steps), 0)
 
   sv = supervisor.Supervisor(
       graph=graph,
@@ -456,9 +454,15 @@ def train(
     if is_chief and sync_optimizer:
       sv.start_queue_runners(sess, [chief_queue_runner])
 
-    total_loss = train_loop(
-        sv, sess, train_op, should_stop_op, should_log_op, global_step,
-        cleanup_op)
+    try:
+      while not sv.should_stop():
+        total_loss, should_stop = train_step_fn(
+            sess, train_op, global_step, train_step_kwargs)
+        if should_stop:
+          break
+    finally:
+      if sv.is_chief and cleanup_op is not None:
+        sess.run(cleanup_op)
 
     # This waits for service threads to finish.
     sv.Stop()

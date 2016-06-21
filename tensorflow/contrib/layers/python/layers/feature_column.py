@@ -353,7 +353,7 @@ class _SparseColumnHashed(_SparseColumn):
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
-    sparse_id_values = string_ops.string_to_hash_bucket(
+    sparse_id_values = string_ops.string_to_hash_bucket_fast(
         columns_to_tensors[self.name].values,
         self.bucket_size,
         name=self.name + "_lookup")
@@ -810,12 +810,8 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
             math_ops.to_int64(input_tensor), self.length, 1., 0.),
         [-1, self.length * self.source_column.dimension])
 
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    """Returns a Tensor as linear predictions and a list of created Variable."""
+  def to_sparse_tensor(self, input_tensor):
+    """Creates a SparseTensor from the bucketized Tensor."""
     dimension = self.source_column.dimension
     batch_size = array_ops.shape(input_tensor)[0]
 
@@ -825,8 +821,6 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       i2 = array_ops.tile(math_ops.range(0, dimension), [batch_size])
       # Flatten the bucket indices and unique them across dimensions
       # E.g. 2nd dimension indices will range from k to 2*k-1 with k buckets
-      # TODO(chapelle): move that logic to insert_transformed_feature to ensure
-      #   unique buckets across dimensions after crossing.
       bucket_indices = array_ops.reshape(input_tensor, [-1]) + self.length * i2
     else:
       # Simpler indices when dimension=1
@@ -835,13 +829,20 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       bucket_indices = array_ops.reshape(input_tensor, [-1])
 
     indices = math_ops.to_int64(array_ops.transpose(array_ops.pack((i1, i2))))
-    shape = math_ops.to_int64(array_ops.pack([batch_size, 1]))
+    shape = math_ops.to_int64(array_ops.pack([batch_size, dimension]))
     sparse_id_values = ops.SparseTensor(indices, bucket_indices, shape)
-    vocab_size = self.length * self.source_column.dimension
 
+    return sparse_id_values
+
+  def to_weighted_sum(self,
+                      input_tensor,
+                      num_outputs=1,
+                      weight_collections=None,
+                      trainable=True):
+    """Returns a Tensor as linear predictions and a list of created Variable."""
     return _create_embedding_lookup(
-        input_tensor=sparse_id_values,
-        vocab_size=vocab_size,
+        input_tensor=self.to_sparse_tensor(input_tensor),
+        vocab_size=self.length * self.source_column.dimension,
         dimension=num_outputs,
         weight_collections=_add_variable_collection(weight_collections),
         initializer=init_ops.zeros_initializer,
@@ -981,7 +982,10 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
       else:
         if c not in columns_to_tensors:
           c.insert_transformed_feature(columns_to_tensors)
-        feature_tensors.append(columns_to_tensors[c])
+        if isinstance(c, _BucketizedColumn):
+          feature_tensors.append(c.to_sparse_tensor(columns_to_tensors[c]))
+        else:
+          feature_tensors.append(columns_to_tensors[c])
     columns_to_tensors[self] = sparse_feature_cross_op.sparse_feature_cross(
         feature_tensors,
         hashed_output=True,

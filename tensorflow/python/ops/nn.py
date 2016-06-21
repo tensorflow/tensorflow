@@ -777,7 +777,8 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
                                                       shift=shift,
                                                       keep_dims=keep_dims,
                                                       name=name)
-    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
+    with ops.control_dependencies([counts, m_ss, v_ss]):
+      return normalize_moments(counts, m_ss, v_ss, shift, name=name)
 
 
 def batch_normalization(x,

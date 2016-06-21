@@ -1,16 +1,19 @@
-#  Copyright 2016 Google Inc. All Rights Reserved.
+# pylint: disable=g-bad-file-header
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Experiment class collecting information needed for a single training run."""
 
 from __future__ import absolute_import
@@ -19,6 +22,8 @@ from __future__ import print_function
 
 import time
 
+from tensorflow.contrib.learn.python.learn import monitors
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -33,7 +38,8 @@ class Experiment(object):
                eval_metrics=None,
                train_steps=None,
                eval_steps=100,
-               train_monitors=None):
+               train_monitors=None,
+               local_eval_frequency=None):
     """Constructor for `Experiment`.
 
     Args:
@@ -50,6 +56,9 @@ class Experiment(object):
         is raised), or for `eval_steps` steps, if specified.
       train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
         function.
+      local_eval_frequency: Frequency of running eval in steps,
+        when running localy. If `None`, runs evaluation only at the end of
+        training.
     """
     super(Experiment, self).__init__()
     self._estimator = estimator
@@ -59,6 +68,7 @@ class Experiment(object):
     self._train_steps = train_steps
     self._eval_steps = eval_steps
     self._train_monitors = train_monitors
+    self._local_eval_frequency = local_eval_frequency
 
   def train(self, delay_secs=0):
     """Fit the estimator using the training data.
@@ -111,7 +121,12 @@ class Experiment(object):
     Returns:
       The result of the `evaluate` call to the `Estimator`.
     """
-    # TODO(ipolosukhin): Add a ValidationMonitor to run in-training evaluation.
+    self._train_monitors = self._train_monitors or []
+    if self._local_eval_frequency:
+      self._train_monitors += [monitors.ValidationMonitor(
+          input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
+          metrics=self._eval_metrics, every_n_steps=self._local_eval_frequency
+      )]
     self.train()
     return self.evaluate()
 
@@ -139,10 +154,14 @@ class Experiment(object):
 
     while True:
       start = time.time()
-      self._estimator.evaluate(input_fn=input_fn,
-                               steps=self._eval_steps,
-                               metrics=self._eval_metrics,
-                               name=name)
+      try:
+        self._estimator.evaluate(input_fn=input_fn,
+                                 steps=self._eval_steps,
+                                 metrics=self._eval_metrics,
+                                 name=name)
+      except NotFittedError:
+        logging.warning("Estimator is not fitted yet, skipping evaluation. "
+                        "Increase 'delay_secs' to avoid this warning.")
       duration = time.time() - start
       if duration < throttle_delay_secs:
         difference = throttle_delay_secs - duration
