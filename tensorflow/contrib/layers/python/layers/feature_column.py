@@ -353,7 +353,7 @@ class _SparseColumnHashed(_SparseColumn):
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
-    sparse_id_values = string_ops.string_to_hash_bucket(
+    sparse_id_values = string_ops.string_to_hash_bucket_fast(
         columns_to_tensors[self.name].values,
         self.bucket_size,
         name=self.name + "_lookup")
