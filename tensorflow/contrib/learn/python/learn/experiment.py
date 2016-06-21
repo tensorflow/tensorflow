@@ -23,6 +23,7 @@ from __future__ import print_function
 import time
 
 from tensorflow.contrib.learn.python.learn import monitors
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -152,10 +153,14 @@ class Experiment(object):
 
     while True:
       start = time.time()
-      self._estimator.evaluate(input_fn=input_fn,
-                               steps=self._eval_steps,
-                               metrics=self._eval_metrics,
-                               name=name)
+      try:
+        self._estimator.evaluate(input_fn=input_fn,
+                                 steps=self._eval_steps,
+                                 metrics=self._eval_metrics,
+                                 name=name)
+      except NotFittedError:
+        logging.warning("Estimator is not fitted yet, skipping evaluation. "
+                        "Increase 'delay_secs' to avoid this warning.")
       duration = time.time() - start
       if duration < throttle_delay_secs:
         difference = throttle_delay_secs - duration
