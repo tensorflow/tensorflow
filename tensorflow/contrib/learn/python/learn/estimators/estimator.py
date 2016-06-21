@@ -729,9 +729,6 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if `metrics` don't match `targets`.
     """
-    if targets is None:
-      raise ValueError('Metrics %s in Estimator.evaluate requires targets '
-                       'not be None.' % metrics)
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': loss}
     metrics = metrics or {}

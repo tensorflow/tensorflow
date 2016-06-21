@@ -213,13 +213,6 @@ class EstimatorTest(tf.test.TestCase):
     est.fit(input_fn=boston_input_fn, steps=1)
     _ = est.evaluate(input_fn=boston_eval_fn, steps=1)
 
-  def testEvalNoTarget(self):
-    boston = tf.contrib.learn.datasets.load_boston()
-    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
-    est.fit(input_fn=boston_input_fn, steps=1)
-    with self.assertRaises(ValueError):
-      _ = est.evaluate(x=boston.data, steps=1)
-
   def testPredict(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston = tf.contrib.learn.datasets.load_boston()

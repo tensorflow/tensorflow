@@ -171,30 +171,6 @@ class RNNCell(object):
     return zeros
 
 
-def _assert_rnn_cell_input_shapes(inputs, state, state_is_tuple):
-  inputs = ops.convert_to_tensor(inputs)
-  if inputs.get_shape().ndims is not None and inputs.get_shape().ndims != 2:
-    raise ValueError("RNN cells expects inputs to be 2D Tensor, "
-                     "got inputs with %s shape." % inputs.get_shape())
-  # If state is None, don't check.
-  if state is None:
-    return
-  if state_is_tuple:
-    c, h = state
-    c = ops.convert_to_tensor(c)
-    h = ops.convert_to_tensor(h)
-    if ((c.get_shape().ndims is not None and c.get_shape().ndims != 2) or
-        (h.get_shape().ndims is not None and h.get_shape().ndims != 2)):
-      raise ValueError("RNN cells expects state to be tuple of 2D Tensors, "
-                       "got state tuple with shape: (%s, %s)." % (
-                           c.get_shape(), h.get_shape()))
-  else:
-    state = ops.convert_to_tensor(state)
-    if state.get_shape().ndims is not None and state.get_shape().ndims != 2:
-      raise ValueError("RNN cells expect state to be 2D Tensor, "
-                       "got state with sahpe: %s." % state.get_shape())
-
-
 class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
@@ -213,19 +189,7 @@ class BasicRNNCell(RNNCell):
     return self._num_units
 
   def __call__(self, inputs, state, scope=None):
-    """Most basic RNN.
-
-    output = new_state = activation(W * input + U * state + B).
-
-    Args:
-      inputs: 2D `Tensor`.
-      state: `tuple` of `Tensor`s or 2D `Tensor`.
-      scope: name of `VariableScope` object.
-
-    Returns:
-      `tuple` of output and state `Tensor`, where they are equal for this cell.
-    """
-    _assert_rnn_cell_input_shapes(inputs, state, False)
+    """Most basic RNN: output = new_state = activation(W * input + U * state + B)."""
     with vs.variable_scope(scope or type(self).__name__):  # "BasicRNNCell"
       output = self._activation(_linear([inputs, state], self._num_units, True))
     return output, output
@@ -250,7 +214,6 @@ class GRUCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Gated recurrent unit (GRU) with nunits cells."""
-    _assert_rnn_cell_input_shapes(inputs, state, False)
     with vs.variable_scope(scope or type(self).__name__):  # "GRUCell"
       with vs.variable_scope("Gates"):  # Reset gate and update gate.
         # We start with bias of 1.0 to not reset and not update.
@@ -326,7 +289,6 @@ class BasicLSTMCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Long short-term memory cell (LSTM)."""
-    _assert_rnn_cell_input_shapes(inputs, state, self._state_is_tuple)
     with vs.variable_scope(scope or type(self).__name__):  # "BasicLSTMCell"
       # Parameters of gates are concatenated into one multiply for efficiency.
       if self._state_is_tuple:
@@ -498,8 +460,6 @@ class LSTMCell(RNNCell):
       ValueError: If input size cannot be inferred from inputs via
         static shape inference.
     """
-    _assert_rnn_cell_input_shapes(inputs, state, self._state_is_tuple)
-
     num_proj = self._num_units if self._num_proj is None else self._num_proj
 
     if self._state_is_tuple:
@@ -604,7 +564,6 @@ class OutputProjectionWrapper(RNNCell):
     """Run the cell and output projection on inputs, starting from state."""
     output, res_state = self._cell(inputs, state)
     # Default scope: "OutputProjectionWrapper"
-    _assert_rnn_cell_input_shapes(inputs, None, None)
     with vs.variable_scope(scope or type(self).__name__):
       projected = _linear(output, self._output_size, True)
     return projected, res_state
@@ -647,7 +606,6 @@ class InputProjectionWrapper(RNNCell):
   def __call__(self, inputs, state, scope=None):
     """Run the input projection and then the cell."""
     # Default scope: "InputProjectionWrapper"
-    _assert_rnn_cell_input_shapes(inputs, None, None)
     with vs.variable_scope(scope or type(self).__name__):
       projected = _linear(inputs, self._num_proj, True)
     return self._cell(projected, state)
@@ -699,7 +657,6 @@ class DropoutWrapper(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell with the declared dropouts."""
-    _assert_rnn_cell_input_shapes(inputs, None, None)
     if (not isinstance(self._input_keep_prob, float) or
         self._input_keep_prob < 1):
       inputs = nn_ops.dropout(inputs, self._input_keep_prob, seed=self._seed)
@@ -810,7 +767,6 @@ class MultiRNNCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Run this multi-layer cell on inputs, starting from state."""
-    _assert_rnn_cell_input_shapes(inputs, state, self._state_is_tuple)
     with vs.variable_scope(scope or type(self).__name__):  # "MultiRNNCell"
       cur_state_pos = 0
       cur_inp = inputs

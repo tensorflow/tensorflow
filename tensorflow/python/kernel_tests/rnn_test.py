@@ -1025,20 +1025,6 @@ class LSTMTest(tf.test.TestCase):
     self._testDynamicEquivalentToStaticRNN(
         use_gpu=True, use_sequence_length=True)
 
-  def testRNNWrongInputs(self):
-    cell = tf.nn.rnn_cell.GRUCell(2)
-    inputs = tf.constant([[1., 2.], [1., 2.]])
-    inputs_wrong = tf.constant([[[1., 2.], [1., 2.]], [[1., 2.], [1., 2.]]])
-    state_wrong = tf.constant([[1., 2.], [1., 2.]])
-    with self.assertRaises(TypeError):
-      tf.nn.rnn(None, inputs)
-    with self.assertRaises(TypeError):
-      tf.nn.rnn(cell, None)
-    with self.assertRaises(TypeError):
-      tf.nn.rnn(cell, inputs_wrong)
-    with self.assertRaises(TypeError):
-      tf.nn.rnn(cell, inputs, state_wrong)
-
 
 class BidirectionalRNNTest(tf.test.TestCase):
 

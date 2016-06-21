@@ -91,19 +91,11 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   """
 
   if not isinstance(cell, rnn_cell.RNNCell):
-    raise TypeError("Rnn expects cell to be an instance of RNNCell, "
-                    "got %s" % cell)
+    raise TypeError("cell must be an instance of RNNCell")
   if not isinstance(inputs, list):
-    raise TypeError("Rnn expects inputs to be a list, got %s" % inputs)
+    raise TypeError("inputs must be a list")
   if not inputs:
-    raise ValueError("Rnn expects inputs not to be empty, got %s" % inputs)
-  first_el_shape = inputs[0].get_shape()
-  for i, inp in enumerate(inputs):
-    if not inp.get_shape().is_compatible_with(first_el_shape):
-      raise ValueError("Rnn expectes inputs to be list of compatible Tensors. "
-                       "Received %s, where inputs[%d].shape == %s doesn't "
-                       "match inputs[0].shape == %s" % (
-                           inputs, i, inp.get_shape(), first_el_shape))
+    raise ValueError("inputs must not be empty")
 
   outputs = []
   # Create a new scope in which the caching device is either
@@ -135,7 +127,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     else:
       if not dtype:
         raise ValueError("If no initial_state is provided, "
-                         "dtype must be specified")
+                           "dtype must be specified")
       state = cell.zero_state(batch_size, dtype)
 
     if sequence_length is not None:  # Prepare variables
