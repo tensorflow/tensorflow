@@ -123,7 +123,7 @@ class Experiment(object):
     """
     if self._local_eval_frequency:
       self._train_monitors += [monitors.ValidationMonitor(
-          input_fn=self._eval_input_fn, steps=self._eval_steps,
+          input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
           metrics=self._eval_metrics, every_n_steps=self._local_eval_frequency
       )]
     self.train()
