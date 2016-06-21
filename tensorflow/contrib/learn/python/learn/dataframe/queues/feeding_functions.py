@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import queue_runner
 
 # pylint: disable=g-import-not-at-top
@@ -102,6 +103,7 @@ def enqueue_data(data,
                  capacity,
                  shuffle=False,
                  min_after_dequeue=None,
+                 num_threads=1,
                  seed=None,
                  name="enqueue_input",
                  enqueue_size=1):
@@ -120,7 +122,8 @@ def enqueue_data(data,
     min_after_dequeue: minimum number of elements that can remain in the queue
     after a dequeue operation. Only used when `shuffle` is true. If not set,
     defaults to `capacity` / 4.
-    seed: used to seed RandomShuffleQueue. Only used when `shuffle` is True.
+    num_threads: number of threads used for reading and enqueueing.
+    seed: used to seed shuffling and reader starting points.
     name: a scope name identifying the data.
     enqueue_size: the number of rows to enqueue per step.
 
@@ -131,7 +134,6 @@ def enqueue_data(data,
     TypeError: `data` is not a Pandas `DataFrame` or a numpy `ndarray`.
   """
   with ops.op_scope([], name, None):
-    # TODO(jamieas): create multithreaded version of enqueue_data.
     if isinstance(data, np.ndarray):
       types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
       queue_shapes = [(), data.shape[1:]]
@@ -146,10 +148,6 @@ def enqueue_data(data,
           "data must be either a numpy array or pandas DataFrame if pandas is "
           "installed; got {}".format(type(data).__name__))
 
-    # Note the placeholders have no shapes, so they will accept any
-    # enqueue_size.  enqueue_many below will break them up.
-    placeholders = [array_ops.placeholder(t) for t in types]
-
     if shuffle:
       min_after_dequeue = int(capacity / 4 if min_after_dequeue is None else
                               min_after_dequeue)
@@ -159,20 +157,37 @@ def enqueue_data(data,
                                                shapes=queue_shapes,
                                                seed=seed)
     else:
+      if num_threads > 1:
+        # TODO(jamieas): Add TensorBoard warning here once available.
+        logging.warning(
+            "enqueue_data was called with shuffle=False and num_threads > 1. "
+            "This will create multiple threads, all reading the "
+            "array/dataframe in order. If you want examples read in order, use"
+            " one thread; if you want multiple threads, enable shuffling.")
       min_after_dequeue = 0  # just for the summary text
-
       queue = data_flow_ops.FIFOQueue(capacity,
                                       dtypes=types,
                                       shapes=queue_shapes)
-    enqueue_op = queue.enqueue_many(placeholders)
-    feed_fn = get_feed_fn(placeholders,
-                          data,
-                          enqueue_size,
-                          random_start=shuffle,
-                          seed=seed)
+
+    enqueue_ops = []
+    feed_fns = []
+
+    for i in range(num_threads):
+      # Note the placeholders have no shapes, so they will accept any
+      # enqueue_size.  enqueue_many below will break them up.
+      placeholders = [array_ops.placeholder(t) for t in types]
+
+      enqueue_ops.append(queue.enqueue_many(placeholders))
+      seed_i = None if seed is None else (i + 1) * seed
+      feed_fns.append(get_feed_fn(placeholders,
+                                  data,
+                                  enqueue_size,
+                                  random_start=shuffle,
+                                  seed=seed_i))
+
     runner = fqr.FeedingQueueRunner(queue=queue,
-                                    enqueue_ops=[enqueue_op],
-                                    feed_fn=feed_fn)
+                                    enqueue_ops=enqueue_ops,
+                                    feed_fns=feed_fns)
     queue_runner.add_queue_runner(runner)
 
     full = (math_ops.cast(

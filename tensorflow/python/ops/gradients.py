@@ -666,7 +666,7 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         assert control_flow_ops.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
-    if (out_grad is None or
+    if (isinstance(out_grad, collections.Sequence) and
         not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
                  for g in out_grad if g is not None])):
       raise TypeError("gradients have to be either all Tensors "

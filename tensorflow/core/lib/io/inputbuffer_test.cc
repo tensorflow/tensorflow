@@ -38,12 +38,11 @@ TEST(InputBuffer, ReadLine_Empty) {
   WriteStringToFile(env, fname, "");
 
   for (auto buf_size : BufferSizes()) {
-    RandomAccessFile* file;
+    std::unique_ptr<RandomAccessFile> file;
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string line;
-    io::InputBuffer in(file, buf_size);
+    io::InputBuffer in(file.get(), buf_size);
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
-    delete file;
   }
 }
 
@@ -53,10 +52,10 @@ TEST(InputBuffer, ReadLine1) {
   WriteStringToFile(env, fname, "line one\nline two\nline three\n");
 
   for (auto buf_size : BufferSizes()) {
-    RandomAccessFile* file;
+    std::unique_ptr<RandomAccessFile> file;
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string line;
-    io::InputBuffer in(file, buf_size);
+    io::InputBuffer in(file.get(), buf_size);
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
     TF_CHECK_OK(in.ReadLine(&line));
@@ -66,7 +65,6 @@ TEST(InputBuffer, ReadLine1) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
-    delete file;
   }
 }
 
@@ -76,10 +74,10 @@ TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
   WriteStringToFile(env, fname, "line one\nline two\nline three");
 
   for (auto buf_size : BufferSizes()) {
-    RandomAccessFile* file;
+    std::unique_ptr<RandomAccessFile> file;
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string line;
-    io::InputBuffer in(file, buf_size);
+    io::InputBuffer in(file.get(), buf_size);
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
     TF_CHECK_OK(in.ReadLine(&line));
@@ -89,7 +87,6 @@ TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
-    delete file;
   }
 }
 
@@ -99,10 +96,10 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
   WriteStringToFile(env, fname, "line one\n\n\nline two\nline three");
 
   for (auto buf_size : BufferSizes()) {
-    RandomAccessFile* file;
+    std::unique_ptr<RandomAccessFile> file;
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string line;
-    io::InputBuffer in(file, buf_size);
+    io::InputBuffer in(file.get(), buf_size);
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
     TF_CHECK_OK(in.ReadLine(&line));
@@ -116,7 +113,6 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
-    delete file;
   }
 }
 
@@ -126,10 +122,10 @@ TEST(InputBuffer, ReadLine_CRLF) {
   WriteStringToFile(env, fname, "line one\r\n\r\n\r\nline two\r\nline three");
 
   for (auto buf_size : BufferSizes()) {
-    RandomAccessFile* file;
+    std::unique_ptr<RandomAccessFile> file;
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string line;
-    io::InputBuffer in(file, buf_size);
+    io::InputBuffer in(file.get(), buf_size);
     TF_CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
     TF_CHECK_OK(in.ReadLine(&line));
@@ -143,7 +139,6 @@ TEST(InputBuffer, ReadLine_CRLF) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadLine(&line)));
-    delete file;
   }
 }
 
@@ -153,10 +148,10 @@ TEST(InputBuffer, ReadNBytes) {
   WriteStringToFile(env, fname, "0123456789");
 
   for (auto buf_size : BufferSizes()) {
-    RandomAccessFile* file;
+    std::unique_ptr<RandomAccessFile> file;
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string read;
-    io::InputBuffer in(file, buf_size);
+    io::InputBuffer in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
     TF_CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
@@ -179,7 +174,6 @@ TEST(InputBuffer, ReadNBytes) {
     TF_CHECK_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
-    delete file;
   }
 }
 
@@ -189,10 +183,10 @@ TEST(InputBuffer, SkipNBytes) {
   WriteStringToFile(env, fname, "0123456789");
 
   for (auto buf_size : BufferSizes()) {
-    RandomAccessFile* file;
+    std::unique_ptr<RandomAccessFile> file;
     TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
     string read;
-    io::InputBuffer in(file, buf_size);
+    io::InputBuffer in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
     TF_CHECK_OK(in.SkipNBytes(3));
     EXPECT_EQ(3, in.Tell());
@@ -215,7 +209,6 @@ TEST(InputBuffer, SkipNBytes) {
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
-    delete file;
   }
 }
 
