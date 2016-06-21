@@ -616,7 +616,7 @@ class BaseSession(SessionInterface):
                 ' Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
 
-          np_val = np.array(subfeed_val, dtype=subfeed_dtype)
+          np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
           if not subfeed_t.get_shape().is_compatible_with(np_val.shape):
             raise ValueError(
