@@ -43,7 +43,7 @@ Sepal Length | Sepal Width | Petal Length | Petal Width | Species
 
 <!-- TODO: The rest of this section presumes that CSVs will live in same directory as tutorial examples; if not, update links and code -->
 For this tutorial, the Iris data has been randomized and split into two separate CSVs: 
-a training set of 120 samples ([iris_training.csv](https://www.tensorflow.org/code/tensorflow/examples/tutorials/tflearnqs/iris_training.csv))
+a training set of 120 samples ([iris_training.csv](https://www.tensorflow.org/code/tensorflow/examples/tutorials/tflearnqs/iris_training.csv)).
 and a test set of 30 samples ([iris_test.csv](https://www.tensorflow.org/code/tensorflow/examples/tutorials/tflearnqs/iris_test.csv)).
 
 To get started, first import TensorFlow, TF.Learn, and numpy:
