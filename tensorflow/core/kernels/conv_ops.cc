@@ -89,16 +89,15 @@ struct LaunchGeneric {
 };
 
 template <typename Device, typename T>
-struct LaunchConvOp;
+class LaunchConvOp;
 
 template <typename T>
-struct LaunchConvOp<CPUDevice, T> {
-  static void launch(OpKernelContext* ctx, bool use_cudnn,
-                     bool cudnn_use_autotune, const Tensor& input,
-                     const Tensor& filter, int row_stride, int col_stride,
-                     const Eigen::PaddingType& padding, Tensor* output,
-                     TensorFormat data_format,
-                     ConvAlgorithmMap<CPUDevice>* conv_algorithm_map) {
+class LaunchConvOp<CPUDevice, T> {
+ public:
+  void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+              const Tensor& input, const Tensor& filter, int row_stride,
+              int col_stride, const Eigen::PaddingType& padding, Tensor* output,
+              TensorFormat data_format) {
     LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
                                         col_stride, padding, output,
                                         data_format);
@@ -222,10 +221,9 @@ class Conv2DOp : public BinaryOp<T> {
     if (out_shape.num_elements() == 0) {
       return;
     }
-    LaunchConvOp<Device, T>::launch(context, use_cudnn_, cudnn_use_autotune_,
-                                    input, filter, stride_rows, stride_cols,
-                                    BrainPadding2EigenPadding(padding_), output,
-                                    data_format_, &conv_algorithm_map_);
+    launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+                     stride_rows, stride_cols,
+                     BrainPadding2EigenPadding(padding_), output, data_format_);
   }
 
  private:
@@ -233,7 +231,7 @@ class Conv2DOp : public BinaryOp<T> {
   bool use_cudnn_;
   Padding padding_;
   TensorFormat data_format_;
-  ConvAlgorithmMap<Device> conv_algorithm_map_;
+  LaunchConvOp<Device, T> launcher_;
   bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
@@ -266,13 +264,16 @@ int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
 }
 
 template <typename T>
-struct LaunchConvOp<GPUDevice, T> {
-  static void launch(OpKernelContext* ctx, bool use_cudnn,
-                     bool cudnn_use_autotune, const Tensor& input_param,
-                     const Tensor& filter, int row_stride, int col_stride,
-                     const Eigen::PaddingType& padding, Tensor* output,
-                     TensorFormat data_format,
-                     ConvAlgorithmMap<GPUDevice>* conv_algorithm_map) {
+class LaunchConvOp<GPUDevice, T> {
+ public:
+  void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+              const Tensor& input_param, const Tensor& filter, int row_stride,
+              int col_stride, const Eigen::PaddingType& padding, Tensor* output,
+              TensorFormat data_format) {
+    using perftools::gputools::dnn::AlgorithmConfig;
+    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::ProfileResult;
+    using perftools::gputools::dnn::kDefaultAlgorithm;
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -444,14 +445,13 @@ struct LaunchConvOp<GPUDevice, T> {
         padding_cols,  // padding_cols
         device_id,     // device_id
     };
-    using namespace perftools::gputools::dnn;
-    AlgorithmType algorithm = kDefaultAlgorithm;
+    AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune &&
-        !conv_algorithm_map->Find(conv_parameters, &algorithm)) {
+        !autotune_results_.Find(conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
       CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
       ProfileResult best_result;
-      best_result.set_elapsed_time_in_ms(std::numeric_limits<float>::max());
+      ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
@@ -459,24 +459,36 @@ struct LaunchConvOp<GPUDevice, T> {
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
-                ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                            filter_ptr, conv_desc, output_desc,
-                                            &output_ptr, &scratch_allocator,
-                                            profile_algorithm, &profile_result)
+                ->ThenConvolveWithAlgorithm(
+                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                    output_desc, &output_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm), &profile_result)
                 .ok();
         if (cudnn_launch_status) {
-          if (profile_result.is_valid() &&
-              profile_result.elapsed_time_in_ms() <
-                  best_result.elapsed_time_in_ms()) {
-            best_result = profile_result;
+          if (profile_result.is_valid()) {
+            if (profile_result.elapsed_time_in_ms() <
+                best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+            if (scratch_allocator.TotalByteSize() == 0 &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result_no_scratch.elapsed_time_in_ms()) {
+              best_result_no_scratch = profile_result;
+            }
           }
         }
       }
-      CHECK(best_result.is_valid() &&
-            best_result.algorithm() != kDefaultAlgorithm)
-          << "No algorithm worked!";
-      algorithm = best_result.algorithm();
-      conv_algorithm_map->Insert(conv_parameters, algorithm);
+      OP_REQUIRES(ctx, best_result.is_valid() &&
+                           best_result.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm worked!"));
+      OP_REQUIRES(ctx,
+                  best_result_no_scratch.is_valid() &&
+                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm without scratch worked!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+      autotune_results_.Insert(conv_parameters, algorithm_config);
     }
 
     CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
@@ -485,7 +497,7 @@ struct LaunchConvOp<GPUDevice, T> {
             ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
                                         filter_ptr, conv_desc, output_desc,
                                         &output_ptr, &scratch_allocator,
-                                        algorithm, nullptr)
+                                        algorithm_config, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -504,6 +516,10 @@ struct LaunchConvOp<GPUDevice, T> {
       *output = transformed_output;
     }
   }
+
+ private:
+  AutoTuneMap<ConvParameters, perftools::gputools::dnn::AlgorithmConfig>
+      autotune_results_;
 };
 
 #endif  // GOOGLE_CUDA
