@@ -4821,7 +4821,7 @@ Extracts numpy matrix from pandas DataFrame.
 
 - - -
 
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, name=None)` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, parse_fn=None, name=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -4833,6 +4833,8 @@ All queue runners are added to the queue runners collection, and may be
 started via `start_queue_runners`.
 
 All ops are added to the default graph.
+
+Use `parse_fn` if you need to do parsing / processing on single examples.
 
 ##### Args:
 
@@ -4851,11 +4853,14 @@ All ops are added to the default graph.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
 *  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
     records to read at once
+*  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
+    representation. If `None`, no parsing is done.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:
 
-  String `Tensor` of batched `Example` proto.
+  String `Tensor` of batched `Example` proto. If `keep_keys` is True, then
+  returns tuple of string `Tensor`s, where first value is the key.
 
 ##### Raises:
 
@@ -4865,7 +4870,7 @@ All ops are added to the default graph.
 
 - - -
 
-### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, name=None)` {#read_batch_features}
+### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, read_batch_size=1, name=None)` {#read_batch_features}
 
 Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -4897,11 +4902,14 @@ All ops are added to the default graph.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.
+*  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
+    records to read at once
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:
 
   A dict of `Tensor` or `SparseTensor` objects for each in `features`.
+  If `keep_keys` is `True`, returns tuple of string `Tensor` and above dict.
 
 ##### Raises:
 
