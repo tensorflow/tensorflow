@@ -30,14 +30,14 @@ PyRecordReader::PyRecordReader() {}
 
 PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
                                     const string& compression_type_string) {
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   Status s = Env::Default()->NewRandomAccessFile(filename, &file);
   if (!s.ok()) {
     return nullptr;
   }
   PyRecordReader* reader = new PyRecordReader;
   reader->offset_ = start_offset;
-  reader->file_ = file;
+  reader->file_ = file.release();
 
   RecordReaderOptions options;
   if (compression_type_string == "ZLIB") {

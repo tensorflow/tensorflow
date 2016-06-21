@@ -298,18 +298,13 @@ typedef Eigen::GpuDevice GPUDevice;
           label, ": filter and out_backprop must have the same out_depth"));   \
   const auto stride_rows = GetTensorDim(strides_, data_format_, 'H');          \
   const auto stride_cols = GetTensorDim(strides_, data_format_, 'W');          \
-  int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                  \
-  if (filter_cols == filter_rows && filter_rows == 1 && stride_rows == 1 &&    \
-      stride_cols == 1) {                                                      \
-    out_rows = input_rows;                                                     \
-    out_cols = input_cols;                                                     \
-  } else {                                                                     \
-    OP_REQUIRES_OK(                                                            \
-        context,                                                               \
-        Get2dOutputSize(input_rows, input_cols, filter_rows, filter_cols,      \
-                        stride_rows, stride_cols, padding_, &out_rows,         \
-                        &out_cols, &pad_rows, &pad_cols));                     \
-  }                                                                            \
+  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSize(input_rows, filter_rows, stride_rows,   \
+                                       padding_, &out_rows, &pad_rows));       \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSize(input_cols, filter_cols, stride_cols,   \
+                                       padding_, &out_cols, &pad_cols));       \
   OP_REQUIRES(                                                                 \
       context, output_rows == out_rows,                                        \
       errors::InvalidArgument(                                                 \
@@ -447,15 +442,16 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
     // TODO(andydavis) Consider moving code shared with
     // Conv2DCustomBackpropFilterOp into a shared helper function.
-    int pad_top;
-    int pad_bottom;
-    int pad_left;
-    int pad_right;
-    OP_REQUIRES_OK(context,
-                   Get2dOutputSizeVerbose(
-                       input_rows, input_cols, filter_rows, filter_cols,
-                       stride_rows, stride_cols, padding_, &out_rows, &out_cols,
-                       &pad_top, &pad_bottom, &pad_left, &pad_right));
+    int64 pad_top;
+    int64 pad_bottom;
+    int64 pad_left;
+    int64 pad_right;
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_rows, filter_rows, stride_rows, padding_,
+                                &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_cols, filter_cols, stride_cols, padding_,
+                                &out_cols, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.
     const int filter_total_size = filter_rows * filter_cols * in_depth;
@@ -724,15 +720,16 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
-    int pad_top;
-    int pad_bottom;
-    int pad_left;
-    int pad_right;
-    OP_REQUIRES_OK(context,
-                   Get2dOutputSizeVerbose(
-                       input_rows, input_cols, filter_rows, filter_cols,
-                       stride_rows, stride_cols, padding_, &out_rows, &out_cols,
-                       &pad_top, &pad_bottom, &pad_left, &pad_right));
+    int64 pad_top;
+    int64 pad_bottom;
+    int64 pad_left;
+    int64 pad_right;
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_rows, filter_rows, stride_rows, padding_,
+                                &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_cols, filter_cols, stride_cols, padding_,
+                                &out_cols, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.
     const int filter_total_size = filter_rows * filter_cols * in_depth;

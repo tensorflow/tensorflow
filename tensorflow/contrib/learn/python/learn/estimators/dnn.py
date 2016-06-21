@@ -76,7 +76,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         whose `value` is a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
         whose `value` is a `Tensor`.
-      - if `feauture_columns` is None, then `input` must contains only real
+      - if `feauture_columns` is `None`, then `input` must contains only real
         valued `Tensor`.
   """
 
@@ -96,7 +96,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 
     Args:
       hidden_units: List of hidden units per layer. All layers are fully
-        connected. Ex. [64, 32] means first layer has 64 nodes and second one
+        connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
         has 32.
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
@@ -111,7 +111,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         `None`, will use an Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
         use `tf.nn.relu`.
-      dropout: When not None, the probability we will drop out a given
+      dropout: When not `None`, the probability we will drop out a given
         coordinate.
       gradient_clip_norm: A float > 0. If provided, gradients are
         clipped to their global norm with this clipping ratio. See
@@ -119,7 +119,10 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      config: RunConfig object to configure the runtime settings.
+      config: `RunConfig` object to configure the runtime settings.
+
+    Returns:
+      A `DNNClassifier` estimator.
     """
     super(DNNClassifier, self).__init__(
         model_dir=model_dir,
@@ -199,7 +202,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         whose `value` is a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
         whose `value` is a `Tensor`.
-      - if `feauture_columns` is None, then `input` must contains only real
+      - if `feauture_columns` is `None`, then `input` must contains only real
         valued `Tensor`.
   """
 
@@ -218,8 +221,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
 
     Args:
       hidden_units: List of hidden units per layer. All layers are fully
-        connected. Ex. [64, 32] means first layer has 64 nodes and second
-        one has 32.
+        connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+        has 32.
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
@@ -231,15 +234,18 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         `None`, will use an Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
         use `tf.nn.relu`.
-      dropout: When not None, the probability we will drop out a given
+      dropout: When not `None`, the probability we will drop out a given
         coordinate.
-      gradient_clip_norm: A float > 0. If provided, gradients are clipped
+      gradient_clip_norm: A `float` > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
-        tf.clip_by_global_norm for more details.
+        `tf.clip_by_global_norm` for more details.
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
-      config: RunConfig object to configure the runtime settings.
+      config: `RunConfig` object to configure the runtime settings.
+
+    Returns:
+      A `DNNRegressor` estimator.
     """
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,

@@ -194,20 +194,13 @@ class Conv2DOp : public BinaryOp<T> {
     const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
     const int stride_cols = GetTensorDim(strides_, data_format_, 'W');
 
-    int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    if (filter_cols == filter_rows && filter_rows == 1 && stride_rows == 1 &&
-        stride_cols == 1) {
-      // For 1x1 kernel, the 2D convolution is reduced to matrix
-      // multiplication.
-      out_rows = input_rows;
-      out_cols = input_cols;
-    } else {
-      OP_REQUIRES_OK(
-          context,
-          Get2dOutputSize(input_rows, input_cols, filter_rows, filter_cols,
-                          stride_rows, stride_cols, padding_, &out_rows,
-                          &out_cols, &pad_rows, &pad_cols));
-    }
+    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_rows, filter_rows, stride_rows,
+                                         padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSize(input_cols, filter_cols, stride_cols,
+                                         padding_, &out_cols, &pad_cols));
     TensorShape out_shape =
         ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
 
