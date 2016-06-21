@@ -41,7 +41,9 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
 
@@ -247,24 +249,32 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         self._get_dnn_feature_columns(),
         weight_collections=[self._dnn_weight_collection])
     for layer_id, num_hidden_units in enumerate(self._dnn_hidden_units):
-      net = layers.legacy_fully_connected(
-          net,
-          num_hidden_units,
-          activation_fn=self._dnn_activation_fn,
-          weight_collections=[self._dnn_weight_collection],
-          bias_collections=[self._dnn_weight_collection],
-          name="hiddenlayer_%d" % layer_id)
-      if self._dnn_dropout is not None and is_training:
-        net = layers.dropout(
+      op_scope = "hiddenlayer_%d" % layer_id
+      with variable_scope.variable_op_scope(
+          [net], op_scope,
+          partitioner=partitioned_variables.min_max_variable_partitioner(
+              max_partitions=self._config.num_ps_replicas)):
+        net = layers.fully_connected(
             net,
-            keep_prob=(1.0 - self._dnn_dropout))
-      self._add_hidden_layer_summary(net, "hiddenlayer_%d" % layer_id)
-    logit = layers.legacy_fully_connected(
-        net,
-        self._num_label_columns(),
-        weight_collections=[self._dnn_weight_collection],
-        bias_collections=[self._dnn_weight_collection],
-        name="dnn_logit")
+            num_hidden_units,
+            activation_fn=self._dnn_activation_fn,
+            variables_collections=[self._dnn_weight_collection],
+            scope=op_scope)
+        if self._dnn_dropout is not None and is_training:
+          net = layers.dropout(
+              net,
+              keep_prob=(1.0 - self._dnn_dropout))
+      self._add_hidden_layer_summary(net, op_scope)
+    with variable_scope.variable_op_scope(
+        [net], "dnn_logit",
+        partitioner=partitioned_variables.min_max_variable_partitioner(
+            max_partitions=self._config.num_ps_replicas)):
+      logit = layers.fully_connected(
+          net,
+          self._num_label_columns(),
+          activation_fn=None,
+          variables_collections=[self._dnn_weight_collection],
+          scope="dnn_logit")
     self._add_hidden_layer_summary(logit, "dnn_logit")
     return logit
 
