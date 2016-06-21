@@ -41,5 +41,5 @@ Given loss and parameters for optimizer, returns a training op.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `optimizer` is wrong type or `loss` is not 0d Tensor.
+*  <b>`ValueError`</b>: if optimizer is wrong type.
 
