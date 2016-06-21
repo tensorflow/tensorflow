@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import time
 
+from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -36,7 +37,8 @@ class Experiment(object):
                eval_metrics=None,
                train_steps=None,
                eval_steps=100,
-               train_monitors=None):
+               train_monitors=None,
+               local_eval_frequency=None):
     """Constructor for `Experiment`.
 
     Args:
@@ -53,6 +55,9 @@ class Experiment(object):
         is raised), or for `eval_steps` steps, if specified.
       train_monitors: A list of monitors to pass to the `Estimator`'s `fit`
         function.
+      local_eval_frequency: Frequency of running eval in steps,
+        when running localy. If `None`, runs evaluation only at the end of
+        training.
     """
     super(Experiment, self).__init__()
     self._estimator = estimator
@@ -62,6 +67,7 @@ class Experiment(object):
     self._train_steps = train_steps
     self._eval_steps = eval_steps
     self._train_monitors = train_monitors
+    self._local_eval_frequency = local_eval_frequency
 
   def train(self, delay_secs=0):
     """Fit the estimator using the training data.
@@ -114,7 +120,11 @@ class Experiment(object):
     Returns:
       The result of the `evaluate` call to the `Estimator`.
     """
-    # TODO(ipolosukhin): Add a ValidationMonitor to run in-training evaluation.
+    if self._local_eval_frequency:
+      self._train_monitors += [monitors.ValidationMonitor(
+          input_fn=self._eval_input_fn, steps=self._eval_steps,
+          metrics=self._eval_metrics, every_n_steps=self._local_eval_frequency
+      )]
     self.train()
     return self.evaluate()
 
