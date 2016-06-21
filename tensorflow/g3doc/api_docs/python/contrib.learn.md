@@ -2403,9 +2403,9 @@ estimator = LinearClassifier(
    ))
 
 # Input builders
-def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+def input_fn_train: # returns x, y
   ...
-def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+def input_fn_eval: # returns x, y
   ...
 estimator.fit(input_fn=input_fn_train)
 estimator.evaluate(input_fn=input_fn_eval)
@@ -2767,9 +2767,9 @@ estimator = LinearRegressor(
     feature_columns=[occupation, education_x_occupation])
 
 # Input builders
-def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+def input_fn_train: # returns x, y
   ...
-def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+def input_fn_eval: # returns x, y
   ...
 estimator.fit(input_fn=input_fn_train)
 estimator.evaluate(input_fn=input_fn_eval)
