@@ -20,6 +20,7 @@ deconvolution.
 *  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
     dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
 *  <b>`name`</b>: Optional name for the returned tensor.
 
 ##### Returns:
