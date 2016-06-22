@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for tensorflow.kernels.gradient_checker."""
+"""Tests for tf.test.compute_gradient and tf.compute_gradient_error."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

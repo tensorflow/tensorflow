@@ -298,18 +298,13 @@ typedef Eigen::GpuDevice GPUDevice;
           label, ": filter and out_backprop must have the same out_depth"));   \
   const auto stride_rows = GetTensorDim(strides_, data_format_, 'H');          \
   const auto stride_cols = GetTensorDim(strides_, data_format_, 'W');          \
-  int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                  \
-  if (filter_cols == filter_rows && filter_rows == 1 && stride_rows == 1 &&    \
-      stride_cols == 1) {                                                      \
-    out_rows = input_rows;                                                     \
-    out_cols = input_cols;                                                     \
-  } else {                                                                     \
-    OP_REQUIRES_OK(                                                            \
-        context,                                                               \
-        Get2dOutputSize(input_rows, input_cols, filter_rows, filter_cols,      \
-                        stride_rows, stride_cols, padding_, &out_rows,         \
-                        &out_cols, &pad_rows, &pad_cols));                     \
-  }                                                                            \
+  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSize(input_rows, filter_rows, stride_rows,   \
+                                       padding_, &out_rows, &pad_rows));       \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSize(input_cols, filter_cols, stride_cols,   \
+                                       padding_, &out_cols, &pad_cols));       \
   OP_REQUIRES(                                                                 \
       context, output_rows == out_rows,                                        \
       errors::InvalidArgument(                                                 \
@@ -447,15 +442,16 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
     // TODO(andydavis) Consider moving code shared with
     // Conv2DCustomBackpropFilterOp into a shared helper function.
-    int pad_top;
-    int pad_bottom;
-    int pad_left;
-    int pad_right;
-    OP_REQUIRES_OK(context,
-                   Get2dOutputSizeVerbose(
-                       input_rows, input_cols, filter_rows, filter_cols,
-                       stride_rows, stride_cols, padding_, &out_rows, &out_cols,
-                       &pad_top, &pad_bottom, &pad_left, &pad_right));
+    int64 pad_top;
+    int64 pad_bottom;
+    int64 pad_left;
+    int64 pad_right;
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_rows, filter_rows, stride_rows, padding_,
+                                &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_cols, filter_cols, stride_cols, padding_,
+                                &out_cols, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.
     const int filter_total_size = filter_rows * filter_cols * in_depth;
@@ -724,15 +720,16 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
-    int pad_top;
-    int pad_bottom;
-    int pad_left;
-    int pad_right;
-    OP_REQUIRES_OK(context,
-                   Get2dOutputSizeVerbose(
-                       input_rows, input_cols, filter_rows, filter_cols,
-                       stride_rows, stride_cols, padding_, &out_rows, &out_cols,
-                       &pad_top, &pad_bottom, &pad_left, &pad_right));
+    int64 pad_top;
+    int64 pad_bottom;
+    int64 pad_left;
+    int64 pad_right;
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_rows, filter_rows, stride_rows, padding_,
+                                &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_cols, filter_cols, stride_cols, padding_,
+                                &out_cols, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.
     const int filter_total_size = filter_rows * filter_cols * in_depth;
@@ -891,6 +888,10 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    using perftools::gputools::dnn::AlgorithmConfig;
+    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::ProfileResult;
+    using perftools::gputools::dnn::kDefaultAlgorithm;
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     OP_REQUIRES(
@@ -1081,14 +1082,13 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
         padding_cols,         // padding_cols
         device_id,            // device_id
     };
-    using namespace perftools::gputools::dnn;
-    AlgorithmType algorithm = kDefaultAlgorithm;
+    AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ &&
-        !conv_algorithm_map_.Find(conv_parameters, &algorithm)) {
+        !autotune_results_.Find(conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(&algorithms));
       ProfileResult best_result;
-      best_result.set_elapsed_time_in_ms(std::numeric_limits<float>::max());
+      ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
@@ -1100,28 +1100,40 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                 ->ThenConvolveBackwardDataWithAlgorithm(
                     filter_desc, filter_ptr, output_desc, out_backprop_ptr,
                     conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                    profile_algorithm, &profile_result)
+                    AlgorithmConfig(profile_algorithm), &profile_result)
                 .ok();
         if (cudnn_launch_status) {
-          if (profile_result.is_valid() &&
-              profile_result.elapsed_time_in_ms() <
-                  best_result.elapsed_time_in_ms()) {
-            best_result = profile_result;
+          if (profile_result.is_valid()) {
+            if (profile_result.elapsed_time_in_ms() <
+                best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+            if (scratch_allocator.TotalByteSize() == 0 &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result_no_scratch.elapsed_time_in_ms()) {
+              best_result_no_scratch = profile_result;
+            }
           }
         }
       }
-      CHECK(best_result.is_valid() &&
-            best_result.algorithm() != kDefaultAlgorithm)
-          << "No algorithm worked!";
-      algorithm = best_result.algorithm();
-      conv_algorithm_map_.Insert(conv_parameters, algorithm);
+      OP_REQUIRES(context, best_result.is_valid() &&
+                               best_result.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm worked!"));
+      OP_REQUIRES(context,
+                  best_result_no_scratch.is_valid() &&
+                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm without scratch worked!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+      autotune_results_.Insert(conv_parameters, algorithm_config);
     }
     bool cudnn_launch_status =
         stream
             ->ThenConvolveBackwardDataWithAlgorithm(
                 filter_desc, filter_ptr, output_desc, out_backprop_ptr,
                 conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                algorithm, nullptr)
+                algorithm_config, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -1172,7 +1184,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
   Padding padding_;
   bool use_cudnn_;
   TensorFormat data_format_;
-  ConvAlgorithmMap<Device> conv_algorithm_map_;
+  AutoTuneMap<ConvParameters, perftools::gputools::dnn::AlgorithmConfig>
+      autotune_results_;
   bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropInputOp);
@@ -1202,6 +1215,10 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    using perftools::gputools::dnn::AlgorithmConfig;
+    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::ProfileResult;
+    using perftools::gputools::dnn::kDefaultAlgorithm;
     const Tensor& input = context->input(0);
     const Tensor& filter_sizes = context->input(1);
     OP_REQUIRES(
@@ -1409,14 +1426,13 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
         padding_cols,         // padding_cols
         device_id,            // device_id
     };
-    using namespace perftools::gputools::dnn;
-    AlgorithmType algorithm = kDefaultAlgorithm;
+    AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ &&
-        !conv_algorithm_map_.Find(conv_parameters, &algorithm)) {
+        !autotune_results_.Find(conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
       ProfileResult best_result;
-      best_result.set_elapsed_time_in_ms(std::numeric_limits<float>::max());
+      ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
@@ -1428,21 +1444,34 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
                 ->ThenConvolveBackwardFilterWithAlgorithm(
                     input_desc, input_ptr, output_desc, out_backprop_ptr,
                     conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator, profile_algorithm, &profile_result)
+                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                    &profile_result)
                 .ok();
         if (cudnn_launch_status) {
-          if (profile_result.is_valid() &&
-              profile_result.elapsed_time_in_ms() <
-                  best_result.elapsed_time_in_ms()) {
-            best_result = profile_result;
+          if (profile_result.is_valid()) {
+            if (profile_result.elapsed_time_in_ms() <
+                best_result.elapsed_time_in_ms()) {
+              best_result = profile_result;
+            }
+            if (scratch_allocator.TotalByteSize() == 0 &&
+                profile_result.elapsed_time_in_ms() <
+                    best_result_no_scratch.elapsed_time_in_ms()) {
+              best_result_no_scratch = profile_result;
+            }
           }
         }
       }
-      CHECK(best_result.is_valid() &&
-            best_result.algorithm() != kDefaultAlgorithm)
-          << "No algorithm worked!";
-      algorithm = best_result.algorithm();
-      conv_algorithm_map_.Insert(conv_parameters, algorithm);
+      OP_REQUIRES(context, best_result.is_valid() &&
+                               best_result.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm worked!"));
+      OP_REQUIRES(context,
+                  best_result_no_scratch.is_valid() &&
+                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
+                  errors::NotFound("No algorithm without scratch worked!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_algorithm_no_scratch(
+          best_result_no_scratch.algorithm());
+      autotune_results_.Insert(conv_parameters, algorithm_config);
     }
     CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                             context);
@@ -1451,7 +1480,7 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
             ->ThenConvolveBackwardFilterWithAlgorithm(
                 input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
                 filter_desc, &filter_backprop_ptr, &scratch_allocator,
-                algorithm, nullptr)
+                algorithm_config, nullptr)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -1474,7 +1503,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
   Padding padding_;
   bool use_cudnn_;
   TensorFormat data_format_;
-  ConvAlgorithmMap<Device> conv_algorithm_map_;
+  AutoTuneMap<ConvParameters, perftools::gputools::dnn::AlgorithmConfig>
+      autotune_results_;
   bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropFilterOp);
