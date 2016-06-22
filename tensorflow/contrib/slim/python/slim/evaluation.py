@@ -222,7 +222,7 @@ def evaluation(
 
   if summary_op is not None:
     if global_step is None:
-      global_step = variables.global_step()
+      global_step = variables.get_or_create_global_step()
 
     global_step = training_util.global_step(sess, global_step)
     summary = sess.run(summary_op, summary_op_feed_dict)
