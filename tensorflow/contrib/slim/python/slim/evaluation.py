@@ -14,37 +14,108 @@
 # ==============================================================================
 """Contains functions for evaluation and summarization of metrics.
 
-This file contains helper functions for evaluating TensorFlow models.
+The evaluation.py module contains helper functions for evaluating TensorFlow
+modules using a variety of metrics and summarizing the results.
 
 **********************
 * Evaluating Metrics *
 **********************
 
-In the most simple use case, a session has already been created along with an
-initialized (and perhaps trained) model. In this case, one need only instantiate
-a set of metrics and call their update operations:
+In the simplest use case, we use a model to create the predictions, then specify
+the metrics and finally call the `evaluation` method:
 
-  # Create the session and model:
-  sess = ...
-  labels = ...
-  predictions = ...
+  # Create model and obtain the predictions:
+  images, labels = LoadData(...)
+  predictions = MyModel(images)
 
-  # Specify the metrics:
-  accuracy, accuracy_update_op = metrics.streaming_accuracy(labels, predictions)
-  mean_absolute_diff, mean_absolute_diff_update_op = metrics.MeanAbsoluteDiff(
-      labels, predictions)
+  # Choose the metrics to compute:
+  names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
+      "accuracy": slim.metrics.accuracy(predictions, labels),
+      "mse": slim.metrics.mean_squared_error(predictions, labels),
+  })
 
-  # Aggregate data from 100 batches of data:
+  init_op = tf.group(
+      tf.initialize_all_variables(),
+      tf.initialize_local_variables())
+
   with tf.Session() as sess:
-    sess.run(tf.initialize_local_variables())
-    slim.evaluation.evaluate_once(
-      sess,
-      update_ops=[accuracy_update_op, mean_absolute_diff_update_op],
-      num_evals=100)
+    metric_values = slim.evaluation(
+        sess,
+        num_evals=1,
+        init_op=init_op,
+        eval_op=names_to_updates.values(),
+        final_op=name_to_values.values())
 
-    # Print the results:
-    print 'Accuracy = %f' % sess.run(accuracy)
-    print 'Mean Absolute Diff = %f' % sess.run(mean_absolute_diff)
+    for metric, value in zip(names_to_values.keys(), metric_values):
+      logging.info('Metric %s has value: %f', metric, value)
+
+************************************************
+* Evaluating a Checkpointed Model with Metrics *
+************************************************
+
+Often, one wants to evaluate a model checkpoint saved on disk. This can be
+performed once or repeatedly on a set schedule.
+
+To evaluate a particular model, users define zero or more metrics and zero or
+more summaries and call the evaluation_loop method:
+
+  # Create model and obtain the predictions:
+  images, labels = LoadData(...)
+  predictions = MyModel(images)
+
+  # Choose the metrics to compute:
+  names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
+      "accuracy": slim.metrics.accuracy(predictions, labels),
+      "mse": slim.metrics.mean_squared_error(predictions, labels),
+  })
+
+  # Define the summaries to write:
+  for metric_name, metric_value in metrics_to_values.iteritems():
+    tf.scalar_summary(metric_name, metric_value)
+
+  checkpoint_dir = '/tmp/my_model_dir/'
+  log_dir = '/tmp/my_model_eval/'
+
+  # We'll evaluate 1000 batches:
+  num_evals = 1000
+
+  # Evaluate every 10 minutes:
+  slim.evaluation_loop(
+      master='',
+      checkpoint_dir,
+      logdir,
+      num_evals=num_evals,
+      eval_op=names_to_updates.values(),
+      summary_op=tf.merge_summary(summary_ops),
+      eval_interval_secs=600)
+
+**************************************************
+* Evaluating a Checkpointed Model with Summaries *
+**************************************************
+
+At times, an evaluation can be performed without metrics at all but rather
+with only summaries. The user need only leave out the 'eval_op' argument:
+
+  # Create model and obtain the predictions:
+  images, labels = LoadData(...)
+  predictions = MyModel(images)
+
+  # Define the summaries to write:
+  tf.scalar_summary(...)
+  tf.histogram_summary(...)
+
+  checkpoint_dir = '/tmp/my_model_dir/'
+  log_dir = '/tmp/my_model_eval/'
+
+  # Evaluate once every 10 minutes.
+  slim.evaluation_loop(
+      master='',
+      checkpoint_dir,
+      logdir,
+      num_evals=1,
+      summary_op=tf.merge_summary(summary_ops),
+      eval_interval_secs=600)
+
 """
 
 from __future__ import absolute_import
@@ -64,6 +135,12 @@ from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor
 from tensorflow.python.training import training_util
+
+__all__ = [
+    'evaluation',
+    'evaluation_loop',
+    'wait_for_new_checkpoint'
+]
 
 
 def wait_for_new_checkpoint(checkpoint_dir, last_checkpoint,
