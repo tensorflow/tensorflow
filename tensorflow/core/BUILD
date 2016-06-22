@@ -344,15 +344,30 @@ tf_gen_op_libs(
 )
 
 # And one for all user ops
+#load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+
+#tf_custom_op_library(
+#    name = "gputest",
+#    srcs = ["user_ops/gpu/lookahead_gpu.cu.cc"],
+#)
+
+
 cc_library(
     name = "user_ops_op_lib",
-    srcs = glob(["user_ops/**/*.cc"]),
+    srcs = glob([
+      "user_ops/**/*.cc", 
+    ]),
+    #, exclude = ["user_ops/**/*.cu.cc"]),
+    #gpu_srcs = glob(["user_ops/gpu/**/*.cu.cc"]),
     copts = tf_copts(),
-    linkstatic = 1,
     visibility = ["//visibility:public"],
-    deps = [":framework"],
+    deps = [
+      "//tensorflow/core:framework",
+    ],
     alwayslink = 1,
+    linkstatic = 1,
 )
+
 
 cc_library(
     name = "ops",
@@ -499,6 +514,8 @@ cc_library(
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/models/embedding:word2vec_kernels",
+        "//tensorflow/core/kernels:lookahead_ops",
+        "//tensorflow/core/kernels:lookahead_grad_ops",
     ],
 )
 

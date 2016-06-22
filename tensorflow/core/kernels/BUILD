@@ -701,6 +701,26 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "lookahead_ops",
+    prefix = "lookahead_ops",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:user_ops_op_lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "lookahead_grad_ops",
+    prefix = "lookahead_grad_ops",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:user_ops_op_lib",
+    ],
+)
+
 tf_kernel_libraries(
     name = "image",
     prefixes = [
