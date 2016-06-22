@@ -330,6 +330,7 @@
   * [`adjust_saturation`](../../api_docs/python/image.md#adjust_saturation)
   * [`central_crop`](../../api_docs/python/image.md#central_crop)
   * [`convert_image_dtype`](../../api_docs/python/image.md#convert_image_dtype)
+  * [`crop_and_resize`](../../api_docs/python/image.md#crop_and_resize)
   * [`crop_to_bounding_box`](../../api_docs/python/image.md#crop_to_bounding_box)
   * [`decode_jpeg`](../../api_docs/python/image.md#decode_jpeg)
   * [`decode_png`](../../api_docs/python/image.md#decode_png)
