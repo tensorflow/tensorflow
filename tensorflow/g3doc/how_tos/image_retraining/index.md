@@ -124,7 +124,7 @@ The script includes TensorBoard summaries that make it easier to understand, deb
 To launch TensorBoard, run this command during or after retraining:
 
 ```sh
-tensorboard --logdir=/tmp/retrain_logs
+tensorboard --logdir /tmp/retrain_logs
 ```
 
 Once TensorBoard is running, navigate your web browser to `localhost:6006` to view the TensorBoard.
