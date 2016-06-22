@@ -646,9 +646,14 @@ def stack(inputs, layer, stack_args, **kwargs):
     x = fully_connected(x, 128, scope='fc/fc_3')
   ```
 
+  If the `scope` argument is not given in `stack_args`, it is set to
+  `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+  objects). If neither `__name__` nor `func.__name__` is available, the
+  layers are called with `scope='stack'`.
+
   Args:
     inputs: A `Tensor` suitable for layer.
-    layer: A layer(inputs, *args, **kwargs)
+    layer: A layer with arguments `(inputs, *args, **kwargs)`
     stack_args: A list/tuple of parameters for each call of layer.
     **kwargs: Extra kwargs for the layer.
 
@@ -663,7 +668,14 @@ def stack(inputs, layer, stack_args, **kwargs):
     raise ValueError('stack_args need to be a list or tuple')
   with variable_scope.variable_op_scope([inputs], scope, 'Stack'):
     outputs = inputs
-    scope = scope or layer.__name__
+    scope = scope
+    if scope is None:
+      if hasattr(layer, '__name__'):
+        scope = layer.__name__
+      elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
+        scope = layer.func.__name__  # In case layer is a functools.partial.
+      else:
+        scope = 'stack'
     for i in range(len(stack_args)):
       kwargs['scope'] = scope + '_' + str(i+1)
       layer_args = stack_args[i]

@@ -909,6 +909,16 @@ class StackTests(tf.test.TestCase):
       self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
 
+  def testStackRelu(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.relu,
+                                       [10, 20, 30])
+      self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
   def testStackConvolution2d(self):
     height, width = 3, 3
     with self.test_session():
