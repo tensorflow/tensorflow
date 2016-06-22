@@ -781,6 +781,7 @@ tf_kernel_libraries(
     prefixes = [
         "adjust_contrast_op",
         "colorspace_op",
+        "crop_and_resize_op",
         "decode_jpeg_op",
         "decode_png_op",
         "draw_bounding_box_op",
@@ -853,6 +854,7 @@ tf_cc_tests(
     tests = [
         "adjust_contrast_op_test",
         "colorspace_op_test",
+        "crop_and_resize_op_test",
         "resize_bicubic_op_test",
         "resize_bilinear_op_test",
         "resize_nearest_neighbor_op_test",
