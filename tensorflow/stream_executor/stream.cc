@@ -296,7 +296,7 @@ Stream &Stream::ThenConvolveWithScratch(
       CheckError(dnn->DoConvolve(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output,
-          /*scratch_allocator=*/scratch_allocator, dnn::kDefaultAlgorithm,
+          /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
       SetError();
@@ -326,7 +326,7 @@ Stream &Stream::ThenConvolveWithScratch(
       CheckError(dnn->DoConvolve(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output,
-          /*scratch_allocator=*/scratch_allocator, dnn::kDefaultAlgorithm,
+          /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
       SetError();
@@ -345,7 +345,8 @@ Stream &Stream::ThenConvolveWithAlgorithm(
     const DeviceMemory<float> &filter_data,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
-    ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
     dnn::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(filter_descriptor), PARAM(filter_data),
@@ -357,7 +358,7 @@ Stream &Stream::ThenConvolveWithAlgorithm(
       auto status = dnn->DoConvolve(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output, scratch_allocator,
-          algorithm, output_profile_result);
+          algorithm_config, output_profile_result);
       if (!status && !output_profile_result) {
         SetError();
       }
@@ -378,8 +379,8 @@ Stream &Stream::ThenConvolveWithAlgorithm(
     const DeviceMemory<Eigen::half> &filter_data,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<Eigen::half> *output,
-    ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
     dnn::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(filter_descriptor), PARAM(filter_data),
@@ -391,7 +392,7 @@ Stream &Stream::ThenConvolveWithAlgorithm(
       auto status = dnn->DoConvolve(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output, scratch_allocator,
-          algorithm, output_profile_result);
+          algorithm_config, output_profile_result);
       if (!status && !output_profile_result) {
         SetError();
       }
@@ -468,7 +469,7 @@ Stream &Stream::ThenConvolveBackwardDataWithScratch(
       CheckError(dnn->DoConvolveBackwardData(
           this, filter_descriptor, filter_data, output_descriptor,
           backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, scratch_allocator, dnn::kDefaultAlgorithm,
+          backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
       SetError();
@@ -488,7 +489,8 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::BatchDescriptor &input_descriptor,
     DeviceMemory<float> *backward_input_data,
-    ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
     dnn::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(output_descriptor), PARAM(backward_output_data),
@@ -500,7 +502,7 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
       auto status = dnn->DoConvolveBackwardData(
           this, filter_descriptor, filter_data, output_descriptor,
           backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, scratch_allocator, algorithm,
+          backward_input_data, scratch_allocator, algorithm_config,
           output_profile_result);
       if (!status && !output_profile_result) {
         SetError();
@@ -523,7 +525,8 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::BatchDescriptor &input_descriptor,
     DeviceMemory<Eigen::half> *backward_input_data,
-    ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
     dnn::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(output_descriptor), PARAM(backward_output_data),
@@ -535,7 +538,7 @@ Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
       auto status = dnn->DoConvolveBackwardData(
           this, filter_descriptor, filter_data, output_descriptor,
           backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, scratch_allocator, algorithm,
+          backward_input_data, scratch_allocator, algorithm_config,
           output_profile_result);
       if (!status && !output_profile_result) {
         SetError();
@@ -569,7 +572,7 @@ Stream &Stream::ThenConvolveBackwardDataWithScratch(
       CheckError(dnn->DoConvolveBackwardData(
           this, filter_descriptor, filter_data, output_descriptor,
           backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, scratch_allocator, dnn::kDefaultAlgorithm,
+          backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
       SetError();
@@ -614,7 +617,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithScratch(
       CheckError(dnn->DoConvolveBackwardFilter(
           this, input_descriptor, input_data, output_descriptor,
           backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, scratch_allocator, dnn::kDefaultAlgorithm,
+          backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
       SetError();
@@ -634,7 +637,8 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::FilterDescriptor &filter_descriptor,
     DeviceMemory<float> *backward_filter_data,
-    ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
     dnn::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(output_descriptor), PARAM(backward_output_data),
@@ -646,7 +650,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
       auto status = dnn->DoConvolveBackwardFilter(
           this, input_descriptor, input_data, output_descriptor,
           backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, scratch_allocator, algorithm,
+          backward_filter_data, scratch_allocator, algorithm_config,
           output_profile_result);
       if (!status && !output_profile_result) {
         SetError();
@@ -680,7 +684,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithScratch(
       CheckError(dnn->DoConvolveBackwardFilter(
           this, input_descriptor, input_data, output_descriptor,
           backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, scratch_allocator, dnn::kDefaultAlgorithm,
+          backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
           nullptr));
     } else {
       SetError();
@@ -700,7 +704,8 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::FilterDescriptor &filter_descriptor,
     DeviceMemory<Eigen::half> *backward_filter_data,
-    ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
     dnn::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(output_descriptor), PARAM(backward_output_data),
@@ -712,7 +717,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
       auto status = dnn->DoConvolveBackwardFilter(
           this, input_descriptor, input_data, output_descriptor,
           backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, scratch_allocator, algorithm,
+          backward_filter_data, scratch_allocator, algorithm_config,
           output_profile_result);
       if (!status && !output_profile_result) {
         SetError();

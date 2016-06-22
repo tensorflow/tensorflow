@@ -165,6 +165,31 @@ class TransformerTest(tf.test.TestCase):
       self.assertEqual(output.values.dtype, tf.int64)
       self.assertTrue(all(x < 15 and x >= 0 for x in output.values.eval()))
 
+  def testCrossWithMultiDimensionBucketizedColumn(self):
+    country = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "country", hash_bucket_size=5)
+    price_bucket = tf.contrib.layers.bucketized_column(
+        tf.contrib.layers.real_valued_column("price", 2),
+        boundaries=[0., 10., 100.])
+    country_price = tf.contrib.layers.crossed_column(
+        [country, price_bucket], hash_bucket_size=1000)
+
+    with tf.Graph().as_default():
+      features = {"price": tf.constant([[20., 210.], [110., 50.], [-3., -30.]]),
+                  "country": tf.SparseTensor(values=["US", "SV", "US"],
+                                             indices=[[0, 0], [1, 0], [2, 0]],
+                                             shape=[3, 2])}
+      output, column_to_variable, _ = (
+          tf.contrib.layers.weighted_sum_from_feature_columns(features,
+                                                              [country_price],
+                                                              num_outputs=1))
+
+      weights = column_to_variable[country_price][0]
+      grad = tf.squeeze(tf.gradients(output, weights)[0].values)
+      with self.test_session():
+        tf.initialize_all_variables().run()
+        self.assertEqual(len(grad.eval()), 6)
+
   def testCrossWithCrossedColumn(self):
     price_bucket = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column("price"),

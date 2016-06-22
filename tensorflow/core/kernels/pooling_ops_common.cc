@@ -58,10 +58,12 @@ PoolParameters::PoolParameters(OpKernelContext* context,
                   "or pooling across width/height."));
 
   if (depth_window == 1) {
-    OP_REQUIRES_OK(context, Get2dOutputSize(
-                                tensor_in_rows, tensor_in_cols, window_rows,
-                                window_cols, row_stride, col_stride, padding,
-                                &out_height, &out_width, &pad_rows, &pad_cols));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSize(tensor_in_rows, window_rows, row_stride,
+                                       padding, &out_height, &pad_rows));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
+                                       padding, &out_width, &pad_cols));
   } else {
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the

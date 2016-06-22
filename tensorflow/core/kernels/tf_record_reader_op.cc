@@ -36,16 +36,14 @@ class TFRecordReader : public ReaderBase {
 
   Status OnWorkStartedLocked() override {
     offset_ = 0;
-    RandomAccessFile* file = nullptr;
-    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file));
-    file_.reset(file);
+    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
 
     io::RecordReaderOptions options;
     if (compression_type_ == "ZLIB") {
       options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
     }
 
-    reader_.reset(new io::RecordReader(file, options));
+    reader_.reset(new io::RecordReader(file_.get(), options));
     return Status::OK();
   }
 
