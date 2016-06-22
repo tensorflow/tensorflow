@@ -253,6 +253,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":device_lib",
         ":framework_test_lib",
         ":platform_test",
     ],
