@@ -160,9 +160,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
   @property
   def dnn_bias_(self):
     """Returns bias of deep neural network part."""
-    return [self.get_variable_value("hiddenlayer_%d/bias" % i)
+    return [self.get_variable_value("hiddenlayer_%d/biases" % i)
             for i, _ in enumerate(self._dnn_hidden_units)] + [
-                self.get_variable_value("dnn_logit/bias"),
+                self.get_variable_value("dnn_logit/biases"),
                 self.get_variable_value("centered_bias_weight")]
 
   def _get_train_ops(self, features, targets):
@@ -248,32 +248,31 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         self._get_dnn_feature_columns(),
         weight_collections=[self._dnn_weight_collection])
     for layer_id, num_hidden_units in enumerate(self._dnn_hidden_units):
-      op_scope = "hiddenlayer_%d" % layer_id
       with variable_scope.variable_op_scope(
-          [net], op_scope,
+          [net], "hiddenlayer_%d" % layer_id,
           partitioner=partitioned_variables.min_max_variable_partitioner(
-              max_partitions=self._config.num_ps_replicas)):
+              max_partitions=self._config.num_ps_replicas)) as scope:
         net = layers.fully_connected(
             net,
             num_hidden_units,
             activation_fn=self._dnn_activation_fn,
             variables_collections=[self._dnn_weight_collection],
-            scope=op_scope)
+            scope=scope)
         if self._dnn_dropout is not None and is_training:
           net = layers.dropout(
               net,
               keep_prob=(1.0 - self._dnn_dropout))
-      self._add_hidden_layer_summary(net, op_scope)
+      self._add_hidden_layer_summary(net, scope)
     with variable_scope.variable_op_scope(
         [net], "dnn_logit",
         partitioner=partitioned_variables.min_max_variable_partitioner(
-            max_partitions=self._config.num_ps_replicas)):
+            max_partitions=self._config.num_ps_replicas)) as scope:
       logit = layers.fully_connected(
           net,
           self._num_label_columns(),
           activation_fn=None,
           variables_collections=[self._dnn_weight_collection],
-          scope="dnn_logit")
+          scope=scope)
     self._add_hidden_layer_summary(logit, "dnn_logit")
     return logit
 
@@ -320,16 +319,17 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return training.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
 
   def _logits(self, features, is_training=False):
-    if not (self._get_linear_feature_columns() or
-            self._get_dnn_feature_columns()):
+    linear_feature_columns = self._get_linear_feature_columns()
+    dnn_feature_columns = self._get_dnn_feature_columns()
+    if not (linear_feature_columns or dnn_feature_columns):
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "should be defined.")
 
     features = self._get_feature_dict(features)
-    if self._get_linear_feature_columns() and self._get_dnn_feature_columns():
+    if linear_feature_columns and dnn_feature_columns:
       logits = (self._linear_logits(features) +
                 self._dnn_logits(features, is_training=is_training))
-    elif self._get_dnn_feature_columns():
+    elif dnn_feature_columns:
       logits = self._dnn_logits(features, is_training=is_training)
     else:
       logits = self._linear_logits(features)
@@ -501,9 +501,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       config: RunConfig object to configure the runtime settings.
 
     Raises:
-      ValueError: If both linear_feature_columns and dnn_features_columns are
-        empty at the same time.
-      ValueError: If both n_classes < 2.
+      ValueError: If `n_classes` < 2.
+      ValueError: If both `linear_feature_columns` and `dnn_features_columns`
+        are empty at the same time.
     """
 
     if n_classes < 2:
@@ -748,8 +748,8 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       config: RunConfig object to configure the runtime settings.
 
     Raises:
-      ValueError: If both linear_feature_columns and dnn_features_columns are
-        empty at the same time.
+      ValueError: If both `linear_feature_columns` and `dnn_features_columns`
+        are empty at the same time.
     """
     super(DNNLinearCombinedRegressor, self).__init__(
         model_dir=model_dir,

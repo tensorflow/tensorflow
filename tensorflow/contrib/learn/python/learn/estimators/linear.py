@@ -132,11 +132,26 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         config=config)
+    self._feature_columns_inferred = False
+
+  # TODO(ptucker): Update this class to require caller pass `feature_columns` to
+  # ctor, so we can remove feature_column inference.
+  def _validate_linear_feature_columns(self, features):
+    if self._linear_feature_columns is None:
+      self._linear_feature_columns = layers.infer_real_valued_columns(features)
+      self._feature_columns_inferred = True
+    elif self._feature_columns_inferred:
+      this_dict = {c.name: c for c in self._linear_feature_columns}
+      that_dict = {
+          c.name: c for c in layers.infer_real_valued_columns(features)
+      }
+      if this_dict != that_dict:
+        raise ValueError(
+            "Feature columns, expected %s, got %s.", (this_dict, that_dict))
 
   def _get_train_ops(self, features, targets):
     """See base class."""
-    if self._linear_feature_columns is None:
-      self._linear_feature_columns = layers.infer_real_valued_columns(features)
+    self._validate_linear_feature_columns(features)
     if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
       return super(LinearClassifier, self)._get_train_ops(features, targets)
 
@@ -162,6 +177,16 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         features, targets, columns_to_variables, global_step)
 
     return train_ops, loss
+
+  def _get_eval_ops(self, features, targets, metrics=None):
+    self._validate_linear_feature_columns(features)
+    return super(LinearClassifier, self)._get_eval_ops(
+        features, targets, metrics)
+
+  def _get_predict_ops(self, features):
+    """See base class."""
+    self._validate_linear_feature_columns(features)
+    return super(LinearClassifier, self)._get_predict_ops(features)
 
   @property
   def weights_(self):
@@ -254,15 +279,37 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         config=config)
+    self._feature_columns_inferred = False
+
+  def _validate_linear_feature_columns(self, features):
+    if self._linear_feature_columns is None:
+      self._linear_feature_columns = layers.infer_real_valued_columns(features)
+      self._feature_columns_inferred = True
+    elif self._feature_columns_inferred:
+      this_dict = {c.name: c for c in self._linear_feature_columns}
+      that_dict = {
+          c.name: c for c in layers.infer_real_valued_columns(features)
+      }
+      if this_dict != that_dict:
+        raise ValueError(
+            "Feature columns, expected %s, got %s.", (this_dict, that_dict))
 
   def _get_train_ops(self, features, targets):
     """See base class."""
     if isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
       raise ValueError("SDCAOptimizer does not currently support regression.")
-
-    if self._linear_feature_columns is None:
-      self._linear_feature_columns = layers.infer_real_valued_columns(features)
+    self._validate_linear_feature_columns(features)
     return super(LinearRegressor, self)._get_train_ops(features, targets)
+
+  def _get_eval_ops(self, features, targets, metrics=None):
+    self._validate_linear_feature_columns(features)
+    return super(LinearRegressor, self)._get_eval_ops(
+        features, targets, metrics)
+
+  def _get_predict_ops(self, features):
+    """See base class."""
+    self._validate_linear_feature_columns(features)
+    return super(LinearRegressor, self)._get_predict_ops(features)
 
   @property
   def weights_(self):

@@ -664,7 +664,7 @@ class Estimator(BaseEstimator):
       # Check number of arguments of the given function matches requirements.
       model_fn_args = _get_arguments(model_fn)
       if params is not None and 'params' not in model_fn_args:
-        raise ValueError('Estimator\'s model_fn (%s) has less then 4 '
+        raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
                          'arguments, but not None params (%s) are passed.' %
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
@@ -679,11 +679,9 @@ class Estimator(BaseEstimator):
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
       if 'params' in model_fn_args:
-        return self._model_fn(
-            features, targets, mode=mode, params=self.params)
+        return self._model_fn(features, targets, mode=mode, params=self.params)
       else:
-        return self._model_fn(
-            features, targets, mode=mode)
+        return self._model_fn(features, targets, mode=mode)
     return self._model_fn(features, targets)
 
   def _get_train_ops(self, features, targets):
