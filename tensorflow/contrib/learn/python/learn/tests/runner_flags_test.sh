@@ -32,7 +32,7 @@ then
   TEST_WORKSPACE=""
 fi
 
-if [ -z "$TEST_WORKSPACE" ]
+if [ ! -z "$TEST_WORKSPACE" ]
 then
   DIR="$DIR"/"$TEST_WORKSPACE"
 fi
