@@ -256,7 +256,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
@@ -268,9 +267,11 @@ from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
 __all__ = [
+    'add_gradients_summaries',
     'clip_gradient_norms',
     'multiply_gradients',
     'create_train_op',
+    'train_step',
     'train'
 ]
 
@@ -534,6 +535,7 @@ def train(
     number_of_steps=None,
     init_op=_USE_DEFAULT,
     init_feed_dict=None,
+    local_init_op=None,
     init_fn=None,
     summary_op=_USE_DEFAULT,
     save_summaries_secs=600,
@@ -568,9 +570,11 @@ def train(
     number_of_steps: The max number of gradient steps to take during training.
       If the value is left as None, training proceeds indefinitely.
     init_op: The initialization operation. If left to its default value, then
-      the session is initialized by calling `tf.initialize_all_variables()`,
-      `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
+      the session is initialized by calling `tf.initialize_all_variables()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
+    local_init_op: The local initialization operation. If None,
+      then the session is initialized by calling
+      `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
     summary_op: The summary operation.
@@ -609,15 +613,11 @@ def train(
   saver = saver or tf_saver.Saver()
 
   if init_op == _USE_DEFAULT:
-    init_op = control_flow_ops.group(
-        tf_variables.initialize_all_variables(),
-        tf_variables.initialize_local_variables(),
-        data_flow_ops.initialize_all_tables())
+    init_op = tf_variables.initialize_all_variables()
 
   if summary_op == _USE_DEFAULT:
     summary_op = logging_ops.merge_all_summaries()
 
-  local_init_op = None
   cleanup_op = None
 
   if is_chief and sync_optimizer:
@@ -627,7 +627,9 @@ def train(
           '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer')
 
     # Need to create these BEFORE the supervisor finalizes the graph:
-    local_init_op = sync_optimizer.get_init_tokens_op()
+    with ops.control_dependencies([init_op]):
+      init_tokens_op = sync_optimizer.get_init_tokens_op()
+    init_op = init_tokens_op
     chief_queue_runner = sync_optimizer.get_chief_queue_runner()
     cleanup_op = sync_optimizer.get_clean_up_op()
 
