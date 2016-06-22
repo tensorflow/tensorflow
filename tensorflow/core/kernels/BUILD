@@ -1649,12 +1649,23 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "multinomial_op",
+    prefix = "multinomial_op",
+    deps = [
+        ":random_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "multinomial_op_test",
     size = "small",
     deps = [
+        ":multinomial_op",
         ":ops_util",
-        ":random_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
