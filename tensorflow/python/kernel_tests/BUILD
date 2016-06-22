@@ -13,12 +13,6 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
-py_library(
-    name = "gradient_checker",
-    srcs = ["gradient_checker.py"],
-    srcs_version = "PY2AND3",
-)
-
 py_tests(
     name = "cpu_only_kernel_tests",
     size = "small",
@@ -109,7 +103,6 @@ cuda_py_tests(
         "functional_ops_test.py",
         "gather_nd_op_test.py",
         "gather_op_test.py",
-        "gradient_checker_test.py",
         "gradient_correctness_test.py",
         "init_ops_test.py",
         "linalg_ops_test.py",

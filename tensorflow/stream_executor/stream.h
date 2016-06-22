@@ -250,7 +250,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      dnn::AlgorithmType algorithm, dnn::ProfileResult *output_profile_result);
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -260,7 +261,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-      dnn::AlgorithmType algorithm, dnn::ProfileResult *output_profile_result);
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,
@@ -309,7 +311,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
       DeviceMemory<float> *backward_input_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardDataWithAlgorithm(
@@ -320,7 +323,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &input_descriptor,
       DeviceMemory<Eigen::half> *backward_input_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardFilter(
@@ -360,7 +364,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<float> *backward_filter_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardFilterWithAlgorithm(
@@ -371,7 +376,8 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<Eigen::half> *backward_filter_data,
-      ScratchAllocator *scratch_allocator, dnn::AlgorithmType algorithm,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,

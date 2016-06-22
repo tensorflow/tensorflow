@@ -312,9 +312,33 @@ class TrainTest(tf.test.TestCase):
     self._labels = np.random.randint(0, 2, size=(16, 1)).astype(np.float32)
     self._logdir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
 
+    # To make sure one test doesnt interfere with another:
+    if tf.gfile.Exists(self._logdir):
+      tf.gfile.DeleteRecursively(self._logdir)
+
     for i in range(16):
       j = int(2 * self._labels[i] + np.random.randint(0, 2))
       self._inputs[i, j] = 1
+
+  def testTrainWithNoneAsInitWhenUsingVarsRaisesError(self):
+    self._logdir = os.path.join(self.get_temp_dir(), 'tmp_logs_/')
+    with tf.Graph().as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      tf_predictions = LogisticClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(
+          total_loss, optimizer)
+
+      with self.assertRaises(RuntimeError):
+        slim.learning.train(
+            train_op, self._logdir, init_op=None, number_of_steps=300)
 
   def testTrainWithNoInitAssignCanAchieveZeroLoss(self):
     g = tf.Graph()

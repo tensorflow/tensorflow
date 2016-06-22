@@ -277,11 +277,10 @@ void FixedUnigramSampler::FillReservedIds(int32 num_reserved_ids) {
 
 Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
                                          float distortion) {
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(vocab_file, &file));
-  std::unique_ptr<RandomAccessFile> deleter(file);
 
-  io::InputBuffer in(file, 262144 /*bytes*/);
+  io::InputBuffer in(file.get(), 262144 /*bytes*/);
   string line;
   int32 word_id = weights_.size();
   while (in.ReadLine(&line).ok()) {

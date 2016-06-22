@@ -384,7 +384,7 @@ tf_cuda_cc_tests(
 tf_cuda_cc_tests(
     size = "medium",
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [],
+    tags = tf_cuda_tests_tags() + ["manual"],
     tests = [
         "grpc_session_test.cc",
     ],

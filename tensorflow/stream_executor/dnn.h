@@ -22,6 +22,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DNN_H_
 
+#include <limits>
+
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -550,7 +552,34 @@ class ProfileResult {
  private:
   bool is_valid_ = false;
   AlgorithmType algorithm_ = kDefaultAlgorithm;
-  float elapsed_time_in_ms_ = -1.0f;
+  float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
+};
+
+// Describe the configuration for the algorithms that will used.
+//
+// Arguments:
+//  algorithm: the primary algorithm that should be used.
+//  algorithm_no_scratch: a secondary algorithm that should be used, if the
+//    the allocation for the scratch memory fails.
+class AlgorithmConfig {
+ public:
+  AlgorithmConfig()
+      : algorithm_(kDefaultAlgorithm),
+        algorithm_no_scratch_(kDefaultAlgorithm) {}
+  explicit AlgorithmConfig(AlgorithmType algorithm)
+      : algorithm_(algorithm), algorithm_no_scratch_(kDefaultAlgorithm) {}
+  AlgorithmConfig(AlgorithmType algorithm, AlgorithmType algorithm_no_scratch)
+      : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
+  AlgorithmType algorithm() const { return algorithm_; }
+  void set_algorithm(AlgorithmType val) { algorithm_ = val; }
+  AlgorithmType algorithm_no_scratch() const { return algorithm_no_scratch_; }
+  void set_algorithm_no_scratch(AlgorithmType val) {
+    algorithm_no_scratch_ = val;
+  }
+
+ private:
+  AlgorithmType algorithm_;
+  AlgorithmType algorithm_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -710,7 +739,8 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
-      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
   virtual bool GetConvolveAlgorithms(
@@ -738,7 +768,8 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half>* output_data,
       ScratchAllocator* scratch_allocator,
-      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) = 0;
 
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
@@ -784,7 +815,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& input_descriptor,
       DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the backward convolution pass for
@@ -800,7 +832,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& input_descriptor,
       DeviceMemory<Eigen::half>* backward_input_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for filter) operation
@@ -830,7 +863,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<float>* backward_filter_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the backward convolution pass for
@@ -846,7 +880,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<Eigen::half>* backward_filter_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for bias) operation onto

@@ -66,27 +66,24 @@ void TestAllCombinations(CompressionOptions input_options,
     string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
       for (auto output_buf_size : OutputBufferSizes()) {
-        WritableFile* file_writer;
+        std::unique_ptr<WritableFile> file_writer;
         TF_CHECK_OK(env->NewWritableFile(fname, &file_writer));
         string result;
 
-        io::ZlibOutputBuffer out(file_writer, input_buf_size, output_buf_size,
-                                 output_options);
+        io::ZlibOutputBuffer out(file_writer.get(), input_buf_size,
+                                 output_buf_size, output_options);
 
         TF_CHECK_OK(out.Write(StringPiece(data)));
         TF_CHECK_OK(out.Close());
         TF_CHECK_OK(file_writer->Flush());
         TF_CHECK_OK(file_writer->Close());
 
-        RandomAccessFile* file_reader;
+        std::unique_ptr<RandomAccessFile> file_reader;
         TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
-        io::ZlibInputBuffer in(file_reader, input_buf_size, output_buf_size,
-                               input_options);
+        io::ZlibInputBuffer in(file_reader.get(), input_buf_size,
+                               output_buf_size, input_options);
         TF_CHECK_OK(in.ReadNBytes(data.size(), &result));
         EXPECT_EQ(result, data);
-
-        delete file_reader;
-        delete file_writer;
       }
     }
   }
@@ -113,12 +110,12 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
 
   string fname = testing::TmpDir() + "/zlib_buffers_test";
   string data = GenTestString();
-  WritableFile* file_writer;
+  std::unique_ptr<WritableFile> file_writer;
   string actual_result;
   string expected_result;
 
   TF_CHECK_OK(env->NewWritableFile(fname, &file_writer));
-  io::ZlibOutputBuffer out(file_writer, input_buf_size, output_buf_size,
+  io::ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                            output_options);
 
   for (int i = 0; i < num_writes; i++) {
@@ -132,9 +129,9 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   TF_CHECK_OK(file_writer->Flush());
   TF_CHECK_OK(file_writer->Close());
 
-  RandomAccessFile* file_reader;
+  std::unique_ptr<RandomAccessFile> file_reader;
   TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
-  io::ZlibInputBuffer in(file_reader, input_buf_size, output_buf_size,
+  io::ZlibInputBuffer in(file_reader.get(), input_buf_size, output_buf_size,
                          input_options);
 
   for (int i = 0; i < num_writes; i++) {
@@ -144,9 +141,6 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   }
 
   EXPECT_EQ(actual_result, expected_result);
-
-  delete file_reader;
-  delete file_writer;
 }
 
 TEST(ZlibBuffers, MultipleWritesWithoutFlush) {
@@ -168,10 +162,10 @@ TEST(ZlibInputBuffer, FailsToReadIfWindowBitsAreIncompatible) {
   input_options.window_bits = output_options.window_bits - 1;
 
   string data = GenTestString(10);
-  WritableFile* file_writer;
+  std::unique_ptr<WritableFile> file_writer;
   TF_CHECK_OK(env->NewWritableFile(fname, &file_writer));
   string result;
-  io::ZlibOutputBuffer out(file_writer, input_buf_size, output_buf_size,
+  io::ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                            output_options);
 
   TF_CHECK_OK(out.Write(StringPiece(data)));
@@ -179,16 +173,13 @@ TEST(ZlibInputBuffer, FailsToReadIfWindowBitsAreIncompatible) {
   TF_CHECK_OK(file_writer->Flush());
   TF_CHECK_OK(file_writer->Close());
 
-  RandomAccessFile* file_reader;
+  std::unique_ptr<RandomAccessFile> file_reader;
   TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
-  io::ZlibInputBuffer in(file_reader, input_buf_size, output_buf_size,
+  io::ZlibInputBuffer in(file_reader.get(), input_buf_size, output_buf_size,
                          input_options);
   Status read_status = in.ReadNBytes(data.size(), &result);
   CHECK_EQ(read_status.code(), error::DATA_LOSS);
   CHECK(read_status.error_message().find("inflate() failed") != string::npos);
-
-  delete file_reader;
-  delete file_writer;
 }
 
 }  // namespace tensorflow

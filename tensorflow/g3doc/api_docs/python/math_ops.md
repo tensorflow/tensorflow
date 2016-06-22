@@ -1989,6 +1989,8 @@ Compute the 1-dimensional discrete Fourier Transform.
 
 ### `tf.ifft(input, name=None)` {#ifft}
 
+.Doc(R"doc(
+
 Compute the inverse 1-dimensional discrete Fourier Transform.
 
 ##### Args:

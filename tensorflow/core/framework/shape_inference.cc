@@ -87,8 +87,6 @@ string InferenceContext::DebugString(const Dimension* d) {
   return ValueKnown(d) ? strings::StrCat(Value(d)) : "?";
 }
 
-// If <shape> has rank <rank>, or its rank is unknown, return OK and return
-// the shape with asserted rank in <*out>. Otherwise return an error.
 Status InferenceContext::WithRank(const Shape* shape, int32 rank,
                                   const Shape** out) {
   const int32 existing = Rank(shape);
@@ -110,6 +108,21 @@ Status InferenceContext::WithRank(const Shape* shape, int32 rank,
   *out = nullptr;
   return errors::InvalidArgument("Shape must be rank ", rank, " but is rank ",
                                  existing);
+}
+
+Status InferenceContext::WithRankAtLeast(const Shape* shape, int32 rank,
+                                         const Shape** out) {
+  const int32 existing = Rank(shape);
+  if (existing >= rank) {
+    *out = shape;
+    return Status::OK();
+  }
+  if (existing == kUnknownRank) {
+    return ReturnUnknownShape(out);
+  }
+  *out = nullptr;
+  return errors::InvalidArgument("Shape must be at least rank ", rank,
+                                 " but is rank ", existing);
 }
 
 Status InferenceContext::WithValue(const Dimension* dim, int64 value,

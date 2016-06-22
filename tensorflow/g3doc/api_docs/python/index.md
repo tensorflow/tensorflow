@@ -90,6 +90,7 @@
   * [`latest_checkpoint`](../../api_docs/python/state_ops.md#latest_checkpoint)
   * [`local_variables`](../../api_docs/python/state_ops.md#local_variables)
   * [`make_template`](../../api_docs/python/state_ops.md#make_template)
+  * [`min_max_variable_partitioner`](../../api_docs/python/state_ops.md#min_max_variable_partitioner)
   * [`moving_average_variables`](../../api_docs/python/state_ops.md#moving_average_variables)
   * [`no_regularizer`](../../api_docs/python/state_ops.md#no_regularizer)
   * [`ones_initializer`](../../api_docs/python/state_ops.md#ones_initializer)
