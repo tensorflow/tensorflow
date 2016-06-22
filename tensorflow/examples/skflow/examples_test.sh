@@ -36,3 +36,7 @@ test boston
 test iris
 test iris_custom_model
 test text_classification --test_with_fake_data
+test text_classification_builtin_rnn_model --test_with_fake_data
+test text_classification_cnn --test_with_fake_data
+test text_classification_character_cnn --test_with_fake_data
+test text_classification_character_rnn --test_with_fake_data

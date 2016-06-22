@@ -125,7 +125,7 @@ def shape(input, name=None):
   """
   with ops.op_scope([input], name, "Shape") as name:
     if isinstance(input, ops.SparseTensor):
-      return input.shape
+      return gen_math_ops.cast(input.shape, dtypes.int32)
     else:
       return gen_array_ops.shape(input, name=name)
 

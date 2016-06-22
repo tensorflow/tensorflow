@@ -19,7 +19,13 @@ list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})
 
 add_library(tf_core_kernels OBJECT ${tf_core_kernels_srcs})
 
-add_dependencies(tf_core_kernels tf_core_cpu farmhash highwayhash)
+add_dependencies(tf_core_kernels
+   tf_core_cpu
+   farmhash
+   highwayhash
+   farmhash_copy_headers_to_destination
+   highwayhash_copy_headers_to_destination
+)
 
 target_include_directories(tf_core_kernels PRIVATE
    ${tensorflow_source_dir}
