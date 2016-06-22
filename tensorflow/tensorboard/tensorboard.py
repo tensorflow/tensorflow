@@ -132,7 +132,7 @@ def main(unused_argv=None):
     tag = resource_loader.load_resource('tensorboard/TAG').strip()
     logging.info('TensorBoard is tag: %s', tag)
   except IOError:
-    logging.warning('Unable to read TensorBoard tag')
+    logging.info('Unable to read TensorBoard tag')
     tag = ''
 
   status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)

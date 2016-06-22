@@ -29,12 +29,12 @@ py_library(
         ":client_testlib",
         ":framework",
         ":framework_test_lib",
+        ":gradient_checker",
         ":platform",
         ":platform_test",
         ":summary",
         ":training",
         "//tensorflow/contrib:contrib_py",
-        "//tensorflow/python/kernel_tests:gradient_checker",
     ],
 )
 
@@ -853,6 +853,18 @@ py_library(
         ":sparse_ops",
         ":string_ops",
         ":user_ops",
+    ],
+)
+
+py_library(
+    name = "gradient_checker",
+    srcs = [
+        "ops/gradient_checker.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":ops",
     ],
 )
 

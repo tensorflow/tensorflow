@@ -18,9 +18,9 @@ estimator = LinearRegressor(
     feature_columns=[occupation, education_x_occupation])
 
 # Input builders
-def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+def input_fn_train: # returns x, y
   ...
-def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+def input_fn_eval: # returns x, y
   ...
 estimator.fit(input_fn=input_fn_train)
 estimator.evaluate(input_fn=input_fn_eval)
@@ -50,7 +50,7 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph, etc.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.

@@ -121,10 +121,11 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
 
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
-  int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-  TF_CHECK_OK(Get2dOutputSize(rows, cols, filter_rows, filter_cols, stride,
-                              stride, padding, &out_rows, &out_cols, &pad_rows,
-                              &pad_cols));
+  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+  TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
+                                    &out_rows, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
+                                    &out_cols, &pad_cols));
   // Counting the number of floating point operations (both MUL and ADD)
   int64 num_ops = 0;
   if (op == CONV_OP_FORWARD) {
@@ -474,10 +475,11 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
 
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
-  int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-  TF_CHECK_OK(Get2dOutputSize(rows, cols, filter_rows, filter_cols, stride,
-                              stride, padding, &out_rows, &out_cols, &pad_rows,
-                              &pad_cols));
+  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+  TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
+                                    &out_rows, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
+                                    &out_cols, &pad_cols));
 
   int64 num_ops = 0;
   if (op == DEPTHWISE_CONV_OP_FWD) {
@@ -859,11 +861,11 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
 
   gtl::InlinedVector<TensorValue, 4> inputs;
 
-  int out_height, out_width, pad_rows, pad_cols;
-  Status status =
-      Get2dOutputSize(rows, cols, kernel_rows, kernel_cols, stride, stride,
-                      padding, &out_height, &out_width, &pad_rows, &pad_cols);
-  TF_CHECK_OK(status);
+  int64 out_height, out_width, pad_rows, pad_cols;
+  TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
+                                    &out_height, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,
+                                    &out_width, &pad_cols));
   TensorShape output_shape({batch_size, out_height, out_width, depth});
   TensorShape shape2({4});
   Tensor input_shape_tensor(DT_INT32, shape2);
@@ -879,13 +881,13 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
 
   // AvgPoolGrad op.
   NodeDef avgpool_grad_node_def;
-  status = NodeDefBuilder("avgpool_grad_op", "AvgPoolGrad")
-               .Input(FakeInput())
-               .Input(FakeInput(DT_FLOAT))
-               .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
-               .Attr("strides", {1, stride, stride, 1})
-               .Attr("padding", padding == VALID ? "VALID" : "SAME")
-               .Finalize(&avgpool_grad_node_def);
+  Status status = NodeDefBuilder("avgpool_grad_op", "AvgPoolGrad")
+                      .Input(FakeInput())
+                      .Input(FakeInput(DT_FLOAT))
+                      .Attr("ksize", {1, kernel_rows, kernel_cols, 1})
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Finalize(&avgpool_grad_node_def);
   TF_CHECK_OK(status);
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, nullptr, cpu_allocator(),
@@ -1047,11 +1049,11 @@ static void BM_MaxPoolBk(int iters, int batch_size, int rows, int cols,
                          bool use_gpu, const string& label) {
   GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
 
-  int out_height, out_width, pad_rows, pad_cols;
-  Status status =
-      Get2dOutputSize(rows, cols, kernel_rows, kernel_cols, stride, stride,
-                      padding, &out_height, &out_width, &pad_rows, &pad_cols);
-  TF_CHECK_OK(status);
+  int64 out_height, out_width, pad_rows, pad_cols;
+  TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
+                                    &out_height, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,
+                                    &out_width, &pad_cols));
 
   Tensor input_data(DT_FLOAT, TensorShape({batch_size, rows, cols, depth}));
   input_data.flat<float>().setRandom();

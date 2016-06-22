@@ -112,47 +112,6 @@ Status Env::NewAppendableFile(const string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-/// Deprecated versions of factories.
-
-Status Env::NewRandomAccessFile(const string& fname,
-                                RandomAccessFile** result) {
-  FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
-  std::unique_ptr<RandomAccessFile> r;
-  TF_RETURN_IF_ERROR(fs->NewRandomAccessFile(fname, &r));
-  *result = r.release();
-  return Status::OK();
-}
-
-Status Env::NewAppendableFile(const string& fname, WritableFile** result) {
-  FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
-
-  std::unique_ptr<WritableFile> w;
-  TF_RETURN_IF_ERROR(fs->NewAppendableFile(fname, &w));
-  *result = w.release();
-  return Status::OK();
-}
-
-Status Env::NewWritableFile(const string& fname, WritableFile** result) {
-  FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
-  std::unique_ptr<WritableFile> w;
-  TF_RETURN_IF_ERROR(fs->NewWritableFile(fname, &w));
-  *result = w.release();
-  return Status::OK();
-}
-
-Status Env::NewReadOnlyMemoryRegionFromFile(const string& fname,
-                                            ReadOnlyMemoryRegion** result) {
-  FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
-  std::unique_ptr<ReadOnlyMemoryRegion> r;
-  TF_RETURN_IF_ERROR(fs->NewReadOnlyMemoryRegionFromFile(fname, &r));
-  *result = r.release();
-  return Status::OK();
-}
-
 bool Env::FileExists(const string& fname) {
   FileSystem* fs;
   if (!GetFileSystemForFile(fname, &fs).ok()) {
@@ -213,7 +172,7 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   if (!s.ok()) {
     return s;
   }
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   s = env->NewRandomAccessFile(fname, &file);
   if (!s.ok()) {
     return s;
@@ -233,13 +192,12 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   } else {
     memmove(p, result.data(), result.size());
   }
-  delete file;
   return s;
 }
 
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data) {
-  WritableFile* file;
+  std::unique_ptr<WritableFile> file;
   Status s = env->NewWritableFile(fname, &file);
   if (!s.ok()) {
     return s;
@@ -248,7 +206,6 @@ Status WriteStringToFile(Env* env, const string& fname,
   if (s.ok()) {
     s = file->Close();
   }
-  delete file;
   return s;
 }
 
@@ -292,13 +249,12 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   auto s = env->NewRandomAccessFile(fname, &file);
   if (!s.ok()) {
     return s;
   }
-  std::unique_ptr<RandomAccessFile> file_holder(file);
-  std::unique_ptr<FileStream> stream(new FileStream(file));
+  std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   // TODO(jiayq): the following coded stream is for debugging purposes to allow
   // one to parse arbitrarily large messages for MessageLite. One most likely

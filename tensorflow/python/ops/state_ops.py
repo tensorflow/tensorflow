@@ -68,6 +68,7 @@ create variables contingent on certain conditions.
 ## Variable Partitioners for Sharding
 
 @@variable_axis_size_partitioner
+@@min_max_variable_partitioner
 
 ## Sparse Variable Updates
 

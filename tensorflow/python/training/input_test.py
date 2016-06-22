@@ -225,6 +225,25 @@ class StringInputProducerTest(tf.test.TestCase):
           "s: 'SHARED_NAME_XYZ'",
           queue.queue_ref.op.node_def.attr["shared_name"])
 
+  def testConstructionRace(self):
+    with self.test_session() as sess:
+      strings = [b"to", b"be", b"or", b"not", b"to", b"be"]
+      queue = tf.train.string_input_producer(strings, shuffle=False)
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+      for _ in range(2):
+        for string in strings:
+          # NOTE(mrry): This is not the recommended way to write
+          # dequeuing code (instead you should create a single dequeue
+          # op before starting the queue runners, and run it
+          # repeatedly), because it leads to concurrent reading and
+          # writing of the `tf.Graph` object. However, many users
+          # write code this way, so we include this test to ensure
+          # that we can support it.
+          self.assertEquals(string, sess.run(queue.dequeue()))
+      coord.request_stop()
+      coord.join(threads)
+
 
 class RangeInputProducerTest(tf.test.TestCase):
 

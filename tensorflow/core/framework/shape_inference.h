@@ -111,6 +111,8 @@ class InferenceContext {
   // Note that <*out> may be set to <shape>.
   Status WithRank(const Shape* shape, int32 rank,
                   const Shape** out) TF_MUST_USE_RESULT;
+  Status WithRankAtLeast(const Shape* shape, int32 rank,
+                         const Shape** out) TF_MUST_USE_RESULT;
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
   // the dimension with asserted value in <*out>. Otherwise returns an error.

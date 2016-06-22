@@ -226,7 +226,7 @@ py_binary(
 
 sh_test(
     name = "examples_test",
-    size = "medium",
+    size = "large",
     srcs = ["examples_test.sh"],
     data = [
         ":boston",

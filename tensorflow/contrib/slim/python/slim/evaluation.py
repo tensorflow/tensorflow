@@ -57,6 +57,7 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
@@ -154,10 +155,14 @@ def evaluation(
   return final_op_value
 
 
+_USE_DEFAULT = 0
+
+
 def evaluation_loop(master, checkpoint_dir, logdir, num_evals=1,
                     eval_op=None, eval_op_feed_dict=None,
-                    final_op=None, final_op_feed_dict=None, summary_op=None,
-                    summary_op_feed_dict=None, variables_to_restore=None,
+                    final_op=None, final_op_feed_dict=None,
+                    summary_op=_USE_DEFAULT, summary_op_feed_dict=None,
+                    variables_to_restore=None,
                     eval_interval_secs=60):
   """Runs TF-Slim's Evaluation Loop.
 
@@ -171,7 +176,8 @@ def evaluation_loop(master, checkpoint_dir, logdir, num_evals=1,
     final_op: An operation to execute after all of the `eval_op` executions. The
       value of `final_op` is returned.
     final_op_feed_dict: A feed dictionary to use when executing `final_op`.
-    summary_op: The summary_op to evaluate after running TF-Slims metric ops.
+    summary_op: The summary_op to evaluate after running TF-Slims metric ops. By
+      default the summary_op is set to tf.merge_all_summaries().
     summary_op_feed_dict: An optional feed dictionary to use when running the
       `summary_op`.
     variables_to_restore: A list of TensorFlow variables to restore during
@@ -179,6 +185,9 @@ def evaluation_loop(master, checkpoint_dir, logdir, num_evals=1,
       slim.variables.GetVariablesToRestore() is used.
     eval_interval_secs: The minimum number of seconds between evaluations.
   """
+  if summary_op == _USE_DEFAULT:
+    summary_op = logging_ops.merge_all_summaries()
+
   global_step = variables.get_or_create_global_step()
 
   init_op = control_flow_ops.group(
