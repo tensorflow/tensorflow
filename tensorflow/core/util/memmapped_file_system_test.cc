@@ -109,7 +109,7 @@ TEST(MemmappedFileSystemTest, NotInitalized) {
       memmapped_env
           .NewReadOnlyMemoryRegionFromFile(kTensor1FileName, &memory_region)
           .code());
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   EXPECT_EQ(error::FAILED_PRECONDITION,
             memmapped_env.NewRandomAccessFile(kProtoFileName, &file).code());
 }

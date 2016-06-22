@@ -268,8 +268,13 @@ def train(graph,
         start_time = time.time()
         feed_dict = feed_fn() if feed_fn is not None else None
 
-        outputs, should_stop = _run_with_monitors(
-            session, last_step + 1, [train_op, loss_op], feed_dict, monitors)
+        try:
+          outputs, should_stop = _run_with_monitors(
+              session, last_step + 1, [train_op, loss_op], feed_dict, monitors)
+        except errors.AbortedError as e:
+          # Happens when PS restarts, keep training.
+          logging.warning('Training got Aborted error. Keep training.')
+          continue
 
         loss_value = outputs[loss_op.name]
         if np.isnan(loss_value):
@@ -528,9 +533,15 @@ def evaluate(graph,
         if eval_results is None or step != eval_step:
           eval_results = session.run(eval_dict, feed_dict=feed_dict)
           eval_step = step
+        # Stop session first, before queue runners.
+        session.close()
+
         # Stop queue runners.
-        coord.request_stop()
-        coord.join(threads, stop_grace_period_secs=120)
+        try:
+          coord.request_stop()
+          coord.join(threads, stop_grace_period_secs=120)
+        except (RuntimeError, errors.CancelledError) as e:
+          logging.warning('Coordinator didn\'t stop cleanly: %s', e)
 
     # catch OutOfRangeError which is thrown when queue is out of data (and for
     # other reasons as well).

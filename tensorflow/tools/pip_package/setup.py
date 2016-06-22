@@ -183,6 +183,7 @@ setup(
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',
                        'tensorboard/lib/css/global.css',
+                       'tensorboard/TAG',
                      ] + matches,
     },
     zip_safe=False,

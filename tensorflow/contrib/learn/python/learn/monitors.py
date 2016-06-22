@@ -286,6 +286,7 @@ class ValidationMonitor(EveryN):
   """
 
   def __init__(self, x=None, y=None, input_fn=None, batch_size=None,
+               eval_steps=None,
                every_n_steps=100, metrics=None, early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True, name=None):
@@ -303,6 +304,8 @@ class ValidationMonitor(EveryN):
           `None`.
       batch_size: minibatch size to use on the input, defaults to first
           dimension of `x`. Must be `None` if `input_fn` is provided.
+      eval_steps: Number of steps to run evaluation. `None` means to run
+          until records finish.
       every_n_steps: Runs this monitor every N steps.
       metrics: Dict of metric ops to run. If None, the default metric functions
         are used; if {}, no metrics are used.
@@ -326,6 +329,7 @@ class ValidationMonitor(EveryN):
     self.y = y
     self.input_fn = input_fn
     self.batch_size = batch_size
+    self.eval_steps = eval_steps
     self.metrics = metrics
     self.early_stopping_rounds = early_stopping_rounds
     self.early_stopping_metric = early_stopping_metric
@@ -365,7 +369,7 @@ class ValidationMonitor(EveryN):
     # Run evaluation and log it.
     outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
-        metrics=self.metrics, name=self.name)
+        steps=self.eval_steps, metrics=self.metrics, name=self.name)
     stats = []
     for name in outputs:
       stats.append("%s = %s" % (name, str(outputs[name])))

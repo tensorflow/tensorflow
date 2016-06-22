@@ -111,6 +111,7 @@ filegroup(
         "//tensorflow/examples/how_tos/reading_data:all_files",
         "//tensorflow/examples/image_retraining:all_files",
         "//tensorflow/examples/label_image:all_files",
+        "//tensorflow/examples/learn:all_files",
         "//tensorflow/examples/skflow:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",

@@ -277,7 +277,7 @@ tf_cuda_cc_tests(
 tf_cuda_cc_tests(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["manual"],
     tests = [
         "remote_device_test.cc",
     ],

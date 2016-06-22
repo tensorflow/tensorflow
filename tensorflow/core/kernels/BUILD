@@ -1223,6 +1223,9 @@ tf_kernel_library(
         "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
     ],
+    hdrs = [
+        "conv_grad_ops.h",
+    ],
     prefix = "conv_ops",
     deps = [
         ":bounds_check",
@@ -1800,6 +1803,7 @@ filegroup(
         "control_flow_ops.cc",
         "conv_2d.h",
         "conv_grad_ops.cc",
+        "conv_grad_ops.h",
         "conv_ops.cc",
         "cwise_op_add.cc",
         "cwise_op_div.cc",

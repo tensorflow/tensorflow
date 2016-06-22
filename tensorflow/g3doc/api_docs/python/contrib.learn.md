@@ -865,7 +865,7 @@ Input of `fit` and `evaluate` should have following features,
       whose `value` is a `SparseTensor`.
     - if `column` is a `RealValuedColumn, a feature with `key=column.name`
       whose `value` is a `Tensor`.
-    - if `feauture_columns` is None, then `input` must contains only real
+    - if `feauture_columns` is `None`, then `input` must contains only real
       valued `Tensor`.
 - - -
 
@@ -877,7 +877,7 @@ Initializes a DNNClassifier instance.
 
 
 *  <b>`hidden_units`</b>: List of hidden units per layer. All layers are fully
-    connected. Ex. [64, 32] means first layer has 64 nodes and second one
+    connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
     has 32.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
@@ -892,7 +892,7 @@ Initializes a DNNClassifier instance.
     `None`, will use an Adagrad optimizer.
 *  <b>`activation_fn`</b>: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
-*  <b>`dropout`</b>: When not None, the probability we will drop out a given
+*  <b>`dropout`</b>: When not `None`, the probability we will drop out a given
     coordinate.
 *  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are
     clipped to their global norm with this clipping ratio. See
@@ -900,7 +900,11 @@ Initializes a DNNClassifier instance.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
-*  <b>`config`</b>: RunConfig object to configure the runtime settings.
+*  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+
+##### Returns:
+
+  A `DNNClassifier` estimator.
 
 
 - - -
@@ -1243,7 +1247,7 @@ Input of `fit` and `evaluate` should have following features,
       whose `value` is a `SparseTensor`.
     - if `column` is a `RealValuedColumn, a feature with `key=column.name`
       whose `value` is a `Tensor`.
-    - if `feauture_columns` is None, then `input` must contains only real
+    - if `feauture_columns` is `None`, then `input` must contains only real
       valued `Tensor`.
 - - -
 
@@ -1255,8 +1259,8 @@ Initializes a `DNNRegressor` instance.
 
 
 *  <b>`hidden_units`</b>: List of hidden units per layer. All layers are fully
-    connected. Ex. [64, 32] means first layer has 64 nodes and second
-    one has 32.
+    connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+    has 32.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
@@ -1268,15 +1272,19 @@ Initializes a `DNNRegressor` instance.
     `None`, will use an Adagrad optimizer.
 *  <b>`activation_fn`</b>: Activation function applied to each layer. If `None`, will
     use `tf.nn.relu`.
-*  <b>`dropout`</b>: When not None, the probability we will drop out a given
+*  <b>`dropout`</b>: When not `None`, the probability we will drop out a given
     coordinate.
-*  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are clipped
+*  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
     to their global norm with this clipping ratio. See
-    tf.clip_by_global_norm for more details.
+    `tf.clip_by_global_norm` for more details.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
-*  <b>`config`</b>: RunConfig object to configure the runtime settings.
+*  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+
+##### Returns:
+
+  A `DNNRegressor` estimator.
 
 
 - - -
@@ -2395,9 +2403,9 @@ estimator = LinearClassifier(
    ))
 
 # Input builders
-def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+def input_fn_train: # returns x, y
   ...
-def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+def input_fn_eval: # returns x, y
   ...
 estimator.fit(input_fn=input_fn_train)
 estimator.evaluate(input_fn=input_fn_eval)
@@ -2759,9 +2767,9 @@ estimator = LinearRegressor(
     feature_columns=[occupation, education_x_occupation])
 
 # Input builders
-def input_fn_train: # returns x, y, where y is a tensor of dimension 1
+def input_fn_train: # returns x, y
   ...
-def input_fn_eval: # returns x, y, where y is a tensor of dimension 1
+def input_fn_eval: # returns x, y
   ...
 estimator.fit(input_fn=input_fn_train)
 estimator.evaluate(input_fn=input_fn_eval)
@@ -2791,7 +2799,7 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph, etc.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -4813,7 +4821,7 @@ Extracts numpy matrix from pandas DataFrame.
 
 - - -
 
-### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, name=None)` {#read_batch_examples}
+### `tf.contrib.learn.read_batch_examples(file_pattern, batch_size, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, num_threads=1, read_batch_size=1, parse_fn=None, name=None)` {#read_batch_examples}
 
 Adds operations to read, queue, batch `Example` protos.
 
@@ -4825,6 +4833,8 @@ All queue runners are added to the queue runners collection, and may be
 started via `start_queue_runners`.
 
 All ops are added to the default graph.
+
+Use `parse_fn` if you need to do parsing / processing on single examples.
 
 ##### Args:
 
@@ -4843,11 +4853,14 @@ All ops are added to the default graph.
 *  <b>`num_threads`</b>: The number of threads enqueuing examples.
 *  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
     records to read at once
+*  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
+    representation. If `None`, no parsing is done.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:
 
-  String `Tensor` of batched `Example` proto.
+  String `Tensor` of batched `Example` proto. If `keep_keys` is True, then
+  returns tuple of string `Tensor`s, where first value is the key.
 
 ##### Raises:
 
@@ -4857,7 +4870,7 @@ All ops are added to the default graph.
 
 - - -
 
-### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, name=None)` {#read_batch_features}
+### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, read_batch_size=1, name=None)` {#read_batch_features}
 
 Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -4889,11 +4902,14 @@ All ops are added to the default graph.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.
+*  <b>`read_batch_size`</b>: An int or scalar `Tensor` specifying the number of
+    records to read at once
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:
 
   A dict of `Tensor` or `SparseTensor` objects for each in `features`.
+  If `keep_keys` is `True`, returns tuple of string `Tensor` and above dict.
 
 ##### Raises:
 
