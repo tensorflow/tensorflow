@@ -127,6 +127,7 @@ def optimize_loss(loss,
                            str(learning_rate), str(type(learning_rate))))
     if learning_rate_decay_fn is not None:
       lr = learning_rate_decay_fn(lr, global_step)
+      logging_ops.scalar_summary("learning_rate", lr)
 
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):
