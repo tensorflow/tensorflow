@@ -1548,17 +1548,20 @@ def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
   Args:
-    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
-      or `qint32`.
+    x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
+      `complex64`, `int64`, or `qint32`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-      the return type is `quint8`.
+    A Tensor or SparseTensor respectively with the same type as `x` if
+    `x.dtype != qint32` otherwise the return type is `quint8`.
   """
   with ops.op_scope([x], name, "Tanh") as name:
-    x = ops.convert_to_tensor(x, name="x")
-    return gen_math_ops._tanh(x, name=name)
+    if isinstance(x, ops.SparseTensor):
+      x_tanh = gen_math_ops._tanh(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_tanh, shape=x.shape)
+    else:
+      return gen_math_ops._tanh(x, name=name)
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
