@@ -282,3 +282,19 @@ images that had been used for training a model were subsequently used in a
 validation set. In general you should be able to leave these values at their
 defaults, since you won't usually find any advantage to training to adjusting
 them.
+
+## Visualizing the Retraining with TensorBoard
+
+The script includes TensorBoard summaries that make it easier to understand, debug, and optimize the retraining. For example, you can visualize the graph and statistics, such as how the weights or accuracy varied during training.
+
+To launch TensorBoard, run this command during or after retraining:
+
+```sh
+tensorboard --logdir=/tmp/retrain_logs
+```
+
+Once TensorBoard is running, navigate your web browser to `localhost:6006` to view the TensorBoard.
+
+The script will log TensorBoard summaries to `/tmp/retrain_logs` by default. You can change the directory with the `--summaries_dir` flag.
+
+The [TensorBoard README](../../../tensorboard/README.md) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
