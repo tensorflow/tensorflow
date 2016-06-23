@@ -1,4 +1,4 @@
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, keep_checkpoint_max=5, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None)` {#train}
 
 Train a model.
 
@@ -37,6 +37,10 @@ program is terminated with exit code 1.
 *  <b>`supervisor_master`</b>: The master string to use when preparing the session.
 *  <b>`supervisor_save_model_secs`</b>: Save a checkpoint every
     `supervisor_save_model_secs` seconds when training.
+*  <b>`keep_checkpoint_max`</b>: The maximum number of recent checkpoint files to
+    keep. As new files are created, older files are deleted. If None or 0,
+    all checkpoint files are kept. This is simply passed as the max_to_keep
+    arg to tf.Saver constructor.
 *  <b>`supervisor_save_summaries_steps`</b>: Save summaries every
     `supervisor_save_summaries_steps` seconds when training.
 *  <b>`feed_fn`</b>: A function that is called every iteration to produce a `feed_dict`
