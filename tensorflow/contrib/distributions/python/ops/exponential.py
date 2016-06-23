@@ -38,13 +38,24 @@ class Exponential(gamma.Gamma):
   distribution, with Exponential(lam) = Gamma(1, lam).
   """
 
-  def __init__(self, lam, name="Exponential"):
-    with ops.op_scope([lam], name, "init"):
+  def __init__(self, lam, strict=True, name="Exponential"):
+    """Construct Exponential distribution with parameter `lam`.
+
+    Args:
+      lam: `float` or `double` tensor, the rate of the distribution(s).
+        `lam` must contain only positive values.
+      strict: Whether to assert that `lam > 0`, and that `x > 0` in the
+        methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+        and the inputs are invalid, correct behavior is not guaranteed.
+      name: The name to prepend to all ops created by this distribution.
+    """
+    with ops.op_scope([lam], name):
       lam = ops.convert_to_tensor(lam)
       self._lam = lam
       super(Exponential, self).__init__(
           alpha=math_ops.cast(1.0, dtype=lam.dtype),
-          beta=lam)
+          beta=lam,
+          strict=strict)
 
   @property
   def lam(self):

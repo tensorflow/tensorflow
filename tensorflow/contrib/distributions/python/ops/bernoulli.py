@@ -68,6 +68,11 @@ class Bernoulli(distribution.DiscreteDistribution):
       self._event_shape = array_ops.constant([], dtype=dtypes.int32)
 
   @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
+
+  @property
   def name(self):
     return self._name
 

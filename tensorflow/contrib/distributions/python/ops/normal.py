@@ -80,7 +80,7 @@ class Normal(distribution.ContinuousDistribution):
 
   """
 
-  def __init__(self, mu, sigma, name="Normal"):
+  def __init__(self, mu, sigma, strict=True, name="Normal"):
     """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
     The parameters `mu` and `sigma` must be shaped in a way that supports
@@ -90,15 +90,19 @@ class Normal(distribution.ContinuousDistribution):
       mu: `float` or `double` tensor, the means of the distribution(s).
       sigma: `float` or `double` tensor, the stddevs of the distribution(s).
         sigma must contain only positive values.
+      strict: Whether to assert that `sigma > 0`. If `strict` is False,
+        correct output is not guaranteed when input is invalid.
       name: The name to give Ops created by the initializer.
 
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
+    self._strict = strict
     with ops.op_scope([mu, sigma], name):
       mu = ops.convert_to_tensor(mu)
       sigma = ops.convert_to_tensor(sigma)
-      with ops.control_dependencies([check_ops.assert_positive(sigma)]):
+      with ops.control_dependencies(
+          [check_ops.assert_positive(sigma)] if strict else []):
         self._name = name
         self._mu = array_ops.identity(mu, name="mu")
         self._sigma = array_ops.identity(sigma, name="sigma")
@@ -106,6 +110,11 @@ class Normal(distribution.ContinuousDistribution):
         self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((mu, sigma))
+
+  @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
 
   @property
   def name(self):
