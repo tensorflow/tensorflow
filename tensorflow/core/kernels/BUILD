@@ -1817,6 +1817,7 @@ filegroup(
         "conv_grad_ops.cc",
         "conv_grad_ops.h",
         "conv_ops.cc",
+        "cwise_op_abs.cc",
         "cwise_op_add.cc",
         "cwise_op_div.cc",
         "cwise_op_equal_to.cc",
