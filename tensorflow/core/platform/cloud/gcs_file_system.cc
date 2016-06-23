@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <stdio.h>
 #include <unistd.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -80,31 +81,43 @@ Status ParseGcsPath(const string& fname, string* bucket, string* object) {
   return Status::OK();
 }
 
-/// GCS-based implementation of a random access file.
+/// A GCS-based implementation of a random access file with a read-ahead buffer.
 class GcsRandomAccessFile : public RandomAccessFile {
  public:
   GcsRandomAccessFile(const string& bucket, const string& object,
                       AuthProvider* auth_provider,
-                      HttpRequest::Factory* http_request_factory)
+                      HttpRequest::Factory* http_request_factory,
+                      size_t read_ahead_bytes)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
-        http_request_factory_(std::move(http_request_factory)) {}
+        http_request_factory_(std::move(http_request_factory)),
+        read_ahead_bytes_(read_ahead_bytes) {}
 
+  /// The implementation of reads with a read-ahead buffer.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    string auth_token;
-    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
+    if (offset >= buffer_start_offset_ &&
+        offset + n <= buffer_start_offset_ + buffer_content_size_) {
+      // If the requested range is fully in the buffer, just return it.
+      std::memcpy(scratch, buffer_.get() + offset - buffer_start_offset_, n);
+      *result = StringPiece(scratch, n);
+      return Status::OK();
+    }
 
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
+    // Update the buffer content based on the new requested range.
+    auto buffer_size = n + read_ahead_bytes_;
+    buffer_.reset(new char[buffer_size]);
+    buffer_start_offset_ = offset;
+    buffer_content_size_ = 0;
+    StringPiece buffer_content;
     TF_RETURN_IF_ERROR(
-        request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
-                                        "/", request->EscapeString(object_))));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
-    TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
-    TF_RETURN_IF_ERROR(request->Send());
+        ReadFromGCS(offset, buffer_size, &buffer_content, buffer_.get()));
+    buffer_content_size_ = buffer_content.size();
+
+    // Set the results.
+    *result = StringPiece(scratch, std::min(buffer_content_size_, n));
+    std::memcpy(scratch, buffer_.get(), result->size());
 
     if (result->size() < n) {
       // This is not an error per se. The RandomAccessFile interface expects
@@ -117,10 +130,36 @@ class GcsRandomAccessFile : public RandomAccessFile {
   }
 
  private:
+  /// A helper function to actually read the data from GCS.
+  Status ReadFromGCS(uint64 offset, size_t n, StringPiece* result,
+                     char* scratch) const {
+    string auth_token;
+    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
+
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    TF_RETURN_IF_ERROR(request->Init());
+    TF_RETURN_IF_ERROR(
+        request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
+                                        "/", request->EscapeString(object_))));
+    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+    TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
+    TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
+    TF_RETURN_IF_ERROR(request->Send());
+    return Status::OK();
+  }
+
   string bucket_;
   string object_;
   AuthProvider* auth_provider_;
   HttpRequest::Factory* http_request_factory_;
+  const size_t read_ahead_bytes_;
+
+  // The buffer-related members need to be mutable, because they are modified
+  // by the const Read() method.
+  mutable std::unique_ptr<char[]> buffer_;
+  // The original file offset of the first byte in the buffer.
+  mutable size_t buffer_start_offset_ = 0;
+  mutable size_t buffer_content_size_ = 0;
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -233,16 +272,19 @@ GcsFileSystem::GcsFileSystem()
 
 GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,
-    std::unique_ptr<HttpRequest::Factory> http_request_factory)
+    std::unique_ptr<HttpRequest::Factory> http_request_factory,
+    size_t read_ahead_bytes)
     : auth_provider_(std::move(auth_provider)),
-      http_request_factory_(std::move(http_request_factory)) {}
+      http_request_factory_(std::move(http_request_factory)),
+      read_ahead_bytes_(read_ahead_bytes) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
   result->reset(new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
-                                        http_request_factory_.get()));
+                                        http_request_factory_.get(),
+                                        read_ahead_bytes_));
   return Status::OK();
 }
 

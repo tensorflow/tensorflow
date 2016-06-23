@@ -49,7 +49,7 @@ class FakeAuthProvider : public AuthProvider {
   }
 };
 
-TEST(GcsFileSystemTest, NewRandomAccessFile) {
+TEST(GcsFileSystemTest, NewRandomAccessFile_NoReadAhead) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
@@ -63,7 +63,8 @@ TEST(GcsFileSystemTest, NewRandomAccessFile) {
            "6789")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   std::unique_ptr<RandomAccessFile> file;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
@@ -82,6 +83,65 @@ TEST(GcsFileSystemTest, NewRandomAccessFile) {
   EXPECT_EQ("6789", result);
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-8\n",
+           "01234567"),
+       new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 6-15\n",
+           "6789abcd"),
+       new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 6-20\n",
+           "6789abcd"),
+       new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 15-29\n",
+           "")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   5 /* read ahead bytes */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  char scratch[100];
+  StringPiece result;
+
+  // Read the first chunk. The cache will be updated with 4 + 5 = 9 bytes.
+  TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+  EXPECT_EQ("0123", result);
+
+  // The second chunk will be fully loaded from the cache, no requests are made.
+  TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
+  EXPECT_EQ("4567", result);
+
+  // The chunk is only partially cached -- the request will be made to
+  // reload the cache. 5 + 5 = 10 bytes will be requested.
+  TF_EXPECT_OK(file->Read(6, 5, &result, scratch));
+  EXPECT_EQ("6789a", result);
+
+  // The range can only be partially satisfied. An attempt to fill the cache
+  // with 10 + 5 = 15 bytes will be made.
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(6, 10, &result, scratch).code());
+  EXPECT_EQ("6789abcd", result);
+
+  // The range cannot be satisfied. An attempt to fill the cache
+  // with 10 + 5 = 15 bytes will be made.
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(15, 10, &result, scratch).code());
+  EXPECT_TRUE(result.empty());
+}
+
 TEST(GcsFileSystemTest, NewWritableFile) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
@@ -91,7 +151,8 @@ TEST(GcsFileSystemTest, NewWritableFile) {
       "")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   std::unique_ptr<WritableFile> file;
   TF_EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable.txt", &file));
@@ -116,7 +177,8 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
            "")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   std::unique_ptr<WritableFile> file;
   TF_EXPECT_OK(fs.NewAppendableFile("gs://bucket/path/appendable.txt", &file));
@@ -142,7 +204,8 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
            content)});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   std::unique_ptr<ReadOnlyMemoryRegion> region;
   TF_EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile(
@@ -166,7 +229,8 @@ TEST(GcsFileSystemTest, FileExists) {
            "", errors::NotFound("404"))});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   EXPECT_TRUE(fs.FileExists("gs://bucket/path/file1.txt"));
   EXPECT_FALSE(fs.FileExists("gs://bucket/path/file2.txt"));
@@ -176,7 +240,8 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
   auto requests = CreateGetThreeChildrenRequest();
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   std::vector<string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", &children));
@@ -188,7 +253,8 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles_NoSlash) {
   auto requests = CreateGetThreeChildrenRequest();
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   std::vector<string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path", &children));
@@ -204,7 +270,8 @@ TEST(GcsFileSystemTest, GetChildren_Empty) {
       "{}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   std::vector<string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", &children));
@@ -221,7 +288,8 @@ TEST(GcsFileSystemTest, DeleteFile) {
                            "")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   TF_EXPECT_OK(fs.DeleteFile("gs://bucket/path/file1.txt"));
 }
@@ -234,7 +302,8 @@ TEST(GcsFileSystemTest, DeleteDir_Empty) {
       "{}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   TF_EXPECT_OK(fs.DeleteDir("gs://bucket/path/"));
 }
@@ -248,7 +317,8 @@ TEST(GcsFileSystemTest, DeleteDir_NonEmpty) {
       "  { \"name\": \"path/file1.txt\" }]}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   EXPECT_FALSE(fs.DeleteDir("gs://bucket/path/").ok());
 }
@@ -261,7 +331,8 @@ TEST(GcsFileSystemTest, GetFileSize) {
       strings::StrCat("{\"size\": \"1010\"}"))});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   uint64 size;
   TF_EXPECT_OK(fs.GetFileSize("gs://bucket/file.txt", &size));
@@ -284,7 +355,8 @@ TEST(GcsFileSystemTest, RenameFile) {
            "")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)));
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
 
   TF_EXPECT_OK(
       fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
