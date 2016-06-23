@@ -2,15 +2,25 @@ The Chi2 distribution with degrees of freedom df.
 
 The PDF of this distribution is:
 
-```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(k/2)Gamma(k/2)), x > 0```
+```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(df/2)Gamma(df/2)), x > 0```
 
 Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, name='Chi2')` {#Chi2.__init__}
+
+Construct Chi2 distributions with parameter `df`.
+
+##### Args:
 
 
+*  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
+    distribution(s).  `df` must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
+    methods `pdf(x)` and `log_pdf(x)`. If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
 - - -
@@ -273,6 +283,13 @@ See the doc for tf.random_gamma for further detail.
 #### `tf.contrib.distributions.Chi2.std(name='std')` {#Chi2.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.strict` {#Chi2.strict}
+
+Boolean describing behavior on invalid input.
 
 
 - - -

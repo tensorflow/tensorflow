@@ -234,6 +234,13 @@ Standard deviation of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.strict` {#Bernoulli.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.variance(name='variance')` {#Bernoulli.variance}
 
 Variance of the distribution.

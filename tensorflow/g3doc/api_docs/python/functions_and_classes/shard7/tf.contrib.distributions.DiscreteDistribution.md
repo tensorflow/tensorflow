@@ -160,6 +160,13 @@ Standard deviation of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.DiscreteDistribution.strict` {#DiscreteDistribution.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
 #### `tf.contrib.distributions.DiscreteDistribution.variance(name='variance')` {#DiscreteDistribution.variance}
 
 Variance of the distribution.
