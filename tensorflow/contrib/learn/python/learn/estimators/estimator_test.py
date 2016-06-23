@@ -121,6 +121,64 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
 class EstimatorTest(tf.test.TestCase):
 
+  def testCustomConfig(self):
+    test_random_seed = 5783452
+
+    class TestInput(object):
+
+      def __init__(self):
+        self.random_seed = 0
+
+      def config_test_input_fn(self):
+        self.random_seed = tf.get_default_graph().seed
+        return tf.constant([[1.]]), tf.constant([1.])
+
+    config = tf.contrib.learn.RunConfig(tf_random_seed=test_random_seed)
+    test_input = TestInput()
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn, config=config)
+    est.fit(input_fn=test_input.config_test_input_fn, steps=1)
+    # If input_fn ran, it will have given us the random seed set on the graph.
+    self.assertEquals(test_random_seed, test_input.random_seed)
+
+  def testCheckInputs(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    # Lambdas so we have to different objects to compare
+    right_features = lambda: np.ones(shape=[7, 8], dtype=np.float32)
+    right_targets = lambda: np.ones(shape=[7, 10], dtype=np.int32)
+    est.fit(right_features(), right_targets(), steps=1)
+    # TODO(wicke): This does not fail for np.int32 because of data_feeder magic.
+    wrong_type_features = np.ones(shape=[7., 8.], dtype=np.int64)
+    wrong_size_features = np.ones(shape=[7, 10])
+    wrong_type_targets = np.ones(shape=[7., 10.], dtype=np.float32)
+    wrong_size_targets = np.ones(shape=[7, 11])
+    est.fit(x=right_features(), y=right_targets(), steps=1)
+    with self.assertRaises(ValueError):
+      est.fit(x=wrong_type_features, y=right_targets(), steps=1)
+    with self.assertRaises(ValueError):
+      est.fit(x=wrong_size_features, y=right_targets(), steps=1)
+    with self.assertRaises(ValueError):
+      est.fit(x=right_features(), y=wrong_type_targets, steps=1)
+    with self.assertRaises(ValueError):
+      est.fit(x=right_features(), y=wrong_size_targets, steps=1)
+
+  def testBadInput(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    self.assertRaisesRegexp(ValueError,
+                            'Either x or input_fn must be provided.',
+                            est.fit, x=None, input_fn=None)
+    self.assertRaisesRegexp(ValueError,
+                            'Can not provide both input_fn and x or y',
+                            est.fit, x='X', input_fn=iris_input_fn)
+    self.assertRaisesRegexp(ValueError,
+                            'Can not provide both input_fn and x or y',
+                            est.fit, y='Y', input_fn=iris_input_fn)
+    self.assertRaisesRegexp(ValueError,
+                            'Can not provide both input_fn and batch_size',
+                            est.fit, input_fn=iris_input_fn, batch_size=100)
+    self.assertRaisesRegexp(
+        ValueError, 'Inputs cannot be tensors. Please provide input_fn.',
+        est.fit, x=tf.constant(1.))
+
   def testUntrained(self):
     boston = tf.contrib.learn.datasets.load_boston()
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
