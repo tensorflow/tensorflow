@@ -151,7 +151,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     self._graph = None
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None):
+          monitors=None, max_steps=None):
     """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
@@ -169,24 +169,32 @@ class BaseEstimator(sklearn.BaseEstimator):
         dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
         inside the training loop.
+      max_steps: Number of total steps for which to train model. If `None`,
+        train forever. Two calls to `fit(steps=100)` means 200 training
+        iterations. On the other hand, two calls to `fit(max_steps=100)` means
+        that the second call will not do any iteration since first call did
+        all 100 steps.
 
     Returns:
       `self`, for chaining.
 
     Raises:
       ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-    Raises:
       ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
           provided.
+      ValueError: If both `steps` and `max_steps` are not `None`.
     """
+    if (steps is not None) and (max_steps is not None):
+      raise ValueError('Can not provide both steps and max_steps.')
+
     input_fn, feed_fn = _get_input_fn(x, y, input_fn, feed_fn=None,
                                       batch_size=batch_size, shuffle=True,
                                       epochs=None)
     loss = self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
-                             monitors=monitors)
+                             monitors=monitors,
+                             max_steps=max_steps)
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -438,7 +446,8 @@ class BaseEstimator(sklearn.BaseEstimator):
                    device_fn=None,
                    monitors=None,
                    log_every_steps=100,
-                   fail_on_nan_loss=True):
+                   fail_on_nan_loss=True,
+                   max_steps=None):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if hasattr(self._config, 'execution_mode'):
       if self._config.execution_mode not in ('all', 'train'):
@@ -500,7 +509,8 @@ class BaseEstimator(sklearn.BaseEstimator):
           feed_fn=feed_fn,
           steps=steps,
           fail_on_nan_loss=fail_on_nan_loss,
-          monitors=monitors)
+          monitors=monitors,
+          max_steps=max_steps)
 
   def _extract_metric_update_ops(self, eval_dict):
     """Separate update operations from metric value operations."""

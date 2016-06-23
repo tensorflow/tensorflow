@@ -143,7 +143,8 @@ def train(graph,
           feed_fn=None,
           steps=None,
           fail_on_nan_loss=True,
-          monitors=None):
+          monitors=None,
+          max_steps=None):
   """Train a model.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
@@ -192,6 +193,10 @@ def train(graph,
       evaluates to `NaN`. If false, continue training as if nothing happened.
     monitors: List of `BaseMonitor` subclass instances. Used for callbacks
       inside the training loop.
+    max_steps: Number of total steps for which to train model. If `None`,
+      train forever. Two calls fit(steps=100) means 200 training iterations.
+      On the other hand two calls of fit(max_steps=100) means, second call
+      will not do any iteration since first call did all 100 steps.
 
   Returns:
     The final loss value.
@@ -202,7 +207,10 @@ def train(graph,
       look up the latter if not provided explicitly.
     NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
       evaluates to `NaN`.
+    ValueError: If both `steps` and `max_steps` are not `None`.
   """
+  if (steps is not None) and (max_steps is not None):
+    raise ValueError('Can not provide both steps and max_steps.')
   if not output_dir:
     raise ValueError('Output directory should be non-empty %s.' % output_dir)
   if train_op is None:
@@ -237,7 +245,8 @@ def train(graph,
           save_summary_steps=supervisor_save_summaries_steps,
           summary_writer=summary_writer)
 
-    max_steps = (start_step + steps) if steps else None
+    if max_steps is None:
+      max_steps = (start_step + steps) if steps else None
     # Start monitors, can create graph parts.
     for monitor in monitors:
       monitor.begin(max_steps=max_steps)

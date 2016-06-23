@@ -271,6 +271,20 @@ class EstimatorTest(tf.test.TestCase):
     est.fit(input_fn=boston_input_fn, steps=1)
     _ = est.evaluate(input_fn=boston_eval_fn, steps=1)
 
+  def testTrainStepsIsIncremental(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=10)
+    self.assertEqual(10, est.get_variable_value('global_step'))
+    est.fit(input_fn=boston_input_fn, steps=15)
+    self.assertEqual(25, est.get_variable_value('global_step'))
+
+  def testTrainMaxStepsIsNotIncremental(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, max_steps=10)
+    self.assertEqual(10, est.get_variable_value('global_step'))
+    est.fit(input_fn=boston_input_fn, max_steps=15)
+    self.assertEqual(15, est.get_variable_value('global_step'))
+
   def testPredict(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston = tf.contrib.learn.datasets.load_boston()

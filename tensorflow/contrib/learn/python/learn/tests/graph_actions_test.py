@@ -27,6 +27,7 @@ import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
 
 class _Feeder(object):
@@ -212,6 +213,48 @@ class GraphActionsTest(tf.test.TestCase):
           loss_op=tf.constant(2.0), steps=1)
       self.assertEqual(2.0, loss)
       self._assert_summaries(self._output_dir, expected_graphs=[g])
+
+  def test_train_steps_is_incremental(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                steps=15)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(25, step)
+
+  def test_train_max_steps_is_not_incremental(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                max_steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                max_steps=15)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(15, step)
 
   def test_train_loss(self):
     with tf.Graph().as_default() as g, self.test_session(g):
