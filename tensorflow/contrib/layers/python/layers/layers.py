@@ -402,11 +402,18 @@ def dropout(inputs,
     a tensor representing the output of the operation.
   """
   with ops.op_scope([inputs], scope, 'Dropout') as sc:
-    is_training = ops.convert_to_tensor(is_training)
-    outputs = control_flow_ops.cond(
-        is_training,
-        lambda: nn.dropout(inputs, keep_prob, noise_shape),
-        lambda: inputs)
+    is_training_value = utils.constant_value(is_training, dtypes.bool)
+    if is_training_value is not None:
+      if is_training_value:
+        outputs = nn.dropout(inputs, keep_prob, noise_shape)
+      else:
+        outputs = inputs
+    else:
+      def _dropout():
+        return nn.dropout(inputs, keep_prob, noise_shape)
+      outputs = control_flow_ops.cond(is_training,
+                                      _dropout,
+                                      lambda: inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
@@ -537,12 +544,12 @@ def fully_connected(inputs,
                                           collections=biases_collections,
                                           trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
+    if activation_fn:
+      outputs = activation_fn(outputs)
     if len(static_shape) > 2:
       # Reshape back outputs
       outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
       outputs.set_shape(static_shape)
-    if activation_fn:
-      outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 

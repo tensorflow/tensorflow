@@ -96,7 +96,7 @@ concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
 
 concat_dim: The dimension along which to concatenate.
 shape: The `N` int32 vectors representing shape of tensors being concatenated.
-output: The `N` int32 vectors representing the starting offset
+offset: The `N` int32 vectors representing the starting offset
         of input tensors within the concatenated output.
 
 This is typically used by gradient computations for a concat operation.
@@ -824,7 +824,7 @@ shape(t) ==> [2, 2, 3]
 REGISTER_OP("ShapeN")
     .Input("input: N * T")
     .Output("output: N * int32")
-    .Attr("N: int32")
+    .Attr("N: int")
     .Attr("T: type")
     .Doc(R"doc(
 Returns shape of tensors.
@@ -973,6 +973,49 @@ size: size[i] specifies the number of elements of the 'i'th dimension
   of 'input' to slice. If size[i] is -1, all remaining elements in dimension
   i are included in the slice (i.e. this is equivalent to setting
   size[i] = input.dim_size(i) - begin[i]).
+)doc");
+
+REGISTER_OP("StridedSlice")
+    .Input("input: T")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipse_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .Doc(R"doc(
+Return a strided slice from `input`.
+
+The output tensor is a tensor with dimensions implied by `begin`,
+`end`, and `strides`, whose values are extracted from `begin`.
+
+Specifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`
+will obtain the value `input[begin[0] + i[0] * stride[0], ..., `
+                            `begin[n-1] + i[n-1] * stride[n-1])]`.
+
+*Requirements*:
+  `0 != strides[i] for i in [0, n)`
+
+begin: `begin[i]` specifies the offset into the `i`th dimension of
+  `input` to slice from.
+end: `end[i]` specifies the first offset into the `i`th dimension of
+  `input` that will not be extracted. Out or range values are
+  clamped to `[0,dim[i]) if slice[i] > 0` or `[-1,dim[i]-1]`
+  `if slice[i] < 0`
+strides: `strides[i]` specifies the increment in the `i`th dimension
+  after extracting a given element. Negative indices will reverse
+  the original order. Out or range values are
+  clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`
+begin_mask: a bitmask where a bit i being 1 means to ignore the begin
+  value and instead use the largest interval possible. At runtime
+  begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
+  `[-1, n-1]` if `stride[i] < 0`
+end_mask: analogous to `begin_mask`
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1334,7 +1377,7 @@ REGISTER_OP("SpaceToBatch")
     .Input("paddings: int32")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 > 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 SpaceToBatch for 4-D tensors of type T.
 
@@ -1368,7 +1411,7 @@ The shape of the output will be:
     [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
      depth]
 
-Examples:
+Some examples:
 
 (1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:
 
@@ -1439,7 +1482,7 @@ REGISTER_OP("BatchToSpace")
     .Input("crops: int32")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 > 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 BatchToSpace for 4-D tensors of type T.
 
@@ -1467,7 +1510,7 @@ output: 4-D with shape `[batch, height, width, depth]`, where:
 
 The attr `block_size` must be greater than one. It indicates the block size.
 
-Examples:
+Some examples:
 
 (1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:
 
@@ -1534,7 +1577,7 @@ REGISTER_OP("SpaceToDepth")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 >= 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 SpaceToDepth for tensors of type T.
 
@@ -1618,7 +1661,7 @@ REGISTER_OP("DepthToSpace")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("block_size: int32 >= 1")
+    .Attr("block_size: int >= 2")
     .Doc(R"doc(
 DepthToSpace for tensors of type T.
 
@@ -1709,13 +1752,13 @@ block_size: The size of the spatial block, same as in Space2Depth.
 REGISTER_OP("ExtractImagePatches")
     .Input("images: T")
     .Output("patches: T")
-    .Attr("ksizes: list(int) == 4")
-    .Attr("strides: list(int) == 4")
-    .Attr("rates: list(int) == 4")
+    .Attr("ksizes: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr("rates: list(int) >= 4")
     .Attr("T: realnumbertype")
     .Attr(GetPaddingAttrString())
     .Doc(R"doc(
-Extract `patches` from `images` and puth them in the "depth" output dimension.
+Extract `patches` from `images` and put them in the "depth" output dimension.
 
 images: 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
 patches: 4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
@@ -1758,7 +1801,7 @@ If `T` is smaller than `type`, the operator requires that the rightmost
 dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 [..., sizeof(`type`)/sizeof(`T`)] to [...].
 
-NOTE: Bitcast is implemented as a low-level cast, so machines with different
+*NOTE*: Bitcast is implemented as a low-level cast, so machines with different
 endian orderings will give different results.
 )doc");
 
@@ -1872,10 +1915,10 @@ output: The one-hot tensor.
 )doc");
 
 // EXPERIMENTAL. DO NOT USE OR DEPEND ON THIS YET.
-REGISTER_OP("_QuantizeAndDequantize")
+REGISTER_OP("QuantizeAndDequantize")
     .Input("input: T")
     .Attr("signed_input: bool = true")
-    .Attr("num_bits: int32 = 8")
+    .Attr("num_bits: int = 8")
     .Attr("range_given: bool = false")
     .Attr("input_min: float = 0")
     .Attr("input_max: float = 0")

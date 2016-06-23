@@ -67,8 +67,8 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import assert_equal_graph_def
 
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient_error
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient
+from tensorflow.python.ops.gradient_checker import compute_gradient_error
+from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import
 
 

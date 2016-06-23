@@ -251,9 +251,11 @@ class RNNCellTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 1], dtype=tf.int32)
         m = tf.zeros([1, 2])
-        g, new_m = tf.nn.rnn_cell.EmbeddingWrapper(
+        embedding_cell = tf.nn.rnn_cell.EmbeddingWrapper(
             tf.nn.rnn_cell.GRUCell(2),
-            embedding_classes=3, embedding_size=2)(x, m)
+            embedding_classes=3, embedding_size=2)
+        self.assertEqual(embedding_cell.output_size, 2)
+        g, new_m = embedding_cell(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g, new_m], {x.name: np.array([[1]]),
                                     m.name: np.array([[0.1, 0.1]])})
@@ -310,7 +312,9 @@ class SlimRNNCellTest(tf.test.TestCase):
         x = tf.zeros([1, 2])
         m = tf.zeros([1, 2])
         my_cell = functools.partial(basic_rnn_cell, num_units=2)
-        g, _ = tf.nn.rnn_cell.SlimRNNCell(my_cell)(x, m)
+        # pylint: disable=protected-access
+        g, _ = tf.nn.rnn_cell._SlimRNNCell(my_cell)(x, m)
+        # pylint: enable=protected-access
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g], {x.name: np.array([[1., 1.]]),
                              m.name: np.array([[0.1, 0.1]])})
@@ -325,7 +329,9 @@ class SlimRNNCellTest(tf.test.TestCase):
         inputs = tf.random_uniform((batch_size, input_size))
         _, initial_state = basic_rnn_cell(inputs, None, num_units)
         my_cell = functools.partial(basic_rnn_cell, num_units=num_units)
-        slim_cell = tf.nn.rnn_cell.SlimRNNCell(my_cell)
+        # pylint: disable=protected-access
+        slim_cell = tf.nn.rnn_cell._SlimRNNCell(my_cell)
+        # pylint: enable=protected-access
         slim_outputs, slim_state = slim_cell(inputs, initial_state)
         rnn_cell = tf.nn.rnn_cell.BasicRNNCell(num_units)
         outputs, state = rnn_cell(inputs, initial_state)

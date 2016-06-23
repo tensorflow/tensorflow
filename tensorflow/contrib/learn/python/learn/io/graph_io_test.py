@@ -106,6 +106,12 @@ class GraphIOTest(tf.test.TestCase):
         _VALID_FILE_PATTERN, default_batch_size, tf.TFRecordReader,
         False, num_epochs=-1, queue_capacity=queue_capacity, num_threads=1,
         name=name)
+    self.assertRaisesRegexp(
+        ValueError, "Invalid read_batch_size",
+        tf.contrib.learn.io.read_batch_examples,
+        _VALID_FILE_PATTERN, default_batch_size, tf.TFRecordReader,
+        False, num_epochs=None, queue_capacity=queue_capacity,
+        num_threads=1, read_batch_size=0, name=name)
 
   def test_batch_record_features(self):
     batch_size = 17
@@ -118,7 +124,7 @@ class GraphIOTest(tf.test.TestCase):
           _VALID_FILE_PATTERN, batch_size, features, randomize_input=False,
           queue_capacity=queue_capacity, reader_num_threads=2,
           parser_num_threads=2, name=name)
-      self.assertEquals("%s/parse_example_batch_join:0" % name,
+      self.assertEquals("%s/parse_example_batch_join:1" % name,
                         features["feature"].name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_names_name = "%s/input" % file_name_queue_name
@@ -147,7 +153,7 @@ class GraphIOTest(tf.test.TestCase):
           reader=tf.TFRecordReader, randomize_input=True,
           num_epochs=1,
           queue_capacity=queue_capacity, name=name)
-      self.assertEquals("%s:0" % name, inputs.name)
+      self.assertEquals("%s:1" % name, inputs.name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_name_queue_limit_name = (
           "%s/limit_epochs/epochs" % file_name_queue_name)
@@ -176,7 +182,7 @@ class GraphIOTest(tf.test.TestCase):
           _VALID_FILE_PATTERN, batch_size,
           reader=tf.TFRecordReader, randomize_input=True,
           queue_capacity=queue_capacity, name=name)
-      self.assertEquals("%s:0" % name, inputs.name)
+      self.assertEquals("%s:1" % name, inputs.name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_names_name = "%s/input" % file_name_queue_name
       example_queue_name = "%s/random_shuffle_queue" % name
@@ -192,11 +198,15 @@ class GraphIOTest(tf.test.TestCase):
       self.assertEqual(
           queue_capacity, op_nodes[example_queue_name].attr["capacity"].i)
 
-  def test_read_csv(self):
-    gfile.Glob = self._orig_glob
+  def _create_temp_file(self, lines):
     tempdir = tempfile.mkdtemp()
     filename = os.path.join(tempdir, "file.csv")
-    gfile.Open(filename, "w").write("ABC\nDEF\nGHK\n")
+    gfile.Open(filename, "w").write(lines)
+    return filename
+
+  def test_read_csv(self):
+    gfile.Glob = self._orig_glob
+    filename = self._create_temp_file("ABC\nDEF\nGHK\n")
 
     batch_size = 1
     queue_capacity = 5
@@ -215,6 +225,99 @@ class GraphIOTest(tf.test.TestCase):
       self.assertAllEqual(session.run(inputs), [b"ABC"])
       self.assertAllEqual(session.run(inputs), [b"DEF"])
       self.assertAllEqual(session.run(inputs), [b"GHK"])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run(inputs)
+
+      coord.request_stop()
+
+  def test_batch_reader(self):
+    gfile.Glob = self._orig_glob
+    filename = self._create_temp_file("A\nB\nC\nD\nE\n")
+
+    batch_size = 3
+    queue_capacity = 10
+    name = "my_batch"
+
+    with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
+      inputs = tf.contrib.learn.io.read_batch_examples(
+          [filename], batch_size, reader=tf.TextLineReader,
+          randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
+          read_batch_size=10, name=name)
+      session.run(tf.initialize_local_variables())
+
+      coord = tf.train.Coordinator()
+      tf.train.start_queue_runners(session, coord=coord)
+
+      self.assertAllEqual(session.run(inputs), [b"A", b"B", b"C"])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run(inputs)
+
+      coord.request_stop()
+
+  def test_keyed_read_csv(self):
+    gfile.Glob = self._orig_glob
+    filename = self._create_temp_file("ABC\nDEF\nGHK\n")
+
+    batch_size = 1
+    queue_capacity = 5
+    name = "my_batch"
+
+    with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
+      keys, inputs = tf.contrib.learn.io.read_keyed_batch_examples(
+          filename, batch_size,
+          reader=tf.TextLineReader, randomize_input=False,
+          num_epochs=1, queue_capacity=queue_capacity, name=name)
+      session.run(tf.initialize_local_variables())
+
+      coord = tf.train.Coordinator()
+      tf.train.start_queue_runners(session, coord=coord)
+
+      self.assertAllEqual(session.run([keys, inputs]),
+                          [[b"%s:1" % filename], [b"ABC"]])
+      self.assertAllEqual(session.run([keys, inputs]),
+                          [[b"%s:2" % filename], [b"DEF"]])
+      self.assertAllEqual(session.run([keys, inputs]),
+                          [[b"%s:3" % filename], [b"GHK"]])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run(inputs)
+
+      coord.request_stop()
+
+  def test_keyed_parse_json(self):
+    gfile.Glob = self._orig_glob
+    filename = self._create_temp_file(
+        '{"features": {"feature": {"age": {"int64_list": {"value": [0]}}}}}\n'
+        '{"features": {"feature": {"age": {"int64_list": {"value": [1]}}}}}\n'
+        '{"features": {"feature": {"age": {"int64_list": {"value": [2]}}}}}\n'
+    )
+
+    batch_size = 1
+    queue_capacity = 5
+    name = "my_batch"
+
+    with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
+      dtypes = {"age": tf.FixedLenFeature([1], tf.int64)}
+      parse_fn = lambda example: tf.parse_single_example(  # pylint: disable=g-long-lambda
+          tf.decode_json_example(example), dtypes)
+      keys, inputs = tf.contrib.learn.io.read_keyed_batch_examples(
+          filename, batch_size,
+          reader=tf.TextLineReader, randomize_input=False,
+          num_epochs=1, queue_capacity=queue_capacity,
+          parse_fn=parse_fn, name=name)
+      session.run(tf.initialize_local_variables())
+
+      coord = tf.train.Coordinator()
+      tf.train.start_queue_runners(session, coord=coord)
+
+      key, age = session.run([keys, inputs["age"]])
+      self.assertAllEqual(age, [[0]])
+      self.assertAllEqual(key, [b"%s:1" % filename])
+      key, age = session.run([keys, inputs["age"]])
+      self.assertAllEqual(age, [[1]])
+      self.assertAllEqual(key, [b"%s:2" % filename])
+      key, age = session.run([keys, inputs["age"]])
+      self.assertAllEqual(age, [[2]])
+      self.assertAllEqual(key, [b"%s:3" % filename])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 

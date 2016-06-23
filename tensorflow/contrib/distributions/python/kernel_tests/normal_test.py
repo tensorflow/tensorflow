@@ -253,6 +253,28 @@ class NormalTest(tf.test.TestCase):
                    feed_dict={mu: 5.0, sigma: [1.0, 2.0]}),
           [2])
 
+  def testNormalNormalKL(self):
+    with self.test_session() as sess:
+      batch_size = 6
+      mu_a = np.array([3.0] * batch_size)
+      sigma_a = np.array([1.0, 2.0, 3.0, 1.5, 2.5, 3.5])
+      mu_b = np.array([-3.0] * batch_size)
+      sigma_b = np.array([0.5, 1.0, 1.5, 2.0, 2.5, 3.0])
+
+      n_a = tf.contrib.distributions.Normal(mu=mu_a, sigma=sigma_a)
+      n_b = tf.contrib.distributions.Normal(mu=mu_b, sigma=sigma_b)
+
+      kl = tf.contrib.distributions.kl(n_a, n_b)
+      kl_val = sess.run(kl)
+
+      kl_expected = (
+          (mu_a - mu_b)**2 / (2 * sigma_b**2)
+          + 0.5 * ((sigma_a**2/sigma_b**2) -
+                   1 - 2 * np.log(sigma_a / sigma_b)))
+
+      self.assertEqual(kl.get_shape(), (batch_size,))
+      self.assertAllClose(kl_val, kl_expected)
+
 
 if __name__ == '__main__':
   tf.test.main()

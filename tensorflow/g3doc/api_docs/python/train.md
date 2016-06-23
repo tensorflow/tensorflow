@@ -419,6 +419,10 @@ The default value of 1e-8 for epsilon might not be a good default in
 general. For example, when training an Inception network on ImageNet a
 current good choice is 1.0 or 0.1.
 
+Note that in dense implement of this algorithm, m_t, v_t and variable will
+update even if g is zero, but in sparse implement, m_t, v_t and variable
+will not update in iterations g is zero.
+
 ##### Args:
 
 
@@ -485,6 +489,10 @@ See the [paper]
 #### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
 
 Construct a new RMSProp optimizer.
+
+Note that in dense implement of this algorithm, m_t and v_t will
+update even if g is zero, but in sparse implement, m_t and v_t
+will not update in iterations g is zero.
 
 ##### Args:
 
@@ -647,20 +655,25 @@ greater than `clip_value_max` are set to `clip_value_max`.
 
 - - -
 
-### `tf.clip_by_norm(t, clip_norm, name=None)` {#clip_by_norm}
+### `tf.clip_by_norm(t, clip_norm, axes=None, name=None)` {#clip_by_norm}
 
 Clips tensor values to a maximum L2-norm.
 
 Given a tensor `t`, and a maximum clip value `clip_norm`, this operation
-normalizes `t` so that its L2-norm is less than or equal to `clip_norm`.
-Specifically, if the L2-norm is already less than or equal to `clip_norm`,
-then `t` is not modified. If the L2-norm is greater than `clip_norm`, then
-this operation returns a tensor of the same type and shape as `t` with its
-values set to:
+normalizes `t` so that its L2-norm is less than or equal to `clip_norm`,
+along the dimensions given in `axes`. Specifically, in the default case
+where all dimensions are used for calculation, if the L2-norm of `t` is
+already less than or equal to `clip_norm`, then `t` is not modified. If
+the L2-norm is greater than `clip_norm`, then this operation returns a
+tensor of the same type and shape as `t` with its values set to:
 
 `t * clip_norm / l2norm(t)`
 
 In this case, the L2-norm of the output tensor is `clip_norm`.
+
+As another example, if `t` is a matrix and `axes == [1]`, then each row
+of the output will have L2-norm equal to `clip_norm`. If `axes == [0]`
+instead, each column of the output will be clipped.
 
 This operation is typically used to clip gradients before applying them with
 an optimizer.
@@ -670,6 +683,9 @@ an optimizer.
 
 *  <b>`t`</b>: A `Tensor`.
 *  <b>`clip_norm`</b>: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
+*  <b>`axes`</b>: A 1-D (vector) `Tensor` of type int32 containing the dimensions
+    to use for computing the L2-norm. If `None` (the default), uses all
+    dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3264,6 +3280,20 @@ Call this method when you do not need the summary writer anymore.
 
 
 
+#### Other Methods
+- - -
+
+#### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
+
+Reopens the summary writer.
+
+Can be called after `close()` to add more events in the same directory.
+The events will go into a new events file.
+
+Does nothing if the summary writer was not closed.
+
+
+
 - - -
 
 ### `tf.train.summary_iterator(path)` {#summary_iterator}
@@ -3585,6 +3615,13 @@ Called when the thread starts.
 #### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
 
 Called when the thread stops.
+
+
+
+- - -
+
+### `tf.train.do_quantize_training_on_graphdef(input_graph, num_bits)` {#do_quantize_training_on_graphdef}
+
 
 
 

@@ -1,59 +1,91 @@
 Linear classifier model.
 
-  Example:
-  ```
-  installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-  impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+Train a linear model to classify instances into one of multiple possible
+classes. When number of possible classes is 2, this is binary classification.
 
-  installed_x_impression = crossed_column(
-      [installed_app_id, impression_app_id])
+Example:
 
-  estimator = LinearClassifier(
-      feature_columns=[impression_app_id, installed_x_impression])
+```python
+education = sparse_column_with_hash_bucket(column_name="education",
+                                           hash_bucket_size=1000)
+occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                            hash_bucket_size=1000)
 
-  # Input builders
-  def input_fn_train: # returns x, y
-    ...
-  def input_fn_eval: # returns x, y
-    ...
-  estimator.fit(input_fn=input_fn_train)
-  estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
-  ```
+education_x_occupation = crossed_column(columns=[education, occupation],
+                                        hash_bucket_size=10000)
 
-  Input of `fit` and `evaluate` should have following features,
-    otherwise there will be a `KeyError`:
-      if `weight_column_name` is not `None`, a feature with
-        `key=weight_column_name` whose value is a `Tensor`.
-      for each `column` in `feature_columns`:
-      - if `column` is a `SparseColumn`, a feature with `key=column.name`
-        whose `value` is a `SparseTensor`.
-      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is a `Tensor`.
-      - if `feauture_columns` is None, then `input` must contains only real
-        valued `Tensor`.
+# Estimator using the default optimizer.
+estimator = LinearClassifier(
+    feature_columns=[occupation, education_x_occupation])
 
+# Or estimator using the FTRL optimizer with regularization.
+estimator = LinearClassifier(
+    feature_columns=[occupation, education_x_occupation],
+    optimizer=tf.train.FtrlOptimizer(
+      learning_rate=0.1,
+      l1_regularization_strength=0.001
+    ))
 
-Parameters:
-  feature_columns: An iterable containing all the feature columns used by the
-    model. All items in the set should be instances of classes derived from
-    `FeatureColumn`.
-  model_dir: Directory to save model parameters, graph and etc.
-  n_classes: number of target classes. Default is binary classification.
-  weight_column_name: A string defining feature column name representing
-    weights. It is used to down weight or boost examples during training. It
-    will be multiplied by the loss of the example.
-  optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-    will use an Ftrl optimizer.
-  gradient_clip_norm: A float > 0. If provided, gradients are clipped
-    to their global norm with this clipping ratio. See tf.clip_by_global_norm
-    for more details.
-  config: RunConfig object to configure the runtime settings.
+# Or estimator using the SDCAOptimizer.
+estimator = LinearClassifier(
+   feature_columns=[occupation, education_x_occupation],
+   optimizer=tf.contrib.learn.SDCAOptimizer(
+     example_id_column='example_id',
+     symmetric_l2_regularization=2.0
+   ))
+
+# Input builders
+def input_fn_train: # returns x, y
+  ...
+def input_fn_eval: # returns x, y
+  ...
+estimator.fit(input_fn=input_fn_train)
+estimator.evaluate(input_fn=input_fn_eval)
+estimator.predict(x=x)
+```
+
+Input of `fit` and `evaluate` should have following features,
+  otherwise there will be a `KeyError`:
+    if `weight_column_name` is not `None`, a feature with
+      `key=weight_column_name` whose value is a `Tensor`.
+    for each `column` in `feature_columns`:
+    - if `column` is a `SparseColumn`, a feature with `key=column.name`
+      whose `value` is a `SparseTensor`.
+    - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+      whose `value` is a `Tensor`.
+    - if `feauture_columns` is `None`, then `input` must contains only real
+      valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
+
+Construct a `LinearClassifier` estimator object.
+
+##### Args:
 
 
+*  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
+    the model. All items in the set should be instances of classes derived
+    from `FeatureColumn`.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`n_classes`</b>: number of target classes. Default is binary classification.
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
+*  <b>`optimizer`</b>: The optimizer used to train the model. If specified, it should
+    be either an instance of `tf.Optimizer` or the SDCAOptimizer. If `None`,
+    the Ftrl optimizer will be used.
+*  <b>`gradient_clip_norm`</b>: A `float` > 0. If provided, gradients are clipped
+    to their global norm with this clipping ratio. See
+    `tf.clip_by_global_norm` for more details.
+*  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
+    bias variable for each class. Rest of the model structure learns the
+    residual after centered bias.
+*  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+
+##### Returns:
+
+  A `LinearClassifier` estimator.
 
 
 - - -
@@ -89,13 +121,16 @@ Evaluates given model with provided evaluation data.
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
+    `None`. If `steps` is `None`, the tensors returned by this should
+    generally raise an end-of-input exception when all eval records have
+    been returned (typically, 1 epoch over eval data).
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
+    dimension of `x`, if specified. Must be `None` if `input_fn` is
+    provided.
 *  <b>`steps`</b>: Number of steps for which to evaluate model. If `None`, evaluate
-    forever.
+    until running tensors generated by `metrics` raises an exception.
 *  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metric functions
     are used; if {}, no metrics are used. If model has one output (i.e.,
     returning single predction), keys are `str`, e.g. `'accuracy'` - just a
@@ -117,6 +152,7 @@ Evaluates given model with provided evaluation data.
 
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
+      Or if `metrics` is not `None` or `dict`.
 
 
 - - -

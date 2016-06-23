@@ -54,9 +54,9 @@ program is terminated with exit code 1.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If `global_step_tensor` is not provided. See
-      `tf.contrib.framework.get_global_step` for how we look it up if not
-      provided explicitly.
+*  <b>`ValueError`</b>: If `output_dir`, `train_op`, `loss_op`, or `global_step_tensor`
+    is not provided. See `tf.contrib.framework.get_global_step` for how we
+    look up the latter if not provided explicitly.
 *  <b>`NanLossDuringTrainingError`</b>: If `fail_on_nan_loss` is `True`, and loss ever
-      evaluates to `NaN`.
+    evaluates to `NaN`.
 

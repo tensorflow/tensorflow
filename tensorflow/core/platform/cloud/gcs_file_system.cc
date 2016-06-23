@@ -98,8 +98,9 @@ class GcsRandomAccessFile : public RandomAccessFile {
 
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(request->SetUri(
-        strings::StrCat("https://", bucket_, ".", kStorageHost, "/", object_)));
+    TF_RETURN_IF_ERROR(
+        request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
+                                        "/", request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
     TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
@@ -187,9 +188,9 @@ class GcsWritableFile : public WritableFile {
 
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(
-        request->SetUri(strings::StrCat(kGcsUploadUriBase, "b/", bucket_,
-                                        "/o?uploadType=media&name=", object_)));
+    TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+        kGcsUploadUriBase, "b/", bucket_, "/o?uploadType=media&name=",
+        request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetPostRequest(tmp_content_filename_));
     TF_RETURN_IF_ERROR(request->Send());
@@ -236,31 +237,30 @@ GcsFileSystem::GcsFileSystem(
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)) {}
 
-Status GcsFileSystem::NewRandomAccessFile(const string& fname,
-                                          RandomAccessFile** result) {
+Status GcsFileSystem::NewRandomAccessFile(
+    const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
-  *result = new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
-                                    http_request_factory_.get());
+  result->reset(new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
+                                        http_request_factory_.get()));
   return Status::OK();
 }
 
 Status GcsFileSystem::NewWritableFile(const string& fname,
-                                      WritableFile** result) {
+                                      std::unique_ptr<WritableFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
-  *result = new GcsWritableFile(bucket, object, auth_provider_.get(),
-                                http_request_factory_.get());
+  result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
+                                    http_request_factory_.get()));
   return Status::OK();
 }
 
 // Reads the file from GCS in chunks and stores it in a tmp file,
 // which is then passed to GcsWritableFile.
 Status GcsFileSystem::NewAppendableFile(const string& fname,
-                                        WritableFile** result) {
-  RandomAccessFile* reader_ptr;
-  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader_ptr));
-  std::unique_ptr<RandomAccessFile> reader(reader_ptr);
+                                        std::unique_ptr<WritableFile>* result) {
+  std::unique_ptr<RandomAccessFile> reader;
+  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
   std::unique_ptr<char[]> buffer(new char[kBufferSize]);
   Status status;
   uint64 offset = 0;
@@ -288,26 +288,25 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   // Create a writable file and pass the old content to it.
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
-  *result =
-      new GcsWritableFile(bucket, object, auth_provider_.get(),
-                          old_content_filename, http_request_factory_.get());
+  result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
+                                    old_content_filename,
+                                    http_request_factory_.get()));
   return Status::OK();
 }
 
 Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, ReadOnlyMemoryRegion** result) {
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   uint64 size;
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   std::unique_ptr<char[]> data(new char[size]);
 
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
-  std::unique_ptr<RandomAccessFile> file_ptr(file);
 
   StringPiece piece;
   TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
 
-  *result = new GcsReadOnlyMemoryRegion(std::move(data), size);
+  result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
   return Status::OK();
 }
 
@@ -330,7 +329,8 @@ bool GcsFileSystem::FileExists(const string& fname) {
     return false;
   }
   request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
-                                  object_prefix, "?fields=size"));
+                                  request->EscapeString(object_prefix),
+                                  "?fields=size"));
   request->AddAuthBearerHeader(auth_token);
   return request->Send().ok();
 }
@@ -354,9 +354,9 @@ Status GcsFileSystem::GetChildren(const string& dirname,
   StringPiece response_piece;
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(
-      request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o?prefix=",
-                                      object_prefix, "&fields=items")));
+  TF_RETURN_IF_ERROR(request->SetUri(
+      strings::StrCat(kGcsUriBase, "b/", bucket, "/o?prefix=",
+                      request->EscapeString(object_prefix), "&fields=items")));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   // TODO(surkov): Implement pagination using maxResults and pageToken
   //     instead, so that all items can be read regardless of their count.
@@ -391,8 +391,12 @@ Status GcsFileSystem::GetChildren(const string& dirname,
       return errors::Internal(
           "Unexpected JSON format: 'items.name' is missing or not a string.");
     }
-    result->push_back(
-        strings::StrCat("gs://", bucket, "/", name.asString().c_str()));
+    // The names should be relative to the 'dirname'. That means the
+    // 'object_prefix', which is part of 'dirname', should be removed from the
+    // beginning of 'name'.
+    string name_str(name.asString());
+    result->emplace_back(name_str.begin() + object_prefix.size(),
+                         name_str.end());
   }
   return Status::OK();
 }
@@ -406,8 +410,8 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(
-      strings::StrCat(kGcsUriBase, "b/", bucket, "/o/", object)));
+  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetDeleteRequest());
   TF_RETURN_IF_ERROR(request->Send());
@@ -444,8 +448,9 @@ Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-      kGcsUriBase, "b/", bucket, "/o/", object_prefix, "?fields=size")));
+  TF_RETURN_IF_ERROR(request->SetUri(
+      strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
+                      request->EscapeString(object_prefix), "?fields=size")));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(
       request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
@@ -485,9 +490,10 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(
-      strings::StrCat(kGcsUriBase, "b/", src_bucket, "/o/", src_object,
-                      "/rewriteTo/b/", target_bucket, "/o/", target_object)));
+  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      kGcsUriBase, "b/", src_bucket, "/o/", request->EscapeString(src_object),
+      "/rewriteTo/b/", target_bucket, "/o/",
+      request->EscapeString(target_object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetPostRequest());
   TF_RETURN_IF_ERROR(request->Send());

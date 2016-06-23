@@ -23,15 +23,16 @@ import contextlib
 import warnings
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
@@ -587,6 +588,29 @@ def _LogOpGradients(op, out_grads, in_grads):
                ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
 
 
+def _MultiDeviceAddN(tensor_list):
+  """Adds tensors from potentially multiple devices."""
+  # Basic function structure comes from control_flow_ops.group().
+  # Sort tensors according to their devices.
+  tensors_on_device = collections.defaultdict(lambda: [])
+  for tensor in tensor_list:
+    tensors_on_device[tensor.device].append(tensor)
+
+  # For each device, add the tensors on that device first.
+  # Then gather the partial sums from multiple devices.
+  # TODO(sjhwang): Create hierarchical aggregation tree as pbar's suggestion.
+  # E.g., aggregate per GPU, then per task, and so on.
+  summands = []
+  def DeviceKey(dev):
+    return "" if dev is None else dev
+  for dev in sorted(six.iterkeys(tensors_on_device), key=DeviceKey):
+    tensors = tensors_on_device[dev]
+    with ops.colocate_with(tensors[0].op, ignore_existing=True):
+      summands.append(math_ops.add_n(tensors))
+
+  return math_ops.add_n(summands)
+
+
 class AggregationMethod(object):
   """A class listing aggregation methods used to combine gradients.
 
@@ -642,7 +666,7 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         assert control_flow_ops.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
-    if (out_grad is None or
+    if (isinstance(out_grad, collections.Sequence) and
         not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
                  for g in out_grad if g is not None])):
       raise TypeError("gradients have to be either all Tensors "
@@ -684,7 +708,7 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
             out_grads[i] = running_sum
         else:
           used = "add_n"
-          out_grads[i] = math_ops.add_n(out_grad)
+          out_grads[i] = _MultiDeviceAddN(out_grad)
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:

@@ -66,9 +66,6 @@ REGISTER_OP("StringToHashBucket")
     .Input("string_tensor: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
-    .Deprecated(10,
-                "Use `tf.string_to_hash_bucket_fast()` or "
-                "`tf.string_to_hash_bucket_strong()`")
     .Doc(R"doc(
 Converts each string in the input Tensor to its hash mod by a number of buckets.
 
@@ -76,6 +73,8 @@ The hash function is deterministic on the content of the string within the
 process.
 
 Note that the hash function may change from time to time.
+This functionality will be deprecated and it's recommended to use
+`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
 
 num_buckets: The number of buckets.
 output: A Tensor of the same shape as the input `string_tensor`.
@@ -123,6 +122,46 @@ separator: The separator to use when joining.
 
 output: Has shape equal to that of the input with reduced dimensions removed or
   set to `1` depending on `keep_dims`.
+)doc");
+
+REGISTER_OP("AsString")
+    .Input("input: T")
+    .Output("output: string")
+    .Attr("T: {int32, int64, complex64, float, double, bool, int8}")
+    .Attr("precision: int = -1")
+    .Attr("scientific: bool = false")
+    .Attr("shortest: bool = false")
+    .Attr("width: int = -1")
+    .Attr("fill: string = ''")
+    .Doc(R"doc(
+Converts each entry in the given tensor to strings.  Supports many numeric
+types and boolean.
+
+precision: The post-decimal precision to use for floating point numbers.
+  Only used if precision > -1.
+scientific: Use scientific notation for floating point numbers.
+shortest: Use shortest representation (either scientific or standard) for
+  floating point numbers.
+width: Pad pre-decimal numbers to this width.
+  Applies to both floating point and integer numbers.
+  Only used if width > -1.
+fill: The value to pad if width > -1.  If empty, pads with spaces.
+  Another typical value is '0'.  String cannot be longer than 1 character.
+)doc");
+
+REGISTER_OP("StringJoin")
+    .Input("inputs: N * string")
+    .Attr("N: int")
+    .Attr("separator: string = ''")
+    .Output("output: string")
+    .Doc(R"doc(
+Joins the strings in the given list of string tensors into one tensor;
+with the given separator (default is an empty separator).
+
+inputs: A list of string tensors.  The tensors must all have the same shape,
+  or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
+  of non-scalar inputs.
+separator: string, an optional join separator.
 )doc");
 
 }  // namespace tensorflow

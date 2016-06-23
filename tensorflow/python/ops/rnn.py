@@ -22,7 +22,6 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
@@ -30,12 +29,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_is_sequence = rnn_cell._is_sequence
-_unpacked_state = rnn_cell._unpacked_state
-_packed_state = rnn_cell._packed_state
+_state_size_with_prefix = rnn_cell._state_size_with_prefix
 # pylint: enable=protected-access
 
 
@@ -110,8 +108,10 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
     # Temporarily avoid EmbeddingWrapper and seq2seq badness
     # TODO(lukaszkaiser): remove EmbeddingWrapper
     if inputs[0].get_shape().ndims != 1:
-      (fixed_batch_size, input_size) = inputs[0].get_shape().with_rank(2)
-      if input_size.value is None:
+      input_shape = inputs[0].get_shape().with_rank_at_least(2)
+      input_shape[1:].assert_is_fully_defined()
+      (fixed_batch_size, input_size) = input_shape[0], input_shape[1:]
+      if input_size[0].value is None:
         raise ValueError(
             "Input size (second dimension of inputs[0]) must be accessible via "
             "shape inference, but saw value None.")
@@ -132,15 +132,20 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
     if sequence_length is not None:  # Prepare variables
       sequence_length = math_ops.to_int32(sequence_length)
+      # convert int to TensorShape if necessary
+      output_size = _state_size_with_prefix(cell.output_size,
+                                            prefix=[batch_size])
       zero_output = array_ops.zeros(
-          array_ops.pack([batch_size, cell.output_size]), inputs[0].dtype)
-      zero_output.set_shape(
-          tensor_shape.TensorShape([fixed_batch_size.value, cell.output_size]))
+          array_ops.pack(output_size),
+          inputs[0].dtype)
+      zero_output_shape = _state_size_with_prefix(
+          cell.output_size, prefix=[fixed_batch_size.value])
+      zero_output.set_shape(tensor_shape.TensorShape(zero_output_shape))
       min_sequence_length = math_ops.reduce_min(sequence_length)
       max_sequence_length = math_ops.reduce_max(sequence_length)
 
     for time, input_ in enumerate(inputs):
-      if time > 0: vs.get_variable_scope().reuse_variables()
+      if time > 0: varscope.reuse_variables()
       # pylint: disable=cell-var-from-loop
       call_cell = lambda: cell(input_, state)
       # pylint: enable=cell-var-from-loop
@@ -191,8 +196,8 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
      type of `state_name` does not match that of `cell.state_size`.
   """
   state_size = cell.state_size
-  state_is_tuple = _is_sequence(state_size)
-  state_name_tuple = _is_sequence(state_name)
+  state_is_tuple = nest.is_sequence(state_size)
+  state_name_tuple = nest.is_sequence(state_name)
 
   if state_is_tuple != state_name_tuple:
     raise ValueError(
@@ -201,16 +206,16 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
         % (str(state_name), str(state_size)))
 
   if state_is_tuple:
-    state_name_flat = _unpacked_state(state_name)
-    state_size_flat = _unpacked_state(state_size)
+    state_name_flat = nest.flatten(state_name)
+    state_size_flat = nest.flatten(state_size)
 
     if len(state_name_flat) != len(state_size_flat):
       raise ValueError("#elems(state_name) != #elems(state_size): %d vs. %d"
                        % (len(state_name_flat), len(state_size_flat)))
 
-    initial_state = _packed_state(
+    initial_state = nest.pack_sequence_as(
         structure=state_name,
-        state=[state_saver.state(n) for n in state_name_flat])
+        flat_sequence=[state_saver.state(n) for n in state_name_flat])
   else:
     initial_state = state_saver.state(state_name)
 
@@ -218,7 +223,7 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
                          sequence_length=sequence_length, scope=scope)
 
   if state_is_tuple:
-    state_flat = _unpacked_state(state)
+    state_flat = nest.flatten(state)
     save_state = [
         state_saver.save_state(n, s)
         for (n, s) in zip(state_name_flat, state_flat)]
@@ -285,9 +290,9 @@ def _rnn_step(
       that returned by `state_size`.
   """
 
-  state_is_tuple = _is_sequence(state)
+  state_is_tuple = nest.is_sequence(state)
   # Convert state to a list for ease of use
-  state = list(_unpacked_state(state)) if state_is_tuple else [state]
+  state = list(nest.flatten(state)) if state_is_tuple else [state]
   state_shape = [s.get_shape() for s in state]
 
   def _copy_some_through(new_output, new_state):
@@ -303,7 +308,7 @@ def _rnn_step(
     """Run RNN step.  Pass through either no or some past state."""
     new_output, new_state = call_cell()
     new_state = (
-        list(_unpacked_state(new_state)) if state_is_tuple else [new_state])
+        list(nest.flatten(new_state)) if state_is_tuple else [new_state])
 
     if len(state) != len(new_state):
       raise ValueError(
@@ -325,7 +330,7 @@ def _rnn_step(
     # (which is typical for dynamic_rnn).
     new_output, new_state = call_cell()
     new_state = (
-        list(_unpacked_state(new_state)) if state_is_tuple else [new_state])
+        list(nest.flatten(new_state)) if state_is_tuple else [new_state])
 
     if len(state) != len(new_state):
       raise ValueError(
@@ -352,7 +357,7 @@ def _rnn_step(
   if state_is_tuple:
     return (
         final_output,
-        _packed_state(structure=state_size, state=final_state))
+        nest.pack_sequence_as(structure=state_size, flat_sequence=final_state))
   else:
     return (final_output, final_state[0])
 
@@ -361,7 +366,7 @@ def _reverse_seq(input_seq, lengths):
   """Reverse a list of Tensors up to specified lengths.
 
   Args:
-    input_seq: Sequence of seq_len tensors of dimension (batch_size, depth)
+    input_seq: Sequence of seq_len tensors of dimension (batch_size, n_features)
     lengths:   A tensor of dimension batch_size, containing lengths for each
                sequence in the batch. If "None" is specified, simply reverses
                the list.
@@ -372,7 +377,7 @@ def _reverse_seq(input_seq, lengths):
   if lengths is None:
     return list(reversed(input_seq))
 
-  input_shape = tensor_shape.matrix(None, None)
+  input_shape = tensor_shape.unknown_shape(ndims=input_seq[0].get_shape().ndims)
   for input_ in input_seq:
     input_shape.merge_with(input_.get_shape())
     input_.set_shape(input_shape)
@@ -620,10 +625,13 @@ def _dynamic_rnn_loop(
 
   # Construct an initial output
   input_shape = array_ops.shape(inputs)
-  (time_steps, batch_size, _) = array_ops.unpack(input_shape, 3)
+  time_steps = input_shape[0]
+  batch_size = input_shape[1]
 
-  inputs_got_shape = inputs.get_shape().with_rank(3)
-  (const_time_steps, const_batch_size, const_depth) = inputs_got_shape.as_list()
+  inputs_got_shape = inputs.get_shape().with_rank_at_least(3).as_list()
+  const_time_steps = inputs_got_shape[0]
+  const_batch_size = inputs_got_shape[1]
+  const_depth = inputs_got_shape[2:]
 
   if const_depth is None:
     raise ValueError(
@@ -631,8 +639,9 @@ def _dynamic_rnn_loop(
         "but saw value None.")
 
   # Prepare dynamic conditional copying of state & output
-  zero_output = array_ops.zeros(
-      array_ops.pack([batch_size, cell.output_size]), inputs.dtype)
+  zeros_size = _state_size_with_prefix(cell.output_size, prefix=[batch_size])
+  zero_output = array_ops.zeros(array_ops.pack(zeros_size), inputs.dtype)
+
   if sequence_length is not None:
     min_sequence_length = math_ops.reduce_min(sequence_length)
     max_sequence_length = math_ops.reduce_max(sequence_length)
@@ -640,9 +649,9 @@ def _dynamic_rnn_loop(
   time = array_ops.constant(0, dtype=dtypes.int32, name="time")
 
   state_size = cell.state_size
-  state_is_tuple = _is_sequence(state_size)
+  state_is_tuple = nest.is_sequence(state_size)
 
-  state = _unpacked_state(state) if state_is_tuple else (state,)
+  state = nest.flatten(state) if state_is_tuple else (state,)
 
   with ops.op_scope([], "dynamic_rnn") as scope:
     base_name = scope
@@ -671,10 +680,10 @@ def _dynamic_rnn_loop(
 
     input_t = input_ta.read(time)
     # Restore some shape information
-    input_t.set_shape([const_batch_size, const_depth])
+    input_t.set_shape([const_batch_size] + const_depth)
 
     # Pack state back up for use by cell
-    state = (_packed_state(structure=state_size, state=state)
+    state = (nest.pack_sequence_as(structure=state_size, flat_sequence=state)
              if state_is_tuple else state[0])
 
     call_cell = lambda: cell(input_t, state)
@@ -695,7 +704,7 @@ def _dynamic_rnn_loop(
 
     # Pack state if using state tuples
     new_state = (
-        tuple(_unpacked_state(new_state)) if state_is_tuple else (new_state,))
+        tuple(nest.flatten(new_state)) if state_is_tuple else (new_state,))
 
     output_ta_t = output_ta_t.write(time, output)
 
@@ -712,12 +721,13 @@ def _dynamic_rnn_loop(
 
   final_outputs = output_final_ta.pack()
   # Restore some shape information
-  final_outputs.set_shape([
-      const_time_steps, const_batch_size, cell.output_size])
+  final_outputs_size = _state_size_with_prefix(
+      cell.output_size, prefix=[const_time_steps, const_batch_size])
+  final_outputs.set_shape(final_outputs_size)
 
   # Unpack final state if not using state tuples.
   final_state = (
-      _packed_state(structure=cell.state_size, state=final_state)
+      nest.pack_sequence_as(
+          structure=cell.state_size, flat_sequence=final_state)
       if state_is_tuple else final_state[0])
-
   return (final_outputs, final_state)

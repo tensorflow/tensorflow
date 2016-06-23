@@ -33,18 +33,20 @@ class CategoricalProcessor(object):
 
   As a common convention, Nan values are handled as unknown tokens.
   Both float('nan') and np.nan are accepted.
-
-  Parameters:
-    min_frequency: Minimum frequency of categories in the vocabulary.
-    share: Share vocabulary between variables.
-    vocabularies: list of CategoricalVocabulary objects for each variable in
-      the input dataset.
-
-  Attributes:
-    vocabularies_: list of CategoricalVocabulary objects.
   """
 
   def __init__(self, min_frequency=0, share=False, vocabularies=None):
+    """Initializes a CategoricalProcessor instance.
+
+    Args:
+      min_frequency: Minimum frequency of categories in the vocabulary.
+      share: Share vocabulary between variables.
+      vocabularies: list of CategoricalVocabulary objects for each variable in
+        the input dataset.
+
+    Attributes:
+      vocabularies_: list of CategoricalVocabulary objects.
+    """
     self.min_frequency = min_frequency
     self.share = share
     self.vocabularies_ = vocabularies

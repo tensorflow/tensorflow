@@ -108,7 +108,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
   } while (0)
 
   // This method blocks forever handling requests from the completion queue.
-  void HandleRPCsLoop() {
+  void HandleRPCsLoop() override {
     // TODO(mrry): This may require performance engineering. We can
     // add more threads to service the completion queue, and add more
     // of various request types if they are short and frequent.

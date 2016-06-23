@@ -837,7 +837,6 @@ struct gemm_pack_rhs<
     EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
 
     const Index packet_cols4 = (cols / 4) * 4;
-    const bool non_standard_patches = rhs.nonStandardPatches();
 
     for (Index j2 = 0; j2 < packet_cols4; j2 += 4) {
       const SubMapper dm0 = rhs.getLinearMapper(0, j2 + 0);
@@ -846,7 +845,7 @@ struct gemm_pack_rhs<
       const SubMapper dm3 = rhs.getLinearMapper(0, j2 + 3);
 
       if (!rhs.nonStandardPatches()) {
-        for (Index k; k < depth; k++) {
+        for (Index k = 0; k < depth; k++) {
           block[0] = dm0.loadCoeffStandard(k);
           block[1] = dm1.loadCoeffStandard(k);
           block[2] = dm2.loadCoeffStandard(k);
@@ -854,7 +853,7 @@ struct gemm_pack_rhs<
           block += 4;
         }
       } else {
-        for (Index k; k < depth; k++) {
+        for (Index k = 0; k < depth; k++) {
           block[0] = dm0(k);
           block[1] = dm1(k);
           block[2] = dm2(k);

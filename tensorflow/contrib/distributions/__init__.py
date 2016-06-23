@@ -49,6 +49,12 @@ representing the posterior or posterior predictive.
 
 @@normal_conjugates_known_sigma_posterior
 @@normal_congugates_known_sigma_predictive
+
+## Kullback Leibler Divergence
+
+@@kl
+@@RegisterKL
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -62,6 +68,7 @@ from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
+from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *

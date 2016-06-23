@@ -459,6 +459,51 @@ size 1.
   dimension of size 1 added.
 
 
+- - -
+
+### `tf.meshgrid(*args, **kwargs)` {#meshgrid}
+
+Broadcasts parameters for evaluation on an N-D grid.
+
+Given N one-dimensional coordinate arrays `*args`, returns a list `outputs`
+of N-D coordinate arrays for evaluating expressions on an N-D grid.
+
+Notes:
+
+`meshgrid` supports cartesian ('xy') and matrix ('ij') indexing conventions.
+When the `indexing` argument is set to 'xy' (the default), the broadcasting
+instructions for the first two dimensions are swapped.
+
+Examples:
+
+Calling `X, Y = meshgrid(x, y)` with the tensors
+```prettyprint
+  x = [1, 2, 3]
+  y = [4, 5, 6]
+```
+results in
+```prettyprint
+  X = [[1, 1, 1],
+       [2, 2, 2],
+       [3, 3, 3]]
+  Y = [[4, 5, 6],
+       [4, 5, 6],
+       [4, 5, 6]]
+```
+
+##### Args:
+
+
+*  <b>`*args`</b>: `Tensor`s with rank 1
+*  <b>`indexing`</b>: Either 'xy' or 'ij' (optional, default: 'xy')
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+
+*  <b>`outputs`</b>: A list of N `Tensor`s with rank N
+
+
 
 ## Slicing and Joining
 
@@ -938,15 +983,26 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
 
 - - -
 
-### `tf.extract_image_patches(images, padding, ksizes=None, strides=None, rates=None, name=None)` {#extract_image_patches}
+### `tf.extract_image_patches(images, ksizes, strides, rates, padding, name=None)` {#extract_image_patches}
 
-Extract `patches` from `images` and puth them in the "depth" output dimension.
+Extract `patches` from `images` and put them in the "depth" output dimension.
 
 ##### Args:
 
 
 *  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
     4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
+*  <b>`ksizes`</b>: A list of `ints` that has length `>= 4`.
+    The size of the sliding window for each dimension of `images`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
+    1-D of length 4. How far the centers of two consecutive patches are in
+    the images. Must be: `[1, stride_rows, stride_cols, 1]`.
+*  <b>`rates`</b>: A list of `ints` that has length `>= 4`.
+    1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the
+    input stride, specifying how far two consecutive patch samples are in the
+    input. Equivalent to extracting patches with
+    `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by
+    subsampling them spatially by a factor of `rates`.
 *  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
     The type of padding algorithm to use.
 
@@ -956,17 +1012,6 @@ Extract `patches` from `images` and puth them in the "depth" output dimension.
           strides = [1, strides_rows, strides_cols, 1]
           rates = [1, rates_rows, rates_cols, 1]
 
-*  <b>`ksizes`</b>: An optional list of `ints`. Defaults to `[]`.
-    The size of the sliding window for each dimension of `images`.
-*  <b>`strides`</b>: An optional list of `ints`. Defaults to `[]`.
-    1-D of length 4. How far the centers of two consecutive patches are in
-    the images. Must be: `[1, stride_rows, stride_cols, 1]`.
-*  <b>`rates`</b>: An optional list of `ints`. Defaults to `[]`.
-    1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the
-    input stride, specifying how far two consecutive patch samples are in the
-    input. Equivalent to extracting patches with
-    `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1), followed by
-    subsampling them spatially by a factor of `rates`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1016,7 +1061,71 @@ block size.
         [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
          depth]
 
-*  <b>`block_size`</b>: An `int`.
+    Some examples:
+
+    (1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:
+
+    ```prettyprint
+    x = [[[[1], [2]], [[3], [4]]]]
+    ```
+
+    The output tensor has shape `[4, 1, 1, 1]` and value:
+
+    ```prettyprint
+    [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+    ```
+
+    (2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:
+
+    ```prettyprint
+    x = [[[[1, 2, 3], [4, 5, 6]],
+          [[7, 8, 9], [10, 11, 12]]]]
+    ```
+
+    The output tensor has shape `[4, 1, 1, 3]` and value:
+
+    ```prettyprint
+    [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+    ```
+
+    (3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
+
+    ```prettyprint
+    x = [[[[1],   [2],  [3],  [4]],
+          [[5],   [6],  [7],  [8]],
+          [[9],  [10], [11],  [12]],
+          [[13], [14], [15],  [16]]]]
+    ```
+
+    The output tensor has shape `[4, 2, 2, 1]` and value:
+
+    ```prettyprint
+    x = [[[[1], [3]], [[5], [7]]],
+         [[[2], [4]], [[10], [12]]],
+         [[[5], [7]], [[13], [15]]],
+         [[[6], [8]], [[14], [16]]]]
+    ```
+
+    (4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:
+
+    ```prettyprint
+    x = [[[[1],   [2],  [3],  [4]],
+          [[5],   [6],  [7],  [8]]],
+         [[[9],  [10], [11],  [12]],
+          [[13], [14], [15],  [16]]]]
+    ```
+
+    The output tensor has shape `[8, 1, 2, 1]` and value:
+
+    ```prettyprint
+    x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
+         [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
+    ```
+
+    Among others, this operation is useful for reducing atrous convolution into
+    regular convolution.
+
+*  <b>`block_size`</b>: An `int` that is `>= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1050,7 +1159,7 @@ followed by cropping along the `height` and `width` dimensions.
 
         crops = [[crop_top, crop_bottom], [crop_left, crop_right]]
 
-*  <b>`block_size`</b>: An `int`.
+*  <b>`block_size`</b>: An `int` that is `>= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1062,6 +1171,67 @@ followed by cropping along the `height` and `width` dimensions.
         width = width_pad - crop_left - crop_right
 
   The attr `block_size` must be greater than one. It indicates the block size.
+
+  Some examples:
+
+  (1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:
+
+  ```prettyprint
+  [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+  ```
+
+  The output tensor has shape `[1, 2, 2, 1]` and value:
+
+  ```prettyprint
+  x = [[[[1], [2]], [[3], [4]]]]
+  ```
+
+  (2) For the following input of shape `[4, 1, 1, 3]` and block_size of 2:
+
+  ```prettyprint
+  [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+  ```
+
+  The output tensor has shape `[1, 2, 2, 3]` and value:
+
+  ```prettyprint
+  x = [[[[1, 2, 3], [4, 5, 6]],
+        [[7, 8, 9], [10, 11, 12]]]]
+  ```
+
+  (3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:
+
+  ```prettyprint
+  x = [[[[1], [3]], [[5], [7]]],
+       [[[2], [4]], [[10], [12]]],
+       [[[5], [7]], [[13], [15]]],
+       [[[6], [8]], [[14], [16]]]]
+  ```
+
+  The output tensor has shape `[1, 4, 4, 1]` and value:
+
+  ```prettyprint
+  x = [[[1],   [2],  [3],  [4]],
+       [[5],   [6],  [7],  [8]],
+       [[9],  [10], [11],  [12]],
+       [[13], [14], [15],  [16]]]
+  ```
+
+  (4) For the following input of shape `[8, 1, 2, 1]` and block_size of 2:
+
+  ```prettyprint
+  x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
+       [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
+  ```
+
+  The output tensor has shape `[2, 2, 4, 1]` and value:
+
+  ```prettyprint
+  x = [[[[1], [3]], [[5], [7]]],
+       [[[2], [4]], [[10], [12]]],
+       [[[5], [7]], [[13], [15]]],
+       [[[6], [8]], [[14], [16]]]]
+  ```
 
 
 - - -
@@ -1146,7 +1316,7 @@ x = [[[[1, 2, 3, 4],
 
 
 *  <b>`input`</b>: A `Tensor`.
-*  <b>`block_size`</b>: An `int`. The size of the spatial block.
+*  <b>`block_size`</b>: An `int` that is `>= 2`. The size of the spatial block.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1243,7 +1413,7 @@ x = [[ [1],   [2],  [5],  [6]],
 
 
 *  <b>`input`</b>: A `Tensor`.
-*  <b>`block_size`</b>: An `int`.
+*  <b>`block_size`</b>: An `int` that is `>= 2`.
     The size of the spatial block, same as in Space2Depth.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1627,6 +1797,9 @@ shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
 If `T` is smaller than `type`, the operator requires that the rightmost
 dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
 [..., sizeof(`type`)/sizeof(`T`)] to [...].
+
+*NOTE*: Bitcast is implemented as a low-level cast, so machines with different
+endian orderings will give different results.
 
 ##### Args:
 

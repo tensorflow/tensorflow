@@ -71,11 +71,13 @@ def tf_android_core_proto_sources_relative():
         "util/saved_tensor_slice.proto",
   ]
 
-# Returns the list of pb.h headers that are generated for
+# Returns the list of pb.h and proto.h headers that are generated for
 # tf_android_core_proto_sources().
 def tf_android_core_proto_headers():
-  return ["//tensorflow/core/" + p.replace(".proto", ".pb.h")
-          for p in tf_android_core_proto_sources_relative()]
+  return (["//tensorflow/core/" + p.replace(".proto", ".pb.h")
+          for p in tf_android_core_proto_sources_relative()] +
+         ["//tensorflow/core/" + p.replace(".proto", ".proto.h")
+          for p in tf_android_core_proto_sources_relative()])
 
 # Returns the list of protos for which proto_text headers should be generated.
 def tf_proto_text_protos_relative():
@@ -687,7 +689,7 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
       data=data,
       deps=[
           "//tensorflow/python:extra_py_tests_deps",
-          "//tensorflow/python:kernel_tests/gradient_checker",
+          "//tensorflow/python:gradient_checker",
       ] + additional_deps,
       srcs_version="PY2AND3")
 

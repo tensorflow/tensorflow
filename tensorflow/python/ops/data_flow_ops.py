@@ -22,12 +22,12 @@ from __future__ import print_function
 import collections
 import re
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 # go/tf-wildcard-import
@@ -276,6 +276,15 @@ class QueueBase(object):
     If the queue is full when this operation executes, it will block
     until the element has been enqueued.
 
+    At runtime, this operation may raise an error if the queue is
+    [closed](#QueueBase.close) before or during its execution. If the
+    queue is closed before this operation runs,
+    `tf.errors.AbortedError` will be raised. If this operation is
+    blocked, and either (i) the queue is closed by a close operation
+    with `cancel_pending_enqueues=True`, or (ii) the session is
+    [closed](../../api_docs/python/client.md#Session.close),
+    `tf.errors.CancelledError` will be raised.
+
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary containing
         the values to enqueue.
@@ -304,6 +313,15 @@ class QueueBase(object):
 
     If the queue is full when this operation executes, it will block
     until all of the elements have been enqueued.
+
+    At runtime, this operation may raise an error if the queue is
+    [closed](#QueueBase.close) before or during its execution. If the
+    queue is closed before this operation runs,
+    `tf.errors.AbortedError` will be raised. If this operation is
+    blocked, and either (i) the queue is closed by a close operation
+    with `cancel_pending_enqueues=True`, or (ii) the session is
+    [closed](../../api_docs/python/client.md#Session.close),
+    `tf.errors.CancelledError` will be raised.
 
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary
@@ -357,6 +375,14 @@ class QueueBase(object):
     If the queue is empty when this operation executes, it will block
     until there is an element to dequeue.
 
+    At runtime, this operation may raise an error if the queue is
+    [closed](#QueueBase.close) before or during its execution. If the
+    queue is closed, the queue is empty, and there are no pending
+    enqueue operations that can fulfil this request,
+    `tf.errors.OutOfRangeError` will be raised. If the session is
+    [closed](../../api_docs/python/client.md#Session.close),
+    `tf.errors.CancelledError` will be raised.
+
     Args:
       name: A name for the operation (optional).
 
@@ -386,6 +412,14 @@ class QueueBase(object):
     If the queue is closed and there are less than `n` elements left, then an
     `OutOfRange` exception is raised.
 
+    At runtime, this operation may raise an error if the queue is
+    [closed](#QueueBase.close) before or during its execution. If the
+    queue is closed, the queue contains fewer than `n` elements, and
+    there are no pending enqueue operations that can fulfil this
+    request, `tf.errors.OutOfRangeError` will be raised. If the
+    session is [closed](../../api_docs/python/client.md#Session.close),
+    `tf.errors.CancelledError` will be raised.
+
     Args:
       n: A scalar `Tensor` containing the number of elements to dequeue.
       name: A name for the operation (optional).
@@ -412,18 +446,20 @@ class QueueBase(object):
     """Dequeues and concatenates `n` elements from this queue.
 
     **Note** This operation is not supported by all queues.  If a queue does not
-    support DequeueUpTo, then an Unimplemented exception is raised.
+    support DequeueUpTo, then a `tf.errors.UnimplementedError` is raised.
 
-    This operation concatenates queue-element component tensors along the
-    0th dimension to make a single component tensor.  All of the components
-    in the dequeued tuple will have size `n` in the 0th dimension.
+    This operation concatenates queue-element component tensors along
+    the 0th dimension to make a single component tensor. If the queue
+    has not been closed, all of the components in the dequeued tuple
+    will have size `n` in the 0th dimension.
 
-    If the queue is closed and there are more than `0` but less than `n`
-    elements remaining, then instead of raising an `OutOfRange` exception like
-    `dequeue_many`, the remaining elements are returned immediately.
-    If the queue is closed and there are `0` elements left in the queue, then
-    an `OutOfRange` exception is raised just like in `dequeue_many`.
-    Otherwise the behavior is identical to `dequeue_many`:
+    If the queue is closed and there are more than `0` but fewer than
+    `n` elements remaining, then instead of raising a
+    `tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
+    the remaining elements are returned immediately.  If the queue is
+    closed and there are `0` elements left in the queue, then a
+    `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
+    Otherwise the behavior is identical to `dequeue_many`.
 
     Args:
       n: A scalar `Tensor` containing the number of elements to dequeue.
@@ -690,9 +726,12 @@ def initialize_all_tables(name="init_all_tables"):
 
 
 ops.NoGradient("LookupTableFind")
+ops.NoGradient("LookupTableInsert")
 ops.NoGradient("LookupTableSize")
 ops.NoGradient("HashTable")
 ops.NoGradient("InitializeTable")
+ops.NoGradient("InitializeTableFromTextFile")
+ops.NoGradient("MutableHashTable")
 
 
 ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
@@ -772,6 +811,15 @@ def _LookupTableFindShape(op):
   return [shape_in]
 
 
+@ops.RegisterShape("LookupTableInsert")
+def _LookupTableInsertShape(op):
+  """Shape function for data_flow_ops._lookup_table_insert."""
+  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
+  keys_shape = op.inputs[1].get_shape()
+  op.inputs[2].get_shape().merge_with(keys_shape)
+  return []
+
+
 @ops.RegisterShape("LookupTableSize")
 def _LookupTableSizeShape(op):
   """Shape function for data_flow_ops._lookup_table_find."""
@@ -780,6 +828,7 @@ def _LookupTableSizeShape(op):
 
 
 @ops.RegisterShape("HashTable")
+@ops.RegisterShape("MutableHashTable")
 def _HashTableShape(_):
   """Shape function for data_flow_ops._hash_table."""
   return [tensor_shape.scalar()]
@@ -791,4 +840,13 @@ def _InitializeLookupTableShape(op):
   op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
   keys_shape = op.inputs[1].get_shape().with_rank(1)
   op.inputs[2].get_shape().merge_with(keys_shape)
+  return []
+
+
+@ops.RegisterShape("InitializeTableFromTextFile")
+def _InitializeTableFromTextFileShape(op):
+  """Shape function for lookup_ops._initialize_table_from_text_file."""
+  unused_table_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar(
+  ))
+  unused_filename = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
   return []

@@ -46,6 +46,30 @@ cc_library(
 )
 
 tf_kernel_library(
+    name = "strided_slice_op",
+    srcs = [
+        "strided_slice_op.cc",
+    ],
+    hdrs = [
+        "slice_op.h",
+        "strided_slice_op.h",
+    ],
+    gpu_srcs = [
+        "slice_op.h",
+        "strided_slice_op.h",
+        "strided_slice_op_gpu.cu.cc",
+        "slice_op_gpu.cu.cc",
+    ],
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
     name = "concat_lib",
     srcs = ["concat_lib_cpu.cc"],
     hdrs = ["concat_lib.h"],
@@ -351,6 +375,7 @@ tf_kernel_libraries(
         ":ops_util",
         ":spacetobatch_op",
         ":split_lib",
+        ":strided_slice_op",
         ":transpose_functor",
         "//tensorflow/core:array_grad",
         "//tensorflow/core:array_ops_op_lib",
@@ -512,6 +537,24 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":slice_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "strided_slice_op_test",
+    size = "small",
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":slice_op",
+        ":strided_slice_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1180,6 +1223,9 @@ tf_kernel_library(
         "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
     ],
+    hdrs = [
+        "conv_grad_ops.h",
+    ],
     prefix = "conv_ops",
     deps = [
         ":bounds_check",
@@ -1483,6 +1529,7 @@ tf_kernel_libraries(
         "sparse_reduce_sum_op",
         "sparse_dense_binary_op_shared",
         "sparse_reorder_op",
+        "sparse_reshape_op",
         "sparse_softmax",
         "sparse_split_op",
         "sparse_tensor_dense_add_op",
@@ -1564,6 +1611,8 @@ tf_kernel_libraries(
     prefixes = [
         "string_to_hash_bucket_op",
         "reduce_join_op",
+        "string_join_op",
+        "as_string_op",
     ],
     deps = [
         "//tensorflow/core:framework",
@@ -1691,6 +1740,8 @@ filegroup(
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
+        "strided_slice_op.cc",
+        "strided_slice_op.h",
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",
@@ -1752,6 +1803,7 @@ filegroup(
         "control_flow_ops.cc",
         "conv_2d.h",
         "conv_grad_ops.cc",
+        "conv_grad_ops.h",
         "conv_ops.cc",
         "cwise_op_add.cc",
         "cwise_op_div.cc",
@@ -1855,6 +1907,9 @@ filegroup(
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
+            # Ops excluded because they do not build correctly for Android.
+            # See b/29213790
+            "sparse_matmul_op.*",
         ],
     ),
     visibility = ["//visibility:public"],

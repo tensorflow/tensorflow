@@ -610,6 +610,15 @@ class Variable(object):
     else:
       setattr(Variable, operator, lambda a, b: Variable._RunOp(operator, a, b))
 
+  # NOTE(mrry): This enables the Variable's overloaded "right" binary
+  # operators to run when the left operand is an ndarray, because it
+  # accords the Variable class higher priority than an ndarray, or a
+  # numpy matrix.
+  # TODO(mrry): Convert this to using numpy's __numpy_ufunc__
+  # mechanism, which allows more control over how Variables interact
+  # with ndarrays.
+  __array_priority__ = 100
+
   @staticmethod
   def _RunOp(operator, a, b):
     """Run the operator 'op' for 'a'.

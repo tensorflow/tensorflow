@@ -120,109 +120,108 @@ void Evaluate(const Tensor& input_data, const Tensor& input_labels,
   }
 }
 
-
 REGISTER_OP("CountExtremelyRandomStats")
-  .Attr("num_classes: int32")
-  .Attr("regression: bool = false")
-  .Input("input_data: float")
-  .Input("input_labels: float")
+    .Attr("num_classes: int")
+    .Attr("regression: bool = false")
+    .Input("input_data: float")
+    .Input("input_labels: float")
 
-  .Input("tree: int32")
-  .Input("tree_thresholds: float")
+    .Input("tree: int32")
+    .Input("tree_thresholds: float")
 
-  .Input("node_to_accumulator: int32")
+    .Input("node_to_accumulator: int32")
 
-  .Input("candidate_split_features: int32")
-  .Input("candidate_split_thresholds: float")
+    .Input("candidate_split_features: int32")
+    .Input("candidate_split_thresholds: float")
 
-  .Output("pcw_node_sums_delta: float")
-  .Output("pcw_node_squares_delta: float")
-  .Output("pcw_splits_indices: int32")
-  .Output("pcw_candidate_splits_sums_delta: float")
-  .Output("pcw_candidate_splits_squares_delta: float")
-  .Output("pcw_totals_indices: int32")
-  .Output("pcw_totals_sums_delta: float")
-  .Output("pcw_totals_squares_delta: float")
+    .Output("pcw_node_sums_delta: float")
+    .Output("pcw_node_squares_delta: float")
+    .Output("pcw_splits_indices: int32")
+    .Output("pcw_candidate_splits_sums_delta: float")
+    .Output("pcw_candidate_splits_squares_delta: float")
+    .Output("pcw_totals_indices: int32")
+    .Output("pcw_totals_sums_delta: float")
+    .Output("pcw_totals_squares_delta: float")
 
-  .Output("leaves: int32")
-  .Doc(R"doc(
-   Calculates incremental statistics for a batch of training data.
+    .Output("leaves: int32")
+    .Doc(R"doc(
+Calculates incremental statistics for a batch of training data.
 
-   Each training example in `input_data` is sent through the decision tree
-   represented by `tree` and `tree_thresholds`.
-   The shape and contents of the outputs differ depending on whether
-   `regression` is true or not.
+Each training example in `input_data` is sent through the decision tree
+represented by `tree` and `tree_thresholds`.
+The shape and contents of the outputs differ depending on whether
+`regression` is true or not.
 
-   For `regression` = false (classification), `pcw_node_sums_delta[i]` is
-   incremented for every node i that it passes through, and the leaf it ends up
-   in is recorded in `leaves[i]`.  Then, if the leaf is fertile and
-   initialized, the statistics for its corresponding accumulator slot
-   are updated in `pcw_candidate_splits_delta` and `pcw_total_splits_delta`.
+For `regression` = false (classification), `pcw_node_sums_delta[i]` is
+incremented for every node i that it passes through, and the leaf it ends up
+in is recorded in `leaves[i]`.  Then, if the leaf is fertile and
+initialized, the statistics for its corresponding accumulator slot
+are updated in `pcw_candidate_splits_delta` and `pcw_total_splits_delta`.
 
-   For `regression` = true, outputs contain the sum of the input_labels
-   for the appropriate nodes.  In adddition, the *_squares outputs are filled
-   in with the sums of the squares of the input_labels. Since outputs are
-   all updated at once, the *_indicies outputs don't specify the output
-   dimension to update, rather the *_delta output contains updates for all the
-   outputs.  For example, `pcw_totals_indices` specifies the accumulators to
-   update, and `pcw_total_splits_sums_delta` contains the complete output
-   updates for each of those accumulators.
+For `regression` = true, outputs contain the sum of the input_labels
+for the appropriate nodes.  In adddition, the *_squares outputs are filled
+in with the sums of the squares of the input_labels. Since outputs are
+all updated at once, the *_indicies outputs don't specify the output
+dimension to update, rather the *_delta output contains updates for all the
+outputs.  For example, `pcw_totals_indices` specifies the accumulators to
+update, and `pcw_total_splits_sums_delta` contains the complete output
+updates for each of those accumulators.
 
-   The attr `num_classes` is needed to appropriately size the outputs.
+The attr `num_classes` is needed to appropriately size the outputs.
 
-   input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
-     gives the j-th feature of the i-th input.
-   input_labels: The training batch's labels; `input_labels[i]` is the class
-     of the i-th input.
-   tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
-     of the i-th node, `tree[i][0] + 1` gives the index of the right child of
-     the i-th node, and `tree[i][1]` gives the index of the feature used to
-     split the i-th node.
-   tree_thresholds: `tree_thresholds[i]` is the value used to split the i-th
-     node.
-   node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`
-     is it's accumulator slot.  Otherwise, `node_to_accumulator[i]` is -1.
-   candidate_split_features: `candidate_split_features[a][s]` is the
-     index of the feature being considered by split s of accumulator slot a.
-   candidate_split_thresholds: `candidate_split_thresholds[a][s]` is the
-     threshold value being considered by split s of accumulator slot a.
-   pcw_node_sums_delta: `pcw_node_sums_delta[i][c]` is the number of training
-     examples in this training batch with class c that passed through node i for
-     classification.  For regression, it is the sum of the input_labels that
-     have passed through node i.
-   pcw_node_squares_delta: `pcw_node_squares_delta[i][c]` is the sum of the
-     squares of the input labels that have passed through node i for
-     regression.  Not set for classification.
-   pcw_splits_indices:= A 2-d tensor of shape (?, 3) for classification and
-     (?, 2) for regression.
-     `pcw_splits_indices[i]` gives the coordinates of an entry in
-     candidate_split_pcw_sums and candidate_split_pcw_squares that need to be
-     updated.  This is meant to be passed with `pcw_candidate_splits_*_delta` to
-     a scatter_add for candidate_split_pcw_*:
-       training_ops.scatter_add_ndim(candidate_split_pcw_sums
-           pcw_splits_indices, pcw_candidate_splits_sums_delta)
-   pcw_candidate_splits_sums_delta: For classification,
-     `pcw_candidate_splits_sums_delta[i]` is the
-     number of training examples in this training batch that correspond to
-     the i-th entry in `pcw_splits_indices` which took the *left* branch of
-     candidate split. For regression, it is the same but a 2-D tensor that has
-     the sum of the input_labels for each i-th entry in the indices.
-   pcw_candidate_splits_squares_delta: For regression, same as
-     `pcw_candidate_splits_sums_delta` but the sum of the squares. Not set
-     for classification.
-   pcw_totals_indices: For classification, 'pcw_totals_indices` contains the
-     indices (accumulator, class) into total_pcw_sums to update with
-     pcw_totals_sums_delta.  For regression, it only contains the accumulator
-     (not the class), because pcw_totals_*_delta will contain all the outputs.
-   pcw_totals_sums_delta: For classification, `pcw_totals_sums_delta[i]` is the
-     number of training examples in this batch that ended up in the fertile
-     node with accumulator and class indicated by `pcw_totals_indices[i]`.
-     For regression, it is the sum of the input_labels corresponding to the
-     entries in `pcw_totals_indices[i]`.
-   pcw_totals_squares_delta: For regression, same as
-     `pcw_totals_sums_delta` but the sum of the squares. Not set
-     for classification.
-   leaves: `leaves[i]` is the leaf that input i ended up in.
+input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
+  gives the j-th feature of the i-th input.
+input_labels: The training batch's labels; `input_labels[i]` is the class
+  of the i-th input.
+tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
+  of the i-th node, `tree[i][0] + 1` gives the index of the right child of
+  the i-th node, and `tree[i][1]` gives the index of the feature used to
+  split the i-th node.
+tree_thresholds: `tree_thresholds[i]` is the value used to split the i-th
+  node.
+node_to_accumulator: If the i-th node is fertile, `node_to_accumulator[i]`
+  is it's accumulator slot.  Otherwise, `node_to_accumulator[i]` is -1.
+candidate_split_features: `candidate_split_features[a][s]` is the
+  index of the feature being considered by split s of accumulator slot a.
+candidate_split_thresholds: `candidate_split_thresholds[a][s]` is the
+  threshold value being considered by split s of accumulator slot a.
+pcw_node_sums_delta: `pcw_node_sums_delta[i][c]` is the number of training
+  examples in this training batch with class c that passed through node i for
+  classification.  For regression, it is the sum of the input_labels that
+  have passed through node i.
+pcw_node_squares_delta: `pcw_node_squares_delta[i][c]` is the sum of the
+  squares of the input labels that have passed through node i for
+  regression.  Not set for classification.
+pcw_splits_indices:= A 2-d tensor of shape (?, 3) for classification and
+  (?, 2) for regression.
+  `pcw_splits_indices[i]` gives the coordinates of an entry in
+  candidate_split_pcw_sums and candidate_split_pcw_squares that need to be
+  updated.  This is meant to be passed with `pcw_candidate_splits_*_delta` to
+  a scatter_add for candidate_split_pcw_*:
+    training_ops.scatter_add_ndim(candidate_split_pcw_sums
+        pcw_splits_indices, pcw_candidate_splits_sums_delta)
+pcw_candidate_splits_sums_delta: For classification,
+  `pcw_candidate_splits_sums_delta[i]` is the
+  number of training examples in this training batch that correspond to
+  the i-th entry in `pcw_splits_indices` which took the *left* branch of
+  candidate split. For regression, it is the same but a 2-D tensor that has
+  the sum of the input_labels for each i-th entry in the indices.
+pcw_candidate_splits_squares_delta: For regression, same as
+  `pcw_candidate_splits_sums_delta` but the sum of the squares. Not set
+  for classification.
+pcw_totals_indices: For classification, 'pcw_totals_indices` contains the
+  indices (accumulator, class) into total_pcw_sums to update with
+  pcw_totals_sums_delta.  For regression, it only contains the accumulator
+  (not the class), because pcw_totals_*_delta will contain all the outputs.
+pcw_totals_sums_delta: For classification, `pcw_totals_sums_delta[i]` is the
+  number of training examples in this batch that ended up in the fertile
+  node with accumulator and class indicated by `pcw_totals_indices[i]`.
+  For regression, it is the sum of the input_labels corresponding to the
+  entries in `pcw_totals_indices[i]`.
+pcw_totals_squares_delta: For regression, same as
+  `pcw_totals_sums_delta` but the sum of the squares. Not set
+  for classification.
+leaves: `leaves[i]` is the leaf that input i ended up in.
 )doc");
 
 class CountExtremelyRandomStats : public OpKernel {

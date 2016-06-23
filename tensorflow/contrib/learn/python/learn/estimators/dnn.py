@@ -29,61 +29,55 @@ from tensorflow.python.ops import nn
 class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   """A classifier for TensorFlow DNN models.
 
-    Example:
-      ```
-      installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-      impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  Example:
 
-      installed_emb = embedding_column(installed_app_id, dimension=16,
-                                       combiner="sum")
-      impression_emb = embedding_column(impression_app_id, dimension=16,
-                                        combiner="sum")
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-      estimator = DNNClassifier(
-          feature_columns=[installed_emb, impression_emb],
-          hidden_units=[1024, 512, 256])
+  education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                   combiner="sum")
+  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                   combiner="sum")
 
-      # Input builders
-      def input_fn_train: # returns x, Y
-        pass
-      estimator.fit(input_fn=input_fn_train)
+  estimator = DNNClassifier(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256])
 
-      def input_fn_eval: # returns x, Y
-        pass
-      estimator.evaluate(input_fn=input_fn_eval)
-      estimator.predict(x=x)
-      ```
+  # Or estimator using the ProximalAdagradOptimizer optimizer with
+  # regularization.
+  estimator = DNNClassifier(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
 
-    Input of `fit` and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
-        - if `feauture_columns` is None, then `input` must contains only real
-          valued `Tensor`.
+  # Input builders
+  def input_fn_train: # returns x, Y
+    pass
+  estimator.fit(input_fn=input_fn_train)
 
-  Parameters:
-    hidden_units: List of hidden units per layer. All layers are fully
-      connected. Ex. [64, 32] means first layer has 64 nodes and second one has
-      32.
-    feature_columns: An iterable containing all the feature columns used by the
-      model. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    model_dir: Directory to save model parameters, graph and etc.
-    n_classes: number of target classes. Default is binary classification.
-      It must be greater than 1.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-      will use an Adagrad optimizer.
-    activation_fn: Activation function applied to each layer. If `None`, will
-      use `tf.nn.relu`.
-    dropout: When not None, the probability we will drop out a given coordinate.
+  def input_fn_eval: # returns x, Y
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
+
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is `None`, then `input` must contains only real
+        valued `Tensor`.
   """
 
   def __init__(self,
@@ -95,16 +89,53 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                optimizer=None,
                activation_fn=nn.relu,
                dropout=None,
+               gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
-    super(DNNClassifier, self).__init__(model_dir=model_dir,
-                                        n_classes=n_classes,
-                                        weight_column_name=weight_column_name,
-                                        dnn_feature_columns=feature_columns,
-                                        dnn_optimizer=optimizer,
-                                        dnn_hidden_units=hidden_units,
-                                        dnn_activation_fn=activation_fn,
-                                        dnn_dropout=dropout,
-                                        config=config)
+    """Initializes a DNNClassifier instance.
+
+    Args:
+      hidden_units: List of hidden units per layer. All layers are fully
+        connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+        has 32.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      model_dir: Directory to save model parameters, graph and etc.
+      n_classes: number of target classes. Default is binary classification.
+        It must be greater than 1.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      optimizer: An instance of `tf.Optimizer` used to train the model. If
+        `None`, will use an Adagrad optimizer.
+      activation_fn: Activation function applied to each layer. If `None`, will
+        use `tf.nn.relu`.
+      dropout: When not `None`, the probability we will drop out a given
+        coordinate.
+      gradient_clip_norm: A float > 0. If provided, gradients are
+        clipped to their global norm with this clipping ratio. See
+        tf.clip_by_global_norm for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
+      config: `RunConfig` object to configure the runtime settings.
+
+    Returns:
+      A `DNNClassifier` estimator.
+    """
+    super(DNNClassifier, self).__init__(
+        model_dir=model_dir,
+        n_classes=n_classes,
+        weight_column_name=weight_column_name,
+        dnn_feature_columns=feature_columns,
+        dnn_optimizer=optimizer,
+        dnn_hidden_units=hidden_units,
+        dnn_activation_fn=activation_fn,
+        dnn_dropout=dropout,
+        gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
+        config=config)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
@@ -124,65 +155,55 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """A regressor for TensorFlow DNN models.
 
-    Example:
-      ```
-      installed_app_id = sparse_column_with_hash_bucket("installed_id", 1e6)
-      impression_app_id = sparse_column_with_hash_bucket("impression_id", 1e6)
+  Example:
 
-      installed_emb = embedding_column(installed_app_id, dimension=16,
-                                       combiner="sum")
-      impression_emb = embedding_column(impression_app_id, dimension=16,
-                                        combiner="sum")
+  ```python
+  education = sparse_column_with_hash_bucket(column_name="education",
+                                             hash_bucket_size=1000)
+  occupation = sparse_column_with_hash_bucket(column_name="occupation",
+                                              hash_bucket_size=1000)
 
-      estimator = DNNRegressor(
-          feature_columns=[installed_emb, impression_emb],
-          hidden_units=[1024, 512, 256])
+  education_emb = embedding_column(sparse_id_column=education, dimension=16,
+                                   combiner="sum")
+  occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
+                                   combiner="sum")
 
-      # Input builders
-      def input_fn_train: # returns x, Y
-        pass
-      estimator.fit(input_fn=input_fn_train)
+  estimator = DNNRegressor(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256])
 
-      def input_fn_eval: # returns x, Y
-        pass
-      estimator.evaluate(input_fn=input_fn_eval)
-      estimator.predict(x=x)
-      ```
+  # Or estimator using the ProximalAdagradOptimizer optimizer with
+  # regularization.
+  estimator = DNNRegressor(
+      feature_columns=[education_emb, occupation_emb],
+      hidden_units=[1024, 512, 256],
+      optimizer=tf.train.ProximalAdagradOptimizer(
+        learning_rate=0.1,
+        l1_regularization_strength=0.001
+      ))
 
-    Input of `fit` and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
-        - if `feauture_columns` is None, then `input` must contains only real
-          valued `Tensor`.
+  # Input builders
+  def input_fn_train: # returns x, Y
+    pass
+  estimator.fit(input_fn=input_fn_train)
 
+  def input_fn_eval: # returns x, Y
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  estimator.predict(x=x)
+  ```
 
-
-  Parameters:
-    hidden_units: List of hidden units per layer. All layers are fully
-      connected. Ex. [64, 32] means first layer has 64 nodes and second one has
-      32.
-    feature_columns: An iterable containing all the feature columns used by the
-      model. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    model_dir: Directory to save model parameters, graph and etc.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    optimizer: An instance of `tf.Optimizer` used to train the model. If `None`,
-      will use an Adagrad optimizer.
-    activation_fn: Activation function applied to each layer. If `None`, will
-      use `tf.nn.relu`.
-    dropout: When not None, the probability we will drop out a given coordinate.
-    gradient_clip_norm: A float > 0. If provided, gradients are clipped
-      to their global norm with this clipping ratio. See tf.clip_by_global_norm
-      for more details.
-    config: RunConfig object to configure the runtime settings.
+  Input of `fit` and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
+      - if `feauture_columns` is `None`, then `input` must contains only real
+        valued `Tensor`.
   """
 
   def __init__(self,
@@ -194,7 +215,38 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
+               enable_centered_bias=True,
                config=None):
+    """Initializes a `DNNRegressor` instance.
+
+    Args:
+      hidden_units: List of hidden units per layer. All layers are fully
+        connected. Ex. `[64, 32]` means first layer has 64 nodes and second one
+        has 32.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      model_dir: Directory to save model parameters, graph and etc.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      optimizer: An instance of `tf.Optimizer` used to train the model. If
+        `None`, will use an Adagrad optimizer.
+      activation_fn: Activation function applied to each layer. If `None`, will
+        use `tf.nn.relu`.
+      dropout: When not `None`, the probability we will drop out a given
+        coordinate.
+      gradient_clip_norm: A `float` > 0. If provided, gradients are clipped
+        to their global norm with this clipping ratio. See
+        `tf.clip_by_global_norm` for more details.
+      enable_centered_bias: A bool. If True, estimator will learn a centered
+        bias variable for each class. Rest of the model structure learns the
+        residual after centered bias.
+      config: `RunConfig` object to configure the runtime settings.
+
+    Returns:
+      A `DNNRegressor` estimator.
+    """
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
@@ -204,6 +256,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         dnn_activation_fn=activation_fn,
         dnn_dropout=dropout,
         gradient_clip_norm=gradient_clip_norm,
+        enable_centered_bias=enable_centered_bias,
         config=config)
 
   def _get_train_ops(self, features, targets):

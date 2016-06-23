@@ -190,33 +190,34 @@ def check_array(array, dtype):
 
 
 class DataFeeder(object):
-  """Data feeder is an example class to sample data for TF trainer.
-
-  Parameters:
-    x: feature Nd numpy matrix of shape [n_samples, n_features, ...].
-    y: target vector, either floats for regression or class id for
-      classification. If matrix, will consider as a sequence
-      of targets. Can be None for unsupervised setting.
-    n_classes: number of classes, 0 and 1 are considered regression, None will
-      pass through the input labels without one-hot conversion.
-    batch_size: mini batch size to accumulate.
-    random_state: numpy RandomState object to reproduce sampling.
-
-  Attributes:
-    x: input features.
-    y: input target.
-    n_classes: number of classes (if None, pass through indices without
-      one-hot conversion).
-    batch_size: mini batch size to accumulate.
-    input_shape: shape of the input.
-    output_shape: shape of the output.
-    input_dtype: dtype of input.
-    output_dtype: dtype of output.
-  """
+  """Data feeder is an example class to sample data for TF trainer."""
 
   def __init__(
       self, x, y, n_classes, batch_size=None, shuffle=True, random_state=None,
       epochs=None):
+    """Initializes a DataFeeder instance.
+
+    Args:
+      x: feature Nd numpy matrix of shape [n_samples, n_features, ...].
+      y: target vector, either floats for regression or class id for
+        classification. If matrix, will consider as a sequence
+        of targets. Can be None for unsupervised setting.
+      n_classes: number of classes, 0 and 1 are considered regression, None will
+        pass through the input labels without one-hot conversion.
+      batch_size: mini batch size to accumulate.
+      random_state: numpy RandomState object to reproduce sampling.
+
+    Attributes:
+      x: input features.
+      y: input target.
+      n_classes: number of classes (if None, pass through indices without
+        one-hot conversion).
+      batch_size: mini batch size to accumulate.
+      input_shape: shape of the input.
+      output_shape: shape of the output.
+      input_dtype: dtype of input.
+      output_dtype: dtype of output.
+    """
     x_dtype = np.int64 if x.dtype == np.int64 else np.float32
     y_dtype = (
         np.int64 if n_classes is not None and n_classes > 1 else np.float32)
@@ -358,7 +359,7 @@ class DataFeeder(object):
         else:
           if self.n_classes > 1:
             if len(self.output_shape) == 2:
-              out.itemset((i, self.y[sample]), 1.0)
+              out.itemset((i, int(self.y[sample])), 1.0)
             else:
               for idx, value in enumerate(self.y[sample]):
                 out.itemset(tuple([i, idx, value]), 1.0)
@@ -377,26 +378,28 @@ class StreamingDataFeeder(DataFeeder):
   Streaming data feeder allows to read data as it comes it from disk or
   somewhere else. It's custom to have this iterators rotate infinetly over
   the dataset, to allow control of how much to learn on the trainer side.
-
-  Parameters:
-    x: iterator that returns for each element, returns features.
-    y: iterator that returns for each element, returns 1 or many classes /
-       regression values.
-    n_classes: indicator of how many classes the target has.
-    batch_size: Mini batch size to accumulate.
-
-  Attributes:
-    x: input features.
-    y: input target.
-    n_classes: number of classes.
-    batch_size: mini batch size to accumulate.
-    input_shape: shape of the input.
-    output_shape: shape of the output.
-    input_dtype: dtype of input.
-    output_dtype: dtype of output.
   """
 
   def __init__(self, x, y, n_classes, batch_size):
+    """Initializes a StreamingDataFeeder instance.
+
+    Args:
+      x: iterator that returns for each element, returns features.
+      y: iterator that returns for each element, returns 1 or many classes /
+         regression values.
+      n_classes: indicator of how many classes the target has.
+      batch_size: Mini batch size to accumulate.
+
+    Attributes:
+      x: input features.
+      y: input target.
+      n_classes: number of classes.
+      batch_size: mini batch size to accumulate.
+      input_shape: shape of the input.
+      output_shape: shape of the output.
+      input_dtype: dtype of input.
+      output_dtype: dtype of output.
+    """
     # pylint: disable=invalid-name,super-init-not-called
     x_first_el = six.next(x)
     self.x = itertools.chain([x_first_el], x)
@@ -489,28 +492,30 @@ class DaskDataFeeder(object):
   Numpy arrays can be serialized to disk and it's possible to do random seeks
   into them. DaskDataFeeder will remove requirement to have full dataset in the
   memory and still do random seeks for sampling of batches.
-
-  Parameters:
-    x: iterator that returns for each element, returns features.
-    y: iterator that returns for each element, returns 1 or many classes /
-      regression values.
-    n_classes: indicator of how many classes the target has.
-    batch_size: Mini batch size to accumulate.
-    random_state: random state for RNG. Note that it will mutate so use a
-      int value for this if you want consistent sized batches.
-
-  Attributes:
-    x: input features.
-    y: input target.
-    n_classes: number of classes.
-    batch_size: mini batch size to accumulate.
-    input_shape: shape of the input.
-    output_shape: shape of the output.
-    input_dtype: dtype of input.
-    output_dtype: dtype of output.
   """
   def __init__(self, x, y, n_classes, batch_size, shuffle=True,
                random_state=None, epochs=None):
+    """Initializes a DaskDataFeeder instance.
+
+    Args:
+      x: iterator that returns for each element, returns features.
+      y: iterator that returns for each element, returns 1 or many classes /
+        regression values.
+      n_classes: indicator of how many classes the target has.
+      batch_size: Mini batch size to accumulate.
+      random_state: random state for RNG. Note that it will mutate so use a
+        int value for this if you want consistent sized batches.
+
+    Attributes:
+      x: input features.
+      y: input target.
+      n_classes: number of classes.
+      batch_size: mini batch size to accumulate.
+      input_shape: shape of the input.
+      output_shape: shape of the output.
+      input_dtype: dtype of input.
+      output_dtype: dtype of output.
+    """
     # pylint: disable=invalid-name,super-init-not-called
     import dask.dataframe as dd  # pylint: disable=g-import-not-at-top
     # TODO(terrytangyuan): check x and y dtypes in dask_io like pandas

@@ -19,10 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 
@@ -380,3 +380,8 @@ def _MirrorPadGradGrad(op, grad):
   # pylint: disable=protected-access
   return [gen_array_ops._mirror_pad(grad, op.inputs[1], mode=mode), None]
   # pylint: enable=protected-access
+
+
+@ops.RegisterGradient("QuantizeAndDequantize")
+def _QuantizeAndDequantizeGrad(_, grad):
+  return grad

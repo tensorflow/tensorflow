@@ -1289,18 +1289,14 @@ The following `DType` objects are defined:
 * `tf.bfloat16`: 16-bit truncated floating-point.
 * `tf.complex64`: 64-bit single-precision complex.
 * `tf.complex128`: 128-bit double-precision complex.
-
 * `tf.int8`: 8-bit signed integer.
 * `tf.uint8`: 8-bit unsigned integer.
 * `tf.uint16`: 16-bit unsigned integer.
 * `tf.int16`: 16-bit signed integer.
 * `tf.int32`: 32-bit signed integer.
 * `tf.int64`: 64-bit signed integer.
-
 * `tf.bool`: Boolean.
-
 * `tf.string`: String.
-
 * `tf.qint8`: Quantized 8-bit signed integer.
 * `tf.quint8`: Quantized 8-bit unsigned integer.
 * `tf.qint16`: Quantized 16-bit signed integer.
@@ -1778,7 +1774,11 @@ Loads a TensorFlow plugin, containing custom ops and kernels.
 
 Pass "library_filename" to a platform-specific mechanism for dynamically
 loading a library. The rules for determining the exact location of the
-library are platform-specific and are not documented here.
+library are platform-specific and are not documented here. When the
+library is loaded, ops and kernels registered in the library via the
+REGISTER_* macros are made available in the TensorFlow process. Note
+that ops with the same name as an existing op are rejected and not
+registered with the process.
 
 ##### Args:
 
@@ -2545,6 +2545,7 @@ and computations occur. Using `DeviceSpec` allows you to parse device spec
 strings to verify their validity, merge them or compose them programmatically.
 
 Example:
+
 ```python
 # Place the operations on device "GPU:0" in the "ps" job.
 device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)

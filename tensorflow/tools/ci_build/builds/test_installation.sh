@@ -55,6 +55,10 @@
 # Python unit tests to run in exclusive mode (i.e., not concurrently with
 # other tests), separated with colons
 #
+# TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG: If set to a non-empty string
+# (e.g., "local"), will filter the Python install-tests by that string as a
+# bazel tag.
+#
 # If the environmental variable NO_TEST_ON_INSTALL is set to any non-empty
 # value, the script will exit after the pip install step.
 
@@ -80,15 +84,17 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/framework/ops_test.py:"\
 "tensorflow/python/util/protobuf/compare_test.py:"\
 "tensorflow/python/framework/device_test.py:"\
-"tensorflow/python/framework/file_system_test.py"\
 "tensorflow/python/framework/file_system_test.py:"\
+"tensorflow/contrib/learn/python/learn/tests/early_stopping_test.py:"\
 "tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
 "tensorflow/python/platform/default/_resource_loader_test.py:"\
 "tensorflow/python/platform/default/flags_test.py:"\
 "tensorflow/python/platform/default/logging_test.py:"\
-"tensorflow/python/platform/default/gfile_test.py"
+"tensorflow/python/platform/default/gfile_test.py:"\
+"tensorflow/contrib/learn/nonlinear_test.py:"\
+"tensorflow/contrib/learn/python/learn/tests/nonlinear_test.py"
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
@@ -185,7 +191,6 @@ PY_TEST_LOG_DIR=$(realpath ${PY_TEST_LOG_DIR_REL})  # Absolute path
 
 mkdir ${PY_TEST_LOG_DIR}
 
-
 # Copy source files that are required by the tests but are not included in the
 # PIP package
 
@@ -240,6 +245,59 @@ cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
 DIR0=$(pwd)
 ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
     -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
+
+if [[ ${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG} != "" ]]; then
+  # Find gpu-specific tests using bazel query
+  if [[ -z $(which bazel) ]]; then
+    die "ERROR: bazel is not on path"
+  fi
+
+  TAG="${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG}"
+  BAZEL_TARGETS=\
+$(bazel query "kind(py_test, attr(tags, "${TAG}", //tensorflow/...))" | sort)
+
+  TARGET_ALIASES=":"
+  for TARGET in ${BAZEL_TARGETS}; do
+    # Transform, e.g., //tensorflow/python/kernel_tests:xent_op_test -->
+    #                  python-xent_op_test
+    # to be compared with the transformed strings from the Python unit test
+    # files.
+    TARGET_1=$(echo "${TARGET}" | sed "s/:/ /g")
+    TARGET_PATH_1=$(echo "${TARGET_1}" | sed "s/\/\// /g" | sed "s/\// /g" \
+                    | awk '{print $2}')
+    TARGET_BASE_NAME=$(echo "${TARGET_1}" | awk '{print $NF}')
+    TARGET_ALIAS="${TARGET_PATH_1}-${TARGET_BASE_NAME}"
+
+    TARGET_ALIASES="${TARGET_ALIASES}${TARGET_ALIAS}:"
+  done
+  TARGET_ALIASES="${TARGET_ALIASES}:"
+  echo "${TARGET_ALIASES}"
+
+  # Filter the list of tests obtained from listing files with the bazel query
+  # results.
+  FILTERED_PY_TESTS=""
+  N_DISCARDED=0
+  ALL_PY_TESTS_1=""
+  for PY_TEST in ${ALL_PY_TESTS_0}; do
+    # Transform, e.g., tensorflow/python/kernel_tests/xent_op_test.py -->
+    #                  python-xent_op_test
+    PY_TEST_PATH_1=$(echo "${PY_TEST}" | sed "s/\// /g" | awk '{print $2}')
+    PY_TEST_BASE_NAME=$(echo "${PY_TEST}" | sed "s/\// /g" \
+                        | awk '{print $NF}' | sed "s/\.py//g")
+    PY_TEST_ALIAS="${PY_TEST_PATH_1}-${PY_TEST_BASE_NAME}"
+
+    if [[ "${TARGET_ALIASES}" == *"${PY_TEST_ALIAS}"* ]]; then
+      ALL_PY_TESTS_1="${ALL_PY_TESTS_1} ${PY_TEST}"
+    else
+      ((N_DISCARDED++))
+      echo "Will skip test due to filter tag \"${TAG}\": ${PY_TEST}"
+    fi
+  done
+
+  ALL_PY_TESTS_0="${ALL_PY_TESTS_1}"
+  echo ""
+  echo "Skipping ${N_DISCARDED} test(s) due to filter tag \"${TAG}\""
+fi
 
 # Move the exclusive tests to the back of the list
 EXCLUSIVE_LIST="$(echo "${PY_TEST_EXCLUSIVE_LIST}" | sed -e 's/:/ /g')"

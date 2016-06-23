@@ -21,14 +21,15 @@ from __future__ import print_function
 import math
 
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import kullback_leibler  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
@@ -231,6 +232,9 @@ class Normal(distribution.ContinuousDistribution):
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s"
                           % (x.dtype, self.dtype))
+        # TODO(ebrevdo): wrap this in a Defun with a custom Defun
+        # gradient because the analytic gradient may be faster than
+        # automatic differentiation.
         return (0.5 + 0.5*math_ops.erf(
             1.0/(math.sqrt(2.0) * self._sigma)*(x - self._mu)))
 
@@ -314,3 +318,27 @@ class Normal(distribution.ContinuousDistribution):
 
   def _zeros(self):
     return array_ops.zeros_like(self._mu + self._sigma)
+
+
+@kullback_leibler.RegisterKL(Normal, Normal)
+def _kl_normal_normal(n_a, n_b, name=None):
+  """Calculate the batched KL divergence KL(n_a || n_b) with n_a and n_b Normal.
+
+  Args:
+    n_a: instance of a Normal distribution object.
+    n_b: instance of a Normal distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_normal_normal".
+
+  Returns:
+    Batchwise KL(n_a || n_b)
+  """
+  with ops.op_scope([n_a.mu, n_b.mu], name, "kl_normal_normal"):
+    one = constant_op.constant(1, dtype=n_a.dtype)
+    two = constant_op.constant(2, dtype=n_a.dtype)
+    half = constant_op.constant(0.5, dtype=n_a.dtype)
+    s_a_squared = math_ops.square(n_a.sigma)
+    s_b_squared = math_ops.square(n_b.sigma)
+    ratio = s_a_squared / s_b_squared
+    return (math_ops.square(n_a.mu - n_b.mu) / (two * s_b_squared)
+            + half * (ratio - one - math_ops.log(ratio)))

@@ -22,17 +22,16 @@ import numpy as np
 import tensorflow as tf
 
 
-def make_categorical(batch_shape, num_classes):
-  histogram = np.random.random(list(batch_shape) + [num_classes])
-  histogram /= np.sum(histogram, axis=tuple(range(len(batch_shape))))
-  histogram = tf.constant(histogram, dtype=tf.float32)
-  return tf.contrib.distributions.Categorical(tf.log(histogram))
+def make_categorical(batch_shape, num_classes, dtype=tf.int32):
+  logits = tf.random_uniform(
+      list(batch_shape) + [num_classes], -10, 10, dtype=tf.float32) - 50.
+  return tf.contrib.distributions.Categorical(logits, dtype=dtype)
 
 
 class CategoricalTest(tf.test.TestCase):
 
   def testLogits(self):
-    logits = np.log([0.2, 0.8])
+    logits = np.log([0.2, 0.8]) - 50.
     dist = tf.contrib.distributions.Categorical(logits)
     with self.test_session():
       self.assertAllClose(logits, dist.logits.eval())
@@ -47,7 +46,11 @@ class CategoricalTest(tf.test.TestCase):
         self.assertAllEqual([], dist.event_shape().eval())
 
   def testDtype(self):
-    dist = make_categorical([], 5)
+    dist = make_categorical([], 5, dtype=tf.int32)
+    self.assertEqual(dist.dtype, tf.int32)
+    self.assertEqual(dist.dtype, dist.sample(5).dtype)
+    self.assertEqual(dist.dtype, dist.mode().dtype)
+    dist = make_categorical([], 5, dtype=tf.int64)
     self.assertEqual(dist.dtype, tf.int64)
     self.assertEqual(dist.dtype, dist.sample(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
@@ -56,22 +59,26 @@ class CategoricalTest(tf.test.TestCase):
     self.assertEqual(dist.logits.dtype, dist.pmf(0).dtype)
     self.assertEqual(dist.logits.dtype, dist.log_pmf(0).dtype)
 
-  def testPMF(self):
+  def testPMFWithBatch(self):
     histograms = [[0.2, 0.8], [0.6, 0.4]]
-    dist = tf.contrib.distributions.Categorical(tf.log(histograms))
+    dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
     with self.test_session():
-      self.assertAllClose(dist.pmf(0).eval(), [0.2, 0.6])
-      self.assertAllClose(dist.pmf([0, 1]).eval(), histograms)
+      self.assertAllClose(dist.pmf([0, 1]).eval(), [0.2, 0.4])
+
+  def testPMFNoBatch(self):
+    histograms = [0.2, 0.8]
+    dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
+    with self.test_session():
+      self.assertAllClose(dist.pmf(0).eval(), 0.2)
 
   def testLogPMF(self):
-    logits = np.log([[0.2, 0.8], [0.6, 0.4]])
+    logits = np.log([[0.2, 0.8], [0.6, 0.4]]) - 50.
     dist = tf.contrib.distributions.Categorical(logits)
     with self.test_session():
-      self.assertAllClose(dist.log_pmf(0).eval(), np.log([0.2, 0.6]))
-      self.assertAllClose(dist.log_pmf([0, 1]).eval(), logits)
+      self.assertAllClose(dist.log_pmf([0, 1]).eval(), np.log([0.2, 0.4]))
 
   def testEntropyNoBatch(self):
-    logits = np.log([0.2, 0.8])
+    logits = np.log([0.2, 0.8]) - 50.
     dist = tf.contrib.distributions.Categorical(logits)
     with self.test_session():
       self.assertAllClose(
@@ -79,7 +86,7 @@ class CategoricalTest(tf.test.TestCase):
           -(0.2 * np.log(0.2) + 0.8 * np.log(0.8)))
 
   def testEntropyWithBatch(self):
-    logits = np.log([[0.2, 0.8], [0.6, 0.4]])
+    logits = np.log([[0.2, 0.8], [0.6, 0.4]]) - 50.
     dist = tf.contrib.distributions.Categorical(logits)
     with self.test_session():
       self.assertAllClose(dist.entropy().eval(),
@@ -89,11 +96,11 @@ class CategoricalTest(tf.test.TestCase):
   def testSample(self):
     with self.test_session():
       histograms = [[[0.2, 0.8], [0.4, 0.6]]]
-      dist = tf.contrib.distributions.Categorical(tf.log(histograms))
+      dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
       n = 10000
       samples = dist.sample(n, seed=123)
       samples.set_shape([n, 1, 2])
-      self.assertEqual(samples.dtype, tf.int64)
+      self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()
       self.assertFalse(np.any(sample_values < 0))
       self.assertFalse(np.any(sample_values > 1))
@@ -105,7 +112,7 @@ class CategoricalTest(tf.test.TestCase):
   def testMode(self):
     with self.test_session():
       histograms = [[[0.2, 0.8], [0.6, 0.4]]]
-      dist = tf.contrib.distributions.Categorical(tf.log(histograms))
+      dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
       self.assertAllEqual(dist.mode().eval(), [[1, 0]])
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
 <link rel="import" href="../paper-toolbar/paper-toolbar.html">
 <link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-header-panel/paper-header-panel.html">
+<link rel="import" href="../tf-globals/tf-globals.html">
 <link rel="import" href="../tf-event-dashboard/tf-event-dashboard.html">
 <link rel="import" href="../tf-histogram-dashboard/tf-histogram-dashboard.html">
 <link rel="import" href="../tf-image-dashboard/tf-image-dashboard.html">
@@ -12,6 +13,7 @@
 <link rel="import" href="../tf-graph-dashboard/tf-graph-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../tf-storage/tf-storage.html">
 
 <!--
 tf-tensorboard is the frontend entry point for TensorBoard.
@@ -19,7 +21,6 @@ tf-tensorboard is the frontend entry point for TensorBoard.
 It implements a toolbar (via paper-header-panel and paper-toolbar) that
 allows the user to toggle between various dashboards.
 -->
-<script src="tensorboard.js"></script>
 <script src="autoReloadBehavior.js"></script>
 <dom-module id="tf-tensorboard">
   <template>
@@ -191,13 +192,13 @@ allows the user to toggle between various dashboards.
         tabs: {
           type: Array,
           readOnly: true,
-          value: TF.TensorBoard.TABS,
+          value: TF.Globals.TABS,
         },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
         if (!this.noHash) {
-          window.location.hash = mode;
+          TF.URIStorage.setString(TF.URIStorage.TAB, this.tabs[0]);
         }
         return mode;
       },
@@ -233,11 +234,10 @@ allows the user to toggle between various dashboards.
         }.bind(this));
       },
       _getModeFromHash: function() {
-        // Return the mode as it is stored in the hash.
-        var tabName = window.location.hash.trim().slice(1);
+        var tabName = TF.URIStorage.getString(TF.URIStorage.TAB);
         var modeIndex = this.tabs.indexOf(tabName);
         if (modeIndex == -1 && this.modeIndex == null) {
-          // Selecting the first tab as default.
+          // Select the first tab as default.
           this.set('modeIndex', 0);
         }
         if (modeIndex != -1 && modeIndex != this.modeIndex) {

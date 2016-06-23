@@ -18,7 +18,9 @@ DOWNLOADS_DIR=tensorflow/contrib/makefile/downloads
 
 mkdir ${DOWNLOADS_DIR}
 
-EIGEN_HASH=d02e6a705c30
+# Grab the current Eigen version name from the Bazel build file
+EIGEN_HASH=$(cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
+
 curl "https://bitbucket.org/eigen/eigen/get/${EIGEN_HASH}.tar.gz" \
 -o /tmp/eigen-${EIGEN_HASH}.tar.gz
 tar xzf /tmp/eigen-${EIGEN_HASH}.tar.gz -C ${DOWNLOADS_DIR}
@@ -27,12 +29,8 @@ git clone https://github.com/google/re2.git ${DOWNLOADS_DIR}/re2
 git clone https://github.com/google/gemmlowp.git ${DOWNLOADS_DIR}/gemmlowp
 git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
 
-# JPEG_VERSION=v9a
-# curl "http://www.ijg.org/files/jpegsrc.${JPEG_VERSION}.tar.gz" \
-# -o /tmp/jpegsrc.${JPEG_VERSION}.tar.gz
-# tar xzf /tmp/jpegsrc.${JPEG_VERSION}.tar.gz -C ${DOWNLOADS_DIR}
-
-# PNG_VERSION=v1.2.53
-# curl -L "https://github.com/glennrp/libpng/archive/${PNG_VERSION}.zip" \
-# -o /tmp/pngsrc.${PNG_VERSION}.zip
-# unzip /tmp/pngsrc.${PNG_VERSION}.zip -d ${DOWNLOADS_DIR}
+# Link to the downloaded Eigen library from a permanent directory name, since
+# the downloaded name changes with every version.
+cd ${DOWNLOADS_DIR}
+rm -rf eigen-latest
+ln -s eigen-eigen-${EIGEN_HASH} eigen-latest

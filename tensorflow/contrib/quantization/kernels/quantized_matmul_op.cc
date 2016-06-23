@@ -125,7 +125,7 @@ class QuantizedMatMulOp : public OpKernel {
     // The gemmlowp optimized library only works for a particular set of data
     // types, so check if we meet those requirements and
     // fall back to a slower reference implementation if not.
-    if (false && std::is_same<T1, quint8>() && std::is_same<T2, quint8>() &&
+    if (std::is_same<T1, quint8>() && std::is_same<T2, quint8>() &&
         std::is_same<Toutput, qint32>() && (offset_c == 0) && (mult_c == 1) &&
         (shift_c == 0) && (transpose_c == false)) {
       if (transpose_a_) {

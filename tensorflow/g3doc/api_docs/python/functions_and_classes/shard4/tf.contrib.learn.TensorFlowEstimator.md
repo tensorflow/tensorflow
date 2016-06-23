@@ -1,14 +1,21 @@
 Base class for all TensorFlow estimators.
+- - -
 
-Parameters:
-  model_fn: Model function, that takes input `x`, `y` tensors and outputs
+#### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
+
+Initializes a TensorFlowEstimator instance.
+
+##### Args:
+
+
+*  <b>`model_fn`</b>: Model function, that takes input `x`, `y` tensors and outputs
     prediction and loss tensors.
-  n_classes: Number of classes in the target.
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam",
+*  <b>`n_classes`</b>: Number of classes in the target.
+*  <b>`batch_size`</b>: Mini batch size.
+*  <b>`steps`</b>: Number of steps to run over data.
+*  <b>`optimizer`</b>: Optimizer name (or class), for example "SGD", "Adam",
     "Adagrad".
-  learning_rate: If this is constant float value, no decay function is used.
+*  <b>`learning_rate`</b>: If this is constant float value, no decay function is used.
     Instead, a customized decay function can be passed that accepts
     global_step as parameter and returns a Tensor.
     e.g. exponential decay function:
@@ -16,24 +23,19 @@ Parameters:
         return tf.train.exponential_decay(
             learning_rate=0.1, global_step,
             decay_steps=2, decay_rate=0.001)
-  clip_gradients: Clip norm of the gradients to this value to stop
+*  <b>`clip_gradients`</b>: Clip norm of the gradients to this value to stop
     gradient explosion.
-  class_weight: None or list of n_classes floats. Weight associated with
+*  <b>`class_weight`</b>: None or list of n_classes floats. Weight associated with
     classes for loss computation. If not given, all classes are supposed to
     have weight one.
-  continue_training: when continue_training is True, once initialized
+*  <b>`continue_training`</b>: when continue_training is True, once initialized
     model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the
+*  <b>`config`</b>: RunConfig object that controls the configurations of the
     session, e.g. num_cores, gpu_memory_fraction, etc.
-  verbose: Controls the verbosity, possible values:
+*  <b>`verbose`</b>: Controls the verbosity, possible values:
     0: the algorithm and debug information is muted.
     1: trainer prints the progress.
     2: log device placement is printed.
-- - -
-
-#### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
-
-
 
 
 - - -
