@@ -624,6 +624,7 @@
   * [`is_non_decreasing`](../../api_docs/python/contrib.framework.md#is_non_decreasing)
   * [`is_numeric_tensor`](../../api_docs/python/contrib.framework.md#is_numeric_tensor)
   * [`is_strictly_increasing`](../../api_docs/python/contrib.framework.md#is_strictly_increasing)
+  * [`is_tensor`](../../api_docs/python/contrib.framework.md#is_tensor)
   * [`local_variable`](../../api_docs/python/contrib.framework.md#local_variable)
   * [`model_variable`](../../api_docs/python/contrib.framework.md#model_variable)
   * [`reduce_sum_n`](../../api_docs/python/contrib.framework.md#reduce_sum_n)

@@ -184,6 +184,13 @@ See also:  `is_non_decreasing`
 
 - - -
 
+### `tf.contrib.framework.is_tensor(t)` {#is_tensor}
+
+Check if `t` is a tensor: `Tensor`, `SparseTensor`, or `Variable`.
+
+
+- - -
+
 ### `tf.contrib.framework.reduce_sum_n(tensors, name=None)` {#reduce_sum_n}
 
 Reduce tensors to a scalar sum.
