@@ -188,7 +188,30 @@ py_test(
     name = "tensorflow_dataframe_test",
     size = "small",
     srcs = ["python/learn/tests/dataframe/tensorflow_dataframe_test.py"],
-    data = glob(["python/learn/tests/dataframe/testdata/*"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "arithmetic_transform_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/arithmetic_transform_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "unary_transform_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/unary_transform_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
