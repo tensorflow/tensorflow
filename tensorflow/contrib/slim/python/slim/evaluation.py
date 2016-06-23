@@ -208,19 +208,23 @@ def evaluation(
     ValueError: if `summary_op` is provided but `global_step` is `None`.
   """
   if init_op is not None:
+    logging.info('Executing init op')
     sess.run(init_op, init_op_feed_dict)
 
   if eval_op is not None:
+    logging.info('Executing eval ops')
     for i in range(int(num_evals)):
       logging.info('Executing eval_op %d/%d', i+1, num_evals)
       sess.run(eval_op, eval_op_feed_dict)
 
   if final_op is not None:
+    logging.info('Executing final op')
     final_op_value = sess.run(final_op, final_op_feed_dict)
   else:
     final_op_value = None
 
   if summary_op is not None:
+    logging.info('Executing summary op')
     if global_step is None:
       global_step = variables.get_or_create_global_step()
 
@@ -295,8 +299,8 @@ def evaluation_loop(master, checkpoint_dir, logdir, num_evals=1,
                                                   time.gmtime()))
 
     with sv.managed_session(master, start_standard_services=False) as sess:
-      sv.start_queue_runners(sess)
       sv.saver.restore(sess, last_checkpoint)
+      sv.start_queue_runners(sess)
       evaluation(
           sess,
           num_evals=num_evals,
