@@ -30,13 +30,13 @@ from tensorflow.python.ops import math_ops
 @ops.RegisterGradient("Pack")
 def _PackGrad(op, grad):
   """Gradient for pack op."""
-  return array_ops.unpack(grad, num=op.get_attr("N"))
+  return array_ops.unpack(grad, num=op.get_attr("N"), axis=op.get_attr("axis"))
 
 
 @ops.RegisterGradient("Unpack")
-def _UnpackGrad(_, *grads):
+def _UnpackGrad(op, *grads):
   """Gradient for unpack op."""
-  return array_ops.pack(grads)
+  return array_ops.pack(grads, axis=op.get_attr("axis"))
 
 
 @ops.RegisterGradient("Concat")

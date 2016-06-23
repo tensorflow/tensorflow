@@ -24,16 +24,33 @@ REGISTER_OP("Pack")
     .Output("output: T")
     .Attr("N: int >= 1")
     .Attr("T: type")
+    .Attr("axis: int = 0")
     .Doc(R"doc(
 Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
 
 Packs the `N` tensors in `values` into a tensor with rank one higher than each
-tensor in `values` and shape `[N] + values[0].shape`. The output satisfies
-`output[i, ...] = values[i][...]`.
+tensor in `values`, by packing them along the `axis` dimension.
+Given a list tensors of shape (A, B, C);
+
+if `axis` == 0 then the `output` tensor will have the shape (`N`, A, B, C).
+if `axis` == 1 then the `output` tensor will have the shape (A, `N`, B, C).
+Etc.
+
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+```
 
 This is the opposite of `unpack`.
 
 values: Must be of same shape and type.
+axis: Dimension along which to pack.  Negative values wrap around, so the
+  valid range is `[-(R+1), R+1)`.
 output: The packed tensor.
 )doc");
 
@@ -43,16 +60,26 @@ REGISTER_OP("Unpack")
     .Output("output: num * T")
     .Attr("num: int >= 0")
     .Attr("T: type")
+    .Attr("axis: int = 0")
     .Doc(R"doc(
-Unpacks the outer dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
+Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
 
-Unpacks `num` tensors from `value` by chipping it along the first dimension.
-The i'th tensor in `output` is the slice `value[i, ...]`. Each tensor in
-`output` has shape `value.shape[1:]`.
+Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
+For example, given a tensor of shape (A, B, C ,D);
+
+If `axis` == 0 then the i'th tensor in `output` is the slice `value[i, :, :, :]`
+  and each tensor in `output` will have shape `(B, C, D)`. (Note that the
+  dimension unpacked along is gone, unlike `split`).
+
+If `axis` == 1 then the i'th tensor in `output` is the slice `value[:, i, :, :]`
+  and each tensor in `output` will have shape `(A, C, D)`.
+Etc.
 
 This is the opposite of `pack`.
 
-value: 1-D or higher, with first dimension `num`.
+value: 1-D or higher, with `axis` dimension size equal to `num`.
+axis: Dimension along which to unpack.  Negative values wrap around, so the
+  valid range is `[-R, R)`.
 output: The list of tensors unpacked from `value`.
 )doc");
 
