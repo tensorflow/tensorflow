@@ -1904,7 +1904,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     ```python
     ijk_0 = (tf.constant(0), (tf.constant(1), tf.constant(2)))
     c = lambda i, (j, k): i < 10
-    b = lambda i, (j, k): (i, (j + k), (j - k))
+    b = lambda i, (j, k): (i + 1, ((j + k), (j - k)))
     ijk_final = tf.while_loop(c, b, ijk_0)
     ```
   """
