@@ -18,7 +18,9 @@ Instead, use `gulp regenerate` to create a new version with your changes.
 -->
 
 <html><head><meta charset="UTF-8">
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+</head><body><div hidden="" by-vulcanize=""><dom-module id="tf-globals" assetpath="../tf-globals/">
+ <script>/* Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,75 +34,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+/* tslint:disable:no-namespace */
 var TF;
 (function (TF) {
-    var TensorBoard;
-    (function (TensorBoard) {
-        TensorBoard.TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
-    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
+    var Globals;
+    (function (Globals) {
+        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
+    })(Globals = TF.Globals || (TF.Globals = {}));
 })(TF || (TF = {}));
 </script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</dom-module>
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-var TF;
-(function (TF) {
-    var TensorBoard;
-    (function (TensorBoard) {
-        TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY = 'TF.TensorBoard.autoReloadEnabled';
-        var getAutoReloadFromLocalStorage = function () {
-            var val = window.localStorage.getItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY);
-            return val === 'true' || val == null; // defaults to true
-        };
-        TensorBoard.AutoReloadBehavior = {
-            properties: {
-                autoReloadEnabled: {
-                    type: Boolean,
-                    observer: '_autoReloadObserver',
-                    value: getAutoReloadFromLocalStorage,
-                },
-                _autoReloadId: {
-                    type: Number,
-                },
-                autoReloadIntervalSecs: {
-                    type: Number,
-                    value: 120,
-                },
-            },
-            detached: function () { window.clearTimeout(this._autoReloadId); },
-            _autoReloadObserver: function (autoReload) {
-                window.localStorage.setItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
-                if (autoReload) {
-                    var _this = this;
-                    this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
-                }
-                else {
-                    window.clearTimeout(this._autoReloadId);
-                }
-            },
-            _doAutoReload: function () {
-                if (this.reload == null) {
-                    throw new Error('AutoReloadBehavior requires a reload method');
-                }
-                this.reload();
-                this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
-            }
-        };
-    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
-})(TF || (TF = {}));
-</script>
-</head><body><div hidden="" by-vulcanize="">
 <dom-module id="scrollbar-style" assetpath="../tf-dashboard-common/">
   <template>
     <style>
@@ -552,13 +497,15 @@ var TF;
             '#f4b400' // google yellow 700
         ],
         googleColorBlindAssist: [
-            '#c53929',
             '#ff7043',
-            '#f7cb4d',
+            '#00ACC1',
+            '#AB47BC',
+            '#2A56C6',
             '#0b8043',
-            '#80deea',
-            '#4285f4',
-            '#5e35b1' // deep purple 600
+            '#F7CB4D',
+            '#c0ca33',
+            '#5e35b1',
+            '#A52714',
         ],
         // These palettes try to be better for color differentiation.
         // https://personal.sron.nl/~pault/
@@ -579,11 +526,6 @@ var TF;
         mldash: [
             '#E47EAD', '#F4640D', '#FAA300', '#F5E636', '#00A077', '#0077B8',
             '#00B7ED'
-        ],
-        // This rainbow palette attempts to keep a constant brightness across hues.
-        constantValue: [
-            '#f44336', '#ffa216', '#c2d22d', '#51b455', '#1ca091', '#505ec4',
-            '#a633ba'
         ]
     };
 })(TF || (TF = {}));
@@ -602,20 +544,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Each color scale is initialized with a configurable number of base hues.
-// There are also several palettes available.
-// TF.palettes.googleStandard, TF.palettes.googleColorBlind,
-// TF.palettes.googleCool, TF.palettes.googleWarm, TF.palettes.constantValue
-// Each string is hashed to an integer,
-// then mapped to one of the base hues above.
-// If there is a collision, the color that is later in an alphabetical sort
-// gets nudged a little darker or lighter to disambiguate.
-// I would call it mostly stable, in that the same array of strings will
-// always return the same colors, but the same individual string may
-// shift a little depending on its peers.
-//
+// Example usage:
 // runs = ["train", "test", "test1", "test2"]
-// ccs = new TF.ColorScale(12, "googleStandard");
+// ccs = new TF.ColorScale();
 // ccs.domain(runs);
 // ccs.getColor("train");
 // ccs.getColor("test1");
@@ -623,104 +554,39 @@ var TF;
 (function (TF) {
     var ColorScale = (function () {
         /**
-         * The palette you provide defines your spectrum. The colorscale will
-         * always use the full spectrum you provide. When you define "numColors"
-         * it resamples at regular intervals along the full extent of the spectrum.
-         * Thus you get the maximum distance between hues for the "numColors"
-         * given. This allows the programmer to tweak the algorithm depending on
-         * how big your expected domain is. If you generally think you're going to
-         * have a small number of elements in the domain, then a small numColors
-         * will be serviceable. With large domains, a small numColors would produce
-         * too many hash collisions, so you'd want to bump it up to the threshold
-         * of human perception (probably around 14 or 18).
-         *
-         * @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
-         *                 palette you want as an Array of hex strings. Note, the
-         *                 length of the array in this palette is independent of the
-         *                 param numColors above. The scale will interpolate to
-         *                 create the proper "numColors" given in the first param.
-         *
-         * @param {number} [numColors] - The number of base colors you want
-         *                 in the palette. The more colors, the smaller the number
-         *                 the more hash collisions you will have, but the more
-         *                 differentiable the base colors will be.
+         * Creates a color scale with optional custom palette.
+         *  @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
+         *                 palette you want as an Array of hex strings.
          */
-        function ColorScale(palette, numColors) {
+        function ColorScale(palette) {
             if (palette === void 0) { palette = TF.palettes.googleColorBlindAssist; }
-            this.LIGHTNESS_NUDGE = 0.8;
-            this.numColors = numColors ? numColors : palette.length;
-            this.domain([]);
-            if (palette.length < 2) {
-                throw new Error('Not enough colors in palette. Must be more than one.');
-            }
-            var k = (this.numColors - 1) / (palette.length - 1);
-            this.internalColorScale =
-                d3.scale.linear()
-                    .domain(d3.range(palette.length).map(function (i) { return i * k; }))
-                    .range(palette);
+            this.identifiers = d3.map();
+            this.palette = palette;
         }
-        ColorScale.prototype.hash = function (s) {
-            function h(hash, str) {
-                hash = (hash << 5) - hash + str.charCodeAt(0);
-                return hash & hash;
-            }
-            return Math.abs(Array.prototype.reduce.call(s, h, 0)) % this.numColors;
-        };
         /**
-         * Set the domain of strings so we can calculate collisions preemptively.
-         * Can be reset at any point.
-         *
-         * @param {string[]} strings - An array of strings to use as the domain
-         *                             for your scale.
+         * Set the domain of strings.
+         * @param {string[]} strings - An array of possible strings to use as the
+         *                             domain for your scale.
          */
         ColorScale.prototype.domain = function (strings) {
             var _this = this;
-            this.buckets = d3.range(this.numColors).map(function () { return []; });
-            var sortedUniqueKeys = d3.set(strings).values().sort(function (a, b) {
-                return a.localeCompare(b);
+            this.identifiers = d3.map();
+            strings.forEach(function (s, i) {
+                _this.identifiers.set(s, _this.palette[i % _this.palette.length]);
             });
-            sortedUniqueKeys.forEach(function (s) { return _this.addToDomain(s); });
             return this;
-        };
-        ColorScale.prototype.getBucketForString = function (s) {
-            var bucketIdx = this.hash(s);
-            return this.buckets[bucketIdx];
-        };
-        ColorScale.prototype.addToDomain = function (s) {
-            var bucketIdx = this.hash(s);
-            var bucket = this.buckets[bucketIdx];
-            if (bucket.indexOf(s) === -1) {
-                bucket.push(s);
-            }
-        };
-        ColorScale.prototype.nudge = function (color, amount) {
-            // If amount is zero, just give back same color
-            if (amount === 0) {
-                return color;
-            }
-            else if (amount === 1) {
-                return d3.hcl(color).brighter(this.LIGHTNESS_NUDGE);
-            }
-            else {
-                return d3.hcl(color).darker((amount - 1) * this.LIGHTNESS_NUDGE);
-            }
         };
         /**
          * Use the color scale to transform an element in the domain into a color.
-         * If there was a hash conflict, the color will be "nudged" darker or
-         * lighter so that it is unique.
          * @param {string} The input string to map to a color.
          * @return {string} The color corresponding to that input string.
          * @throws Will error if input string is not in the scale's domain.
          */
         ColorScale.prototype.scale = function (s) {
-            var bucket = this.getBucketForString(s);
-            var idx = bucket.indexOf(s);
-            if (idx === -1) {
+            if (!this.identifiers.has(s)) {
                 throw new Error('String was not in the domain.');
             }
-            var color = this.internalColorScale(this.hash(s));
-            return this.nudge(color, idx).toString();
+            return this.identifiers.get(s);
         };
         return ColorScale;
     }());
@@ -2662,40 +2528,30 @@ var TF;
             }
             /**
              * Returns a listing of all the available data in the TensorBoard backend.
-             * Will be deprecated in the future, in favor of
-             * per-data-type methods.
              */
             Backend.prototype.runs = function () {
                 return this.requestManager.request(this.router.runs());
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for scalar data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.scalarRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'scalars'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for histogram data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.histogramRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'histograms'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for image data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.imageRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'images'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for audio data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.audioRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'audio'); });
@@ -2703,24 +2559,18 @@ var TF;
             /**
              * Return a promise showing the Run-to-Tag mapping for compressedHistogram
              * data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.compressedHistogramRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'compressedHistograms'); });
             };
             /**
              * Return a promise showing list of runs that contain graphs.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.graphRuns = function () {
                 return this.runs().then(function (x) { return _.keys(x).filter(function (k) { return x[k].graph; }); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for run_metadata objects.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.runMetadataRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'run_metadata'); });
@@ -5567,10 +5417,7 @@ var tf;
                      * element. The padding amounts are applied using an SVG transform of X and
                      * Y coordinates.
                      */
-                    padding: {
-                        paddingTop: 40,
-                        paddingLeft: 20
-                    }
+                    padding: { paddingTop: 40, paddingLeft: 20 }
                 },
                 subscene: {
                     meta: {
@@ -5601,6 +5448,7 @@ var tf;
                     meta: {
                         radius: 5,
                         width: 60,
+                        maxLabelWidth: 52,
                         /** A scale for the node's height based on number of nodes inside */
                         height: d3.scale.linear().domain([1, 200]).range([15, 60]).clamp(true),
                         /** The radius of the circle denoting the expand button. */
@@ -5611,7 +5459,8 @@ var tf;
                         width: 15,
                         height: 6,
                         radius: 3,
-                        labelOffset: -8
+                        labelOffset: -8,
+                        maxLabelWidth: 30
                     },
                     /** Size of series nodes. */
                     series: {
@@ -5652,16 +5501,9 @@ var tf;
                 },
                 shortcutSize: {
                     /** Size of shortcuts for op nodes */
-                    op: {
-                        width: 10,
-                        height: 4
-                    },
+                    op: { width: 10, height: 4 },
                     /** Size of shortcuts for meta nodes */
-                    meta: {
-                        width: 12,
-                        height: 4,
-                        radius: 1
-                    },
+                    meta: { width: 12, height: 4, radius: 1 },
                     /** Size of shortcuts for series nodes */
                     series: {
                         width: 14,
@@ -5679,15 +5521,10 @@ var tf;
                     yOffset: 3,
                     /** X-space between each annotation-node and its label. */
                     labelOffset: 2,
-                    /** Estimate max width for annotation label */
-                    labelWidth: 35
+                    /** Defines the max width for annotation label */
+                    maxLabelWidth: 120
                 },
-                constant: {
-                    size: {
-                        width: 4,
-                        height: 4
-                    }
-                },
+                constant: { size: { width: 4, height: 4 } },
                 series: {
                     /** Maximum number of repeated item for unexpanded series node. */
                     maxStackCount: 3,
@@ -7794,22 +7631,19 @@ var tf;
                 function addAnnotationLabelFromNode(aGroup, a) {
                     var namePath = a.node.name.split('/');
                     var text = namePath[namePath.length - 1];
-                    var shortenedText = text.length > 8 ? text.substring(0, 8) + '...' : text;
-                    return addAnnotationLabel(aGroup, shortenedText, a, null, text);
+                    return addAnnotationLabel(aGroup, text, a, null);
                 }
-                function addAnnotationLabel(aGroup, label, a, additionalClassNames, fullLabel) {
+                function addAnnotationLabel(aGroup, label, a, additionalClassNames) {
                     var classNames = scene.Class.Annotation.LABEL;
                     if (additionalClassNames) {
                         classNames += ' ' + additionalClassNames;
                     }
-                    var titleText = fullLabel ? fullLabel : label;
-                    return aGroup.append('text')
+                    var txtElement = aGroup.append('text')
                         .attr('class', classNames)
                         .attr('dy', '.35em')
                         .attr('text-anchor', a.isIn ? 'end' : 'start')
-                        .text(label)
-                        .append('title')
-                        .text(titleText);
+                        .text(label);
+                    return tf.graph.scene.node.enforceLabelWidth(txtElement, -1);
                 }
                 function addInteraction(selection, d, annotation, sceneElement) {
                     selection
@@ -7837,7 +7671,7 @@ var tf;
                  * @param aGroup selection of a 'g.annotation' element.
                  * @param d Host node data.
                  * @param a annotation node data.
-                 * @param scene <tf-graph-scene> polymer element.
+                 * @param sceneElement <tf-graph-scene> polymer element.
                  */
                 function update(aGroup, d, a, sceneElement) {
                     var cx = graph.layout.computeCXPositionOfNodeShape(d);
@@ -8606,10 +8440,73 @@ var tf;
                         var scale = getLabelFontScale(sceneElement);
                         label.attr('font-size', scale(text.length) + 'px');
                     }
-                    label.text(text);
+                    var txtElement = label.text(text);
+                    enforceLabelWidth(txtElement, renderNodeInfo.node.type, renderNodeInfo);
                     return label;
                 }
-                ;
+                /**
+                 * This function shortens text which would exceed the maximum pixel width of
+                 * a label.
+                 *
+                 * @param txtElementSelection The text element containing the label's text as d3
+                 * selection.
+                 * @param nodeType The type of the node the label belongs to. If the node is
+                 * an annotation, the value is -1. Label widths are defined in
+                 * layout.PARAMS.nodeSize.{meta|op|...}.maxLabelWidth for nodes and
+                 * layout.PARAMS.annotations.labelWidth for annotations.
+                 * @param renderNodeInfo The render information about the node, required to
+                 * determine whether META nodes are collapsed or expanded.
+                 */
+                function enforceLabelWidth(txtElementSelection, nodeType, renderNodeInfo) {
+                    // Get text element itself and its on-screen width.
+                    var txtNode = txtElementSelection.node();
+                    var computedTxtLength = txtNode.getComputedTextLength();
+                    var labelContent = txtNode.textContent;
+                    // Get maximum length from settings.
+                    var maxLength = null;
+                    switch (nodeType) {
+                        case graph.NodeType.META:
+                            if (renderNodeInfo && !renderNodeInfo.expanded) {
+                                // node expanded.
+                                maxLength = graph.layout.PARAMS.nodeSize.meta.maxLabelWidth;
+                            }
+                            break;
+                        case graph.NodeType.OP:
+                            maxLength = graph.layout.PARAMS.nodeSize.op.maxLabelWidth;
+                            break;
+                        case -1:
+                            maxLength = graph.layout.PARAMS.annotations.maxLabelWidth;
+                            break;
+                        default:
+                            break;
+                    }
+                    // Return if no max length provided for node type, or current label length is
+                    // less than or equal to the provided length limit.
+                    if (maxLength === null || computedTxtLength <= maxLength) {
+                        return;
+                    }
+                    // Find the index of the character which exceeds the width.
+                    // getSubStringLength performs far better than getComputedTextLength, and
+                    // results in a 3x speed-up on average.
+                    var index = 1;
+                    while (txtNode.getSubStringLength(0, index) < maxLength) {
+                        index++;
+                    }
+                    // Shorten the label starting at the string length known to be one
+                    // character above max pixel length.
+                    // When shortened the original label's substring is concatenated with
+                    // '...', baseText contains the substring not including the '...'.
+                    var baseText = txtNode.textContent.substr(0, index);
+                    do {
+                        baseText = baseText.substr(0, baseText.length - 1);
+                        // Recompute text length.
+                        txtNode.textContent = baseText + '...';
+                        computedTxtLength = txtNode.getComputedTextLength();
+                    } while (computedTxtLength > maxLength && baseText.length > 0);
+                    // Add tooltip with full name and return.
+                    return txtElementSelection.append('title').text(labelContent);
+                }
+                node_1.enforceLabelWidth = enforceLabelWidth;
                 /**
                  * d3 scale used for sizing font of labels, used by labelBuild,
                  * initialized once by getLabelFontScale.
@@ -9987,11 +9884,11 @@ var tf;
                     downloadContext.clearRect(0, 0, _this.downloadCanvas.width, _this.downloadCanvas.height);
                     downloadContext.drawImage(image, 0, 0, _this.downloadCanvas.width, _this.downloadCanvas.height);
                 };
-                image.onerror = function() {
-                  var blob = new Blob([svgXml], {type: "image/svg+xml;charset=utf-8"});
-                  image.src = URL.createObjectURL(blob);
+                image.onerror = function () {
+                    var blob = new Blob([svgXml], { type: 'image/svg+xml;charset=utf-8' });
+                    image.src = URL.createObjectURL(blob);
                 };
-                image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgXml);
+                image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgXml);
             };
             /**
              * Handles changes in zooming/panning. Should be called from the main svg
@@ -10167,8 +10064,8 @@ Polymer({
   stroke-width: 3;
 }
 
-:content .annotation.meta.selected > .nodeshape > rect,
-:content .annotation.meta.selected > .annotation-node > rect {
+::content .annotation.meta.selected > .nodeshape > rect,
+::content .annotation.meta.selected > .annotation-node > rect {
   stroke: red;
   stroke-width: 2;
 }
@@ -13026,7 +12923,211 @@ Polymer({
 });
 })();
 </script>
-</div><dom-module id="tf-tensorboard">
+<dom-module id="tf-storage" assetpath="../tf-storage/">
+ <script>/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+/* tslint:disable:no-namespace */
+/**
+ * The Storage Module provides storage for URL parameters, and an API for
+ * getting and setting TensorBoard's stateful URI.
+ *
+ * It generates URI components like: events&runPrefix=train*
+ * which TensorBoard uses after like localhost:8000/#events&runPrefix=train*
+ * to store state in the URI.
+ */
+var TF;
+(function (TF) {
+    var URIStorage;
+    (function (URIStorage) {
+        /**
+         * A key that users cannot use, since TensorBoard uses this to store info
+         * about the active tab.
+         */
+        URIStorage.TAB = '__tab__';
+        /**
+         * Return a string stored in the URI, given a corresonding key.
+         * Null if not found.
+         */
+        function getString(key) {
+            var items = _componentToDict(_readComponent());
+            return _.isUndefined(items[key]) ? null : items[key];
+        }
+        URIStorage.getString = getString;
+        /**
+         * Store a string in the URI, with a corresponding key.
+         */
+        function setString(key, value) {
+            var items = _componentToDict(_readComponent());
+            items[key] = value;
+            _writeComponent(_dictToComponent(items));
+        }
+        URIStorage.setString = setString;
+        /**
+         * Return a number stored in the URI, given a corresponding key.
+         */
+        function getNumber(key) {
+            var items = _componentToDict(_readComponent());
+            return _.isUndefined(items[key]) ? null : +items[key];
+        }
+        URIStorage.getNumber = getNumber;
+        /**
+         * Store a number in the URI, with a corresponding key.
+         */
+        function setNumber(key, value) {
+            var items = _componentToDict(_readComponent());
+            items[key] = '' + value;
+            _writeComponent(_dictToComponent(items));
+        }
+        URIStorage.setNumber = setNumber;
+        /**
+         * Return an object stored in the URI, given a corresponding key.
+         */
+        function getObject(key) {
+            var items = _componentToDict(_readComponent());
+            return _.isUndefined(items[key]) ? null : JSON.parse(atob(items[key]));
+        }
+        URIStorage.getObject = getObject;
+        /**
+         * Store an object in the URI, with a corresponding key.
+         */
+        function setObject(key, value) {
+            var items = _componentToDict(_readComponent());
+            items[key] = btoa(JSON.stringify(value));
+            _writeComponent(_dictToComponent(items));
+        }
+        URIStorage.setObject = setObject;
+        /**
+         * Read component from URI (e.g. returns "events&runPrefix=train*").
+         */
+        function _readComponent() { return window.location.hash.slice(1); }
+        /**
+         * Write component to URI.
+         */
+        function _writeComponent(component) {
+            window.location.hash = component;
+        }
+        /**
+         * Convert dictionary of strings into a URI Component.
+         * All key value entries get added as key value pairs in the component,
+         * with the exception of a key with the TAB value, which if present
+         * gets prepended to the URI Component string for backwards comptability
+         * reasons.
+         */
+        function _dictToComponent(items) {
+            var component = '';
+            // Add the tab name e.g. 'events', 'images', 'histograms' as a prefix
+            // for backwards compatbility.
+            if (items[URIStorage.TAB] !== undefined) {
+                component += items[URIStorage.TAB];
+            }
+            // Join other strings with &key=value notation
+            var nonTab = _.pairs(items)
+                .filter(function (pair) { return pair[0] !== URIStorage.TAB; })
+                .map(function (pair) {
+                return encodeURIComponent(pair[0]) + '=' +
+                    encodeURIComponent(pair[1]);
+            })
+                .join('&');
+            return nonTab.length > 0 ? (component + '&' + nonTab) : component;
+        }
+        /**
+         * Convert a URI Component into a dictionary of strings.
+         * Component should consist of key-value pairs joined by a delimiter
+         * with the exception of the tabName.
+         * Returns dict consisting of all key-value pairs and
+         * dict[TAB] = tabName
+         */
+        function _componentToDict(component) {
+            var items = {};
+            var tokens = component.split('&');
+            tokens.forEach(function (token) {
+                var kv = token.split('=');
+                // Special backwards compatibility for URI components like #events
+                if (kv.length === 1 && _.contains(TF.Globals.TABS, kv[0])) {
+                    items[URIStorage.TAB] = kv[0];
+                }
+                else if (kv.length === 2) {
+                    items[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+                }
+            });
+            return items;
+        }
+    })(URIStorage = TF.URIStorage || (TF.URIStorage = {}));
+})(TF || (TF = {}));
+</script>
+</dom-module>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+var TF;
+(function (TF) {
+    var TensorBoard;
+    (function (TensorBoard) {
+        TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY = 'TF.TensorBoard.autoReloadEnabled';
+        var getAutoReloadFromLocalStorage = function () {
+            var val = window.localStorage.getItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY);
+            return val === 'true' || val == null; // defaults to true
+        };
+        TensorBoard.AutoReloadBehavior = {
+            properties: {
+                autoReloadEnabled: {
+                    type: Boolean,
+                    observer: '_autoReloadObserver',
+                    value: getAutoReloadFromLocalStorage,
+                },
+                _autoReloadId: {
+                    type: Number,
+                },
+                autoReloadIntervalSecs: {
+                    type: Number,
+                    value: 120,
+                },
+            },
+            detached: function () { window.clearTimeout(this._autoReloadId); },
+            _autoReloadObserver: function (autoReload) {
+                window.localStorage.setItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
+                if (autoReload) {
+                    var _this = this;
+                    this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
+                }
+                else {
+                    window.clearTimeout(this._autoReloadId);
+                }
+            },
+            _doAutoReload: function () {
+                if (this.reload == null) {
+                    throw new Error('AutoReloadBehavior requires a reload method');
+                }
+                this.reload();
+                this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
+            }
+        };
+    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
+})(TF || (TF = {}));
+</script></div><dom-module id="tf-tensorboard">
   <template>
     <paper-dialog with-backdrop="" id="settings">
       <h2>Settings</h2>
@@ -13170,13 +13271,13 @@ Polymer({
         tabs: {
           type: Array,
           readOnly: true,
-          value: TF.TensorBoard.TABS,
+          value: TF.Globals.TABS,
         },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
         if (!this.noHash) {
-          window.location.hash = mode;
+          TF.URIStorage.setString(TF.URIStorage.TAB, this.tabs[0]);
         }
         return mode;
       },
@@ -13212,11 +13313,10 @@ Polymer({
         }.bind(this));
       },
       _getModeFromHash: function() {
-        // Return the mode as it is stored in the hash.
-        var tabName = window.location.hash.trim().slice(1);
+        var tabName = TF.URIStorage.getString(TF.URIStorage.TAB);
         var modeIndex = this.tabs.indexOf(tabName);
         if (modeIndex == -1 && this.modeIndex == null) {
-          // Selecting the first tab as default.
+          // Select the first tab as default.
           this.set('modeIndex', 0);
         }
         if (modeIndex != -1 && modeIndex != this.modeIndex) {
