@@ -1,4 +1,4 @@
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, keep_checkpoint_max=5, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, keep_checkpoint_max=5, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None, max_steps=None)` {#train}
 
 Train a model.
 
@@ -50,6 +50,10 @@ program is terminated with exit code 1.
     evaluates to `NaN`. If false, continue training as if nothing happened.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls fit(steps=100) means 200 training iterations.
+    On the other hand two calls of fit(max_steps=100) means, second call
+    will not do any iteration since first call did all 100 steps.
 
 ##### Returns:
 
@@ -63,4 +67,5 @@ program is terminated with exit code 1.
     look up the latter if not provided explicitly.
 *  <b>`NanLossDuringTrainingError`</b>: If `fail_on_nan_loss` is `True`, and loss ever
     evaluates to `NaN`.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 

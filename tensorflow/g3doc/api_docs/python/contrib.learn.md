@@ -82,7 +82,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#BaseEstimator.fit}
+#### `tf.contrib.learn.BaseEstimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#BaseEstimator.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -103,6 +103,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -112,12 +117,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -
@@ -358,7 +360,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#Estimator.fit}
+#### `tf.contrib.learn.Estimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#Estimator.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -379,6 +381,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -388,12 +395,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -
@@ -976,7 +980,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#DNNClassifier.fit}
+#### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNClassifier.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -997,6 +1001,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -1006,12 +1015,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -
@@ -1356,7 +1362,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#DNNRegressor.fit}
+#### `tf.contrib.learn.DNNRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNRegressor.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -1377,6 +1383,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -1386,12 +1397,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -
@@ -2525,7 +2533,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#LinearClassifier.fit}
+#### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -2546,6 +2554,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -2555,12 +2568,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -
@@ -2887,7 +2897,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#LinearRegressor.fit}
+#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearRegressor.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -2908,6 +2918,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -2917,12 +2932,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -
@@ -4674,7 +4686,7 @@ Run `output_dict` tensors `n` times, with the same `feed_dict` each run.
 
 - - -
 
-### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, keep_checkpoint_max=5, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None)` {#train}
+### `tf.contrib.learn.train(graph, output_dir, train_op, loss_op, global_step_tensor=None, init_op=None, init_feed_dict=None, init_fn=None, log_every_steps=10, supervisor_is_chief=True, supervisor_master='', supervisor_save_model_secs=600, keep_checkpoint_max=5, supervisor_save_summaries_steps=100, feed_fn=None, steps=None, fail_on_nan_loss=True, monitors=None, max_steps=None)` {#train}
 
 Train a model.
 
@@ -4726,6 +4738,10 @@ program is terminated with exit code 1.
     evaluates to `NaN`. If false, continue training as if nothing happened.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls fit(steps=100) means 200 training iterations.
+    On the other hand two calls of fit(max_steps=100) means, second call
+    will not do any iteration since first call did all 100 steps.
 
 ##### Returns:
 
@@ -4739,6 +4755,7 @@ program is terminated with exit code 1.
     look up the latter if not provided explicitly.
 *  <b>`NanLossDuringTrainingError`</b>: If `fail_on_nan_loss` is `True`, and loss ever
     evaluates to `NaN`.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 
