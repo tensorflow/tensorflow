@@ -454,6 +454,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/tests/saver_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/29604599
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
