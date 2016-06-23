@@ -287,7 +287,7 @@ def with_shape(expected_shape, tensor):
         result.set_shape(expected_shape)
       return result
 
-  if (not _is_tensor(expected_shape) and
+  if (not is_tensor(expected_shape) and
       not actual_shape.is_compatible_with(expected_shape)):
     if (len(expected_shape) < 1) and actual_shape.is_compatible_with([1]):
       # TODO(irving): Remove scalar special case.
