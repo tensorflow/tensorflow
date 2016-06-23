@@ -616,7 +616,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
                    ([0,  2, 3, 3], 'width must be >= target + offset'))
 
     for params, err_msg in test_config:
-      self._assertRaises(x, x_shape, *params, err_msg)
+      self._assertRaises(x, x_shape, *params, err_msg=err_msg)
 
 
 class CentralCropTest(test_util.TensorFlowTestCase):
