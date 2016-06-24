@@ -156,7 +156,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       return super(LinearClassifier, self)._get_train_ops(features, targets)
 
     # SDCA currently supports binary classification only.
-    if self._n_classes > 2:
+    if self._target_column.num_label_columns > 2:
       raise ValueError(
           "SDCA does not currently support multi-class classification.")
     global_step = contrib_variables.get_global_step()
@@ -165,16 +165,16 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     logits, columns_to_variables, _ = layers.weighted_sum_from_feature_columns(
         columns_to_tensors=features,
         feature_columns=self._linear_feature_columns,
-        num_outputs=self._num_label_columns(),
+        num_outputs=self._target_column.num_label_columns,
         weight_collections=[self._linear_weight_collection],
         name="linear")
     with ops.control_dependencies([self._centered_bias()]):
-      loss = self._loss(logits, targets, self._get_weight_tensor(features))
+      loss = self._loss(logits, targets, features)
     logging_ops.scalar_summary("loss", loss)
 
     train_ops = self._linear_optimizer.get_train_step(
-        self._linear_feature_columns, self._weight_column_name, "logistic_loss",
-        features, targets, columns_to_variables, global_step)
+        self._linear_feature_columns, self._target_column.weight_column_name,
+        "logistic_loss", features, targets, columns_to_variables, global_step)
 
     return train_ops, loss
 
@@ -247,6 +247,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                optimizer=None,
                gradient_clip_norm=None,
                enable_centered_bias=True,
+               target_dimension=1,
                config=None):
     """Construct a `LinearRegressor` estimator object.
 
@@ -266,6 +267,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
+      target_dimension: dimension of the target for multilabels.
       config: `RunConfig` object to configure the runtime settings.
 
     Returns:
@@ -278,6 +280,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         linear_optimizer=optimizer,
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
+        target_dimension=target_dimension,
         config=config)
     self._feature_columns_inferred = False
 
