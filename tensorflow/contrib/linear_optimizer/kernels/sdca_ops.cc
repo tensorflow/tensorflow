@@ -609,7 +609,7 @@ Status RunTrainStepsForMiniBatch(
   auto train_step = [&](const int64 begin, const int64 end) {
     for (int64 example_index = begin; example_index < end; ++example_index) {
       // Get example id, label, and weight.
-      const DataByExample::Key example_key =
+      const DataByExample::EphemeralKey example_key =
           DataByExample::MakeKey(example_ids(example_index));
       DataByExample::Data data = data_by_example->Get(example_key);
       const float example_weight = example_weights(example_index);
