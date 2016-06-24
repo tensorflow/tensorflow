@@ -7,6 +7,11 @@ Running the Docker container from the Google Cloud repository
 -------------------------------------------------------------
 
     docker run -p 8888:8888 -it --rm b.gcr.io/tensorflow-udacity/assignments:0.5.0
+    
+To ensure that you don't lose changes between docker machine restarts, use the following command:
+
+    docker run -p 8888:8888 -v /Users/username/yourpathto/assignments/:/notebooks -it --rm b.gcr.io/tensorflow-udacity/assignments
+
 
 Accessing the Notebooks
 -----------------------
