@@ -27,6 +27,13 @@ from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 
 class TensorSignatureTest(tf.test.TestCase):
 
+  def testTensorPlaceholderNone(self):
+    self.assertEqual(
+        None, tensor_signature.create_placeholders_from_signatures(None))
+
+  def testTensorSignatureNone(self):
+    self.assertEqual(None, tensor_signature.create_signatures(None))
+
   def testTensorSignatureCompatible(self):
     placeholder_a = tf.placeholder(name='test',
                                    shape=[None, 100],
@@ -41,6 +48,9 @@ class TensorSignatureTest(tf.test.TestCase):
                                    shape=[128, 100],
                                    dtype=tf.int32)
     signatures = tensor_signature.create_signatures(placeholder_a)
+    self.assertTrue(tensor_signature.tensors_compatible(None, None))
+    self.assertFalse(tensor_signature.tensors_compatible(None, signatures))
+    self.assertFalse(tensor_signature.tensors_compatible(placeholder_a, None))
     self.assertTrue(tensor_signature.tensors_compatible(placeholder_a,
                                                         signatures))
     self.assertTrue(tensor_signature.tensors_compatible(placeholder_b,

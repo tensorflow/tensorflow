@@ -290,6 +290,22 @@ tensorflow::ImportNumpy();
 %unignore tensorflow;
 %unignore TF_PRun;
 
+%unignore tensorflow::TF_Reset_wrapper;
+%insert("python") %{
+def TF_Reset(target, containers=None, config=None):
+  from tensorflow.python.framework import errors
+  try:
+    opts = TF_NewSessionOptions(target=target, config=config)
+    with errors.raise_exception_on_not_ok_status() as status:
+      from tensorflow.python.util import compat
+      if containers is None:
+        containers = []
+      TF_Reset_wrapper(
+          opts, [compat.as_bytes(c) for c in containers], status)
+  finally:
+    TF_DeleteSessionOptions(opts)
+%}
+
 %include "tensorflow/python/client/tf_session_helper.h"
 
 %unignoreall

@@ -24,7 +24,20 @@ die() {
   exit 1
 }
 
-LEARN_DIR="${TEST_SRCDIR}/tensorflow/contrib/learn"
+DIR="$TEST_SRCDIR"
+
+# Check if TEST_WORKSPACE is defined, and set as empty string if not.
+if [ -z "${TEST_WORKSPACE-}" ]
+then
+  TEST_WORKSPACE=""
+fi
+
+if [ ! -z "$TEST_WORKSPACE" ]
+then
+  DIR="$DIR"/"$TEST_WORKSPACE"
+fi
+
+LEARN_DIR="${DIR}/tensorflow/contrib/learn"
 RUNNER_BIN="${LEARN_DIR}/runner_flags_test_util"
 
 ${RUNNER_BIN} --output_dir="/tmp" || die "Test failed, default flag values."

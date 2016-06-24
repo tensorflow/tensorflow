@@ -239,7 +239,7 @@ def abs(x, name=None):
   number.
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float`, `double`, `int32`, or
+    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
       `int64`.
     name: A name for the operation (optional).
 
@@ -352,7 +352,7 @@ def complex_abs(x, name=None):
   r"""Computes the complex absolute value of a tensor.
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
-  `float` or `double` that is the absolute value of each element in `x`. All
+  `float32` or `float64` that is the absolute value of each element in `x`. All
   elements in `x` must be complex numbers of the form \\(a + bj\\). The
   absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
 
@@ -414,10 +414,10 @@ def pow(x, y, name=None):
   ```
 
   Args:
-    x: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
-     `complex128`.
-    y: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
-     `complex128`.
+    x: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+     or `complex128`.
+    y: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+     or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -471,7 +471,7 @@ def real(input, name=None):
   """Returns the real part of a complex number.
 
   Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float` or `double` that is the real part of each element in `input`.
+  type `float32` or `float64` that is the real part of each element in `input`.
   All elements in `input` must be complex numbers of the form \\(a + bj\\),
   where *a* is the real part returned by this operation and *b* is the
   imaginary part.
@@ -489,7 +489,7 @@ def real(input, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `float` or `double`.
+    A `Tensor` of type `float32` or `float64`.
   """
   with ops.op_scope([input], name, "Real") as name:
     return gen_math_ops.real(input, Tout=input.dtype.real_dtype, name=name)
@@ -499,7 +499,7 @@ def imag(input, name=None):
   """Returns the imaginary part of a complex number.
 
   Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float` or `double` that is the imaginary part of each element in
+  type `float32` or `float64` that is the imaginary part of each element in
   `input`. All elements in `input` must be complex numbers of the form \\(a +
   bj\\), where *a* is the real part and *b* is the imaginary part returned by
   this operation.
@@ -516,7 +516,7 @@ def imag(input, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type `float` or `double`.
+    A `Tensor` of type `float32` or `float64`.
   """
   with ops.op_scope([input], name, "Imag") as name:
     return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
@@ -533,7 +533,7 @@ def round(x, name=None):
   ```
 
   Args:
-    x: A `Tensor` of type `float` or `double`.
+    x: A `Tensor` of type `float32` or `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1255,7 +1255,7 @@ def matmul(a, b,
   possibly after transposition.
 
   Both matrices must be of the same type. The supported types are:
-  `float`, `double`, `int32`, `complex64`.
+  `float32`, `float64`, `int32`, `complex64`.
 
   Either matrix can be transposed on the fly by setting the corresponding flag
   to `True`. This is `False` by default.
@@ -1279,7 +1279,7 @@ def matmul(a, b,
   ```
 
   Args:
-    a: `Tensor` of type `float`, `double`, `int32` or `complex64`.
+    a: `Tensor` of type `float32`, `float64`, `int32` or `complex64`.
     b: `Tensor` with same type as `a`.
     transpose_a: If `True`, `a` is transposed before multiplication.
     transpose_b: If `True`, `b` is transposed before multiplication.
@@ -1531,7 +1531,7 @@ def sigmoid(x, name=None):
   Specifically, `y = 1 / (1 + exp(-x))`.
 
   Args:
-    x: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
       or `qint32`.
     name: A name for the operation (optional).
 
@@ -1548,7 +1548,7 @@ def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
   Args:
-    x: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
       or `qint32`.
     name: A name for the operation (optional).
 

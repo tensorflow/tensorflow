@@ -20,7 +20,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, strict=True, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -36,6 +36,9 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
+    methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
@@ -297,6 +300,13 @@ See the doc for tf.random_gamma for further detail.
 #### `tf.contrib.distributions.Gamma.std(name='std')` {#Gamma.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.strict` {#Gamma.strict}
+
+Boolean describing behavior on invalid input.
 
 
 - - -

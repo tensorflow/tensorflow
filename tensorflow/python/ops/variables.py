@@ -877,6 +877,15 @@ def local_variables():
   return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
 
 
+def model_variables():
+  """Returns all variables in the MODEL_VARIABLES collection.
+
+  Returns:
+    A list of local Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
+
+
 def moving_average_variables():
   """Returns all variables that maintain their moving averages.
 

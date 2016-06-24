@@ -28,7 +28,7 @@ from tensorflow.python.ops import gen_nn_ops
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
-def _Conv2DBackpropGrad(op, grad):
+def _Conv2DBackpropInputGrad(op, grad):
   """The derivatives for deconvolution.
 
   Args:
@@ -47,6 +47,25 @@ def _Conv2DBackpropGrad(op, grad):
           nn_ops.conv2d(grad, op.inputs[1], op.get_attr("strides"),
                         op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
                         op.get_attr("data_format"))]
+
+
+@ops.RegisterGradient("Conv2DBackpropFilter")
+def _Conv2DBackpropFilterGrad(op, grad):
+  return [
+      nn_ops.conv2d_backprop_input(
+          array_ops.shape(op.inputs[0]), grad, op.inputs[2],
+          op.get_attr("strides"),
+          op.get_attr("padding"),
+          op.get_attr("use_cudnn_on_gpu"),
+          op.get_attr("data_format")),
+      None,
+      nn_ops.conv2d(
+          op.inputs[0], grad,
+          op.get_attr("strides"),
+          op.get_attr("padding"),
+          op.get_attr("use_cudnn_on_gpu"),
+          op.get_attr("data_format"))
+  ]
 
 
 @ops.RegisterGradient("Conv3D")

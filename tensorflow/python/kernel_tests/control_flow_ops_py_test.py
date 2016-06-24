@@ -950,6 +950,18 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertEqual([None], r.get_shape().as_list())
       self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
 
+  def testWhileGrad_BaseShape(self):
+    with self.test_session() as sess:
+      x = tf.placeholder(tf.float32, [None])
+      v0 = tf.constant([2.0, 2.0], name="v")
+      c = lambda v: tf.constant(False)
+      b = lambda v: tf.mul(v, x)
+      r = tf.while_loop(c, b, [v0])
+      y = tf.square(x)
+
+      r = tf.gradients([r, y], x)[0]
+      self.assertAllClose([2.0, 4.0], sess.run(r, feed_dict={x: [1.0, 2.0]}))
+
   def testWhileGrad_MultipleUses(self):
     with self.test_session():
       v = tf.constant(2.0, name="v")

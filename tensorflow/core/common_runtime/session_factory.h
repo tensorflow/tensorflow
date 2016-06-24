@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,6 +32,13 @@ class SessionFactory {
  public:
   virtual Session* NewSession(const SessionOptions& options) = 0;
   virtual bool AcceptsOptions(const SessionOptions& options) = 0;
+
+  // Sessions that support resource containers should override this functions.
+  virtual Status Reset(const SessionOptions& options,
+                       const std::vector<string>& containers) {
+    return errors::Unimplemented("Reset()");
+  }
+
   virtual ~SessionFactory() {}
   static void Register(const string& runtime_type, SessionFactory* factory);
   static Status GetFactory(const SessionOptions& options,

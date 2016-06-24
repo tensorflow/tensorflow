@@ -174,6 +174,13 @@ Standard deviation of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.ContinuousDistribution.strict` {#ContinuousDistribution.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
 #### `tf.contrib.distributions.ContinuousDistribution.variance(name='variance')` {#ContinuousDistribution.variance}
 
 Variance of the distribution.

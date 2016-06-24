@@ -73,6 +73,8 @@ resized_image = tf.image.resize_images(image, 299, 299)
 @@crop_to_bounding_box
 @@extract_glimpse
 
+@@crop_and_resize
+
 ## Flipping and Transposing
 
 @@flip_up_down
@@ -1235,8 +1237,8 @@ def _random_crop_shape(op):
   return [tensor_shape.TensorShape(output_shape)]
 
 
-@ops.RegisterShape("ExtractGlimpse")
-def _ExtractGlimpseShape(op):
+@ops.RegisterShape('ExtractGlimpse')
+def _extract_glimpse_shape(op):
   """Shape function for ExtractGlimpse op."""
   input_shape = op.inputs[0].get_shape().with_rank(4)
   unused_size_shape = op.inputs[1].get_shape().merge_with(
@@ -1253,6 +1255,22 @@ def _ExtractGlimpseShape(op):
     width = None
   return [tensor_shape.TensorShape(
       [input_shape[0], height, width, input_shape[3]])]
+
+
+@ops.RegisterShape('CropAndResize')
+def _crop_and_resize_shape(op):
+  """Shape function for the CropAndResize op."""
+  image_shape = op.inputs[0].get_shape().with_rank(4)
+  box_shape = op.inputs[1].get_shape().with_rank(2)
+  crop_size = tensor_util.constant_value(op.inputs[3])
+  if crop_size is not None:
+    crop_height = crop_size[0]
+    crop_width = crop_size[1]
+  else:
+    crop_height = None
+    crop_width = None
+  return [tensor_shape.TensorShape(
+      [box_shape[0], crop_height, crop_width, image_shape[3]])]
 
 
 __all__ = make_all(__name__)

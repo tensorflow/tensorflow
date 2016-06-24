@@ -1341,6 +1341,8 @@ class FIFOQueueWithTimeoutTest(tf.test.TestCase):
     with self.test_session(
         config=tf.ConfigProto(operation_timeout_in_ms=20)) as sess:
       q = tf.FIFOQueue(10, tf.float32)
+      self.assertEqual(tf.compat.as_bytes(""),
+                       q.queue_ref.op.get_attr("container"))
       dequeued_t = q.dequeue()
 
       # Intentionally do not run any enqueue_ops so that dequeue will block
@@ -1348,6 +1350,16 @@ class FIFOQueueWithTimeoutTest(tf.test.TestCase):
       with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
                                    "Timed out waiting for notification"):
         sess.run(dequeued_t)
+
+
+class QueueContainerTest(tf.test.TestCase):
+
+  def testContainer(self):
+    with tf.Graph().as_default():
+      with tf.container("test"):
+        q = tf.FIFOQueue(10, tf.float32)
+    self.assertEqual(tf.compat.as_bytes("test"),
+                     q.queue_ref.op.get_attr("container"))
 
 
 if __name__ == "__main__":

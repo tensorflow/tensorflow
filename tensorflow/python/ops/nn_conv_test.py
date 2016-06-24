@@ -283,9 +283,40 @@ class Conv2DTransposeTest(tf.test.TestCase):
                                       padding="SAME")
       err = tf.test.compute_gradient_error(
           [x, f], [x_shape, f_shape], output, y_shape)
-    print("DeConv gradient err = %g " % err)
+    print("conv2d_transpose gradient err = %g " % err)
     err_tolerance = 0.0005
     self.assertLess(err, err_tolerance)
+
+
+class Conv2DBackpropFilterGradTest(tf.test.TestCase):
+
+  def testGradient(self):
+    with self.test_session():
+      for padding in ["SAME", "VALID"]:
+        for stride in [1, 2]:
+          np.random.seed(1)
+          in_shape = [5, 8, 6, 4]
+          in_val = tf.constant(
+              2 * np.random.random_sample(in_shape) - 1,
+              dtype=tf.float32)
+          filter_shape = [3, 3, 4, 6]
+          # Make a convolution op with the current settings, just to easily get
+          # the shape of the output.
+          conv_out = tf.nn.conv2d(in_val, tf.zeros(filter_shape),
+                                  [1, stride, stride, 1], padding)
+          out_backprop_shape = conv_out.get_shape().as_list()
+          out_backprop_val = tf.constant(
+              2 * np.random.random_sample(out_backprop_shape) - 1,
+              dtype=tf.float32)
+          output = tf.nn.conv2d_backprop_filter(in_val, filter_shape,
+                                                out_backprop_val,
+                                                [1, stride, stride, 1], padding)
+          err = tf.test.compute_gradient_error([in_val, out_backprop_val],
+                                               [in_shape, out_backprop_shape],
+                                               output, filter_shape)
+          print("conv2d_backprop_filter gradient err = %g " % err)
+          err_tolerance = 1e-3
+          self.assertLess(err, err_tolerance)
 
 
 class Conv1DTest(tf.test.TestCase):

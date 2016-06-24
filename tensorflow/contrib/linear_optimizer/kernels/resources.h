@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -41,10 +42,16 @@ class DataByExample : public ResourceBase {
 
   virtual ~DataByExample();
 
-  using Key = std::pair<uint64, uint32>;
+  // Platform independent, compact and unique (with very high probability)
+  // representation of an example id. 'Ephemeral' because it shouldn't be put
+  // in persistent storage, as its implementation may change in the future.
+  //
+  // The current probability of at least one collision for 1B example_ids is
+  // approximately 10^-21 (ie 2^60 / 2^129).
+  using EphemeralKey = Fprint128;
 
   // Makes a key for the supplied example_id, for compact storage.
-  static Key MakeKey(const string& example_id);
+  static EphemeralKey MakeKey(const string& example_id);
 
   struct Data {
     float dual = 0;
@@ -56,8 +63,8 @@ class DataByExample : public ResourceBase {
   // Accessor and mutator for the entry at Key. Accessor creates an entry with
   // default value (default constructed object) if the key is not present and
   // returns it.
-  Data Get(const Key& key) LOCKS_EXCLUDED(mu_);
-  void Set(const Key& key, const Data& data) LOCKS_EXCLUDED(mu_);
+  Data Get(const EphemeralKey& key) LOCKS_EXCLUDED(mu_);
+  void Set(const EphemeralKey& key, const Data& data) LOCKS_EXCLUDED(mu_);
 
   // Visits all elements in this resource. The view of each element (Data) is
   // atomic, but the entirety of the visit is not (ie the visitor might see
@@ -73,18 +80,15 @@ class DataByExample : public ResourceBase {
   string DebugString() override;
 
  private:
-  struct KeyHash {
-    size_t operator()(const Key& key) const;
-  };
-
   // Backing container.
   //
   // sizeof(EntryPayload) =
   // sizeof(Key) + sizeof(Data) =
-  // 12 + 16 = 28.
+  // 16 + 16 = 32.
   //
-  // So on average we use ~47.5 (28 + 19.5) bytes per entry in this table.
-  using DataByKey = std::unordered_map<Key, Data, KeyHash>;
+  // So on average we use ~51.5 (32 + 19.5) bytes per entry in this table.
+  using EphemeralKeyHasher = Fprint128Hasher;
+  using DataByKey = std::unordered_map<EphemeralKey, Data, EphemeralKeyHasher>;
 
   // TODO(sibyl-Mooth6ku): Benchmark and/or optimize this.
   static const size_t kVisitChunkSize = 100;

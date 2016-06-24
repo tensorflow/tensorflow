@@ -27,6 +27,7 @@ import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
 
 class _Feeder(object):
@@ -151,18 +152,19 @@ class GraphActionsTest(tf.test.TestCase):
   def test_evaluate(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       _, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir)
+      self._assert_summaries(self._output_dir, expected_session_logs=[])
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
           eval_dict={'a': out}, max_steps=1)
       self.assertEqual(({'a': 6.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 6.0}})
+          self._output_dir, expected_summaries={0: {'a': 6.0}},
+          expected_session_logs=[])
 
   def test_evaluate_feed_fn(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
-      self._assert_summaries(self._output_dir)
+      self._assert_summaries(self._output_dir, expected_session_logs=[])
       feeder = _Feeder(in0)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
@@ -170,7 +172,8 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertEqual(3, feeder.step)
       self.assertEqual(({'a': 25.0}, 0), results)
       self._assert_summaries(
-          self._output_dir, expected_summaries={0: {'a': 25.0}})
+          self._output_dir, expected_summaries={0: {'a': 25.0}},
+          expected_session_logs=[])
 
   def test_train_invalid_args(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -198,14 +201,7 @@ class GraphActionsTest(tf.test.TestCase):
   # TODO(ptucker): Resume training from previous ckpt.
   # TODO(ptucker): !supervisor_is_chief
   # TODO(ptucker): Custom init op for training.
-
-  def _expected_train_session_logs(self):
-    return [
-        tf.SessionLog(status=tf.SessionLog.START),
-        tf.SessionLog(
-            status=tf.SessionLog.CHECKPOINT,
-            checkpoint_path='%s/model.ckpt' % self._output_dir),
-    ]
+  # TODO(ptucker): Mock supervisor, and assert all interactions.
 
   def test_train(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -216,10 +212,49 @@ class GraphActionsTest(tf.test.TestCase):
           g, output_dir=self._output_dir, train_op=train_op,
           loss_op=tf.constant(2.0), steps=1)
       self.assertEqual(2.0, loss)
-      self._assert_summaries(
-          self._output_dir,
-          expected_graphs=[g],
-          expected_session_logs=self._expected_train_session_logs())
+      self._assert_summaries(self._output_dir, expected_graphs=[g])
+
+  def test_train_steps_is_incremental(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                steps=15)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(25, step)
+
+  def test_train_max_steps_is_not_incremental(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                max_steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions.train(g, output_dir=self._output_dir,
+                                train_op=train_op, loss_op=tf.constant(2.0),
+                                max_steps=15)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(15, step)
 
   def test_train_loss(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -233,10 +268,7 @@ class GraphActionsTest(tf.test.TestCase):
           g, output_dir=self._output_dir, train_op=train_op,
           loss_op=loss_var.value(), steps=6)
       self.assertEqual(4.0, loss)
-      self._assert_summaries(
-          self._output_dir,
-          expected_graphs=[g],
-          expected_session_logs=self._expected_train_session_logs())
+      self._assert_summaries(self._output_dir, expected_graphs=[g])
 
   def test_train_summaries(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -252,7 +284,6 @@ class GraphActionsTest(tf.test.TestCase):
       self._assert_summaries(
           self._output_dir,
           expected_graphs=[g],
-          expected_session_logs=self._expected_train_session_logs(),
           expected_summaries={1: {'loss': 2.0}})
 
 

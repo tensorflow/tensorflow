@@ -434,6 +434,7 @@ cc_library(
         "//tensorflow/core/kernels:linalg",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:multinomial_op",
         "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:random_ops",
