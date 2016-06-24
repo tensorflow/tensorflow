@@ -7,7 +7,7 @@
 
 include (ExternalProject)
 
-set(eigen_archive_hash "5f86b31739cd")
+set(eigen_archive_hash "33b6158ab608")
 
 set(eigen_INCLUDE_DIRS
     ${CMAKE_CURRENT_BINARY_DIR}
