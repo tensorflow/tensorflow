@@ -169,9 +169,10 @@ allows the user to toggle between various dashboards.
       is: "tf-tensorboard",
       behaviors: [TF.TensorBoard.AutoReloadBehavior],
       properties: {
+
         router: {
           type: Object,
-          value: function() {return TF.Backend.router()},
+          computed: "_makeRouter(demoDir)",
         },
         _backend: {
           type: Object,
@@ -189,6 +190,13 @@ allows the user to toggle between various dashboards.
           type: Boolean,
           value: false
         },
+        // If this is set to a string, TensorBoard will switch to "demo mode" and attempt to load
+        // serialized json data from that directory. You can generate conformant json using
+        // tensorboard/scripts/serialize_tensorboard.py
+        demoDir: {
+          type: String,
+          value: null,
+        },
         tabs: {
           type: Array,
           readOnly: true,
@@ -201,6 +209,13 @@ allows the user to toggle between various dashboards.
           TF.URIStorage.setString(TF.URIStorage.TAB, this.tabs[0]);
         }
         return mode;
+      },
+      _makeRouter: function(demoDir) {
+        if (demoDir == null) {
+          return TF.Backend.router();
+        } else {
+          return TF.Backend.router(demoDir, true);
+        }
       },
       _makeBackend: function(router) {
         return new TF.Backend.Backend(router);

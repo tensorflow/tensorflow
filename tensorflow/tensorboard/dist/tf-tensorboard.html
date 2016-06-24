@@ -13248,9 +13248,13 @@ var TF;
       is: "tf-tensorboard",
       behaviors: [TF.TensorBoard.AutoReloadBehavior],
       properties: {
+        demoDir: {
+          type: String,
+          value: null,
+        },
         router: {
           type: Object,
-          value: function() {return TF.Backend.router()},
+          computed: "_makeRouter(demoDir)",
         },
         _backend: {
           type: Object,
@@ -13280,6 +13284,13 @@ var TF;
           TF.URIStorage.setString(TF.URIStorage.TAB, this.tabs[0]);
         }
         return mode;
+      },
+      _makeRouter: function(demoDir) {
+        if (demoDir == null) {
+          return TF.Backend.Router();
+        } else {
+          return TF.Backend.router(demoDir, true);
+        }
       },
       _makeBackend: function(router) {
         return new TF.Backend.Backend(router);
