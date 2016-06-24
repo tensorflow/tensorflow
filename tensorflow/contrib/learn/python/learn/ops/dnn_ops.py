@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework.python.framework.deprecation import deprecated
 from tensorflow.contrib.learn.python.learn.ops import dropout_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
@@ -28,6 +29,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 
 
+@deprecated('2016-08-01', 'Please use tf.contrib.layers.stack instead.')
 def dnn(tensor_in, hidden_units, activation=nn.relu, dropout=None):
   """Creates fully connected deep neural network subgraph.
 
