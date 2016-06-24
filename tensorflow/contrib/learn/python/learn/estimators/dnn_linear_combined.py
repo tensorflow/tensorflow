@@ -252,7 +252,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
           net = layers.dropout(
               net,
               keep_prob=(1.0 - self._dnn_dropout))
-      self._add_hidden_layer_summary(net, scope)
+      self._add_hidden_layer_summary(net, scope.name)
     with variable_scope.variable_op_scope(
         [net], "dnn_logit",
         partitioner=partitioned_variables.min_max_variable_partitioner(
@@ -479,13 +479,6 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
-#     if n_classes == 2:
-#       target_column = layers.logistic_regression_target(
-#           weight_column_name=weight_column_name)
-#     else:
-#       target_column = layers.multi_class_target(
-#           n_classes=n_classes,
-#           weight_column_name=weight_column_name)
     target_column = layers.multi_class_target(
         n_classes=n_classes,
         weight_column_name=weight_column_name)
@@ -549,7 +542,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     # classification.
     # TODO(zakaria): Move LogisticRegressor.get_default_metrics to metrics
     #   and handle eval metric from targetcolumn.
-    if self._target_column.num_label_columns == 2:
+    if self._target_column.num_label_columns == 1:
       predictions = math_ops.sigmoid(logits)
       targets_float = math_ops.to_float(targets)
       default_metrics = (
