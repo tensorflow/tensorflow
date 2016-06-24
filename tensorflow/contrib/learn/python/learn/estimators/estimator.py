@@ -62,15 +62,15 @@ class ModeKeys(object):
   INFER = 'infer'
 
 
-def _get_input_fn(x, y, batch_size):
+def _get_input_fn(x, y, n_classes, batch_size):
   df = data_feeder.setup_train_data_feeder(
-      x, y, n_classes=None, batch_size=batch_size)
+      x, y, n_classes=n_classes, batch_size=batch_size)
   return df.input_builder, df.get_feed_dict_fn()
 
 
-def _get_predict_input_fn(x, y, batch_size):
+def _get_predict_input_fn(x, y, n_classes, batch_size):
   df = data_feeder.setup_train_data_feeder(
-      x, y, n_classes=None, batch_size=batch_size,
+      x, y, n_classes=n_classes, batch_size=batch_size,
       shuffle=False, epochs=1)
   return df.input_builder, df.get_feed_dict_fn()
 
@@ -138,8 +138,9 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     self._graph = None
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None):
+  def fit(
+      self, x=None, y=None, input_fn=None, n_classes=None, steps=None, batch_size=None,
+      monitors=None, logdir=None):
     """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
@@ -152,11 +153,14 @@ class BaseEstimator(sklearn.BaseEstimator):
          `input_fn` must be `None`.
       input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
         `None`.
+      n_classes: Number of classes in the target.
       steps: Number of steps for which to train model. If `None`, train forever.
       batch_size: minibatch size to use on the input, defaults to first
         dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
         inside the training loop.
+      logdir: the directory to save the log file that can be used for
+        optional visualization.
 
     Returns:
       `self`, for chaining.
@@ -168,11 +172,13 @@ class BaseEstimator(sklearn.BaseEstimator):
       ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
           provided.
     """
+    if logdir is not None:
+      self._model_dir = logdir
     feed_fn = None
     if input_fn is None:
       if x is None:
         raise ValueError('Either x or input_fn must be provided.')
-      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
+      input_fn, feed_fn = _get_input_fn(x, y, n_classes, batch_size)
     elif (x is not None) or (y is not None):
       raise ValueError('Can not provide both input_fn and either of x and y.')
     elif batch_size is not None:
@@ -186,8 +192,8 @@ class BaseEstimator(sklearn.BaseEstimator):
     return self
 
   def partial_fit(
-      self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
-      monitors=None):
+      self, x=None, y=None, input_fn=None, n_classes=None, steps=1, batch_size=None,
+      monitors=None, logdir=None):
     """Incremental fit on a batch of samples.
 
     This method is expected to be called several times consecutively
@@ -208,11 +214,14 @@ class BaseEstimator(sklearn.BaseEstimator):
          `input_fn` must be `None`.
       input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
         `None`.
+      n_classes: Number of classes in the target.
       steps: Number of steps for which to train model. If `None`, train forever.
       batch_size: minibatch size to use on the input, defaults to first
         dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
         inside the training loop.
+      logdir: the directory to save the log file that can be used for
+        optional visualization.
 
     Returns:
       `self`, for chaining.
@@ -221,11 +230,13 @@ class BaseEstimator(sklearn.BaseEstimator):
       ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
           provided.
     """
+    if logdir is not None:
+      self._model_dir = logdir
     feed_fn = None
     if input_fn is None:
       if x is None:
         raise ValueError('Either x or input_fn must be provided.')
-      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
+      input_fn, feed_fn = _get_input_fn(x, y, n_classes, batch_size)
     elif (x is not None) or (y is not None):
       raise ValueError('Can not provide both input_fn and either of x and y.')
     loss = self._train_model(input_fn=input_fn,
@@ -235,15 +246,9 @@ class BaseEstimator(sklearn.BaseEstimator):
     logging.info('Loss for final step: %s.', loss)
     return self
 
-  def evaluate(self,
-               x=None,
-               y=None,
-               input_fn=None,
-               feed_fn=None,
-               batch_size=None,
-               steps=None,
-               metrics=None,
-               name=None):
+  def evaluate(
+      self, x=None, y=None, input_fn=None, n_classes=None, feed_fn=None,
+      batch_size=None, steps=None, metrics=None, name=None):
     """Evaluates given model with provided evaluation data.
 
     Args:
@@ -253,6 +258,7 @@ class BaseEstimator(sklearn.BaseEstimator):
         `None`. If `steps` is `None`, the tensors returned by this should
         generally raise an end-of-input exception when all eval records have
         been returned (typically, 1 epoch over eval data).
+      n_classes: Number of classes in the target.
       feed_fn: Function creating a feed dict every time it is called. Called
         once per iteration.
       batch_size: minibatch size to use on the input, defaults to first
@@ -285,7 +291,7 @@ class BaseEstimator(sklearn.BaseEstimator):
         raise ValueError('Either x or input_fn must be provided.')
       if feed_fn is not None:
         raise ValueError('Cannot provide both x and feed_fn.')
-      input_fn, feed_fn = _get_predict_input_fn(x, y, batch_size)
+      input_fn, feed_fn = _get_predict_input_fn(x, y, n_classes, batch_size)
     elif (x is not None) or (y is not None):
       raise ValueError('Can not provide both input_fn and either of x and y.')
     elif batch_size is not None:
@@ -299,12 +305,13 @@ class BaseEstimator(sklearn.BaseEstimator):
                                 metrics=metrics,
                                 name=name)
 
-  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None):
+  def predict(self, x=None, input_fn=None, n_classes=None, batch_size=None, outputs=None):
     """Returns predictions for given features.
 
     Args:
       x: Features. If set, `input_fn` must be `None`.
       input_fn: Input function. If set, `x` must be `None`.
+      n_classes: Number of classes in the target.
       batch_size: Override default batch size.
       outputs: list of `str`, name of the output to predict.
                If `None`, returns all.
@@ -321,7 +328,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       raise ValueError('Can not provide both input_fn and x.')
     feed_fn = None
     if x is not None:
-      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
+      input_fn, feed_fn = _get_predict_input_fn(x, None, n_classes, batch_size)
     return self._infer_model(input_fn=input_fn, feed_fn=feed_fn,
                              outputs=outputs)
 

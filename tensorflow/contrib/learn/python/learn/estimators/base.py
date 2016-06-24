@@ -124,9 +124,10 @@ class TensorFlowEstimator(estimator.Estimator):
     self.steps = steps
     self.verbose = verbose
     self.continue_training = continue_training
-    self._data_feeder = None
 
-  def fit(self, x, y, steps=None, monitors=None, logdir=None):
+  def fit(
+      self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+      monitors=None, logdir=None):
     """Neural network model from provided `model_fn` and training data.
 
     Note: called first time constructs the graph and initializers
@@ -141,8 +142,12 @@ class TensorFlowEstimator(estimator.Estimator):
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
       iterator that returns array of targets. The training target values
       (class labels in classification, real numbers in regression).
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
       steps: int, number of steps to train.
              If None or 0, train for `self.steps`.
+      batch_size: int, minibatch size to use on the input.
+                  If None or 0, train for `self.batch_size`.
       monitors: List of `BaseMonitor` objects to print training progress and
         invoke early stopping.
       logdir: the directory to save the log file that can be used for
@@ -151,28 +156,24 @@ class TensorFlowEstimator(estimator.Estimator):
     Returns:
       Returns self.
     """
-    if logdir is not None:
-      self._model_dir = logdir
-    self._data_feeder = setup_train_data_feeder(
-        x, y, n_classes=self.n_classes, batch_size=self.batch_size)
-    self._train_model(input_fn=self._data_feeder.input_builder,
-                      feed_fn=self._data_feeder.get_feed_dict_fn(),
-                      steps=steps or self.steps,
-                      monitors=monitors)
-    return self
+    steps = steps or self.steps
+    batch_size = batch_size or self.batch_size
+    return super(TensorFlowEstimator, self).fit(
+        x=x, y=y, input_fn=input_fn, n_classes=self.n_classes, steps=steps,
+        batch_size=batch_size, monitors=monitors, logdir=logdir)
 
-  def evaluate(self, x=None, y=None, input_fn=None, steps=None):
+  def evaluate(
+      self, x=None, y=None, input_fn=None, feed_fn=None,
+      batch_size=None, steps=None, metrics=None, name=None):
     """See base class."""
-    feed_fn = None
-    if x is not None:
-      eval_data_feeder = setup_train_data_feeder(
-          x, y, n_classes=self.n_classes, batch_size=self.batch_size, epochs=1)
-      input_fn, feed_fn = (eval_data_feeder.input_builder,
-                           eval_data_feeder.get_feed_dict_fn())
-    return self._evaluate_model(
-        input_fn=input_fn, feed_fn=feed_fn, steps=steps or self.steps)
+    steps = steps or self.steps
+    batch_size = batch_size or self.batch_size
+    return super(TensorFlowEstimator, self).evaluate(
+        x=x, y=y, input_fn=input_fn, n_classes=self.n_classes,
+        steps=steps, batch_size=batch_size)
 
-  def partial_fit(self, x, y):
+  def partial_fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+          monitors=None, logdir=None):
     """Incremental fit on a batch of samples.
 
     This method is expected to be called several times consecutively
@@ -189,34 +190,42 @@ class TensorFlowEstimator(estimator.Estimator):
       y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
       iterator that returns array of targets. The training target values
       (class label in classification, real numbers in regression).
+      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
+        `None`.
+      steps: int, number of steps to train.
+             If None or 0, train for `self.steps`.
+      batch_size: int, minibatch size to use on the input.
+                  If None or 0, train for `self.batch_size`.
+      monitors: List of `BaseMonitor` objects to print training progress and
+        invoke early stopping.
+      logdir: the directory to save the log file that can be used for
+      optional visualization.
 
     Returns:
       Returns self.
     """
-    return self.fit(x, y)
+    steps = steps or self.steps
+    batch_size = batch_size or self.batch_size
+    return super(TensorFlowEstimator, self).partial_fit(
+        x=x, y=y, n_classes=self.n_classes, input_fn=input_fn, steps=steps,
+        batch_size=batch_size, monitors=monitors, logdir=logdir)
 
-  def _predict(self, x, axis=-1, batch_size=None):
+  def _predict(self, x, input_fn=None, axis=1, batch_size=None, outputs=None):
     if self._graph is None:
       raise NotFittedError()
     # Use the batch size for fitting if the user did not specify one.
-    if batch_size is None:
-      batch_size = self.batch_size
+    batch_size = batch_size or self.batch_size
 
-    predict_data_feeder = setup_train_data_feeder(
-        x, None, n_classes=None,
-        batch_size=batch_size,
-        shuffle=False, epochs=1)
-
-    preds = self._infer_model(
-        input_fn=predict_data_feeder.input_builder,
-        feed_fn=predict_data_feeder.get_feed_dict_fn())
+    preds = super(TensorFlowEstimator, self).predict(
+        x=x, input_fn=input_fn, n_classes=None, batch_size=batch_size,
+        outputs=outputs)
     if self.n_classes > 1 and axis != -1:
       preds = preds.argmax(axis=axis)
     else:
       preds = preds
     return preds
 
-  def predict(self, x, axis=1, batch_size=None):
+  def predict(self, x, input_fn=None, axis=1, batch_size=None, outputs=None):
     """Predict class or regression for `x`.
 
     For a classification model, the predicted class for each sample in `x` is
@@ -224,18 +233,21 @@ class TensorFlowEstimator(estimator.Estimator):
     returned.
     Args:
       x: array-like matrix, [n_samples, n_features...] or iterator.
+      input_fn: Input function. If set, `x` must be `None`.
       axis: Which axis to argmax for classification.
         By default axis 1 (next after batch) is used.
         Use 2 for sequence predictions.
       batch_size: If test set is too big, use batch size to split
         it into mini batches. By default the batch_size member
         variable is used.
+      outputs: list of `str`, name of the output to predict.
+               If `None`, returns all.
 
     Returns:
       y: array of shape [n_samples]. The predicted classes or predicted
       value.
     """
-    return self._predict(x, axis=axis, batch_size=batch_size)
+    return self._predict(x, input_fn=input_fn, axis=axis, batch_size=batch_size, outputs=outputs)
 
   def predict_proba(self, x, batch_size=None):
     """Predict class probability of the input samples `x`.
@@ -395,16 +407,23 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   def transform(self, x):
     """Transform `x` using trained transformer."""
     return(super(TensorFlowBaseTransformer, self).predict(
-        x, axis=1, batch_size=None))
+        x, input_fn=None, axis=1, batch_size=None, outputs=None))
 
-  def fit(self, x, y=None, monitor=None, logdir=None):
+  def fit(
+      self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+      monitors=None, logdir=None):
     """Fit a transformer."""
     return(super(TensorFlowBaseTransformer, self).fit(
-        x, y, monitors=None, logdir=None))
+        x, y, input_fn=input_fn, steps=steps, batch_size=batch_size,
+        monitors=monitors, logdir=logdir))
 
-  def fit_transform(self, x, y=None, monitor=None, logdir=None):
+  def fit_transform(
+      self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+      monitors=None, logdir=None):
     """Fit transformer and transform `x` using trained transformer."""
-    return self.fit(x, y, monitor=None, logdir=None).transform(x)
+    return self.fit(
+        x, y, input_fn=input_fn, steps=steps, batch_size=batch_size,
+        monitors=monitors, logdir=logdir).transform(x)
 
 
 class DeprecatedMixin(object):
