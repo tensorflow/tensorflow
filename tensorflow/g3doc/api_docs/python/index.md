@@ -6,6 +6,7 @@
   * [`add_to_collection`](../../api_docs/python/framework.md#add_to_collection)
   * [`as_dtype`](../../api_docs/python/framework.md#as_dtype)
   * [`bytes`](../../api_docs/python/framework.md#bytes)
+  * [`container`](../../api_docs/python/framework.md#container)
   * [`control_dependencies`](../../api_docs/python/framework.md#control_dependencies)
   * [`convert_to_tensor`](../../api_docs/python/framework.md#convert_to_tensor)
   * [`convert_to_tensor_or_indexed_slices`](../../api_docs/python/framework.md#convert_to_tensor_or_indexed_slices)
