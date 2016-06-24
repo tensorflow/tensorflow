@@ -53,6 +53,7 @@ __all__ = ['avg_pool2d',
            'one_hot_encoding',
            'relu',
            'relu6',
+           'repeat',
            'stack',
            'legacy_fully_connected',
            'legacy_linear',
@@ -630,6 +631,51 @@ def _apply_activation(y, activation_fn, output_collections):
   return y
 
 
+def repeat(inputs, repetitions, layer, *args, **kwargs):
+  """Applies the same layer with the same arguments repeatedly.
+
+  ```python
+    y = repeat(x, 3, conv2d, 64, [3, 3], scope='conv1')
+    # It is equivalent to:
+
+    x = conv2d(x, 64, [3, 3], scope='conv1/conv1_1')
+    x = conv2d(x, 64, [3, 3], scope='conv1/conv1_2')
+    y = conv2d(x, 64, [3, 3], scope='conv1/conv1_3')
+  ```
+
+  If the `scope` argument is not given in `kwargs`, it is set to
+  `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+  objects). If neither `__name__` nor `func.__name__` is available, the
+  layers are called with `scope='stack'`.
+
+  Args:
+    inputs: A `Tensor` suitable for layer.
+    repetitions: Int, number of repetitions.
+    layer: A layer with arguments `(inputs, *args, **kwargs)`
+    *args: Extra args for the layer.
+    **kwargs: Extra kwargs for the layer.
+
+  Returns:
+    a tensor result of applying the layer, repetitions times.
+  Raises:
+    ValueError: if the op is unknown or wrong.
+  """
+  scope = kwargs.pop('scope', None)
+  with variable_scope.variable_op_scope([inputs], scope, 'Repeat'):
+    outputs = inputs
+    if scope is None:
+      if hasattr(layer, '__name__'):
+        scope = layer.__name__
+      elif hasattr(layer, 'func') and hasattr(layer.func, '__name__'):
+        scope = layer.func.__name__  # In case layer is a functools.partial.
+      else:
+        scope = 'repeat'
+    for i in range(repetitions):
+      kwargs['scope'] = scope + '_' + str(i+1)
+      outputs = layer(outputs, *args, **kwargs)
+    return outputs
+
+
 def stack(inputs, layer, stack_args, **kwargs):
   """Builds a stack of layers by applying layer repeatedly using stack_args.
 
@@ -638,15 +684,15 @@ def stack(inputs, layer, stack_args, **kwargs):
   a new scope appended with an increasing number. For example:
 
   ```python
-    stack(x, fully_connected, [32, 64, 128], scope='fc')
+    y = stack(x, fully_connected, [32, 64, 128], scope='fc')
     # It is equivalent to:
 
     x = fully_connected(x, 32, scope='fc/fc_1')
     x = fully_connected(x, 64, scope='fc/fc_2')
-    x = fully_connected(x, 128, scope='fc/fc_3')
+    y = fully_connected(x, 128, scope='fc/fc_3')
   ```
 
-  If the `scope` argument is not given in `stack_args`, it is set to
+  If the `scope` argument is not given in `kwargs`, it is set to
   `layer.__name__`, or `layer.func.__name__` (for `functools.partial`
   objects). If neither `__name__` nor `func.__name__` is available, the
   layers are called with `scope='stack'`.
@@ -668,7 +714,6 @@ def stack(inputs, layer, stack_args, **kwargs):
     raise ValueError('stack_args need to be a list or tuple')
   with variable_scope.variable_op_scope([inputs], scope, 'Stack'):
     outputs = inputs
-    scope = scope
     if scope is None:
       if hasattr(layer, '__name__'):
         scope = layer.__name__
