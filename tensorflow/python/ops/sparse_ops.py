@@ -40,6 +40,7 @@ dimension, and dense along all other dimensions.
 @@sparse_retain
 @@sparse_reset_shape
 @@sparse_fill_empty_rows
+@@sparse_transpose
 
 ## Reduction
 @@sparse_reduce_sum
@@ -1582,3 +1583,40 @@ def _SparseSparseMaximumMinimumShape(op):  # pylint: disable=invalid-name
   op.inputs[4].get_shape().assert_has_rank(1)  # b_values
   op.inputs[5].get_shape().assert_has_rank(1)  # b_shape
   return [tensor_shape.unknown_shape(2), tensor_shape.unknown_shape(1)]
+
+
+def sparse_transpose(sp_input, name=None):
+  """Transposes a `SparseTensor`
+
+  For example, if `sp_input` has shape `[4, 5]` and `indices` / `values`:
+
+      [0, 3]: b
+      [0, 1]: a
+      [3, 1]: d
+      [2, 0]: c
+
+  then the output will be a `SparseTensor` of shape `[5, 4]` and
+  `indices` / `values`:
+
+      [0, 2]: c
+      [1, 0]: a
+      [1, 3]: d
+      [3, 0]: b
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    name: A name prefix for the returned tensors (optional)
+  Returns:
+    A `SparseTensor` with the transposed shape.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  with ops.op_scope([sp_input], name, "SparseTranspose") as name:
+    indices = sp_input.indices
+    transposed_indices = array_ops.concat(1, [indices[:, 1:2], indices[:, 0:1]])
+    dense_shape = sp_input.shape
+    transposed_dense_shape = array_ops.pack([dense_shape[1], dense_shape[0]])
+    transposed_st = ops.SparseTensor(transposed_indices, sp_input.values, transposed_dense_shape)
+    transposed_st = sparse_reorder(transposed_st)
+    return transposed_st

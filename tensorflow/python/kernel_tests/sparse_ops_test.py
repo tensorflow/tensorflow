@@ -743,5 +743,46 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
         tf.sparse_maximum(sp_zero, sp_one).eval()
 
 
+class SparseTransposeTest(tf.test.TestCase):
+
+  def _SparseTensorPlaceholder(self):
+    return tf.SparseTensor(
+        tf.placeholder(tf.int64),
+        tf.placeholder(tf.float64),
+        tf.placeholder(tf.int64))
+
+  def _SparseInputTensorValue(self):
+    ind = np.array([
+        [0, 0],
+        [1, 0], [1, 3], [1, 4],
+        [3, 2], [3, 3]]).astype(np.int64)
+    val = np.array([0, 10, 13, 14, 32, 33]).astype(np.float64)
+
+    shape = np.array([5, 6]).astype(np.int64)
+    return tf.SparseTensorValue(ind, val, shape)
+
+  def _SparseOutputTensorValue(self):
+    ind = np.array([
+        [0, 0], [0, 1],
+        [2, 3],
+        [3, 1], [3, 3],
+        [4, 1]]).astype(np.int64)
+    val = np.array([0, 10, 32, 13, 33, 14]).astype(np.float64)
+
+    shape = np.array([6, 5]).astype(np.int64)
+    return tf.SparseTensorValue(ind, val, shape)
+  
+  def testTranspose(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensorPlaceholder()
+      input_val = self._SparseInputTensorValue()
+      sp_output = tf.sparse_transpose(sp_input)
+      expected_output_val = self._SparseOutputTensorValue()
+      
+      output_val = sess.run(sp_output, {sp_input: input_val})
+      self.assertAllEqual(output_val.indices, expected_output_val.indices)
+      self.assertAllEqual(output_val.values, expected_output_val.values)
+      self.assertAllEqual(output_val.shape, expected_output_val.shape)
+
 if __name__ == "__main__":
   googletest.main()
