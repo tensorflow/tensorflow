@@ -25,6 +25,7 @@ import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
 
 
 class VariablesTestCase(tf.test.TestCase):
@@ -416,6 +417,27 @@ class ObsoleteIsInitializedTest(tf.test.TestCase):
         inited.op.run()
       v.initializer.run()
       inited.op.run()
+
+
+class VariableContainerTest(tf.test.TestCase):
+
+  def testContainer(self):
+    with tf.Graph().as_default():
+      v0 = tf.Variable([0])
+      with tf.container("l1"):
+        v1 = tf.Variable([1])
+        with tf.container("l2"):
+          v2 = tf.Variable([2])
+          special_v = state_ops.variable_op([1], tf.float32, container="l3")
+        v3 = tf.Variable([3])
+      v4 = tf.Variable([4])
+    self.assertEqual(tf.compat.as_bytes(""), v0.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l1"), v1.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l2"), v2.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l3"),
+                     special_v.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l1"), v3.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes(""), v4.op.get_attr("container"))
 
 
 if __name__ == "__main__":

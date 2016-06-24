@@ -52,6 +52,9 @@ class GrpcSession : public Session {
  public:
   static Status Create(const SessionOptions& options,
                        std::unique_ptr<GrpcSession>* out_session);
+  // Resets the resource containers.
+  static Status Reset(const SessionOptions& options,
+                      const std::vector<string>& containers);
 
   ~GrpcSession() override;
 
