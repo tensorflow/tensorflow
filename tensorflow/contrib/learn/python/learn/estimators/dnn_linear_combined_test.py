@@ -374,6 +374,41 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=_input_fn_train, steps=500)
     self.assertFalse('centered_bias_weight' in classifier.get_variable_names())
 
+  def testLinearOnly(self):
+    """Tests that linear-only instantiation works."""
+    def input_fn():
+      return {
+          'age': tf.constant([1]),
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
+    age = tf.contrib.layers.real_valued_column('age')
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        linear_feature_columns=[age, language])
+    classifier.fit(input_fn=input_fn, steps=100)
+    loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    classifier.fit(input_fn=input_fn, steps=200)
+    loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss2, loss1)
+    self.assertLess(loss2, 0.01)
+    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
+  def testDNNOnly(self):
+    """Tests that DNN-only instantiation works."""
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        n_classes=3, dnn_feature_columns=cont_features, dnn_hidden_units=[3, 3])
+
+    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=1000)
+    classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
+    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
 
 class DNNLinearCombinedRegressorTest(tf.test.TestCase):
 
@@ -396,6 +431,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
   def testRegressionContinueTraining(self):
     """Tests regression with restarting training / evaluate."""
     output_dir = tempfile.mkdtemp()
+    # pylint: disable=g-long-lambda
     new_estimator = lambda: tf.contrib.learn.DNNLinearCombinedRegressor(
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
