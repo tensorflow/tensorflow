@@ -45,7 +45,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -63,6 +63,8 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
+*  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
+    and inputs are invalid, correct behavior is not guaranteed.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -255,6 +257,13 @@ Scaling factors of these Student's t distribution(s).
 #### `tf.contrib.distributions.StudentT.std(name='std')` {#StudentT.std}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.strict` {#StudentT.strict}
+
+Boolean describing behavior on invalid input.
 
 
 - - -

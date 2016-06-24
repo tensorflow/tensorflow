@@ -69,13 +69,26 @@ class DataByExampleTest : public ::testing::Test {
 };
 
 TEST_F(DataByExampleTest, MakeKeyIsCollisionResistent) {
-  const DataByExample::Key key = DataByExample::MakeKey("TheExampleId");
-  EXPECT_NE(key.first, key.second);
-  EXPECT_NE(key.first & 0xFFFFFFFF, key.second);
+  const DataByExample::EphemeralKey key =
+      DataByExample::MakeKey("TheExampleId");
+  EXPECT_NE(key.low64, key.high64);
+}
+
+TEST_F(DataByExampleTest, MakeKeyIsPlatformAgnostic) {
+  // This is one way of enforcing the platform-agnostic nature of
+  // DataByExample::MakeKey. Basically we are checking against exact values and
+  // this test could be running across different platforms.
+  // Note that it is fine for expected values to change in the future, if the
+  // implementation of MakeKey changes (ie this is *not* a frozen test).
+  const DataByExample::EphemeralKey key =
+      DataByExample::MakeKey("TheExampleId");
+  EXPECT_EQ(10492632643343118393ULL, key.low64);
+  EXPECT_EQ(1007244271654873956ULL, key.high64);
 }
 
 TEST_F(DataByExampleTest, ElementAccessAndMutation) {
-  const DataByExample::Key key1 = DataByExample::MakeKey("TheExampleId1");
+  const DataByExample::EphemeralKey key1 =
+      DataByExample::MakeKey("TheExampleId1");
   EXPECT_EQ(DataByExample::Data(), data_by_example_->Get(key1));
 
   DataByExample::Data data1;
@@ -83,7 +96,8 @@ TEST_F(DataByExampleTest, ElementAccessAndMutation) {
   data_by_example_->Set(key1, data1);
   EXPECT_EQ(data1, data_by_example_->Get(key1));
 
-  const DataByExample::Key key2 = DataByExample::MakeKey("TheExampleId2");
+  const DataByExample::EphemeralKey key2 =
+      DataByExample::MakeKey("TheExampleId2");
   EXPECT_NE(data_by_example_->Get(key1), data_by_example_->Get(key2));
 }
 

@@ -920,7 +920,7 @@ Computes the percentage of times that predictions matches labels.
 
 ### `tf.contrib.metrics.confusion_matrix(predictions, labels, num_classes=None, name=None)` {#confusion_matrix}
 
-Computes the confusion matrix from predictions and labels
+Computes the confusion matrix from predictions and labels.
 
 Calculate the Confusion Matrix for a pair of prediction and
 label 1-D int arrays.

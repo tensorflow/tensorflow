@@ -192,6 +192,18 @@ Session* NewSession(const SessionOptions& options);
 /// function will return an error status.
 Status NewSession(const SessionOptions& options, Session** out_session);
 
+/// \brief Resets resource containers associated with a target.
+///
+/// `containers` is a vector of string representation of resource container
+/// names. When a resource container is reset, the resources held by the
+/// container will be released. In particular, all Variables in the container
+/// will become undefined.
+///
+/// If Reset succeeds, this function will return `OK()`. Otherwise, this
+/// function will return an error status.
+Status Reset(const SessionOptions& options,
+             const std::vector<string>& containers);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_PUBLIC_SESSION_H_

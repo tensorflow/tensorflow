@@ -17,6 +17,14 @@
 
 cd tensorflow/contrib/makefile
 
+HOST_GENDIR="$(pwd)/gen/protobuf-host"
+mkdir -p "${HOST_GENDIR}"
+if [[ ! -f "./downloads/protobuf/autogen.sh" ]]; then
+    echo "You need to download dependencies before running this script." 1>&2
+    echo "tensorflow/contrib/makefile/download_dependencies.sh" 1>&2
+    exit 1
+fi
+
 GENDIR=`pwd`/gen/protobuf_ios/
 LIBDIR=${GENDIR}lib
 mkdir -p ${LIBDIR}
@@ -36,6 +44,29 @@ LDFLAGS="-stdlib=libc++"
 LIBS="-lc++ -lc++abi"
 
 cd downloads/protobuf
+PROTOC_PATH="${HOST_GENDIR}/bin/protoc"
+if [[ ! -f "${PROTOC_PATH}" || ${clean} == true ]]; then
+  # Try building compatible protoc first on host
+  echo "protoc not found at ${PROTOC_PATH}. Build it first."
+  ./autogen.sh
+  if [ $? -ne 0 ]
+  then
+    echo "./autogen.sh command failed."
+    exit 1
+  fi
+  make clean
+  rm -rf "${HOST_GENDIR}"
+  mkdir -p "${HOST_GENDIR}"
+  ./configure --disable-shared --prefix="${HOST_GENDIR}"
+  make
+  if [ $? -ne 0 ]; then
+    echo "make failed"
+    exit 1
+  fi
+  make install
+else
+  echo "protoc found. Skip building host tools."
+fi
 
 ./autogen.sh
 if [ $? -ne 0 ]
@@ -50,7 +81,7 @@ make distclean
 --host=i386-apple-${OSX_VERSION} \
 --disable-shared \
 --enable-cross-compile \
---with-protoc=protoc \
+--with-protoc="${PROTOC_PATH}" \
 --prefix=${LIBDIR}/iossim_386 \
 --exec-prefix=${LIBDIR}/iossim_386 \
 "CFLAGS=${CFLAGS} \
@@ -78,7 +109,7 @@ make distclean
 --host=x86_64-apple-${OSX_VERSION} \
 --disable-shared \
 --enable-cross-compile \
---with-protoc=protoc \
+--with-protoc="${PROTOC_PATH}" \
 --prefix=${LIBDIR}/iossim_x86_64 \
 --exec-prefix=${LIBDIR}/iossim_x86_64 \
 "CFLAGS=${CFLAGS} \
@@ -104,7 +135,7 @@ make distclean
 ./configure \
 --build=x86_64-apple-${OSX_VERSION} \
 --host=armv7-apple-${OSX_VERSION} \
---with-protoc=protoc \
+--with-protoc="${PROTOC_PATH}" \
 --disable-shared \
 --prefix=${LIBDIR}/ios_arm7 \
 --exec-prefix=${LIBDIR}/ios_arm7 \
@@ -128,7 +159,7 @@ make distclean
 ./configure \
 --build=x86_64-apple-${OSX_VERSION} \
 --host=armv7s-apple-${OSX_VERSION} \
---with-protoc=protoc \
+--with-protoc="${PROTOC_PATH}" \
 --disable-shared \
 --prefix=${LIBDIR}/ios_arm7s \
 --exec-prefix=${LIBDIR}/ios_arm7s \
@@ -152,7 +183,7 @@ make distclean
 ./configure \
 --build=x86_64-apple-${OSX_VERSION} \
 --host=arm \
---with-protoc=protoc \
+--with-protoc="${PROTOC_PATH}" \
 --disable-shared \
 --prefix=${LIBDIR}/ios_arm64 \
 --exec-prefix=${LIBDIR}/ios_arm64 \

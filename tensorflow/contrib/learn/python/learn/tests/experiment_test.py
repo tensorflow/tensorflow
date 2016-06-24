@@ -51,10 +51,12 @@ class ExperimentTest(tf.test.TestCase):
     est = TestEstimator()
     ex = tf.contrib.learn.Experiment(est,
                                      train_input_fn='train_input',
+                                     train_steps='train_steps',
                                      eval_input_fn='eval_input',
                                      eval_metrics='eval_metrics')
-    ex.train(delay_secs=0)
+    fit_args = ex.train(delay_secs=0)
     self.assertEquals(1, est.fit_count)
+    self.assertIn(('max_steps', 'train_steps'), fit_args)
     self.assertEquals(0, est.eval_count)
 
   def test_train_delay(self):

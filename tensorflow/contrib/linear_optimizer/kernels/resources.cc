@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/linear_optimizer/kernels/resources.h"
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -28,31 +27,16 @@ DataByExample::DataByExample(const string& container, const string& solver_uuid)
 DataByExample::~DataByExample() {}
 
 // static
-DataByExample::Key DataByExample::MakeKey(const string& example_id) {
-  // Colision resistant key-generation function. It is safe to use a Hash
-  // function (as opposed to a Fingerprint) since the usage of the resource is
-  // single machine and the Keys are never persisted anywhere.
-  //
-  // The current probability of at least one collision for 1B example_ids is
-  // approximately 10^-11 (ie 2^60 / 2^97).
-  //
-  // TODO(sibyl-Mooth6ku): Investigate using a smaller key space to save memory if
-  // collisions are not much of an issue.
-  //
-  // TODO(sibyl-Mooth6ku): Avoid the double-pass over the data.
-  static const uint64 kSeed1 = 0xDECAFCAFFE;  // Same as Hash64 default seed.
-  static const uint64 kSeed2 = 0xABCDEF0123;  // Anything != kSeed1 will do.
-  return std::make_pair(
-      Hash64(example_id.data(), example_id.size(), kSeed1),
-      Hash64(example_id.data(), example_id.size(), kSeed2) & 0xFFFFFFFF);
+DataByExample::EphemeralKey DataByExample::MakeKey(const string& example_id) {
+  return Fingerprint128(example_id);
 }
 
-DataByExample::Data DataByExample::Get(const Key& key) {
+DataByExample::Data DataByExample::Get(const EphemeralKey& key) {
   mutex_lock l(mu_);
   return data_by_key_[key];
 }
 
-void DataByExample::Set(const Key& key, const Data& data) {
+void DataByExample::Set(const EphemeralKey& key, const Data& data) {
   mutex_lock l(mu_);
   data_by_key_[key] = data;
 }
@@ -97,11 +81,6 @@ Status DataByExample::Visit(
 
 string DataByExample::DebugString() {
   return strings::StrCat("DataByExample(", container_, ", ", solver_uuid_, ")");
-}
-
-size_t DataByExample::KeyHash::operator()(const Key& key) const {
-  // Since key.first is already a Hash64 it suffices.
-  return key.first;
 }
 
 }  // namespace tensorflow

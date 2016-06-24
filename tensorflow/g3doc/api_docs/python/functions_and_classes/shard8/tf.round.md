@@ -12,7 +12,7 @@ tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float` or `double`.
+*  <b>`x`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

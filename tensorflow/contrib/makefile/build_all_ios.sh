@@ -34,14 +34,6 @@ rm -rf tensorflow/contrib/makefile/downloads
 # Pull down the required versions of the frameworks we need.
 tensorflow/contrib/makefile/download_dependencies.sh
 
-# Make sure the installed system version of protobuf is up to date.
-cd tensorflow/contrib/makefile/downloads/protobuf/
-./autogen.sh
-./configure
-make
-sudo make install
-cd ../../../../..
-
 # Compile protobuf for the target iOS device architectures.
 tensorflow/contrib/makefile/compile_ios_protobuf.sh
 

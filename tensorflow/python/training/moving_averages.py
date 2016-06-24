@@ -266,8 +266,10 @@ class ExponentialMovingAverage(object):
     if var_list is None:
       var_list = variables.trainable_variables()
     for var in var_list:
-      if var.dtype.base_dtype not in [dtypes.float32, dtypes.float64]:
-        raise TypeError("The variables must be float or double: %s" % var.name)
+      if var.dtype.base_dtype not in [dtypes.float16, dtypes.float32,
+                                      dtypes.float64]:
+        raise TypeError("The variables must be half, float, or double: %s" %
+                        var.name)
       if var in self._averages:
         raise ValueError("Moving average already computed for: %s" % var.name)
 

@@ -140,6 +140,36 @@ class EvaluationTest(tf.test.TestCase):
                          for name in names_to_metrics}
     self._verify_summaries(output_dir, names_to_values)
 
+  def testSummariesAreFlushedToDiskWithoutGlobalStep(self):
+    output_dir = os.path.join(self.get_temp_dir(), 'flush_test_no_global_step')
+    if tf.gfile.Exists(output_dir):  # For running on jenkins.
+      tf.gfile.DeleteRecursively(output_dir)
+
+    names_to_metrics, names_to_updates = self._create_names_to_metrics(
+        self._predictions, self._labels)
+
+    for k in names_to_metrics:
+      v = names_to_metrics[k]
+      tf.scalar_summary(k, v)
+
+    summary_writer = tf.train.SummaryWriter(output_dir)
+
+    init_op = tf.group(tf.initialize_all_variables(),
+                       tf.initialize_local_variables())
+    eval_op = tf.group(*names_to_updates.values())
+
+    with self.test_session() as sess:
+      slim.evaluation.evaluation(
+          sess,
+          init_op=init_op,
+          eval_op=eval_op,
+          summary_op=tf.merge_all_summaries(),
+          summary_writer=summary_writer)
+
+      names_to_values = {name: names_to_metrics[name].eval()
+                         for name in names_to_metrics}
+    self._verify_summaries(output_dir, names_to_values)
+
   def testWithFeedDict(self):
     accuracy, update_op = slim.metrics.streaming_accuracy(
         self._predictions, self._labels)

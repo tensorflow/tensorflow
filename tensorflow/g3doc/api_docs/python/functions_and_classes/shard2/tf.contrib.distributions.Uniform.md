@@ -3,7 +3,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -33,12 +33,14 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
 *  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
+*  <b>`strict`</b>: Whether to assert that `a > b`. If `strict` is False and inputs
+    are invalid, correct behavior is not guaranteed.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `strict=True`.
 
 
 - - -
@@ -226,6 +228,13 @@ Sample `n` observations from the Uniform Distributions.
 #### `tf.contrib.distributions.Uniform.std(name='std')` {#Uniform.std}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.strict` {#Uniform.strict}
+
+Boolean describing behavior on invalid input.
 
 
 - - -

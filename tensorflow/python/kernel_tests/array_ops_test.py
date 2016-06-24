@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -28,7 +29,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import googletest
 
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):
@@ -383,5 +383,106 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([5, None, 1, 4]))
 
 
+class GradSliceChecker(object):
+  """Tests that we can compute a gradient for var^2."""
+
+  def __init__(self, test, sess, var, varnp):
+    self.test = test
+    self.sess = sess
+    self.val = var * var
+    self.var = var
+    self.varnp = varnp
+
+  def __getitem__(self, spec):
+    val_grad_op = tf.gradients(self.val, self.var)
+    sliceval_grad_op = tf.gradients(
+        array_ops._NewSliceHelper(self.val, spec), self.var)
+    slice1_op = array_ops._NewSliceHelper(val_grad_op, spec)
+    slice2_op = array_ops._NewSliceHelper(sliceval_grad_op, spec)
+    val_grad, sliceval_grad, slice1, slice2 = self.sess.run(
+        [val_grad_op, sliceval_grad_op, slice1_op, slice2_op])
+    np_val_grad = (2 * self.varnp)
+    np_sliceval_grad = np.zeros(self.var.get_shape())
+    np_sliceval_grad[spec] = np.array(val_grad[0])[spec]
+    # make sure np val grad is correct
+    self.test.assertAllEqual(np_val_grad, val_grad[0])
+    # make sure slice gradient is correct
+    self.test.assertAllEqual(np_sliceval_grad, sliceval_grad[0])
+    # make sure val grad and sliceval grad are the same in sliced area
+    self.test.assertAllEqual(slice1, slice2)
+
+
+class StridedSliceGradTest(test_util.TensorFlowTestCase):
+  """Test that strided slice's custom gradient produces correct gradients."""
+
+  def testGradient(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        var = tf.Variable(tf.reshape(tf.range(1, 97, 1), shape=(6, 4, 4)))
+        init = tf.initialize_all_variables()
+        sess.run(init)
+
+        grad = GradSliceChecker(self, sess, var,
+                                np.array(range(1, 97, 1)).reshape((6, 4, 4)))
+        _ = grad[2:6:2, 1:3, 1:3]
+        _ = grad[3:0:-2, 1:3, 1:3]
+        _ = grad[3:0:-2, tf.newaxis, 1:3, 2, tf.newaxis]
+        _ = grad[3:0:-2, 1:3, 2]
+
+
+class BenchmarkSlice(object):
+
+  def __init__(self, tensor):
+    self.tensor = tensor
+
+  def __getitem__(self, x):
+    return array_ops._NewSliceHelper(self.tensor, x)
+
+
+class StridedSliceBenchmark(tf.test.Benchmark):
+  """Benchmark new strided slice operation on non-trivial case."""
+
+  def run_and_time(self, slice_op):
+    tf.initialize_all_variables().run()
+    for _ in range(10):
+      _ = slice_op.eval()
+    iters = 1000
+    t0 = time.time()
+    for _ in range(iters):
+      slice_op.eval()
+    t1 = time.time()
+    self.report_benchmark(iters=iters, wall_time=(t1 - t0) / 1000.0)
+
+  def make_variable(self):
+    n = 256
+    shape = (n, n, n)
+    items = n**3
+    var = tf.Variable(
+        tf.reshape(
+            tf.linspace(1., float(items), items), shape),
+        dtype=tf.float32)
+    return var
+
+  def benchmark_strided_slice_skip(self):
+    with tf.Session():
+      var = self.make_variable()
+      helper = BenchmarkSlice(var)
+      slice_op = helper[::2, ::1, ::2]
+      self.run_and_time(slice_op)
+
+  def benchmark_strided_slice_easy(self):
+    with tf.Session():
+      var = self.make_variable()
+      helper = BenchmarkSlice(var)
+      slice_op = helper[3::1, 3::1, 3::1]
+      self.run_and_time(slice_op)
+
+  def benchmark_slice_easy(self):
+    with tf.Session():
+      var = self.make_variable()
+      slice_op = var[3::1, 3::1, 3::1]
+      self.run_and_time(slice_op)
+
+
 if __name__ == "__main__":
-  googletest.main()
+  tf.test.main()

@@ -62,17 +62,28 @@ class ModeKeys(object):
   INFER = 'infer'
 
 
-def _get_input_fn(x, y, batch_size):
-  df = data_feeder.setup_train_data_feeder(
-      x, y, n_classes=None, batch_size=batch_size)
-  return df.input_builder, df.get_feed_dict_fn()
+def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
+  """Make inputs into input and feed functions."""
+  if input_fn is None:
+    if x is None:
+      raise ValueError('Either x or input_fn must be provided.')
 
+    if contrib_framework.is_tensor(x) or (y is not None and
+                                          contrib_framework.is_tensor(y)):
+      raise ValueError('Inputs cannot be tensors. Please provide input_fn.')
 
-def _get_predict_input_fn(x, y, batch_size):
-  df = data_feeder.setup_train_data_feeder(
-      x, y, n_classes=None, batch_size=batch_size,
-      shuffle=False, epochs=1)
-  return df.input_builder, df.get_feed_dict_fn()
+    df = data_feeder.setup_train_data_feeder(x, y, n_classes=None,
+                                             batch_size=batch_size,
+                                             shuffle=shuffle,
+                                             epochs=epochs)
+    return df.input_builder, df.get_feed_dict_fn()
+
+  if (x is not None) or (y is not None):
+    raise ValueError('Can not provide both input_fn and x or y.')
+  if batch_size is not None:
+    raise ValueError('Can not provide both input_fn and batch_size.')
+
+  return input_fn, feed_fn
 
 
 def _get_arguments(func):
@@ -132,14 +143,15 @@ class BaseEstimator(sklearn.BaseEstimator):
     else:
       self._device_fn = None
 
-    # Features and targets TensorSingature objects.
+    # Features and targets TensorSignature objects.
+    # TODO(wicke): Rename these to something more descriptive
     self._features_info = None
     self._targets_info = None
 
     self._graph = None
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None):
+          monitors=None, max_steps=None):
     """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
@@ -157,31 +169,32 @@ class BaseEstimator(sklearn.BaseEstimator):
         dimension of `x`. Must be `None` if `input_fn` is provided.
       monitors: List of `BaseMonitor` subclass instances. Used for callbacks
         inside the training loop.
+      max_steps: Number of total steps for which to train model. If `None`,
+        train forever. Two calls to `fit(steps=100)` means 200 training
+        iterations. On the other hand, two calls to `fit(max_steps=100)` means
+        that the second call will not do any iteration since first call did
+        all 100 steps.
 
     Returns:
       `self`, for chaining.
 
     Raises:
       ValueError: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-    Raises:
       ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
           provided.
+      ValueError: If both `steps` and `max_steps` are not `None`.
     """
-    feed_fn = None
-    if input_fn is None:
-      if x is None:
-        raise ValueError('Either x or input_fn must be provided.')
-      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
-    elif (x is not None) or (y is not None):
-      raise ValueError('Can not provide both input_fn and either of x and y.')
-    elif batch_size is not None:
-      raise ValueError('Can not provide both input_fn and batch_size.')
+    if (steps is not None) and (max_steps is not None):
+      raise ValueError('Can not provide both steps and max_steps.')
 
+    input_fn, feed_fn = _get_input_fn(x, y, input_fn, feed_fn=None,
+                                      batch_size=batch_size, shuffle=True,
+                                      epochs=None)
     loss = self._train_model(input_fn=input_fn,
                              feed_fn=feed_fn,
                              steps=steps,
-                             monitors=monitors)
+                             monitors=monitors,
+                             max_steps=max_steps)
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -221,19 +234,10 @@ class BaseEstimator(sklearn.BaseEstimator):
       ValueError: If at least one of `x` and `y` is provided, and `input_fn` is
           provided.
     """
-    feed_fn = None
-    if input_fn is None:
-      if x is None:
-        raise ValueError('Either x or input_fn must be provided.')
-      input_fn, feed_fn = _get_input_fn(x, y, batch_size)
-    elif (x is not None) or (y is not None):
-      raise ValueError('Can not provide both input_fn and either of x and y.')
-    loss = self._train_model(input_fn=input_fn,
-                             feed_fn=feed_fn,
-                             steps=steps,
-                             monitors=monitors)
-    logging.info('Loss for final step: %s.', loss)
-    return self
+    logging.warning('The current implementation of partial_fit is not optimized'
+                    'for use in a loop. Consider using fit() instead.')
+    return self.fit(x=x, y=y, input_fn=input_fn, steps=steps,
+                    batch_size=batch_size, monitors=monitors)
 
   def evaluate(self,
                x=None,
@@ -280,16 +284,9 @@ class BaseEstimator(sklearn.BaseEstimator):
           `input_fn` or `feed_fn` is provided.
           Or if `metrics` is not `None` or `dict`.
     """
-    if input_fn is None:
-      if x is None:
-        raise ValueError('Either x or input_fn must be provided.')
-      if feed_fn is not None:
-        raise ValueError('Cannot provide both x and feed_fn.')
-      input_fn, feed_fn = _get_predict_input_fn(x, y, batch_size)
-    elif (x is not None) or (y is not None):
-      raise ValueError('Can not provide both input_fn and either of x and y.')
-    elif batch_size is not None:
-      raise ValueError('Can not provide both input_fn and batch_size.')
+    input_fn, feed_fn = _get_input_fn(x, y, input_fn=input_fn,
+                                      feed_fn=feed_fn, batch_size=batch_size,
+                                      shuffle=False, epochs=1)
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
                        'Got %s.' % metrics)
@@ -315,13 +312,9 @@ class BaseEstimator(sklearn.BaseEstimator):
     Raises:
       ValueError: If x and input_fn are both provided or both `None`.
     """
-    if x is None and input_fn is None:
-      raise ValueError('Either x or input_fn must be provided.')
-    if x is not None and input_fn is not None:
-      raise ValueError('Can not provide both input_fn and x.')
-    feed_fn = None
-    if x is not None:
-      input_fn, feed_fn = _get_predict_input_fn(x, None, batch_size)
+    input_fn, feed_fn = _get_input_fn(x, None, input_fn=input_fn,
+                                      feed_fn=None, batch_size=batch_size,
+                                      shuffle=False, epochs=1)
     return self._infer_model(input_fn=input_fn, feed_fn=feed_fn,
                              outputs=outputs)
 
@@ -403,6 +396,8 @@ class BaseEstimator(sklearn.BaseEstimator):
   def _get_feature_ops_from_example(self, examples_batch):
     """Returns feature parser for given example batch using features info.
 
+    This function requires `fit()` has been called.
+
     Args:
       examples_batch: batch of tf.Example
 
@@ -410,29 +405,36 @@ class BaseEstimator(sklearn.BaseEstimator):
       features: `Tensor` or `dict` of `Tensor` objects.
 
     Raises:
-      ValueError: If `_features_info` attribute is not available.
+      ValueError: If `_features_info` attribute is not available (usually
+      because `fit()` has not been called).
     """
     if self._features_info is None:
-      raise ValueError('Features information is missing.')
+      raise ValueError('Features information missing, was fit() ever called?')
     return tensor_signature.create_example_parser_from_signatures(
         self._features_info, examples_batch)
 
   def _check_inputs(self, features, targets):
     if self._features_info is not None:
+      logging.warning('Given features: %s, required signatures: %s.' %
+                      (str(features), str(self._features_info)))
       if not tensor_signature.tensors_compatible(features, self._features_info):
         raise ValueError('Features are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
                          (str(features), str(self._features_info)))
     else:
       self._features_info = tensor_signature.create_signatures(features)
+      logging.warning('Setting feature info to %s', str(self._features_info))
     if targets is not None:
       if self._targets_info is not None:
+        logging.warning('Given targets: %s, required signatures: %s.' %
+                        (str(targets), str(self._targets_info)))
         if not tensor_signature.tensors_compatible(targets, self._targets_info):
           raise ValueError('Targets are incompatible with given information. '
                            'Given targets: %s, required signatures: %s.' %
                            (str(targets), str(self._targets_info)))
       else:
         self._targets_info = tensor_signature.create_signatures(targets)
+        logging.warning('Setting targets info to %s', str(self._targets_info))
 
   def _train_model(self,
                    input_fn,
@@ -444,7 +446,8 @@ class BaseEstimator(sklearn.BaseEstimator):
                    device_fn=None,
                    monitors=None,
                    log_every_steps=100,
-                   fail_on_nan_loss=True):
+                   fail_on_nan_loss=True,
+                   max_steps=None):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if hasattr(self._config, 'execution_mode'):
       if self._config.execution_mode not in ('all', 'train'):
@@ -502,10 +505,12 @@ class BaseEstimator(sklearn.BaseEstimator):
           supervisor_is_chief=is_chief,
           supervisor_master=self._config.master,
           supervisor_save_model_secs=self._config.save_checkpoints_secs,
+          keep_checkpoint_max=self._config.keep_checkpoint_max,
           feed_fn=feed_fn,
           steps=steps,
           fail_on_nan_loss=fail_on_nan_loss,
-          monitors=monitors)
+          monitors=monitors,
+          max_steps=max_steps)
 
   def _extract_metric_update_ops(self, eval_dict):
     """Separate update operations from metric value operations."""
@@ -664,7 +669,7 @@ class Estimator(BaseEstimator):
       # Check number of arguments of the given function matches requirements.
       model_fn_args = _get_arguments(model_fn)
       if params is not None and 'params' not in model_fn_args:
-        raise ValueError('Estimator\'s model_fn (%s) has less then 4 '
+        raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
                          'arguments, but not None params (%s) are passed.' %
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
@@ -679,11 +684,9 @@ class Estimator(BaseEstimator):
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
       if 'params' in model_fn_args:
-        return self._model_fn(
-            features, targets, mode=mode, params=self.params)
+        return self._model_fn(features, targets, mode=mode, params=self.params)
       else:
-        return self._model_fn(
-            features, targets, mode=mode)
+        return self._model_fn(features, targets, mode=mode)
     return self._model_fn(features, targets)
 
   def _get_train_ops(self, features, targets):

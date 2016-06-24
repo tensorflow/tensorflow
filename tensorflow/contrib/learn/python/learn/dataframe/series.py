@@ -33,6 +33,72 @@ class Series(object):
 
   __metaclass__ = ABCMeta
 
+  @classmethod
+  def register_unary_op(cls, series_method_name):
+    """A decorator that registers `Transform`s as `Series` member functions.
+
+    For example:
+    '''
+    @series.Series.register_unary_op("log")
+    class Logarithm(Transform):
+       ...
+    '''
+    The registered member function takes `args` and `kwargs`. These values will
+    be passed to the `__init__` function for the decorated `Transform`.
+
+    Args:
+      series_method_name: the name under which to register the function.
+
+    Returns:
+      Decorator function.
+
+    Raises:
+      ValueError: another `Transform` is already registered under
+      `series_method_name`.
+    """
+    def register(transform_cls):
+      if hasattr(cls, series_method_name):
+        raise ValueError("Series already has a function registered as %s.",
+                         series_method_name)
+      def _member_func(slf, *args, **kwargs):
+        return transform_cls(*args, **kwargs)([slf])[0]
+      setattr(cls, series_method_name, _member_func)
+      return transform_cls
+    return register
+
+  @classmethod
+  def register_binary_op(cls, series_method_name):
+    """A decorator that registers `Transform`s as `Series` member functions.
+
+    For example:
+    '''
+    @series.Series.register_binary_op("__add___")
+    class Sum(Transform):
+       ...
+    '''
+    The registered member function takes `args` and `kwargs`. These values will
+    be passed to the `__init__` function for the decorated `Transform`.
+
+    Args:
+      series_method_name: the name under which to register the function.
+
+    Returns:
+      Decorator function.
+
+    Raises:
+      ValueError: another `Transform` is already registered under
+      `series_method_name`.
+    """
+    def register(transform_cls):
+      if hasattr(cls, series_method_name):
+        raise ValueError("Series already has a function registered as %s.",
+                         series_method_name)
+      def _member_func(slf, b, *args, **kwargs):
+        return transform_cls(*args, **kwargs)([slf, b])[0]
+      setattr(cls, series_method_name, _member_func)
+      return transform_cls
+    return register
+
   def build(self, cache):
     """Returns a Tensor."""
     raise NotImplementedError()

@@ -22,6 +22,7 @@
 @@is_numeric_tensor
 @@is_non_decreasing
 @@is_strictly_increasing
+@@is_tensor
 @@reduce_sum_n
 @@safe_embedding_lookup_sparse
 @@with_shape

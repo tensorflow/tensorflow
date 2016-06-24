@@ -108,6 +108,16 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "bernoulli_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bernoulli_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "mvn_test",
     size = "small",
     srcs = ["python/kernel_tests/mvn_test.py"],

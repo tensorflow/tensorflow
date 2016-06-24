@@ -88,7 +88,7 @@ class Experiment(object):
       time.sleep(delay_secs)
 
     return self._estimator.fit(input_fn=self._train_input_fn,
-                               steps=self._train_steps,
+                               max_steps=self._train_steps,
                                monitors=self._train_monitors)
 
   def evaluate(self, delay_secs=0):

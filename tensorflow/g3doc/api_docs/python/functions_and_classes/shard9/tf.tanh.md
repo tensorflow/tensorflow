@@ -5,7 +5,7 @@ Computes hyperbolic tangent of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
