@@ -125,16 +125,13 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
 
 // Shared code that is not dependent on the type of T.  We do this to reduce
 // code size by not duplicating all this for all T (float, double, int32, etc.)
-static void SharedValidation(OpKernelContext* context, int32 begin_mask_spec,
-                             int32 end_mask_spec, const int32 ellipse_mask,
-                             int32 new_axis_mask, int32 shrink_axis_mask,
-                             TensorShape* processing_shape,
-                             TensorShape* final_shape, bool* is_identity,
-                             bool* is_simple_slice, bool* slice_dim0,
-                             gtl::InlinedVector<int64, 4>* begin,
-                             gtl::InlinedVector<int64, 4>* end,
-                             gtl::InlinedVector<int64, 4>* strides) {
-  const Tensor& input = context->input(0);
+static void SharedValidation(
+    OpKernelContext* context, const TensorShape& input_shape,
+    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipse_mask,
+    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
+    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
+    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
+    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides) {
   const Tensor& begin_tensor = context->input(1);
   const Tensor& end_tensor = context->input(2);
   const Tensor& strides_tensor = context->input(3);
@@ -201,8 +198,8 @@ static void SharedValidation(OpKernelContext* context, int32 begin_mask_spec,
   // we need to produce the missing begin_mask for the the first two
   // dimensions i.e. from begin_mask_spec=0, end_mask_spec=2
   // we achieve begin_mask=6, end_mask=7
-  StridedSliceDenseSpec dense_spec = {input.dims(), 0,    0,
-                                      *begin,       *end, *strides};
+  StridedSliceDenseSpec dense_spec = {
+      input_shape.dims(), 0, 0, *begin, *end, *strides};
 
   if (begin_tensor.dtype() == DT_INT32) {
     BuildDenseSpec<int32>(sparse_spec, &dense_spec);
@@ -221,7 +218,7 @@ static void SharedValidation(OpKernelContext* context, int32 begin_mask_spec,
     int64& begin_i = (*begin)[i];
     int64& end_i = (*end)[i];
     int64& stride_i = (*strides)[i];
-    int64 dim_i = input.dim_size(i);
+    int64 dim_i = input_shape.dim_size(i);
     OP_REQUIRES(context, stride_i != 0,
                 errors::InvalidArgument("strides[", i, "] must be non-zero"));
 
@@ -245,9 +242,9 @@ static void SharedValidation(OpKernelContext* context, int32 begin_mask_spec,
     // Update optimization values
     (*is_simple_slice) &= stride_i == 1;
     bool take_all_in_dimension =
-        stride_i == 1 && begin_i == 0 && end_i == input.dim_size(i);
+        stride_i == 1 && begin_i == 0 && end_i == input_shape.dim_size(i);
     (*is_identity) &= take_all_in_dimension;
-    (*slice_dim0) &= (i == 0) || take_all_in_dimension;
+    (*slice_dim0) &= (i == 0 && stride_i == 1) || take_all_in_dimension;
 
     // Compute the processing shape (the intermediate Eigen will produce)
     int64 interval_length = end_i - begin_i;
@@ -295,10 +292,10 @@ class StridedSliceOp : public OpKernel {
     gtl::InlinedVector<int64, 4> end;
     gtl::InlinedVector<int64, 4> strides;
 
-    SharedValidation(context, begin_mask, end_mask, ellipse_mask, new_axis_mask,
-                     shrink_axis_mask, &processing_shape, &final_shape,
-                     &is_identity, &is_simple_slice, &slice_dim0, &begin, &end,
-                     &strides);
+    SharedValidation(context, context->input(0).shape(), begin_mask, end_mask,
+                     ellipse_mask, new_axis_mask, shrink_axis_mask,
+                     &processing_shape, &final_shape, &is_identity,
+                     &is_simple_slice, &slice_dim0, &begin, &end, &strides);
     if (!context->status().ok()) return;
 
     const Tensor& input = context->input(0);
@@ -411,14 +408,109 @@ class StridedSliceOp : public OpKernel {
   int32 ellipse_mask, new_axis_mask, shrink_axis_mask;
 };
 
-#define REGISTER_STRIDED_SLICE(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("StridedSlice")           \
-                              .Device(DEVICE_CPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("begin")       \
-                              .HostMemory("end")         \
-                              .HostMemory("strides"),    \
-                          StridedSliceOp<CPUDevice, type>)
+template <typename Device, typename T>
+class StridedSliceGradOp : public OpKernel {
+ public:
+  explicit StridedSliceGradOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("begin_mask", &begin_mask));
+    OP_REQUIRES_OK(context, context->GetAttr("end_mask", &end_mask));
+    OP_REQUIRES_OK(context, context->GetAttr("ellipse_mask", &ellipse_mask));
+    OP_REQUIRES_OK(context, context->GetAttr("new_axis_mask", &new_axis_mask));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    TensorShape processing_shape, final_shape;
+    bool is_identity = true;
+    bool slice_dim0 = true;
+    bool is_simple_slice = true;
+    gtl::InlinedVector<int64, 4> begin;
+    gtl::InlinedVector<int64, 4> end;
+    gtl::InlinedVector<int64, 4> strides;
+
+    TensorShape input_shape;
+    const Tensor& input_shape_tensor = context->input(0);
+    OP_REQUIRES(
+        context, input_shape_tensor.dims() == 1,
+        errors::InvalidArgument("shape must be 1-D, got shape.shape = ",
+                                input_shape_tensor.shape().DebugString()));
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                input_shape_tensor.vec<int32>(), &input_shape));
+
+    SharedValidation(context, input_shape, begin_mask, end_mask, ellipse_mask,
+                     new_axis_mask, shrink_axis_mask, &processing_shape,
+                     &final_shape, &is_identity, &is_simple_slice, &slice_dim0,
+                     &begin, &end, &strides);
+
+    if (!context->status().ok()) return;
+
+    // const int input_dims = input.dims();
+    const int processing_dims = processing_shape.dims();
+    Tensor* result = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_shape, &result));
+
+#define HANDLE_DIM(NDIM)                                                 \
+  if (processing_dims == NDIM) {                                         \
+    HandleGradCase<NDIM>(context, begin, end, strides, processing_shape, \
+                         is_simple_slice, result);                       \
+    return;                                                              \
+  }
+
+    HANDLE_DIM(1);
+    HANDLE_DIM(2);
+    HANDLE_DIM(3);
+    HANDLE_DIM(4);
+    HANDLE_DIM(5);
+    HANDLE_DIM(6);
+
+#undef HANDLE_DIM
+  }
+
+ private:
+  template <int NDIM>
+  void HandleGradCase(OpKernelContext* context,
+                      const gtl::ArraySlice<int64>& begin,
+                      const gtl::ArraySlice<int64>& end,
+                      const gtl::ArraySlice<int64>& strides,
+                      const TensorShape& processing_shape, bool is_simple_slice,
+                      Tensor* result) {
+    gtl::InlinedVector<int64, 4> processing_dims = processing_shape.dim_sizes();
+
+    Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
+    Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
+    Eigen::DSizes<Eigen::DenseIndex, NDIM> strides_di;
+    for (int i = 0; i < NDIM; ++i) {
+      begin_di[i] = begin[i];
+      end_di[i] = end[i];
+      strides_di[i] = strides[i];
+    }
+    functor::StridedSliceGrad<Device, T, NDIM>()(
+        context->eigen_device<Device>(), result->tensor<T, NDIM>(),
+        context->input(4).shaped<T, NDIM>(processing_dims), begin_di, end_di,
+        strides_di);
+  }
+
+  int32 begin_mask, end_mask;
+  int32 ellipse_mask, new_axis_mask, shrink_axis_mask;
+};
+
+#define REGISTER_STRIDED_SLICE(type)                       \
+  REGISTER_KERNEL_BUILDER(Name("StridedSlice")             \
+                              .Device(DEVICE_CPU)          \
+                              .TypeConstraint<type>("T")   \
+                              .HostMemory("begin")         \
+                              .HostMemory("end")           \
+                              .HostMemory("strides"),      \
+                          StridedSliceOp<CPUDevice, type>) \
+  REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")         \
+                              .Device(DEVICE_CPU)          \
+                              .TypeConstraint<type>("T")   \
+                              .HostMemory("begin")         \
+                              .HostMemory("end")           \
+                              .HostMemory("strides"),      \
+                          StridedSliceGradOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
 REGISTER_STRIDED_SLICE(bfloat16);
@@ -445,7 +537,15 @@ namespace functor {
       typename TTypes<T, NDIM>::ConstTensor input,                 \
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,       \
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);        \
-  extern template struct Slice<GPUDevice, T, NDIM>;
+  extern template struct Slice<GPUDevice, T, NDIM>;                \
+  template <>                                                      \
+  void StridedSliceGrad<GPUDevice, T, NDIM>::operator()(           \
+      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \
+      typename TTypes<T, NDIM>::ConstTensor input,                 \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& start,         \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& stop,          \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
+  extern template struct StridedSliceGrad<GPUDevice, T, NDIM>;
 
 #define DECLARE_FOR_N(T)  \
   DECLARE_GPU_SPEC(T, 1); \
@@ -470,7 +570,15 @@ DECLARE_FOR_N(int32);
                               .HostMemory("end")               \
                               .HostMemory("strides")           \
                               .TypeConstraint<int32>("Index"), \
-                          StridedSliceOp<GPUDevice, type>)
+                          StridedSliceOp<GPUDevice, type>)     \
+  REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")             \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("begin")             \
+                              .HostMemory("end")               \
+                              .HostMemory("strides")           \
+                              .TypeConstraint<int32>("Index"), \
+                          StridedSliceGradOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 

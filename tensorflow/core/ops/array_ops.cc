@@ -1045,6 +1045,33 @@ begin_mask: a bitmask where a bit i being 1 means to ignore the begin
 end_mask: analogous to `begin_mask`
 )doc");
 
+REGISTER_OP("StridedSliceGrad")
+    .Input("shape: Index")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Input("dy: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipse_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .Doc(R"doc(
+Returns the gradient of `StridedSlice`.
+
+Since `StridedSlice` cuts out pieces of its `input` which is size
+`shape`, its gradient will have the same shape (which is passed here
+as `shape`). The gradient will be zero in any element that the slice
+does not select.
+
+Arguments are the same as StridedSliceGrad with the exception that
+`dy` is the input gradient to be propagated and `shape` is the 
+shape of `StridedSlice`'s `input`.
+)doc");
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Tile")
     .Input("input: T")

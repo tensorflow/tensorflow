@@ -149,6 +149,27 @@ def _SliceGrad(op, grad):
   return array_ops.pad(grad, paddings), None, None
 
 
+@ops.RegisterGradient("StridedSlice")
+def _StridedSliceGrad(op, grad):
+  """Gradient for unpack op."""
+  x = array_ops.shape(op.inputs[0])
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+
+  return array_ops.strided_slice_grad(
+      x,
+      begin,
+      end,
+      strides,
+      grad,
+      begin_mask=op.get_attr("begin_mask"),
+      end_mask=op.get_attr("end_mask"),
+      ellipse_mask=op.get_attr("ellipse_mask"),
+      new_axis_mask=op.get_attr("new_axis_mask"),
+      shrink_axis_mask=op.get_attr("shrink_axis_mask")), None, None, None
+
+
 @ops.RegisterGradient("Split")
 def _SplitGrad(op, *grads):
   return None, array_ops.concat(op.inputs[0], list(grads))

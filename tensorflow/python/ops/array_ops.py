@@ -1441,6 +1441,12 @@ def _compute_size_of_strided_dim(spec, size):
     return unknown  # unknown because stride is unknown
 
 
+@ops.RegisterShape("StridedSliceGrad")
+def _StridedSliceGradShape(op):
+  """Shape function for gradient of array_ops.slice."""
+  return [tensor_util.constant_value(op.inputs[0])]
+
+
 @ops.RegisterShape("StridedSlice")
 def _StridedSliceShape(op):
   """Shape function for array_ops.slice."""
