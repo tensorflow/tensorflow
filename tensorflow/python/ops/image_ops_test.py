@@ -1279,6 +1279,29 @@ class PngTest(test_util.TensorFlowTestCase):
                          [None, None, channels or None])
 
 
+class GifTest(test_util.TensorFlowTestCase):
+
+  def testExisting(self):
+    # Read some real GIFs, converting to different channel numbers
+    prefix = 'tensorflow/core/lib/gif/testdata/'
+    inputs = (3, 'cock.gif'),
+    for channels_in, filename in inputs:
+      for channels in 0, 1, 3, 4:
+        with self.test_session() as sess:
+          gif0 = io_ops.read_file(prefix + filename)
+          image0 = image_ops.decode_gif(gif0, channels=channels)
+          gif0, image0 = sess.run([gif0, image0])
+          self.assertEqual(image0.shape, (55, 63, 3))
+
+  def testShape(self):
+      with self.test_session() as sess:
+        gif = constant_op.constant('nonsense')
+        for channels in 0, 1, 3:
+          image = image_ops.decode_gif(gif, channels=channels)
+          self.assertEqual(image.get_shape().as_list(),
+                           [None, None, channels or None])
+
+
 class ConvertImageTest(test_util.TensorFlowTestCase):
 
   def _convert(self, original, original_dtype, output_dtype, expected):

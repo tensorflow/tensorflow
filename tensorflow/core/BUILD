@@ -576,6 +576,7 @@ filegroup(
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
+            "lib/gif/**/*",
             "util/checkpoint_reader.*",
             "util/events_writer.*",
             "util/reporter.*",
@@ -586,6 +587,7 @@ filegroup(
             "platform/google/**/*",
             "platform/jpeg.*",
             "platform/png.*",
+            "platform/gif.*",
             "platform/stream_executor.*",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/**/*",
@@ -828,6 +830,7 @@ cc_library(
         "lib/io/zlib_outputbuffer.h",
         "lib/jpeg/jpeg_handle.h",
         "lib/png/png_io.h",
+        "lib/gif/gif_io.h",
         "lib/random/random.h",
         "lib/random/random_distributions.h",
         "lib/random/weighted_picker.h",
@@ -1840,6 +1843,8 @@ filegroup(
         "lib/jpeg/testdata/corrupt34_3.jpg",
         # -- hand-edited variant: stops after a restart marker
         "lib/jpeg/testdata/corrupt34_4.jpg",
+        # GIF data
+        "lib/gif/testdata/cock.gif",
     ],
 )
 
