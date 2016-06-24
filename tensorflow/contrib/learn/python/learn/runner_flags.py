@@ -32,5 +32,4 @@ flags.DEFINE_string('schedule', 'local_run',
                     'instance returned by the function passed to the '
                     'run() call')
 
-# TODO(ispir): Remove once we migrated customer pipilines.
-flags.DEFINE_string('execution_mode', 'all', 'Deprecated. Use FLAGS.schedule')
+flags.DEFINE_integer('task', 0, 'Task id of the replica running the training.')
