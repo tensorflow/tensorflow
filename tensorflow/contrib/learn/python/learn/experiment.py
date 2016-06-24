@@ -88,7 +88,7 @@ class Experiment(object):
 
     if delay_secs is None:
       task_id = 0
-      if "task" in FLAGS:
+      if hasattr(FLAGS, "task"):
         task_id = FLAGS.task
       delay_secs = min(60, task_id*5)
 
