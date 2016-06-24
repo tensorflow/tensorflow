@@ -33,7 +33,7 @@ First, clone this TensorFlow repository.
 You will need to download all dependencies as well.  We have provided a script
 that does so, to be run (as with all commands) at the root of the repository:
 
- ```bash
+```bash
 tensorflow/contrib/makefile/download_dependencies.sh
 ```
 
@@ -48,7 +48,7 @@ _Note: This has only been tested on Ubuntu._
 
 Don't forget to download dependencies if you haven't already:
 
- ```bash
+```bash
 tensorflow/contrib/makefile/download_dependencies.sh
 ```
 
@@ -242,6 +242,19 @@ compile_ios_tensorflow.sh
 In XCode, you will need to use -force_load in the linker flags
 section of the build settings to pull in the global constructors that are used
 to register ops and kernels. 
+
+#### Optimization
+ 
+The `compile_ios_tensorflow.sh` script can take optional command-line arguments.
+The first argument will be passed as a C++ optimization flag and defaults to
+debug mode. If you are concerned about performance or are working on a release
+build, you would likely want a higher optimization setting, like so:
+ 
+```bash
+compile_ios_tensorflow.sh "-Os"
+```
+
+For other variations of valid optimization flags, see [clang optimization levels](http://stackoverflow.com/questions/15548023/clang-optimization-levels).
 
 ## Raspberry Pi
 
