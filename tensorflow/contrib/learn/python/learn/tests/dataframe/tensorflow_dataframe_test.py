@@ -123,7 +123,6 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
     """Test construction from Pandas DataFrame."""
     if not HAS_PANDAS:
       return
-
     pandas_df = pd.DataFrame({"sparrow": range(10), "ostrich": 1})
     tensorflow_df = df.TensorFlowDataFrame.from_pandas(pandas_df,
                                                        batch_size=10,
@@ -176,7 +175,6 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
   def testFromCSV(self):
     if not HAS_PANDAS:
       return
-
     num_batches = 100
     batch_size = 8
     enqueue_size = 7
@@ -214,6 +212,8 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
     self.assertEqual(expected_num_batches, actual_num_batches)
 
   def testFromCSVWithFeatureSpec(self):
+    if not HAS_PANDAS:
+      return
     num_batches = 100
     batch_size = 8
 

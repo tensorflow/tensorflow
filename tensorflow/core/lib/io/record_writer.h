@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#if !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#endif  // IS_SLIM_BUILD
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -34,8 +36,10 @@ class RecordWriterOptions {
   enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
   CompressionType compression_type = NONE;
 
-  // Options specific to zlib compression.
+// Options specific to zlib compression.
+#if !defined(IS_SLIM_BUILD)
   ZlibCompressionOptions zlib_options;
+#endif  // IS_SLIM_BUILD
 };
 
 class RecordWriter {
@@ -54,9 +58,11 @@ class RecordWriter {
   // RecordWriter to the WritableFile. Does *not* flush the
   // WritableFile.
   Status Flush() {
+#if !defined(IS_SLIM_BUILD)
     if (zlib_output_buffer_) {
       return zlib_output_buffer_->Flush();
     }
+#endif  // IS_SLIM_BUILD
 
     return Status::OK();
   }
@@ -64,7 +70,9 @@ class RecordWriter {
  private:
   WritableFile* const dest_;
   RecordWriterOptions options_;
+#if !defined(IS_SLIM_BUILD)
   std::unique_ptr<ZlibOutputBuffer> zlib_output_buffer_;
+#endif  // IS_SLIM_BUILD
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordWriter);
 };

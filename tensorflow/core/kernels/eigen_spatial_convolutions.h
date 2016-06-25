@@ -837,7 +837,6 @@ struct gemm_pack_rhs<
     EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
 
     const Index packet_cols4 = (cols / 4) * 4;
-    const bool non_standard_patches = rhs.nonStandardPatches();
 
     for (Index j2 = 0; j2 < packet_cols4; j2 += 4) {
       const SubMapper dm0 = rhs.getLinearMapper(0, j2 + 0);

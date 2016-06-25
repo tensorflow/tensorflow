@@ -15,7 +15,7 @@
 r"""Transforms a float-trained graph into an equivalent quantized version.
 
 An example of command-line usage is:
-bazel build tensorflow/contrib/quantization/tools/:quantize_graph \
+bazel build tensorflow/contrib/quantization/tools:quantize_graph \
 && bazel-bin/tensorflow/contrib/quantization/tools/quantize_graph \
 --input=tensorflow_inception_graph.pb
 --output_node_names="softmax2" --print_nodes --output=/tmp/quantized_graph.pb \

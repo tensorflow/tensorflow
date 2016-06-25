@@ -72,7 +72,7 @@ string GetCudnnVersion() { return ""; }
 }
 
 /* static */ port::Status DsoLoader::GetLibcudaDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cuda", ""),
+  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cuda", "1"),
                                   GetCudaDriverLibraryPath()),
                       dso_handle);
 }

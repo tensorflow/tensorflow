@@ -1,3 +1,4 @@
+
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,8 +22,10 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.platform import tf_logging as logging
+
+from tensorflow.contrib.layers import dropout as contrib_dropout
 
 # Key to collect dropout probabilities.
 DROPOUTS = "dropouts"
@@ -30,7 +33,8 @@ DROPOUTS = "dropouts"
 
 def dropout(tensor_in, prob, name=None):
   """Adds dropout node and stores probability tensor into graph collection.
-
+  This is deprecated. Please use contrib.layers.dropout instead. 
+  
   Args:
     tensor_in: Input tensor.
     prob: Float or Tensor.
@@ -42,10 +46,12 @@ def dropout(tensor_in, prob, name=None):
   Raises:
     ValueError: If `keep_prob` is not in `(0, 1]`.
   """
+  logging.warning("learn.ops.dropout is deprecated, \
+    please use contrib.layers.dropout.")
   with ops.op_scope([tensor_in], name, "dropout") as name:
     if isinstance(prob, float):
       prob = vs.get_variable("prob", [],
                              initializer=init_ops.constant_initializer(prob),
                              trainable=False)
     ops.add_to_collection(DROPOUTS, prob)
-    return nn.dropout(tensor_in, prob)
+    return contrib_dropout(tensor_in, keep_prob=prob)
