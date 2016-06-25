@@ -13,7 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-# This script excercises the examples of using SkFlow.
+# This script exercises the examples of using SkFlow.
 
 DIR="$TEST_SRCDIR"
 
