@@ -56,7 +56,7 @@ def cnn_model(x, y):
                                             FILTER_SHAPE1, padding='VALID')
     # Add a RELU for non linearity.
     conv1 = tf.nn.relu(conv1)
-    # Max pooling across output of Convlution+Relu.
+    # Max pooling across output of Convolution+Relu.
     pool1 = tf.nn.max_pool(conv1, ksize=[1, POOLING_WINDOW, 1, 1],
         strides=[1, POOLING_STRIDE, 1, 1], padding='SAME')
     # Transpose matrix so that n_filters from convolution becomes width.
