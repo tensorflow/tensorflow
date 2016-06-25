@@ -1780,45 +1780,38 @@ def _ReshapeShape(op):
       num_elements *= dim
   else:
     num_elements = tensor_shape.Dimension(None)
-  new_shape_shape = op.inputs[1].get_shape().with_rank(1)
-  new_shape = tensor_util.constant_value(op.inputs[1])
-  if new_shape is None:
-    # Attempt to infer the rank of the output from the length of
-    # new_shape.
-    return [tensor_shape.unknown_shape(ndims=new_shape_shape[0].value)]
-  new_shape = np.reshape(new_shape, -1).tolist()
-  if -1 not in new_shape:
+  new_shape = tensor_util.constant_value_as_shape(op.inputs[1])
+  if new_shape.ndims is None:
+    # We have no information about the shape of the output.
+    return [new_shape]
+  if None not in new_shape.as_list():
     # The new shape is fully defined.
     if (num_elements.value is not None
         and num_elements.value != np.prod(new_shape)):
       raise ValueError(
           "Cannot reshape a tensor with %d elements to shape %s (%d elements)"
           % (num_elements.value, new_shape, np.prod(new_shape)))
-    return [tensor_shape.TensorShape(new_shape)]
   elif num_elements.value is not None:
     # We know the number of elements, so we can calculate the missing
     # dimension in the new_shape.
     known_elements = 1
-    unknown_index = None
+    unknown_indices = []
     for i, dim in enumerate(new_shape):
-      if dim == -1:
-        unknown_index = i
+      if dim.value is None:
+        unknown_indices.append(i)
       else:
-        known_elements *= dim
-    if known_elements == 0:
-      raise ValueError("cannot infer the missing input size for "
-                       "an empty tensor unless all specified "
-                       "input sizes are non-zero")
-    if num_elements % known_elements != 0:
-      raise ValueError("input has %s elements, which isn't divisible by %d" %
-                       (num_elements, known_elements))
-    new_shape[unknown_index] = num_elements // known_elements
-    return [tensor_shape.TensorShape(new_shape)]
-  else:
-    # We don't know the input shape, but we know n-1 of the dimensions
-    # in the new shape.
-    new_shape[new_shape.index(-1)] = None
-    return [tensor_shape.TensorShape(new_shape)]
+        known_elements *= dim.value
+    if known_elements != 0:
+      if num_elements % known_elements != 0:
+        raise ValueError("input has %s elements, which isn't divisible by %d" %
+                         (num_elements, known_elements))
+      if len(unknown_indices) == 1:
+        unknown_index = unknown_indices[0]
+        new_shape = new_shape.merge_with(
+            new_shape[:unknown_index].concatenate(
+                [num_elements // known_elements]).concatenate(
+                    new_shape[unknown_index+1:]))
+  return [new_shape]
 
 
 @ops.RegisterShape("BroadcastGradientArgs")
