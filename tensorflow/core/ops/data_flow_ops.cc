@@ -322,7 +322,7 @@ DequeueUpTo, then an Unimplemented error is returned.
 
 If the queue is closed and there are more than 0 but less than n elements
 remaining, then instead of returning an OutOfRange error like
-QueueDequeueMany, the remaining elements are returned immediately.  If the queue
+QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
 is closed and there are 0 elements left in the queue, then an OutOfRange
 error is returned just like in QueueDequeueMany.  Otherwise the behavior
 is identical to QueueDequeueMany:
