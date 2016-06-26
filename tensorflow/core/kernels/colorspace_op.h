@@ -24,18 +24,19 @@ namespace tensorflow {
 
 namespace functor {
 
-template <typename Device>
+template <typename Device, typename T>
 struct RGBToHSV {
-  void operator()(const Device &d, TTypes<float, 2>::ConstTensor input_data,
-                  TTypes<float, 1>::Tensor range,
-                  TTypes<float, 2>::Tensor output_data) {
-    auto H = output_data.chip<1>(0);
-    auto S = output_data.chip<1>(1);
-    auto V = output_data.chip<1>(2);
+  void operator()(const Device &d,
+                  typename TTypes<T, 2>::ConstTensor input_data,
+                  typename TTypes<T, 1>::Tensor range,
+                  typename TTypes<T, 2>::Tensor output_data) {
+    auto H = output_data.template chip<1>(0);
+    auto S = output_data.template chip<1>(1);
+    auto V = output_data.template chip<1>(2);
 
-    auto R = input_data.chip<1>(0);
-    auto G = input_data.chip<1>(1);
-    auto B = input_data.chip<1>(2);
+    auto R = input_data.template chip<1>(0);
+    auto G = input_data.template chip<1>(1);
+    auto B = input_data.template chip<1>(2);
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::array<int, 1> channel_axis{{1}};
@@ -61,13 +62,14 @@ struct RGBToHSV {
   }
 };
 
-template <typename Device>
+template <typename Device, typename T>
 struct HSVToRGB {
-  void operator()(const Device &d, TTypes<float, 2>::ConstTensor input_data,
-                  TTypes<float, 2>::Tensor output_data) {
-    auto H = input_data.chip<1>(0);
-    auto S = input_data.chip<1>(1);
-    auto V = input_data.chip<1>(2);
+  void operator()(const Device &d,
+                  typename TTypes<T, 2>::ConstTensor input_data,
+                  typename TTypes<T, 2>::Tensor output_data) {
+    auto H = input_data.template chip<1>(0);
+    auto S = input_data.template chip<1>(1);
+    auto V = input_data.template chip<1>(2);
 
     // TODO(wicke): compute only the fractional part of H for robustness
     auto dh = H * 6.f;
@@ -76,9 +78,9 @@ struct HSVToRGB {
     auto db = (-(dh - 4.f).abs() + 2.f).cwiseMax(0.f).cwiseMin(1.f);
     auto one_s = -S + 1.f;
 
-    auto R = output_data.chip<1>(0);
-    auto G = output_data.chip<1>(1);
-    auto B = output_data.chip<1>(2);
+    auto R = output_data.template chip<1>(0);
+    auto G = output_data.template chip<1>(1);
+    auto B = output_data.template chip<1>(2);
 
     R.device(d) = (one_s + S * dr) * V;
     G.device(d) = (one_s + S * dg) * V;
