@@ -26,11 +26,11 @@ from tensorflow.python.platform import tf_logging as logging
 
 def _get_qualified_name(function):
   # Python 3
-  if hasattr('__qualname__', function):
+  if hasattr(function, '__qualname__'):
     return function.__qualname__
 
   # Python 2
-  if hasattr('im_class', function):
+  if hasattr(function, 'im_class'):
     return function.im_class.__name__ + '.' + function.__name__
   return function.__name__
 
