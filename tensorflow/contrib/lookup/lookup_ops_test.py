@@ -38,6 +38,7 @@ class HashTableOpTest(tf.test.TestCase):
 
       input_string = tf.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
+      self.assertAllEqual([3], output.get_shape())
 
       result = output.eval()
       self.assertAllEqual([0, 1, -1], result)
@@ -251,9 +252,119 @@ class MutableHashTableOpTest(tf.test.TestCase):
 
       input_string = tf.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
+      self.assertAllEqual([3], output.get_shape())
 
       result = output.eval()
       self.assertAllEqual([0, 1, -1], result)
+
+      exported_keys, exported_values = table.export()
+      self.assertAllEqual([None], exported_keys.get_shape().as_list())
+      self.assertAllEqual([None], exported_values.get_shape().as_list())
+
+      # exported data is in the order of the internal map, i.e. undefined
+      sorted_keys = np.sort(exported_keys.eval())
+      sorted_values = np.sort(exported_values.eval())
+      self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
+      self.assertAllEqual([0, 1, 2], sorted_values)
+
+  def testMutableHashTableOfTensors(self):
+    with self.test_session():
+      default_val = tf.constant([-1, -1], tf.int64)
+      keys = tf.constant(["brain", "salad", "surgery"])
+      values = tf.constant([[0, 1], [2, 3], [4, 5]], tf.int64)
+      table = tf.contrib.lookup.MutableHashTable(tf.string, tf.int64,
+                                                 default_val)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = tf.constant(["brain", "salad", "tank"])
+      output = table.lookup(input_string)
+      self.assertAllEqual([3, 2], output.get_shape())
+
+      result = output.eval()
+      self.assertAllEqual([[0, 1], [2, 3], [-1, -1]], result)
+
+      exported_keys, exported_values = table.export()
+      self.assertAllEqual([None], exported_keys.get_shape().as_list())
+      self.assertAllEqual([None, 2], exported_values.get_shape().as_list())
+      # exported data is in the order of the internal map, i.e. undefined
+      sorted_keys = np.sort(exported_keys.eval())
+      sorted_values = np.sort(exported_values.eval())
+      self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
+      self.assertAllEqual([[4, 5], [2, 3], [0, 1]], sorted_values)
+
+  def testMutableHashTableExportInsert(self):
+    with self.test_session():
+      default_val = tf.constant([-1, -1], tf.int64)
+      keys = tf.constant(["brain", "salad", "surgery"])
+      values = tf.constant([[0, 1], [2, 3], [4, 5]], tf.int64)
+      table1 = tf.contrib.lookup.MutableHashTable(tf.string, tf.int64,
+                                                  default_val)
+      self.assertAllEqual(0, table1.size().eval())
+      table1.insert(keys, values).run()
+      self.assertAllEqual(3, table1.size().eval())
+
+      input_string = tf.constant(["brain", "salad", "tank"])
+      expected_output = [[0, 1], [2, 3], [-1, -1]]
+      output1 = table1.lookup(input_string)
+      self.assertAllEqual(expected_output, output1.eval())
+
+      exported_keys, exported_values = table1.export()
+      self.assertAllEqual(3, exported_keys.eval().size)
+      self.assertAllEqual(6, exported_values.eval().size)
+
+      # Populate a second table from the exported data
+      table2 = tf.contrib.lookup.MutableHashTable(tf.string, tf.int64,
+                                                  default_val)
+      self.assertAllEqual(0, table2.size().eval())
+      table2.insert(exported_keys, exported_values).run()
+      self.assertAllEqual(3, table2.size().eval())
+
+      # Verify lookup result is still the same
+      output2 = table2.lookup(input_string)
+      self.assertAllEqual(expected_output, output2.eval())
+
+  def testMutableHashTableOfTensorsInvalidShape(self):
+    with self.test_session():
+      default_val = tf.constant([-1, -1], tf.int64)
+      keys = tf.constant(["brain", "salad", "surgery"])
+      table = tf.contrib.lookup.MutableHashTable(tf.string, tf.int64,
+                                                 default_val)
+
+      # Shape [6] instead of [3, 2]
+      values = tf.constant([0, 1, 2, 3, 4, 5], tf.int64)
+      with self.assertRaisesOpError("Expected shape"):
+        table.insert(keys, values).run()
+
+      # Shape [2,3] instead of [3, 2]
+      values = tf.constant([[0, 1, 2], [3, 4, 5]], tf.int64)
+      with self.assertRaisesOpError("Expected shape"):
+        table.insert(keys, values).run()
+
+      # Shape [2, 2] instead of [3, 2]
+      values = tf.constant([[0, 1], [2, 3]], tf.int64)
+      with self.assertRaisesOpError("Expected shape"):
+        table.insert(keys, values).run()
+
+      # Shape [3, 1] instead of [3, 2]
+      values = tf.constant([[0], [2], [4]], tf.int64)
+      with self.assertRaisesOpError("Expected shape"):
+        table.insert(keys, values).run()
+
+      # Valid Insert
+      values = tf.constant([[0, 1], [2, 3], [4, 5]], tf.int64)
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+  def testMutableHashTableInvalidDefaultValue(self):
+    with self.test_session():
+      default_val = tf.constant([[-1, -1]], tf.int64)
+      table = tf.contrib.lookup.MutableHashTable(tf.string, tf.int64,
+                                                 default_val)
+      with self.assertRaisesOpError("Default value must be a vector"):
+        self.assertAllEqual(0, table.size().eval())
 
   def testMutableHashTableDuplicateInsert(self):
     with self.test_session():
@@ -288,6 +399,7 @@ class MutableHashTableOpTest(tf.test.TestCase):
 
       input_string = tf.constant([["brain", "salad"], ["tank", "tarkus"]])
       output = table.lookup(input_string)
+      self.assertAllEqual([2, 2], output.get_shape())
 
       result = output.eval()
       self.assertAllEqual([[0, 1], [-1, -1]], result)
@@ -309,6 +421,25 @@ class MutableHashTableOpTest(tf.test.TestCase):
 
       result = output.eval()
       self.assertAllEqual([0, 1, 3, -1], result)
+
+  def testMutableHashTableOfTensorsFindHighRank(self):
+    with self.test_session():
+      default_val = tf.constant([-1, -1, -1], tf.int64)
+      keys = tf.constant(["brain", "salad", "surgery"])
+      values = tf.constant([[0, 1, 2], [2, 3, 4], [4, 5, 6]], tf.int64)
+      table = tf.contrib.lookup.MutableHashTable(tf.string, tf.int64,
+                                                 default_val)
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = tf.constant([["brain", "salad"], ["tank", "tarkus"]])
+      output = table.lookup(input_string)
+      self.assertAllEqual([2, 2, 3], output.get_shape())
+
+      result = output.eval()
+      self.assertAllEqual(
+          [[[0, 1, 2], [2, 3, 4]], [[-1, -1, -1], [-1, -1, -1]]], result)
 
   def testMultipleMutableHashTables(self):
     with self.test_session() as sess:

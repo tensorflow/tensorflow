@@ -49,8 +49,8 @@ class LookupTableOp : public OpKernel {
     mutex_lock l(mu_);
     if (!table_handle_set_) {
       OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def()));
-      auto creator = [this](lookup::LookupInterface** ret) {
-        *ret = new Container();
+      auto creator = [ctx, this](lookup::LookupInterface** ret) {
+        *ret = new Container(ctx, this);
         return Status::OK();
       };
 
