@@ -305,6 +305,11 @@ def conv3d_transpose(value,
                      name=None):
   """The transpose of `conv3d`.
 
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
+  actually the transpose (gradient) of `conv3d` rather than an actual
+  deconvolution.
+
   Args:
     value: A 5-D `Tensor` of type `float` and shape
       `[batch, depth, height, width, in_channels]`.
