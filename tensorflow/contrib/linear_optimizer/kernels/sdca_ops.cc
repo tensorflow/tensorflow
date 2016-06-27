@@ -28,14 +28,12 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/resources.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -47,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
@@ -596,22 +595,18 @@ class FeaturesAndWeights {
 };
 
 Status RunTrainStepsForMiniBatch(
-    const int num_examples, const TTypes<const string>::Vec example_ids,
-    const TTypes<const float>::Vec example_labels,
+    const int num_examples, const TTypes<const float>::Vec example_labels,
     const TTypes<const float>::Vec example_weights,
     const DeviceBase::CpuWorkerThreads& worker_threads,
     const Regularizations& regularizations, const DualLossUpdater& loss_updater,
     FeaturesAndWeights* const features_and_weights,
-    DataByExample* const data_by_example) {
+    TTypes<float>::Matrix example_state_data) {
   // Process examples in parallel, in a partitioned fashion.
   mutex mu;
   Status train_step_status GUARDED_BY(mu);
   auto train_step = [&](const int64 begin, const int64 end) {
     for (int64 example_index = begin; example_index < end; ++example_index) {
-      // Get example id, label, and weight.
-      const DataByExample::EphemeralKey example_key =
-          DataByExample::MakeKey(example_ids(example_index));
-      DataByExample::Data data = data_by_example->Get(example_key);
+      const float dual = example_state_data(example_index, 0);
       const float example_weight = example_weights(example_index);
       float example_label = example_labels(example_index);
       const Status conversion_status =
@@ -633,24 +628,23 @@ Status RunTrainStepsForMiniBatch(
       const double primal_loss = loss_updater.ComputePrimalLoss(
           per_example_data.wx, example_label, example_weight);
 
-      const double dual_loss = loss_updater.ComputeDualLoss(
-          data.dual, example_label, example_weight);
+      const double dual_loss =
+          loss_updater.ComputeDualLoss(dual, example_label, example_weight);
 
       const double new_dual = loss_updater.ComputeUpdatedDual(
-          example_label, example_weight, data.dual, per_example_data.wx,
+          example_label, example_weight, dual, per_example_data.wx,
           per_example_data.normalized_squared_norm, primal_loss, dual_loss);
 
       // Compute new weights.
-      const double bounded_dual_delta = (new_dual - data.dual) * example_weight;
+      const double bounded_dual_delta = (new_dual - dual) * example_weight;
       features_and_weights->UpdateDeltaWeights(
           example_index, bounded_dual_delta, regularizations.symmetric_l2());
 
       // Update example data.
-      data.dual = new_dual;
-      data.primal_loss = primal_loss;
-      data.dual_loss = dual_loss;
-      data.example_weight = example_weight;
-      data_by_example->Set(example_key, data);
+      example_state_data(example_index, 0) = new_dual;
+      example_state_data(example_index, 1) = primal_loss;
+      example_state_data(example_index, 2) = dual_loss;
+      example_state_data(example_index, 3) = example_weight;
     }
   };
   // TODO(sibyl-Aix6ihai): Current multiplier 100000 works well empirically
@@ -689,30 +683,9 @@ class SdcaSolver : public OpKernel {
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
     OP_REQUIRES_OK(context, context->GetAttr("num_inner_iterations",
                                              &num_inner_iterations_));
-    OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
-    OP_REQUIRES_OK(context, context->GetAttr("solver_uuid", &solver_uuid_));
   }
 
   void Compute(OpKernelContext* context) override {
-    // Get a handle on a shared container across invocations of this Kernel.
-    // The shared container is intended to maintain state at the example level
-    // across invocations of the kernel on different input data.
-    //
-    // TODO(sibyl-Mooth6ku): Replace this in-Kernel data structure with a first class
-    // citizen mutable Dictionary in tensorflow proper, that we will initialize
-    // and update externally.
-    DataByExample* data_by_example = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->resource_manager()->LookupOrCreate<DataByExample>(
-                       container_, solver_uuid_, &data_by_example,
-                       [this](DataByExample** ret) {
-                         *ret = new DataByExample(container_, solver_uuid_);
-                         return Status::OK();
-                       }));
-    OP_REQUIRES(
-        context, !data_by_example->RefCountIsOne(),
-        errors::Internal("Expected shared-ownership of data_by_example."));
-
     const Tensor* example_weights_t;
     OP_REQUIRES_OK(context,
                    context->input("example_weights", &example_weights_t));
@@ -738,16 +711,19 @@ class SdcaSolver : public OpKernel {
                     "number of example weights (%d).",
                     example_labels.size(), num_examples)));
 
-    const Tensor* example_ids_t;
-    OP_REQUIRES_OK(context, context->input("example_ids", &example_ids_t));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(example_ids_t->shape()),
-                errors::InvalidArgument("example_ids should be a vector."));
-    const auto example_ids = example_ids_t->vec<string>();
-    OP_REQUIRES(context, example_labels.size() == num_examples,
-                errors::InvalidArgument(strings::Printf(
-                    "The number of example ids (%ld) should match the number "
-                    "of example weights (%d).",
-                    example_ids.size(), num_examples)));
+    const Tensor* example_state_data_t;
+    OP_REQUIRES_OK(context,
+                   context->input("example_state_data", &example_state_data_t));
+    TensorShape expected_example_state_shape({num_examples, 4});
+    OP_REQUIRES(
+        context, example_state_data_t->shape() == expected_example_state_shape,
+        errors::InvalidArgument("Expected shape ",
+                                expected_example_state_shape.DebugString(),
+                                " for example_state_data, got ",
+                                example_state_data_t->shape().DebugString()));
+
+    Tensor mutable_example_state_data_t(*example_state_data_t);
+    auto example_state_data = mutable_example_state_data_t.matrix<float>();
 
     FeaturesAndWeights features_and_weights;
     OP_REQUIRES_OK(context,
@@ -757,17 +733,15 @@ class SdcaSolver : public OpKernel {
 
     for (int i = 0; i < num_inner_iterations_; ++i) {
       OP_REQUIRES_OK(
-          context,
-          RunTrainStepsForMiniBatch(
-              num_examples, example_ids, example_labels, example_weights,
-              *context->device()->tensorflow_cpu_worker_threads(),
-              regularizations_, *loss_updater_, &features_and_weights,
-              data_by_example));
+          context, RunTrainStepsForMiniBatch(
+                       num_examples, example_labels, example_weights,
+                       *context->device()->tensorflow_cpu_worker_threads(),
+                       regularizations_, *loss_updater_, &features_and_weights,
+                       example_state_data));
     }
     features_and_weights.AddDeltaWeights();
 
-    // TODO(sibyl-Mooth6ku): Use core::ScopedUnref once it's moved out of internal.
-    data_by_example->Unref();
+    context->set_output(0, mutable_example_state_data_t);
   }
 
  private:
@@ -779,8 +753,6 @@ class SdcaSolver : public OpKernel {
   int64 num_dense_features_;
   Regularizations regularizations_;
   int num_inner_iterations_;
-  string container_;
-  string solver_uuid_;
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaSolver").Device(DEVICE_CPU), SdcaSolver);
 
@@ -803,72 +775,26 @@ class SdcaShrinkL1 : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 
-class SdcaTrainingStats : public OpKernel {
+class SdcaFprint : public OpKernel {
  public:
-  explicit SdcaTrainingStats(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
-    OP_REQUIRES_OK(context, context->GetAttr("solver_uuid", &solver_uuid_));
+  explicit SdcaFprint(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& input = ctx->input(0);
+    Tensor* out;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &out));
+
+    const auto in_values = input.flat<string>();
+    auto out_values = out->flat<string>();
+
+    for (int64 i = 0; i < in_values.size(); ++i) {
+      const string& s = in_values(i);
+      Fprint128 fprint = Fingerprint128(s);
+      out_values(i) = strings::StrCat(strings::FpToString(fprint.high64), "-",
+                                      strings::FpToString(fprint.low64));
+    }
   }
-
-  void Compute(OpKernelContext* context) override {
-    DataByExample* data_by_example = nullptr;
-    OP_REQUIRES_OK(context, context->resource_manager()->Lookup<DataByExample>(
-                                container_, solver_uuid_, &data_by_example));
-    OP_REQUIRES(
-        context, !data_by_example->RefCountIsOne(),
-        errors::Internal("Expected shared-ownership of data_by_example."));
-
-    double total_primal_loss = 0;
-    double total_dual_loss = 0;
-    double total_example_weight = 0;
-    OP_REQUIRES_OK(context,
-                   data_by_example->Visit([&](const DataByExample::Data& data) {
-                     total_primal_loss += data.primal_loss;
-                     total_dual_loss += data.dual_loss;
-                     total_example_weight += data.example_weight;
-                   }));
-
-    // TODO(sibyl-Mooth6ku): Think about the most arithmetically stable way of
-    // computing (dual + primal) loss (if it matters).
-
-    {
-      Tensor* tensor = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output("primal_loss", {}, &tensor));
-      tensor->scalar<double>()() = total_primal_loss;
-    }
-
-    {
-      Tensor* tensor = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output("dual_loss", {}, &tensor));
-      tensor->scalar<double>()() = total_dual_loss;
-    }
-
-    {
-      OP_REQUIRES(
-          context, total_example_weight > 0,
-          errors::FailedPrecondition(
-              "No examples found or all examples have zero weight. Either the "
-              "optimizer was trained with no instances or perhaps there is a "
-              "bug in the training data."));
-
-      Tensor* tensor = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output("example_weights", {}, &tensor));
-      tensor->scalar<double>()() = total_example_weight;
-    }
-
-    // TODO(sibyl-Mooth6ku): Use core::ScopedUnref once it's moved out of internal.
-    data_by_example->Unref();
-  }
-
- private:
-  string container_;
-  string solver_uuid_;
 };
-REGISTER_KERNEL_BUILDER(Name("SdcaTrainingStats").Device(DEVICE_CPU),
-                        SdcaTrainingStats);
+REGISTER_KERNEL_BUILDER(Name("SdcaFprint").Device(DEVICE_CPU), SdcaFprint);
 
 }  // namespace tensorflow
