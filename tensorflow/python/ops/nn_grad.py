@@ -85,30 +85,29 @@ def _Conv3DGrad(op, grad):
 @ops.RegisterGradient("Conv3DBackpropInputV2")
 def _Conv3DBackpropInputGrad(op, grad):
   return [None,
-      nn_ops.conv3d_backprop_filter_v2(grad,
-                                       array_ops.shape(op.inputs[1]),
-                                       op.inputs[2],
-                                       strides=op.get_attr("strides"),
-                                       padding=op.get_attr("padding")),
-      nn_ops.conv3d(grad,
-                    op.inputs[1],
-                    strides=op.get_attr("strides"),
-                    padding=op.get_attr("padding"))]
+          nn_ops.conv3d_backprop_filter_v2(grad,
+                                           array_ops.shape(op.inputs[1]),
+                                           op.inputs[2],
+                                           strides=op.get_attr("strides"),
+                                           padding=op.get_attr("padding")),
+          nn_ops.conv3d(grad,
+                        op.inputs[1],
+                        strides=op.get_attr("strides"),
+                        padding=op.get_attr("padding"))]
 
 
 @ops.RegisterGradient("Conv3DBackpropFilterV2")
 def _Conv3DBackpropFilterGrad(op, grad):
-  return [
-      nn_ops.conv3d_backprop_input_v2(array_ops.shape(op.inputs[0]),
-                                      grad,
-                                      op.inputs[2],
-                                      strides=op.get_attr("strides"),
-                                      padding=op.get_attr("padding")),
-      None,
-      nn_ops.conv3d(op.inputs[0],
-                    grad,
-                    strides=op.get_attr("strides"),
-                    padding=op.get_attr("padding"))
+  return [nn_ops.conv3d_backprop_input_v2(array_ops.shape(op.inputs[0]),
+                                          grad,
+                                          op.inputs[2],
+                                          strides=op.get_attr("strides"),
+                                          padding=op.get_attr("padding")),
+          None,
+          nn_ops.conv3d(op.inputs[0],
+                        grad,
+                        strides=op.get_attr("strides"),
+                        padding=op.get_attr("padding"))
   ]
 
 
