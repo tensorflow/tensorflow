@@ -273,11 +273,11 @@ class GraphIOTest(tf.test.TestCase):
       tf.train.start_queue_runners(session, coord=coord)
 
       self.assertAllEqual(session.run([keys, inputs]),
-                          [[b"%s:1" % filename], [b"ABC"]])
+                          [[filename.encode("utf-8") + b":1"], [b"ABC"]])
       self.assertAllEqual(session.run([keys, inputs]),
-                          [[b"%s:2" % filename], [b"DEF"]])
+                          [[filename.encode("utf-8") + b":2"], [b"DEF"]])
       self.assertAllEqual(session.run([keys, inputs]),
-                          [[b"%s:3" % filename], [b"GHK"]])
+                          [[filename.encode("utf-8") + b":3"], [b"GHK"]])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 
@@ -311,13 +311,13 @@ class GraphIOTest(tf.test.TestCase):
 
       key, age = session.run([keys, inputs["age"]])
       self.assertAllEqual(age, [[0]])
-      self.assertAllEqual(key, [b"%s:1" % filename])
+      self.assertAllEqual(key, [filename.encode("utf-8") + b":1"])
       key, age = session.run([keys, inputs["age"]])
       self.assertAllEqual(age, [[1]])
-      self.assertAllEqual(key, [b"%s:2" % filename])
+      self.assertAllEqual(key, [filename.encode("utf-8") + b":2"])
       key, age = session.run([keys, inputs["age"]])
       self.assertAllEqual(age, [[2]])
-      self.assertAllEqual(key, [b"%s:3" % filename])
+      self.assertAllEqual(key, [filename.encode("utf-8") + b":3"])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 
