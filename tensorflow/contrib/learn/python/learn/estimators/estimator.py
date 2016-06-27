@@ -489,15 +489,16 @@ class BaseEstimator(sklearn.BaseEstimator):
       # Add default monitors.
       if monitors is None:
         monitors = []
-      monitors += monitors_lib.get_default_monitors(
-          loss_op=loss_op,
-          summary_op=logging_ops.get_summary_op(),
-          save_summary_steps=self._config.save_summary_steps,
-          summary_writer=graph_actions.get_summary_writer(self._model_dir))
 
       is_chief = self._config.task == 0
-      if not is_chief:
-        # Run monitors only on chief.
+
+      if is_chief:
+        monitors += monitors_lib.get_default_monitors(
+            loss_op=loss_op,
+            summary_op=logging_ops.get_summary_op(),
+            save_summary_steps=self._config.save_summary_steps,
+            summary_writer=graph_actions.get_summary_writer(self._model_dir))
+      else:
         monitors = []
 
       # Setup monitors.
