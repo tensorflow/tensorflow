@@ -31,3 +31,27 @@ get_cpu_count() {
 get_job_count() {
   echo $(($(get_cpu_count) * 2))
 }
+
+make_host_protoc() {
+  if [[ ! $1 ]]; then
+    echo "needs 1 argument (HOST_GENDIR)"
+    exit 1
+  fi
+  HOST_GENDIR="$1"
+  ./autogen.sh
+  if [ $? -ne 0 ]
+  then
+    echo "./autogen.sh command failed."
+    exit 1
+  fi
+  rm -rf "${HOST_GENDIR}"
+  mkdir -p "${HOST_GENDIR}"
+  ./configure --disable-shared --prefix="${HOST_GENDIR}"
+  make clean
+  make -j "$(get_job_count)"
+  if [ $? -ne 0 ]; then
+    echo "make failed"
+    exit 1
+  fi
+  make install
+}
