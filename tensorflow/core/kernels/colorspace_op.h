@@ -48,17 +48,18 @@ struct RGBToHSV {
 
     range.device(d) = V - input_data.minimum(channel_axis);
 
-    S.device(d) = (V > 0.f).select(range / V, V.constant(0.f));
+    S.device(d) = (V > T(0)).select(range / V, V.constant(T(0)));
 
-    auto norm = range.inverse() * (1.f / 6.f);
+    auto norm = range.inverse() * (T(1) / T(6));
     // TODO(wicke): all these assignments are only necessary because a combined
     // expression is larger than kernel parameter space. A custom kernel is
     // probably in order.
     H.device(d) = (R == V).select(norm * (G - B),
-                                  (G == V).select(norm * (B - R) + 2.f / 6.f,
-                                                  norm * (R - G) + 4.f / 6.f));
-    H.device(d) = (range > 0.f).select(H, H.constant(0.f));
-    H.device(d) = (H < 0.f).select(H + 1.f, H);
+                                  (G == V).select(
+                                      norm * (B - R) + T(2) / T(6),
+                                      norm * (R - G) + T(4) / T(6)));
+    H.device(d) = (range > T(0)).select(H, H.constant(T(0)));
+    H.device(d) = (H < T(0)).select(H + T(1), H);
   }
 };
 
@@ -72,11 +73,11 @@ struct HSVToRGB {
     auto V = input_data.template chip<1>(2);
 
     // TODO(wicke): compute only the fractional part of H for robustness
-    auto dh = H * 6.f;
-    auto dr = ((dh - 3.f).abs() - 1.f).cwiseMax(0.f).cwiseMin(1.f);
-    auto dg = (-(dh - 2.f).abs() + 2.f).cwiseMax(0.f).cwiseMin(1.f);
-    auto db = (-(dh - 4.f).abs() + 2.f).cwiseMax(0.f).cwiseMin(1.f);
-    auto one_s = -S + 1.f;
+    auto dh = H * T(6);
+    auto dr = ((dh - T(3)).abs() - T(1)).cwiseMax(T(0)).cwiseMin(T(1));
+    auto dg = (-(dh - T(2)).abs() + T(2)).cwiseMax(T(0)).cwiseMin(T(1));
+    auto db = (-(dh - T(4)).abs() + T(2)).cwiseMax(T(0)).cwiseMin(T(1));
+    auto one_s = -S + T(1);
 
     auto R = output_data.template chip<1>(0);
     auto G = output_data.template chip<1>(1);
