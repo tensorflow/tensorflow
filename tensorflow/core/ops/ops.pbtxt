@@ -11755,7 +11755,7 @@ op {
     }
   }
   summary: "Computes softmax activations."
-  description: "For each batch `i` and class `j` we have\n\n    softmax[i, j] = exp(logits[i, j]) / sum(exp(logits[i]))"
+  description: "For each batch `i` and class `j` we have\n\n    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))"
 }
 op {
   name: "SoftmaxCrossEntropyWithLogits"
