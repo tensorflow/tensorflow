@@ -1032,6 +1032,7 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
+        ":constant_op",
         ":fill_functor",
         ":transpose_functor",
         "//tensorflow/core:core_cpu",
@@ -1540,6 +1541,7 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
+        ":constant_op",
         ":cwise_op",
         ":fill_functor",
         ":scatter_op",
