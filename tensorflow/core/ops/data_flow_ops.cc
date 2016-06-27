@@ -322,7 +322,7 @@ DequeueUpTo, then an Unimplemented error is returned.
 
 If the queue is closed and there are more than 0 but less than n elements
 remaining, then instead of returning an OutOfRange error like
-QueueDequeueMany, the remaining elements are returned immediately.  If the queue
+QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
 is closed and there are 0 elements left in the queue, then an OutOfRange
 error is returned just like in QueueDequeueMany.  Otherwise the behavior
 is identical to QueueDequeueMany:
@@ -704,6 +704,20 @@ table_handle: Handle to the table.
 size: Scalar that contains number of elements in the table.
 )doc");
 
+REGISTER_OP("LookupTableExport")
+    .Input("table_handle: Ref(string)")
+    .Output("keys: Tkeys")
+    .Output("values: Tvalues")
+    .Attr("Tkeys: type")
+    .Attr("Tvalues: type")
+    .Doc(R"doc(
+Outputs all keys and values in the table.
+
+table_handle: Handle to the table.
+keys: Vector of all keys present in the table.
+values: Tensor of all values in the table. Indexed in parallel with `keys`.
+)doc");
+
 REGISTER_OP("HashTable")
     .Output("table_handle: Ref(string)")
     .Attr("container: string = ''")
@@ -738,8 +752,32 @@ REGISTER_OP("MutableHashTable")
 Creates an empty hash table.
 
 This op creates a mutable hash table, specifying the type of its keys and
-values. Data can be inserted into the table using the insert operations. It
-does not support the initialization operation.
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+
+table_handle: Handle to a table.
+container: If non-empty, this table is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this table is shared under the given name across
+  multiple sessions.
+key_dtype: Type of the table keys.
+value_dtype: Type of the table values.
+)doc");
+
+REGISTER_OP("MutableHashTableOfTensors")
+    .Output("table_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .Attr("value_shape: shape = {}")
+    .SetIsStateful()
+    .Doc(R"doc(
+Creates an empty hash table.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a vector. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
 
 table_handle: Handle to a table.
 container: If non-empty, this table is placed in the given container.

@@ -11869,6 +11869,30 @@ op {
   is_commutative: true
 }
 op {
+  name: "LookupTableExport"
+  input_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "keys"
+    type_attr: "Tkeys"
+  }
+  output_arg {
+    name: "values"
+    type_attr: "Tvalues"
+  }
+  attr {
+    name: "Tkeys"
+    type: "type"
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+}
+op {
   name: "LookupTableFind"
   input_arg {
     name: "table_handle"
@@ -14130,6 +14154,45 @@ op {
   attr {
     name: "value_dtype"
     type: "type"
+  }
+  is_stateful: true
+}
+op {
+  name: "MutableHashTableOfTensors"
+  output_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
   }
   is_stateful: true
 }

@@ -180,6 +180,13 @@ The DistributionTensor is a StochasticTensor backed by a distribution.
 
 - - -
 
+#### `tf.contrib.bayesflow.stochastic_graph.MeanValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#MeanValue.declare_inputs}
+
+
+
+
+- - -
+
 #### `tf.contrib.bayesflow.stochastic_graph.MeanValue.popped_above(unused_value_type)` {#MeanValue.popped_above}
 
 
@@ -232,6 +239,13 @@ Sample `n` times and concatenate along a new outer dimension.
 *  <b>`n`</b>: A python integer or int32 tensor. The number of samples to take.
 *  <b>`stop_gradient`</b>: If `True`, StochasticTensors' values are wrapped in
     `stop_gradient`, to avoid backpropagation through.
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleValue.declare_inputs}
+
+
 
 
 - - -
@@ -307,6 +321,13 @@ Sample `n` times and reshape the outer 2 axes so rank does not change.
 *  <b>`n`</b>: A python integer or int32 tensor.  The number of samples to take.
 *  <b>`stop_gradient`</b>: If `True`, StochasticTensors' values are wrapped in
     `stop_gradient`, to avoid backpropagation through.
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleAndReshapeValue.declare_inputs}
+
+
 
 
 - - -

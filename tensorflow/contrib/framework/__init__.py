@@ -28,6 +28,8 @@
 @@with_shape
 @@with_same_shape
 
+## Deprecation
+@@deprecated
 
 ## Arg_Scope
 @@arg_scope

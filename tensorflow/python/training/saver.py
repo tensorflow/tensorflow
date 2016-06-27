@@ -285,7 +285,7 @@ class BaseSaverBuilder(object):
 
   def _AddShardedRestoreOps(self, filename_tensor, per_device,
                             restore_sequentially, reshape):
-    """Add Ops to save variables from multiple devices.
+    """Add Ops to restore variables from multiple devices.
 
     Args:
       filename_tensor: Tensor for the path of the file to load.

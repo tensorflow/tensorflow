@@ -176,6 +176,12 @@ Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
 // Add a Relu node in "g".
 Node* Relu(Graph* g, Node* in);
 
+// Add a Relu6 node in "g".
+Node* Relu6(Graph* g, Node* in);
+
+// Add a BiasAdd node in "g".
+Node* BiasAdd(Graph* g, Node* value, Node* bias);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

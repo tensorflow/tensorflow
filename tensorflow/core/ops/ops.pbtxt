@@ -6870,6 +6870,34 @@ op {
   is_commutative: true
 }
 op {
+  name: "LookupTableExport"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "keys"
+    description: "Vector of all keys present in the table."
+    type_attr: "Tkeys"
+  }
+  output_arg {
+    name: "values"
+    description: "Tensor of all values in the table. Indexed in parallel with `keys`."
+    type_attr: "Tvalues"
+  }
+  attr {
+    name: "Tkeys"
+    type: "type"
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+  summary: "Outputs all keys and values in the table."
+}
+op {
   name: "LookupTableFind"
   input_arg {
     name: "table_handle"
@@ -8103,7 +8131,53 @@ op {
     description: "Type of the table values."
   }
   summary: "Creates an empty hash table."
-  description: "This op creates a mutable hash table, specifying the type of its keys and\nvalues. Data can be inserted into the table using the insert operations. It\ndoes not support the initialization operation."
+  description: "This op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  is_stateful: true
+}
+op {
+  name: "MutableHashTableOfTensors"
+  output_arg {
+    name: "table_handle"
+    description: "Handle to a table."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+    description: "Type of the table keys."
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+    description: "Type of the table values."
+  }
+  attr {
+    name: "value_shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+  }
+  summary: "Creates an empty hash table."
+  description: "This op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a vector. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
   is_stateful: true
 }
 op {
@@ -9121,7 +9195,7 @@ op {
     description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
   }
   summary: "Dequeues n tuples of one or more tensors from the given queue."
-  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, the remaining elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
 }
 op {
   name: "QueueEnqueue"
