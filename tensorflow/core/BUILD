@@ -516,6 +516,7 @@ cc_library(
         "//tensorflow/models/embedding:word2vec_kernels",
         "//tensorflow/core/kernels:lookahead_ops",
         "//tensorflow/core/kernels:lookahead_grad_ops",
+        "//tensorflow/core/kernels:warpctc_ops",
     ],
 )
 
