@@ -1,0 +1,2 @@
+bool small_test();
+
