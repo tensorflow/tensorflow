@@ -47,6 +47,18 @@ def ctc_loss(inputs, labels, sequence_length,
   max(labels.indices(labels.indices[:, 1] == b, 2))
     <= sequence_length(b) for all b.
   ```
+  
+  Useful Tips:
+  
+  The ctc_loss has as input an affine projection of RNN state:
+    inputs_t = W*h^L_{t} + b, for t = {1,...,max_time}
+  where h is the hidden state of last rnn calculated at timestep t.
+  
+  The `inputs` argument has size num_labels + 1 where +1 is reserved to
+  blank label, e.g., for a vocab = {a, b, c} the num_classes will be 4 
+  where {a: 0, b: 1, c: 2, blank: 3}.
+  
+  `ctc_loss` function already interleaves blank label between the target labels.
 
   Regarding the arguments `preprocess_collapse_repeated` and
   `ctc_merge_repeated`:
@@ -84,7 +96,7 @@ def ctc_loss(inputs, labels, sequence_length,
 
   Args:
     inputs: 3-D `float` `Tensor` sized
-      `[max_time x batch_size x num_classes]`.  The logits.
+      `[max_time x batch_size x num_classes]`.  The logits. 
     labels: An `int32` `SparseTensor`.
       `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
       the id for (batch b, time t).  See `core/ops/ctc_ops.cc` for more details.
