@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash -x -e
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,9 @@
 # limitations under the License.
 # ==============================================================================
 # Builds protobuf 3 for iOS.
+
+SCRIPT_DIR=$(dirname $0)
+source "${SCRIPT_DIR}/build_helper.subr"
 
 cd tensorflow/contrib/makefile
 
