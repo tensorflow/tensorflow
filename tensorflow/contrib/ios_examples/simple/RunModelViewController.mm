@@ -25,6 +25,7 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/message_lite.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -218,6 +219,7 @@ NSString* RunInferenceOnImage() {
 				               {output_layer}, {}, &outputs);
   if (!run_status.ok()) {
     LOG(ERROR) << "Running model failed: " << run_status;
+    tensorflow::LogAllRegisteredKernels();
     result = @"Error running model";
     return result;
   }

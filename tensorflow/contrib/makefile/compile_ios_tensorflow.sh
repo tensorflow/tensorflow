@@ -16,6 +16,14 @@
 # Builds the TensorFlow core library with ARM and x86 architectures for iOS, and
 # packs them into a fat file.
 
+ACTUAL_XCODE_VERSION=`xcodebuild -version | head -n 1 | sed 's/Xcode //'`
+REQUIRED_XCODE_VERSION=7.3.0
+if [ ${ACTUAL_XCODE_VERSION//.} -lt ${REQUIRED_XCODE_VERSION//.} ]
+then
+    echo "error: Xcode ${REQUIRED_XCODE_VERSION} or later is required."
+    exit 1
+fi
+
 GENDIR=tensorflow/contrib/makefile/gen/
 LIBDIR=${GENDIR}lib
 LIB_PREFIX=libtensorflow-core

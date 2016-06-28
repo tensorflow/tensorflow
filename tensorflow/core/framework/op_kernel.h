@@ -1078,6 +1078,10 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
 // calling GlobalKernelRegistry()), inserts 'k' into registry_ptr.
 extern "C" void RegisterKernels(void* registry_ptr);
 
+// Writes a list of all registered kernels to LOG(INFO), to help users debug
+// missing kernel errors.
+void LogAllRegisteredKernels();
+
 namespace kernel_factory {
 
 class OpKernelRegistrar {
