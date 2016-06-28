@@ -234,4 +234,4 @@ e = tf.contrib.learn.DNNLinearCombinedClassifier(
     dnn_feature_columns=deep_columns,
     dnn_hidden_units=[100, 50])
 ```
-For more information, see the [Wide and Deep Learning tutorial](../wide_n_deep/).
+For more information, see the [Wide and Deep Learning tutorial](../wide_and_deep/).
