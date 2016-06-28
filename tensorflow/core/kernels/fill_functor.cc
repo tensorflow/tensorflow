@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
+#include "tensorflow/core/kernels/fill_functor.h"
 
 #define EIGEN_USE_THREADS
 
@@ -25,33 +24,34 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-template <typename Device, typename T>
-struct FillFunctor {
-  // Computes on device "d": out = out.constant(in(0)),
-  void operator()(const Device& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstScalar in);
-};
-
-template <typename Device, typename T>
-struct SetZeroFunctor {
-  // Computes on device "d": out = out.setZero(),
-  void operator()(const Device& d, typename TTypes<T>::Flat out);
-};
-
-// Partial specialization of SetZeroFunctor<Device=Eigen::ThreadPoolDevice, T>.
 template <typename T>
-struct SetZeroFunctor<Eigen::ThreadPoolDevice, T> {
-  void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<T>::Flat out);
-};
+void SetZeroFunctor<Eigen::ThreadPoolDevice, T>::operator()(
+    const Eigen::ThreadPoolDevice& d, typename TTypes<T>::Flat out) {
+  out.device(d) = out.constant(T(0));
+}
 
-template <>
-struct SetZeroFunctor<Eigen::ThreadPoolDevice, string> {
-  void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<string>::Flat out);
-};
+void SetZeroFunctor<Eigen::ThreadPoolDevice, string>::operator()(
+    const Eigen::ThreadPoolDevice& d, typename TTypes<string>::Flat out) {
+  out.device(d) = out.constant(string());
+}
+
+// Explicit instantiations.
+#define DEFINE_SETZERO_CPU(T) \
+  template struct SetZeroFunctor<Eigen::ThreadPoolDevice, T>;
+DEFINE_SETZERO_CPU(bool);
+DEFINE_SETZERO_CPU(Eigen::half);
+DEFINE_SETZERO_CPU(float);
+DEFINE_SETZERO_CPU(double);
+DEFINE_SETZERO_CPU(uint8);
+DEFINE_SETZERO_CPU(int8);
+DEFINE_SETZERO_CPU(uint16);
+DEFINE_SETZERO_CPU(int16);
+DEFINE_SETZERO_CPU(int32);
+DEFINE_SETZERO_CPU(int64);
+DEFINE_SETZERO_CPU(complex64);
+DEFINE_SETZERO_CPU(complex128);
+DEFINE_SETZERO_CPU(string);
+#undef DEFINE_SETZERO_CPU
 
 }  // namespace functor
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_KERNELS_FILL_FUNCTOR_H_
