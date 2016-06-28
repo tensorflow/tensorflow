@@ -121,6 +121,7 @@ cc_library(
         "lib/gtl/array_slice.h",
         "lib/gtl/inlined_vector.h",
         "lib/gtl/map_util.h",  # TODO(josh11b): make internal
+        "lib/gtl/priority_queue_util.h",
         "lib/gtl/stl_util.h",  # TODO(josh11b): make internal
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
         "lib/hash/hash.h",  # TODO(josh11b): make internal
