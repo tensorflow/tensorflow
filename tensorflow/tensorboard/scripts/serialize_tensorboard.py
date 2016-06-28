@@ -86,7 +86,7 @@ class TensorBoardStaticSerializer(object):
 
   def __init__(self, connection, target_path):
     self.connection = connection
-    EnsureDirectoryExists(os.path.join(target_path, 'data'))
+    EnsureDirectoryExists(target_path)
     self.path = target_path
 
   def GetAndSave(self, url, save_suffix, unzip=False):
@@ -95,7 +95,8 @@ class TensorBoardStaticSerializer(object):
                             '/data/' + url,
                             headers={'content-type': 'text/plain'})
     response = self.connection.getresponse()
-    destination = self.path + '/data/' + Clean(url) + save_suffix
+    file_name = Clean(url) + save_suffix
+    destination = os.path.join(self.path, file_name)
 
     if response.status != 200:
       raise IOError(url)
@@ -150,9 +151,11 @@ class TensorBoardStaticSerializer(object):
             for t in tags:
               url = Url('run_metadata', {'run': run, 'tag': t})
               self.GetAndSave(url, GRAPH_SUFFIX, unzip=True)
+          elif tag_type == 'firstEventTimestamp':
+            pass
           else:
             for t in tags:
-              # Save this, whatever it is :)
+            # Save this, whatever it is :)
               self.GetRouteAndSave(tag_type, {'run': run, 'tag': t})
         except IOError as e:
           PrintAndLog('Retrieval failed for %s/%s/%s' % (tag_type, run, tags),

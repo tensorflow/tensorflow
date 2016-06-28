@@ -50,6 +50,14 @@ class InitializableLookupTable : public LookupInterface {
         "Insert not supported by InitializableLookupTable implementations");
   }
 
+  Status ExportValues(OpKernelContext* context) final {
+    return errors::Unimplemented(
+        "ExportValues not supported by InitializableLookupTable "
+        "implementations");
+  }
+
+  TensorShape value_shape() const final { return TensorShape(); }
+
   // Returns whether the table was initialized and is ready to serve lookups.
   bool is_initialized() const { return is_initialized_; }
 

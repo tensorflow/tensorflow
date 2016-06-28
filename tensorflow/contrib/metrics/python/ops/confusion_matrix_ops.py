@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.metrics.python.ops import metric_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -25,11 +26,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
 
-"""Confusion matrix related metrics."""
-
-
 def confusion_matrix(predictions, labels, num_classes=None, name=None):
-  """Computes the confusion matrix from predictions and labels
+  """Computes the confusion matrix from predictions and labels.
 
   Calculate the Confusion Matrix for a pair of prediction and
   label 1-D int arrays.
@@ -68,9 +66,10 @@ def confusion_matrix(predictions, labels, num_classes=None, name=None):
   """
   with ops.op_scope([predictions, labels, num_classes], name,
                     'confusion_matrix') as name:
-    predictions = ops.convert_to_tensor(
-        predictions, name='predictions', dtype=dtypes.int64)
-    labels = ops.convert_to_tensor(labels, name='labels', dtype=dtypes.int64)
+    predictions, labels = metric_ops.remove_squeezable_dimensions(
+        ops.convert_to_tensor(
+            predictions, name='predictions', dtype=dtypes.int64),
+        ops.convert_to_tensor(labels, name='labels', dtype=dtypes.int64))
 
     if num_classes is None:
       num_classes = math_ops.maximum(math_ops.reduce_max(predictions),

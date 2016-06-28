@@ -41,19 +41,22 @@ class Categorical(distribution.DiscreteDistribution):
     * log_cdf
   """
 
-  def __init__(self, logits, name="Categorical", dtype=dtypes.int32):
+  def __init__(self, logits, dtype=dtypes.int32, strict=True,
+               name="Categorical"):
     """Initialize Categorical distributions using class log-probabilities.
 
     Args:
-      logits: An N-D `Tensor` representing the log probabilities of a set of
-          Categorical distributions. The first N - 1 dimensions index into a
-          batch of independent distributions and the last dimension indexes
-          into the classes.
-      name: A name for this distribution (optional).
+      logits: An N-D `Tensor`, `N >= 1`, representing the log probabilities
+          of a set of Categorical distributions. The first `N - 1` dimensions
+          index into a batch of independent distributions and the last dimension
+          indexes into the classes.
       dtype: The type of the event samples (default: int32).
+      strict: Unused in this distribution.
+      name: A name for this distribution (optional).
     """
     self._name = name
     self._dtype = dtype
+    self._strict = strict
     with ops.op_scope([logits], name):
       self._logits = ops.convert_to_tensor(logits, name="logits")
       logits_shape = array_ops.shape(self._logits)
@@ -61,6 +64,11 @@ class Categorical(distribution.DiscreteDistribution):
       self._batch_shape = array_ops.slice(
           logits_shape, [0], array_ops.pack([self._batch_rank]))
       self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
+
+  @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
 
   @property
   def name(self):

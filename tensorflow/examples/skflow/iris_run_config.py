@@ -29,7 +29,7 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, 
 # estimator to control session configurations, e.g. num_cores and gpu_memory_fraction
 run_config = learn.estimators.RunConfig(num_cores=3, gpu_memory_fraction=0.6)
 
-# Build 3 layer DNN with 10, 20, 10 units respecitvely.
+# Build 3 layer DNN with 10, 20, 10 units respectively.
 classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
     n_classes=3, steps=200, config=run_config)
 

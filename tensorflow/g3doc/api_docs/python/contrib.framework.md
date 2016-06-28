@@ -184,6 +184,13 @@ See also:  `is_non_decreasing`
 
 - - -
 
+### `tf.contrib.framework.is_tensor(t)` {#is_tensor}
+
+Check if `t` is a tensor: `Tensor`, `SparseTensor`, or `Variable`.
+
+
+- - -
+
 ### `tf.contrib.framework.reduce_sum_n(tensors, name=None)` {#reduce_sum_n}
 
 Reduce tensors to a scalar sum.
@@ -298,6 +305,45 @@ Assert tensors are the same shape, from the same graph.
 
   Tuple of (actual_tensor, label_tensor), possibly with assert ops added.
 
+
+
+## Deprecation
+- - -
+
+### `tf.contrib.framework.deprecated(date, instructions)` {#deprecated}
+
+Decorator for marking functions or methods deprecated.
+
+This decorator adds a deprecation warning to a function's docstring. It has
+the following format:
+
+  <function> (from <module>) is deprecated and will be removed after <date>.
+  Instructions for updating:
+  <instructions>
+
+whenever the decorated function is called. <function> will include the class
+name if it is a method.
+
+It also edits the docstring of the function: ' (deprecated)' is appended
+to the first line of the docstring and a deprecation notice is prepended
+to the rest of the docstring.
+
+##### Args:
+
+
+*  <b>`date`</b>: String. The date the function is scheduled to be removed. Must be
+    ISO 8601 (YYYY-MM-DD).
+*  <b>`instructions`</b>: String. Instructions on how to update code using the
+    deprecated function.
+
+##### Returns:
+
+  Decorated function or method.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If date is not in ISO 8601 format, or instructions are empty.
 
 
 

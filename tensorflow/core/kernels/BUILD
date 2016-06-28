@@ -15,8 +15,6 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -781,6 +779,7 @@ tf_kernel_libraries(
     prefixes = [
         "adjust_contrast_op",
         "colorspace_op",
+        "crop_and_resize_op",
         "decode_jpeg_op",
         "decode_png_op",
         "draw_bounding_box_op",
@@ -853,6 +852,7 @@ tf_cc_tests(
     tests = [
         "adjust_contrast_op_test",
         "colorspace_op_test",
+        "crop_and_resize_op_test",
         "resize_bicubic_op_test",
         "resize_bilinear_op_test",
         "resize_nearest_neighbor_op_test",
@@ -1032,6 +1032,7 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
+        ":constant_op",
         ":fill_functor",
         ":transpose_functor",
         "//tensorflow/core:core_cpu",
@@ -1540,6 +1541,7 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
+        ":constant_op",
         ":cwise_op",
         ":fill_functor",
         ":scatter_op",
@@ -1647,12 +1649,23 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "multinomial_op",
+    prefix = "multinomial_op",
+    deps = [
+        ":random_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "multinomial_op_test",
     size = "small",
     deps = [
+        ":multinomial_op",
         ":ops_util",
-        ":random_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -1775,6 +1788,7 @@ filegroup(
         "image_resizer_state.h",
         "maxpooling_op.h",
         "pad_op.h",
+        "random_op.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
@@ -1805,6 +1819,7 @@ filegroup(
         "conv_grad_ops.cc",
         "conv_grad_ops.h",
         "conv_ops.cc",
+        "cwise_op_abs.cc",
         "cwise_op_add.cc",
         "cwise_op_div.cc",
         "cwise_op_equal_to.cc",
@@ -1840,6 +1855,7 @@ filegroup(
         "lrn_op.cc",
         "maxpooling_op.cc",
         "pad_op.cc",
+        "random_op.cc",
         "reduction_ops_common.cc",
         "reduction_ops_max.cc",
         "reduction_ops_mean.cc",
@@ -1858,6 +1874,7 @@ filegroup(
         "softsign_op.cc",
         "sparse_to_dense_op.cc",
         "stack_ops.cc",
+        "summary_op.cc",
         "tile_ops.cc",
         "topk_op.cc",
         "training_ops.cc",
@@ -1893,6 +1910,7 @@ filegroup(
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
+            "strided_slice_op.*",
             "tf_record_reader_op.*",
             "string_to_hash_bucket_op.*",
             "text_line_reader_op.*",

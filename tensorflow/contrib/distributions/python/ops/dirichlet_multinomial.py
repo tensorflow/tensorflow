@@ -147,8 +147,9 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
   def __init__(self,
                n,
                alpha,
-               name='DirichletMultinomial',
-               allow_arbitrary_counts=False):
+               allow_arbitrary_counts=False,
+               strict=True,
+               name='DirichletMultinomial'):
     """Initialize a batch of DirichletMultinomial distributions.
 
     Args:
@@ -159,11 +160,12 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
       alpha:  Positive `float` or `double` tensor with shape broadcastable to
         `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different `k` class Dirichlet multinomial distributions.
-      name: The name to prefix Ops created by this distribution class.
       allow_arbitrary_counts: Boolean. This represents whether the pmf/cdf
         allows for the `counts` tensor to be non-integral values.
         The pmf/cdf are functions that can be evaluated at non-integral values,
         but are only a distribution over non-negative integers.
+      strict: Not used (yet).
+      name: The name to prefix Ops created by this distribution class.
 
     Examples:
 
@@ -176,6 +178,10 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
     dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     ```
     """
+    # TODO(langmore): Should strict supercede allow_arbitrary_counts?
+    #   Or work orthogonal to it?  Implement correct usage of strict=True
+    self._strict = strict
+    self._allow_arbitrary_counts = allow_arbitrary_counts
     with ops.op_scope([n, alpha], name):
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
@@ -192,8 +198,6 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
       n = _check_n(n)
       n = math_ops.cast(n, self._alpha.dtype)
       self._n = n
-
-      self._allow_arbitrary_counts = allow_arbitrary_counts
 
       self._alpha_sum = math_ops.reduce_sum(
           self._alpha, reduction_indices=[-1], keep_dims=False)
@@ -212,6 +216,11 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
   def alpha(self):
     """Parameter defining this distribution."""
     return self._alpha
+
+  @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
 
   @property
   def name(self):

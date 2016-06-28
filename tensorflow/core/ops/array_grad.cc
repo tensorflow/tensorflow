@@ -96,10 +96,15 @@ Status PackGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: N*T"},
       // Attr defs
-      {"T: type", "N: int"},
+      {"T: type", "N: int", "axis: int"},
       // Nodes
       {
-        {{"dx"}, "Unpack", {"dy"}, {{"T", "$T"}, {"num", "$N"}}},
+        {
+          {"dx"},
+          "Unpack",
+          {"dy"},
+          {{"T", "$T"}, {"num", "$N"}, {"axis", "$axis"}}
+        },
       });
   // clang-format on
   VLOG(1) << "PackGrad " << DebugString(*g);
@@ -115,10 +120,15 @@ Status UnpackGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: T"},
       // Attr defs
-      {"T: type", "num: int"},
+      {"T: type", "num: int", "axis: int"},
       // Nodes
       {
-        {{"dx"}, "Pack", {"dy"}, {{"T", "$T"}, {"N", "$num"}}},
+        {
+          {"dx"},
+          "Pack",
+          {"dy"},
+          {{"T", "$T"}, {"N", "$num"}, {"axis", "$axis"}}
+        },
       });
   // clang-format on
   VLOG(1) << "UnpackGrad " << DebugString(*g);

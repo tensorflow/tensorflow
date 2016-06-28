@@ -150,6 +150,12 @@ class BaseDistribution(object):
   #   will return NaN for this statistic.
 
   @abc.abstractproperty
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    # return self._strict.
+    pass
+
+  @abc.abstractproperty
   def name(self):
     """Name to prepend to all ops."""
     # return self._name.

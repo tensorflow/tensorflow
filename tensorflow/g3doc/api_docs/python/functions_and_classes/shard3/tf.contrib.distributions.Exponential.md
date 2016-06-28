@@ -8,9 +8,19 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, name='Exponential')` {#Exponential.__init__}
+
+Construct Exponential distribution with parameter `lam`.
+
+##### Args:
 
 
+*  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
+    `lam` must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
+    methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
 - - -
@@ -270,6 +280,13 @@ Sample `n` observations from the Exponential Distributions.
 #### `tf.contrib.distributions.Exponential.std(name='std')` {#Exponential.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.strict` {#Exponential.strict}
+
+Boolean describing behavior on invalid input.
 
 
 - - -

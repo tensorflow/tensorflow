@@ -96,6 +96,10 @@ void TF_PRun_wrapper(TF_Session* session, const char* handle,
                      const FeedVector& inputs, const NameVector& output_names,
                      TF_Status* out_status, PyObjectVector* out_values);
 
+// Wrapper for TF_Reset that converts the string vectors to character arrays.
+void TF_Reset_wrapper(const TF_SessionOptions* opt,
+                      const NameVector& containers, TF_Status* out_status);
+
 // Convenience wrapper around EqualGraphDef to make it easier to wrap.
 // Returns an explanation if a difference is found, or the empty string
 // for no difference.

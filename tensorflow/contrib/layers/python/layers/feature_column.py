@@ -87,7 +87,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -631,16 +631,23 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
                       weight_collections=None,
                       trainable=True):
     """Returns a Tensor as linear predictions and a list of created Variable."""
-    weight = variables.Variable(
-        array_ops.zeros([self.dimension, num_outputs]),
-        collections=_add_variable_collection(weight_collections),
-        name=self.name + "_weight")
+    def _weight(name):
+      return variable_scope.get_variable(
+          name,
+          shape=[self.dimension, num_outputs],
+          initializer=array_ops.zeros_initializer,
+          collections=_add_variable_collection(weight_collections))
+
+    if self.name:
+      with variable_scope.variable_op_scope([input_tensor], None, self.name):
+        weight = _weight("weight")
+    else:
+      # Old behavior to support a subset of old checkpoints.
+      weight = _weight("_weight")
+
     # The _RealValuedColumn has the shape of [batch_size, column.dimension].
-    feature_by_dim = array_ops.reshape(
-        math_ops.to_float(input_tensor), [-1, 1, self.dimension])
-    log_odds_by_dim = (array_ops.transpose(weight) * feature_by_dim)
-    # Sum over all the dimensions.
-    return math_ops.reduce_sum(log_odds_by_dim, 2), [weight]
+    log_odds_by_dim = math_ops.matmul(input_tensor, weight)
+    return log_odds_by_dim, [weight]
 
 
 def real_valued_column(column_name,

@@ -30,7 +30,8 @@ class GcsFileSystem : public FileSystem {
  public:
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
-                std::unique_ptr<HttpRequest::Factory> http_request_factory);
+                std::unique_ptr<HttpRequest::Factory> http_request_factory,
+                size_t read_ahead_bytes);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -63,6 +64,11 @@ class GcsFileSystem : public FileSystem {
  private:
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+
+  // The number of bytes to read ahead for buffering purposes in the
+  // RandomAccessFile implementation. Defaults to 256Mb.
+  const size_t read_ahead_bytes_ = 256 * 1024 * 1024;
+
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
 };
 

@@ -40,7 +40,7 @@ Input of `fit` and `evaluate` should have following features,
         input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -62,6 +62,7 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
+*  <b>`target_dimension`</b>: dimension of the target for multilabels.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:
@@ -138,7 +139,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#LinearRegressor.fit}
+#### `tf.contrib.learn.LinearRegressor.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearRegressor.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -159,6 +160,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -168,12 +174,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -

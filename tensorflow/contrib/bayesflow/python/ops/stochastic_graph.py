@@ -123,11 +123,19 @@ ops.register_tensor_conversion_function(
 
 
 class _StochasticValueType(object):
+  """Interface for the ValueType classes.
+
+  This is the base class for MeanValue, SampleValue, SampleAndReshapeValue,
+  and their descendants.
+  """
 
   def pushed_above(self, unused_value_type):
     pass
 
   def popped_above(self, unused_value_type):
+    pass
+
+  def declare_inputs(self, unused_stochastic_tensor, unused_inputs_dict):
     pass
 
   @abc.abstractproperty
@@ -309,6 +317,8 @@ class DistributionTensor(StochasticTensor):
         self._value_type = get_current_value_type()
     else:
       self._value_type = get_current_value_type()
+
+    self._value_type.declare_inputs(self, dist_args)
 
     with ops.op_scope(dist_args.values(), name, "DistributionTensor") as scope:
       self._name = scope

@@ -608,9 +608,10 @@ def train(
         '`number_of_steps` must be either None or a positive number.')
 
   graph = graph or ops.get_default_graph()
-  if global_step is None:
-    global_step = variables.get_or_create_global_step()
-  saver = saver or tf_saver.Saver()
+  with graph.as_default():
+    if global_step is None:
+      global_step = variables.get_or_create_global_step()
+    saver = saver or tf_saver.Saver()
 
   if init_op == _USE_DEFAULT:
     init_op = tf_variables.initialize_all_variables()

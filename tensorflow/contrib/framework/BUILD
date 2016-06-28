@@ -14,6 +14,7 @@ py_library(
     srcs = [
         "__init__.py",
         "python/framework/__init__.py",
+        "python/framework/deprecation.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
         "python/ops/arg_scope.py",

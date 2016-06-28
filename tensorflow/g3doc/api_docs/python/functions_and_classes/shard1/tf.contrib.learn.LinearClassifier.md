@@ -157,7 +157,7 @@ Evaluates given model with provided evaluation data.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None)` {#LinearClassifier.fit}
+#### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
 
 Trains a model given training data `x` predictions and `y` targets.
 
@@ -178,6 +178,11 @@ Trains a model given training data `x` predictions and `y` targets.
     dimension of `x`. Must be `None` if `input_fn` is provided.
 *  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
     inside the training loop.
+*  <b>`max_steps`</b>: Number of total steps for which to train model. If `None`,
+    train forever. Two calls to `fit(steps=100)` means 200 training
+    iterations. On the other hand, two calls to `fit(max_steps=100)` means
+    that the second call will not do any iteration since first call did
+    all 100 steps.
 
 ##### Returns:
 
@@ -187,12 +192,9 @@ Trains a model given training data `x` predictions and `y` targets.
 
 
 *  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-
-##### Raises:
-
-
 *  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
       provided.
+*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
 
 
 - - -

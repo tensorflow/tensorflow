@@ -49,6 +49,7 @@ using tensorflow::SessionOptions;
 using tensorflow::RunOptions;
 using tensorflow::RunMetadata;
 using tensorflow::TensorShape;
+using tensorflow::Reset;
 
 extern "C" {
 
@@ -248,6 +249,34 @@ void TF_ExtendGraph(TF_Session* s, const void* proto, size_t proto_len,
 static void DeleteArray(void* data, size_t size, void* arg) {
   DCHECK_EQ(data, arg);
   delete[] reinterpret_cast<char*>(arg);
+}
+
+}  // end extern "C"
+
+namespace tensorflow {
+
+namespace {
+
+// Reset helper for converting character arrays to string vectors.
+void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
+                     int ncontainers, TF_Status* status) {
+  std::vector<tensorflow::string> container_names(ncontainers);
+  for (int i = 0; i < ncontainers; i++) {
+    container_names[i] = containers[i];
+  }
+
+  status->status = Reset(opt->options, container_names);
+}
+
+}  // namespace
+
+}  // namespace tensorflow
+
+extern "C" {
+
+void TF_Reset(const TF_SessionOptions* opt, const char** containers,
+              int ncontainers, TF_Status* status) {
+  tensorflow::TF_Reset_Helper(opt, containers, ncontainers, status);
 }
 
 }  // end extern "C"

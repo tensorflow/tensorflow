@@ -239,6 +239,13 @@ Standard deviation of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.BaseDistribution.strict` {#BaseDistribution.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
 #### `tf.contrib.distributions.BaseDistribution.variance(name='variance')` {#BaseDistribution.variance}
 
 Variance of the distribution.

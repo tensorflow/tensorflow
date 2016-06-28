@@ -67,7 +67,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, name='DirichletMultinomial', allow_arbitrary_counts=False)` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -81,11 +81,12 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet multinomial distributions.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
     but are only a distribution over non-negative integers.
+*  <b>`strict`</b>: Not used (yet).
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
 *  <b>`Examples`</b>: 
@@ -312,6 +313,13 @@ Generate `n` samples.
 #### `tf.contrib.distributions.DirichletMultinomial.std(name='std')` {#DirichletMultinomial.std}
 
 Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
+
+Boolean describing behavior on invalid input.
 
 
 - - -

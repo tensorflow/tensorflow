@@ -20,6 +20,8 @@ from __future__ import print_function
 import time
 
 import tensorflow as tf
+# importing to get flags.
+from tensorflow.contrib.learn.python.learn import runner_flags  # pylint: disable=unused-import
 
 
 class TestEstimator(object):
@@ -51,10 +53,12 @@ class ExperimentTest(tf.test.TestCase):
     est = TestEstimator()
     ex = tf.contrib.learn.Experiment(est,
                                      train_input_fn='train_input',
+                                     train_steps='train_steps',
                                      eval_input_fn='eval_input',
                                      eval_metrics='eval_metrics')
-    ex.train(delay_secs=0)
+    fit_args = ex.train(delay_secs=0)
     self.assertEquals(1, est.fit_count)
+    self.assertIn(('max_steps', 'train_steps'), fit_args)
     self.assertEquals(0, est.eval_count)
 
   def test_train_delay(self):
@@ -66,8 +70,19 @@ class ExperimentTest(tf.test.TestCase):
       start = time.time()
       ex.train(delay_secs=delay)
       duration = time.time() - start
-      tf.logging.info('train duration (expected %f): %f', delay, duration)
-      self.assertTrue(duration > delay - 0.5 and duration < delay + 0.5)
+      self.assertAlmostEqual(duration, delay, delta=0.5)
+
+  def test_train_default_delay(self):
+    est = TestEstimator()
+    ex = tf.contrib.learn.Experiment(est,
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input')
+    for task in [0, 1, 3]:
+      start = time.time()
+      tf.flags.FLAGS.task = task
+      ex.train()
+      duration = time.time() - start
+      self.assertAlmostEqual(duration, task*5, delta=0.5)
 
   def test_evaluate(self):
     est = TestEstimator()
@@ -90,7 +105,7 @@ class ExperimentTest(tf.test.TestCase):
       ex.evaluate(delay_secs=delay)
       duration = time.time() - start
       tf.logging.info('eval duration (expected %f): %f', delay, duration)
-      self.assertTrue(duration > delay - 0.5 and duration < delay + 0.5)
+      self.assertAlmostEqual(duration, delay, delta=0.5)
 
   def test_continuous_eval(self):
     est = TestEstimator()
@@ -116,7 +131,7 @@ class ExperimentTest(tf.test.TestCase):
       duration = time.time() - start
       expected = 5 * delay
       tf.logging.info('eval duration (expected %f): %f', expected, duration)
-      self.assertTrue(duration > expected - 0.5 and duration < expected + 0.5)
+      self.assertAlmostEqual(duration, expected, delta=0.5)
 
   def test_run_local(self):
     est = TestEstimator()

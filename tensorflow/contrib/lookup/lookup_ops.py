@@ -179,6 +179,7 @@ class InitializableLookupTableBase(LookupInterface):
                                                   name=name)
     # pylint: enable=protected-access
 
+    values.set_shape(key_tensor.get_shape())
     if isinstance(keys, ops.SparseTensor):
       return ops.SparseTensor(keys.indices, values, keys.shape)
     else:
@@ -726,21 +727,29 @@ class MutableHashTable(LookupInterface):
     Returns:
       A `MutableHashTable` object.
     """
+    self._default_value = ops.convert_to_tensor(default_value,
+                                                dtype=value_dtype)
+    self._value_shape = self._default_value.get_shape()
+
     # pylint: disable=protected-access
-    self._table_ref = gen_data_flow_ops._mutable_hash_table(
-        shared_name=shared_name,
-        key_dtype=key_dtype,
-        value_dtype=value_dtype,
-        name=name)
+    if self._default_value.get_shape().ndims == 0:
+      self._table_ref = gen_data_flow_ops._mutable_hash_table(
+          shared_name=shared_name,
+          key_dtype=key_dtype,
+          value_dtype=value_dtype,
+          name=name)
+    else:
+      self._table_ref = gen_data_flow_ops._mutable_hash_table_of_tensors(
+          shared_name=shared_name,
+          key_dtype=key_dtype,
+          value_dtype=value_dtype,
+          value_shape=self._default_value.get_shape(),
+          name=name)
     # pylint: enable=protected-access
+
     super(MutableHashTable, self).__init__(key_dtype, value_dtype,
                                            self._table_ref.op.name.split(
                                                "/")[-1])
-
-    with ops.op_scope([self._table_ref, default_value], name,
-                      "MutableHashTable"):
-      self._default_value = ops.convert_to_tensor(default_value,
-                                                  dtype=self._value_dtype)
 
   def size(self, name=None):
     """Compute the number of elements in this table.
@@ -786,6 +795,7 @@ class MutableHashTable(LookupInterface):
                                                     name=name)
       # pylint: enable=protected-access
 
+    values.set_shape(keys.get_shape().concatenate(self._value_shape))
     return values
 
   def insert(self, keys, values, name=None):
@@ -814,3 +824,27 @@ class MutableHashTable(LookupInterface):
       # pylint: enable=protected-access
 
     return op
+
+  def export(self, name=None):
+    """Returns tensors of all keys and values in the table.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A pair of tensors with the first tensor containing all keys and the
+        second tensors containing all values in the table.
+    """
+    with ops.op_scope([self._table_ref], name,
+                      "%s_lookup_table_export_values" % self._name) as name:
+      # pylint: disable=protected-access
+      exported_keys, exported_values = gen_data_flow_ops._lookup_table_export(
+          self._table_ref,
+          self._key_dtype,
+          self._value_dtype,
+          name=name)
+      # pylint: enable=protected-access
+
+    exported_values.set_shape(exported_keys.get_shape().concatenate(
+        self._value_shape))
+    return exported_keys, exported_values

@@ -57,7 +57,7 @@ class Gamma(distribution.ContinuousDistribution):
 
   """
 
-  def __init__(self, alpha, beta, name="Gamma"):
+  def __init__(self, alpha, beta, strict=True, name="Gamma"):
     """Construct Gamma distributions with parameters `alpha` and `beta`.
 
     The parameters `alpha` and `beta` must be shaped in a way that supports
@@ -70,15 +70,20 @@ class Gamma(distribution.ContinuousDistribution):
       beta: `float` or `double` tensor, the inverse scale params of the
         distribution(s).
         beta must contain only positive values.
+      strict: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
+        methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+        and the inputs are invalid, correct behavior is not guaranteed.
       name: The name to prepend to all ops created by this distribution.
 
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
+    self._strict = strict
     with ops.op_scope([alpha, beta], name) as scope:
       self._name = scope
-      with ops.control_dependencies([
-          check_ops.assert_positive(alpha), check_ops.assert_positive(beta)]):
+      with ops.control_dependencies(
+          [check_ops.assert_positive(alpha), check_ops.assert_positive(beta)]
+          if strict else []):
         alpha = array_ops.identity(alpha, name="alpha")
         beta = array_ops.identity(beta, name="beta")
 
@@ -90,6 +95,11 @@ class Gamma(distribution.ContinuousDistribution):
 
     self._alpha = alpha
     self._beta = beta
+
+  @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
 
   @property
   def name(self):
@@ -208,7 +218,8 @@ class Gamma(distribution.ContinuousDistribution):
         beta = self._beta
         x = ops.convert_to_tensor(x)
         x = control_flow_ops.with_dependencies(
-            [check_ops.assert_positive(x)], x)
+            [check_ops.assert_positive(x)] if self.strict else [],
+            x)
         contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
                                                     dtype=self.dtype)
 
@@ -246,7 +257,8 @@ class Gamma(distribution.ContinuousDistribution):
       with ops.op_scope([self._alpha, self._beta, x], name):
         x = ops.convert_to_tensor(x)
         x = control_flow_ops.with_dependencies(
-            [check_ops.assert_positive(x)], x)
+            [check_ops.assert_positive(x)] if self.strict else [],
+            x)
         contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
                                                     dtype=self.dtype)
         # Note that igamma returns the regularized incomplete gamma function,

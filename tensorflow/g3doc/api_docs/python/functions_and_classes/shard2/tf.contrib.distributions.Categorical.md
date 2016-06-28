@@ -9,19 +9,20 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, name='Categorical', dtype=tf.int32)` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, strict=True, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
 ##### Args:
 
 
-*  <b>`logits`</b>: An N-D `Tensor` representing the log probabilities of a set of
-      Categorical distributions. The first N - 1 dimensions index into a
-      batch of independent distributions and the last dimension indexes
-      into the classes.
-*  <b>`name`</b>: A name for this distribution (optional).
+*  <b>`logits`</b>: An N-D `Tensor`, `N >= 1`, representing the log probabilities
+      of a set of Categorical distributions. The first `N - 1` dimensions
+      index into a batch of independent distributions and the last dimension
+      indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
+*  <b>`strict`</b>: Unused in this distribution.
+*  <b>`name`</b>: A name for this distribution (optional).
 
 
 - - -
@@ -186,6 +187,13 @@ Sample `n` observations from the Categorical distribution.
 #### `tf.contrib.distributions.Categorical.std(name='std')` {#Categorical.std}
 
 Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.strict` {#Categorical.strict}
+
+Boolean describing behavior on invalid input.
 
 
 - - -

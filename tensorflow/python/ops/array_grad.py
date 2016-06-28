@@ -30,13 +30,13 @@ from tensorflow.python.ops import math_ops
 @ops.RegisterGradient("Pack")
 def _PackGrad(op, grad):
   """Gradient for pack op."""
-  return array_ops.unpack(grad, num=op.get_attr("N"))
+  return array_ops.unpack(grad, num=op.get_attr("N"), axis=op.get_attr("axis"))
 
 
 @ops.RegisterGradient("Unpack")
-def _UnpackGrad(_, *grads):
+def _UnpackGrad(op, *grads):
   """Gradient for unpack op."""
-  return array_ops.pack(grads)
+  return array_ops.pack(grads, axis=op.get_attr("axis"))
 
 
 @ops.RegisterGradient("Concat")
@@ -147,6 +147,27 @@ def _SliceGrad(op, grad):
       array_ops.shape(input_vec) - slice_size - begin_vec, shape)
   paddings = array_ops.concat(1, [before_pad, after_pad])
   return array_ops.pad(grad, paddings), None, None
+
+
+@ops.RegisterGradient("StridedSlice")
+def _StridedSliceGrad(op, grad):
+  """Gradient for unpack op."""
+  x = array_ops.shape(op.inputs[0])
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+
+  return array_ops.strided_slice_grad(
+      x,
+      begin,
+      end,
+      strides,
+      grad,
+      begin_mask=op.get_attr("begin_mask"),
+      end_mask=op.get_attr("end_mask"),
+      ellipse_mask=op.get_attr("ellipse_mask"),
+      new_axis_mask=op.get_attr("new_axis_mask"),
+      shrink_axis_mask=op.get_attr("shrink_axis_mask")), None, None, None
 
 
 @ops.RegisterGradient("Split")
