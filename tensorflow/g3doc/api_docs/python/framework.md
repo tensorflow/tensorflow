@@ -330,7 +330,7 @@ with tf.Graph().as_default() as g:
       assert nested_inner_c.op.name == "nested/inner/c"
 
     # Create a nested scope called "inner_1".
-    with g.name_scope("inner"):
+    with g.name_scope("inner_1"):
       nested_inner_1_c = tf.constant(30.0, name="c")
       assert nested_inner_1_c.op.name == "nested/inner_1/c"
 
