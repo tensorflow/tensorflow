@@ -206,7 +206,7 @@ allows the user to toggle between various dashboards.
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
         if (!this.noHash) {
-          TF.URIStorage.setString(TF.URIStorage.TAB, this.tabs[0]);
+          TF.URIStorage.setString(TF.URIStorage.TAB, mode);
         }
         return mode;
       },

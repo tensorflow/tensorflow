@@ -6,8 +6,8 @@
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/802d984ade26.tar.gz",
-    sha256 = "1499997676bd9006082950a761b88d5c48554fd550747763b2b34951da29a2e8",
+    url = "https://bitbucket.org/eigen/eigen/get/334b1d428283.tar.gz",
+    sha256 = "6d5efd02c7c11fbb9d02df4f0b64f22ecbd348e7549f8a83c13fb4d8d9e19d4b",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -146,7 +146,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     remote = "https://boringssl.googlesource.com/boringssl",
     build_file = path_prefix + "boringssl.BUILD",
   )
-  
+
   native.bind(
     name = "boringssl_err_data_c",
     actual = "@//" + path_prefix + "third_party/boringssl:err_data_c",

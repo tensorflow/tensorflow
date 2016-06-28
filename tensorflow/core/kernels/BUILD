@@ -118,6 +118,7 @@ cc_library(
 
 cc_library(
     name = "fill_functor",
+    srcs = ["fill_functor.cc"],
     hdrs = ["fill_functor.h"],
     deps = [
         "//tensorflow/core:framework",
@@ -1032,7 +1033,6 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
-        ":constant_op",
         ":fill_functor",
         ":transpose_functor",
         "//tensorflow/core:core_cpu",
@@ -1541,7 +1541,6 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
-        ":constant_op",
         ":cwise_op",
         ":fill_functor",
         ":scatter_op",
@@ -1723,6 +1722,7 @@ filegroup(
         "dense_update_ops.cc",
         "dense_update_ops.h",
         "example_parsing_ops.cc",
+        "fill_functor.cc",
         "fill_functor.h",
         "gather_op.cc",
         "gather_op.h",

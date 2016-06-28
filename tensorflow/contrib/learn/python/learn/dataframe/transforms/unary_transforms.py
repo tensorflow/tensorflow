@@ -52,9 +52,7 @@ DOC_FORMAT_STRING = (
 
 
 # pylint: disable=unused-argument
-def _register_unary_op(registered_name,
-                       operation):
-
+def register_unary_op(registered_name, operation):
   """Creates a `Transform` that wraps a unary tensorflow operation.
 
   If `registered_name` is specified, the `Transform` is registered as a member
@@ -100,7 +98,3 @@ def _register_unary_op(registered_name,
               "_apply_transform": _apply_transform})
 
   series.Series.register_unary_op(registered_name)(cls)
-
-
-for ut in UNARY_TRANSFORMS:
-  _register_unary_op(*ut)

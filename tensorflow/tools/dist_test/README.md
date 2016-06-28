@@ -22,6 +22,12 @@ the Docker image used to generate the TensorFlow GRPC server pods
     export TF_DIST_SERVER_DOCKER_IMAGE=<docker_image_name>
     ./local_test.sh
 
+By default, local_test.sh runs the MNIST-with-replicas model as a test.
+However, you can use the --model-name flag to run the tf-learn/wide&deep
+cesnsu model:
+
+    ./local_test.sh --model-name CENSUS_WIDENDEEP
+
 **2) Launch a remote k8s cluster on Google Container Engine (GKE) and run the
 test suite on it**
 

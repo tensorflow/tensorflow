@@ -240,6 +240,8 @@ class EstimatorTest(tf.test.TestCase):
     predictions = est.predict(x=boston.data)
     other_score = _sklearn.mean_squared_error(predictions, boston.target)
     self.assertAllClose(other_score, scores['MSE'])
+    self.assertTrue('global_step' in scores)
+    self.assertEqual(scores['global_step'], 100)
 
   def testIrisAll(self):
     iris = tf.contrib.learn.datasets.load_iris()
@@ -257,6 +259,8 @@ class EstimatorTest(tf.test.TestCase):
                                                         axis=1))
     other_score = _sklearn.accuracy_score(iris.target, predictions['class'])
     self.assertAllClose(other_score, scores['accuracy'])
+    self.assertTrue('global_step' in scores)
+    self.assertEqual(scores['global_step'], 100)
 
   def testIrisInputFn(self):
     iris = tf.contrib.learn.datasets.load_iris()

@@ -1,4 +1,4 @@
-#### `tf.train.Server.create_local_server(start=True)` {#Server.create_local_server}
+#### `tf.train.Server.create_local_server(config=None, start=True)` {#Server.create_local_server}
 
 Creates a new single-process cluster running on the local host.
 
@@ -10,6 +10,8 @@ single-process cluster containing a single task in a job called
 ##### Args:
 
 
+*  <b>`config`</b>: (Options.) A `tf.ConfigProto` that specifies default
+    configuration options for all sessions that run on this server.
 *  <b>`start`</b>: (Optional.) Boolean, indicating whether to start the server after
     creating it. Defaults to `True`.
 

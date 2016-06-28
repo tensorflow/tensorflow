@@ -21,8 +21,8 @@ except for using 2 spaces.
 
 ```
 from __future__ import absolute_import
-from __future__ import print_function
 from __future__ import division
+from __future__ import print_function
 ```
 
 * Use `six` to write compatible code (for example `six.range`).
