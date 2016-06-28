@@ -70,7 +70,7 @@ new_git_repository(
   name = "iron_a11y_keys_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-a11y-keys-behavior.git",
-  tag = "v1.1.4",
+  tag = "v1.1.5",
 )
 
 new_git_repository(
@@ -386,6 +386,13 @@ new_git_repository(
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-toolbar.git",
   tag = "v1.1.4",
+)
+
+new_git_repository(
+  name = "paper_tooltip",
+  build_file = "bower.BUILD",
+  remote = "https://github.com/polymerelements/paper-tooltip.git",
+  tag = "v1.1.2",
 )
 
 new_git_repository(

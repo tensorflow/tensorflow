@@ -26,6 +26,7 @@ by default. The user can select a different run from a dropdown menu.
 <tf-dashboard-layout>
 <div class="sidebar">
   <tf-graph-controls id="controls"
+      devices-for-stats="{{_devicesForStats}}"
       color-by-params="[[_colorByParams]]"
       stats="[[_stats]]"
       color-by="{{_colorBy}}",
@@ -48,6 +49,7 @@ by default. The user can select a different run from a dropdown menu.
 </div>
 <div class="center">
     <tf-graph-board id="graphboard"
+                devices-for-stats="[[_devicesForStats]]"
                 graph-hierarchy="[[_graphHierarchy]]"
                 graph="[[_graph]]"
                 stats="[[_stats]]"
