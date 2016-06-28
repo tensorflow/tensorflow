@@ -87,7 +87,6 @@ allows the user to toggle between various dashboards.
           <tf-graph-dashboard
             id="graphs"
             backend="[[_backend]]"
-            router="[[router]]"
           ></tf-graph-dashboard>
         </template>
 
@@ -169,14 +168,15 @@ allows the user to toggle between various dashboards.
       is: "tf-tensorboard",
       behaviors: [TF.TensorBoard.AutoReloadBehavior],
       properties: {
-
         router: {
           type: Object,
-          computed: "_makeRouter(demoDir)",
+          value: function() {
+            return TF.Backend.router();
+          },
         },
         _backend: {
           type: Object,
-          computed: "_makeBackend(router)",
+          computed: "_makeBackend(router, demoDir)",
         },
         // Which tab is selected (events, graph, images etc).
         mode: {
@@ -188,10 +188,11 @@ allows the user to toggle between various dashboards.
         // location hash. Hash update interferes with selenium tests.
         noHash: {
           type: Boolean,
-          value: false
+          value: false,
         },
-        // If this is set to a string, TensorBoard will switch to "demo mode" and attempt to load
-        // serialized json data from that directory. You can generate conformant json using
+        // If this is set to a string, TensorBoard will switch to "demo mode"
+        // and attempt to load serialized json data from that directory. You can
+        // generate conformant json using
         // tensorboard/scripts/serialize_tensorboard.py
         demoDir: {
           type: String,
@@ -210,14 +211,11 @@ allows the user to toggle between various dashboards.
         }
         return mode;
       },
-      _makeRouter: function(demoDir) {
-        if (demoDir == null) {
-          return TF.Backend.router();
-        } else {
-          return TF.Backend.router(demoDir, true);
+      _makeBackend: function(router, demoDir) {
+        // use the demoDir if it is set, otherwise use the provided router
+        if (demoDir != null) {
+          router = TF.Backend.router(demoDir, true);
         }
-      },
-      _makeBackend: function(router) {
         return new TF.Backend.Backend(router);
       },
       _modeIsEvents: function(mode) {

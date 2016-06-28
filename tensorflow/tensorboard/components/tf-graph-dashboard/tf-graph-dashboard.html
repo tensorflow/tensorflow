@@ -81,7 +81,6 @@ Polymer({
   properties: {
     _datasets: Object,
     backend: {type: Object, observer: 'reload'},
-    router: {type: Object},
     runs: Array,
   },
   reload: function() {
@@ -92,12 +91,12 @@ Polymer({
       var datasets = _.map(runsWithGraph, function(runName) {
         return {
           name: runName,
-          path: this.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
+          path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY),
           runMetadata: runToMetadata[runName] ? _.map(runToMetadata[runName].sort(), function(tag) {
             return {
               tag: tag,
-              path: this.router.runMetadata(tag, runName)
+              path: this.backend.router.runMetadata(tag, runName)
             };
           }, this) : []
         };
