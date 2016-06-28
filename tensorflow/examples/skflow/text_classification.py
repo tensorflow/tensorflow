@@ -56,7 +56,7 @@ def rnn_model(x, y):
 
   # Split into list of embedding per word, while removing doc length dim.
   # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-  word_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
+  word_list = tf.unpack(word_vectors, axis=1)
 
   # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
   cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
