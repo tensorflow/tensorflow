@@ -107,8 +107,7 @@ def _Conv3DBackpropFilterGrad(op, grad):
           nn_ops.conv3d(op.inputs[0],
                         grad,
                         strides=op.get_attr("strides"),
-                        padding=op.get_attr("padding"))
-  ]
+                        padding=op.get_attr("padding"))]
 
 
 @ops.RegisterGradient("AvgPool3D")
