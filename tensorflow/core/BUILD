@@ -1128,23 +1128,6 @@ cc_library(
 )
 
 tf_cuda_library(
-    name = "cupti_wrapper_default",
-    srcs = [
-        "platform/default/gpu/cupti_wrapper.cc",
-    ],
-    hdrs = [
-        "platform/default/gpu/cupti_wrapper.h",
-    ],
-    copts = tf_copts(),
-    cuda_deps = [
-        ":stream_executor",
-        "//third_party/gpus/cuda:cuda_headers",
-        "//third_party/gpus/cuda:cupti_headers",
-    ],
-    data = ["//third_party/gpus/cuda:cupti_dsos"],
-)
-
-tf_cuda_library(
     name = "gpu_tracer",
     srcs = [
         "common_runtime/gpu/gpu_tracer.cc",

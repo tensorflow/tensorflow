@@ -40,15 +40,24 @@ Initializes a BaseEstimator instance.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -318,15 +327,24 @@ Constructs an Estimator instance.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -599,15 +617,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -938,15 +965,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -1320,15 +1356,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -1603,15 +1648,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -1859,15 +1913,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -2491,15 +2554,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -2856,15 +2928,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -3139,15 +3220,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -3395,15 +3485,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
@@ -4283,15 +4382,24 @@ Returns weights of deep neural network part.
 
 Evaluates given model with provided evaluation data.
 
+Evaluates on the given input data. If `input_fn` is provided, that
+input function should raise an end-of-input exception (`OutOfRangeError` or
+`StopIteration`) after one epoch of the training data has been provided.
+
+By default, the whole evaluation dataset is used. If `steps` is provided,
+only `steps` batches of size `batch_size` are processed.
+
+The return value is a dict containing the metrics specified in `metrics`, as
+well as an entry `global_step` which contains the value of the global step
+for which this evaluation was performed.
+
 ##### Args:
 
 
 *  <b>`x`</b>: features.
 *  <b>`y`</b>: targets.
 *  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`. If `steps` is `None`, the tensors returned by this should
-    generally raise an end-of-input exception when all eval records have
-    been returned (typically, 1 epoch over eval data).
+    `None`.
 *  <b>`feed_fn`</b>: Function creating a feed dict every time it is called. Called
     once per iteration.
 *  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first

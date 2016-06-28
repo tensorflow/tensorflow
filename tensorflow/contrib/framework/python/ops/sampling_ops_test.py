@@ -63,6 +63,11 @@ class SamplingOpsTest(tf.test.TestCase):
       tf.contrib.framework.sampling_ops.stratified_sample(
           val, label, np.array([.1] * 5), batch_size)
 
+    # Probabilities must be 1D.
+    with self.assertRaises(ValueError):
+      tf.contrib.framework.sampling_ops.stratified_sample(
+          val, label, np.array([[.25, .25], [.25, .25]]), batch_size)
+
   def testRuntimeAssertionFailures(self):
     probs = [.2] * 5
     vals = tf.zeros([3, 1])
@@ -75,14 +80,14 @@ class SamplingOpsTest(tf.test.TestCase):
 
     # Set up graph with illegal label vector.
     label_ph = tf.placeholder(tf.int32, shape=[None])
-    batch_tf = tf.contrib.framework.sampling_ops._verify_input(
+    vals_tf, lbls_tf, _ = tf.contrib.framework.sampling_ops._verify_input(
         vals, label_ph, probs)
 
     for illegal_label in illegal_labels:
       # Run session that should fail.
       with self.test_session() as sess:
         with self.assertRaises(tf.errors.InvalidArgumentError):
-          sess.run(batch_tf, feed_dict={label_ph: illegal_label})
+          sess.run([vals_tf, lbls_tf], feed_dict={label_ph: illegal_label})
 
   def testBatchingBehavior(self):
     batch_size = 20
@@ -119,13 +124,14 @@ class SamplingOpsTest(tf.test.TestCase):
     # Set up graph with placeholders.
     vals_ph = tf.placeholder(tf.float32)  # completely undefined shape
     labels_ph = tf.placeholder(tf.int32)  # completely undefined shape
-    batch_tf = tf.contrib.framework.sampling_ops._verify_input(
+    vals_tf, lbls_tf, _ = tf.contrib.framework.sampling_ops._verify_input(
         vals_ph, labels_ph, probs)
 
     # Run graph to make sure there are no shape-related runtime errors.
     for vals, labels in legal_input_pairs:
       with self.test_session() as sess:
-        sess.run(batch_tf, feed_dict={vals_ph: vals, labels_ph: labels})
+        sess.run([vals_tf, lbls_tf], feed_dict={vals_ph: vals,
+                                                labels_ph: labels})
 
   def testNormalBehavior(self):
     # Set up graph.

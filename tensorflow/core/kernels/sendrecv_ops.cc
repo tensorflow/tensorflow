@@ -32,10 +32,11 @@ static string GetRendezvousKeyPrefix(const string& send_device,
                          recv_device, ";", tensor_name);
 }
 
-static string GetRendezvousKey(const string& key_prefix,
-                               const FrameAndIter& frame_iter) {
-  return strings::StrCat(key_prefix, ";", frame_iter.frame_id, ":",
-                         frame_iter.iter_id);
+static void GetRendezvousKey(const string& key_prefix,
+                             const FrameAndIter& frame_iter, string* key) {
+  key->clear();
+  strings::StrAppend(key, key_prefix, ";", frame_iter.frame_id, ":",
+                     frame_iter.iter_id);
 }
 
 SendOp::SendOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -57,8 +58,12 @@ void SendOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(
       ctx, ctx->rendezvous() != nullptr,
       errors::Internal("Op kernel context needs to provide a rendezvous."));
-  const string key = GetRendezvousKey(key_prefix_, ctx->frame_iter());
+  string key;
+  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &key);
   VLOG(2) << "Send " << key;
+
+  Rendezvous::ParsedKey parsed;
+  OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(key, &parsed));
 
   // The device context may be passed between the Send/Recv
   // boundary, so that the device context used to produce the Tensor
@@ -67,9 +72,8 @@ void SendOp::Compute(OpKernelContext* ctx) {
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->input_alloc_attr(0);
-  Status s =
-      ctx->rendezvous()->Send(key, args, ctx->input(0), ctx->is_input_dead());
-  ctx->SetStatus(s);
+  OP_REQUIRES_OK(ctx, ctx->rendezvous()->Send(parsed, args, ctx->input(0),
+                                              ctx->is_input_dead()));
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
@@ -98,16 +102,21 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES(
       ctx, ctx->rendezvous() != nullptr,
       errors::Internal("Op kernel context needs to provide a rendezvous."));
-  const string key = GetRendezvousKey(key_prefix_, ctx->frame_iter());
+  string key;
+  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &key);
   VLOG(2) << "Recv " << key;
+
+  Rendezvous::ParsedKey parsed;
+  OP_REQUIRES_OK_ASYNC(ctx, Rendezvous::ParseKey(key, &parsed), done);
 
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->output_alloc_attr(0);
   ctx->rendezvous()->RecvAsync(
-      key, args, [ctx, done](const Status& s, const Rendezvous::Args& send_args,
-                             const Rendezvous::Args& recv_args,
-                             const Tensor& val, bool is_dead) {
+      parsed, args,
+      [ctx, done](const Status& s, const Rendezvous::Args& send_args,
+                  const Rendezvous::Args& recv_args, const Tensor& val,
+                  bool is_dead) {
         ctx->SetStatus(s);
         if (s.ok()) {
           // 'ctx' allocates the output tensor of the expected type.  The

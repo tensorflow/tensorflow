@@ -116,10 +116,13 @@ class BaseSession(SessionInterface):
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow session.
+      TypeError: If one of the arguments has the wrong type.
     """
     if graph is None:
       self._graph = ops.get_default_graph()
     else:
+      if not isinstance(graph, ops.Graph):
+        raise TypeError('graph must be a tf.Graph, but got %s' % type(graph))
       self._graph = graph
 
     self._opened = False
@@ -127,18 +130,30 @@ class BaseSession(SessionInterface):
 
     self._current_version = 0
     self._extend_lock = threading.Lock()
-    self._target = target
+    if target is not None:
+      try:
+        self._target = compat.as_bytes(target)
+      except TypeError:
+        raise TypeError('target must be a string, but got %s' % type(target))
+    else:
+      self._target = None
 
     self._delete_lock = threading.Lock()
     self._dead_handles = []
 
-    self._session = None
-    self._config = config
-    self._add_shapes = config.graph_options.infer_shapes if (
-        config and config.graph_options) else False
+    if config is not None:
+      if not isinstance(config, config_pb2.ConfigProto):
+        raise TypeError('config must be a tf.ConfigProto, but got %s'
+                        % type(config))
+      self._config = config
+      self._add_shapes = config.graph_options.infer_shapes
+    else:
+      self._config = None
+      self._add_shapes = False
 
+    self._session = None
+    opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
-      opts = tf_session.TF_NewSessionOptions(target=target, config=config)
       with errors.raise_exception_on_not_ok_status() as status:
         self._session = tf_session.TF_NewSession(opts, status)
     finally:
@@ -920,6 +935,12 @@ class Session(BaseSession):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         resetting containers.
     """
+    if target is not None:
+      target = compat.as_bytes(target)
+    if containers is not None:
+      containers = [compat.as_bytes(c) for c in containers]
+    else:
+      containers = []
     tf_session.TF_Reset(target, containers, config)
 
 

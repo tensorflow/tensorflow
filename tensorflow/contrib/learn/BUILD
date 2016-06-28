@@ -18,6 +18,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/contrib/session_bundle:exporter",
         "//tensorflow/python:framework",
     ],
 )
@@ -212,6 +213,18 @@ py_test(
     name = "unary_transform_test",
     size = "small",
     srcs = ["python/learn/tests/dataframe/unary_transform_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "compare_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/compare_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -554,6 +567,19 @@ py_test(
     srcs = ["python/learn/io/graph_io_test.py"],
     srcs_version = "PY2AND3",
     tags = ["manual"],  # http://b/29229547
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "export_test",
+    size = "small",
+    srcs = ["python/learn/utils/export_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",

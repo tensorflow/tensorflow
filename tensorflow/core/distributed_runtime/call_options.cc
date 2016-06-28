@@ -33,7 +33,7 @@ void CallOptions::StartCancel() {
 
 void CallOptions::SetCancelCallback(CancelFunction cancel_func) {
   mutex_lock l(mu_);
-  cancel_func_ = cancel_func;
+  cancel_func_ = std::move(cancel_func);
 }
 
 void CallOptions::ClearCancelCallback() {
