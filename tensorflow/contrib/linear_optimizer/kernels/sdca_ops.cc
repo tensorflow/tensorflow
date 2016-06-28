@@ -59,7 +59,7 @@ struct PerExampleData {
   // feature_weights dot feature_values for the example
   double wx = 0;
   // sum of squared feature values occurring in the example divided by
-  // (L2 * N)
+  // L2 * sum(example_weights).
   double normalized_squared_norm = 0;
 };
 
