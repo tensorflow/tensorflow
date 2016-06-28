@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,8 @@ NOTES:
   //third_party/gpus/crosstool/v*/*/clang/bin/crosstool_wrapper_is_not_gcc
 """
 
+from __future__ import print_function
+
 __author__ = 'keveman@google.com (Manjunath Kudlur)'
 
 from argparse import ArgumentParser
@@ -54,7 +56,7 @@ LLVM_HOST_COMPILER_PATH = ('/usr/bin/gcc')
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
 
 def Log(s):
-  print 'gpus/crosstool: {0}'.format(s)
+  print('gpus/crosstool: {0}'.format(s))
 
 
 def GetOptionValue(argv, option):
