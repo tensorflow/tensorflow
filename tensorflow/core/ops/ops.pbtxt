@@ -10138,6 +10138,7 @@ op {
   }
   summary: "Forwards the ref tensor `data` to the output port determined by `pred`."
   description: "If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,\nthe data goes to `output_false`.\n\nSee also `Switch` and `Merge`."
+  allows_uninitialized_input: true
 }
 op {
   name: "Relu"
