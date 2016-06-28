@@ -234,6 +234,18 @@ py_test(
 )
 
 py_test(
+    name = "boolean_mask_test",
+    size = "small",
+    srcs = ["python/learn/tests/dataframe/boolean_mask_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "early_stopping_test",
     size = "medium",
     srcs = ["python/learn/tests/early_stopping_test.py"],
