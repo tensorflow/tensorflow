@@ -1284,14 +1284,14 @@ class GifTest(test_util.TensorFlowTestCase):
   def testExisting(self):
     # Read some real GIFs, converting to different channel numbers
     prefix = 'tensorflow/core/lib/gif/testdata/'
-    inputs = (3, 'earth.gif'),
+    inputs = (3, 'cock.gif'),
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
         with self.test_session() as sess:
           gif0 = io_ops.read_file(prefix + filename)
           image0 = image_ops.decode_gif(gif0, channels=channels)
           gif0, image0 = sess.run([gif0, image0])
-          self.assertEqual(image0.shape, (400, 400, 3))
+          self.assertEqual(image0.shape, (55, 63, 3))
 
   def testShape(self):
       with self.test_session() as sess:
