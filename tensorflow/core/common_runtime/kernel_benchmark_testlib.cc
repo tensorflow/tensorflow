@@ -135,7 +135,8 @@ void Benchmark::RunWithArgs(
   args.runner = [this](std::function<void()> closure) {
     pool_->Schedule(closure);
   };
-  for (int i = 0; i < 3; ++i) {
+  static const int kWarmupRuns = 3;
+  for (int i = 0; i < kWarmupRuns; ++i) {
     for (const auto& p : in) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
@@ -149,6 +150,7 @@ void Benchmark::RunWithArgs(
     }
   }
   TF_CHECK_OK(device_->Sync());
+  VLOG(3) << kWarmupRuns << " warmup runs done.";
 
   testing::StartTiming();
   while (iters-- > 0) {
