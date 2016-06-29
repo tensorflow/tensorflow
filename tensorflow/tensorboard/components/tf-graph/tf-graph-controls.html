@@ -2,6 +2,7 @@
 <link rel="import" href="../paper-menu/paper-menu.html">
 <link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
 <link rel="import" href="../paper-radio-group/paper-radio-group.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 
 <dom-module id="tf-graph-controls">
@@ -108,6 +109,12 @@ svg.icon {
   height: 24px;
 }
 
+.help-icon {
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
+
 .gray {
   color: #666;
 }
@@ -121,7 +128,7 @@ svg.icon {
   font-weight: normal;
 }
 .deviceList {
-  max-height: 100px;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -267,7 +274,7 @@ span.counter {
     </paper-radio-group>
   </div>
   <div>
-    <template is="dom-if" if="[[_isGradientColoring(colorBy)]]">
+    <template is="dom-if" if="[[_isGradientColoring(stats, colorBy)]]">
       <svg width="140" height="20" style="margin: 0 5px" class="color-text">
         <defs>
           <linearGradient id="linearGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -285,6 +292,27 @@ span.counter {
         <div class="domainEnd">[[_currentGradientParams.maxValue]]</div>
       </div>
       <br style="clear: both">
+      <div>Devices included in stats:</div>
+      <div class="deviceList">
+        <table>
+        <template is="dom-repeat" items="[[_getDevices(devicesForStats)]]">
+          <tr>
+            <td>
+              <input type="checkbox" value$="[[item.device]]" checked$="[[item.used]]" on-click="_deviceCheckboxClicked"/>
+            </td>
+            <td>
+              <div>
+                <span>[[item.suffix]]</span>
+                <template is="dom-if" if="[[item.ignoredMsg]]">
+                  <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+                  <paper-tooltip position="right" animation-delay="0">[[item.ignoredMsg]]</paper-tooltip>
+                </template>
+              </div>
+            </td>
+          </tr>
+        </template>
+        </table>
+      </div>
     </template>
     <template is="dom-if" if="[[_equals(colorBy, 'structure')]]">
       <div class="color-text">
@@ -339,115 +367,143 @@ span.counter {
       </div>
     </template>
   </div>
-  <div class="legend-holder">
-    <table>
-      <tr>
-        <td><div class="title">Graph</div></td>
-        <td>(* = expandable)</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon">
-            <rect transform="translate(3, 1)" height="14" width="35"
-                rx="5" ry="5"/>
-          </svg>
-        </td>
-        <td>Namespace<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" preserveAspectRatio="xMinYMid meet"
-              viewBox="0 0 10 10">
-            <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5"
-               y="6" />
-          </svg>
-        </td>
-        <td>OpNode</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet"
-              viewBox="0 0 12 12">
-            <use xlink:href="#op-series-horizontal-stamp" fill="white"
-                stroke="#ccc" x="2" y="2"/>
-          </svg>
-        </td>
-        <td>Unconnected series<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px"
-              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <use xlink:href="#op-series-vertical-stamp"
-                fill="white" stroke="#ccc" x="2" y="2"/>
-          </svg>
-        </td>
-        <td>Connected series<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon">
-            <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"/>
-          </svg>
-        </td>
-        <td>Constant</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
-            <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"/>
-          </svg>
-        </td>
-        <td>Summary</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px"
-              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <defs>
-              <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10"
-                  markerHeight="10" refX="1" refY="5" orient="auto">
-                <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
-              </marker>
-            </defs>
-            <path stroke="#bbb"
-                d="M2 9 l 23 0" stroke-linecap="round" />
-          </svg>
-        </td>
-        <td>Dataflow edge</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px"
-              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <path stroke="#bbb"
-               d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2" />
-          </svg>
-        </td>
-        <td>Control dependency edge</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px"
-              preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <path marker-start="url(#ref-arrowhead-legend)"
-              stroke="#bbb" d="M2 9 l 23 0"
-              stroke-linecap="round" />
-          </svg>
-        </td>
-        <td>Reference edge</td>
-      </tr>
-    </table>
-  </div>
+  <!--
+    Due to limited vertical space on the left sidebar, hide the legend whenever
+    we show a list of devices to include in stats.
+  -->
+  <template is="dom-if" if="[[!_isGradientColoring(stats, colorBy)]]">
+    <div class="legend-holder">
+      <table>
+        <tr>
+          <td><div class="title">Graph</div></td>
+          <td>(* = expandable)</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <rect transform="translate(3, 1)" height="14" width="35"
+                  rx="5" ry="5"/>
+            </svg>
+          </td>
+          <td>Namespace<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" preserveAspectRatio="xMinYMid meet"
+                viewBox="0 0 10 10">
+              <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5"
+                y="6" />
+            </svg>
+          </td>
+          <td>OpNode</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet"
+                viewBox="0 0 12 12">
+              <use xlink:href="#op-series-horizontal-stamp" fill="white"
+                  stroke="#ccc" x="2" y="2"/>
+            </svg>
+          </td>
+          <td>Unconnected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <use xlink:href="#op-series-vertical-stamp"
+                  fill="white" stroke="#ccc" x="2" y="2"/>
+            </svg>
+          </td>
+          <td>Connected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"/>
+            </svg>
+          </td>
+          <td>Constant</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
+              <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"/>
+            </svg>
+          </td>
+          <td>Summary</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <defs>
+                <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10"
+                    markerHeight="10" refX="1" refY="5" orient="auto">
+                  <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
+                </marker>
+              </defs>
+              <path stroke="#bbb"
+                  d="M2 9 l 23 0" stroke-linecap="round" />
+            </svg>
+          </td>
+          <td>Dataflow edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path stroke="#bbb"
+                d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2" />
+            </svg>
+          </td>
+          <td>Control dependency edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px"
+                preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path marker-start="url(#ref-arrowhead-legend)"
+                stroke="#bbb" d="M2 9 l 23 0"
+                stroke-linecap="round" />
+            </svg>
+          </td>
+          <td>Reference edge</td>
+        </tr>
+      </table>
+    </div>
+  </template>
   </div>
 </template>
 <script>
 (function() { // Private scope.
+/**
+ * Stats from device names that match these regexes will be excluded by default.
+ * The user can still turn on a device by selecting the checkbox in the device list.
+ * See b/29089982 for context.
+ */
+var DEVICE_NAMES_EXCLUDE = [
+  {
+    regex: /gpu:[0-9]+$/,
+    msg: 'Excluded by default since this is a CPU thread setting up GPU kernels.'
+  }
+];
+
 Polymer({
   is: 'tf-graph-controls',
   properties: {
     // Public API.
-    stats: Object,
+    stats: {
+      value: null,
+      type: Object,
+      observer: '_statsChanged'
+    },
+    devicesForStats: {
+      value: null,
+      type: Object,
+      notify: true,
+      readonly: true,
+    },
     colorBy: {
       type: String,
       value: 'structure',
@@ -486,6 +542,55 @@ Polymer({
   _statsNotNull: function(stats) {
     return stats != null;
   },
+  _statsChanged: function(stats) {
+    if (stats == null) {
+      return;
+    }
+    var devicesForStats = {};
+    var devices = _.each(stats.dev_stats, function(d) {
+      // Avoid device names that are ignored by default.
+      var exclude = _.some(DEVICE_NAMES_EXCLUDE, function(rule) {
+        return rule.regex.test(d.device);
+      });
+      if (!exclude) {
+        devicesForStats[d.device] = true;
+      }
+    });
+    this.set('devicesForStats', devicesForStats);
+  },
+  _getDevices: function(devicesForStats) {
+    var devices = _.map(this.stats.dev_stats, function(d) {
+      return d.device;
+    });
+    // Devices names can be long so we remove the longest common prefix
+    // before showing the devices in a list.
+    var suffixes = tf.graph.util.removeCommonPrefix(devices);
+    return _.map(devices, function(device, i) {
+      var ignoredMsg = null;
+      _.each(DEVICE_NAMES_EXCLUDE, function(rule) {
+        if (rule.regex.test(device)) {
+          ignoredMsg = rule.msg;
+        }
+      });
+      return {
+        device: device,
+        suffix: suffixes[i],
+        used: devicesForStats[device],
+        ignoredMsg: ignoredMsg
+      };
+    });
+  },
+  _deviceCheckboxClicked: function(checkbox) {
+    // Update the device map.
+    var devicesForStats = _.extend({}, this.devicesForStats);
+    var device = checkbox.target.value;
+    if (checkbox.target.checked) {
+      devicesForStats[device] = true;
+    } else {
+      delete devicesForStats[device];
+    }
+    this.set('devicesForStats', devicesForStats);
+  },
   _numSessionRuns: function(metadataTags) {
     return metadataTags != null ? metadataTags.length : 0;
   },
@@ -495,14 +600,15 @@ Polymer({
   fit: function() {
     document.querySelector('#scene').fit();
   },
-  _isGradientColoring: function(colorBy) {
-    return ["compute_time", "memory"].indexOf(colorBy) !== -1;
+  _isGradientColoring: function(stats, colorBy) {
+    return ["compute_time", "memory"].indexOf(colorBy) !== -1
+        && stats != null;
   },
   _equals: function(a, b) {
     return a === b;
   },
   _getCurrentGradientParams: function(colorByParams, colorBy) {
-    if (!this._isGradientColoring(colorBy)) {
+    if (!this._isGradientColoring(this.stats, colorBy)) {
       return;
     }
     var params = colorByParams[colorBy];

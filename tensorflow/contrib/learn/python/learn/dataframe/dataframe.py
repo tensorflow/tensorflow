@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from abc import ABCMeta
 import collections
 
 from .series import Series
@@ -28,7 +27,6 @@ from .transform import Transform
 
 class DataFrame(object):
   """A DataFrame is a container for ingesting and preprocessing data."""
-  __metaclass__ = ABCMeta
 
   def __init__(self):
     self._columns = {}
@@ -77,7 +75,7 @@ class DataFrame(object):
             " numpy array; got type '%s'." % type(v).__name__)
       self._columns[k] = s
 
-  def select(self, keys):
+  def select_columns(self, keys):
     """Returns a new DataFrame with a subset of columns.
 
     Args:

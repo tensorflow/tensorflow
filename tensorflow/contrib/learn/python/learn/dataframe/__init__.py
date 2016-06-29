@@ -27,6 +27,7 @@ from tensorflow.contrib.learn.python.learn.dataframe.transform import parameter
 from tensorflow.contrib.learn.python.learn.dataframe.transform import Transform
 
 # Transforms
+from tensorflow.contrib.learn.python.learn.dataframe.transforms.boolean_mask import BooleanMask
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import NumpySource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import PandasSource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source import ReaderSource

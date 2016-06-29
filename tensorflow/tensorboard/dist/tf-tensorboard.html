@@ -39,7 +39,14 @@ var TF;
 (function (TF) {
     var Globals;
     (function (Globals) {
+        // The names of TensorBoard tabs.
         Globals.TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
+        // If true, TensorBoard stores its hash in the URI state.
+        // If false, tab switching in TensorBoard will not update location hash,
+        // because hash updates interfere with wct_tests.
+        Globals.USE_HASH = false;
+        // If USE_HASH is false, FAKE_HASH holds the hash contents.
+        Globals.FAKE_HASH = '';
     })(Globals = TF.Globals || (TF.Globals = {}));
 })(TF || (TF = {}));
 </script>
@@ -3966,8 +3973,14 @@ var tf;
          * Joins the information from the stats file (memory, compute time) with the
          * graph information.
          */
-        function joinStatsInfoWithGraph(graph, stats) {
+        function joinStatsInfoWithGraph(graph, stats, devicesForStats) {
+            // Reset stats for each node.
+            _.each(graph.nodes, function (node) { node.stats = null; });
             _.each(stats.dev_stats, function (devStats) {
+                // Ignore devices that are not selected.
+                if (devicesForStats && !devicesForStats[devStats.device]) {
+                    return;
+                }
                 _.each(devStats.node_stats, function (nodeStats) {
                     // Lookup the node in the graph by its original name, e.g. A. If not
                     // found, lookup by the rewritten name A/(A) in case the name is both
@@ -4023,6 +4036,11 @@ var tf;
          */
         var NodeStats = (function () {
             function NodeStats(outputSize) {
+                /**
+                 * Total number of bytes used for the node. Sum of all children
+                 * if it is a Group node.
+                 */
+                this.totalBytes = 0;
                 this.outputSize = outputSize;
             }
             /**
@@ -9667,6 +9685,45 @@ var tf;
                 return false;
             }
             util.hasDisplayableNodeStats = hasDisplayableNodeStats;
+            /**
+             * Given a list of strings, it returns a new list of strings with the longest
+             * common prefix removed. If the common prefix is one of the strings in the
+             * list, it returns the original strings.
+             */
+            function removeCommonPrefix(strings) {
+                if (strings.length < 2) {
+                    return strings;
+                }
+                var index = 0;
+                var largestIndex = 0;
+                // Find the shortest name across all strings.
+                var minLength = _.min(_.map(strings, function (str) { return str.length; }));
+                var _loop_1 = function() {
+                    index++;
+                    var prefixes = _.map(strings, function (str) { return str.substring(0, index); });
+                    var allTheSame = prefixes.every(function (prefix, i) {
+                        return (i === 0 ? true : prefix === prefixes[i - 1]);
+                    });
+                    if (allTheSame) {
+                        if (index >= minLength) {
+                            // There is a string whose whole name is a prefix to other string.
+                            // In this case, we return the original list of string.
+                            return { value: strings };
+                        }
+                        largestIndex = index;
+                    }
+                    else {
+                        return "break";
+                    }
+                };
+                while (true) {
+                    var state_1 = _loop_1();
+                    if (typeof state_1 === "object") return state_1.value
+                    if (state_1 === "break") break;
+                }
+                return _.map(strings, function (str) { return str.substring(largestIndex); });
+            }
+            util.removeCommonPrefix = removeCommonPrefix;
         })(util = graph.util || (graph.util = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
@@ -10916,10 +10973,8 @@ Polymer({
       observer: '_graphChanged'
     },
     basicGraph: Object,
-    stats: {
-      type: Object,
-      observer: '_statsChanged'
-    },
+    stats: Object,
+    devicesForStats: Object,
     hierarchyParams: Object,
     progress: {
       type: Object,
@@ -10956,15 +11011,15 @@ Polymer({
     },
   },
   observers: [
+    '_statsChanged(stats, devicesForStats)',
     '_buildRenderHierarchy(graphHierarchy)'
   ],
-  _statsChanged: function(stats) {
+  _statsChanged: function(stats, devicesForStats) {
     if (this.graphHierarchy) {
-      if (stats != null) {
-        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
+      if (stats && devicesForStats) {
+        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats, devicesForStats);
         tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
       }
-
       // Recompute the rendering information.
       this._buildRenderHierarchy(this.graphHierarchy);
     }
@@ -12241,7 +12296,7 @@ paper-progress {
 </template>
 <div class$="[[_getContainerClass(progress)]]">
   <div id="main">
-    <tf-graph id="graph" graph-hierarchy="{{graphHierarchy}}" basic-graph="[[graph]]" hierarchy-params="[[hierarchyParams]]" render-hierarchy="{{_renderHierarchy}}" stats="[[stats]]" selected-node="{{_selectedNode}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="{{colorByParams}}" progress="{{progress}}"></tf-graph>
+    <tf-graph id="graph" graph-hierarchy="{{graphHierarchy}}" basic-graph="[[graph]]" hierarchy-params="[[hierarchyParams]]" render-hierarchy="{{_renderHierarchy}}" devices-for-stats="[[devicesForStats]]" stats="[[stats]]" selected-node="{{_selectedNode}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="{{colorByParams}}" progress="{{progress}}"></tf-graph>
   </div>
   <div id="info">
     <tf-graph-info id="graph-info" title="selected" graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[_renderHierarchy]]" graph="[[graph]]" selected-node="{{_selectedNode}}" selected-node-include="{{_selectedNodeInclude}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="[[colorByParams]]"></tf-graph-info>
@@ -12412,6 +12467,12 @@ svg.icon {
   height: 24px;
 }
 
+.help-icon {
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
+
 .gray {
   color: #666;
 }
@@ -12425,7 +12486,7 @@ svg.icon {
   font-weight: normal;
 }
 .deviceList {
-  max-height: 100px;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -12568,7 +12629,7 @@ span.counter {
     </paper-radio-group>
   </div>
   <div>
-    <template is="dom-if" if="[[_isGradientColoring(colorBy)]]">
+    <template is="dom-if" if="[[_isGradientColoring(stats, colorBy)]]">
       <svg width="140" height="20" style="margin: 0 5px" class="color-text">
         <defs>
           <linearGradient id="linearGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -12583,6 +12644,27 @@ span.counter {
         <div class="domainEnd">[[_currentGradientParams.maxValue]]</div>
       </div>
       <br style="clear: both">
+      <div>Devices included in stats:</div>
+      <div class="deviceList">
+        <table>
+        <template is="dom-repeat" items="[[_getDevices(devicesForStats)]]">
+          <tr>
+            <td>
+              <input type="checkbox" value$="[[item.device]]" checked$="[[item.used]]" on-click="_deviceCheckboxClicked">
+            </td>
+            <td>
+              <div>
+                <span>[[item.suffix]]</span>
+                <template is="dom-if" if="[[item.ignoredMsg]]">
+                  <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+                  <paper-tooltip position="right" animation-delay="0">[[item.ignoredMsg]]</paper-tooltip>
+                </template>
+              </div>
+            </td>
+          </tr>
+        </template>
+        </table>
+      </div>
     </template>
     <template is="dom-if" if="[[_equals(colorBy, 'structure')]]">
       <div class="color-text">
@@ -12634,100 +12716,125 @@ span.counter {
       </div>
     </template>
   </div>
-  <div class="legend-holder">
-    <table>
-      <tbody><tr>
-        <td><div class="title">Graph</div></td>
-        <td>(* = expandable)</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon">
-            <rect transform="translate(3, 1)" height="14" width="35" rx="5" ry="5"></rect>
-          </svg>
-        </td>
-        <td>Namespace<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" preserveAspectRatio="xMinYMid meet" viewBox="0 0 10 10">
-            <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5" y="6"></use>
-          </svg>
-        </td>
-        <td>OpNode</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 12 12">
-            <use xlink:href="#op-series-horizontal-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
-          </svg>
-        </td>
-        <td>Unconnected series<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <use xlink:href="#op-series-vertical-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
-          </svg>
-        </td>
-        <td>Connected series<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon">
-            <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"></circle>
-          </svg>
-        </td>
-        <td>Constant</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
-            <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"></use>
-          </svg>
-        </td>
-        <td>Summary</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <defs>
-              <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10" markerHeight="10" refX="1" refY="5" orient="auto">
-                <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
-              </marker>
-            </defs>
-            <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
-          </svg>
-        </td>
-        <td>Dataflow edge</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2"></path>
-          </svg>
-        </td>
-        <td>Control dependency edge</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <path marker-start="url(#ref-arrowhead-legend)" stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
-          </svg>
-        </td>
-        <td>Reference edge</td>
-      </tr>
-    </tbody></table>
-  </div>
+  
+  <template is="dom-if" if="[[!_isGradientColoring(stats, colorBy)]]">
+    <div class="legend-holder">
+      <table>
+        <tbody><tr>
+          <td><div class="title">Graph</div></td>
+          <td>(* = expandable)</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <rect transform="translate(3, 1)" height="14" width="35" rx="5" ry="5"></rect>
+            </svg>
+          </td>
+          <td>Namespace<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" preserveAspectRatio="xMinYMid meet" viewBox="0 0 10 10">
+              <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5" y="6"></use>
+            </svg>
+          </td>
+          <td>OpNode</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 12 12">
+              <use xlink:href="#op-series-horizontal-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
+            </svg>
+          </td>
+          <td>Unconnected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <use xlink:href="#op-series-vertical-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
+            </svg>
+          </td>
+          <td>Connected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"></circle>
+            </svg>
+          </td>
+          <td>Constant</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
+              <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"></use>
+            </svg>
+          </td>
+          <td>Summary</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <defs>
+                <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10" markerHeight="10" refX="1" refY="5" orient="auto">
+                  <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
+                </marker>
+              </defs>
+              <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
+            </svg>
+          </td>
+          <td>Dataflow edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2"></path>
+            </svg>
+          </td>
+          <td>Control dependency edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path marker-start="url(#ref-arrowhead-legend)" stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
+            </svg>
+          </td>
+          <td>Reference edge</td>
+        </tr>
+      </tbody></table>
+    </div>
+  </template>
   </div>
 </template>
 <script>
 (function() { // Private scope.
+/**
+ * Stats from device names that match these regexes will be excluded by default.
+ * The user can still turn on a device by selecting the checkbox in the device list.
+ * See b/29089982 for context.
+ */
+var DEVICE_NAMES_EXCLUDE = [
+  {
+    regex: /gpu:[0-9]+$/,
+    msg: 'Excluded by default since this is a CPU thread setting up GPU kernels.'
+  }
+];
+
 Polymer({
   is: 'tf-graph-controls',
   properties: {
     // Public API.
-    stats: Object,
+    stats: {
+      value: null,
+      type: Object,
+      observer: '_statsChanged'
+    },
+    devicesForStats: {
+      value: null,
+      type: Object,
+      notify: true,
+      readonly: true,
+    },
     colorBy: {
       type: String,
       value: 'structure',
@@ -12766,6 +12873,55 @@ Polymer({
   _statsNotNull: function(stats) {
     return stats != null;
   },
+  _statsChanged: function(stats) {
+    if (stats == null) {
+      return;
+    }
+    var devicesForStats = {};
+    var devices = _.each(stats.dev_stats, function(d) {
+      // Avoid device names that are ignored by default.
+      var exclude = _.some(DEVICE_NAMES_EXCLUDE, function(rule) {
+        return rule.regex.test(d.device);
+      });
+      if (!exclude) {
+        devicesForStats[d.device] = true;
+      }
+    });
+    this.set('devicesForStats', devicesForStats);
+  },
+  _getDevices: function(devicesForStats) {
+    var devices = _.map(this.stats.dev_stats, function(d) {
+      return d.device;
+    });
+    // Devices names can be long so we remove the longest common prefix
+    // before showing the devices in a list.
+    var suffixes = tf.graph.util.removeCommonPrefix(devices);
+    return _.map(devices, function(device, i) {
+      var ignoredMsg = null;
+      _.each(DEVICE_NAMES_EXCLUDE, function(rule) {
+        if (rule.regex.test(device)) {
+          ignoredMsg = rule.msg;
+        }
+      });
+      return {
+        device: device,
+        suffix: suffixes[i],
+        used: devicesForStats[device],
+        ignoredMsg: ignoredMsg
+      };
+    });
+  },
+  _deviceCheckboxClicked: function(checkbox) {
+    // Update the device map.
+    var devicesForStats = _.extend({}, this.devicesForStats);
+    var device = checkbox.target.value;
+    if (checkbox.target.checked) {
+      devicesForStats[device] = true;
+    } else {
+      delete devicesForStats[device];
+    }
+    this.set('devicesForStats', devicesForStats);
+  },
   _numSessionRuns: function(metadataTags) {
     return metadataTags != null ? metadataTags.length : 0;
   },
@@ -12775,14 +12931,15 @@ Polymer({
   fit: function() {
     document.querySelector('#scene').fit();
   },
-  _isGradientColoring: function(colorBy) {
-    return ["compute_time", "memory"].indexOf(colorBy) !== -1;
+  _isGradientColoring: function(stats, colorBy) {
+    return ["compute_time", "memory"].indexOf(colorBy) !== -1
+        && stats != null;
   },
   _equals: function(a, b) {
     return a === b;
   },
   _getCurrentGradientParams: function(colorByParams, colorBy) {
-    if (!this._isGradientColoring(colorBy)) {
+    if (!this._isGradientColoring(this.stats, colorBy)) {
       return;
     }
     var params = colorByParams[colorBy];
@@ -12862,11 +13019,11 @@ Polymer({
 <template is="dom-if" if="[[!_datasetsEmpty(_datasets)]]">
 <tf-dashboard-layout>
 <div class="sidebar">
-  <tf-graph-controls id="controls" color-by-params="[[_colorByParams]]" stats="[[_stats]]" color-by="{{_colorBy}}" ,="" datasets="[[_datasets]]" selected-dataset="{{_selectedDataset}}" selected-file="{{_selectedFile}}" selected-metadata-tag="{{_selectedMetadataTag}}"></tf-graph-controls>
+  <tf-graph-controls id="controls" devices-for-stats="{{_devicesForStats}}" color-by-params="[[_colorByParams]]" stats="[[_stats]]" color-by="{{_colorBy}}" ,="" datasets="[[_datasets]]" selected-dataset="{{_selectedDataset}}" selected-file="{{_selectedFile}}" selected-metadata-tag="{{_selectedMetadataTag}}"></tf-graph-controls>
   <tf-graph-loader id="loader" datasets="[[_datasets]]" ,="" selected-dataset="[[_selectedDataset]]" selected-metadata-tag="[[_selectedMetadataTag]]" selected-file="[[_selectedFile]]" out-graph-hierarchy="{{_graphHierarchy}}" out-graph="{{_graph}}" out-stats="{{_stats}}" progress="{{_progress}}" out-hierarchy-params="{{_hierarchyParams}}"></tf-graph-loader>
 </div>
 <div class="center">
-    <tf-graph-board id="graphboard" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" stats="[[_stats]]" progress="[[_progress]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" hierarchy-params="[[_hierarchyParams]]">
+    <tf-graph-board id="graphboard" devices-for-stats="[[_devicesForStats]]" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" stats="[[_stats]]" progress="[[_progress]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" hierarchy-params="[[_hierarchyParams]]">
     </tf-graph-board>
 </div>
 </tf-dashboard-layout>
@@ -12893,7 +13050,6 @@ Polymer({
   properties: {
     _datasets: Object,
     backend: {type: Object, observer: 'reload'},
-    router: {type: Object},
     runs: Array,
   },
   reload: function() {
@@ -12904,12 +13060,12 @@ Polymer({
       var datasets = _.map(runsWithGraph, function(runName) {
         return {
           name: runName,
-          path: this.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
+          path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY),
           runMetadata: runToMetadata[runName] ? _.map(runToMetadata[runName].sort(), function(tag) {
             return {
               tag: tag,
-              path: this.router.runMetadata(tag, runName)
+              path: this.backend.router.runMetadata(tag, runName)
             };
           }, this) : []
         };
@@ -13011,12 +13167,20 @@ var TF;
         /**
          * Read component from URI (e.g. returns "events&runPrefix=train*").
          */
-        function _readComponent() { return window.location.hash.slice(1); }
+        function _readComponent() {
+            return TF.Globals.USE_HASH ? window.location.hash.slice(1) :
+                TF.Globals.FAKE_HASH;
+        }
         /**
          * Write component to URI.
          */
         function _writeComponent(component) {
-            window.location.hash = component;
+            if (TF.Globals.USE_HASH) {
+                window.location.hash = component;
+            }
+            else {
+                TF.Globals.FAKE_HASH = component;
+            }
         }
         /**
          * Convert dictionary of strings into a URI Component.
@@ -13170,7 +13334,7 @@ var TF;
         </template>
 
         <template is="dom-if" if="[[_modeIsGraphs(mode)]]">
-          <tf-graph-dashboard id="graphs" backend="[[_backend]]" router="[[router]]"></tf-graph-dashboard>
+          <tf-graph-dashboard id="graphs" backend="[[_backend]]"></tf-graph-dashboard>
         </template>
 
         <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
@@ -13248,17 +13412,15 @@ var TF;
       is: "tf-tensorboard",
       behaviors: [TF.TensorBoard.AutoReloadBehavior],
       properties: {
-        demoDir: {
-          type: String,
-          value: null,
-        },
         router: {
           type: Object,
-          computed: "_makeRouter(demoDir)",
+          value: function() {
+            return TF.Backend.router();
+          },
         },
         _backend: {
           type: Object,
-          computed: "_makeBackend(router)",
+          computed: "_makeBackend(router, demoDir)",
         },
         // Which tab is selected (events, graph, images etc).
         mode: {
@@ -13266,33 +13428,35 @@ var TF;
           computed: '_getModeFromIndex(modeIndex)',
           notify: true,
         },
-        // If true, tab switching in TensorBoard will not update
-        // location hash. Hash update interferes with selenium tests.
-        noHash: {
-          type: Boolean,
-          value: false
-        },
         tabs: {
           type: Array,
           readOnly: true,
           value: TF.Globals.TABS,
         },
+        // If this is set to a string, TensorBoard will switch to "demo mode"
+        // and attempt to load serialized json data from that directory. You can
+        // generate conformant json using
+        // tensorboard/scripts/serialize_tensorboard.py
+        demoDir: {
+          type: String,
+          value: null,
+        },
+        // Set this to true to store state in URI hash. Should be true for all non-test purposes.
+        useHash: {
+          type: Boolean,
+          value: false,
+        },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
-        if (!this.noHash) {
-          TF.URIStorage.setString(TF.URIStorage.TAB, this.tabs[0]);
-        }
+        TF.URIStorage.setString(TF.URIStorage.TAB, mode);
         return mode;
       },
-      _makeRouter: function(demoDir) {
-        if (demoDir == null) {
-          return TF.Backend.Router();
-        } else {
-          return TF.Backend.router(demoDir, true);
+      _makeBackend: function(router, demoDir) {
+        // use the demoDir if it is set, otherwise use the provided router
+        if (demoDir != null) {
+          router = TF.Backend.router(demoDir, true);
         }
-      },
-      _makeBackend: function(router) {
         return new TF.Backend.Backend(router);
       },
       _modeIsEvents: function(mode) {
@@ -13318,6 +13482,8 @@ var TF;
         return dashboard;
       },
       ready: function() {
+        TF.Globals.USE_HASH = this.useHash;
+
         this._getModeFromHash();
         window.addEventListener('hashchange', function() {
           this._getModeFromHash();

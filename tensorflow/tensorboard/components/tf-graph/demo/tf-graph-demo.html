@@ -44,6 +44,7 @@ Example
 <div class="all">
   <div class="side">
     <tf-graph-controls
+        devices-for-stats="{{_devicesForStats}}"
         color-by-params="[[colorByParams]]"
         stats="[[stats]]"
         color-by="{{colorBy}}"
@@ -66,6 +67,7 @@ Example
   </div>
   <div class="main">
     <tf-graph-board id="graphboard"
+        devices-for-stats="[[_devicesForStats]]"
         graph-hierarchy="[[graphHierarchy]]"
         graph="[[graph]]"
         stats="[[stats]]"

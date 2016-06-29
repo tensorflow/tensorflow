@@ -123,12 +123,6 @@ def get_binary_predictions_for_hinge(predictions):
 CONTAINER = uuid.uuid4().hex
 
 
-# Clear the shared container.
-def tearDown():
-  # TODO(sibyl-Mooth6ku): Proper cleanup of Containers when possible.
-  pass
-
-
 # TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
 # TODO(sibyl-vie3Poto): Refactor tests to avoid repetition of boilerplate code.
 class SdcaOptimizerTest(TensorFlowTestCase):

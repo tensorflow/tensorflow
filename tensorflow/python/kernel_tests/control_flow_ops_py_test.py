@@ -31,6 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
 def check_op_order(graph):
@@ -401,6 +402,14 @@ class ControlFlowTest(tf.test.TestCase):
       fn2 = lambda: [y, y]
       r = tf.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], sess.run(r))
+
+  def testCondRef(self):
+    with self.test_session():
+      x = state_ops.variable_op([1], tf.float32)
+      true_fn = lambda: x
+      false_fn = lambda: tf.constant([2.0])
+      r = tf.cond(tf.constant(False), true_fn, false_fn)
+      self.assertAllEqual([2.0], r.eval())
 
   def testCondGrad_1(self):
     with self.test_session():
