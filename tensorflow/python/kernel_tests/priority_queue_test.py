@@ -34,8 +34,8 @@ class PriorityQueueTest(tf.test.TestCase):
     with self.test_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (tf.string, tf.string), ((), ()))
       elem = np.random.randint(-5, 5, size=100).astype(np.int64)
-      side_value_0 = np.random.rand(100).astype(np.str)
-      side_value_1 = np.random.rand(100).astype(np.str)
+      side_value_0 = np.random.rand(100).astype(bytes)
+      side_value_1 = np.random.rand(100).astype(bytes)
       enq_list = [q.enqueue((e, tf.constant(v0), tf.constant(v1)))
                   for e, v0, v1 in zip(elem, side_value_0, side_value_1)]
       for enq in enq_list:
@@ -62,8 +62,8 @@ class PriorityQueueTest(tf.test.TestCase):
     with self.test_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (tf.string, tf.string), ((), ()))
       elem = np.random.randint(-5, 5, size=100).astype(np.int64)
-      side_value_0 = np.random.rand(100).astype(np.str)
-      side_value_1 = np.random.rand(100).astype(np.str)
+      side_value_0 = np.random.rand(100).astype(bytes)
+      side_value_1 = np.random.rand(100).astype(bytes)
 
       enqueue_ops = [q.enqueue((e, tf.constant(v0), tf.constant(v1)))
                      for e, v0, v1 in zip(elem, side_value_0, side_value_1)]
@@ -197,8 +197,8 @@ class PriorityQueueTest(tf.test.TestCase):
     with self.test_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (tf.string, tf.string), ((), ()))
       elem = np.random.randint(-5, 5, size=100).astype(np.int64)
-      side_value_0 = np.random.rand(100).astype(np.str)
-      side_value_1 = np.random.rand(100).astype(np.str)
+      side_value_0 = np.random.rand(100).astype(bytes)
+      side_value_1 = np.random.rand(100).astype(bytes)
 
       batch = 5
       enqueue_ops = [q.enqueue_many((elem[i*batch:(i+1)*batch],
@@ -240,8 +240,8 @@ class PriorityQueueTest(tf.test.TestCase):
     with self.test_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (tf.string, tf.string), ((), ()))
       elem = np.random.randint(-100, 100, size=1000).astype(np.int64)
-      side_value_0 = np.random.rand(1000).astype(np.str)
-      side_value_1 = np.random.rand(1000).astype(np.str)
+      side_value_0 = np.random.rand(1000).astype(bytes)
+      side_value_1 = np.random.rand(1000).astype(bytes)
       q.enqueue_many((elem, side_value_0, side_value_1)).run()
       deq = q.dequeue_many(1000)
       deq_elem, deq_value_0, deq_value_1 = sess.run(deq)
@@ -291,7 +291,7 @@ class PriorityQueueTest(tf.test.TestCase):
           r"Shape mismatch in tuple component 0. Expected \[\], got \[2\]"):
         sess.run([q.enqueue((input_priority, input_other))],
                  feed_dict={input_priority: np.array([0, 2], dtype=np.int64),
-                            input_other: np.random.rand(3, 5).astype(np.str)})
+                            input_other: np.random.rand(3, 5).astype(bytes)})
 
       with self.assertRaisesRegexp(
           tf.errors.InvalidArgumentError,
@@ -299,7 +299,7 @@ class PriorityQueueTest(tf.test.TestCase):
         sess.run([q.enqueue_many((input_priority, input_other))],
                  feed_dict={input_priority: np.array([[0, 2], [3, 4]],
                                                      dtype=np.int64),
-                            input_other: np.random.rand(2, 3).astype(np.str)})
+                            input_other: np.random.rand(2, 3).astype(bytes)})
 
 
 if __name__ == "__main__":

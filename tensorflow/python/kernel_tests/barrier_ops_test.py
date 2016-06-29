@@ -236,7 +236,7 @@ class BarrierTest(tf.test.TestCase):
     with self.test_session() as sess:
       b = data_flow_ops.Barrier(tf.float32, shapes=())
       size_t = b.ready_size()
-      keys = [str(x) for x in range(10)]
+      keys = [str(x).encode("ascii") for x in range(10)]
       values = [float(x) for x in range(10)]
       insert_ops = [b.insert_many(0, [k], [v]) for k, v in zip(keys, values)]
       take_t = b.take_many(10)
@@ -256,7 +256,7 @@ class BarrierTest(tf.test.TestCase):
     with self.test_session() as sess:
       b = data_flow_ops.Barrier(tf.float32, shapes=())
       size_t = b.ready_size()
-      keys = [bytes(x) for x in range(10)]
+      keys = [str(x).encode("ascii") for x in range(10)]
       values = [float(x) for x in range(10)]
       insert_op = b.insert_many(0, keys, values)
       take_t = [b.take_many(1) for _ in keys]
@@ -290,7 +290,7 @@ class BarrierTest(tf.test.TestCase):
   def testBlockingTakeMany(self):
     with self.test_session() as sess:
       b = data_flow_ops.Barrier(tf.float32, shapes=())
-      keys = [bytes(x) for x in range(10)]
+      keys = [str(x).encode("ascii") for x in range(10)]
       values = [float(x) for x in range(10)]
       insert_ops = [b.insert_many(0, [k], [v]) for k, v in zip(keys, values)]
       take_t = b.take_many(10)
@@ -298,7 +298,8 @@ class BarrierTest(tf.test.TestCase):
       def take():
         indices_val, keys_val, values_val = sess.run(
             [take_t[0], take_t[1], take_t[2][0]])
-        self.assertAllEqual(indices_val, [int(x) - 2**63 for x in keys_val])
+        self.assertAllEqual(
+            indices_val, [int(x.decode("ascii")) - 2**63 for x in keys_val])
         self.assertItemsEqual(zip(keys, values), zip(keys_val, values_val))
 
       t = self.checkedThread(target=take)
@@ -313,10 +314,10 @@ class BarrierTest(tf.test.TestCase):
       b = data_flow_ops.Barrier(
           (tf.float32, tf.int64), shapes=((), (2,)))
       num_iterations = 100
-      keys = [bytes(x) for x in range(10)]
+      keys = [str(x) for x in range(10)]
       values_0 = np.asarray(range(10), dtype=np.float32)
       values_1 = np.asarray([[x+1, x + 2] for x in range(10)], dtype=np.int64)
-      keys_i = lambda i: [bytes("%d:%s" % (i, k)) for k in keys]
+      keys_i = lambda i: [("%d:%s" % (i, k)).encode("ascii") for k in keys]
       insert_0_ops = [
           b.insert_many(0, keys_i(i), values_0 + i)
           for i in range(num_iterations)]
@@ -503,10 +504,10 @@ class BarrierTest(tf.test.TestCase):
       b = data_flow_ops.Barrier(
           (tf.float32, tf.int64), shapes=((), (2,)))
       num_iterations = 50
-      keys = [bytes(x) for x in range(10)]
+      keys = [str(x) for x in range(10)]
       values_0 = np.asarray(range(10), dtype=np.float32)
       values_1 = np.asarray([[x + 1, x + 2] for x in range(10)], dtype=np.int64)
-      keys_i = lambda i: [bytes("%d:%s" % (i, k)) for k in keys]
+      keys_i = lambda i: [("%d:%s" % (i, k)).encode("ascii") for k in keys]
       insert_0_ops = [
           b.insert_many(0, keys_i(i), values_0 + i)
           for i in range(num_iterations)]
@@ -573,10 +574,10 @@ class BarrierTest(tf.test.TestCase):
       b = data_flow_ops.Barrier(
           (tf.float32, tf.int64), shapes=((), (2,)))
       num_iterations = 100
-      keys = [bytes(x) for x in range(10)]
+      keys = [str(x) for x in range(10)]
       values_0 = np.asarray(range(10), dtype=np.float32)
       values_1 = np.asarray([[x + 1, x + 2] for x in range(10)], dtype=np.int64)
-      keys_i = lambda i: [bytes("%d:%s" % (i, k)) for k in keys]
+      keys_i = lambda i: [("%d:%s" % (i, k)).encode("ascii") for k in keys]
       insert_0_ops = [
           b.insert_many(0, keys_i(i), values_0 + i, name="insert_0_%d" % i)
           for i in range(num_iterations)]
