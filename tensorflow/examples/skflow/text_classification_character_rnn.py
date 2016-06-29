@@ -47,7 +47,7 @@ def char_rnn_model(x, y):
   """Character level recurrent neural network model to predict classes."""
   y = tf.one_hot(y, 15, 1, 0)
   byte_list = learn.ops.one_hot_matrix(x, 256)
-  byte_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, byte_list)
+  byte_list = tf.unpack(byte_list, axis=1)
 
   cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
   _, encoding = tf.nn.rnn(cell, byte_list, dtype=tf.float32)

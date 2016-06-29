@@ -267,9 +267,8 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
     fi
   done
 else
-  EXTRA_ARGS="${EXTRA_ARGS} --test_tag_filters=-benchmark-test"
+  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
 fi
-
 
 # Process PIP install-test option
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||

@@ -1250,6 +1250,14 @@ class SessionTest(test_util.TensorFlowTestCase):
     del sess1
     del sess2
 
+  def testInvalidArgument(self):
+    with self.assertRaisesRegexp(TypeError, 'target must be a string'):
+      session.Session(37)
+    with self.assertRaisesRegexp(TypeError, 'config must be a tf.ConfigProto'):
+      session.Session(config=37)
+    with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
+      session.Session(graph=37)
+
 
 if __name__ == '__main__':
   googletest.main()

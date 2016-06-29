@@ -250,13 +250,22 @@ class BaseEstimator(sklearn.BaseEstimator):
                name=None):
     """Evaluates given model with provided evaluation data.
 
+    Evaluates on the given input data. If `input_fn` is provided, that
+    input function should raise an end-of-input exception (`OutOfRangeError` or
+    `StopIteration`) after one epoch of the training data has been provided.
+
+    By default, the whole evaluation dataset is used. If `steps` is provided,
+    only `steps` batches of size `batch_size` are processed.
+
+    The return value is a dict containing the metrics specified in `metrics`, as
+    well as an entry `global_step` which contains the value of the global step
+    for which this evaluation was performed.
+
     Args:
       x: features.
       y: targets.
       input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
-        `None`. If `steps` is `None`, the tensors returned by this should
-        generally raise an end-of-input exception when all eval records have
-        been returned (typically, 1 epoch over eval data).
+        `None`.
       feed_fn: Function creating a feed dict every time it is called. Called
         once per iteration.
       batch_size: minibatch size to use on the input, defaults to first
@@ -290,11 +299,14 @@ class BaseEstimator(sklearn.BaseEstimator):
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
                        'Got %s.' % metrics)
-    return self._evaluate_model(input_fn=input_fn,
-                                feed_fn=feed_fn,
-                                steps=steps,
-                                metrics=metrics,
-                                name=name)
+    eval_results, global_step = self._evaluate_model(input_fn=input_fn,
+                                                     feed_fn=feed_fn,
+                                                     steps=steps,
+                                                     metrics=metrics,
+                                                     name=name)
+    if eval_results is not None:
+      eval_results.update({'global_step': global_step})
+    return eval_results
 
   def predict(self, x=None, input_fn=None, batch_size=None, outputs=None):
     """Returns predictions for given features.
@@ -477,15 +489,16 @@ class BaseEstimator(sklearn.BaseEstimator):
       # Add default monitors.
       if monitors is None:
         monitors = []
-      monitors += monitors_lib.get_default_monitors(
-          loss_op=loss_op,
-          summary_op=logging_ops.get_summary_op(),
-          save_summary_steps=self._config.save_summary_steps,
-          summary_writer=graph_actions.get_summary_writer(self._model_dir))
 
       is_chief = self._config.task == 0
-      if not is_chief:
-        # Run monitors only on chief.
+
+      if is_chief:
+        monitors += monitors_lib.get_default_monitors(
+            loss_op=loss_op,
+            summary_op=logging_ops.get_summary_op(),
+            save_summary_steps=self._config.save_summary_steps,
+            summary_writer=graph_actions.get_summary_writer(self._model_dir))
+      else:
         monitors = []
 
       # Setup monitors.
@@ -545,7 +558,7 @@ class BaseEstimator(sklearn.BaseEstimator):
     # TODO(wicke): Remove this once Model and associated code are gone.
     if (hasattr(self._config, 'execution_mode') and
         self._config.execution_mode not in ('all', 'evaluate', 'eval_evalset')):
-      return
+      return None, None
 
     # Check that model has been trained.
     checkpoint_path = self._model_dir
@@ -564,7 +577,7 @@ class BaseEstimator(sklearn.BaseEstimator):
       self._check_inputs(features, targets)
       eval_dict = self._get_eval_ops(features, targets, metrics)
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
-      eval_results, _ = graph_actions.evaluate(
+      eval_results, current_global_step = graph_actions.evaluate(
           graph=g,
           output_dir=eval_dir,
           checkpoint_path=checkpoint_path,
@@ -574,7 +587,8 @@ class BaseEstimator(sklearn.BaseEstimator):
           supervisor_master=self._config.master,
           feed_fn=feed_fn,
           max_steps=steps)
-      return eval_results
+
+      return eval_results, current_global_step
 
   def _get_features_from_input_fn(self, input_fn):
     result = input_fn()

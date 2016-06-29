@@ -86,13 +86,20 @@ module TF.URIStorage {
   /**
    * Read component from URI (e.g. returns "events&runPrefix=train*").
    */
-  function _readComponent(): string { return window.location.hash.slice(1); }
+  function _readComponent(): string {
+    return TF.Globals.USE_HASH ? window.location.hash.slice(1) :
+                                 TF.Globals.FAKE_HASH;
+  }
 
   /**
    * Write component to URI.
    */
   function _writeComponent(component: string) {
-    window.location.hash = component;
+    if (TF.Globals.USE_HASH) {
+      window.location.hash = component;
+    } else {
+      TF.Globals.FAKE_HASH = component;
+    }
   }
 
   /**

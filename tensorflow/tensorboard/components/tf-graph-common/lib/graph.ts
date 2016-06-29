@@ -379,8 +379,16 @@ export function createMetanode(name: string, opt = {}): Metanode {
  * graph information.
  */
 export function joinStatsInfoWithGraph(
-    graph: SlimGraph, stats: tf.graph.proto.StepStats): void {
+    graph: SlimGraph, stats: tf.graph.proto.StepStats,
+    devicesForStats?: {[device: string]: boolean}): void {
+  // Reset stats for each node.
+  _.each(graph.nodes, node => { node.stats = null; });
+
   _.each(stats.dev_stats, devStats => {
+    // Ignore devices that are not selected.
+    if (devicesForStats && !devicesForStats[devStats.device]) {
+      return;
+    }
     _.each(devStats.node_stats, nodeStats => {
       // Lookup the node in the graph by its original name, e.g. A. If not
       // found, lookup by the rewritten name A/(A) in case the name is both
@@ -484,7 +492,7 @@ export class NodeStats {
    * Total number of bytes used for the node. Sum of all children
    * if it is a Group node.
    */
-  totalBytes: number;
+  totalBytes = 0;
   /**
    * Total number of compute time in microseconds used for the node.
    * Sum of all children if it is a Group node. Null if it is unknown.

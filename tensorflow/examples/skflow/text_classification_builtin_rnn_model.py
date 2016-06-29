@@ -41,7 +41,7 @@ def input_op_fn(x):
       embedding_size=EMBEDDING_SIZE, name='words')
   # Split into list of embedding per word, while removing doc length dim.
   # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-  word_list = learn.ops.split_squeeze(1, MAX_DOCUMENT_LENGTH, word_vectors)
+  word_list = tf.unpack(word_vectors, axis=1)
   return word_list
 
 

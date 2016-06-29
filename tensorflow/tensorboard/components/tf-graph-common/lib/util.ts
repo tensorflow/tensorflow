@@ -193,4 +193,38 @@ module tf.graph.util {
     }
     return false;
   }
+
+  /**
+   * Given a list of strings, it returns a new list of strings with the longest
+   * common prefix removed. If the common prefix is one of the strings in the
+   * list, it returns the original strings.
+   */
+  export function removeCommonPrefix(strings: string[]) {
+    if (strings.length < 2) {
+      return strings;
+    }
+
+    let index = 0;
+    let largestIndex = 0;
+    // Find the shortest name across all strings.
+    let minLength = _.min(_.map(strings, str => str.length));
+    while (true) {
+      index++;
+      let prefixes = _.map(strings, str => str.substring(0, index));
+      let allTheSame = prefixes.every((prefix, i) => {
+        return (i === 0 ? true : prefix === prefixes[i - 1]);
+      });
+      if (allTheSame) {
+        if (index >= minLength) {
+          // There is a string whose whole name is a prefix to other string.
+          // In this case, we return the original list of string.
+          return strings;
+        }
+        largestIndex = index;
+      } else {
+        break;
+      }
+    }
+    return _.map(strings, str => str.substring(largestIndex));
+  }
 }

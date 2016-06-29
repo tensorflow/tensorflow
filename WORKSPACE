@@ -70,7 +70,7 @@ new_git_repository(
   name = "iron_a11y_keys_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-a11y-keys-behavior.git",
-  tag = "v1.1.4",
+  tag = "v1.1.5",
 )
 
 new_git_repository(
@@ -189,7 +189,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "v1.8.1",
+  tag = "v1.8.2",
 )
 
 new_git_repository(
@@ -266,7 +266,7 @@ new_git_repository(
   name = "paper_dialog_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-dialog-behavior.git",
-  tag = "v1.2.6",
+  tag = "v1.2.7",
 )
 
 new_git_repository(
@@ -350,7 +350,7 @@ new_git_repository(
   name = "paper_ripple",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-ripple.git",
-  tag = "v1.0.7",
+  tag = "v1.0.8",
 )
 
 new_git_repository(
@@ -386,6 +386,13 @@ new_git_repository(
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-toolbar.git",
   tag = "v1.1.4",
+)
+
+new_git_repository(
+  name = "paper_tooltip",
+  build_file = "bower.BUILD",
+  remote = "https://github.com/polymerelements/paper-tooltip.git",
+  tag = "v1.1.2",
 )
 
 new_git_repository(

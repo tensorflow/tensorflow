@@ -26,6 +26,7 @@ by default. The user can select a different run from a dropdown menu.
 <tf-dashboard-layout>
 <div class="sidebar">
   <tf-graph-controls id="controls"
+      devices-for-stats="{{_devicesForStats}}"
       color-by-params="[[_colorByParams]]"
       stats="[[_stats]]"
       color-by="{{_colorBy}}",
@@ -48,6 +49,7 @@ by default. The user can select a different run from a dropdown menu.
 </div>
 <div class="center">
     <tf-graph-board id="graphboard"
+                devices-for-stats="[[_devicesForStats]]"
                 graph-hierarchy="[[_graphHierarchy]]"
                 graph="[[_graph]]"
                 stats="[[_stats]]"
@@ -81,7 +83,6 @@ Polymer({
   properties: {
     _datasets: Object,
     backend: {type: Object, observer: 'reload'},
-    router: {type: Object},
     runs: Array,
   },
   reload: function() {
@@ -92,12 +93,12 @@ Polymer({
       var datasets = _.map(runsWithGraph, function(runName) {
         return {
           name: runName,
-          path: this.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
+          path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY),
           runMetadata: runToMetadata[runName] ? _.map(runToMetadata[runName].sort(), function(tag) {
             return {
               tag: tag,
-              path: this.router.runMetadata(tag, runName)
+              path: this.backend.router.runMetadata(tag, runName)
             };
           }, this) : []
         };

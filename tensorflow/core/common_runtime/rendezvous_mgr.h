@@ -43,14 +43,14 @@ class IntraProcessRendezvous : public Rendezvous {
 
   // Forwards to local_, where the Tensor "val" will be buffered and
   // any waiting callback stored.
-  Status Send(const string& key, const Rendezvous::Args& args,
+  Status Send(const ParsedKey& key, const Rendezvous::Args& args,
               const Tensor& val, const bool is_dead) override;
 
   // This method is called only by the RecvOp.  It tests to see
   // whether the value will be produced by a local or remote device
   // and handles accordingly.  In the local case it forwards to
   // local_, in the remote case it initiates an RPC request.
-  void RecvAsync(const string& key, const Rendezvous::Args& args,
+  void RecvAsync(const ParsedKey& key, const Rendezvous::Args& args,
                  DoneCallback done) override;
 
   void StartAbort(const Status& status) override;
