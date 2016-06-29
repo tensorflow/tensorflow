@@ -206,6 +206,37 @@ shared_name: If non-empty, this queue will be shared under the given name
   across multiple sessions.
 )doc");
 
+REGISTER_OP("PriorityQueue")
+    .Output("handle: Ref(string)")
+    .Attr("component_types: list(type) >= 0 = []")
+    .Attr("shapes: list(shape) >= 0")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .Doc(R"doc(
+A queue that produces elements sorted by the first component value.
+
+Note that the PriorityQueue requires the first component of any element
+to be a scalar int64, in addition to the other elements declared by
+component_types.  Therefore calls to Enqueue and EnqueueMany (resp. Dequeue
+and DequeueMany) on a PriorityQueue will all require (resp. output) one extra
+entry in their input (resp. output) lists.
+
+handle: The handle to the queue.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. The length of this attr must
+  be either 0 or the same as the length of component_types. If the length of
+  this attr is 0, the shapes of queue elements are not constrained, and
+  only one element may be dequeued at a time.
+capacity: The upper bound on the number of elements in this queue.
+  Negative numbers mean no limit.
+container: If non-empty, this queue is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this queue will be shared under the given name
+  across multiple sessions.
+)doc");
+
 REGISTER_OP("QueueEnqueue")
     .Input("handle: Ref(string)")
     .Input("components: Tcomponents")
@@ -651,6 +682,141 @@ Delete the TensorArray from its resource container.  This enables
 the user to close and release the resource in the middle of a step/run.
 
 handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Barrier")
+    .SetIsStateful()
+    .Output("handle: Ref(string)")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("shapes: list(shape) >= 0 = []")
+    .Attr("capacity: int = -1")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Doc(R"doc(
+Defines a barrier that persists across different graph executions.
+
+A barrier represents a key-value map, where each key is a string, and
+each value is a tuple of tensors.
+
+At runtime, the barrier contains 'complete' and 'incomplete'
+elements. A complete element has defined tensors for all components of
+its value tuple, and may be accessed using BarrierTakeMany. An
+incomplete element has some undefined components in its value tuple,
+and may be updated using BarrierInsertMany.
+
+handle: The handle to the barrier.
+component_types: The type of each component in a value.
+shapes: The shape of each component in a value. Each shape must be 1 in the
+  first dimension. The length of this attr must be the same as the length of
+  component_types.
+capacity: The capacity of the barrier.  The default capacity is MAX_INT32,
+  which is the largest capacity of the underlying queue.
+container: If non-empty, this barrier is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this barrier will be shared under the given name
+  across multiple sessions.
+)doc");
+
+REGISTER_OP("BarrierInsertMany")
+    .Input("handle: Ref(string)")
+    .Input("keys: string")
+    .Input("values: T")
+    .Attr("T: type")
+    .Attr("component_index: int")
+    .Doc(R"doc(
+For each key, assigns the respective value to the specified component.
+
+If a key is not found in the barrier, this operation will create a new
+incomplete element. If a key is found in the barrier, and the element
+already has a value at component_index, this operation will fail with
+INVALID_ARGUMENT, and leave the barrier in an undefined state.
+
+handle: The handle to a barrier.
+component_index: The component of the barrier elements that is being assigned.
+keys: A one-dimensional tensor of keys, with length n.
+values: An any-dimensional tensor of values, which are associated with the
+  respective keys. The 0th dimension must have length n.
+)doc");
+
+REGISTER_OP("BarrierTakeMany")
+    .Input("handle: Ref(string)")
+    .Input("num_elements: int32")
+    .Output("indices: int64")
+    .Output("keys: string")
+    .Output("values: component_types")
+    .Attr("component_types: list(type) >= 1")
+    .Attr("allow_small_batch: bool = false")
+    .Attr("wait_for_incomplete: bool = false")
+    .Attr("timeout_ms: int = -1")
+    .Doc(R"doc(
+Takes the given number of completed elements from a barrier.
+
+This operation concatenates completed-element component tensors along
+the 0th dimension to make a single component tensor.
+
+Elements come out of the barrier when they are complete, and in the order
+in which they were placed into the barrier.  The indices output provides
+information about the batch in which each element was originally inserted
+into the barrier.
+
+handle: The handle to a barrier.
+num_elements: A single-element tensor containing the number of elements to
+  take.
+indices: A one-dimensional tensor of indices, with length num_elems.
+  These indices refer to the batch in which the values were placed into the
+  barrier (starting with MIN_LONG and increasing with each BarrierInsertMany).
+keys: A one-dimensional tensor of keys, with length num_elements.
+values: One any-dimensional tensor per component in a barrier element. All
+  values have length num_elements in the 0th dimension.
+component_types: The type of each component in a value.
+allow_small_batch: Allow to return less than num_elements items if barrier is
+  already closed.
+timeout_ms: If the queue is empty, this operation will block for up to
+  timeout_ms milliseconds.
+  Note: This option is not supported yet.
+)doc");
+
+REGISTER_OP("BarrierClose")
+    .Input("handle: Ref(string)")
+    .Attr("cancel_pending_enqueues: bool = false")
+    .Doc(R"doc(
+Closes the given barrier.
+
+This operation signals that no more new elements will be inserted in the
+given barrier. Subsequent InsertMany that try to introduce a new key will fail.
+Subsequent InsertMany operations that just add missing components to already
+existing elements will continue to succeed. Subsequent TakeMany operations will
+continue to succeed if sufficient completed elements remain in the barrier.
+Subsequent TakeMany operations that would block will fail immediately.
+
+handle: The handle to a barrier.
+cancel_pending_enqueues: If true, all pending enqueue requests that are
+  blocked on the barrier's queue will be cancelled. InsertMany will fail, even
+  if no new key is introduced.
+)doc");
+
+REGISTER_OP("BarrierReadySize")
+    .Input("handle: Ref(string)")
+    .Output("size: int32")
+    .Doc(R"doc(
+Computes the number of complete elements in the given barrier.
+
+handle: The handle to a barrier.
+size: The number of complete elements (i.e. those with all of their value
+  components set) in the barrier.
+)doc");
+
+REGISTER_OP("BarrierIncompleteSize")
+    .Input("handle: Ref(string)")
+    .Output("size: int32")
+    .Doc(R"doc(
+Computes the number of incomplete elements in the given barrier.
+
+handle: The handle to a barrier.
+size: The number of incomplete elements (i.e. those with some of their value
+  components not set) in the barrier.
 )doc");
 
 // --------------------------------------------------------------------------

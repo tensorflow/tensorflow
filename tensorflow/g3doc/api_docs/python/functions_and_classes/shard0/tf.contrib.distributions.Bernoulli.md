@@ -8,7 +8,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(p, dtype=tf.int32, strict=True, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(p, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
@@ -21,6 +21,10 @@ Construct Bernoulli distributions.
 *  <b>`dtype`</b>: dtype for samples. Note that other values will take the dtype of p.
 *  <b>`strict`</b>: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
     return nans.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution.
 
 
@@ -237,6 +241,13 @@ Standard deviation of the distribution.
 #### `tf.contrib.distributions.Bernoulli.strict` {#Bernoulli.strict}
 
 Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.strict_statistics` {#Bernoulli.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

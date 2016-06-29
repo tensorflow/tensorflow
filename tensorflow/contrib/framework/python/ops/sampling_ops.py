@@ -148,7 +148,8 @@ def _make_per_class_queues(data, labels, num_classes, queue_capacity,
     q = data_flow_ops.FIFOQueue(capacity=queue_capacity,
                                 shapes=per_data_shape, dtypes=[data.dtype],
                                 name='stratified_sample_class%d_queue' % i)
-    logging_ops.scalar_summary('queue/stratified_sample_class%d' % i, q.size())
+    logging_ops.scalar_summary(
+        'queue/%s/stratified_sample_class%d' % (q.name, i), q.size())
     queues.append(q)
 
   # Partition tensors according to labels.
@@ -186,8 +187,8 @@ def _get_batch(per_class_queues, probs, batch_size):
   batch_labels.set_shape([batch_size])
 
   # Debug instrumentation.
-  sample_tags = ['stratified_sample/samples_class%i' % i for i in
-                 range(num_classes)]
+  sample_tags = ['stratified_sample/%s/samples_class%i' % (batch_labels.name, i)
+                 for i in range(num_classes)]
   logging_ops.scalar_summary(sample_tags, math_ops.reduce_sum(
       array_ops.one_hot(batch_labels, num_classes), 0))
 
