@@ -42,7 +42,9 @@ class Bernoulli(distribution.DiscreteDistribution):
     * log_cdf
   """
 
-  def __init__(self, p, dtype=dtypes.int32, strict=True, name="Bernoulli"):
+  def __init__(
+      self, p, dtype=dtypes.int32, strict=True, strict_statistics=True,
+      name="Bernoulli"):
     """Construct Bernoulli distributions.
 
     Args:
@@ -52,8 +54,13 @@ class Bernoulli(distribution.DiscreteDistribution):
       dtype: dtype for samples. Note that other values will take the dtype of p.
       strict: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
         return nans.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: A name for this distribution.
     """
+    self._strict_statistics = strict_statistics
     self._name = name
     self._dtype = dtype
     self._strict = strict
@@ -66,6 +73,11 @@ class Bernoulli(distribution.DiscreteDistribution):
       self._q = array_ops.identity(1. - p, name="q")
       self._batch_shape = array_ops.shape(self._p)
       self._event_shape = array_ops.constant([], dtype=dtypes.int32)
+
+  @property
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._strict_statistics
 
   @property
   def strict(self):

@@ -133,8 +133,8 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
                n,
                alpha,
                allow_arbitrary_counts=False,
-               allow_nan=False,
                strict=True,
+               strict_statistics=True,
                name='DirichletMultinomial'):
     """Initialize a batch of DirichletMultinomial distributions.
 
@@ -151,13 +151,13 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
         The pmf/cdf are functions that can be evaluated at non-integral values,
         but are only a distribution over non-negative integers.  If `strict` is
         `False`, this assertion is turned off.
-      allow_nan:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
       strict: Whether to assert valid values for parameters `alpha` and `n`, and
         `x` in `pmf` and `log_pmf`.  If False, correct behavior is not
         guaranteed.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Examples:
@@ -171,7 +171,7 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
     dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     ```
     """
-    self._allow_nan = allow_nan
+    self._strict_statistics = strict_statistics
     self._strict = strict
     self._name = name
     self._allow_arbitrary_counts = allow_arbitrary_counts
@@ -208,9 +208,9 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
     return self._alpha
 
   @property
-  def allow_nan(self):
+  def strict_statistics(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._allow_nan
+    return self._strict_statistics
 
   @property
   def strict(self):

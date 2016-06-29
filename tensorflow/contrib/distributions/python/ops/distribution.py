@@ -121,11 +121,11 @@ class BaseDistribution(object):
   b = tf.exp(tf.matmul(logits, weights_b))
 
   # Will raise exception if ANY batch member has a < 1 or b < 1.
-  dist = distributions.beta(a, b, allow_nan=False)  # default is False
+  dist = distributions.beta(a, b, strict_statistics=True)  # default is True
   mode = dist.mode().eval()
 
   # Will return NaN for batch members with either a < 1 or b < 1.
-  dist = distributions.beta(a, b, allow_nan=True)
+  dist = distributions.beta(a, b, strict_statistics=False)
   mode = dist.mode().eval()
   ```
 
@@ -134,20 +134,35 @@ class BaseDistribution(object):
   ```python
   # Will raise an exception if any Op is run.
   negative_a = -1.0 * a  # beta distribution by definition has a > 0.
-  dist = distributions.beta(negative_a, b, allow_nan=True)
+  dist = distributions.beta(negative_a, b, strict_statistics=False)
   dist.mean().eval()
   ```
 
   """
-  # Developer notes regarding __init__()
-  #
-  # Distributions should be initialized with a kwarg "allow_nan" with the
-  # following docstring (refer to above docstring note on undefined statistics
-  # for more detail).
-  # allow_nan:  Boolean, default False.  If False, raise an exception if
-  #   a statistic (e.g. mean/mode/etc...) is undefined for any batch member.  If
-  #   True, batch members with valid parameters leading to undefined statistics
-  #   will return NaN for this statistic.
+
+  @abc.abstractproperty
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    # return self._strict_statistics
+    # Notes:
+    #
+    # When it makes sense, return +- infinity for statistics.  E.g. the variance
+    # of a Cauchy distribution would be +infinity.  However, sometimes the
+    # statistic is undefined (e.g. if a distribution's pdf does not achieve a
+    # maximum within the support of the distribution, mode is undefined).
+    # If the mean is undefined, then by definition the variance is undefined.
+    # E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+    # it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+    # undefined.
+    #
+    # Distributions should be initialized with a kwarg "strict_statistics" with
+    # the following docstring (refer to above docstring note on undefined
+    # statistics for more detail).
+    # strict_statistics:  Boolean, default True.  If True, raise an exception if
+    #   a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    #   If False, batch members with valid parameters leading to undefined
+    #   statistics will return NaN for this statistic.
+    pass
 
   @abc.abstractproperty
   def strict(self):

@@ -325,7 +325,7 @@ export class EllipsisNodeImpl implements EllipsisNode {
  * A label object for nodes in the full graph and leaf nodes in the render
  * graph.
  */
-class OpNodeImpl implements OpNode {
+export class OpNodeImpl implements OpNode {
   name: string;
   op: string;
   device: string;
@@ -524,7 +524,7 @@ export class NodeStats {
   }
 }
 
-class MetanodeImpl implements Metanode {
+export class MetanodeImpl implements Metanode {
   name: string;
   stats: NodeStats;
   type: NodeType;
@@ -1055,7 +1055,7 @@ function getEmbedPredicate(types: string[]) {
  * Returns a strict node name (name => name/(name)) to avoid conflicts
  * where the node name is also a namespace.
  */
-function getStrictName(name: string): string {
+export function getStrictName(name: string): string {
   let parts = name.split(NAMESPACE_DELIM);
   return name + NAMESPACE_DELIM + '(' + parts[parts.length - 1] + ')';
 }

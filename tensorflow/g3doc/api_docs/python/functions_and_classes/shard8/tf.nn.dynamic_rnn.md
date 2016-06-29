@@ -19,9 +19,11 @@ automatically performed.
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: The RNN inputs.
     If time_major == False (default), this must be a tensor of shape:
-      `[batch_size, max_time, input_size]`.
+      `[batch_size, max_time, input_size]`, or a nested tuple of such
+      elements.
     If time_major == True, this must be a tensor of shape:
-      `[max_time, batch_size, input_size]`.
+      `[max_time, batch_size, input_size]`, or a nested tuple of such
+      elements.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be

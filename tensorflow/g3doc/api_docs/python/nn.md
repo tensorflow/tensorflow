@@ -1495,9 +1495,11 @@ automatically performed.
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: The RNN inputs.
     If time_major == False (default), this must be a tensor of shape:
-      `[batch_size, max_time, input_size]`.
+      `[batch_size, max_time, input_size]`, or a nested tuple of such
+      elements.
     If time_major == True, this must be a tensor of shape:
-      `[max_time, batch_size, input_size]`.
+      `[max_time, batch_size, input_size]`, or a nested tuple of such
+      elements.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
@@ -1579,7 +1581,7 @@ The dynamic calculation performed is, at time t for batch row b,
 
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
-    [batch_size, input_size].
+    [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
     a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
@@ -1594,7 +1596,8 @@ The dynamic calculation performed is, at time t for batch row b,
 ##### Returns:
 
   A pair (outputs, state) where:
-    - outputs is a length T list of outputs (one for each input)
+    - outputs is a length T list of outputs (one for each input), or a nested
+      tuple of such elements.
     - state is the final state
 
 ##### Raises:
@@ -1662,7 +1665,7 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
 *  <b>`cell_fw`</b>: An instance of RNNCell, to be used for forward direction.
 *  <b>`cell_bw`</b>: An instance of RNNCell, to be used for backward direction.
 *  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
-    [batch_size, input_size].
+    [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
     `[batch_size x cell_fw.state_size]`.
