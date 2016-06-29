@@ -309,7 +309,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     """Initializes a _DNNLinearCombinedBaseEstimator instance.
 
     Args:
-      target_column: A _TargetColum object.
+      target_column: A _TargetColumn object.
       model_dir: Directory to save model parameters, graph and etc.
       linear_feature_columns: An iterable containing all the feature columns
         used by linear part of the model. All items in the set should be
@@ -398,14 +398,14 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     """Returns weights of deep neural network part."""
     return [self.get_variable_value("hiddenlayer_%d/weights" % i)
             for i, _ in enumerate(self._dnn_hidden_units)] + [
-                self.get_variable_value("dnn_logit/weights")]
+                self.get_variable_value("dnn_logits/weights")]
 
   @property
   def dnn_bias_(self):
     """Returns bias of deep neural network part."""
     return [self.get_variable_value("hiddenlayer_%d/biases" % i)
             for i, _ in enumerate(self._dnn_hidden_units)] + [
-                self.get_variable_value("dnn_logit/biases"),
+                self.get_variable_value("dnn_logits/biases"),
                 self.get_variable_value("centered_bias_weight")]
 
   def _get_train_ops(self, features, targets):

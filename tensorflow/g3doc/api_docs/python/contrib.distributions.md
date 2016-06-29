@@ -110,11 +110,11 @@ a = tf.exp(tf.matmul(logits, weights_a))
 b = tf.exp(tf.matmul(logits, weights_b))
 
 # Will raise exception if ANY batch member has a < 1 or b < 1.
-dist = distributions.beta(a, b, allow_nan=False)  # default is False
+dist = distributions.beta(a, b, strict_statistics=True)  # default is True
 mode = dist.mode().eval()
 
 # Will return NaN for batch members with either a < 1 or b < 1.
-dist = distributions.beta(a, b, allow_nan=True)
+dist = distributions.beta(a, b, strict_statistics=False)
 mode = dist.mode().eval()
 ```
 
@@ -123,7 +123,7 @@ In all cases, an exception is raised if *invalid* parameters are passed, e.g.
 ```python
 # Will raise an exception if any Op is run.
 negative_a = -1.0 * a  # beta distribution by definition has a > 0.
-dist = distributions.beta(negative_a, b, allow_nan=True)
+dist = distributions.beta(negative_a, b, strict_statistics=False)
 dist.mean().eval()
 ```
 - - -
@@ -260,6 +260,13 @@ Standard deviation of the distribution.
 #### `tf.contrib.distributions.BaseDistribution.strict` {#BaseDistribution.strict}
 
 Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.strict_statistics` {#BaseDistribution.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -457,6 +464,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.ContinuousDistribution.strict_statistics` {#ContinuousDistribution.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.ContinuousDistribution.variance(name='variance')` {#ContinuousDistribution.variance}
 
 Variance of the distribution.
@@ -636,6 +650,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.DiscreteDistribution.strict_statistics` {#DiscreteDistribution.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.DiscreteDistribution.variance(name='variance')` {#DiscreteDistribution.variance}
 
 Variance of the distribution.
@@ -659,7 +680,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(p, dtype=tf.int32, strict=True, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(p, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
@@ -672,6 +693,10 @@ Construct Bernoulli distributions.
 *  <b>`dtype`</b>: dtype for samples. Note that other values will take the dtype of p.
 *  <b>`strict`</b>: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
     return nans.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution.
 
 
@@ -892,6 +917,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.strict_statistics` {#Bernoulli.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.variance(name='variance')` {#Bernoulli.variance}
 
 Variance of the distribution.
@@ -923,7 +955,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, strict=True, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, strict=True, strict_statistics=True, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -936,6 +968,10 @@ Initialize Categorical distributions using class log-probabilities.
       indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
 *  <b>`strict`</b>: Unused in this distribution.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
 
 
@@ -1112,6 +1148,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.strict_statistics` {#Categorical.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.variance(name='variance')` {#Categorical.variance}
 
 Variance of the distribution.
@@ -1132,7 +1175,7 @@ Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, strict_statistics=True, name='Chi2')` {#Chi2.__init__}
 
 Construct Chi2 distributions with parameter `df`.
 
@@ -1144,6 +1187,10 @@ Construct Chi2 distributions with parameter `df`.
 *  <b>`strict`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
     methods `pdf(x)` and `log_pdf(x)`. If `strict` is False
     and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
@@ -1346,7 +1393,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Chi2.mode(name='mode')` {#Chi2.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -1418,6 +1478,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.strict_statistics` {#Chi2.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.variance(name='variance')` {#Chi2.variance}
 
 Variance of each batch member.
@@ -1438,7 +1505,7 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, strict_statistics=True, name='Exponential')` {#Exponential.__init__}
 
 Construct Exponential distribution with parameter `lam`.
 
@@ -1450,6 +1517,10 @@ Construct Exponential distribution with parameter `lam`.
 *  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
     methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
     and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
@@ -1652,7 +1723,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Exponential.mode(name='mode')` {#Exponential.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -1721,6 +1805,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.strict_statistics` {#Exponential.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.variance(name='variance')` {#Exponential.variance}
 
 Variance of each batch member.
@@ -1753,7 +1844,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, strict=True, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, strict=True, strict_statistics=True, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -1772,6 +1863,10 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
     methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
     and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
@@ -1972,7 +2067,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Gamma.mode(name='mode')` {#Gamma.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -2044,6 +2152,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.strict_statistics` {#Gamma.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.variance(name='variance')` {#Gamma.variance}
 
 Variance of each batch member.
@@ -2098,7 +2213,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, strict=True, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, strict=True, strict_statistics=True, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -2113,6 +2228,10 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
     sigma must contain only positive values.
 *  <b>`strict`</b>: Whether to assert that `sigma > 0`. If `strict` is False,
     correct output is not guaranteed when input is invalid.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -2363,6 +2482,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.strict_statistics` {#Normal.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.variance(name='variance')` {#Normal.variance}
 
 Variance of this distribution.
@@ -2420,7 +2546,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, strict_statistics=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -2440,6 +2566,10 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
     Note that `sigma` is not the standard deviation of this distribution.
 *  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
     and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -2557,7 +2687,20 @@ Log pdf of observations in `x` under these Student's t-distribution(s).
 
 #### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
 
+Mean of the distribution.
 
+The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
+`self.strict_statistics=True`, then an exception will be raised rather than
+returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mean for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -2643,9 +2786,37 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.strict_statistics` {#StudentT.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
 
+Variance of the distribution.
 
+Variance for Student's T equals
+
+```
+df / (df - 2), when df > 2
+infinity, when 1 < df <= 2
+NaN, when df <= 1
+```
+
+The NaN state occurs because mean is undefined for `df <= 1`, and if
+`self.strict_statistics` is `True`, an exception will be raised if any batch
+members fall into this state.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this op.
+
+##### Returns:
+
+  The variance for every batch member, a `Tensor` with same `dtype` as self.
 
 
 
@@ -2658,7 +2829,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, strict_statistics=True, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -2690,6 +2861,10 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 *  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
 *  <b>`strict`</b>: Whether to assert that `a > b`. If `strict` is False and inputs
     are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
@@ -2890,6 +3065,13 @@ Sample `n` observations from the Uniform Distributions.
 #### `tf.contrib.distributions.Uniform.strict` {#Uniform.strict}
 
 Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.strict_statistics` {#Uniform.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3199,7 +3381,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, allow_nan=False, strict=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -3218,13 +3400,13 @@ Initialize a batch of DirichletMultinomial distributions.
     The pmf/cdf are functions that can be evaluated at non-integral values,
     but are only a distribution over non-negative integers.  If `strict` is
     `False`, this assertion is turned off.
-*  <b>`allow_nan`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
 *  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
     `x` in `pmf` and `log_pmf`.  If False, correct behavior is not
     guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
@@ -3238,13 +3420,6 @@ dist = DirichletMultinomial(2.0, [1.1, 2.0])
 # Define a 2-batch of 3-class distributions.
 dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 ```
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.allow_nan` {#DirichletMultinomial.allow_nan}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3466,6 +3641,13 @@ Standard deviation of the distribution.
 #### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
 
 Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

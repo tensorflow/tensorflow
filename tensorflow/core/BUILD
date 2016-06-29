@@ -121,6 +121,7 @@ cc_library(
         "lib/gtl/array_slice.h",
         "lib/gtl/inlined_vector.h",
         "lib/gtl/map_util.h",  # TODO(josh11b): make internal
+        "lib/gtl/priority_queue_util.h",
         "lib/gtl/stl_util.h",  # TODO(josh11b): make internal
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
         "lib/hash/hash.h",  # TODO(josh11b): make internal
@@ -1116,6 +1117,7 @@ cc_library(
     hdrs = ["example/example_parser_configuration.h"],
     copts = tf_copts(),
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_internal",
         ":framework",

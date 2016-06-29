@@ -31,7 +31,7 @@ The dynamic calculation performed is, at time t for batch row b,
 
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
-    [batch_size, input_size].
+    [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
     a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
@@ -46,7 +46,8 @@ The dynamic calculation performed is, at time t for batch row b,
 ##### Returns:
 
   A pair (outputs, state) where:
-    - outputs is a length T list of outputs (one for each input)
+    - outputs is a length T list of outputs (one for each input), or a nested
+      tuple of such elements.
     - state is the final state
 
 ##### Raises:
