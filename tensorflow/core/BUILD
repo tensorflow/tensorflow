@@ -334,7 +334,6 @@ cc_library(
 cc_library(
     name = "array_grad",
     srcs = ["ops/array_grad.cc"],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_op_lib",
@@ -347,7 +346,6 @@ cc_library(
 cc_library(
     name = "functional_grad",
     srcs = ["ops/functional_grad.cc"],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -363,7 +361,6 @@ cc_library(
         "ops/math_grad.cc",
         "ops/random_grad.cc",
     ],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -376,7 +373,6 @@ cc_library(
 cc_library(
     name = "nn_grad",
     srcs = ["ops/nn_grad.cc"],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":framework",

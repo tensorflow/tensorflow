@@ -235,7 +235,6 @@ cc_library(
     name = "grpc_server_lib",
     srcs = ["grpc_server_lib.cc"],
     hdrs = ["grpc_server_lib.h"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         ":async_service_interface",
         ":grpc_channel",
@@ -279,7 +278,6 @@ tf_cuda_library(
     name = "grpc_testlib_ops",
     testonly = 1,
     srcs = ["grpc_testlib_ops.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
