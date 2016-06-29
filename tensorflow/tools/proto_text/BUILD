@@ -42,6 +42,11 @@ cc_library(
     name = "gen_proto_text_functions_lib",
     srcs = ["gen_proto_text_functions_lib.cc"],
     hdrs = ["gen_proto_text_functions_lib.h"],
+    linkopts = [
+        "-lpthread",
+        "-lm",
+        "-lrt",
+    ],    
     deps = [
         "//tensorflow/core:lib",
     ],
