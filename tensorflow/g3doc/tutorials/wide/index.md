@@ -16,7 +16,7 @@ To try the code for this tutorial:
 already.
 
 2.  Download [the tutorial code](
-https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
 3.  Install the pandas data analysis library. tf.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
     1. Get `pip`:
@@ -392,7 +392,7 @@ transformations and see if you can do even better!
 
 If you'd like to see a working end-to-end example, you can download our [example
 code]
-(https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py)
+(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py)
 and set the `model_type` flag to `wide`.
 
 ## Adding Regularization to Prevent Overfitting

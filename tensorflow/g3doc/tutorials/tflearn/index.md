@@ -1,4 +1,4 @@
-## tf.contrib.learn Quickstart
+# tf.contrib.learn Quickstart
 
 TensorFlow’s high-level machine learning API (tf.contrib.learn) makes it easy
 to configure, train, and evaluate a variety of machine learning models. In
@@ -98,7 +98,7 @@ import numpy as np
 ```
 
 Next, load the training and test sets into `Dataset`s using the [`load_csv()`]
-(https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/datasets/base.py)  method in `learn.datasets.base`. The
+(https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/contrib/learn/python/learn/datasets/base.py)  method in `learn.datasets.base`. The
 `load_csv()` method has two required arguments:
 
 *   `filename`, which takes the filepath to the CSV file, and 
@@ -180,7 +180,7 @@ classifier.fit(x=x_train, y=y_train, steps=100)
 
 <!-- TODO: When tutorial exists for monitoring, link to it here -->
 However, if you're looking to track the model while it trains, you'll likely
-want to instead use a TensorFlow [`monitor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/monitors.py)
+want to instead use a TensorFlow [`monitor`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/contrib/learn/python/learn/monitors.py)
 to perform logging operations.
 
 ## Evaluate Model Accuracy
