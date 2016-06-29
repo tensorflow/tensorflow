@@ -309,7 +309,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     """Initializes a _DNNLinearCombinedBaseEstimator instance.
 
     Args:
-      target_column: A _TargetColum object.
+      target_column: A _TargetColumn object.
       model_dir: Directory to save model parameters, graph and etc.
       linear_feature_columns: An iterable containing all the feature columns
         used by linear part of the model. All items in the set should be
