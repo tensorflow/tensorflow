@@ -32,6 +32,7 @@ cc_library(
     hdrs = [
         "gcs_file_system.h",
     ],
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
         ":google_auth_provider",
