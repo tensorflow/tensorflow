@@ -533,6 +533,14 @@ filegroup(
 )
 
 filegroup(
+    name = "paper_tooltip",
+    srcs = [
+        "index.html",
+        "paper-tooltip.html",
+    ],
+)
+
+filegroup(
     name = "plottable",
     srcs = [
         "plottable.css",

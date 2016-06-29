@@ -47,9 +47,9 @@ class DataFrameTest(tf.test.TestCase):
     df = setup_test_df()
     self.assertEqual(df.columns(), frozenset(["a", "b", "c"]))
 
-  def test_select(self):
+  def test_select_columns(self):
     df = setup_test_df()
-    df2 = df.select(["a", "c"])
+    df2 = df.select_columns(["a", "c"])
     self.assertEqual(df2.columns(), frozenset(["a", "c"]))
 
   def test_get_item(self):

@@ -63,7 +63,7 @@ example_weights: a vector which contains the weight associated with each
 example_labels: a vector which contains the label/target associated with each
   example.
 sparse_weights: a list of vectors where each value is the weight associated with
-  a feature group.
+  a sparse feature group.
 dense_weights: a list of vectors where the value is the weight associated with
   a dense feature group.
 example_state_data: a list of vectors containing the example state data.
@@ -84,9 +84,9 @@ Applies L1 regularization shrink step on the parameters.
 num_sparse_features: Number of sparse feature groups to train on.
 num_dense_features: Number of dense feature groups to train on.
 l1: Symmetric l1 regularization strength.
-l2: Symmetric l2 regularization strength.
+l2: Symmetric l2 regularization strength. Should be a positive float.
 sparse_weights: a list of vectors where each value is the weight associated with
-  a feature group.
+  a sparse feature group.
 dense_weights: a list of vectors where the value is the weight associated with
   a dense feature group.
 )doc");
@@ -97,8 +97,8 @@ REGISTER_OP("SdcaFprint")
     .Doc(R"doc(
 Computes fingerprints of the input strings.
 
-input: strings to compute fingerprints on.
-output: the computed fingerprints.
+input: vector of strings to compute fingerprints on.
+output: vector containing the computed fingerprints.
 )doc");
 
 }  // namespace tensorflow

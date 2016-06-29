@@ -131,6 +131,33 @@ class TensorFlowDataFrame(df.DataFrame):
         coord.request_stop()
         coord.join(threads)
 
+  def select_rows(self, boolean_series):
+    """Returns a `DataFrame` with only the rows indicated by `boolean_series`.
+
+    Note that batches may no longer have consistent size after calling
+    `select_rows`, so the new `DataFrame` may need to be rebatched.
+    For example:
+    '''
+    filtered_df = df.select_rows(df["country"] == "jp").batch(64)
+    '''
+
+    Args:
+      boolean_series: a `Series` that evaluates to a boolean `Tensor`.
+
+    Returns:
+      A new `DataFrame` with the same columns as `self`, but selecting only the
+      rows where `boolean_series` evaluated to `True`.
+    """
+    result = type(self)()
+    for key, col in self._columns.items():
+      try:
+        result[key] = col.select_rows(boolean_series)
+      except AttributeError as e:
+        raise NotImplementedError((
+            "The select_rows method is not implemented for Series type {}. "
+            "Original error: {}").format(type(col), e))
+    return result
+
   def run_once(self):
     """Creates a new 'Graph` and `Session` and runs a single batch.
 
