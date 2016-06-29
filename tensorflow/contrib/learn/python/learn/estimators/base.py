@@ -89,10 +89,14 @@ class TensorFlowEstimator(estimator.Estimator):
         Instead, a customized decay function can be passed that accepts
         global_step as parameter and returns a Tensor.
         e.g. exponential decay function:
+
+        ````python
         def exp_decay(global_step):
             return tf.train.exponential_decay(
                 learning_rate=0.1, global_step,
                 decay_steps=2, decay_rate=0.001)
+        ````
+
       clip_gradients: Clip norm of the gradients to this value to stop
         gradient explosion.
       class_weight: None or list of n_classes floats. Weight associated with
@@ -103,9 +107,10 @@ class TensorFlowEstimator(estimator.Estimator):
       config: RunConfig object that controls the configurations of the
         session, e.g. num_cores, gpu_memory_fraction, etc.
       verbose: Controls the verbosity, possible values:
-        0: the algorithm and debug information is muted.
-        1: trainer prints the progress.
-        2: log device placement is printed.
+
+        * 0: the algorithm and debug information is muted.
+        * 1: trainer prints the progress.
+        * 2: log device placement is printed.
     """
     self.class_weight = class_weight
     self.learning_rate = learning_rate
