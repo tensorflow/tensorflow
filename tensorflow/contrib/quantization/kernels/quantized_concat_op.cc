@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"

@@ -137,11 +137,15 @@ tf_cc_test(
         "//tensorflow/contrib/quantization:cc_array_ops",
         "//tensorflow/contrib/quantization:cc_math_ops",
         "//tensorflow/contrib/quantization:cc_nn_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//third_party/eigen3",
     ],
 )
 
