@@ -41,8 +41,13 @@ class Categorical(distribution.DiscreteDistribution):
     * log_cdf
   """
 
-  def __init__(self, logits, dtype=dtypes.int32, strict=True,
-               name="Categorical"):
+  def __init__(
+      self,
+      logits,
+      dtype=dtypes.int32,
+      strict=True,
+      strict_statistics=True,
+      name="Categorical"):
     """Initialize Categorical distributions using class log-probabilities.
 
     Args:
@@ -52,8 +57,13 @@ class Categorical(distribution.DiscreteDistribution):
           indexes into the classes.
       dtype: The type of the event samples (default: int32).
       strict: Unused in this distribution.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
+    self._strict_statistics = strict_statistics
     self._name = name
     self._dtype = dtype
     self._strict = strict
@@ -64,6 +74,11 @@ class Categorical(distribution.DiscreteDistribution):
       self._batch_shape = array_ops.slice(
           logits_shape, [0], array_ops.pack([self._batch_rank]))
       self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
+
+  @property
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._strict_statistics
 
   @property
   def strict(self):
