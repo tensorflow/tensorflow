@@ -45,7 +45,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, strict_statistics=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -65,6 +65,10 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
     Note that `sigma` is not the standard deviation of this distribution.
 *  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
     and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -182,7 +186,20 @@ Log pdf of observations in `x` under these Student's t-distribution(s).
 
 #### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
 
+Mean of the distribution.
 
+The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
+`self.strict_statistics=True`, then an exception will be raised rather than
+returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mean for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -268,8 +285,36 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.strict_statistics` {#StudentT.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
 
+Variance of the distribution.
 
+Variance for Student's T equals
+
+```
+df / (df - 2), when df > 2
+infinity, when 1 < df <= 2
+NaN, when df <= 1
+```
+
+The NaN state occurs because mean is undefined for `df <= 1`, and if
+`self.strict_statistics` is `True`, an exception will be raised if any batch
+members fall into this state.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this op.
+
+##### Returns:
+
+  The variance for every batch member, a `Tensor` with same `dtype` as self.
 
 
