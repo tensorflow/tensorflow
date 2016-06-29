@@ -3,6 +3,7 @@
 <link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
 <link rel="import" href="../paper-radio-group/paper-radio-group.html">
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
+<link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 
 <dom-module id="tf-graph-controls">
@@ -263,6 +264,14 @@ span.counter {
     </div>
   </div>
   <div class="control-holder">
+    <div class="title">
+      Trace inputs
+    </div>
+    <paper-toggle-button id="trace-inputs">
+
+    </paper-toggle-button>
+  </div>
+  <div class="control-holder">
     <div class="title">Color</div>
     <paper-radio-group selected="{{colorBy}}">
       <paper-radio-button name="structure">Structure</paper-radio-button>
@@ -515,6 +524,10 @@ Polymer({
       type: Array,
       observer: '_datasetsChanged'
     },
+    renderHierarchy: {
+      type: Object,
+      notify: true,
+    },
     metadataTags: {
       type: Array,
       computed: '_getMetadataTags(selectedDataset, datasets)'
@@ -538,6 +551,14 @@ Polymer({
       type: Object,
       computed: '_getCurrentGradientParams(colorByParams, colorBy)'
     }
+  },
+  listeners: {
+    'trace-inputs.change': '_traceInputToggleChanged'
+  },
+  _traceInputToggleChanged: function(event) {
+    // Flip the state of the trace inputs flag.
+    this.renderHierarchy.traceInputs = event.target.active;
+    tf.graph.scene.node.traceInputs(this.renderHierarchy);
   },
   _statsNotNull: function(stats) {
     return stats != null;
@@ -657,6 +678,7 @@ Polymer({
     if (this.datasets) {
       this.set('selectedMetadataTag', -1);
       this.set('colorBy', 'structure');
+      this.$['trace-inputs'].active = false; // Set trace input to off-state.
       this._setDownloadFilename(this.datasets[newDataset].path);
     }
   },

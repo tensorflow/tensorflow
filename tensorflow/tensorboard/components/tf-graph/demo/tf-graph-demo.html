@@ -48,13 +48,14 @@ Example
         color-by-params="[[colorByParams]]"
         stats="[[stats]]"
         color-by="{{colorBy}}"
-        datasets="[[datasets]]",
+        datasets="[[datasets]]"
+        render-hierarchy="[[_renderHierarchy]]"
         selected-dataset="{{selectedDataset}}"
         selected-file="{{selectedFile}}"
         selected-metadata-tag="{{selectedMetadataTag}}"
     ></tf-graph-controls>
     <tf-graph-loader id="loader"
-        datasets="[[datasets]]",
+        datasets="[[datasets]]"
         selected-dataset="[[selectedDataset]]"
         selected-metadata-tag="[[selectedMetadataTag]]"
         selected-file="[[selectedFile]]"
@@ -67,14 +68,15 @@ Example
   </div>
   <div class="main">
     <tf-graph-board id="graphboard"
+        color-by="[[colorBy]]"
+        color-by-params="{{colorByParams}}"
         devices-for-stats="[[_devicesForStats]]"
         graph-hierarchy="[[graphHierarchy]]"
         graph="[[graph]]"
-        stats="[[stats]]"
-        progress="[[_progress]]"
-        color-by="[[colorBy]]"
-        color-by-params="{{colorByParams}}"
         hierarchy-params="[[_hierarchyParams]]"
+        progress="[[_progress]]"
+        render-hierarchy="{{_renderHierarchy}}"
+        stats="[[stats]]"
     ></tf-graph-board>
   </div>
 </div>
@@ -214,6 +216,7 @@ Polymer({
       type: Number,
       value: 1 // Mnist with metadata info.
     },
+    _renderHierarchy: Object,
     _progress: Object
   },
   _normalizePath: function(path) {
