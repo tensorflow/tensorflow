@@ -149,7 +149,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.bind(
     name = "boringssl_err_data_c",
-    actual = "@//" + path_prefix + "third_party/boringssl:err_data_c",
+    actual = tf_repo_name + "//third_party/boringssl:err_data_c",
   )
 
   native.new_git_repository(
