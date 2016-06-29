@@ -138,6 +138,27 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
+  def testWeightAndBiasNames(self):
+    """Tests that weight and bias names haven't changed."""
+    iris = tf.contrib.learn.datasets.load_iris()
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+    bucketized_features = [
+        tf.contrib.layers.bucketized_column(
+            cont_features[0], _get_quantile_based_buckets(iris.data, 10))]
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        n_classes=3,
+        linear_feature_columns=bucketized_features,
+        dnn_feature_columns=cont_features,
+        dnn_hidden_units=[3, 3])
+    classifier.fit(input_fn=_iris_input_multiclass_fn, steps=100)
+
+    self.assertEquals(4, len(classifier.dnn_bias_))
+    self.assertEquals(3, len(classifier.dnn_weights_))
+    self.assertEquals(3, len(classifier.linear_bias_))
+    self.assertEquals(44, len(classifier.linear_weights_))
+
   def testWeightColumn(self):
     """Tests weight column."""
 
@@ -397,6 +418,11 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertLess(loss2, 0.01)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
+    self.assertNotIn('dnn_logits/biases', classifier.get_variable_names())
+    self.assertNotIn('dnn_logits/weights', classifier.get_variable_names())
+    self.assertEquals(1, len(classifier.linear_bias_))
+    self.assertEquals(100, len(classifier.linear_weights_))
+
   def testDNNOnly(self):
     """Tests that DNN-only instantiation works."""
     cont_features = [
@@ -408,6 +434,12 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     classifier.fit(input_fn=_iris_input_multiclass_fn, steps=1000)
     classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
+    self.assertEquals(4, len(classifier.dnn_bias_))
+    self.assertEquals(3, len(classifier.dnn_weights_))
+    self.assertNotIn('linear/bias_weight', classifier.get_variable_names())
+    self.assertNotIn('linear/feature_BUCKETIZED_weights',
+                     classifier.get_variable_names())
 
 
 class DNNLinearCombinedRegressorTest(tf.test.TestCase):
