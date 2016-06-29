@@ -1664,6 +1664,199 @@ op {
   summary: "Computes gradients of the average pooling function."
 }
 op {
+  name: "Barrier"
+  output_arg {
+    name: "handle"
+    description: "The handle to the barrier."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "The shape of each component in a value. Each shape must be 1 in the\nfirst dimension. The length of this attr must be the same as the length of\ncomponent_types."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The capacity of the barrier.  The default capacity is MAX_INT32,\nwhich is the largest capacity of the underlying queue."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this barrier is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this barrier will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "Defines a barrier that persists across different graph executions."
+  description: "A barrier represents a key-value map, where each key is a string, and\neach value is a tuple of tensors.\n\nAt runtime, the barrier contains \'complete\' and \'incomplete\'\nelements. A complete element has defined tensors for all components of\nits value tuple, and may be accessed using BarrierTakeMany. An\nincomplete element has some undefined components in its value tuple,\nand may be updated using BarrierInsertMany."
+  is_stateful: true
+}
+op {
+  name: "BarrierClose"
+  input_arg {
+    name: "handle"
+    description: "The handle to a barrier."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "cancel_pending_enqueues"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, all pending enqueue requests that are\nblocked on the barrier\'s queue will be cancelled. InsertMany will fail, even\nif no new key is introduced."
+  }
+  summary: "Closes the given barrier."
+  description: "This operation signals that no more new elements will be inserted in the\ngiven barrier. Subsequent InsertMany that try to introduce a new key will fail.\nSubsequent InsertMany operations that just add missing components to already\nexisting elements will continue to succeed. Subsequent TakeMany operations will\ncontinue to succeed if sufficient completed elements remain in the barrier.\nSubsequent TakeMany operations that would block will fail immediately."
+}
+op {
+  name: "BarrierIncompleteSize"
+  input_arg {
+    name: "handle"
+    description: "The handle to a barrier."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "size"
+    description: "The number of incomplete elements (i.e. those with some of their value\ncomponents not set) in the barrier."
+    type: DT_INT32
+  }
+  summary: "Computes the number of incomplete elements in the given barrier."
+}
+op {
+  name: "BarrierInsertMany"
+  input_arg {
+    name: "handle"
+    description: "The handle to a barrier."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    description: "A one-dimensional tensor of keys, with length n."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "values"
+    description: "An any-dimensional tensor of values, which are associated with the\nrespective keys. The 0th dimension must have length n."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "component_index"
+    type: "int"
+    description: "The component of the barrier elements that is being assigned."
+  }
+  summary: "For each key, assigns the respective value to the specified component."
+  description: "If a key is not found in the barrier, this operation will create a new\nincomplete element. If a key is found in the barrier, and the element\nalready has a value at component_index, this operation will fail with\nINVALID_ARGUMENT, and leave the barrier in an undefined state."
+}
+op {
+  name: "BarrierReadySize"
+  input_arg {
+    name: "handle"
+    description: "The handle to a barrier."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "size"
+    description: "The number of complete elements (i.e. those with all of their value\ncomponents set) in the barrier."
+    type: DT_INT32
+  }
+  summary: "Computes the number of complete elements in the given barrier."
+}
+op {
+  name: "BarrierTakeMany"
+  input_arg {
+    name: "handle"
+    description: "The handle to a barrier."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "num_elements"
+    description: "A single-element tensor containing the number of elements to\ntake."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "indices"
+    description: "A one-dimensional tensor of indices, with length num_elems.\nThese indices refer to the batch in which the values were placed into the\nbarrier (starting with MIN_LONG and increasing with each BarrierInsertMany)."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "keys"
+    description: "A one-dimensional tensor of keys, with length num_elements."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "values"
+    description: "One any-dimensional tensor per component in a barrier element. All\nvalues have length num_elements in the 0th dimension."
+    type_list_attr: "component_types"
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    description: "The type of each component in a value."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "allow_small_batch"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Allow to return less than num_elements items if barrier is\nalready closed."
+  }
+  attr {
+    name: "wait_for_incomplete"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "timeout_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "If the queue is empty, this operation will block for up to\ntimeout_ms milliseconds.\nNote: This option is not supported yet."
+  }
+  summary: "Takes the given number of completed elements from a barrier."
+  description: "This operation concatenates completed-element component tensors along\nthe 0th dimension to make a single component tensor.\n\nElements come out of the barrier when they are complete, and in the order\nin which they were placed into the barrier.  The indices output provides\ninformation about the batch in which each element was originally inserted\ninto the barrier."
+}
+op {
   name: "BatchCholesky"
   input_arg {
     name: "input"
@@ -8926,6 +9119,58 @@ op {
   }
   summary: "Prints a list of tensors."
   description: "Passes `input` through to `output` and prints `data` when evaluating."
+  is_stateful: true
+}
+op {
+  name: "PriorityQueue"
+  output_arg {
+    name: "handle"
+    description: "The handle to the queue."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "component_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    description: "The type of each component in a value."
+    has_minimum: true
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+    description: "The shape of each component in a value. The length of this attr must\nbe either 0 or the same as the length of component_types. If the length of\nthis attr is 0, the shapes of queue elements are not constrained, and\nonly one element may be dequeued at a time."
+    has_minimum: true
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "The upper bound on the number of elements in this queue.\nNegative numbers mean no limit."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A queue that produces elements sorted by the first component value."
+  description: "Note that the PriorityQueue requires the first component of any element\nto be a scalar int64, in addition to the other elements declared by\ncomponent_types.  Therefore calls to Enqueue and EnqueueMany (resp. Dequeue\nand DequeueMany) on a PriorityQueue will all require (resp. output) one extra\nentry in their input (resp. output) lists."
   is_stateful: true
 }
 op {

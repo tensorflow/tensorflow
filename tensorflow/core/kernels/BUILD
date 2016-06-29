@@ -211,6 +211,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "priority_queue",
+    srcs = ["priority_queue.cc"],
+    hdrs = ["priority_queue.h"],
+    deps = [
+        ":queue_base",
+        ":queue_op",
+        ":typed_queue",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_proto_library(
     name = "reader_base_proto",
     srcs = ["reader_base.proto"],
@@ -675,7 +688,9 @@ tf_kernel_libraries(
     prefixes = [
         "dynamic_partition_op",
         "dynamic_stitch_op",
+        "barrier_ops",
         "fifo_queue_op",
+        "priority_queue_op",
         "lookup_table_init_op",
         "lookup_table_op",
         "padding_fifo_queue_op",
@@ -692,6 +707,7 @@ tf_kernel_libraries(
         ":initializable_lookup_table",
         ":lookup_util",
         ":padding_fifo_queue",
+        ":priority_queue",
         ":queue_base",
         ":queue_op",
         ":split_lib",
