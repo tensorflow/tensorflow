@@ -70,7 +70,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "concat_lib",
     srcs = ["concat_lib_cpu.cc"],
-    hdrs = ["concat_lib.h"],
+    hdrs = [
+        "concat_lib.h",
+        "concat_lib_cpu.h",
+    ],
     gpu_srcs = [
         "concat_lib_gpu.cu.cc",
         "concat_lib.h",
@@ -81,6 +84,19 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
     alwayslink = 0,
+)
+
+cc_library(
+    name = "concat_lib_hdrs",
+    hdrs = [
+        "concat_lib.h",
+        "concat_lib_cpu.h",
+    ],
+    deps = [
+        ":eigen_helpers",
+        ":ops_util_hdrs",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -1729,6 +1745,7 @@ filegroup(
         "cast_op.h",
         "concat_lib.h",
         "concat_lib_cpu.cc",
+        "concat_lib_cpu.h",
         "concat_op.cc",
         "constant_op.cc",
         "constant_op.h",
