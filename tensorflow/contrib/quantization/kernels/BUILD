@@ -71,6 +71,7 @@ tf_kernel_library(
         "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:ops_util",
@@ -97,6 +98,7 @@ tf_custom_op_library(
         "reference_gemm.h",
     ],
     deps = [
+        "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
         "//tensorflow/core/kernels:pooling_ops_hdrs",
         "@gemmlowp//:eight_bit_int_gemm",

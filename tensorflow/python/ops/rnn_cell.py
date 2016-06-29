@@ -660,7 +660,7 @@ class DropoutWrapper(RNNCell):
     if (not isinstance(self._input_keep_prob, float) or
         self._input_keep_prob < 1):
       inputs = nn_ops.dropout(inputs, self._input_keep_prob, seed=self._seed)
-    output, new_state = self._cell(inputs, state)
+    output, new_state = self._cell(inputs, state, scope)
     if (not isinstance(self._output_keep_prob, float) or
         self._output_keep_prob < 1):
       output = nn_ops.dropout(output, self._output_keep_prob, seed=self._seed)

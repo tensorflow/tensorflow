@@ -118,12 +118,33 @@ class GammaTest(tf.test.TestCase):
       self.assertEqual(gamma.mean().get_shape(), (3,))
       self.assertAllClose(gamma.mean().eval(), expected_means)
 
-  def testGammaMode(self):
+  def testGammaModeStrictStatsIsTrueWorksWhenAllBatchMembersAreDefined(self):
+    with self.test_session():
+      alpha_v = np.array([5.5, 3.0, 2.5])
+      beta_v = np.array([1.0, 4.0, 5.0])
+      gamma = tf.contrib.distributions.Gamma(
+          alpha=alpha_v, beta=beta_v)  # strict_statistics=True is the default.
+      expected_modes = (alpha_v - 1) / beta_v
+      self.assertEqual(gamma.mode().get_shape(), (3,))
+      self.assertAllClose(gamma.mode().eval(), expected_modes)
+
+  def testGammaModeStrictStatsTrueRaisesForUndefinedBatchMembers(self):
     with self.test_session():
       # Mode will not be defined for the first entry.
       alpha_v = np.array([0.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
-      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = tf.contrib.distributions.Gamma(
+          alpha=alpha_v, beta=beta_v)  # strict_statistics=True is the default.
+      with self.assertRaisesOpError('x < y'):
+        gamma.mode().eval()
+
+  def testGammaModeStrictStatsIsFalseReturnsNaNforUndefinedBatchMembers(self):
+    with self.test_session():
+      # Mode will not be defined for the first entry.
+      alpha_v = np.array([0.5, 3.0, 2.5])
+      beta_v = np.array([1.0, 4.0, 5.0])
+      gamma = tf.contrib.distributions.Gamma(
+          alpha=alpha_v, beta=beta_v, strict_statistics=False)
       expected_modes = (alpha_v - 1) / beta_v
       expected_modes[0] = np.nan
       self.assertEqual(gamma.mode().get_shape(), (3,))

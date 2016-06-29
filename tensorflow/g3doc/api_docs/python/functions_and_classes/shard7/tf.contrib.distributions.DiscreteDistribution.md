@@ -167,6 +167,13 @@ Boolean describing behavior on invalid input.
 
 - - -
 
+#### `tf.contrib.distributions.DiscreteDistribution.strict_statistics` {#DiscreteDistribution.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.DiscreteDistribution.variance(name='variance')` {#DiscreteDistribution.variance}
 
 Variance of the distribution.

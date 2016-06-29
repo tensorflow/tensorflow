@@ -23,6 +23,7 @@ from tensorflow.contrib import bayesflow
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import distributions
 from tensorflow.contrib import framework
+from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
