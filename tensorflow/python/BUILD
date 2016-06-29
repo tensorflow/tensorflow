@@ -540,6 +540,13 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "data_flow_ops",
     hidden = [
+        "Barrier",
+        "BarrierClose",
+        "BarrierIncompleteSize",
+        "BarrierInsertMany",
+        "BarrierReadySize",
+        "BarrierTakeMany",
+        "PriorityQueue",
         "FIFOQueue",
         "HashTable",
         "InitializeTable",
@@ -906,7 +913,10 @@ py_library(
 
 py_library(
     name = "util",
-    srcs = glob(["util/**/*.py"]),
+    srcs = glob(
+        ["util/**/*.py"],
+        exclude = ["util/example_parser*"],
+    ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
 )
@@ -920,6 +930,18 @@ py_test(
     deps = [
         ":util",
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "util_example_parser_configuration",
+    srcs = ["util/example_parser_configuration.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -950,6 +972,21 @@ py_test(
         ":compare_test_proto_py",
         ":platform_test",
         ":util",
+    ],
+)
+
+py_test(
+    name = "util_example_parser_configuration_test",
+    size = "small",
+    srcs = ["util/example_parser_configuration_test.py"],
+    main = "util/example_parser_configuration_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        ":util_example_parser_configuration",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
     ],
 )
 

@@ -19,6 +19,7 @@ py_tests(
     srcs = [
         "as_string_op_test.py",
         "attention_ops_test.py",
+        "barrier_ops_test.py",
         "bcast_ops_test.py",
         "benchmark_test.py",
         "candidate_sampler_ops_test.py",
@@ -45,6 +46,7 @@ py_tests(
         "matrix_triangular_solve_op_test.py",
         "parsing_ops_test.py",
         "partitioned_variables_test.py",
+        "priority_queue_test.py",
         "random_shuffle_queue_test.py",
         "save_restore_ops_test.py",
         "segment_reduction_ops_test.py",
