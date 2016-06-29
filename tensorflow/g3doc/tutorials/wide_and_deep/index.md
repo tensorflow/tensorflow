@@ -42,7 +42,7 @@ To try the code for this tutorial:
 already.
 
 2.  Download [the tutorial code](
-https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
 3.  Install the pandas data analysis library. tf.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
     1. Get `pip`:
@@ -134,7 +134,7 @@ of a neural network in the forward pass. The embedding values are initialized
 randomly, and are trained along with all other model parameters to minimize the
 training loss. If you're interested in learning more about embeddings, check out
 the TensorFlow tutorial on [Vector Representations of Words]
-(https://www.tensorflow.org/versions/r0.9/tutorials/word2vec/index.html), or
+(https://www.tensorflow.org/tutorials/word2vec/index.html), or
 [Word Embedding](https://en.wikipedia.org/wiki/Word_embedding) on Wikipedia.
 
 We'll configure the embeddings for the categorical columns using
