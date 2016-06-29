@@ -1,4 +1,4 @@
-## tf.contrib.learn Quickstart
+# tf.contrib.learn Quickstart
 
 TensorFlow’s high-level machine learning API (tf.contrib.learn) makes it easy
 to configure, train, and evaluate a variety of machine learning models. In
