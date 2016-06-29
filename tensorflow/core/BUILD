@@ -1117,6 +1117,7 @@ cc_library(
     hdrs = ["example/example_parser_configuration.h"],
     copts = tf_copts(),
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_internal",
         ":framework",
