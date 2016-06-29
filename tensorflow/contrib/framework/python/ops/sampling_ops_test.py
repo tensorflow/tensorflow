@@ -110,6 +110,28 @@ class SamplingOpsTest(tf.test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def testCanBeCalledMultipleTimes(self):
+    batch_size = 20
+    val_input_batch = tf.zeros([2, 3, 4])
+    lbl_input_batch = tf.ones([], dtype=tf.int32)
+    probs = np.array([0, 1, 0, 0, 0])
+    batch1 = tf.contrib.framework.sampling_ops.stratified_sample(
+        val_input_batch, lbl_input_batch, probs, batch_size)
+    batch2 = tf.contrib.framework.sampling_ops.stratified_sample(
+        val_input_batch, lbl_input_batch, probs, batch_size)
+    summary_op = tf.merge_summary(tf.get_collection(
+        tf.GraphKeys.SUMMARIES))
+
+    with self.test_session() as sess:
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(coord=coord)
+
+      for _ in range(20):
+        sess.run(batch1 + batch2 + (summary_op,))
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testBatchDimensionNotRequired(self):
     classes = 5
     probs = [1.0/classes] * classes
