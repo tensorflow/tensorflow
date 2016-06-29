@@ -354,10 +354,6 @@ def _rnn_step(
     """Run RNN step.  Pass through either no or some past state."""
     new_output, new_state = call_cell()
 
-    print("state")
-    print(state)
-    print("new_State")
-    print(new_state)
     nest.assert_same_structure(state, new_state)
 
     flat_new_state = nest.flatten(new_state) if state_is_tuple else (new_state,)
