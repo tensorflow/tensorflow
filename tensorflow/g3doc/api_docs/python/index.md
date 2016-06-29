@@ -579,6 +579,7 @@
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
+  * [`batch_matrix_diag_transform`](../../api_docs/python/contrib.distributions.md#batch_matrix_diag_transform)
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
@@ -588,10 +589,14 @@
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
   * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
   * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
-  * [`MultivariateNormal`](../../api_docs/python/contrib.distributions.md#MultivariateNormal)
+  * [`MultivariateNormalCholesky`](../../api_docs/python/contrib.distributions.md#MultivariateNormalCholesky)
+  * [`MultivariateNormalFull`](../../api_docs/python/contrib.distributions.md#MultivariateNormalFull)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
   * [`normal_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_congugates_known_sigma_predictive)
   * [`normal_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_sigma_posterior)
+  * [`OperatorPDBase`](../../api_docs/python/contrib.distributions.md#OperatorPDBase)
+  * [`OperatorPDCholesky`](../../api_docs/python/contrib.distributions.md#OperatorPDCholesky)
+  * [`OperatorPDFull`](../../api_docs/python/contrib.distributions.md#OperatorPDFull)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)

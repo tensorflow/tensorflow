@@ -3085,15 +3085,16 @@ Boolean describing behavior when a stat is undefined for batch member.
 
 ### Multivariate distributions
 
+#### Multivariate normal
+
 - - -
 
-### `class tf.contrib.distributions.MultivariateNormal` {#MultivariateNormal}
+### `class tf.contrib.distributions.MultivariateNormalFull` {#MultivariateNormalFull}
 
-The Multivariate Normal distribution on `R^k`.
+The multivariate normal distribution on `R^k`.
 
-The distribution has mean and covariance parameters mu (1-D), sigma (2-D),
-or alternatively mean `mu` and factored covariance (cholesky decomposed
-`sigma`) called `sigma_chol`.
+This distribution is defined by a 1-D mean `mu` and covariance matrix `sigma`.
+Evaluation of the pdf, determinant, and sampling are all `O(k^3)` operations.
 
 #### Mathematical details
 
@@ -3105,21 +3106,6 @@ f(x) = (2*pi)^(-k/2) |det(sigma)|^(-1/2) exp(-1/2*(x-mu)^*.sigma^{-1}.(x-mu))
 
 where `.` denotes the inner product on `R^k` and `^*` denotes transpose.
 
-Alternatively, if `sigma` is positive definite, it can be represented in terms
-of its lower triangular cholesky factorization
-
-```sigma = sigma_chol . sigma_chol^*```
-
-and the pdf above allows simpler computation:
-
-```
-|det(sigma)| = reduce_prod(diag(sigma_chol))^2
-x_whitened = sigma^{-1/2} . (x - mu) = tri_solve(sigma_chol, x - mu)
-(x-mu)^* .sigma^{-1} . (x-mu) = x_whitened^* . x_whitened
-```
-
-where `tri_solve()` solves a triangular system of equations.
-
 #### Examples
 
 A single multi-variate Gaussian distribution is defined by a vector of means
@@ -3129,79 +3115,76 @@ Extra leading dimensions, if provided, allow for batches.
 
 ```python
 # Initialize a single 3-variate Gaussian with diagonal covariance.
-mu = [1, 2, 3]
-sigma = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
-dist = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
+mu = [1, 2, 3.]
+sigma = [[1, 0, 0], [0, 3, 0], [0, 0, 2.]]
+dist = tf.contrib.distributions.MultivariateNormalFull(mu, chol)
 
 # Evaluate this on an observation in R^3, returning a scalar.
 dist.pdf([-1, 0, 1])
 
 # Initialize a batch of two 3-variate Gaussians.
-mu = [[1, 2, 3], [11, 22, 33]]
-sigma = ...  # shape 2 x 3 x 3
-dist = tf.contrib.distributions.MultivariateNormal(mu=mu, sigma=sigma)
+mu = [[1, 2, 3], [11, 22, 33.]]
+sigma = ...  # shape 2 x 3 x 3, positive definite.
+dist = tf.contrib.distributions.MultivariateNormalFull(mu, sigma)
 
 # Evaluate this on a two observations, each in R^3, returning a length two
 # tensor.
-x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
+x = [[-1, 0, 1], [-11, 0, 11.]]  # Shape 2 x 3.
 dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.__init__(mu, sigma=None, sigma_chol=None, name=None)` {#MultivariateNormal.__init__}
+#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, strict=True, strict_statistics=True, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
-User must provide means `mu`, which are tensors of rank `N+1` (`N >= 0`)
-with the last dimension having length `k`.
-
-User must provide exactly one of `sigma` (the covariance matrices) or
-`sigma_chol` (the cholesky decompositions of the covariance matrices).
-`sigma` or `sigma_chol` must be of rank `N+2`.  The last two dimensions
-must both have length `k`.  The first `N` dimensions correspond to batch
-indices.
-
-If `sigma_chol` is not provided, the batch cholesky factorization of `sigma`
-is calculated for you.
-
-The shapes of `mu` and `sigma` must match for the first `N` dimensions.
-
-Regardless of which parameter is provided, the covariance matrices must all
-be **positive definite** (an error is raised if one of them is not).
+User must provide means `mu` and `sigma`, the mean and covariance.
 
 ##### Args:
 
 
-*  <b>`mu`</b>: (N+1)-D.  `float` or `double` tensor, the means of the distributions.
-*  <b>`sigma`</b>: (N+2)-D.  (optional) `float` or `double` tensor, the covariances
-    of the distribution(s).  The first `N+1` dimensions must match
-    those of `mu`.  Must be batch-positive-definite.
-*  <b>`sigma_chol`</b>: (N+2)-D.  (optional) `float` or `double` tensor, a
-    lower-triangular factorization of `sigma`
-    (`sigma = sigma_chol . sigma_chol^*`).  The first `N+1` dimensions
-    must match those of `mu`.  The tensor itself need not be batch
-    lower triangular: we ignore the upper triangular part.  However,
-    the batch diagonals must be positive (i.e., sigma_chol must be
-    batch-positive-definite).
+*  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+    `b >= 0`.
+*  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
+    `[N1,...,Nb, k, k]`.
+*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if neither sigma nor sigma_chol is provided.
-*  <b>`TypeError`</b>: if mu and sigma (resp. sigma_chol) are different dtypes.
+*  <b>`TypeError`</b>: If `mu` and `sigma` are different dtypes.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.dtype` {#MultivariateNormal.dtype}
+#### `tf.contrib.distributions.MultivariateNormalFull.batch_shape(name='batch_shape')` {#MultivariateNormalFull.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.cdf(value, name='cdf')` {#MultivariateNormalFull.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.dtype` {#MultivariateNormalFull.dtype}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.entropy(name=None)` {#MultivariateNormal.entropy}
+#### `tf.contrib.distributions.MultivariateNormalFull.entropy(name='entropy')` {#MultivariateNormalFull.entropy}
 
 The entropies of these Multivariate Normals.
 
@@ -3218,14 +3201,49 @@ The entropies of these Multivariate Normals.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.is_reparameterized` {#MultivariateNormal.is_reparameterized}
+#### `tf.contrib.distributions.MultivariateNormalFull.event_shape(name='event_shape')` {#MultivariateNormalFull.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.get_batch_shape()` {#MultivariateNormalFull.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.get_event_shape()` {#MultivariateNormalFull.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.is_reparameterized` {#MultivariateNormalFull.is_reparameterized}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.log_pdf(x, name=None)` {#MultivariateNormal.log_pdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_cdf(value, name='log_cdf')` {#MultivariateNormalFull.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.log_likelihood(value, name='log_likelihood')` {#MultivariateNormalFull.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.log_pdf(x, name='log_pdf')` {#MultivariateNormalFull.log_pdf}
 
 Log pdf of observations `x` given these Multivariate Normals.
 
@@ -3243,21 +3261,42 @@ Log pdf of observations `x` given these Multivariate Normals.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.mean` {#MultivariateNormal.mean}
+#### `tf.contrib.distributions.MultivariateNormalFull.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalFull.log_sigma_det}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.mean(name='mean')` {#MultivariateNormalFull.mean}
+
+Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.mode(name='mode')` {#MultivariateNormalFull.mode}
+
+Mode of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.mu` {#MultivariateNormalFull.mu}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.mu` {#MultivariateNormal.mu}
+#### `tf.contrib.distributions.MultivariateNormalFull.name` {#MultivariateNormalFull.name}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.pdf(x, name=None)` {#MultivariateNormal.pdf}
+#### `tf.contrib.distributions.MultivariateNormalFull.pdf(x, name='pdf')` {#MultivariateNormalFull.pdf}
 
 The PDF of observations `x` under these Multivariate Normals.
 
@@ -3275,7 +3314,7 @@ The PDF of observations `x` under these Multivariate Normals.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.sample(n, seed=None, name=None)` {#MultivariateNormal.sample}
+#### `tf.contrib.distributions.MultivariateNormalFull.sample(n, seed=None, name='sample')` {#MultivariateNormalFull.sample}
 
 Sample `n` observations from the Multivariate Normal Distributions.
 
@@ -3295,18 +3334,342 @@ Sample `n` observations from the Multivariate Normal Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.sigma` {#MultivariateNormal.sigma}
+#### `tf.contrib.distributions.MultivariateNormalFull.sigma` {#MultivariateNormalFull.sigma}
+
+Dense (batch) covariance matrix, if available.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.sigma_det(name='sigma_det')` {#MultivariateNormalFull.sigma_det}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.std(name='std')` {#MultivariateNormalFull.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.strict` {#MultivariateNormalFull.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.strict_statistics` {#MultivariateNormalFull.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.variance(name='variance')` {#MultivariateNormalFull.variance}
+
+Variance of each batch member.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.MultivariateNormalCholesky` {#MultivariateNormalCholesky}
+
+The multivariate normal distribution on `R^k`.
+
+This distribution is defined by a 1-D mean `mu` and a Cholesky factor `chol`.
+Providing the Cholesky factor allows for `O(k^2)` pdf evaluation and sampling,
+and requires `O(k^2)` storage.
+
+#### Mathematical details
+
+The PDF of this distribution is:
+
+```
+f(x) = (2*pi)^(-k/2) |det(sigma)|^(-1/2) exp(-1/2*(x-mu)^*.sigma^{-1}.(x-mu))
+```
+
+where `.` denotes the inner product on `R^k` and `^*` denotes transpose.
+
+#### Examples
+
+A single multi-variate Gaussian distribution is defined by a vector of means
+of length `k`, and a covariance matrix of shape `k x k`.
+
+Extra leading dimensions, if provided, allow for batches.
+
+```python
+# Initialize a single 3-variate Gaussian with diagonal covariance.
+mu = [1, 2, 3.]
+chol = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
+dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)
+
+# Evaluate this on an observation in R^3, returning a scalar.
+dist.pdf([-1, 0, 1])
+
+# Initialize a batch of two 3-variate Gaussians.
+mu = [[1, 2, 3], [11, 22, 33]]
+chol = ...  # shape 2 x 3 x 3, lower triangular, positive diagonal.
+dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)
+
+# Evaluate this on a two observations, each in R^3, returning a length two
+# tensor.
+x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
+dist.pdf(x)
+```
+
+Trainable (batch) Choesky matrices can be created with
+`tf.contrib.distributions.batch_matrix_diag_transform()`
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, strict=True, strict_statistics=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
+
+Multivariate Normal distributions on `R^k`.
+
+User must provide means `mu` and `chol` which holds the (batch) Cholesky
+factors `S`, such that the covariance of each batch member is `S S^*`.
+
+##### Args:
+
+
+*  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+    `b >= 0`.
+*  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
+    `[N1,...,Nb, k, k]`.
+*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to give Ops created by the initializer.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `mu` and `chol` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.batch_shape(name='batch_shape')` {#MultivariateNormalCholesky.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.cdf(value, name='cdf')` {#MultivariateNormalCholesky.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.dtype` {#MultivariateNormalCholesky.dtype}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormal.sigma_det` {#MultivariateNormal.sigma_det}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.entropy(name='entropy')` {#MultivariateNormalCholesky.entropy}
+
+The entropies of these Multivariate Normals.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`entropy`</b>: tensor of dtype `dtype`, the entropies.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.event_shape(name='event_shape')` {#MultivariateNormalCholesky.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.get_batch_shape()` {#MultivariateNormalCholesky.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.get_event_shape()` {#MultivariateNormalCholesky.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_reparameterized` {#MultivariateNormalCholesky.is_reparameterized}
 
 
 
 
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_cdf(value, name='log_cdf')` {#MultivariateNormalCholesky.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_likelihood(value, name='log_likelihood')` {#MultivariateNormalCholesky.log_likelihood}
+
+Log likelihood of this distribution (same as log_pdf).
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_pdf(x, name='log_pdf')` {#MultivariateNormalCholesky.log_pdf}
+
+Log pdf of observations `x` given these Multivariate Normals.
+
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalCholesky.log_sigma_det}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.mean(name='mean')` {#MultivariateNormalCholesky.mean}
+
+Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.mode(name='mode')` {#MultivariateNormalCholesky.mode}
+
+Mode of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.mu` {#MultivariateNormalCholesky.mu}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.name` {#MultivariateNormalCholesky.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.pdf(x, name='pdf')` {#MultivariateNormalCholesky.pdf}
+
+The PDF of observations `x` under these Multivariate Normals.
+
+##### Args:
+
+
+*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sample(n, seed=None, name='sample')` {#MultivariateNormalCholesky.sample}
+
+Sample `n` observations from the Multivariate Normal Distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by broadcasting the hyperparameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sigma` {#MultivariateNormalCholesky.sigma}
+
+Dense (batch) covariance matrix, if available.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sigma_det(name='sigma_det')` {#MultivariateNormalCholesky.sigma_det}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.std(name='std')` {#MultivariateNormalCholesky.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.strict` {#MultivariateNormalCholesky.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.strict_statistics` {#MultivariateNormalCholesky.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.variance(name='variance')` {#MultivariateNormalCholesky.variance}
+
+Variance of each batch member.
+
+
+
+
+#### Other multivariate distributions
 
 - - -
 
@@ -3656,6 +4019,915 @@ Boolean describing behavior when a stat is undefined for batch member.
 
 Variance of the distribution.
 
+
+
+
+## Operators allowing for matrix-free methods
+
+### Positive definite operators
+
+A matrix is positive definite if it is symmetric with all positive eigenvalues.
+
+- - -
+
+### `class tf.contrib.distributions.OperatorPDBase` {#OperatorPDBase}
+
+Class representing a (batch) of positive definite matrices `A`.
+
+This class provides access to functions of a (batch) symmetric positive
+definite (PD) matrix, without the need to materialize them.  In other words,
+this provides means to do "matrix free" computations.
+
+For example, `my_operator.matmul(x)` computes the result of matrix
+multiplication, and this class is free to do this computation with or without
+ever materializing a matrix.
+
+In practice, this operator represents a (batch) matrix `A` with shape
+`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices index a
+batch member.  For every batch index `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+a `k x k` matrix.  Again, this matrix `A` may not be materialized, but for
+purposes of broadcasting this shape will be relevant.
+
+Since `A` is (batch) positive definite, it has a (or several) square roots `S`
+such that `A = SS^T`.
+
+For example, if `MyOperator` inherits from `OperatorPDBase`, the user can do
+
+```python
+operator = MyOperator(...)  # Initialize with some tensors.
+operator.log_det()
+
+# Compute the quadratic form x^T A^{-1} x for vector x.
+x = ... # some shape [..., k] tensor
+operator.inv_quadratic_form(x)
+
+# Matrix multiplication by the square root, S w.
+# If w is iid normal, S w has covariance A.
+w = ... # some shape [..., k, L] tensor, L >= 1
+operator.sqrt_matmul(w)
+```
+
+The above three methods, `log_det`, `inv_quadratic_form`, and
+`sqrt_matmul` provide "all" that is necessary to use a covariance matrix
+in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.batch_shape(name='batch_shape')` {#OperatorPDBase.batch_shape}
+
+Shape of batches associated with this operator.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.det(name='det')` {#OperatorPDBase.det}
+
+Determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.dtype` {#OperatorPDBase.dtype}
+
+Data type of matrix elements of `A`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.get_batch_shape()` {#OperatorPDBase.get_batch_shape}
+
+`TensorShape` with batch shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.get_shape()` {#OperatorPDBase.get_shape}
+
+`TensorShape` giving static shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.get_vector_shape()` {#OperatorPDBase.get_vector_shape}
+
+`TensorShape` of vectors this operator will work with.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.inputs` {#OperatorPDBase.inputs}
+
+List of tensors that were provided as initialization inputs.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDBase.inv_quadratic_form}
+
+Compute the quadratic form: x^T A^{-1} x.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` holding the square of the norm induced by inverse of `A`.  For
+  every broadcast batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.log_det(name='log_det')` {#OperatorPDBase.log_det}
+
+Log of the determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Logarithm of determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.matmul(x, name='matmul')` {#OperatorPDBase.matmul}
+
+Left multiply `x` by this operator.
+
+##### Args:
+
+
+*  <b>`x`</b>: Shape `[N1,...,Nb, k, L]` `Tensor` with same `dtype` as this operator
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  A result equivalent to `tf.batch_matmul(self.to_dense(), x)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.name` {#OperatorPDBase.name}
+
+String name identifying this `Operator`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.rank(name='rank')` {#OperatorPDBase.rank}
+
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.shape(name='shape')` {#OperatorPDBase.shape}
+
+Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nb, k, k]`, `b >= 0`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDBase.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.to_dense(name='to_dense')` {#OperatorPDBase.to_dense}
+
+Return a dense (batch) matrix representing this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDBase.to_dense_sqrt}
+
+Return a dense (batch) matrix representing sqrt of this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.vector_shape(name='vector_shape')` {#OperatorPDBase.vector_shape}
+
+Shape of (batch) vectors that this (batch) matrix will multiply.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.vector_space_dimension(name='vector_space_dimension')` {#OperatorPDBase.vector_space_dimension}
+
+Dimension of vector space on which this acts.  The `k` in `R^k`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.verify_pd` {#OperatorPDBase.verify_pd}
+
+Whether to verify that this `Operator` is positive definite.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.OperatorPDFull` {#OperatorPDFull}
+
+Class representing a (batch) of positive definite matrices `A`.
+
+This class provides access to functions of a batch of symmetric positive
+definite (PD) matrices `A` in `R^{k x k}` defined by dense matrices.
+Determinants and solves are `O(k^3)`.
+
+In practice, this operator represents a (batch) matrix `A` with shape
+`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices designate a
+batch member.  For every batch member `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+a `k x k` matrix.
+
+Since `A` is (batch) positive definite, it has a (or several) square roots `S`
+such that `A = SS^T`.
+
+For example,
+
+```python
+distributions = tf.contrib.distributions
+matrix = [[1.0, 0.5], [1.0, 2.0]]
+operator = OperatorPDFull(matrix)
+operator.log_det()
+
+# Compute the quadratic form x^T A^{-1} x for vector x.
+x = [1.0, 2.0]
+operator.inv_quadratic_form(x)
+
+# Matrix multiplication by the square root, S w.
+# If w is iid normal, S w has covariance A.
+w = [[1.0], [2.0]]
+operator.sqrt_matmul(w)
+```
+
+The above three methods, `log_det`, `inv_quadratic_form`, and
+`sqrt_matmul` provide "all" that is necessary to use a covariance matrix
+in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.__init__(matrix, verify_pd=True, name='OperatorPDFull')` {#OperatorPDFull.__init__}
+
+Initialize an OperatorPDFull.
+
+##### Args:
+
+
+*  <b>`matrix`</b>: Shape `[N1,...,Nb, k, k]` tensor with `b >= 0`, `k >= 1`.  The
+    last two dimensions should be `k x k` symmetric positive definite
+    matrices.
+*  <b>`verify_pd`</b>: Whether to check that `matrix` is symmetric positive definite.
+    If `verify_pd` is `False`, correct behavior is not guaranteed.
+*  <b>`name`</b>: A name to prepend to all ops created by this class.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.batch_shape(name='batch_shape')` {#OperatorPDFull.batch_shape}
+
+Shape of batches associated with this operator.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.det(name='det')` {#OperatorPDFull.det}
+
+Determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.dtype` {#OperatorPDFull.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.get_batch_shape()` {#OperatorPDFull.get_batch_shape}
+
+`TensorShape` with batch shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.get_shape()` {#OperatorPDFull.get_shape}
+
+`TensorShape` giving static shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.get_vector_shape()` {#OperatorPDFull.get_vector_shape}
+
+`TensorShape` of vectors this operator will work with.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.inputs` {#OperatorPDFull.inputs}
+
+List of tensors that were provided as initialization inputs.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDFull.inv_quadratic_form}
+
+Compute the induced vector norm (squared): ||x||^2 := x^T A^{-1} x.
+
+For every batch member, this is done in `O(k^2)` complexity.  The efficiency
+depends on the shape of `x`.
+* If `x.shape = [M1,...,Mm, N1,...,Nb, k]`, `m >= 0`, and
+  `self.shape = [N1,...,Nb, k, k]`, `x` will be reshaped and the
+  initialization matrix `chol` does not need to be copied.
+* Otherwise, data will be broadcast and copied.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.  If the batch dimensions of `x` do not match exactly with those
+    of self, `x` and/or self's Cholesky factor will broadcast to match, and
+    the resultant set of linear systems are solved independently.  This may
+    result in inefficient operation.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` holding the square of the norm induced by inverse of `A`.  For
+  every broadcast batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.log_det(name='log_det')` {#OperatorPDFull.log_det}
+
+Log determinant of every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.matmul(x, name='matmul')` {#OperatorPDFull.matmul}
+
+Left (batch) matrix multiplication of `x` by this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.name` {#OperatorPDFull.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.rank(name='rank')` {#OperatorPDFull.rank}
+
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.shape(name='shape')` {#OperatorPDFull.shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDFull.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.to_dense(name='to_dense')` {#OperatorPDFull.to_dense}
+
+Return a dense (batch) matrix representing this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDFull.to_dense_sqrt}
+
+Return a dense (batch) matrix representing sqrt of this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.vector_shape(name='vector_shape')` {#OperatorPDFull.vector_shape}
+
+Shape of (batch) vectors that this (batch) matrix will multiply.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.vector_space_dimension(name='vector_space_dimension')` {#OperatorPDFull.vector_space_dimension}
+
+Dimension of vector space on which this acts.  The `k` in `R^k`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.verify_pd` {#OperatorPDFull.verify_pd}
+
+Whether to verify that this `Operator` is positive definite.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.OperatorPDCholesky` {#OperatorPDCholesky}
+
+Class representing a (batch) of positive definite matrices `A`.
+
+This class provides access to functions of a batch of symmetric positive
+definite (PD) matrices `A` in `R^{k x k}` defined by Cholesky factor(s).
+Determinants and solves are `O(k^2)`.
+
+In practice, this operator represents a (batch) matrix `A` with shape
+`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices designate a
+batch member.  For every batch member `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+a `k x k` matrix.
+
+Since `A` is (batch) positive definite, it has a (or several) square roots `S`
+such that `A = SS^T`.
+
+For example,
+
+```python
+distributions = tf.contrib.distributions
+chol = [[1.0, 0.0], [1.0, 2.0]]
+operator = OperatorPDCholesky(chol)
+operator.log_det()
+
+# Compute the quadratic form x^T A^{-1} x for vector x.
+x = [1.0, 2.0]
+operator.inv_quadratic_form(x)
+
+# Matrix multiplication by the square root, S w.
+# If w is iid normal, S w has covariance A.
+w = [[1.0], [2.0]]
+operator.sqrt_matmul(w)
+```
+
+The above three methods, `log_det`, `inv_quadratic_form`, and
+`sqrt_matmul` provide "all" that is necessary to use a covariance matrix
+in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.__init__(chol, verify_pd=True, name='OperatorPDCholesky')` {#OperatorPDCholesky.__init__}
+
+Initialize an OperatorPDCholesky.
+
+##### Args:
+
+
+*  <b>`chol`</b>: Shape `[N1,...,Nb, k, k]` tensor with `b >= 0`, `k >= 1`, and
+    positive diagonal elements.  The strict upper triangle of `chol` is
+    never used, and the user may set these elements to zero, or ignore them.
+*  <b>`verify_pd`</b>: Whether to check that `chol` has positive diagonal (this is
+    equivalent to it being a Cholesky factor of a symmetric positive
+    definite matrix.  If `verify_pd` is `False`, correct behavior is not
+    guaranteed.
+*  <b>`name`</b>: A name to prepend to all ops created by this class.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.batch_shape(name='batch_shape')` {#OperatorPDCholesky.batch_shape}
+
+Shape of batches associated with this operator.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.det(name='det')` {#OperatorPDCholesky.det}
+
+Determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Determinant for every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.dtype` {#OperatorPDCholesky.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.get_batch_shape()` {#OperatorPDCholesky.get_batch_shape}
+
+`TensorShape` with batch shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.get_shape()` {#OperatorPDCholesky.get_shape}
+
+`TensorShape` giving static shape.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.get_vector_shape()` {#OperatorPDCholesky.get_vector_shape}
+
+`TensorShape` of vectors this operator will work with.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.inputs` {#OperatorPDCholesky.inputs}
+
+List of tensors that were provided as initialization inputs.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDCholesky.inv_quadratic_form}
+
+Compute the induced vector norm (squared): ||x||^2 := x^T A^{-1} x.
+
+For every batch member, this is done in `O(k^2)` complexity.  The efficiency
+depends on the shape of `x`.
+* If `x.shape = [M1,...,Mm, N1,...,Nb, k]`, `m >= 0`, and
+  `self.shape = [N1,...,Nb, k, k]`, `x` will be reshaped and the
+  initialization matrix `chol` does not need to be copied.
+* Otherwise, data will be broadcast and copied.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.  If the batch dimensions of `x` do not match exactly with those
+    of self, `x` and/or self's Cholesky factor will broadcast to match, and
+    the resultant set of linear systems are solved independently.  This may
+    result in inefficient operation.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` holding the square of the norm induced by inverse of `A`.  For
+  every broadcast batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.log_det(name='log_det')` {#OperatorPDCholesky.log_det}
+
+Log determinant of every batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.matmul(x, name='matmul')` {#OperatorPDCholesky.matmul}
+
+Left (batch) matrix multiplication of `x` by this operator.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.name` {#OperatorPDCholesky.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.rank(name='rank')` {#OperatorPDCholesky.rank}
+
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.shape(name='shape')` {#OperatorPDCholesky.shape}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDCholesky.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
+    as self.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.to_dense(name='to_dense')` {#OperatorPDCholesky.to_dense}
+
+Return a dense (batch) matrix representing this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDCholesky.to_dense_sqrt}
+
+Return a dense (batch) matrix representing sqrt of this covariance.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.vector_shape(name='vector_shape')` {#OperatorPDCholesky.vector_shape}
+
+Shape of (batch) vectors that this (batch) matrix will multiply.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.vector_space_dimension(name='vector_space_dimension')` {#OperatorPDCholesky.vector_space_dimension}
+
+Dimension of vector space on which this acts.  The `k` in `R^k`.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.verify_pd` {#OperatorPDCholesky.verify_pd}
+
+Whether to verify that this `Operator` is positive definite.
+
+
+
+- - -
+
+### `tf.contrib.distributions.batch_matrix_diag_transform(matrix, transform=None, name=None)` {#batch_matrix_diag_transform}
+
+Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
+
+Create a trainable covariance defined by a Cholesky factor:
+
+```python
+# Transform network layer into 2 x 2 array.
+matrix_values = tf.contrib.layers.fully_connected(activations, 4)
+matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
+
+# Make the diagonal positive.  If the upper triangle was zero, this would be a
+# valid Cholesky factor.
+chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+
+# OperatorPDCholesky ignores the upper triangle.
+operator = OperatorPDCholesky(chol)
+```
+
+Example of heteroskedastic 2-D linear regression.
+
+```python
+# Get a trainable Cholesky factor.
+matrix_values = tf.contrib.layers.fully_connected(activations, 4)
+matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
+chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+
+# Get a trainable mean.
+mu = tf.contrib.layers.fully_connected(activations, 2)
+
+# This is a fully trainable multivariate normal!
+dist = tf.contrib.distributions.MVNCholesky(mu, chol)
+
+# Standard log loss.  Minimizing this will "train" mu and chol, and then dist
+# will be a distribution predicting labels as multivariate Gaussians.
+loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
+```
+
+##### Args:
+
+
+*  <b>`matrix`</b>: Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
+    equal.
+*  <b>`transform`</b>: Element-wise function mapping `Tensors` to `Tensors`.  To
+    be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
+    unchanged.  Defaults to `None`.
+*  <b>`name`</b>: A name to give created ops.
+    Defaults to "batch_matrix_diag_transform".
+
+##### Returns:
+
+  A `Tensor` with same shape and `dtype` as `matrix`.
 
 
 
