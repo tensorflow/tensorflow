@@ -349,11 +349,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   // Helper for RecvTensor. Validates "key" and returns the source
   // device in "*src_dev".
-  Status PrepareRecvTensor(const string& key, Device** src_dev) {
-    // Validate the key.
-    Rendezvous::ParsedKey parsed;
-    TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, &parsed));
-
+  Status PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
+                           Device** src_dev) {
     // Figures out which device the tensor is hosted on.
     TF_RETURN_IF_ERROR(
         env_->device_mgr->LookupDevice(parsed.src_device, src_dev));
@@ -375,8 +372,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
     const int64 step_id = call->request.step_id();
     const string& key = call->request.rendezvous_key();
     TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
+    Rendezvous::ParsedKey parsed;
+    Status s = Rendezvous::ParseKey(key, &parsed);
     Device* src_dev = nullptr;
-    Status s = PrepareRecvTensor(key, &src_dev);
+    if (s.ok()) {
+      s = PrepareRecvTensor(parsed, &src_dev);
+    }
     if (!s.ok()) {
       call->SendResponse(ToGrpcStatus(s));
       return;
@@ -388,7 +389,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     // cancellation should abort the rendezvous.
     call->SetCancelCallback([this, step_id]() { AbortStep(step_id); });
     env_->rendezvous_mgr->RecvLocalAsync(
-        step_id, key,
+        step_id, parsed,
         [this, call, src_dev](const Status& status,
                               const Rendezvous::Args& send_args,
                               const Rendezvous::Args& recv_args,

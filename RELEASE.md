@@ -1,8 +1,12 @@
 # Changes Since Last Release
 
+## Features and Improvements
+* Connectionist Temporal Classification ops are now "official" (see, e.g.,
+  `tf.nn.ctc_loss`)
+
 ## Breaking Changes to the API
-* env.h replaces use of New*File() functions to use std::unique_ptr return
-  arguments, removing the old raw pointer returns.
+* `env.h` replaces use of `New*File()` functions to use `std::unique_ptr`
+  return arguments, removing the old raw pointer returns.
 
 # Release 0.9.0
 
@@ -51,28 +55,6 @@ Aaron Schumacher, Aidan Dang, Akihiko ITOH, Aki Sukegawa, Arbit Chen, Aziz Alto,
 
 We are also grateful to all who filed issues or helped resolve them, asked and 
 answered questions, and were part of inspiring discussions. 
-
-
-## Features & Improvements
-* Connectionist Temporal Classification ops are now "official" (see, e.g.,
-  `tf.nn.ctc_loss`)
-* The RNN api is finally "official" (see, e.g., `tf.nn.dynamic_rnn`,
-  `tf.nn.rnn`, and the classes in `tf.nn.rnn_cell`).
-* TensorBoard now has an Audio Dashboard, with associated audio summaries.
-* TensorBoard now has a reload button, and supports auto-reloading
-* TensorBoard scalar charts now show tooltips with more information
-* TensorBoard now supports run filtering
-* TensorBoard has color changes: the same run always gets the same hue
-* Tensorboard graph visualizer now supports run metadata. Clicking on nodes
-  while viewing a stats for a particular run will show runtime statistics, such
-  as memory or compute usage. Unused nodes will be faded out.
-
-## Bug Fixes and Other Changes
-* TensorBoard now displays graphs with only one data point
-* TensorBoard now visually displays NaN values
-* `tf.nn.moments()` now accepts a `shift` argument. Shifting by a good estimate
-  of the mean improves numerical stability. Also changes the behavior of the
-  `shift` argument to `tf.nn.sufficient_statistics()`.
 
 # Release 0.8.0
 

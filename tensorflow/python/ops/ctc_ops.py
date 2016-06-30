@@ -95,7 +95,7 @@ def ctc_loss(inputs, labels, sequence_length,
     ctc_merge_repeated: Boolean.  Default: True.
 
   Returns:
-    A 1-D `float` `Tensor`, size `[batch]`, containing logits.
+    A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
 
   Raises:
     TypeError: if labels is not a `SparseTensor`.

@@ -38,7 +38,8 @@ class Exponential(gamma.Gamma):
   distribution, with Exponential(lam) = Gamma(1, lam).
   """
 
-  def __init__(self, lam, strict=True, name="Exponential"):
+  def __init__(
+      self, lam, strict=True, strict_statistics=True, name="Exponential"):
     """Construct Exponential distribution with parameter `lam`.
 
     Args:
@@ -47,14 +48,23 @@ class Exponential(gamma.Gamma):
       strict: Whether to assert that `lam > 0`, and that `x > 0` in the
         methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
         and the inputs are invalid, correct behavior is not guaranteed.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
     """
+    # Even though all statistics of are defined for valid inputs, this is not
+    # true in the parent class "Gamma."  Therefore, passing
+    # strict_statistics=True
+    # through to the parent class results in unnecessary asserts.
     with ops.op_scope([lam], name):
       lam = ops.convert_to_tensor(lam)
       self._lam = lam
       super(Exponential, self).__init__(
           alpha=math_ops.cast(1.0, dtype=lam.dtype),
           beta=lam,
+          strict_statistics=strict_statistics,
           strict=strict)
 
   @property

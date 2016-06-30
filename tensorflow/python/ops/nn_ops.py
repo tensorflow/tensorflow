@@ -297,6 +297,73 @@ def conv2d_transpose(value,
                                             name=name)
 
 
+def conv3d_transpose(value,
+                     filter,
+                     output_shape,
+                     strides,
+                     padding="SAME",
+                     name=None):
+  """The transpose of `conv3d`.
+
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
+  actually the transpose (gradient) of `conv3d` rather than an actual
+  deconvolution.
+
+  Args:
+    value: A 5-D `Tensor` of type `float` and shape
+      `[batch, depth, height, width, in_channels]`.
+    filter: A 5-D `Tensor` with the same type as `value` and shape
+      `[depth, height, width, output_channels, in_channels]`.  `filter`'s
+      `in_channels` dimension must match that of `value`.
+    output_shape: A 1-D `Tensor` representing the output shape of the
+      deconvolution op.
+    strides: A list of ints. The stride of the sliding window for each
+      dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    name: Optional name for the returned tensor.
+
+  Returns:
+    A `Tensor` with the same type as `value`.
+
+  Raises:
+    ValueError: If input/output depth does not match `filter`'s shape, or if
+      padding is other than `'VALID'` or `'SAME'`.
+  """
+  with ops.op_scope([value, filter, output_shape], name,
+                    "conv3d_transpose") as name:
+    value = ops.convert_to_tensor(value, name="value")
+    filter = ops.convert_to_tensor(filter, name="filter")
+    if not value.get_shape()[4].is_compatible_with(filter.get_shape()[4]):
+      raise ValueError("input channels does not match filter's input channels, "
+                       "{} != {}".format(value.get_shape()[4], filter.get_shape(
+                       )[4]))
+
+    output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
+    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(5)):
+      raise ValueError("output_shape must have shape (5,), got {}"
+                       .format(output_shape_.get_shape()))
+
+    if isinstance(output_shape, (list, np.ndarray)):
+      # output_shape's shape should be == [5] if reached this point.
+      if not filter.get_shape()[3].is_compatible_with(output_shape[4]):
+        raise ValueError(
+            "output_shape does not match filter's output channels, "
+            "{} != {}".format(output_shape[4], filter.get_shape()[3]))
+
+    if padding != "VALID" and padding != "SAME":
+      raise ValueError("padding must be either VALID or SAME:"
+                       " {}".format(padding))
+
+    return gen_nn_ops.conv3d_backprop_input_v2(input_sizes=output_shape_,
+                                               filter=filter,
+                                               out_backprop=value,
+                                               strides=strides,
+                                               padding=padding,
+                                               name=name)
+
+
 # pylint: disable=protected-access
 def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.

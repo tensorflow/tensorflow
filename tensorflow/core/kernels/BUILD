@@ -70,7 +70,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "concat_lib",
     srcs = ["concat_lib_cpu.cc"],
-    hdrs = ["concat_lib.h"],
+    hdrs = [
+        "concat_lib.h",
+        "concat_lib_cpu.h",
+    ],
     gpu_srcs = [
         "concat_lib_gpu.cu.cc",
         "concat_lib.h",
@@ -81,6 +84,19 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
     alwayslink = 0,
+)
+
+cc_library(
+    name = "concat_lib_hdrs",
+    hdrs = [
+        "concat_lib.h",
+        "concat_lib_cpu.h",
+    ],
+    deps = [
+        ":eigen_helpers",
+        ":ops_util_hdrs",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -118,6 +134,7 @@ cc_library(
 
 cc_library(
     name = "fill_functor",
+    srcs = ["fill_functor.cc"],
     hdrs = ["fill_functor.h"],
     deps = [
         "//tensorflow/core:framework",
@@ -205,6 +222,19 @@ cc_library(
     hdrs = ["queue_op.h"],
     deps = [
         ":queue_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "priority_queue",
+    srcs = ["priority_queue.cc"],
+    hdrs = ["priority_queue.h"],
+    deps = [
+        ":queue_base",
+        ":queue_op",
+        ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -674,7 +704,9 @@ tf_kernel_libraries(
     prefixes = [
         "dynamic_partition_op",
         "dynamic_stitch_op",
+        "barrier_ops",
         "fifo_queue_op",
+        "priority_queue_op",
         "lookup_table_init_op",
         "lookup_table_op",
         "padding_fifo_queue_op",
@@ -691,6 +723,7 @@ tf_kernel_libraries(
         ":initializable_lookup_table",
         ":lookup_util",
         ":padding_fifo_queue",
+        ":priority_queue",
         ":queue_base",
         ":queue_op",
         ":split_lib",
@@ -1032,7 +1065,6 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
-        ":constant_op",
         ":fill_functor",
         ":transpose_functor",
         "//tensorflow/core:core_cpu",
@@ -1541,7 +1573,6 @@ tf_kernel_libraries(
     ],
     deps = [
         ":bounds_check",
-        ":constant_op",
         ":cwise_op",
         ":fill_functor",
         ":scatter_op",
@@ -1714,6 +1745,7 @@ filegroup(
         "cast_op.h",
         "concat_lib.h",
         "concat_lib_cpu.cc",
+        "concat_lib_cpu.h",
         "concat_op.cc",
         "constant_op.cc",
         "constant_op.h",
@@ -1723,6 +1755,7 @@ filegroup(
         "dense_update_ops.cc",
         "dense_update_ops.h",
         "example_parsing_ops.cc",
+        "fill_functor.cc",
         "fill_functor.h",
         "gather_op.cc",
         "gather_op.h",

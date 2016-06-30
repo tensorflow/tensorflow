@@ -228,46 +228,98 @@ class StudentTTest(tf.test.TestCase):
     _check2d_rows(tf.contrib.distributions.StudentT(
         df=7., mu=3., sigma=[[2.], [3.], [4.]]))
 
-  def testMean(self):
+  def testMeanStrictStatisticsIsTrueWorksWhenAllBatchMembersAreDefined(self):
+    with tf.Session():
+      mu = [1., 3.3, 4.4]
+      student = tf.contrib.distributions.StudentT(
+          df=[3., 5., 7.],
+          mu=mu,
+          sigma=[3., 2., 1.])  # strict_statistics=True is the default.
+      mean = student.mean().eval()
+      self.assertAllClose([1., 3.3, 4.4], mean)
+
+  def testMeanStrictStatisticsIsTrueRaisesWhenBatchMemberIsUndefined(self):
+    with tf.Session():
+      mu = [1., 3.3, 4.4]
+      student = tf.contrib.distributions.StudentT(
+          df=[0.5, 5., 7.],
+          mu=mu,
+          sigma=[3., 2., 1.])  # strict_statistics=True is the default.
+      with self.assertRaisesOpError('x < y'):
+        student.mean().eval()
+
+  def testMeanStrictStatisticsIsFalseReturnsNaNForUndefinedBatchMembers(self):
     with tf.Session():
       mu = [-2, 0., 1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
           df=[0.5, 1., 3., 5., 7.],
           mu=mu,
-          sigma=[5., 4., 3., 2., 1.])
-      # Test broadcast of mu across shape of df/sigma
+          sigma=[5., 4., 3., 2., 1.],
+          strict_statistics=False)
       mean = student.mean().eval()
       self.assertAllClose([np.nan, np.nan, 1., 3.3, 4.4], mean)
 
-  def testVariance(self):
+  def testVarianceStrictStatisticsFalseReturnsNaNforUndefinedBatchMembers(self):
     with tf.Session():
-      df = [0.5, 1., 3., 5., 7.]
+      # df = 0.5 ==> undefined mean ==> undefined variance.
+      # df = 1.5 ==> infinite variance.
+      df = [0.5, 1.5, 3., 5., 7.]
       mu = [-2, 0., 1., 3.3, 4.4]
       sigma = [5., 4., 3., 2., 1.]
-      student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
-      # Test broadcast of mu across shape of df/sigma
+      student = tf.contrib.distributions.StudentT(
+          df=df, mu=mu, sigma=sigma, strict_statistics=False)
       var = student.variance().eval()
-      # scipy uses inf rather than nan here.  Assert we use NaN, then replace
-      # with infinity to compare to scipy.
-      self.assertFalse(np.isinf(var).any())
-      var[np.isnan(var)] = np.inf
+      ## scipy uses inf for variance when the mean is undefined.  When mean is
+      # undefined we say variance is undefined as well.  So test the first
+      # member of var, making sure it is NaN, then replace with inf and compare
+      # to scipy.
+      self.assertTrue(np.isnan(var[0]))
+      var[0] = np.inf
 
       expected_var = [
           stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
       self.assertAllClose(expected_var, var)
 
+  def testVarianceStrictStatisticsTrueGivesCorrectValueForDefinedBatchMembers(
+      self):
+    with tf.Session():
+      # df = 1.5 ==> infinite variance.
+      df = [1.5, 3., 5., 7.]
+      mu = [0., 1., 3.3, 4.4]
+      sigma = [4., 3., 2., 1.]
+      student = tf.contrib.distributions.StudentT(
+          df=df, mu=mu, sigma=sigma)  # strict_statistics=True is the default.
+      var = student.variance().eval()
+
+      expected_var = [
+          stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
+      self.assertAllClose(expected_var, var)
+
+  def testVarianceStrictStatisticsTrueRaisesForUndefinedBatchMembers(self):
+    with tf.Session():
+      # df <= 1 ==> variance not defined
+      student = tf.contrib.distributions.StudentT(
+          df=1.0, mu=0.0, sigma=1.0)  # strict_statistics=True is the default.
+      with self.assertRaisesOpError('x < y'):
+        student.variance().eval()
+
+    with tf.Session():
+      # df <= 1 ==> variance not defined
+      student = tf.contrib.distributions.StudentT(
+          df=0.5, mu=0.0, sigma=1.0)  # strict_statistics=True is the default.
+      with self.assertRaisesOpError('x < y'):
+        student.variance().eval()
+
   def testStd(self):
     with tf.Session():
-      df = [0.5, 1., 3., 5., 7.]
-      mu = [-2, 0., 1., 3.3, 4.4]
+      # Defined for all batch members.
+      df = [3.5, 5., 3., 5., 7.]
+      mu = [-2.2]
       sigma = [5., 4., 3., 2., 1.]
       student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
       # Test broadcast of mu across shape of df/sigma
       std = student.std().eval()
-      # scipy uses inf rather than nan here.  Assert we use NaN, then replace
-      # with infinity to compare to scipy.
-      self.assertFalse(np.isinf(std).any())
-      std[np.isnan(std)] = np.inf
+      mu *= len(df)
 
       expected_std = [
           stats.t.std(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]

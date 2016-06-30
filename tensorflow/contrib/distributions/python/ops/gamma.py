@@ -57,7 +57,8 @@ class Gamma(distribution.ContinuousDistribution):
 
   """
 
-  def __init__(self, alpha, beta, strict=True, name="Gamma"):
+  def __init__(
+      self, alpha, beta, strict=True, strict_statistics=True, name="Gamma"):
     """Construct Gamma distributions with parameters `alpha` and `beta`.
 
     The parameters `alpha` and `beta` must be shaped in a way that supports
@@ -73,11 +74,16 @@ class Gamma(distribution.ContinuousDistribution):
       strict: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
         methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
         and the inputs are invalid, correct behavior is not guaranteed.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
 
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
+    self._strict_statistics = strict_statistics
     self._strict = strict
     with ops.op_scope([alpha, beta], name) as scope:
       self._name = scope
@@ -95,6 +101,11 @@ class Gamma(distribution.ContinuousDistribution):
 
     self._alpha = alpha
     self._beta = beta
+
+  @property
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._strict_statistics
 
   @property
   def strict(self):
@@ -177,15 +188,31 @@ class Gamma(distribution.ContinuousDistribution):
         return self._alpha / self._beta
 
   def mode(self, name="mode"):
-    """Mode of each batch member.  Defined only if alpha >= 1."""
+    """Mode of each batch member.
+
+    The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+    and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+    will be raised rather than returning `NaN`.
+
+    Args:
+      name:  A name to give this op.
+
+    Returns:
+      The mode for every batch member, a `Tensor` with same `dtype` as self.
+    """
     alpha = self._alpha
     beta = self._beta
     with ops.name_scope(self.name):
       with ops.op_scope([alpha, beta], name):
-        alpha_ge_1 = alpha >= 1.0
         mode_if_defined = (alpha - 1.0) / beta
-        nan = np.nan * self._ones()
-        return math_ops.select(alpha_ge_1, mode_if_defined, nan)
+        if self.strict_statistics:
+          one = ops.convert_to_tensor(1.0, dtype=self.dtype)
+          return control_flow_ops.with_dependencies(
+              [check_ops.assert_less(one, alpha)], mode_if_defined)
+        else:
+          alpha_ge_1 = alpha >= 1.0
+          nan = np.nan * self._ones()
+          return math_ops.select(alpha_ge_1, mode_if_defined, nan)
 
   def variance(self, name="variance"):
     """Variance of each batch member."""

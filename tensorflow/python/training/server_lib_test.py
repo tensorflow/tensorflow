@@ -250,6 +250,30 @@ class GrpcServerTest(tf.test.TestCase):
     sess.close()
     blocking_thread.join()
 
+  def testSetConfiguration(self):
+    config = tf.ConfigProto(
+        gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.1))
+
+    # Configure a server using the default local server options.
+    server = tf.train.Server.create_local_server(config=config, start=False)
+    self.assertEqual(
+        0.1,
+        server.server_def.default_session_config
+        .gpu_options.per_process_gpu_memory_fraction)
+
+    # Configure a server using an explicit ServerDefd with an
+    # overridden config.
+    cluster_def = tf.train.ClusterSpec(
+        {"localhost": ["localhost:0"]}).as_cluster_def()
+    server_def = tf.train.ServerDef(
+        cluster=cluster_def, job_name="localhost", task_index=0,
+        protocol="grpc")
+    server = tf.train.Server(server_def, config=config, start=False)
+    self.assertEqual(
+        0.1,
+        server.server_def.default_session_config
+        .gpu_options.per_process_gpu_memory_fraction)
+
   def testInvalidHostname(self):
     with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "port"):
       _ = tf.train.Server({"local": ["localhost"]},

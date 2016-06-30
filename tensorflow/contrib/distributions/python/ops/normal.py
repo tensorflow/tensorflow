@@ -80,7 +80,8 @@ class Normal(distribution.ContinuousDistribution):
 
   """
 
-  def __init__(self, mu, sigma, strict=True, name="Normal"):
+  def __init__(
+      self, mu, sigma, strict=True, strict_statistics=True, name="Normal"):
     """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
     The parameters `mu` and `sigma` must be shaped in a way that supports
@@ -92,11 +93,16 @@ class Normal(distribution.ContinuousDistribution):
         sigma must contain only positive values.
       strict: Whether to assert that `sigma > 0`. If `strict` is False,
         correct output is not guaranteed when input is invalid.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: The name to give Ops created by the initializer.
 
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
+    self._strict_statistics = strict_statistics
     self._strict = strict
     with ops.op_scope([mu, sigma], name):
       mu = ops.convert_to_tensor(mu)
@@ -110,6 +116,11 @@ class Normal(distribution.ContinuousDistribution):
         self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((mu, sigma))
+
+  @property
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._strict_statistics
 
   @property
   def strict(self):

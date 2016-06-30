@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash -x -e
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,9 @@
 # ==============================================================================
 # Builds protobuf 3 for iOS.
 
+SCRIPT_DIR=$(dirname $0)
+source "${SCRIPT_DIR}/build_helper.subr"
+
 cd tensorflow/contrib/makefile
 
 HOST_GENDIR="$(pwd)/gen/protobuf-host"
@@ -23,6 +26,12 @@ if [[ ! -f "./downloads/protobuf/autogen.sh" ]]; then
     echo "You need to download dependencies before running this script." 1>&2
     echo "tensorflow/contrib/makefile/download_dependencies.sh" 1>&2
     exit 1
+fi
+
+if [ "$#" -gt 1 ]; then
+    JOBS_COUNT=$1
+else
+    JOBS_COUNT=4
 fi
 
 GENDIR=`pwd`/gen/protobuf_ios/
@@ -85,7 +94,7 @@ ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/system" \
 "LIBS=${LIBS}"
-make
+make -j ${JOBS_COUNT}
 make install
 
 make distclean
@@ -113,7 +122,7 @@ ${LDFLAGS} \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
 -L${IPHONESIMULATOR_SYSROOT}/usr/lib/system" \
 "LIBS=${LIBS}"
-make
+make -j ${JOBS_COUNT}
 make install
 
 make distclean
@@ -137,7 +146,7 @@ LDFLAGS="-arch armv7 \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make
+make -j ${JOBS_COUNT}
 make install
 
 make distclean
@@ -161,7 +170,7 @@ LDFLAGS="-arch armv7s \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make
+make -j ${JOBS_COUNT}
 make install
 
 make distclean
@@ -184,7 +193,7 @@ LDFLAGS="-arch arm64 \
 -miphoneos-version-min=${MIN_SDK_VERSION} \
 ${LDFLAGS}" \
 "LIBS=${LIBS}"
-make
+make -j ${JOBS_COUNT}
 make install
 
 lipo \

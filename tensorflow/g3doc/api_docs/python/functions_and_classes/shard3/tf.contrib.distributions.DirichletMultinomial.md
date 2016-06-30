@@ -67,7 +67,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -84,8 +84,15 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.
-*  <b>`strict`</b>: Not used (yet).
+    but are only a distribution over non-negative integers.  If `strict` is
+    `False`, this assertion is turned off.
+*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
+    `x` in `pmf` and `log_pmf`.  If False, correct behavior is not
+    guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
@@ -320,6 +327,13 @@ Standard deviation of the distribution.
 #### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
 
 Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
