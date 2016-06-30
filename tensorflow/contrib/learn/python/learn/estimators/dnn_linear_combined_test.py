@@ -262,6 +262,36 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
     self.assertGreater(scores['accuracy'], 0.9)
 
+  def testCustomOptimizerByFunction(self):
+    """Tests binary classification using matrix data as input."""
+    iris = _prepare_iris_data_for_logistic_regression()
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)
+    ]
+    bucketized_features = [
+        tf.contrib.layers.bucketized_column(
+            cont_features[0], _get_quantile_based_buckets(iris.data, 10))
+    ]
+
+    def _optimizer_exp_decay():
+      global_step = tf.contrib.framework.get_global_step()
+      learning_rate = tf.train.exponential_decay(learning_rate=0.1,
+                                                 global_step=global_step,
+                                                 decay_steps=100,
+                                                 decay_rate=0.001)
+      return tf.train.AdagradOptimizer(learning_rate=learning_rate)
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        linear_feature_columns=bucketized_features,
+        linear_optimizer=_optimizer_exp_decay,
+        dnn_feature_columns=cont_features,
+        dnn_hidden_units=[3, 3],
+        dnn_optimizer=_optimizer_exp_decay)
+
+    classifier.fit(input_fn=_iris_input_logistic_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_logistic_fn, steps=100)
+    self.assertGreater(scores['accuracy'], 0.9)
+
   def testPredict(self):
     """Tests weight column in evaluation."""
     def _input_fn_train():

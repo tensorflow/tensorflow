@@ -130,6 +130,14 @@ class _ComposableModel(object):
     return []
 
   def _get_optimizer(self):
+    if (self._optimizer is None or isinstance(self._optimizer,
+                                              six.string_types)):
+      self._optimizer = self._get_default_optimizer(self._optimizer)
+    elif callable(self._optimizer):
+      self._optimizer = self._optimizer()
+    return self._optimizer
+
+  def _get_default_optimizer(self, optimizer_name=None):
     raise NotImplementedError
 
 
@@ -173,14 +181,12 @@ class _LinearComposableModel(_ComposableModel):
         name="linear")
     return logits
 
-  def _get_optimizer(self):
-    if self._optimizer is None:
-      self._optimizer = "Ftrl"
-    if isinstance(self._optimizer, six.string_types):
-      default_learning_rate = 1. / math.sqrt(len(self._get_feature_columns()))
-      self._optimizer = layers.OPTIMIZER_CLS_NAMES[self._optimizer](
-          learning_rate=default_learning_rate)
-    return self._optimizer
+  def _get_default_optimizer(self, optimizer_name=None):
+    if optimizer_name is None:
+      optimizer_name = "Ftrl"
+    default_learning_rate = 1. / math.sqrt(len(self._get_feature_columns()))
+    return layers.OPTIMIZER_CLS_NAMES[optimizer_name](
+        learning_rate=default_learning_rate)
 
 
 class _DNNComposableModel(_ComposableModel):
@@ -269,13 +275,10 @@ class _DNNComposableModel(_ComposableModel):
     self._add_hidden_layer_summary(logits, "dnn_logits")
     return logits
 
-  def _get_optimizer(self):
-    if self._optimizer is None:
-      self._optimizer = "Adagrad"
-    if isinstance(self._optimizer, six.string_types):
-      self._optimizer = layers.OPTIMIZER_CLS_NAMES[self._optimizer](
-          learning_rate=0.05)
-    return self._optimizer
+  def _get_default_optimizer(self, optimizer_name=None):
+    if optimizer_name is None:
+      optimizer_name = "Adagrad"
+    return layers.OPTIMIZER_CLS_NAMES[optimizer_name](learning_rate=0.05)
 
 
 # TODO(ispir): Increase test coverage
