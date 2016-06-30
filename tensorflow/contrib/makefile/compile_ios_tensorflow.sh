@@ -28,7 +28,7 @@ GENDIR=tensorflow/contrib/makefile/gen/
 LIBDIR=${GENDIR}lib
 LIB_PREFIX=libtensorflow-core
 
-# FIXME(petewarden) - Some new code in Eigen triggers a clang bug, so work
+# TODO(petewarden) - Some new code in Eigen triggers a clang bug, so work
 # around it by patching the source.
 sed -e 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
 -i '' \
