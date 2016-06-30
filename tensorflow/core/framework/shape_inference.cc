@@ -25,9 +25,9 @@ constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
 InferenceContext::InferenceContext(
-    const std::vector<string>& input_shapes, int num_outputs,
-    const std::vector<const Tensor*>& input_tensors)
-    : input_tensors_(input_tensors) {
+    const NodeDef* node_def, const std::vector<string>& input_shapes,
+    int num_outputs, const std::vector<const Tensor*>& input_tensors)
+    : input_tensors_(input_tensors), node_def_(*CHECK_NOTNULL(node_def)) {
   for (const string& spec : input_shapes) {
     if (spec == "?") {
       inputs_.push_back(CreateUnknownShape());

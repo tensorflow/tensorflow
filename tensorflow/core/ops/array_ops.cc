@@ -14,10 +14,31 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
+
+typedef shape_inference::Dimension Dimension;
+typedef shape_inference::InferenceContext InferenceContext;
+typedef shape_inference::Shape Shape;
+
+namespace {
+
+Status GetAxisForPackAndUnpack(InferenceContext* c, int32 rank_after_pack,
+                               int32* axis) {
+  TF_RETURN_IF_ERROR(c->GetAttr("axis", axis));
+  if (*axis < -1 * rank_after_pack || *axis >= rank_after_pack) {
+    return errors::InvalidArgument("Invalid axis: ", *axis, "; must be in [",
+                                   -1 * rank_after_pack, ",", rank_after_pack,
+                                   ")");
+  }
+  if (*axis < 0) *axis = (rank_after_pack + *axis);
+  return Status::OK();
+}
+
+}  // namespace
 
 REGISTER_OP("Pack")
     .Input("values: N * T")
@@ -25,6 +46,35 @@ REGISTER_OP("Pack")
     .Attr("N: int >= 1")
     .Attr("T: type")
     .Attr("axis: int = 0")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      // Validate shapes of all inputs are compatible
+      const Shape* cur = c->input(c->num_inputs() - 1);
+      for (int i = c->num_inputs() - 2; i >= 0; --i) {
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
+                                        "From merging shape ", i,
+                                        " with other shapes.");
+      }
+      if (!c->RankKnown(cur)) {
+        c->set_output(0, c->CreateUnknownShape());
+        return Status::OK();
+      }
+      // Determine the axis that will be added, converting from negative
+      // axes to a positive point per negative indexing rules.
+      int32 rank = c->Rank(cur);
+      int32 axis;
+      TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank + 1, &axis));
+
+      // Copy all dimensions over, inserting a dimension of value #inputs
+      // at <axis>.
+      std::vector<const Dimension*> dims;
+      int index = 0;
+      while (index < axis) dims.push_back(c->Dim(cur, index++));
+      dims.push_back(c->CreateDim(c->num_inputs()));
+      while (index < rank) dims.push_back(c->Dim(cur, index++));
+
+      c->set_output(0, c->CreateShape(dims));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -61,6 +111,29 @@ REGISTER_OP("Unpack")
     .Attr("num: int >= 0")
     .Attr("T: type")
     .Attr("axis: int = 0")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* s = c->input(0);
+      const Shape* out;
+      if (c->RankKnown(s)) {
+        // Determine the axis that will be removed, converting from negative
+        // axes to a positive point per negative indexing rules.
+        int32 rank = c->Rank(s);
+        int32 axis;
+        TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank, &axis));
+
+        // Copy all dimensions, removing the <axis> dimension.
+        std::vector<const Dimension*> dims;
+        for (int i = 0; i < rank; ++i) {
+          if (i != axis) dims.push_back(c->Dim(s, i));
+        }
+        out = c->CreateShape(dims);
+      } else {
+        // All outputs are the same shape, but it's not known.
+        out = c->CreateUnknownShape();
+      }
+      for (int i = 0; i < c->num_outputs(); ++i) c->set_output(i, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
 
@@ -154,6 +227,18 @@ REGISTER_OP("Const")
     .Output("output: dtype")
     .Attr("value: tensor")
     .Attr("dtype: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const TensorProto* proto = nullptr;
+      TF_RETURN_IF_ERROR(c->GetAttr("value", &proto));
+      TF_RETURN_IF_ERROR(TensorShape::IsValidShape(proto->tensor_shape()));
+      TensorShape shape(proto->tensor_shape());
+      std::vector<const Dimension*> dims;
+      for (int i = 0; i < shape.dims(); ++i) {
+        dims.push_back(c->CreateDim(shape.dim_size(i)));
+      }
+      c->set_output(0, c->CreateShape(dims));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns a constant tensor.
 
