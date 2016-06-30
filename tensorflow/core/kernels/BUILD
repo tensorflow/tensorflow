@@ -952,6 +952,7 @@ tf_cc_tests(
         ":io",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
