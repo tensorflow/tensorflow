@@ -382,7 +382,7 @@ dimension.
 ##### Args:
 
 
-*  <b>`image`</b>: 3-D tensor of shape [height, width, channels]
+*  <b>`image`</b>: 3-D tensor of shape `[height, width, channels]`
 *  <b>`target_height`</b>: Target height.
 *  <b>`target_width`</b>: Target width.
 
@@ -461,7 +461,8 @@ This op does nothing if `offset_*` is zero and the image already has size
 
 
 *  <b>`ValueError`</b>: If the shape of `image` is incompatible with the `offset_*` or
-    `target_*` arguments
+    `target_*` arguments, or either `offset_height` or `offset_width` is
+    negative.
 
 
 - - -
@@ -494,7 +495,8 @@ lower-right corner is at
 
 
 *  <b>`ValueError`</b>: If the shape of `image` is incompatible with the `offset_*` or
-  `target_*` arguments
+    `target_*` arguments, or either `offset_height` or `offset_width` is
+    negative, or either `target_height` or `target_width` is not positive.
 
 
 - - -

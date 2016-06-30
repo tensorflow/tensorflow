@@ -69,7 +69,7 @@ Here is a table of the (roughly) expected first order behavior:
 
 ##### Returns:
 
-  A 1-D `float` `Tensor`, size `[batch]`, containing logits.
+  A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
 
 ##### Raises:
 
