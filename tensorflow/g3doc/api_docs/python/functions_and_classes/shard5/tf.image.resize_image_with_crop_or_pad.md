@@ -14,7 +14,7 @@ dimension.
 ##### Args:
 
 
-*  <b>`image`</b>: 3-D tensor of shape [height, width, channels]
+*  <b>`image`</b>: 3-D tensor of shape `[height, width, channels]`
 *  <b>`target_height`</b>: Target height.
 *  <b>`target_width`</b>: Target width.
 

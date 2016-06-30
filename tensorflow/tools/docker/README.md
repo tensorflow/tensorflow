@@ -31,7 +31,7 @@ Run non-GPU container using
 
     $ docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow
 
-For GPU support install Nvidia drivers (ideally latest) and
+For GPU support install NVidia drivers (ideally latest) and
 [nvidia-docker](https://github.com/NVIDIA/nvidia-docker). Run using
 
     $ nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu
@@ -44,6 +44,12 @@ it there please and try using the nvidia-docker as described above.
     $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
     $ export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
     $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES gcr.io/tensorflow/tensorflow:latest-gpu
+
+
+## More containers
+
+See all available [tags](https://hub.docker.com/r/tensorflow/tensorflow/tags/)
+for additional containers like release candidates or nighlty builds.
 
 
 ## Rebuilding the containers
