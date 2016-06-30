@@ -282,6 +282,27 @@ class InputLayerTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
+  def testHashedEmbeddingColumn(self):
+    wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo", "omar"],
+                                  indices=[[0, 0], [1, 0], [1, 1], [2, 0]],
+                                  shape=[3, 2])
+
+    features = {"wire": wire_tensor}
+    # Big enough hash space so that hopefully there is no collision
+    embedded_sparse = tf.contrib.layers.hashed_embedding_column("wire", 1000, 3)
+    output = tf.contrib.layers.input_from_feature_columns(
+        features, [embedded_sparse], weight_collections=["my_collection"])
+    weights = tf.get_collection("my_collection")
+    grad = tf.gradients(output, weights)
+    with self.test_session():
+      tf.initialize_all_variables().run()
+      gradient_values = []
+      # Collect the gradient from the different partitions (one in this test)
+      for p in range(len(grad)):
+        gradient_values.extend(grad[p].values.eval())
+      gradient_values.sort()
+      self.assertAllEqual(gradient_values, [0.5]*6 + [2]*3)
+
   def testEmbeddingColumnWithInitializer(self):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
