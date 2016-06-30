@@ -26,6 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
@@ -478,39 +479,144 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
 
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
 
+  def _CropToBoundingBox(self, x, offset_height, offset_width,
+                         target_height, target_width, use_tensor_inputs):
+    if use_tensor_inputs:
+      offset_height = ops.convert_to_tensor(offset_height)
+      offset_width = ops.convert_to_tensor(offset_width)
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+      x_tensor = array_ops.placeholder(x.dtype, shape=[None]*x.ndim)
+      feed_dict = {x_tensor: x}
+    else:
+      x_tensor = x
+      feed_dict = {}
+
+    y = image_ops.crop_to_bounding_box(x_tensor, offset_height, offset_width,
+                                       target_height, target_width)
+    if not use_tensor_inputs:
+      self.assertTrue(y.get_shape().is_fully_defined())
+
+    with self.test_session():
+      return y.eval(feed_dict=feed_dict)
+
+  def _assertReturns(self, x, x_shape, offset_height, offset_width,
+                     y, y_shape, use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._CropToBoundingBox(x, offset_height, offset_width,
+                                     target_height, target_width,
+                                     use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertRaises(self, x, x_shape, offset_height, offset_width,
+                    target_height, target_width, err_msg,
+                    use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    x = np.array(x).reshape(x_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      try:
+        self._CropToBoundingBox(x, offset_height, offset_width,
+                                target_height, target_width,
+                                use_tensor_inputs)
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError('Exception not raised: %s' % err_msg)
+
   def testNoOp(self):
-    x_shape = [13, 9, 3]
-    x_np = np.ones(x_shape, dtype=np.float32)
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+    self._assertReturns(x, x_shape, 0, 0, x, x_shape)
 
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      target_height = x_shape[0]
-      target_width = x_shape[1]
-      y = image_ops.crop_to_bounding_box(x, 0, 0, target_height, target_width)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
+  def testCrop(self):
+    x = [1, 2, 3,
+         4, 5, 6,
+         7, 8, 9]
+    x_shape = [3, 3, 1]
 
-  def testCropping(self):
-    x_np = np.arange(0, 30, dtype=np.int32).reshape([6, 5, 1])
+    offset_height, offset_width = [1, 0]
+    y_shape = [2, 3, 1]
+    y = [4, 5, 6,
+         7, 8, 9]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    offset_height = 1
-    after_height = 2
+    offset_height, offset_width = [0, 1]
+    y_shape = [3, 2, 1]
+    y = [2, 3,
+         5, 6,
+         8, 9]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    offset_width = 0
-    after_width = 3
+    offset_height, offset_width = [0, 0]
+    y_shape = [2, 3, 1]
+    y = [1, 2, 3,
+         4, 5, 6]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    target_height = x_np.shape[0] - offset_height - after_height
-    target_width = x_np.shape[1] - offset_width - after_width
+    offset_height, offset_width = [0, 0]
+    y_shape = [3, 2, 1]
+    y = [1, 2,
+         4, 5,
+         7, 8]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    y_np = x_np[offset_height:offset_height + target_height,
-                offset_width:offset_width + target_width, :]
+  def testNon3DInput(self):
+    # Input image is not 3D
+    x = [0] * 15
+    offset_height, offset_width = [0, 0]
+    target_height, target_width = [2, 2]
 
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.crop_to_bounding_box(x, offset_height, offset_width,
-                                         target_height, target_width)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf.flatten(), y_np.flatten())
+    for x_shape in ([1, 3, 5, 1], [3, 5]):
+      self._assertRaises(x, x_shape, offset_height, offset_width,
+                         target_height, target_width,
+                         "'image' must be three-dimensional")
+
+  def testZeroLengthInput(self):
+    # Input image has 0-length dimension(s).
+    # Each line is a test configuration:
+    #   x_shape, target_height, target_width
+    test_config = (([0, 2, 2], 1, 1),
+                   ([2, 0, 2], 1, 1),
+                   ([2, 2, 0], 1, 1),
+                   ([0, 2, 2], 0, 1),
+                   ([2, 0, 2], 1, 0))
+    offset_height, offset_width = [0, 0]
+    x = []
+
+    for x_shape, target_height, target_width in test_config:
+      self._assertRaises(x, x_shape, offset_height, offset_width,
+                         target_height, target_width,
+                         "all dims of 'image.shape' must be > 0",
+                         use_tensor_inputs_options=[False])
+      # Multiple assertion could fail, but the evaluation order is arbitrary.
+      # Match gainst generic pattern.
+      self._assertRaises(x, x_shape, offset_height, offset_width,
+                         target_height, target_width,
+                         "assertion failed:",
+                         use_tensor_inputs_options=[True])
+
+  def testBadParams(self):
+    x_shape = [4, 4, 1]
+    x = np.zeros(x_shape)
+
+    # Each line is a test configuration:
+    #   (offset_height, offset_width, target_height, target_width), err_msg
+    test_config = (([-1, 0, 3, 3], 'offset_height must be >= 0'),
+                   ([0, -1, 3, 3], 'offset_width must be >= 0'),
+                   ([0,  0, 0, 3], 'target_height must be > 0'),
+                   ([0,  0, 3, 0], 'target_width must be > 0'),
+                   ([2,  0, 3, 3], 'height must be >= target + offset'),
+                   ([0,  2, 3, 3], 'width must be >= target + offset'))
+
+    for params, err_msg in test_config:
+      self._assertRaises(x, x_shape, *params, err_msg=err_msg)
 
 
 class CentralCropTest(test_util.TensorFlowTestCase):
@@ -550,45 +656,148 @@ class CentralCropTest(test_util.TensorFlowTestCase):
 
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
 
-  def testNoOp(self):
-    x_shape = [13, 9, 3]
-    x_np = np.ones(x_shape, dtype=np.float32)
+  def _PadToBoundingBox(self, x, offset_height, offset_width,
+                        target_height, target_width, use_tensor_inputs):
+    if use_tensor_inputs:
+      offset_height = ops.convert_to_tensor(offset_height)
+      offset_width = ops.convert_to_tensor(offset_width)
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+      x_tensor = array_ops.placeholder(x.dtype, shape=[None]*x.ndim)
+      feed_dict = {x_tensor: x}
+    else:
+      x_tensor = x
+      feed_dict = {}
 
-    target_height = x_shape[0]
-    target_width = x_shape[1]
+    y = image_ops.pad_to_bounding_box(x_tensor, offset_height, offset_width,
+                                      target_height, target_width)
+    if not use_tensor_inputs:
+      self.assertTrue(y.get_shape().is_fully_defined())
 
     with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      y = image_ops.pad_to_bounding_box(x, 0, 0, target_height, target_width)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, x_np)
+      return y.eval(feed_dict=feed_dict)
+
+  def _assertReturns(self, x, x_shape, offset_height, offset_width,
+                     y, y_shape, use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._PadToBoundingBox(x, offset_height, offset_width,
+                                    target_height, target_width,
+                                    use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertRaises(self, x, x_shape, offset_height, offset_width,
+                    target_height, target_width, err_msg,
+                    use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    x = np.array(x).reshape(x_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      try:
+        self._PadToBoundingBox(x, offset_height, offset_width,
+                               target_height, target_width,
+                               use_tensor_inputs)
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError('Exception not raised: %s' % err_msg)
+
+  def testNoOp(self):
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+    offset_height, offset_width = [0, 0]
+
+    self._assertReturns(x, x_shape, offset_height, offset_width, x, x_shape)
 
   def testPadding(self):
-    x_shape = [3, 4, 1]
-    x_np = np.ones(x_shape, dtype=np.float32)
+    x = [1, 2, 3,
+         4, 5, 6,
+         7, 8, 9]
+    x_shape = [3, 3, 1]
 
-    offset_height = 2
-    after_height = 3
+    offset_height, offset_width = [1, 0]
+    y = [0, 0, 0,
+         1, 2, 3,
+         4, 5, 6,
+         7, 8, 9]
+    y_shape = [4, 3, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    offset_width = 1
-    after_width = 4
+    offset_height, offset_width = [0, 1]
+    y = [0, 1, 2, 3,
+         0, 4, 5, 6,
+         0, 7, 8, 9]
+    y_shape = [3, 4, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    target_height = x_shape[0] + offset_height + after_height
-    target_width = x_shape[1] + offset_width + after_width
+    offset_height, offset_width = [0, 0]
+    y = [1, 2, 3,
+         4, 5, 6,
+         7, 8, 9,
+         0, 0, 0]
+    y_shape = [4, 3, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    # Note the padding are along batch, height, width and depth.
-    paddings = ((offset_height, after_height),
-                (offset_width, after_width),
-                (0, 0))
+    offset_height, offset_width = [0, 0]
+    y = [1, 2, 3, 0,
+         4, 5, 6, 0,
+         7, 8, 9, 0]
+    y_shape = [3, 4, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-    y_np = np.pad(x_np, paddings, 'constant')
+  def testNon3DInput(self):
+    # Input image is not 3D
+    x = [0] * 15
+    offset_height, offset_width = [0, 0]
+    target_height, target_width = [2, 2]
 
-    with self.test_session():
-      x = constant_op.constant(x_np, shape=x_shape)
-      y = image_ops.pad_to_bounding_box(x, offset_height, offset_width,
-                                        target_height, target_width)
-      y_tf = y.eval()
-      self.assertAllEqual(y_tf, y_np)
+    for x_shape in ([1, 3, 5, 1], [3, 5]):
+      self._assertRaises(x, x_shape, offset_height, offset_width,
+                         target_height, target_width,
+                         "'image' must be three-dimensional")
+
+  def testZeroLengthInput(self):
+    # Input image has 0-length dimension(s).
+    # Each line is a test configuration:
+    #   x_shape, target_height, target_width
+    test_config = (([0, 2, 2], 2, 2),
+                   ([2, 0, 2], 2, 2),
+                   ([2, 2, 0], 2, 2))
+    offset_height, offset_width = [0, 0]
+    x = []
+
+    for x_shape, target_height, target_width in test_config:
+      self._assertRaises(x, x_shape, offset_height, offset_width,
+                         target_height, target_width,
+                         "all dims of 'image.shape' must be > 0",
+                         use_tensor_inputs_options=[False])
+
+      # The orignal error message does not contain back slashes. However, they
+      # are added by either the assert op or the runtime. If this behaviour
+      # changes in the future, the match string will also needs to be changed.
+      self._assertRaises(x, x_shape, offset_height, offset_width,
+                         target_height, target_width,
+                         "all dims of \\'image.shape\\' must be > 0",
+                         use_tensor_inputs_options=[True])
+
+  def testBadParams(self):
+    x_shape = [3, 3, 1]
+    x = np.zeros(x_shape)
+
+    # Each line is a test configuration:
+    #   offset_height, offset_width, target_height, target_width, err_msg
+    test_config = ((-1, 0, 4, 4, 'offset_height must be >= 0'),
+                   ( 0,-1, 4, 4, 'offset_width must be >= 0'),
+                   ( 2, 0, 4, 4, 'height must be <= target - offset'),
+                   ( 0, 2, 4, 4, 'width must be <= target - offset'))
+
+    for config_item in test_config:
+      self._assertRaises(x, x_shape, *config_item)
 
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
@@ -998,128 +1207,230 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
-  def _ResizeImageWithCropOrPad(self, original, original_shape,
-                                expected, expected_shape):
-    x_np = np.array(original, dtype=np.uint8).reshape(original_shape)
-    y_np = np.array(expected).reshape(expected_shape)
+  def _ResizeImageWithCropOrPad(self, x, target_height, target_width,
+                                use_tensor_inputs):
+    if use_tensor_inputs:
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+      x_tensor = array_ops.placeholder(x.dtype, shape=[None]*x.ndim)
+      feed_dict = {x_tensor: x}
+    else:
+      x_tensor = x
+      feed_dict = {}
 
-    target_height = expected_shape[0]
-    target_width = expected_shape[1]
+    y = image_ops.resize_image_with_crop_or_pad(
+      x_tensor, target_height, target_width)
+    if not use_tensor_inputs:
+      self.assertTrue(y.get_shape().is_fully_defined())
 
     with self.test_session():
-      image = constant_op.constant(x_np, shape=original_shape)
-      y = image_ops.resize_image_with_crop_or_pad(image,
-                                                  target_height,
-                                                  target_width)
-      resized = y.eval()
-      self.assertAllClose(resized, y_np, atol=1e-5)
+      return y.eval(feed_dict=feed_dict)
 
-  def testBasic(self):
-    # Basic no-op.
-    original = [1, 2, 3, 4,
-                5, 6, 7, 8]
-    self._ResizeImageWithCropOrPad(original, [2, 4, 1],
-                                   original, [2, 4, 1])
+  def _assertReturns(self, x, x_shape, y, y_shape,
+                     use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._ResizeImageWithCropOrPad(x, target_height, target_width,
+                                            use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertRaises(self, x, x_shape, target_height, target_width, err_msg,
+                    use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    x = np.array(x).reshape(x_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      try:
+        self._ResizeImageWithCropOrPad(x, target_height, target_width,
+                                       use_tensor_inputs)
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError('Exception not raised: %s' % err_msg)
+
+  def testNoOp(self):
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertReturns(x, x_shape, x, x_shape)
 
   def testPad(self):
     # Pad even along col.
-    original = [1, 2, 3, 4, 5, 6, 7, 8]
-    expected = [0, 1, 2, 3, 4, 0,
-                0, 5, 6, 7, 8, 0]
-    self._ResizeImageWithCropOrPad(original, [2, 4, 1],
-                                   expected, [2, 6, 1])
+    x = [1, 2, 3, 4,
+         5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [0, 1, 2, 3, 4, 0,
+         0, 5, 6, 7, 8, 0]
+    y_shape = [2, 6, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
     # Pad odd along col.
-    original = [1, 2, 3, 4,
-                5, 6, 7, 8]
-    expected = [0, 1, 2, 3, 4, 0, 0,
-                0, 5, 6, 7, 8, 0, 0]
-    self._ResizeImageWithCropOrPad(original, [2, 4, 1],
-                                   expected, [2, 7, 1])
+    x = [1, 2, 3, 4,
+         5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [0, 1, 2, 3, 4, 0, 0,
+         0, 5, 6, 7, 8, 0, 0]
+    y_shape = [2, 7, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
 
     # Pad even along row.
-    original = [1, 2, 3, 4,
-                5, 6, 7, 8]
-    expected = [0, 0, 0, 0,
-                1, 2, 3, 4,
-                5, 6, 7, 8,
-                0, 0, 0, 0]
-    self._ResizeImageWithCropOrPad(original, [2, 4, 1],
-                                   expected, [4, 4, 1])
+    x = [1, 2, 3, 4,
+         5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [0, 0, 0, 0,
+         1, 2, 3, 4,
+         5, 6, 7, 8,
+         0, 0, 0, 0]
+    y_shape = [4, 4, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
     # Pad odd along row.
-    original = [1, 2, 3, 4,
-                5, 6, 7, 8]
-    expected = [0, 0, 0, 0,
-                1, 2, 3, 4,
-                5, 6, 7, 8,
-                0, 0, 0, 0,
-                0, 0, 0, 0]
-    self._ResizeImageWithCropOrPad(original, [2, 4, 1],
-                                   expected, [5, 4, 1])
+    x = [1, 2, 3, 4,
+         5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [0, 0, 0, 0,
+         1, 2, 3, 4,
+         5, 6, 7, 8,
+         0, 0, 0, 0,
+         0, 0, 0, 0]
+    y_shape = [5, 4, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
 
   def testCrop(self):
     # Crop even along col.
-    original = [1, 2, 3, 4,
-                5, 6, 7, 8]
-    expected = [2, 3,
-                6, 7]
-    self._ResizeImageWithCropOrPad(original, [2, 4, 1],
-                                   expected, [2, 2, 1])
-    # Crop odd along col.
+    x = [1, 2, 3, 4,
+         5, 6, 7, 8]
+    x_shape = [2, 4, 1]
 
-    original = [1, 2, 3, 4, 5, 6,
-                7, 8, 9, 10, 11, 12]
-    expected = [2, 3, 4,
-                8, 9, 10]
-    self._ResizeImageWithCropOrPad(original, [2, 6, 1],
-                                   expected, [2, 3, 1])
+    y = [2, 3,
+         6, 7]
+    y_shape = [2, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+    # Crop odd along col.
+    x = [1, 2, 3, 4,  5,  6,
+         7, 8, 9, 10, 11, 12]
+    x_shape = [2, 6, 1]
+
+    y = [2, 3, 4,
+         8, 9, 10]
+    y_shape = [2, 3, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
 
     # Crop even along row.
-    original = [1, 2,
-                3, 4,
-                5, 6,
-                7, 8]
-    expected = [3, 4,
-                5, 6]
-    self._ResizeImageWithCropOrPad(original, [4, 2, 1],
-                                   expected, [2, 2, 1])
+    x = [1, 2,
+         3, 4,
+         5, 6,
+         7, 8]
+    x_shape = [4, 2, 1]
+
+    y = [3, 4,
+         5, 6]
+    y_shape = [2, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
 
     # Crop odd along row.
-    original = [1, 2,
-                3, 4,
-                5, 6,
-                7, 8,
-                9, 10,
-                11, 12,
-                13, 14,
-                15, 16]
-    expected = [3, 4,
-                5, 6,
-                7, 8,
-                9, 10,
-                11, 12]
-    self._ResizeImageWithCropOrPad(original, [8, 2, 1],
-                                   expected, [5, 2, 1])
+    x = [1,  2,
+         3,  4,
+         5,  6,
+         7,  8,
+         9,  10,
+         11, 12,
+         13, 14,
+         15, 16]
+    x_shape = [8, 2, 1]
+
+    y = [3,  4,
+         5,  6,
+         7,  8,
+         9,  10,
+         11, 12]
+    y_shape = [5, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
 
   def testCropAndPad(self):
     # Pad along row but crop along col.
-    original = [1, 2, 3, 4,
-                5, 6, 7, 8]
-    expected = [0, 0,
-                2, 3,
-                6, 7,
-                0, 0]
-    self._ResizeImageWithCropOrPad(original, [2, 4, 1],
-                                   expected, [4, 2, 1])
+    x = [1, 2, 3, 4,
+         5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [0, 0,
+         2, 3,
+         6, 7,
+         0, 0]
+    y_shape = [4, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
 
     # Crop along row but pad along col.
-    original = [1, 2,
-                3, 4,
-                5, 6,
-                7, 8]
-    expected = [0, 3, 4, 0,
-                0, 5, 6, 0]
-    self._ResizeImageWithCropOrPad(original, [4, 2, 1],
-                                   expected, [2, 4, 1])
+    x = [1, 2,
+         3, 4,
+         5, 6,
+         7, 8]
+    x_shape = [4, 2, 1]
+
+    y = [0, 3, 4, 0,
+         0, 5, 6, 0]
+    y_shape = [2, 4, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+  def testNon3DInput(self):
+    # Input image is not 3D
+    x = [0] * 15
+    target_height, target_width = [4, 4]
+
+    for x_shape in ([1, 3, 5, 1], [3, 5]):
+      self._assertRaises(x, x_shape, target_height, target_width,
+                         "'image' must be three-dimensional")
+
+  def testZeroLengthInput(self):
+    # Input image has 0-length dimension(s).
+    target_height, target_width = [1, 1]
+    x = []
+
+    for x_shape in ([0, 2, 2], [2, 0, 2], [2, 2, 0]):
+      self._assertRaises(x, x_shape, target_height, target_width,
+                         "all dims of 'image.shape' must be > 0",
+                         use_tensor_inputs_options=[False])
+
+      # The orignal error message does not contain back slashes. However, they
+      # are added by either the assert op or the runtime. If this behaviour
+      # changes in the future, the match string will also needs to be changed.
+      self._assertRaises(x, x_shape, target_height, target_width,
+                         "all dims of \\'image.shape\\' must be > 0",
+                         use_tensor_inputs_options=[True])
+
+  def testBadParams(self):
+    x_shape = [4, 4, 1]
+    x = np.zeros(x_shape)
+
+    # target_height <= 0
+    target_height, target_width = [0, 5]
+    self._assertRaises(x, x_shape, target_height, target_width,
+                       'target_height must be > 0')
+
+    # target_width <= 0
+    target_height, target_width = [5, 0]
+    self._assertRaises(x, x_shape, target_height, target_width,
+                       'target_width must be > 0')
 
 
 def _SimpleColorRamp():

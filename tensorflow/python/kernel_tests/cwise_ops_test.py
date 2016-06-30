@@ -213,6 +213,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(z, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(y, np.sign, tf.sign)
 
   def testFloatTanhEdge(self):
@@ -251,6 +252,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(x, np.sign, tf.sign)
 
   def testDoubleBasic(self):
@@ -288,6 +290,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(z, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(y, np.sign, tf.sign)
 
   def testHalfBasic(self):
@@ -320,6 +323,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(z, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(y, np.sign, tf.sign)
 
   def testInt32Basic(self):
@@ -374,6 +378,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sqrt, tf.sqrt, 1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
 
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):
@@ -404,6 +409,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sqrt, tf.sqrt, 1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
 
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):

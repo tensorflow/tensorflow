@@ -205,14 +205,14 @@ Computes hyperbolic tangent of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
-    or `qint32`.
+*  <b>`x`</b>: A Tensor or SparseTensor with type `float`, `double`, `int32`,
+    `complex64`, `int64`, or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-    the return type is `quint8`.
+  A Tensor or SparseTensor respectively with the same type as `x` if
+  `x.dtype != qint32` otherwise the return type is `quint8`.
 
 
 
@@ -1770,7 +1770,7 @@ Here is a table of the (roughly) expected first order behavior:
 
 ##### Returns:
 
-  A 1-D `float` `Tensor`, size `[batch]`, containing logits.
+  A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
 
 ##### Raises:
 

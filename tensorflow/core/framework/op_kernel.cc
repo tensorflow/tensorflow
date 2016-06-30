@@ -787,6 +787,13 @@ Status SupportedDeviceTypesForNode(
   return Status::OK();
 }
 
+void LogAllRegisteredKernels() {
+  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
+    const KernelDef& kernel_def(key_registration.second.def);
+    LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
+  }
+}
+
 std::unique_ptr<OpKernel> CreateOpKernel(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
     const NodeDef& node_def, int graph_def_version, Status* status) {
