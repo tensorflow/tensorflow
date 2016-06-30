@@ -18,6 +18,54 @@ filegroup(
     ),
 )
 
+py_library(
+    name = "constants",
+    srcs = [
+        "python/constants.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+tf_custom_op_library(
+    name = "data/_data_ops.so",
+    srcs = [
+        "data/string_to_float_op.cc",
+    ],
+    deps = [
+        ":tree_utils",
+    ],
+)
+
+py_library(
+    name = "data_ops_lib",
+    srcs = [
+        "data/data_ops.py",
+    ],
+    data = [
+        "data/_data_ops.so",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+    ],
+)
+
+py_library(
+    name = "eval_metrics",
+    srcs = ["client/eval_metrics.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "client_lib",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":data_ops_lib",
+        ":eval_metrics",
+        ":tensor_forest_py",
+    ],
+)
+
 cc_library(
     name = "tree_utils",
     srcs = ["core/ops/tree_utils.cc"],
@@ -86,6 +134,7 @@ py_test(
     srcs = ["python/kernel_tests/count_extremely_random_stats_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
@@ -151,6 +200,7 @@ py_test(
     srcs = ["python/kernel_tests/tree_predictions_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
@@ -176,6 +226,7 @@ py_library(
     srcs = ["python/tensor_forest.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":ops_lib",
     ],
 )

@@ -1,3 +1,4 @@
+# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Random forest implementation in tensorflow."""
+"""Constants used by tensorforest.  Some of these map to values in C++ ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.tensor_forest.client import *
-from tensorflow.contrib.tensor_forest.data import *
-from tensorflow.contrib.tensor_forest.python import *
+# If tree[i][0] equals this value, then i is a leaf node.
+LEAF_NODE = -1
+
+# Data column types for indicating categorical or other non-float values.
+DATA_FLOAT = 0
+DATA_CATEGORICAL = 1

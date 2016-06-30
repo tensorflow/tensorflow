@@ -19,6 +19,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/contrib/session_bundle:exporter",
+        "//tensorflow/contrib/tensor_forest:client_lib",
         "//tensorflow/python:framework",
     ],
 )
@@ -382,6 +383,18 @@ py_test(
     name = "dnn_test",
     size = "small",
     srcs = ["python/learn/estimators/dnn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "random_forest_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/random_forest_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
