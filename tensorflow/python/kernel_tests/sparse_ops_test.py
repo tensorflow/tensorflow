@@ -649,5 +649,68 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
         self.assertLess(err, 1e-4)
 
 
+class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
+
+  def _assertSparseTensorValueEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.shape, b.shape)
+
+  def testBasic(self):
+    with self.test_session(use_gpu=False):
+      # 1-D, values at index 0.
+      sp_zero = ops.SparseTensor([[0]], [0], [7])
+      sp_one = ops.SparseTensor([[0]], [1], [7])
+      max_tf = tf.sparse_maximum(sp_zero, sp_one).eval()
+      min_tf = tf.sparse_minimum(sp_zero, sp_one).eval()
+      self._assertSparseTensorValueEqual(sp_one.eval(), max_tf)
+      self._assertSparseTensorValueEqual(sp_zero.eval(), min_tf)
+
+      # Values at different indices.
+      sp_zero = ops.SparseTensor([[0]], [0], [7])
+      sp_zero_2 = ops.SparseTensor([[1]], [0], [7])
+      expected = ops.SparseTensor([[0], [1]], [0, 0], [7])
+      max_tf = tf.sparse_maximum(sp_zero, sp_zero_2).eval()
+      min_tf = tf.sparse_minimum(sp_zero, sp_zero_2).eval()
+      self._assertSparseTensorValueEqual(expected.eval(), max_tf)
+      self._assertSparseTensorValueEqual(expected.eval(), min_tf)
+
+  def testRandom(self):
+    np.random.seed(1618)
+    shapes = [(13,), (6, 8), (1, 7, 1)]
+    for shape in shapes:
+      for dtype in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+        a_np = np.random.randn(*shape).astype(dtype)
+        b_np = np.random.randn(*shape).astype(dtype)
+        sp_a, unused_a_nnz = _sparsify(a_np, thresh=-.5)
+        sp_b, unused_b_nnz = _sparsify(b_np, thresh=-.5)
+
+        with self.test_session(use_gpu=False):
+          maximum_tf = tf.sparse_maximum(sp_a, sp_b)
+          maximum_tf_densified = tf.sparse_tensor_to_dense(maximum_tf).eval()
+          minimum_tf = tf.sparse_minimum(sp_a, sp_b)
+          minimum_tf_densified = tf.sparse_tensor_to_dense(minimum_tf).eval()
+
+          a_densified = tf.sparse_tensor_to_dense(sp_a).eval()
+          b_densified = tf.sparse_tensor_to_dense(sp_b).eval()
+
+        self.assertAllEqual(np.maximum(a_densified, b_densified),
+                            maximum_tf_densified)
+        self.assertAllEqual(np.minimum(a_densified, b_densified),
+                            minimum_tf_densified)
+
+  def testMismatchedShapes(self):
+    with self.test_session(use_gpu=False):
+      sp_zero = ops.SparseTensor([[0, 0]], [0], [1, 1])
+      sp_one = ops.SparseTensor([[0]], [1], [2])
+      with self.assertRaisesOpError("Operands do not have the same ranks"):
+        tf.sparse_maximum(sp_zero, sp_one).eval()
+
+      sp_zero = ops.SparseTensor([[0]], [0], [1])
+      sp_one = ops.SparseTensor([[0]], [1], [2])
+      with self.assertRaisesOpError("Operands' shapes do not match"):
+        tf.sparse_maximum(sp_zero, sp_one).eval()
+
+
 if __name__ == "__main__":
   googletest.main()
