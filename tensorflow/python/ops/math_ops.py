@@ -1609,6 +1609,8 @@ ops.RegisterShape("BatchFFT2D")(common_shapes.unchanged_shape)
 ops.RegisterShape("BatchIFFT2D")(common_shapes.unchanged_shape)
 ops.RegisterShape("BatchFFT3D")(common_shapes.unchanged_shape)
 ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
+ops.RegisterShape("TanhGrad")(common_shapes.unchanged_shape)
+ops.RegisterShape("SigmoidGrad")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("Add")
