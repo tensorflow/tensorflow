@@ -42,6 +42,13 @@ cc_library(
     name = "gen_proto_text_functions_lib",
     srcs = ["gen_proto_text_functions_lib.cc"],
     hdrs = ["gen_proto_text_functions_lib.h"],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ] + select({
+        "//tensorflow:darwin": [],
+        "//conditions:default": ["-lrt"]
+    }),    
     deps = [
         "//tensorflow/core:lib",
     ],
