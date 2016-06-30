@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from sklearn import metrics
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
@@ -34,8 +35,10 @@ mnist = learn.datasets.load_dataset('mnist')
 
 classifier = learn.TensorFlowLinearClassifier(
     n_classes=10, batch_size=100, steps=1000, learning_rate=0.01)
-classifier.fit(mnist.train.images, mnist.train.labels)
-score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
+X_train, y_train = mnist.train.images.astype(np.float32), mnist.train.labels.astype(np.int)
+X_test, y_test = mnist.test.images.astype(np.float32), mnist.test.labels.astype(np.int)
+classifier.fit(X_train, y_train)
+score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
 
 ### Convolutional network
@@ -50,12 +53,12 @@ def conv_model(X, y):
     X = tf.reshape(X, [-1, 28, 28, 1])
     # first conv layer will compute 32 features for each 5x5 patch
     with tf.variable_scope('conv_layer1'):
-        h_conv1 = learn.ops.conv2d(X, n_filters=32, filter_shape=[5, 5], 
+        h_conv1 = learn.ops.conv2d(X, n_filters=32, filter_shape=[5, 5],
                                     bias=True, activation=tf.nn.relu)
         h_pool1 = max_pool_2x2(h_conv1)
     # second conv layer will compute 64 features for each 5x5 patch
     with tf.variable_scope('conv_layer2'):
-        h_conv2 = learn.ops.conv2d(h_pool1, n_filters=64, filter_shape=[5, 5], 
+        h_conv2 = learn.ops.conv2d(h_pool1, n_filters=64, filter_shape=[5, 5],
                                     bias=True, activation=tf.nn.relu)
         h_pool2 = max_pool_2x2(h_conv2)
         # reshape tensor into a batch of vectors
@@ -68,15 +71,15 @@ def conv_model(X, y):
 classifier = learn.TensorFlowEstimator(
     model_fn=conv_model, n_classes=10, batch_size=100, steps=20000,
     learning_rate=0.001)
-classifier.fit(mnist.train.images, mnist.train.labels)
-score = metrics.accuracy_score(mnist.test.labels, classifier.predict(mnist.test.images))
+classifier.fit(X_train, y_train)
+score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
 
 # Examining fitted weights
 
 ## General usage is classifier.get_tensor_value('foo')
 ## 'foo' must be the variable scope of the desired tensor followed by the
-## graph path. 
+## graph path.
 
 ## To understand the mechanism and figure out the right scope and path, you can do logging.
 ## Then use TensorBoard or a text editor on the log file to look at available strings.
