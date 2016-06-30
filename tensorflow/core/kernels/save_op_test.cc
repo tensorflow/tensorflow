@@ -16,6 +16,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/io_ops.h"
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -24,12 +27,15 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
@@ -366,7 +372,6 @@ TEST_F(SaveOpTest, Simple) {
       EXPECT_EQ(200 + i, data[i].imag());
     }
   }
-
   {
     // The 2-d half tensor
     TensorShape shape;
@@ -651,6 +656,41 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
     }
   }
 }
+
+// Benchmark-related code below.
+
+static void BM_LargeTensorWrite(int iters, int num_elements) {
+  testing::StopTiming();
+
+  // 4 * num_elements bytes total , since sizeof(float) == 4.
+  Tensor tensor(DT_FLOAT, TensorShape({num_elements}));
+  tensor.flat<float>().setZero();
+
+  // Builds the graph.
+  const string temp_filename =
+      io::JoinPath(testing::TmpDir(), "benchmark_checkpoint");
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Node* filename = ops::Const(test::AsScalar<string>(temp_filename), b.opts());
+  Node* tensor_names =
+      ops::Const(test::AsTensor<string>({"my_tensor"}), b.opts());
+  Node* tensors = ops::Const(tensor, b.opts());
+  ops::Save(filename, tensor_names, {tensors}, b.opts());
+
+  // Disables optimizations.
+  SessionOptions session_options;
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(tensorflow::OptimizerOptions_Level_L0);
+
+  Graph* g = new Graph(OpRegistry::Global());
+  TF_CHECK_OK(b.ToGraph(g));
+  VLOG(1) << "Save op's output path: " << temp_filename;
+  VLOG(1) << "# nodes in Graph: " << g->num_nodes();
+
+  testing::StartTiming();
+  test::Benchmark("cpu", g, &session_options).Run(iters);
+}
+BENCHMARK(BM_LargeTensorWrite)->Arg((1 << 30) / 4 /* 1GB float tensor */);
 
 }  // namespace
 }  // namespace tensorflow

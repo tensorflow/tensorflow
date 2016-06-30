@@ -216,7 +216,7 @@ def read_keyed_batch_features(
     file_pattern, batch_size, features, reader,
     randomize_input=True, num_epochs=None,
     queue_capacity=10000, reader_num_threads=1,
-    parser_num_threads=1, read_batch_size=1, name=None):
+    parser_num_threads=1, name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -245,8 +245,6 @@ def read_keyed_batch_features(
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.
-    read_batch_size: An int or scalar `Tensor` specifying the number of
-      records to read at once
     name: Name of resulting op.
 
   Returns:
@@ -260,7 +258,7 @@ def read_keyed_batch_features(
     keys, examples = read_keyed_batch_examples(
         file_pattern, batch_size, reader, randomize_input=randomize_input,
         num_epochs=num_epochs, queue_capacity=queue_capacity,
-        num_threads=reader_num_threads, read_batch_size=read_batch_size,
+        num_threads=reader_num_threads, read_batch_size=batch_size,
         name=scope)
 
     if parser_num_threads == 1:
@@ -286,8 +284,7 @@ def read_keyed_batch_features(
 def read_batch_features(file_pattern, batch_size, features, reader,
                         randomize_input=True, num_epochs=None,
                         queue_capacity=10000, reader_num_threads=1,
-                        parser_num_threads=1, read_batch_size=1,
-                        name=None):
+                        parser_num_threads=1, name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -316,7 +313,6 @@ def read_batch_features(file_pattern, batch_size, features, reader,
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.
-    read_batch_size: An int or scalar `Tensor` specifying the number of
       records to read at once
     name: Name of resulting op.
 
@@ -331,8 +327,7 @@ def read_batch_features(file_pattern, batch_size, features, reader,
       file_pattern, batch_size, features, reader,
       randomize_input=randomize_input, num_epochs=num_epochs,
       queue_capacity=queue_capacity, reader_num_threads=reader_num_threads,
-      parser_num_threads=parser_num_threads, read_batch_size=read_batch_size,
-      name=name)
+      parser_num_threads=parser_num_threads, name=name)
   return features
 
 

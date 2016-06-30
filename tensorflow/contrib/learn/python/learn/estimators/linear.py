@@ -78,15 +78,16 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 
   Input of `fit` and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
-      if `weight_column_name` is not `None`, a feature with
-        `key=weight_column_name` whose value is a `Tensor`.
-      for each `column` in `feature_columns`:
-      - if `column` is a `SparseColumn`, a feature with `key=column.name`
-        whose `value` is a `SparseTensor`.
-      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-        whose `value` is a `Tensor`.
-      - if `feauture_columns` is `None`, then `input` must contains only real
-        valued `Tensor`.
+
+  * if `weight_column_name` is not `None`, a feature with
+    `key=weight_column_name` whose value is a `Tensor`.
+  * for each `column` in `feature_columns`:
+    - if `column` is a `SparseColumn`, a feature with `key=column.name`
+      whose `value` is a `SparseTensor`.
+    - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
+      whose `value` is a `Tensor`.
+    - if `feature_columns` is `None`, then `input` must contains only real
+      valued `Tensor`.
   """
 
   def __init__(self,
@@ -229,15 +230,16 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
 
   Input of `fit` and `evaluate` should have following features,
     otherwise there will be a KeyError:
-      if `weight_column_name` is not `None`:
-        key=weight_column_name, value=a `Tensor`
-      for column in `feature_columns`:
-      - if isinstance(column, `SparseColumn`):
-          key=column.name, value=a `SparseTensor`
-      - if isinstance(column, `RealValuedColumn`):
-          key=column.name, value=a `Tensor`
-      - if `feauture_columns` is `None`:
-          input must contains only real valued `Tensor`.
+
+  * if `weight_column_name` is not `None`:
+    key=weight_column_name, value=a `Tensor`
+  * for column in `feature_columns`:
+    - if isinstance(column, `SparseColumn`):
+        key=column.name, value=a `SparseTensor`
+    - if isinstance(column, `RealValuedColumn`):
+        key=column.name, value=a `Tensor`
+    - if `feature_columns` is `None`:
+        input must contains only real valued `Tensor`.
   """
 
   def __init__(self,

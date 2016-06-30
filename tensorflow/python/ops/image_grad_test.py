@@ -253,54 +253,53 @@ class CropAndResizeOpTest(tf.test.TestCase):
     radius = 2 * delta
     low, high = -0.5, 1.5  # Also covers the case of extrapolation.
 
-    for image_height in range(1, 5):
-      for image_width in range(1, 3):
-        for crop_height in range(1, 3):
-          for crop_width in range(2, 4):
-            for depth in range(1, 3):
-              for num_boxes in range(1, 3):
+    image_height = 4
+    for image_width in range(1, 3):
+      for crop_height in range(1, 3):
+        for crop_width in range(2, 4):
+          for depth in range(1, 3):
+            for num_boxes in range(1, 3):
 
-                batch = num_boxes
-                image_shape = [batch, image_height, image_width, depth]
-                crop_size = [crop_height, crop_width]
-                crops_shape = [num_boxes, crop_height, crop_width, depth]
-                boxes_shape = [num_boxes, 4]
+              batch = num_boxes
+              image_shape = [batch, image_height, image_width, depth]
+              crop_size = [crop_height, crop_width]
+              crops_shape = [num_boxes, crop_height, crop_width, depth]
+              boxes_shape = [num_boxes, 4]
 
-                image = np.arange(0, batch * image_height * image_width *
-                                  depth).reshape(image_shape).astype(np.float32)
-                boxes = []
-                for _ in range(num_boxes):
-                  # pylint: disable=unbalanced-tuple-unpacking
-                  y1, y2 = self._randomUniformAvoidAnchors(
-                      low, high, np.linspace(0, 1, image_height), radius, 2)
-                  x1, x2 = self._randomUniformAvoidAnchors(
-                      low, high, np.linspace(0, 1, image_width), radius, 2)
-                  # pylint: enable=unbalanced-tuple-unpacking
-                  boxes.append([y1, x1, y2, x2])
+              image = np.arange(0, batch * image_height * image_width *
+                                depth).reshape(image_shape).astype(np.float32)
+              boxes = []
+              for _ in range(num_boxes):
+                # pylint: disable=unbalanced-tuple-unpacking
+                y1, y2 = self._randomUniformAvoidAnchors(
+                    low, high, np.linspace(0, 1, image_height), radius, 2)
+                x1, x2 = self._randomUniformAvoidAnchors(
+                    low, high, np.linspace(0, 1, image_width), radius, 2)
+                # pylint: enable=unbalanced-tuple-unpacking
+                boxes.append([y1, x1, y2, x2])
 
-                boxes = np.array(boxes, dtype=np.float32)
-                box_ind = np.arange(batch, dtype=np.int32)
+              boxes = np.array(boxes, dtype=np.float32)
+              box_ind = np.arange(batch, dtype=np.int32)
 
-                for use_gpu in [False, True]:
-                  with self.test_session(use_gpu=use_gpu):
-                    image_tensor = tf.constant(image, shape=image_shape)
-                    boxes_tensor = tf.constant(boxes, shape=[num_boxes, 4])
-                    box_ind_tensor = tf.constant(box_ind, shape=[num_boxes])
-                    crops = tf.image.crop_and_resize(
-                        image_tensor,
-                        boxes_tensor,
-                        box_ind_tensor,
-                        tf.constant(crop_size, shape=[2]))
+              for use_gpu in [False, True]:
+                with self.test_session(use_gpu=use_gpu):
+                  image_tensor = tf.constant(image, shape=image_shape)
+                  boxes_tensor = tf.constant(boxes, shape=[num_boxes, 4])
+                  box_ind_tensor = tf.constant(box_ind, shape=[num_boxes])
+                  crops = tf.image.crop_and_resize(
+                      image_tensor,
+                      boxes_tensor,
+                      box_ind_tensor,
+                      tf.constant(crop_size, shape=[2]))
 
-                    err = tf.test.compute_gradient_error(
-                        [image_tensor, boxes_tensor],
-                        [image_shape, boxes_shape],
-                        crops,
-                        crops_shape,
-                        delta=delta,
-                        x_init_value=[image, boxes])
+                  err = tf.test.compute_gradient_error(
+                      [image_tensor, boxes_tensor], [image_shape, boxes_shape],
+                      crops,
+                      crops_shape,
+                      delta=delta,
+                      x_init_value=[image, boxes])
 
-                  self.assertLess(err, 2e-3)
+                self.assertLess(err, 2e-3)
 
 
 if __name__ == "__main__":

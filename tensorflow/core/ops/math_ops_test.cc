@@ -121,4 +121,52 @@ TEST(MathOpsTest, Segment) {
   }
 }
 
+TEST(MathOpsTest, BroadcastBinaryOps) {
+  for (const auto* op : {"Add",        "Complex",
+                         "Div",        "Equal",
+                         "Greater",    "GreaterEqual",
+                         "Igamma",     "Igammac",
+                         "Zeta",       "Polygamma",
+                         "Less",       "LessEqual",
+                         "LogicalAnd", "LogicalOr",
+                         "Maximum",    "Minimum",
+                         "Mod",        "Mul",
+                         "NotEqual",   "Pow",
+                         "Sub",        "SquaredDifference"}) {
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[1,2];?", "?");
+    INFER_OK(op, "?;[1,2]", "?");
+
+    INFER_OK(op, "[?];[1]", "[d0_0]");
+    INFER_OK(op, "[1];[?]", "[d1_0]");
+    INFER_OK(op, "[?];[2]", "[d1_0]");
+    INFER_OK(op, "[2];[?]", "[d0_0]");
+    INFER_OK(op, "[?];[?]", "[?]");
+    INFER_OK(op, "[];[?]", "[d1_0]");
+    INFER_OK(op, "[?];[]", "[d0_0]");
+
+    INFER_OK(op, "[1];[1]", "[d0_0|d1_0]");
+    INFER_OK(op, "[];[1]", "[d1_0]");
+    INFER_OK(op, "[1];[]", "[d0_0]");
+
+    INFER_OK(op, "[2];[2]", "[d0_0|d1_0]");
+    INFER_OK(op, "[];[2]", "[d1_0]");
+    INFER_OK(op, "[1];[2]", "[d1_0]");
+    INFER_OK(op, "[2];[1]", "[d0_0]");
+    INFER_OK(op, "[2];[]", "[d0_0]");
+
+    INFER_OK(op, "[0];[0]", "[d0_0|d1_0]");
+    INFER_OK(op, "[];[0]", "[d1_0]");
+    INFER_OK(op, "[1];[0]", "[d1_0]");
+    INFER_OK(op, "[0];[1]", "[d0_0]");
+    INFER_OK(op, "[0];[]", "[d0_0]");
+
+    // Multiple dimension cases (same test cases, switching x and y).
+    INFER_OK(op, "[?,1,2,3,4,5];[3,1,?]",
+             "[d0_0,d0_1,d0_2,d0_3|d1_0,d0_4,d0_5]");
+    INFER_OK(op, "[3,1,?];[?,1,2,3,4,5]",
+             "[d1_0,d1_1,d1_2,d1_3|d0_0,d1_4,d1_5]");
+  }
+}
+
 }  // end namespace tensorflow

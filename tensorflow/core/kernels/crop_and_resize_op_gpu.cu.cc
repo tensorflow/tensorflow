@@ -33,27 +33,30 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void CropAndResizeKernel(const int32 nthreads, const T* image_ptr,
-                                    const float* boxes_ptr,
-                                    const int32* box_ind_ptr, int num_boxes,
-                                    int image_height, int image_width,
-                                    int crop_height, int crop_width, int depth,
-                                    float extrapolation_value,
-                                    float* crops_ptr) {
+__global__ void CropAndResizeKernel(
+    const int32 nthreads, const T* image_ptr, const float* boxes_ptr,
+    const int32* box_ind_ptr, int num_boxes, int batch, int image_height,
+    int image_width, int crop_height, int crop_width, int depth,
+    float extrapolation_value, float* crops_ptr) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
-    const int d = out_idx % depth;
-    const int out_idx2 = out_idx / depth;
-    const int x = out_idx2 % crop_width;
-    const int out_idx3 = out_idx2 / crop_width;
-    const int y = out_idx3 % crop_height;
-    const int b = out_idx3 / crop_height;
+    int idx = out_idx;
+    const int d = idx % depth;
+    idx /= depth;
+    const int x = idx % crop_width;
+    idx /= crop_width;
+    const int y = idx % crop_height;
+    const int b = idx / crop_height;
 
     const float y1 = boxes_ptr[b * 4];
     const float x1 = boxes_ptr[b * 4 + 1];
     const float y2 = boxes_ptr[b * 4 + 2];
     const float x2 = boxes_ptr[b * 4 + 3];
+
     const int32 b_in = box_ind_ptr[b];
+    if (b_in < 0 || b_in >= batch) {
+      continue;
+    }
 
     const float height_scale =
         (crop_height > 1) ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
@@ -66,7 +69,7 @@ __global__ void CropAndResizeKernel(const int32 nthreads, const T* image_ptr,
                            : 0.5 * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
       crops_ptr[out_idx] = extrapolation_value;
-      return;
+      continue;
     }
 
     const float in_x = (crop_width > 1)
@@ -74,7 +77,7 @@ __global__ void CropAndResizeKernel(const int32 nthreads, const T* image_ptr,
                            : 0.5 * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
       crops_ptr[out_idx] = extrapolation_value;
-      return;
+      continue;
     }
 
     const int top_y_index = floorf(in_y);
@@ -114,22 +117,28 @@ __global__ void CropAndResizeKernel(const int32 nthreads, const T* image_ptr,
 template <typename T>
 __global__ void CropAndResizeBackpropImageKernel(
     const int32 nthreads, const float* grads_ptr, const float* boxes_ptr,
-    const int32* box_ind_ptr, int num_boxes, int image_height, int image_width,
-    int crop_height, int crop_width, int depth, T* grads_image_ptr) {
+    const int32* box_ind_ptr, int num_boxes, int batch, int image_height,
+    int image_width, int crop_height, int crop_width, int depth,
+    T* grads_image_ptr) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
-    const int d = out_idx % depth;
-    const int out_idx2 = out_idx / depth;
-    const int x = out_idx2 % crop_width;
-    const int out_idx3 = out_idx2 / crop_width;
-    const int y = out_idx3 % crop_height;
-    const int b = out_idx3 / crop_height;
+    int idx = out_idx;
+    const int d = idx % depth;
+    idx /= depth;
+    const int x = idx % crop_width;
+    idx /= crop_width;
+    const int y = idx % crop_height;
+    const int b = idx / crop_height;
 
     const float y1 = boxes_ptr[b * 4];
     const float x1 = boxes_ptr[b * 4 + 1];
     const float y2 = boxes_ptr[b * 4 + 2];
     const float x2 = boxes_ptr[b * 4 + 3];
+
     const int32 b_in = box_ind_ptr[b];
+    if (b_in < 0 || b_in >= batch) {
+      continue;
+    }
 
     const float height_scale =
         (crop_height > 1) ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
@@ -141,14 +150,14 @@ __global__ void CropAndResizeBackpropImageKernel(
                            ? y1 * (image_height - 1) + y * height_scale
                            : 0.5 * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
-      return;
+      continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
                            : 0.5 * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
-      return;
+      continue;
     }
 
     const int top_y_index = floorf(in_y);
@@ -192,23 +201,28 @@ __global__ void CropAndResizeBackpropImageKernel(
 template <typename T>
 __global__ void CropAndResizeBackpropBoxesKernel(
     const int32 nthreads, const float* grads_ptr, const T* image_ptr,
-    const float* boxes_ptr, const int32* box_ind_ptr, int num_boxes,
+    const float* boxes_ptr, const int32* box_ind_ptr, int num_boxes, int batch,
     int image_height, int image_width, int crop_height, int crop_width,
     int depth, float* grads_boxes_ptr) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
-    const int d = out_idx % depth;
-    const int out_idx2 = out_idx / depth;
-    const int x = out_idx2 % crop_width;
-    const int out_idx3 = out_idx2 / crop_width;
-    const int y = out_idx3 % crop_height;
-    const int b = out_idx3 / crop_height;
+    int idx = out_idx;
+    const int d = idx % depth;
+    idx /= depth;
+    const int x = idx % crop_width;
+    idx /= crop_width;
+    const int y = idx % crop_height;
+    const int b = idx / crop_height;
 
     const float y1 = boxes_ptr[b * 4];
     const float x1 = boxes_ptr[b * 4 + 1];
     const float y2 = boxes_ptr[b * 4 + 2];
     const float x2 = boxes_ptr[b * 4 + 3];
+
     const int32 b_in = box_ind_ptr[b];
+    if (b_in < 0 || b_in >= batch) {
+      continue;
+    }
 
     const float height_ratio =
         (crop_height > 1)
@@ -226,14 +240,14 @@ __global__ void CropAndResizeBackpropBoxesKernel(
                            ? y1 * (image_height - 1) + y * height_scale
                            : 0.5 * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
-      return;
+      continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
                            : 0.5 * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
-      return;
+      continue;
     }
 
     const int top_y_index = floorf(in_y);
@@ -306,11 +320,12 @@ namespace functor {
 
 template <typename T>
 struct CropAndResize<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor image,
+  bool operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
                   float extrapolation_value,
                   typename TTypes<float, 4>::Tensor crops) {
+    const int batch = image.dimension(0);
     const int image_height = image.dimension(1);
     const int image_width = image.dimension(2);
 
@@ -320,19 +335,22 @@ struct CropAndResize<GPUDevice, T> {
     const int depth = crops.dimension(3);
 
     const int total_count = num_boxes * crop_height * crop_width * depth;
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
-    CropAndResizeKernel<<<config.block_count, config.thread_per_block, 0,
-                          d.stream()>>>(
-        config.virtual_thread_count, image.data(), boxes.data(), box_ind.data(),
-        num_boxes, image_height, image_width, crop_height, crop_width, depth,
-        extrapolation_value, crops.data());
+    if (total_count > 0) {
+      CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+      CropAndResizeKernel<<<config.block_count, config.thread_per_block, 0,
+                            d.stream()>>>(
+          config.virtual_thread_count, image.data(), boxes.data(),
+          box_ind.data(), num_boxes, batch, image_height, image_width,
+          crop_height, crop_width, depth, extrapolation_value, crops.data());
+    }
+    return d.ok();
   }
 };
 
 template <typename T>
 struct CropAndResizeBackpropImage<GPUDevice, T> {
-  void operator()(const GPUDevice& d,
+  bool operator()(const GPUDevice& d,
                   typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
@@ -351,29 +369,35 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
 
     // Initialize grads_image with all zeros.
     total_count = batch * image_height * image_width * depth;
-    config = GetCudaLaunchConfig(total_count, d);
-    SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        total_count, grads_image.data());
+    if (total_count > 0) {
+      config = GetCudaLaunchConfig(total_count, d);
+      SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          config.virtual_thread_count, grads_image.data());
+    }
 
     // Accumulate.
     total_count = num_boxes * crop_height * crop_width * depth;
-    config = GetCudaLaunchConfig(total_count, d);
-    CropAndResizeBackpropImageKernel<<<
-        config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, grads.data(), boxes.data(), box_ind.data(),
-        num_boxes, image_height, image_width, crop_height, crop_width, depth,
-        grads_image.data());
+    if (total_count > 0) {
+      config = GetCudaLaunchConfig(total_count, d);
+      CropAndResizeBackpropImageKernel<<<
+          config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          config.virtual_thread_count, grads.data(), boxes.data(),
+          box_ind.data(), num_boxes, batch, image_height, image_width,
+          crop_height, crop_width, depth, grads_image.data());
+    }
+    return d.ok();
   }
 };
 
 template <typename T>
 struct CropAndResizeBackpropBoxes<GPUDevice, T> {
-  void operator()(const GPUDevice& d,
+  bool operator()(const GPUDevice& d,
                   typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
                   typename TTypes<float, 2>::Tensor grads_boxes) {
+    const int batch = image.dimension(0);
     const int image_height = image.dimension(1);
     const int image_width = image.dimension(2);
 
@@ -387,18 +411,23 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
 
     // Initialize grads_boxes with all zeros.
     total_count = num_boxes * 4;
-    config = GetCudaLaunchConfig(total_count, d);
-    SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        total_count, grads_boxes.data());
+    if (total_count > 0) {
+      config = GetCudaLaunchConfig(total_count, d);
+      SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          config.virtual_thread_count, grads_boxes.data());
+    }
 
     // Accumulate.
     total_count = num_boxes * crop_height * crop_width * depth;
-    config = GetCudaLaunchConfig(total_count, d);
-    CropAndResizeBackpropBoxesKernel<<<
-        config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, grads.data(), image.data(), boxes.data(),
-        box_ind.data(), num_boxes, image_height, image_width, crop_height,
-        crop_width, depth, grads_boxes.data());
+    if (total_count > 0) {
+      config = GetCudaLaunchConfig(total_count, d);
+      CropAndResizeBackpropBoxesKernel<<<
+          config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          config.virtual_thread_count, grads.data(), image.data(), boxes.data(),
+          box_ind.data(), num_boxes, batch, image_height, image_width,
+          crop_height, crop_width, depth, grads_boxes.data());
+    }
+    return d.ok();
   }
 };
 
@@ -407,7 +436,7 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
   template struct CropAndResizeBackpropImage<GPUDevice, T>; \
   template struct CropAndResizeBackpropBoxes<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_GPU_SPECS);
+TF_CALL_float(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 

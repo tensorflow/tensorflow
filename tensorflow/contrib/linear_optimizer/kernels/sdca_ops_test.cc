@@ -51,11 +51,13 @@ std::vector<Node*> VarVector(Graph* const g, const int nodes,
   return result;
 }
 
-Node* Zeros(Graph* const g, const int n) {
-  Tensor data(DT_FLOAT, TensorShape({n}));
+Node* Zeros(Graph* const g, const TensorShape& shape) {
+  Tensor data(DT_FLOAT, shape);
   data.flat<float>().setZero();
   return test::graph::Constant(g, data);
 }
+
+Node* Zeros(Graph* const g, const int n) { return Zeros(g, TensorShape({n})); }
 
 Node* Ones(Graph* const g, const int n) {
   Tensor data(DT_FLOAT, TensorShape({n}));
@@ -166,28 +168,25 @@ void GetGraphs(const int32 num_examples, const int32 sparse_feature_groups,
 
     Node* const weights = Ones(g, num_examples);
     Node* const labels = RandomZeroOrOne(g, num_examples);
-    Node* const ids = StringIota(g, num_examples);
+    Node* const example_state_data = Zeros(g, TensorShape({num_examples, 4}));
 
     Node* sdca = nullptr;
-    TF_CHECK_OK(
-        NodeBuilder(g->NewName("sdca"), "SdcaSolver")
-            .Attr("loss_type", "logistic_loss")
-            .Attr("num_sparse_features", sparse_feature_groups)
-            .Attr("num_dense_features", dense_feature_groups)
-            .Attr("l1", 0.0)
-            .Attr("l2", 1.0)
-            .Attr("num_inner_iterations", 2)
-            .Attr("container", strings::StrCat(strings::Hex(random::New64())))
-            .Attr("solver_uuid", strings::StrCat(strings::Hex(random::New64())))
-            .Input(sparse_indices)
-            .Input(sparse_values)
-            .Input(dense_features)
-            .Input(weights)
-            .Input(labels)
-            .Input(ids)
-            .Input(sparse_weights)
-            .Input(dense_weights)
-            .Finalize(g, &sdca));
+    TF_CHECK_OK(NodeBuilder(g->NewName("sdca"), "SdcaSolver")
+                    .Attr("loss_type", "logistic_loss")
+                    .Attr("num_sparse_features", sparse_feature_groups)
+                    .Attr("num_dense_features", dense_feature_groups)
+                    .Attr("l1", 0.0)
+                    .Attr("l2", 1.0)
+                    .Attr("num_inner_iterations", 2)
+                    .Input(sparse_indices)
+                    .Input(sparse_values)
+                    .Input(dense_features)
+                    .Input(weights)
+                    .Input(labels)
+                    .Input(sparse_weights)
+                    .Input(dense_weights)
+                    .Input(example_state_data)
+                    .Finalize(g, &sdca));
 
     *train_g = g;
   }
@@ -202,14 +201,22 @@ void BM_SDCA(const int iters, const int num_examples) {
             &train);
   testing::StartTiming();
   test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
-  // TODO(sibyl-toe9oF2e):  Each all to Run() currently creates a container which
-  // gets deleted as the context gets deleted.  It would be nicer to
-  // explicitly clean up the container ourselves at this point (after calling
-  // testing::StopTiming).
+}
+
+void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
+  testing::StopTiming();
+  Graph* init = nullptr;
+  Graph* train = nullptr;
+  GetGraphs(num_examples, 65 /* sparse feature groups */,
+            1e6 /* sparse features per group */, 0 /* dense features */, &init,
+            &train);
+  testing::StartTiming();
+  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
 }
 
 }  // namespace
 
 BENCHMARK(BM_SDCA)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
+BENCHMARK(BM_SDCA_LARGE_SPARSE)->Arg(128)->Arg(256)->Arg(512)->Arg(1024);
 
 }  // namespace tensorflow
