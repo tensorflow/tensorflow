@@ -661,8 +661,6 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
 
 static void BM_LargeTensorWrite(int iters, int num_elements) {
   testing::StopTiming();
-  // Uses kAllThreadUsage to capture executor threads, who do the real work.
-  BenchmarkMemoryUsage(::testing::kAllThreadUsage);
 
   // 4 * num_elements bytes total , since sizeof(float) == 4.
   Tensor tensor(DT_FLOAT, TensorShape({num_elements}));
