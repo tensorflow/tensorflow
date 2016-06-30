@@ -159,7 +159,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   attr.allocation_will_be_logged = true;
   Tensor new_temp(allocator_, type, shape, attr);
 
-  if (!new_temp.IsInitialized() && shape.num_elements() > 0) {
+  if (!new_temp.IsInitialized()) {
     return errors::ResourceExhausted(
         "OOM when allocating temporary tensor with shape", shape.DebugString());
   }
@@ -447,7 +447,7 @@ Status OpKernelContext::allocate_tensor(
   logged_attr.allocation_will_be_logged = true;
   Tensor new_tensor(a, type, shape, logged_attr);
 
-  if (!new_tensor.IsInitialized() && shape.num_elements() > 0) {
+  if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
                                      shape.DebugString());
   }

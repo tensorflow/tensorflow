@@ -475,7 +475,7 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
   // Store results in c_outputs[]
   for (int i = 0; i < noutputs; i++) {
     const Tensor& src = outputs[i];
-    if (!src.IsInitialized()) {
+    if (!src.IsInitialized() || src.NumElements() == 0) {
       c_outputs[i] = tensorflow::EmptyTensor(
           static_cast<TF_DataType>(src.dtype()), src.shape());
       continue;
