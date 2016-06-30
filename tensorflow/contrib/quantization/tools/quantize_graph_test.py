@@ -142,9 +142,9 @@ def are_tensors_near(a, b, tolerance):
     return True
   else:
     print("Tensors have {0} different values ({1}%), with mean difference"
-          " {2} and mean absolute difference {3}").format(
+          " {2} and mean absolute difference {3}".format(
               how_many_different, proportion_different * 100, mean_difference,
-              mean_abs_difference)
+              mean_abs_difference))
     return False
 
 

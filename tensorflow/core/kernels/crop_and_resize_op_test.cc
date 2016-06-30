@@ -189,6 +189,24 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Extrapolated) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NoCrop) {
+  MakeOp(0);
+  // Input:
+  //  1, 2
+  //  3, 4
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({0, 4}), {});
+  AddInputFromArray<int32>(TensorShape({0}), {});
+  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({0, 3, 3, 1}));
+  // clang-format off
+  test::FillValues<float>(&expected, {});
+  // clang-format on
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
   MakeOp(0);
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
@@ -198,6 +216,19 @@ TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(StringPiece(s.ToString()).contains("input image must be 4-D"))
+      << s;
+}
+
+TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
+  MakeOp(0);
+  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32>(TensorShape({2}), {4, 4});
+  Status s = RunOpKernel();
+  ASSERT_FALSE(s.ok());
+  EXPECT_TRUE(
+      StringPiece(s.ToString()).contains("box_ind has incompatible shape"))
       << s;
 }
 

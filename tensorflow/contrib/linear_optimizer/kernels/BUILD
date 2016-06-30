@@ -58,6 +58,7 @@ tf_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
+        "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

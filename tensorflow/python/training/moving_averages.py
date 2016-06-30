@@ -339,7 +339,10 @@ class ExponentialMovingAverage(object):
       by the `ExponentialMovingAverage class` to hold the moving average of
       `var`.
     """
-    return var.op.name + "/" + self._name
+    if var in self._averages:
+      return self._averages[var].op.name
+    return ops.get_default_graph().unique_name(
+        var.op.name + "/" + self._name, mark_as_used=False)
 
   def variables_to_restore(self, moving_avg_variables=None):
     """Returns a map of names to `Variables` to restore.
