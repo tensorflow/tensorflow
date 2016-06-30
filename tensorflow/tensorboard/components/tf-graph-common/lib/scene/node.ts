@@ -827,7 +827,7 @@ export function traceAllInputsOfOpNode(
   // Get visible parent.
   let currentVisibleParent = getVisibleParent(renderGraphInfo, startNode);
   // Mark as input node.
-  d3.selectAll(`[data-name="${currentVisibleParent.name}"]`)
+  d3.select(`.node[data-name="${currentVisibleParent.name}"]`)
       .classed('input-highlight', true);
 
   // Find the visible parent of each input.
@@ -1018,7 +1018,7 @@ function _markParentsOfNodes(visibleNodes: {[nodeName: string]: Node}) {
     let currentNode = nodeInstance;
 
     while (currentNode.name !== tf.graph.ROOT_NAME) {
-      let renderedElement = d3.select(`[data-name="${currentNode.name}"]`);
+      let renderedElement = d3.select(`.node[data-name="${currentNode.name}"]`);
       // Only mark the element as a parent node to an input if it is not
       // marked as input node itself.
       if (renderedElement[0][0] &&
