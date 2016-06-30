@@ -3,7 +3,7 @@ FROM ubuntu:14.04
 MAINTAINER Shanqing Cai <cais@google.com>
 
 RUN apt-get update
-RUN apt-get install -y \
+RUN apt-get install -y --no-install-recommends \
     curl \
     python \
     python-numpy \
