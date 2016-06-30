@@ -216,9 +216,19 @@ def with_same_shape(expected_tensor, tensor):
     return with_shape(expected_shape, tensor)
 
 
-def is_tensor(t):
-  """Check if `t` is a tensor: `Tensor`, `SparseTensor`, or `Variable`."""
-  return isinstance(t, (ops.Tensor, ops.SparseTensor, variables.Variable))
+def is_tensor(x):
+  """Check for tensor types.
+  Check whether an object is a tensor. Equivalent to
+  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+  Args:
+    x: An python object to check.
+
+  Returns:
+    `True` if `x` is a tensor, `False` if not.
+  """
+  tensor_types = (ops.Tensor, ops.SparseTensor, variables.Variable)
+  return isinstance(x, tensor_types)
 
 
 def with_shape(expected_shape, tensor):
