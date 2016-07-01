@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
@@ -265,7 +266,12 @@ memory_region_name: Name of readonly memory region used by the tensor, see
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("ZerosLike").Input("x: T").Output("y: T").Attr("T: type").Doc(R"doc(
+REGISTER_OP("ZerosLike")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
+    .Doc(R"doc(
 Returns a tensor of zeros with the same shape and type as x.
 
 x: a tensor of type T.
@@ -277,6 +283,15 @@ REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: {float, double, int32, int64, complex64}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* in = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(in, 3, &in));
+      // Output shape is original concatenated with itself.
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->Concatenate(in, in, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns a diagonal tensor with a given diagonal values.
 
@@ -306,6 +321,29 @@ REGISTER_OP("DiagPart")
     .Input("input: T")
     .Output("diagonal: T")
     .Attr("T: {float, double, int32, int64, complex64}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* in = c->input(0);
+      if (!c->RankKnown(in)) {
+        c->set_output(0, c->CreateUnknownShape());
+        return Status::OK();
+      }
+      // Rank must be even, and result will have rank <rank/2>.
+      const int32 rank = c->Rank(in);
+      if ((rank % 2) != 0 || rank > 6) {
+        return errors::InvalidArgument(
+            "Input must have even rank <= 6, input rank is ", rank);
+      }
+      const int32 mid = rank / 2;
+
+      // output dim[i] is the merge of in.dim[i] and in.dim[i+mid].
+      std::vector<const Dimension*> dims(mid);
+      for (int i = 0; i < mid; ++i) {
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->Dim(in, i), c->Dim(in, i + mid), &dims[i]));
+      }
+      c->set_output(0, c->CreateShape(dims));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns the diagonal part of the tensor.
 
@@ -338,6 +376,20 @@ REGISTER_OP("BatchMatrixDiag")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* in;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &in));
+      if (!c->RankKnown(in)) {
+        c->set_output(0, c->CreateUnknownShape());
+        return Status::OK();
+      }
+      const int32 rank = c->Rank(in);
+      const Shape* out;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(in, c->CreateShape({c->Dim(in, rank - 1)}), &out));
+      c->set_output(0, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns a batched diagonal tensor with a given batched diagonal values.
 
@@ -377,6 +429,25 @@ REGISTER_OP("BatchMatrixDiagPart")
     .Input("input: T")
     .Output("diagonal: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* in;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &in));
+      if (!c->RankKnown(in)) {
+        c->set_output(0, c->CreateUnknownShape());
+        return Status::OK();
+      }
+      const int32 rank = c->Rank(in);
+      // Last two dims must match.
+      const Dimension* unused;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(in, rank - 1), c->Dim(in, rank - 2), &unused));
+
+      // Output shape has all dims but last of input.
+      std::vector<const Dimension*> dims;
+      for (int i = 0; i < rank - 1; ++i) dims.push_back(c->Dim(in, i));
+      c->set_output(0, c->CreateShape(dims));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns the batched diagonal part of a batched tensor.
 
@@ -421,6 +492,7 @@ REGISTER_OP("BatchMatrixBandPart")
     .Input("num_upper: int64")
     .Output("band: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
     .Doc(R"doc(
 Copy a tensor setting everything outside a central band in each innermost matrix
 to zero.

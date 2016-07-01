@@ -125,6 +125,21 @@ Status InferenceContext::WithRankAtLeast(const Shape* shape, int32 rank,
                                  " but is rank ", existing);
 }
 
+Status InferenceContext::WithRankAtMost(const Shape* shape, int32 rank,
+                                        const Shape** out) {
+  const int32 existing = Rank(shape);
+  if (existing == kUnknownRank) {
+    return ReturnUnknownShape(out);
+  }
+  if (existing <= rank) {
+    *out = shape;
+    return Status::OK();
+  }
+  *out = nullptr;
+  return errors::InvalidArgument("Shape must be at most rank ", rank,
+                                 " but is rank ", existing);
+}
+
 Status InferenceContext::WithValue(const Dimension* dim, int64 value,
                                    const Dimension** out) {
   const int64 existing = Value(dim);

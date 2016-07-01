@@ -134,4 +134,49 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
                        "");
 }
 
+TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
+  for (const char* op : {"ZerosLike", "BatchMatrixBandPart"}) {
+    INFER_OK(op, "?", "in0");
+    INFER_OK(op, "[]", "in0");
+    INFER_OK(op, "[1,2,?,4,5]", "in0");
+  }
+}
+
+TEST(ArrayOpsTest, Diag_ShapeFn) {
+  const char op[] = "Diag";
+  INFER_OK(op, "?", "?");
+  INFER_OK(op, "[]", "[]");
+  INFER_OK(op, "[1,?,3]", "[d0_0,d0_1,d0_2,d0_0,d0_1,d0_2]");
+  INFER_ERROR("Shape must be at most rank 3 but is rank 4", op, "[?,1,2,3]");
+}
+
+TEST(ArrayOpsTest, DiagPart_ShapeFn) {
+  const char op[] = "DiagPart";
+  INFER_OK(op, "?", "?");
+  INFER_OK(op, "[]", "[]");
+  INFER_OK(op, "[1,?,?,4]", "[d0_0,d0_3]");
+  INFER_OK(op, "[1,?,3,?,4,3]", "[d0_0,d0_4,d0_2|d0_5]");
+  INFER_ERROR("Input must have even rank <= 6, input rank is 1", op, "[?]");
+  INFER_ERROR("Input must have even rank <= 6, input rank is 3", op, "[1,2,3]");
+  INFER_ERROR("Input must have even rank <= 6, input rank is 8", op,
+              "[1,2,3,?,?,?,?,?]");
+  INFER_ERROR("Dimensions must be equal, but are 2 and 10", op, "[1,2,?,10]");
+}
+
+TEST(ArrayOpsTest, BatchMatrixDiag_ShapeFn) {
+  const char op[] = "BatchMatrixDiag";
+  INFER_OK(op, "?", "?");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
+  INFER_OK(op, "[?]", "[d0_0,d0_0]");
+  INFER_OK(op, "[1,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,d0_3]");
+}
+
+TEST(ArrayOpsTest, BatchMatrixDiagPart_ShapeFn) {
+  const char op[] = "BatchMatrixDiagPart";
+  INFER_OK(op, "?", "?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[?]");
+  INFER_OK(op, "[?,1,2,2]", "[d0_0,d0_1,d0_2|d0_3]");
+  INFER_ERROR("Dimensions must be equal, but are 3 and 2", op, "[1,2,3]");
+}
+
 }  // end namespace tensorflow

@@ -94,6 +94,41 @@ TEST(ShapeInferenceTest, WithRank) {
   EXPECT_EQ("[1,?,3]", c.DebugString(in1));
 }
 
+TEST(ShapeInferenceTest, WithRankAtMost) {
+  NodeDef def;
+  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */);
+
+  auto in0 = c.input(0);
+  auto in1 = c.input(1);
+  const Shape* s1 = nullptr;
+  const Shape* s2 = nullptr;
+
+  // WithRankAtMost on a shape with unknown dimensionality always succeeds.
+  EXPECT_TRUE(c.WithRankAtMost(in0, 1, &s1).ok());
+  EXPECT_EQ("?", c.DebugString(s1));
+  EXPECT_TRUE(in0 != s1);  // different pointers
+
+  EXPECT_TRUE(c.WithRankAtMost(in0, 2, &s2).ok());
+  EXPECT_EQ("?", c.DebugString(s2));
+  EXPECT_TRUE(s1 != s2);  // different pointers
+
+  // WithRankAtMost on shape with known dimensionality.
+  s1 = in1;
+  EXPECT_EQ("Invalid argument: Shape must be at most rank 2 but is rank 3",
+            c.WithRankAtMost(in1, 2, &s1).ToString());
+  EXPECT_TRUE(s1 == nullptr);
+  EXPECT_TRUE(c.WithRankAtMost(in1, 3, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+  EXPECT_TRUE(c.WithRankAtMost(in1, 4, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+  EXPECT_TRUE(c.WithRankAtMost(in1, 5, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+
+  // Inputs are unchanged.
+  EXPECT_EQ("?", c.DebugString(in0));
+  EXPECT_EQ("[1,?,3]", c.DebugString(in1));
+}
+
 TEST(ShapeInferenceTest, WithRankAtLeast) {
   NodeDef def;
   InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */);
