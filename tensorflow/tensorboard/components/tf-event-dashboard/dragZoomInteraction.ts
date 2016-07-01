@@ -17,8 +17,6 @@ module Plottable {
 export class DragZoomLayer extends Components.SelectionBoxLayer {
   private _dragInteraction: Interactions.Drag;
   private _doubleClickInteraction: Interactions.DoubleClick;
-  private xDomainToRestore: any[];
-  private yDomainToRestore: any[];
   private isZoomed = false;
   private easeFn: (t: number) => number = d3.ease('cubic-in-out');
   private _animationTime = 750;
@@ -133,8 +131,6 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
 
     if (!this.isZoomed) {
       this.isZoomed = true;
-      this.xDomainToRestore = this.xScale().domain();
-      this.yDomainToRestore = this.yScale().domain();
     }
     this.interpolateZoom(x0, x1, y0, y1);
   }
@@ -145,8 +141,22 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
       return;
     }
     this.isZoomed = false;
-    this.interpolateZoom(this.xDomainToRestore[0], this.xDomainToRestore[1],
-                         this.yDomainToRestore[0], this.yDomainToRestore[1]);
+
+    // Some Plottable magic follows which ensures that when we un-zoom, we
+    // un-zoom to the current extent of the data; i.e. if new data was loaded
+    // since we zoomed, we should un-zoom to the extent of the new data.
+    // this basically replicates the autoDomain logic in Plottable.
+    // it uses the internal methods to get the same boundaries that autoDomain
+    // would, but allows us to interpolate the zoom with a nice animation.
+    let xScale = this.xScale() as any;
+    let yScale = this.yScale() as any;
+    xScale._domainMin = null;
+    xScale._domainMax = null;
+    yScale._domainMin = null;
+    yScale._domainMax = null;
+    let xDomain = xScale._getExtent();
+    let yDomain = yScale._getExtent();
+    this.interpolateZoom(xDomain[0], xDomain[1], yDomain[0], yDomain[1]);
   }
 
   // If we are zooming, disable interactions, to avoid contention
