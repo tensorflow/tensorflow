@@ -764,7 +764,7 @@ For example:
 *  <b>`TypeError`</b>: If `sp_input` is not a `SparseTensor`.
 *  <b>`ValueError`</b>: If `new_shape` represents a tensor with a different rank from
     that of `sp_input` (if shapes are known when graph is constructed).
-*  <b>`OpError`</b>:
+*  <b>`OpError`</b>: 
     - If `new_shape` has dimension sizes that are too small.
     - If shapes are not known during graph construction time, and during run
       time it is found out that the ranks do not match.
@@ -1153,3 +1153,5 @@ B dense [k, n]
     A = A.H if adjoint_a else A
     B = B.H if adjoint_b else B
     return A*B
+
+
