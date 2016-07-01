@@ -1101,7 +1101,8 @@ def _NodeDef(op_type, name, device=None, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-/]*")
+_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/]*$")
 
 
 class Operation(object):
@@ -2696,7 +2697,7 @@ class Graph(object):
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def name_scope(self, name):
-    """Returns a context manager that creates hierarchical names for operations.
+    r"""Returns a context manager that creates hierarchical names for operations.
 
     A graph maintains a stack of name scopes. A `with name_scope(...):`
     statement pushes a new name onto the stack for the lifetime of the context.
@@ -2763,12 +2764,33 @@ class Graph(object):
       output = tf.nn.relu(affine, name=scope)
     ```
 
+    NOTE: This constructor validates the given `name`. Valid scope
+    names match one of the following regular expressions:
+
+        [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (for scopes at the root)
+        [A-Za-z0-9_.\\-/]* (for other scopes)
+
     Args:
       name: A name for the scope.
 
     Returns:
       A context manager that installs `name` as a new name scope.
+
+    Raises:
+      ValueError: If `name` is not a valid scope name. The rules are the
     """
+    if name:
+      if self._name_stack:
+        # Scopes created in a nested scope may have initial characters
+        # that are illegal as the initial character of an op name
+        # (viz. '-', '\', '/', and '_').
+        if not _VALID_SCOPE_NAME_REGEX.match(name):
+          raise ValueError("'%s' is not a valid scope name" % name)
+      else:
+        # Scopes created in the root must match the more restrictive
+        # op name regex, which constrains the initial character.
+        if not _VALID_OP_NAME_REGEX.match(name):
+          raise ValueError("'%s' is not a valid scope name" % name)
     try:
       old_stack = self._name_stack
       if not name:  # Both for name=None and name="" we re-set to empty scope.
