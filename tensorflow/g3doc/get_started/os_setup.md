@@ -952,6 +952,14 @@ SyntaxError: invalid syntax
 
 Solution: make sure you are using Python 2.7.
 
+#### Ubuntu build issue on Linux 16.04 when building with --config=cuda: build fail with cuda: identifier "__builtin_ia32_mwaitx" is undefined.
+GitHub issue: https://github.com/tensorflow/tensorflow/issues/1066
+
+Solution: Add the following compiler flags to third_party/gpus/crosstool/CROSSTOOL
+
+cxx_flag: "-D_MWAITXINTRIN_H_INCLUDED"
+cxx_flag: "-D_FORCE_INLINES"
+
 ### Mac OS X: ImportError: No module named copyreg
 
 On Mac OS X, you may encounter the following when importing tensorflow.
