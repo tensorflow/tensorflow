@@ -120,6 +120,13 @@ class SparseXentTest(tf.test.TestCase):
         tf.nn.sparse_softmax_cross_entropy_with_logits(
             tf.constant(1.0), tf.constant(0))
 
+  def testLabelsPlaceholderScalar(self):
+    with self.test_session():
+      labels = tf.placeholder(np.int32)
+      y = tf.nn.sparse_softmax_cross_entropy_with_logits([[7.]], labels)
+      with self.assertRaisesOpError("labels must be 1-D"):
+        y.eval(feed_dict={labels: 0})
+
   def testVector(self):
     with self.test_session():
       loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -144,6 +151,9 @@ class SparseXentTest(tf.test.TestCase):
       self._testAll(
           np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
           np.array([3, 0]).astype(label_dtype))
+
+  def testEmpty(self):
+    self._testXent(np.zeros((0, 3)), np.zeros((0,), dtype=np.int32))
 
   def testGradient(self):
     with self.test_session():

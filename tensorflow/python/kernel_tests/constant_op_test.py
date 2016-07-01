@@ -516,6 +516,9 @@ class FillTest(tf.test.TestCase):
         tf.placeholder(tf.int32, shape=(4,)), 3.0)
     self.assertEqual([None, None, None, None], f.get_shape().as_list())
 
+    f = tf.fill([tf.placeholder(tf.int32, shape=()), 17], 1.0)
+    self.assertEqual([None, 17], f.get_shape().as_list())
+
   def testGradient(self):
     with self.test_session():
       in_v = tf.constant(5.0)

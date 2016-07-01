@@ -199,7 +199,9 @@ class PersistentTensor {
 
   // The check for initialization does not need to access the
   // underlying tensor buffer.
-  bool IsInitialized() { return tensor_.IsInitialized(); }
+  bool IsInitialized() const { return tensor_.IsInitialized(); }
+
+  int64 NumElements() const { return tensor_.NumElements(); }
 
  private:
   Tensor tensor_;

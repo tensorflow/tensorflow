@@ -95,8 +95,7 @@ class SdcaModel(object):
     ```
 
     In the training program you will just have to run the returned Op from
-    minimize(). You should also eventually cleanup the temporary state used by
-    the model, by resetting its (possibly shared) container.
+    minimize().
 
     ```python
     # Execute opt_op and train for num_steps.

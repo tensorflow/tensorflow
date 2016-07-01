@@ -1812,10 +1812,13 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "ops/math_ops_test",
+tf_cc_tests(
     size = "small",
     linkstatic = tf_kernel_tests_linkstatic(),
+    tests = [
+        "ops/array_ops_test.cc",
+        "ops/math_ops_test.cc",
+    ],
     deps = [
         ":core",
         ":core_cpu",

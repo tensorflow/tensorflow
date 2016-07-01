@@ -47,6 +47,10 @@ initialized with parameters that define the distributions.
 
 @@DirichletMultinomial
 
+### Transformed distributions
+
+@@ContinuousTransformedDistribution
+
 ## Operators allowing for matrix-free methods
 
 ### Positive definite operators
@@ -95,4 +99,5 @@ from tensorflow.contrib.distributions.python.ops.operator_pd import *
 from tensorflow.contrib.distributions.python.ops.operator_pd_cholesky import *
 from tensorflow.contrib.distributions.python.ops.operator_pd_full import *
 from tensorflow.contrib.distributions.python.ops.student_t import *
+from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *

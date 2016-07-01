@@ -781,7 +781,14 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
 
 
 class SdcaFprintTest(TensorFlowTestCase):
-  """Tests for the SdcaFprint op."""
+  """Tests for the SdcaFprint op.
+
+  This is one way of enforcing the platform-agnostic nature of SdcaFprint.
+  Basically we are checking against exact values and this test could be running
+  across different platforms. Note that it is fine for expected values to change
+  in the future, if the implementation of SdcaFprint changes (ie this is *not* a
+  frozen test).
+  """
 
   def testFprint(self):
     with self.test_session():

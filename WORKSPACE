@@ -70,7 +70,7 @@ new_git_repository(
   name = "iron_a11y_keys_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-a11y-keys-behavior.git",
-  tag = "v1.1.5",
+  tag = "v1.1.6",
 )
 
 new_git_repository(

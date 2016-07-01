@@ -47,8 +47,8 @@ cc_library(
         "-lpthread",
     ] + select({
         "//tensorflow:darwin": [],
-        "//conditions:default": ["-lrt"]
-    }),    
+        "//conditions:default": ["-lrt"],
+    }),
     deps = [
         "//tensorflow/core:lib",
     ],

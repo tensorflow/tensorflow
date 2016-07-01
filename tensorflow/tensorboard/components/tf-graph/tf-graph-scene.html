@@ -72,6 +72,7 @@
 ::content .faded rect,
 ::content .faded ellipse,
 ::content .faded path,
+::content .faded use,
 ::content #rectHatch line,
 ::content #ellipseHatch line {
   color: #e0d4b3 !important;
@@ -88,7 +89,8 @@
   fill: url(#rectHatch) !important;
 }
 
-::content .faded ellipse {
+::content .faded ellipse,
+::content .faded use {
   fill: url(#ellipseHatch) !important;
 }
 
@@ -111,8 +113,12 @@
 ::content .non-input > * > use,
 /* For Const nodes. */
 ::content .non-input > * > .constant:not([class*="input-highlight"]) >
-.annotation-node > ellipse {
+  .annotation-node > ellipse,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect {
   stroke: #e0d4b3 !important;
+  stroke-width: inherit;
+  stroke-dasharray: inherit;
 }
 
 
@@ -121,7 +127,9 @@
 }
 
 ::content .non-input > .nodeshape > rect,
-::content .non-input > .annotation-node > rect
+::content .non-input > .annotation-node > rect,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect
 {
   fill: url(#rectHatch) !important;
 }
