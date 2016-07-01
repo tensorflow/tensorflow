@@ -125,8 +125,21 @@ class Coordinator(object):
   ```
   """
 
-  def __init__(self):
-    """Create a new Coordinator."""
+  def __init__(self, clean_stop_exception_types=None):
+    """Create a new Coordinator.
+
+    Args:
+      clean_stop_exception_types: Optional tuple of Exception types that should
+        cause a clean stop of the coordinator. If an exception of one of these
+        types is reported to `request_stop(ex)` the coordinator will behave as
+        if `request_stop(None)` was called.  Defaults to
+        `(tf.errors.OutOfRangeError,)` which is used by input queues to signal
+        the end of input. When feeding training data from a Python iterator it
+        is common to add `StopIteration` to this list.
+    """
+    if clean_stop_exception_types is None:
+      clean_stop_exception_types = (errors.OutOfRangeError,)
+    self._clean_stop_exception_types = clean_stop_exception_types
     # Protects all attributes.
     self._lock = threading.Lock()
     # Event set when threads must stop.
@@ -143,9 +156,8 @@ class Coordinator(object):
     reported to the users.  If yes, it returns `ex` as is, otherwise it returns
     None.
 
-    The code returns None for exceptions that are used for control flow such as
-    the OutOfRangeError raised by the dequeue operations to indicate that a
-    queue was closed after its contents were dequeued.
+    The code returns None for exception types listed in
+    `_clean_stop_exception_types`.
 
     Args:
       ex: None, an `Exception`, or a Python `exc_info` tuple as returned by
@@ -158,12 +170,7 @@ class Coordinator(object):
       ex2 = ex[1]
     else:
       ex2 = ex
-    # OutOfRangeError is used to indicate "end of input".  We do not want to
-    # report an exception for it.  TODO(touts): Likely also need to ignore
-    # some of the Aborted and Cancelled exceptions raised by queue ops after
-    # queues are closed, but this can only be done after these exceptions have
-    # been clearly identified.
-    if isinstance(ex2, (errors.OutOfRangeError)):
+    if isinstance(ex2, self._clean_stop_exception_types):
       # Ignore the exception.
       ex = None
     return ex
