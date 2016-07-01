@@ -121,7 +121,7 @@ Each estimator has a ``save`` method which takes folder path where all model inf
 Some example code:
 
 ```python
-classifier = learn.LinearRegression()
+classifier = learn.LinearRegressor()
 classifier.fit(...)
 classifier.save('/tmp/tf_examples/my_model_1/')
 
@@ -134,7 +134,7 @@ new_classifier.predict(...)
 To get nice visualizations and summaries you can use ``logdir`` parameter on ``fit``. It will start writing summaries for ``loss`` and histograms for variables in your model. You can also add custom summaries in your custom model function by calling ``tf.summary`` and passing Tensors to report.
 
 ```python
-classifier = learn.LinearRegression()
+classifier = learn.LinearRegressor()
 classifier.fit(x, y, logdir='/tmp/tf_examples/my_model_1/')
 ```
 
