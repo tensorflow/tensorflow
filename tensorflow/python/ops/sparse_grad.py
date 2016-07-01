@@ -256,3 +256,15 @@ def _SparseSoftmaxGrad(op, grad):
 
   grad_x = sp_sum.values * sp_output.values
   return [None, grad_x, None]
+
+
+@ops.RegisterGradient("SparseSparseMaximum")
+def _SparseSparseMaximumGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for SparseSparseMaximum is currently not"
+                            " implemented yet.")
+
+
+@ops.RegisterGradient("SparseSparseMinimum")
+def _SparseSparseMinimumGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for SparseSparseMinimum is currently not"
+                            " implemented yet.")
