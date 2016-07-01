@@ -232,7 +232,7 @@ print(accuracy.eval(feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
 
 ## Build a Multilayer Convolutional Network
 
-Getting 91% accuracy on MNIST is bad. It's almost embarrassingly bad. In this
+Getting 92% accuracy on MNIST is bad. It's almost embarrassingly bad. In this
 section, we'll fix that, jumping from a very simple model to something
 moderately sophisticated: a small convolutional neural network. This will get us
 to around 99.2% accuracy -- not state of the art, but respectable.
@@ -243,7 +243,7 @@ To create this model, we're going to need to create a lot of weights and biases.
 One should generally initialize weights with a small amount of noise for
 symmetry breaking, and to prevent 0 gradients. Since we're using ReLU neurons,
 it is also good practice to initialize them with a slightly positive initial
-bias to avoid "dead neurons." Instead of doing this repeatedly while we build
+bias to avoid "dead neurons". Instead of doing this repeatedly while we build
 the model, let's create two handy functions to do it for us.
 
 ```python
