@@ -98,9 +98,13 @@ def input_from_feature_columns(columns_to_tensors,
                                     [ops.GraphKeys.VARIABLES]))
 
     for column in sorted(set(feature_columns), key=lambda x: x.key):
-      transformed_tensor = transformer.transform(column)
-      output_tensors.append(column.to_dnn_input_layer(
-          transformed_tensor, weight_collections, trainable))
+      try:
+        transformed_tensor = transformer.transform(column)
+        output_tensors.append(column.to_dnn_input_layer(
+            transformed_tensor, weight_collections, trainable))
+      except ValueError as e:
+        raise ValueError('Error creating input layer for column: {}.\n'
+                         '{}'.format(column.name, e))
     return array_ops.concat(1, output_tensors)
 
 
@@ -174,11 +178,15 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     column_to_variable = dict()
     transformer = _Transformer(columns_to_tensors)
     for column in sorted(set(feature_columns), key=lambda x: x.key):
-      transformed_tensor = transformer.transform(column)
-      predictions, variable = column.to_weighted_sum(transformed_tensor,
-                                                     num_outputs,
-                                                     weight_collections,
-                                                     trainable)
+      try:
+        transformed_tensor = transformer.transform(column)
+        predictions, variable = column.to_weighted_sum(transformed_tensor,
+                                                       num_outputs,
+                                                       weight_collections,
+                                                       trainable)
+      except ValueError as e:
+        raise ValueError('Error creating weighted sum for column: {}.\n'
+                         '{}'.format(column.name, e))
       output_tensors.append(predictions)
       column_to_variable[column] = variable
       _log_variable(variable)
@@ -305,7 +313,10 @@ def check_feature_columns(feature_columns):
   for f in feature_columns:
     key = f.key
     if key in seen_keys:
-      raise ValueError('Duplicate feature column key found: %s' % key)
+      raise ValueError('Duplicate feature column key found for column: {}. '
+                       'This usually means that the column is almost identical '
+                       'to another column, and one must be discarded.'.format(
+                           f.name))
     seen_keys.add(key)
 
 

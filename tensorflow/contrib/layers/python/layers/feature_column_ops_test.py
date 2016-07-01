@@ -341,9 +341,12 @@ class InputLayerTest(tf.test.TestCase):
 
     # Makes sure that trying to use different initializers with the same
     # embedding column explicitly fails.
-    with self.assertRaises(ValueError):
-      tf.contrib.layers.input_from_feature_columns(
-          features, [embedded_sparse, embedded_sparse_alternate])
+    with self.test_session():
+      with self.assertRaisesRegexp(
+          ValueError,
+          "Duplicate feature column key found for column: wire_embedding"):
+        tf.contrib.layers.input_from_feature_columns(
+            features, [embedded_sparse, embedded_sparse_alternate])
 
   def testSparseColumn(self):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
@@ -351,9 +354,11 @@ class InputLayerTest(tf.test.TestCase):
                                   indices=[[0, 0], [1, 0], [1, 1]],
                                   shape=[2, 2])
     features = {"wire": wire_tensor}
-    with self.assertRaises(ValueError):
-      tf.initialize_all_variables().run()
-      tf.contrib.layers.input_layer(features, [hashed_sparse])
+    with self.test_session():
+      with self.assertRaisesRegexp(
+          ValueError, "Error creating input layer for column: wire"):
+        tf.initialize_all_variables().run()
+        tf.contrib.layers.input_from_feature_columns(features, [hashed_sparse])
 
   def testCrossedColumn(self):
     a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
@@ -366,9 +371,11 @@ class InputLayerTest(tf.test.TestCase):
                                   indices=[[0, 0], [1, 0], [1, 1]],
                                   shape=[2, 2])
     features = {"aaa": wire_tensor, "bbb": wire_tensor}
-    with self.assertRaises(ValueError):
-      tf.initialize_all_variables().run()
-      tf.contrib.layers.input_layer(features, [crossed])
+    with self.test_session():
+      with self.assertRaisesRegexp(
+          ValueError, "Error creating input layer for column: aaa_X_bbb"):
+        tf.initialize_all_variables().run()
+        tf.contrib.layers.input_from_feature_columns(features, [crossed])
 
   def testAllColumns(self):
     real_valued = tf.contrib.layers.real_valued_column("income", 3)
@@ -477,10 +484,13 @@ class WeightedSumTest(tf.test.TestCase):
                                   shape=[2, 2])
     features = {"wire": wire_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(hashed_sparse, 10)
-    with self.assertRaises(ValueError):
-      tf.initialize_all_variables().run()
-      tf.contrib.layers.weighted_sum_from_feature_columns(features,
-                                                          [embeded_sparse])
+    with self.test_session():
+      with self.assertRaisesRegexp(
+          ValueError, "Error creating weighted sum for column: wire_embedding"):
+        tf.initialize_all_variables().run()
+        tf.contrib.layers.weighted_sum_from_feature_columns(features,
+                                                            [embeded_sparse],
+                                                            num_outputs=5)
 
   def testRealValuedColumnWithMultiDimensions(self):
     real_valued = tf.contrib.layers.real_valued_column("price", 2)
