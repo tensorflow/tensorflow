@@ -59,8 +59,8 @@ Simple linear classification:
 from sklearn import datasets, metrics
 
 iris = datasets.load_iris()
-classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-classifier.fit(iris.data, iris.target)
+classifier = learn.LinearClassifier(n_classes=3)
+classifier.fit(iris.data, iris.target, steps=200, batch_size=32)
 score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
@@ -74,8 +74,8 @@ from sklearn import datasets, metrics, preprocessing
 
 boston = datasets.load_boston()
 x = preprocessing.StandardScaler().fit_transform(boston.data)
-regressor = learn.TensorFlowLinearRegressor()
-regressor.fit(x, boston.target)
+regressor = learn.LinearRegressor()
+regressor.fit(x, boston.target, steps=200, batch_size=32)
 score = metrics.mean_squared_error(regressor.predict(x), boston.target)
 print ("MSE: %f" % score)
 ```
@@ -88,15 +88,15 @@ Example of 3 layer network with 10, 20 and 10 hidden units respectively:
 from sklearn import datasets, metrics
 
 iris = datasets.load_iris()
-classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
-classifier.fit(iris.data, iris.target)
+classifier = learn.DNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
+classifier.fit(iris.data, iris.target, steps=200, batch_size=32)
 score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
 ```
 
 ## Custom model
 
-Example of how to pass a custom model to the TensorFlowEstimator:
+Example of how to pass a custom model to the Estimator:
 
 ```python
 from sklearn import datasets, metrics
@@ -108,7 +108,7 @@ def my_model(x, y):
     layers = learn.ops.dnn(x, [10, 20, 10], dropout=0.5)
     return learn.models.logistic_regression(layers, y)
 
-classifier = learn.TensorFlowEstimator(model_fn=my_model, n_classes=3)
+classifier = learn.Estimator(model_fn=my_model, n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
@@ -116,16 +116,16 @@ print("Accuracy: %f" % score)
 
 ## Saving / Restoring models
 
-Each estimator has a ``save`` method which takes folder path where all model information will be saved. For restoring you can just call ``learn.TensorFlowEstimator.restore(path)`` and it will return object of your class.
+Each estimator has a ``save`` method which takes folder path where all model information will be saved. For restoring you can just call ``learn.Estimator.restore(path)`` and it will return object of your class.
 
 Some example code:
 
 ```python
-classifier = learn.TensorFlowLinearRegression()
+classifier = learn.LinearRegressor()
 classifier.fit(...)
 classifier.save('/tmp/tf_examples/my_model_1/')
 
-new_classifier = TensorFlowEstimator.restore('/tmp/tf_examples/my_model_2')
+new_classifier = Estimator.restore('/tmp/tf_examples/my_model_2')
 new_classifier.predict(...)
 ```
 
@@ -134,7 +134,7 @@ new_classifier.predict(...)
 To get nice visualizations and summaries you can use ``logdir`` parameter on ``fit``. It will start writing summaries for ``loss`` and histograms for variables in your model. You can also add custom summaries in your custom model function by calling ``tf.summary`` and passing Tensors to report.
 
 ```python
-classifier = learn.TensorFlowLinearRegression()
+classifier = learn.LinearRegressor()
 classifier.fit(x, y, logdir='/tmp/tf_examples/my_model_1/')
 ```
 
