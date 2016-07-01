@@ -232,7 +232,7 @@ print(accuracy.eval(feed_dict={x: mnist.test.images, y_: mnist.test.labels}))
 
 ## Build a Multilayer Convolutional Network
 
-Getting 91% accuracy on MNIST is bad. It's almost embarrassingly bad. In this
+Getting 92% accuracy on MNIST is bad. It's almost embarrassingly bad. In this
 section, we'll fix that, jumping from a very simple model to something
 moderately sophisticated: a small convolutional neural network. This will get us
 to around 99.2% accuracy -- not state of the art, but respectable.
