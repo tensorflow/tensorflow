@@ -61,7 +61,7 @@ On Ubuntu, you can do this:
 ```bash
 sudo apt-get install autoconf automake libtool curl make g++ unzip
 pushd .
-cd tensforflow/contrib/makefile/downloads/protobuf
+cd tensorflow/contrib/makefile/downloads/protobuf
 ./autogen.sh
 ./configure
 make
@@ -104,7 +104,7 @@ tensorflow/contrib/makefile/gen/bin/benchmark \
 ## Android
 
 First, you will need to download and unzip the
-[Native Development Kit (NDK)](http://developers.google.com/ndk). You will not
+[Native Development Kit (NDK)](https://developer.android.com/ndk/). You will not
 need to install the standalone toolchain, however.
 
 Assign your NDK location to $NDK_ROOT:
