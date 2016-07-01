@@ -48,7 +48,9 @@ _INV = lambda x: ~x
 
 # TODO(zongheng): it'd be great to factor out this function and various random
 # SparseTensor gen funcs.
-def _sparsify(x, thresh=0.5, index_dtype=np.int64):
+def _sparsify(x, thresh, index_dtype=np.int64):
+  if thresh is None:
+    thresh = 0.5
   x[x < thresh] = 0
 
   non_zero = np.where(x)
@@ -126,8 +128,8 @@ class UnaryOpTest(tf.test.TestCase):
       self.assertAllClose(result_np, result_tensor.values.eval(), rtol=tol,
                           atol=tol)
 
-  def _compareSparseCpu(self, x, np_func, tf_func, tol):
-    x_sp, x_sp_vals = _sparsify(x)
+  def _compareSparseCpu(self, x, np_func, tf_func, tol, thresh):
+    x_sp, x_sp_vals = _sparsify(x, thresh)
     res_np = np_func(x_sp_vals)
     with self.test_session(use_gpu=False):
       self._check(tf_func(x_sp), res_np, x_sp, tol)
@@ -143,8 +145,8 @@ class UnaryOpTest(tf.test.TestCase):
       self.assertAllClose(np_ans, tf_gpu)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
-  def _compareSparseGpu(self, x, np_func, tf_func, tol):
-    x_sp, x_sp_vals = _sparsify(x)
+  def _compareSparseGpu(self, x, np_func, tf_func, tol, thresh):
+    x_sp, x_sp_vals = _sparsify(x, thresh)
     res_np = np_func(x_sp_vals)
     with self.test_session(use_gpu=True):
       self._check(tf_func(x_sp), res_np, x_sp, tol)
@@ -153,9 +155,9 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np_func, tf_func)
     self._compareGpu(x, np_func, tf_func)
 
-  def _compareBothSparse(self, x, np_func, tf_func, tol=None):
-    self._compareSparseCpu(x, np_func, tf_func, tol)
-    self._compareSparseGpu(x, np_func, tf_func, tol)
+  def _compareBothSparse(self, x, np_func, tf_func, tol=None, thresh=None):
+    self._compareSparseCpu(x, np_func, tf_func, tol, thresh)
+    self._compareSparseGpu(x, np_func, tf_func, tol, thresh)
 
   def _inv(self, x):
     return 1.0 / x
@@ -220,8 +222,10 @@ class UnaryOpTest(tf.test.TestCase):
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
     self._compareBoth(x, np.tanh, tf.tanh)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     x = np.arange(-40, -40 + 6).reshape(6).astype(np.float32)
     self._compareBoth(x, np.tanh, tf.tanh)
+    self._compareBothSparse(x, np.tanh, tf.tanh, thresh=-40)
 
   def testFloatEmpty(self):
     x = np.empty((2, 0, 5), dtype=np.float32)
