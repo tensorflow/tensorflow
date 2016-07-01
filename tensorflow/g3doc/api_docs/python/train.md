@@ -1214,9 +1214,20 @@ except Exception:
 ```
 - - -
 
-#### `tf.train.Coordinator.__init__()` {#Coordinator.__init__}
+#### `tf.train.Coordinator.__init__(clean_stop_exception_types=None)` {#Coordinator.__init__}
 
 Create a new Coordinator.
+
+##### Args:
+
+
+*  <b>`clean_stop_exception_types`</b>: Optional tuple of Exception types that should
+    cause a clean stop of the coordinator. If an exception of one of these
+    types is reported to `request_stop(ex)` the coordinator will behave as
+    if `request_stop(None)` was called.  Defaults to
+    `(tf.errors.OutOfRangeError,)` which is used by input queues to signal
+    the end of input. When feeding training data from a Python iterator it
+    is common to add `StopIteration` to this list.
 
 
 - - -

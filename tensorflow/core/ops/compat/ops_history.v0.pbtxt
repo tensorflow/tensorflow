@@ -20209,6 +20209,34 @@ op {
   }
 }
 op {
+  name: "SigmoidGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "Sign"
   input_arg {
     name: "x"
@@ -24541,6 +24569,34 @@ op {
   }
   output_arg {
     name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "TanhGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
     type_attr: "T"
   }
   attr {

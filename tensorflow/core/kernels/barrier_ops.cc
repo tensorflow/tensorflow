@@ -354,7 +354,8 @@ class Barrier : public ResourceBase {
         element.push_back(PersistentTensor(uninitialized));
       }
     }
-    if (element[1 + component_index].IsInitialized()) {
+    const PersistentTensor& component = element[1 + component_index];
+    if (component.IsInitialized() && component.NumElements() > 0) {
       return errors::InvalidArgument("Key ", keys_vec(i),
                                      " already has a value for component ",
                                      component_index, " in barrier ", name());
@@ -374,7 +375,7 @@ class Barrier : public ResourceBase {
     // ready queue.
     bool is_complete = true;
     for (int j = 0; is_complete && j < element.size(); ++j) {
-      is_complete = element[j].IsInitialized();
+      is_complete = element[j].IsInitialized() && element[j].NumElements() > 0;
     }
     if (is_complete) {
       // Add tuple to the ready queue. A queue tuple has the index

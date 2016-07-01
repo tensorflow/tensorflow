@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -272,7 +273,7 @@ def _TanhGrad(op, grad):
   with ops.control_dependencies([grad.op]):
     if y.dtype.is_complex:
       y = math_ops.conj(y)
-    return grad * (1 - math_ops.square(y))
+    return gen_math_ops._tanh_grad(y, grad)
 
 
 @ops.RegisterGradient("Erf")
@@ -374,7 +375,7 @@ def _SigmoidGrad(op, grad):
   with ops.control_dependencies([grad.op]):
     if y.dtype.is_complex:
       y = math_ops.conj(y)
-    return grad * (y * (1 - y))
+    return gen_math_ops._sigmoid_grad(y, grad)
 
 
 @ops.RegisterGradient("Sign")

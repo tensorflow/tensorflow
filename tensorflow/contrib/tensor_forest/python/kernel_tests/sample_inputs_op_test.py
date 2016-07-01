@@ -41,7 +41,8 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
       tf.initialize_all_variables().run()
       indices, feature_updates, threshold_updates = (
           self.ops.sample_inputs(
-              self.input_data, self.node_map, self.leaves, self.split_features,
+              self.input_data, [], [], [],
+              self.node_map, self.leaves, self.split_features,
               self.split_thresholds, split_initializations_per_input=1,
               split_sampling_random_seed=3))
       self.assertAllEqual([1, 0], indices.eval())
@@ -50,12 +51,38 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[5., -2., 50.], [-1., -10., 0.]],
                           threshold_updates.eval())
 
+  def testSparse(self):
+    sparse_shape = [4, 10]
+    sparse_indices = [[0, 0], [0, 4], [0, 9],
+                      [1, 0], [1, 7],
+                      [2, 0],
+                      [3, 1], [3, 4]]
+    sparse_values = [3.0, -1.0, 0.5,
+                     1.5, 6.0,
+                     -2.0,
+                     -0.5, 2.0]
+
+    with self.test_session():
+      tf.initialize_all_variables().run()
+      indices, feature_updates, threshold_updates = (
+          self.ops.sample_inputs(
+              [], sparse_indices, sparse_values, sparse_shape,
+              self.node_map, self.leaves, self.split_features,
+              self.split_thresholds, split_initializations_per_input=1,
+              split_sampling_random_seed=3))
+      self.assertAllEqual([1, 0], indices.eval())
+      self.assertAllEqual([[1, 0, 0], [4, 7, -1]],
+                          feature_updates.eval())
+      self.assertAllEqual([[5., -2., -2.], [-1., 6., 0.]],
+                          threshold_updates.eval())
+
   def testNoAccumulators(self):
     with self.test_session():
       tf.initialize_all_variables().run()
       indices, feature_updates, threshold_updates = (
           self.ops.sample_inputs(
-              self.input_data, [-1] * 3, self.leaves, self.split_features,
+              self.input_data, [], [], [],
+              [-1] * 3, self.leaves, self.split_features,
               self.split_thresholds, split_initializations_per_input=1,
               split_sampling_random_seed=3))
       self.assertAllEqual([], indices.eval())
@@ -69,7 +96,8 @@ class SampleInputsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(
           'split_features and split_thresholds should be the same shape.'):
         indices, _, _ = self.ops.sample_inputs(
-            self.input_data, self.node_map, self.leaves, self.split_features,
+            self.input_data, [], [], [],
+            self.node_map, self.leaves, self.split_features,
             self.split_thresholds, split_initializations_per_input=1,
             split_sampling_random_seed=3)
         self.assertAllEqual([], indices.eval())

@@ -670,6 +670,8 @@ tf_gen_op_wrapper_py(
         "MatMul",
         "Sigmoid",
         "Tanh",
+        "SigmoidGrad",
+        "TanhGrad",
     ],
     require_shape_functions = True,
 )

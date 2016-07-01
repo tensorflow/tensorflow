@@ -1753,6 +1753,7 @@ filegroup(
         "cwise_ops.h",
         "cwise_ops_common.cc",
         "cwise_ops_common.h",
+        "cwise_ops_gradients.h",
         "dense_update_ops.cc",
         "dense_update_ops.h",
         "example_parsing_ops.cc",

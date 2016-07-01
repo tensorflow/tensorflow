@@ -231,7 +231,11 @@ sh_test(
     data = [
         ":boston",
         ":iris",
+        ":iris_custom_decay_dnn",
         ":iris_custom_model",
+        ":iris_run_config",
+        ":iris_val_based_early_stopping",
+        ":iris_with_pipeline",
         ":text_classification",
         ":text_classification_builtin_rnn_model",
         ":text_classification_character_cnn",

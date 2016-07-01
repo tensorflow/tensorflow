@@ -1835,16 +1835,16 @@ def _FillShape(op):
 
   Returns:
     A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes or arguments are known to be invalid.
   """
-  dimensions_shape = op.inputs[0].get_shape().with_rank(1)
-  op.inputs[1].get_shape().assert_is_compatible_with(tensor_shape.scalar())
+  op.inputs[0].get_shape().assert_has_rank(1)
+  op.inputs[1].get_shape().assert_has_rank(0)
   fill_dims = tensor_util.constant_value(op.inputs[0])
-  if fill_dims is None:
-    # Attempt to infer the rank of the output from the length of
-    # dimensions.
-    return [tensor_shape.unknown_shape(ndims=dimensions_shape[0].value)]
-  else:
-    return [tensor_shape.TensorShape(fill_dims.tolist())]
+  if fill_dims is not None and any(d < 0 for d in fill_dims):
+    raise ValueError("Fill dimensions must be >= 0")
+  return [tensor_util.constant_value_as_shape(op.inputs[0])]
 
 
 @ops.RegisterShape("InvertPermutation")

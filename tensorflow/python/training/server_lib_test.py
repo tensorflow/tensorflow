@@ -280,6 +280,21 @@ class GrpcServerTest(tf.test.TestCase):
                           job_name="local",
                           task_index=0)
 
+  def testInteractiveSession(self):
+    server = tf.train.Server.create_local_server()
+    # TODO(b/29900832): Remove this assertion when the bug is fixed.
+    a = tf.constant(1.0)
+    with self.assertRaisesRegexp(tf.errors.UnimplementedError, "pruned"):
+      sess = tf.InteractiveSession(target=server.target)
+      sess.run(a)
+
+    # TODO(b/29900832): The following code fails (without the unimplemented
+    # check in `tensorflow::MasterSession`):
+    # a = tf.constant(1.0)
+    # b = tf.constant(2.0)
+    # self.assertEqual(1.0, sess.run(a))
+    # self.assertEqual(2.0, sess.run(b))
+
 
 class ServerDefTest(tf.test.TestCase):
 

@@ -171,6 +171,16 @@ cuda_py_tests(
     ],
 )
 
+cuda_py_tests(
+    name = "transformed_distribution_test",
+    size = "small",
+    srcs = ["python/kernel_tests/transformed_distribution_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

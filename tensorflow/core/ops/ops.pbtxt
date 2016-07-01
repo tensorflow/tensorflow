@@ -11797,6 +11797,36 @@ op {
   description: "Specifically, `y = 1 / (1 + exp(-x))`."
 }
 op {
+  name: "SigmoidGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the gradient of the sigmoid of `x` wrt its input."
+  description: "Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and\n`dy` is the corresponding input gradient."
+}
+op {
   name: "Sign"
   input_arg {
     name: "x"
@@ -14642,6 +14672,36 @@ op {
     }
   }
   summary: "Computes hyperbolic tangent of `x` element-wise."
+}
+op {
+  name: "TanhGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the gradient for the tanh of `x` wrt its input."
+  description: "Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`\nis the corresponding input gradient."
 }
 op {
   name: "TemporaryVariable"

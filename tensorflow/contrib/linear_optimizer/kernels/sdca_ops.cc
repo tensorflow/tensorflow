@@ -600,13 +600,13 @@ Status RunTrainStepsForMiniBatch(
     const DeviceBase::CpuWorkerThreads& worker_threads,
     const Regularizations& regularizations, const DualLossUpdater& loss_updater,
     FeaturesAndWeights* const features_and_weights,
-    TTypes<float>::Matrix example_state_data) {
+    TTypes<float>::Matrix* const example_state_data) {
   // Process examples in parallel, in a partitioned fashion.
   mutex mu;
   Status train_step_status GUARDED_BY(mu);
   auto train_step = [&](const int64 begin, const int64 end) {
     for (int64 example_index = begin; example_index < end; ++example_index) {
-      const float dual = example_state_data(example_index, 0);
+      const float dual = (*example_state_data)(example_index, 0);
       const float example_weight = example_weights(example_index);
       float example_label = example_labels(example_index);
       const Status conversion_status =
@@ -641,10 +641,10 @@ Status RunTrainStepsForMiniBatch(
           example_index, bounded_dual_delta, regularizations.symmetric_l2());
 
       // Update example data.
-      example_state_data(example_index, 0) = new_dual;
-      example_state_data(example_index, 1) = primal_loss;
-      example_state_data(example_index, 2) = dual_loss;
-      example_state_data(example_index, 3) = example_weight;
+      (*example_state_data)(example_index, 0) = new_dual;
+      (*example_state_data)(example_index, 1) = primal_loss;
+      (*example_state_data)(example_index, 2) = dual_loss;
+      (*example_state_data)(example_index, 3) = example_weight;
     }
   };
   // TODO(sibyl-Aix6ihai): Current multiplier 100000 works well empirically
@@ -737,11 +737,11 @@ class SdcaSolver : public OpKernel {
                        num_examples, example_labels, example_weights,
                        *context->device()->tensorflow_cpu_worker_threads(),
                        regularizations_, *loss_updater_, &features_and_weights,
-                       example_state_data));
+                       &example_state_data));
     }
     features_and_weights.AddDeltaWeights();
 
-    context->set_output(0, mutable_example_state_data_t);
+    context->set_output("example_data_data_out", mutable_example_state_data_t);
   }
 
  private:
@@ -775,6 +775,12 @@ class SdcaShrinkL1 : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 
+// Computes platform independent, compact and unique (with very high
+// probability) representation of an example id. It shouldn't be put in
+// persistent storage, as its implementation may change in the future.
+//
+// The current probability of at least one collision for 1B example_ids is
+// approximately 10^-21 (ie 2^60 / 2^129).
 class SdcaFprint : public OpKernel {
  public:
   explicit SdcaFprint(OpKernelConstruction* context) : OpKernel(context) {}
@@ -788,8 +794,8 @@ class SdcaFprint : public OpKernel {
     auto out_values = out->flat<string>();
 
     for (int64 i = 0; i < in_values.size(); ++i) {
-      const string& s = in_values(i);
-      Fprint128 fprint = Fingerprint128(s);
+      const Fprint128 fprint = Fingerprint128(in_values(i));
+      // Hex encode the fprint as a string (33 characters).
       out_values(i) = strings::StrCat(strings::FpToString(fprint.high64), "-",
                                       strings::FpToString(fprint.low64));
     }

@@ -132,6 +132,16 @@ class CoordinatorTest(tf.test.TestCase):
       t.start()
     coord.join(threads)
 
+  def testJoinIgnoresMyExceptionType(self):
+    coord = tf.train.Coordinator(clean_stop_exception_types=(ValueError,))
+    threads = [
+        threading.Thread(target=RaiseInN,
+                         args=(coord, 0.01, ValueError("Clean stop"), True))
+        ]
+    for t in threads:
+      t.start()
+    coord.join(threads)
+
   def testJoinRaiseReportExceptionUsingHandler(self):
     coord = tf.train.Coordinator()
     threads = [
