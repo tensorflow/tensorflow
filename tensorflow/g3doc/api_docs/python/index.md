@@ -571,6 +571,7 @@
   * [`DistributionTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#DistributionTensor)
   * [`get_current_value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#get_current_value_type)
   * [`MeanValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#MeanValue)
+  * [`NoValueTypeSetError`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#NoValueTypeSetError)
   * [`SampleAndReshapeValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#SampleAndReshapeValue)
   * [`SampleValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#SampleValue)
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#StochasticTensor)

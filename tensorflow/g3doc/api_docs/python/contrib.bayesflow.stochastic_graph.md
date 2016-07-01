@@ -413,3 +413,11 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 
 
+
+## Other Functions and Classes
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_graph.NoValueTypeSetError` {#NoValueTypeSetError}
+
+
+
