@@ -154,9 +154,53 @@ class FunctionalOpsTest(tf.test.TestCase):
 
   def testMap_SimpleNotTensor(self):
     with self.test_session():
-      nums = [1, 2, 3, 4, 5, 6]
+      nums = np.array([1, 2, 3, 4, 5, 6])
       r = tf.map_fn(lambda x: tf.mul(tf.add(x, 3), 2), nums)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
+
+  def testMap_SingleInputMultiOutput(self):
+    with self.test_session() as sess:
+      nums = np.array([1, 2, 3, 4, 5, 6])
+      r = tf.map_fn(lambda x: ((x + 3) * 2, -(x + 3) * 2), nums,
+                    dtype=(tf.int64, tf.int64))
+      self.assertEqual(2, len(r))
+      self.assertEqual((6,), r[0].get_shape())
+      self.assertEqual((6,), r[1].get_shape())
+      received = sess.run(r)
+      self.assertAllEqual((nums + 3) * 2, received[0])
+      self.assertAllEqual(-(nums + 3) * 2, received[1])
+
+  def testMap_MultiOutputMismatchedDtype(self):
+    with self.test_session():
+      nums = np.array([1, 2, 3, 4, 5, 6])
+      with self.assertRaisesRegexp(
+          TypeError, r"two structures don't have the same sequence type."):
+        # lambda emits tuple, but dtype is a list
+        tf.map_fn(lambda x: ((x + 3) * 2, -(x + 3) * 2), nums,
+                  dtype=[tf.int64, tf.int64])
+
+  def testMap_MultiInputSingleOutput(self):
+    with self.test_session():
+      nums = np.array([1, 2, 3, 4, 5, 6])
+      r = tf.map_fn(lambda x: x[0]*x[1][0] + x[1][1], (nums, (nums, -nums)),
+                    dtype=tf.int64)
+      self.assertEqual((6,), r.get_shape())
+      received = r.eval()
+      self.assertAllEqual(nums*nums + (-nums), received)
+
+  def testMap_MultiInputSameStructureOutput(self):
+    with self.test_session() as sess:
+      nums = np.array([1, 2, 3, 4, 5, 6])
+      r = tf.map_fn(
+          lambda x: (x[1][0], (x[1][1], x[0])), (nums, (2*nums, -nums)))
+      r = [r[0], r[1][0], r[1][1]]
+      self.assertEqual((6,), r[0].get_shape())
+      self.assertEqual((6,), r[1].get_shape())
+      self.assertEqual((6,), r[2].get_shape())
+      received = sess.run(r)
+      self.assertAllEqual(2 * nums, received[0])
+      self.assertAllEqual(-nums, received[1])
+      self.assertAllEqual(nums, received[2])
 
   def testScan_Simple(self):
     with self.test_session():
@@ -169,6 +213,43 @@ class FunctionalOpsTest(tf.test.TestCase):
       r = tf.scan(
           lambda a, x: tf.mul(a, x), elems, initializer=v)
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], r.eval())
+
+  def testScan_SingleInputMultiOutput(self):
+    with self.test_session() as sess:
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = (np.array(1.0), np.array(-1.0))
+      r = tf.scan(lambda a, x: (a[0] * x, -a[1] * x), elems, initializer)
+      r_value = sess.run(r)
+
+      self.assertAllEqual([1.0, 2.0, 6.0, 24.0, 120.0, 720.0], r_value[0])
+      self.assertAllEqual([1.0, -2.0, 6.0, -24.0, 120.0, -720.0], r_value[1])
+
+  def testScan_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      # Multiply a * 1 each time
+      r = tf.scan(
+          lambda a, x: a * (x[0] + x[1]), (elems + 1, -elems), initializer)
+      self.assertAllEqual([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], r.eval())
+
+  def testScan_MultiInputSameTypeOutput(self):
+    with self.test_session() as sess:
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      r = tf.scan(
+          lambda a, x: (a[0] + x[0], a[1] + x[1]), (elems, -elems))
+      r_value = sess.run(r)
+      self.assertAllEqual(np.cumsum(elems), r_value[0])
+      self.assertAllEqual(np.cumsum(-elems), r_value[1])
+
+  def testScan_MultiOutputMismatchedInitializer(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      # Multiply a * 1 each time
+      with self.assertRaisesRegexp(
+          ValueError, "two structures don't have the same number of elements"):
+        tf.scan(lambda a, x: (a, -a), elems, initializer)
 
   def testScan_Scoped(self):
     with self.test_session() as sess:

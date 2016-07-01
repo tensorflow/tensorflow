@@ -119,7 +119,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       fixed_batch_size = input_shape[0]
 
       flat_inputs = (nest.flatten(inputs)
-                     if nest.is_sequence(inputs) else (inputs,))
+                     if nest.is_sequence(inputs) else [inputs])
       for flat_input in flat_inputs:
         input_shape = flat_input.get_shape().with_rank_at_least(2)
         batch_size, input_size = input_shape[0], input_shape[1:]
@@ -157,7 +157,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       output_size = cell.output_size
       output_is_tuple = nest.is_sequence(output_size)
       flat_output_size = (
-          nest.flatten(output_size) if output_is_tuple else (output_size,))
+          nest.flatten(output_size) if output_is_tuple else [output_size])
       flat_zero_output = tuple(_create_zero_output(size)
                                for size in flat_output_size)
       if output_is_tuple:
@@ -260,7 +260,7 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
     last_output = outputs[-1]
     output_is_tuple = nest.is_sequence(last_output)
     flat_last_output = (
-        nest.flatten(last_output) if output_is_tuple else (last_output,))
+        nest.flatten(last_output) if output_is_tuple else [last_output])
     flat_last_output = tuple(
         array_ops.identity(output) for output in flat_last_output)
     if output_is_tuple:
@@ -329,10 +329,10 @@ def _rnn_step(
 
   # Convert state to a list for ease of use
   state_is_tuple = nest.is_sequence(state)
-  flat_state = nest.flatten(state) if state_is_tuple else (state,)
+  flat_state = nest.flatten(state) if state_is_tuple else [state]
   output_is_tuple = nest.is_sequence(zero_output)
   flat_zero_output = (
-      nest.flatten(zero_output) if output_is_tuple else (zero_output,))
+      nest.flatten(zero_output) if output_is_tuple else [zero_output])
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
@@ -342,12 +342,12 @@ def _rnn_step(
     # Use broadcasting select to determine which values should get
     # the previous state & zero output, and which values should get
     # a calculated state & output.
-    flat_new_output = tuple(
+    flat_new_output = [
         _copy_one_through(zero_output, new_output)
-        for zero_output, new_output in zip(flat_zero_output, flat_new_output))
-    flat_new_state = tuple(
+        for zero_output, new_output in zip(flat_zero_output, flat_new_output)]
+    flat_new_state = [
         _copy_one_through(state, new_state)
-        for state, new_state in zip(flat_state, flat_new_state))
+        for state, new_state in zip(flat_state, flat_new_state)]
     return flat_new_output + flat_new_state
 
   def _maybe_copy_some_through():
@@ -356,9 +356,9 @@ def _rnn_step(
 
     nest.assert_same_structure(state, new_state)
 
-    flat_new_state = nest.flatten(new_state) if state_is_tuple else (new_state,)
+    flat_new_state = nest.flatten(new_state) if state_is_tuple else [new_state]
     flat_new_output = (
-        nest.flatten(new_output) if output_is_tuple else (new_output,))
+        nest.flatten(new_output) if output_is_tuple else [new_output])
     return control_flow_ops.cond(
         # if t < min_seq_len: calculate and return everything
         time < min_sequence_length, lambda: flat_new_output + flat_new_state,
@@ -375,9 +375,9 @@ def _rnn_step(
     new_output, new_state = call_cell()
     nest.assert_same_structure(state, new_state)
     new_state = (
-        tuple(nest.flatten(new_state)) if state_is_tuple else (new_state,))
+        nest.flatten(new_state) if state_is_tuple else [new_state])
     new_output = (
-        tuple(nest.flatten(new_output)) if output_is_tuple else (new_output,))
+        nest.flatten(new_output) if output_is_tuple else [new_output])
     final_output_and_state = _copy_some_through(new_output, new_state)
   else:
     empty_update = lambda: flat_zero_output + flat_state
@@ -425,8 +425,8 @@ def _reverse_seq(input_seq, lengths):
     return list(reversed(input_seq))
 
   input_is_tuple = nest.is_sequence(input_seq[0])
-  flat_input_seq = tuple(nest.flatten(input_) if input_is_tuple else (input_,)
-                         for input_ in input_seq)
+  flat_input_seq = (nest.flatten(input_) if input_is_tuple else [input_]
+                    for input_ in input_seq)
 
   flat_results = [[] for _ in range(len(input_seq))]
   for sequence in zip(*flat_input_seq):
@@ -728,7 +728,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   #   [batch, time, depth]
   # For internal calculations, we transpose to [time, batch, depth]
   input_is_tuple = nest.is_sequence(inputs)
-  flat_input = nest.flatten(inputs) if input_is_tuple else (inputs,)
+  flat_input = nest.flatten(inputs) if input_is_tuple else [inputs]
 
   if not time_major:
     # (B,T,D) => (T,B,D)
@@ -789,7 +789,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       flat_output = (
-          nest.flatten(outputs) if nest.is_sequence(outputs) else (outputs,))
+          nest.flatten(outputs) if nest.is_sequence(outputs) else [outputs])
       flat_output = tuple(array_ops.transpose(output, [1, 0, 2])
                           for output in flat_output)
       if nest.is_sequence(outputs):
@@ -836,9 +836,9 @@ def _dynamic_rnn_loop(
   input_is_tuple = nest.is_sequence(inputs)
   output_is_tuple = nest.is_sequence(cell.output_size)
 
-  flat_input = nest.flatten(inputs) if input_is_tuple else (inputs,)
+  flat_input = nest.flatten(inputs) if input_is_tuple else [inputs]
   flat_output_size = (nest.flatten(cell.output_size)
-                      if output_is_tuple else (cell.output_size,))
+                      if output_is_tuple else [cell.output_size])
 
   # Construct an initial output
   input_shape = array_ops.shape(flat_input[0])
@@ -935,7 +935,7 @@ def _dynamic_rnn_loop(
       (output, new_state) = call_cell()
 
     # Pack state if using state tuples
-    output = nest.flatten(output) if output_is_tuple else (output,)
+    output = nest.flatten(output) if output_is_tuple else [output]
 
     output_ta_t = tuple(ta.write(time, out)
                         for ta, out in zip(output_ta_t, output))
