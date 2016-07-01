@@ -367,9 +367,7 @@
   * [`sparse_add`](../../api_docs/python/sparse_ops.md#sparse_add)
   * [`sparse_concat`](../../api_docs/python/sparse_ops.md#sparse_concat)
   * [`sparse_fill_empty_rows`](../../api_docs/python/sparse_ops.md#sparse_fill_empty_rows)
-  * [`sparse_maximum`](../../api_docs/python/sparse_ops.md#sparse_maximum)
   * [`sparse_merge`](../../api_docs/python/sparse_ops.md#sparse_merge)
-  * [`sparse_minimum`](../../api_docs/python/sparse_ops.md#sparse_minimum)
   * [`sparse_reduce_sum`](../../api_docs/python/sparse_ops.md#sparse_reduce_sum)
   * [`sparse_reorder`](../../api_docs/python/sparse_ops.md#sparse_reorder)
   * [`sparse_reset_shape`](../../api_docs/python/sparse_ops.md#sparse_reset_shape)
@@ -741,4 +739,3 @@
   * [`copy_op_to_graph`](../../api_docs/python/contrib.copy_graph.md#copy_op_to_graph)
   * [`copy_variable_to_graph`](../../api_docs/python/contrib.copy_graph.md#copy_variable_to_graph)
   * [`get_copied_op`](../../api_docs/python/contrib.copy_graph.md#get_copied_op)
-

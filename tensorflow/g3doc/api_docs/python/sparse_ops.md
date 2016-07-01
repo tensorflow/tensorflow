@@ -764,7 +764,7 @@ For example:
 *  <b>`TypeError`</b>: If `sp_input` is not a `SparseTensor`.
 *  <b>`ValueError`</b>: If `new_shape` represents a tensor with a different rank from
     that of `sp_input` (if shapes are known when graph is constructed).
-*  <b>`OpError`</b>: 
+*  <b>`OpError`</b>:
     - If `new_shape` has dimension sizes that are too small.
     - If shapes are not known during graph construction time, and during run
       time it is found out that the ranks do not match.
@@ -1153,67 +1153,3 @@ B dense [k, n]
     A = A.H if adjoint_a else A
     B = B.H if adjoint_b else B
     return A*B
-
-
-- - -
-
-### `tf.sparse_maximum(sp_a, sp_b, name=None)` {#sparse_maximum}
-
-Returns the element-wise max of two SparseTensors.
-
-Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
-Example:
-
-```python
-sp_zero = ops.SparseTensor([[0]], [0], [7])
-sp_one = ops.SparseTensor([[1]], [1], [7])
-res = tf.sparse_maximum(sp_zero, sp_one).eval()
-# "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
-```
-
-##### Args:
-
-
-*  <b>`sp_a`</b>: a `SparseTensor` operand whose dtype is real, and indices
-    lexicographically ordered.
-*  <b>`sp_b`</b>: the other `SparseTensor` operand with the same requirements (and the
-    same shape).
-*  <b>`name`</b>: optional name of the operation.
-
-##### Returns:
-
-
-*  <b>`output`</b>: the output SparseTensor.
-
-
-- - -
-
-### `tf.sparse_minimum(sp_a, sp_b, name=None)` {#sparse_minimum}
-
-Returns the element-wise min of two SparseTensors.
-
-Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
-Example:
-
-```python
-sp_zero = ops.SparseTensor([[0]], [0], [7])
-sp_one = ops.SparseTensor([[1]], [1], [7])
-res = tf.sparse_minimum(sp_zero, sp_one).eval()
-# "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
-```
-
-##### Args:
-
-
-*  <b>`sp_a`</b>: a `SparseTensor` operand whose dtype is real, and indices
-    lexicographically ordered.
-*  <b>`sp_b`</b>: the other `SparseTensor` operand with the same requirements (and the
-    same shape).
-*  <b>`name`</b>: optional name of the operation.
-
-##### Returns:
-
-
-*  <b>`output`</b>: the output SparseTensor.
-
-
