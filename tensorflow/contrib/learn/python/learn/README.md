@@ -59,7 +59,7 @@ Simple linear classification:
 from sklearn import datasets, metrics
 
 iris = datasets.load_iris()
-classifier = learn.TensorFlowLinearClassifier(n_classes=3)
+classifier = learn.LinearClassifier(n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
@@ -74,7 +74,7 @@ from sklearn import datasets, metrics, preprocessing
 
 boston = datasets.load_boston()
 x = preprocessing.StandardScaler().fit_transform(boston.data)
-regressor = learn.TensorFlowLinearRegressor()
+regressor = learn.LinearRegressor()
 regressor.fit(x, boston.target)
 score = metrics.mean_squared_error(regressor.predict(x), boston.target)
 print ("MSE: %f" % score)
@@ -88,7 +88,7 @@ Example of 3 layer network with 10, 20 and 10 hidden units respectively:
 from sklearn import datasets, metrics
 
 iris = datasets.load_iris()
-classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
+classifier = learn.DNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
 classifier.fit(iris.data, iris.target)
 score = metrics.accuracy_score(iris.target, classifier.predict(iris.data))
 print("Accuracy: %f" % score)
