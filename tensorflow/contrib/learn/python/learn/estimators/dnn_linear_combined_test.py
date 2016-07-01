@@ -471,6 +471,25 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertNotIn('linear/feature_BUCKETIZED_weights',
                      classifier.get_variable_names())
 
+  def testDNNWeightsBiasesNames(self):
+    """Tests the names of DNN weights and biases in the checkpoints."""
+    def _input_fn_train():
+      # Create 4 rows, three (y = x), one (y=Not(x))
+      target = tf.constant([[1], [1], [1], [0]])
+      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      return features, target
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        dnn_hidden_units=[3, 3])
+
+    classifier.fit(input_fn=_input_fn_train, steps=5)
+    # hiddenlayer_0/weights,hiddenlayer_1/weights and dnn_logits/weights.
+    self.assertEquals(3, len(classifier.dnn_weights_))
+    # hiddenlayer_0/biases, hiddenlayer_1/biases, dnn_logits/biases,
+    # centered_bias_weight.
+    self.assertEquals(4, len(classifier.dnn_bias_))
+
 
 class DNNLinearCombinedRegressorTest(tf.test.TestCase):
 
