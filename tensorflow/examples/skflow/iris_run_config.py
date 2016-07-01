@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -30,10 +30,10 @@ X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, 
 run_config = learn.estimators.RunConfig(num_cores=3, gpu_memory_fraction=0.6)
 
 # Build 3 layer DNN with 10, 20, 10 units respectively.
-classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
-    n_classes=3, steps=200, config=run_config)
+classifier = learn.DNNClassifier(
+	hidden_units=[10, 20, 10], n_classes=3, config=run_config)
 
 # Fit and predict.
-classifier.fit(X_train, y_train)
+classifier.fit(X_train, y_train, steps=50)
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Accuracy: {0:f}'.format(score))
