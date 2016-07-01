@@ -560,6 +560,6 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   return Status::OK();
 }
 
-REGISTER_FILE_SYSTEM("gs", GcsFileSystem);
+REGISTER_FILE_SYSTEM("gs", RetryingGcsFileSystem);
 
 }  // namespace tensorflow

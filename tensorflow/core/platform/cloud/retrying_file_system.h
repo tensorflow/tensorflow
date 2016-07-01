@@ -13,29 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
-#define TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
+#define TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
 
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/cloud/auth_provider.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
-#include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
 
-/// Google Cloud Storage implementation of a file system.
-///
-/// The clients should use RetryingGcsFileSystem defined below,
-/// which adds retry logic to GCS operations.
-class GcsFileSystem : public FileSystem {
+/// A wrapper to add retry logic to another file system.
+class RetryingFileSystem : public FileSystem {
  public:
-  GcsFileSystem();
-  GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
-                std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t read_ahead_bytes);
+  RetryingFileSystem(std::unique_ptr<FileSystem> base_file_system)
+      : base_file_system_(std::move(base_file_system)) {}
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -66,23 +58,11 @@ class GcsFileSystem : public FileSystem {
   Status RenameFile(const string& src, const string& target) override;
 
  private:
-  std::unique_ptr<AuthProvider> auth_provider_;
-  std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+  std::unique_ptr<FileSystem> base_file_system_;
 
-  // The number of bytes to read ahead for buffering purposes in the
-  // RandomAccessFile implementation. Defaults to 256Mb.
-  const size_t read_ahead_bytes_ = 256 * 1024 * 1024;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
-};
-
-/// Google Cloud Storage implementation of a file system with retry on failures.
-class RetryingGcsFileSystem : public RetryingFileSystem {
- public:
-  RetryingGcsFileSystem()
-      : RetryingFileSystem(std::unique_ptr<FileSystem>(new GcsFileSystem)) {}
+  TF_DISALLOW_COPY_AND_ASSIGN(RetryingFileSystem);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
