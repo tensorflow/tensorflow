@@ -243,7 +243,7 @@ To create this model, we're going to need to create a lot of weights and biases.
 One should generally initialize weights with a small amount of noise for
 symmetry breaking, and to prevent 0 gradients. Since we're using ReLU neurons,
 it is also good practice to initialize them with a slightly positive initial
-bias to avoid "dead neurons." Instead of doing this repeatedly while we build
+bias to avoid "dead neurons". Instead of doing this repeatedly while we build
 the model, let's create two handy functions to do it for us.
 
 ```python
