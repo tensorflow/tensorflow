@@ -479,20 +479,25 @@ void GPUTracerImpl::AddCorrelationId(uint32 correlation_id,
     if (cbInfo->callbackSite == CUPTI_API_ENTER) {
       auto *params = reinterpret_cast<const cuLaunchKernel_params *>(
           cbInfo->functionParams);
-      VLOG(2) << "LAUNCH stream " << params->hStream << " correllation "
-              << cbInfo->correlationId << " kernel " << cbInfo->symbolName;
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << "LAUNCH stream " << params->hStream << " correllation "
+                << cbInfo->correlationId << " kernel " << cbInfo->symbolName;
+      }
       const string annotation =
           tls_annotation ? tls_annotation : cbInfo->symbolName;
       tracer->AddCorrelationId(cbInfo->correlationId, annotation);
     }
   } else if ((domain == CUPTI_CB_DOMAIN_RUNTIME_API) &&
-             (cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020)) {
+             (cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020 ||
+              cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyAsync_v3020)) {
     if (cbInfo->callbackSite == CUPTI_API_ENTER) {
-      auto *funcParams = reinterpret_cast<const cudaMemcpy_v3020_params *>(
-          cbInfo->functionParams);
-      size_t count = funcParams->count;
-      enum cudaMemcpyKind kind = funcParams->kind;
-      VLOG(2) << "MEMCPY count " << count << " kind " << kind;
+      if (VLOG_IS_ON(2)) {
+        auto *funcParams = reinterpret_cast<const cudaMemcpy_v3020_params *>(
+            cbInfo->functionParams);
+        size_t count = funcParams->count;
+        enum cudaMemcpyKind kind = funcParams->kind;
+        VLOG(2) << "MEMCPY count " << count << " kind " << kind;
+      }
       if (tls_annotation) {
         const string annotation = tls_annotation;
         tracer->AddCorrelationId(cbInfo->correlationId, annotation);
@@ -510,7 +515,7 @@ void GPUTracerImpl::AddCorrelationId(uint32 correlation_id,
       tracer->AddCorrelationId(cbInfo->correlationId, annotation);
     }
   } else {
-    LOG(WARNING) << "Unhandled API Callback for " << domain << " " << cbid;
+    VLOG(1) << "Unhandled API Callback for " << domain << " " << cbid;
   }
 }
 
