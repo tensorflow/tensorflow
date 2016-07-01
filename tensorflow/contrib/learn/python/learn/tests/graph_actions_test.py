@@ -33,15 +33,18 @@ from tensorflow.contrib.learn.python.learn.utils import checkpoints
 class _Feeder(object):
   """Simple generator for `feed_fn`, returning 10 * step."""
 
-  def __init__(self, tensor):
+  def __init__(self, tensor, max_step):
     self._step = 0
     self._tensor = tensor
+    self._max_step = max_step
 
   @property
   def step(self):
     return self._step
 
   def feed_fn(self):
+    if self._step >= self._max_step:
+      raise StopIteration
     value = self._step * 10.0
     self._step += 1
     return {self._tensor: value}
@@ -165,7 +168,7 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
       self._assert_summaries(self._output_dir, expected_session_logs=[])
-      feeder = _Feeder(in0)
+      feeder = _Feeder(in0, 3)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
           eval_dict={'a': out}, feed_fn=feeder.feed_fn, max_steps=3)
@@ -173,6 +176,20 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertEqual(({'a': 25.0}, 0), results)
       self._assert_summaries(
           self._output_dir, expected_summaries={0: {'a': 25.0}},
+          expected_session_logs=[])
+
+  def test_evaluate_feed_fn_with_exhaustion(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      in0, _, out = self._build_inference_graph()
+      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      feeder = _Feeder(in0, 2)
+      results = learn.graph_actions.evaluate(
+          g, output_dir=self._output_dir, checkpoint_path=None,
+          eval_dict={'a': out}, feed_fn=feeder.feed_fn, max_steps=3)
+      self.assertEqual(2, feeder.step)
+      self.assertEqual(({'a': 15.0}, 0), results)
+      self._assert_summaries(
+          self._output_dir, expected_summaries={0: {'a': 15.0}},
           expected_session_logs=[])
 
   def test_train_invalid_args(self):

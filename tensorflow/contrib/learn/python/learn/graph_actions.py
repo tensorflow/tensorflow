@@ -321,6 +321,8 @@ def train(graph,
     except errors.OutOfRangeError as e:
       logging.warn('Got exception during tf.learn training loop possibly '
                    'due to exhausted input queue %s.', e)
+    except StopIteration:
+      logging.info('Exhausted input iterarator.')
     except BaseException as e:  # pylint: disable=broad-except
       # Hold on to any other exceptions while we try recording a final
       # checkpoint and summary.
