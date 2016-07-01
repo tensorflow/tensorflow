@@ -294,10 +294,14 @@ def value_type(dist_value_type):
     stack[-1].popped_above(dist_value_type)
 
 
+class NoValueTypeSetError(ValueError):
+  pass
+
+
 def get_current_value_type():
   thread_id = threading.current_thread().ident
   if not _STOCHASTIC_VALUE_STACK[thread_id]:
-    raise ValueError(
+    raise NoValueTypeSetError(
         "No value type currently set for this thread (%s).  Did you forget to "
         "wrap 'with stochastic_graph.value_type(...)'?" % thread_id)
   return _STOCHASTIC_VALUE_STACK[thread_id][-1]
@@ -310,13 +314,16 @@ class DistributionTensor(StochasticTensor):
   def __init__(self, dist_cls, name=None, dist_value_type=None, **dist_args):
     self._dist_cls = dist_cls
     self._dist_args = dist_args
-    if dist_value_type is not None:
+    if dist_value_type is None:
+      try:
+        self._value_type = get_current_value_type()
+      except NoValueTypeSetError:
+        self._value_type = SampleAndReshapeValue()
+    else:
       # We want to enforce a value type here, but use the value_type()
       # context manager to enforce some error checking.
       with value_type(dist_value_type):
         self._value_type = get_current_value_type()
-    else:
-      self._value_type = get_current_value_type()
 
     self._value_type.declare_inputs(self, dist_args)
 

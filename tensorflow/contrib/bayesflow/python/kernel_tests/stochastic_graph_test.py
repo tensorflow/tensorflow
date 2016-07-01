@@ -39,9 +39,9 @@ class DistributionTensorTest(tf.test.TestCase):
       mu = [0.0, 0.1, 0.2]
       sigma = tf.constant([1.1, 1.2, 1.3])
       sigma2 = tf.constant([0.1, 0.2, 0.3])
-      with self.assertRaisesRegexp(ValueError, 'No value type currently set'):
-        prior = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
 
+      prior_default = sg.DistributionTensor(
+          distributions.Normal, mu=mu, sigma=sigma)
       prior_0 = sg.DistributionTensor(
           distributions.Normal, mu=mu, sigma=sigma,
           dist_value_type=sg.SampleAndReshapeValue())
@@ -52,20 +52,24 @@ class DistributionTensorTest(tf.test.TestCase):
             distributions.Normal, mu=prior, sigma=sigma2)
 
       coll = tf.get_collection(sg.STOCHASTIC_TENSOR_COLLECTION)
-      self.assertEqual(coll, [prior_0, prior, likelihood])
+      self.assertEqual(coll, [prior_default, prior_0, prior, likelihood])
 
+      # Also works: tf.convert_to_tensor(prior)
+      prior_default = tf.identity(prior_default)
       prior_0 = tf.identity(prior_0)
-      prior = tf.identity(prior)  # Also works: tf.convert_to_tensor(prior)
+      prior = tf.identity(prior)
       likelihood = tf.identity(likelihood)
 
       # Mostly a smoke test for now...
-      prior_0_val, prior_val, _ = sess.run(
-          [prior_0, prior, likelihood])
+      prior_0_val, prior_val, prior_default_val, _ = sess.run(
+          [prior_0, prior, prior_default, likelihood])
 
       self.assertEqual(prior_0_val.shape, prior_val.shape)
+      self.assertEqual(prior_default_val.shape, prior_val.shape)
       # These are different random samples from the same distribution,
       # so the values should differ.
       self.assertGreater(np.abs(prior_0_val - prior_val).sum(), 1e-6)
+      self.assertGreater(np.abs(prior_default_val - prior_val).sum(), 1e-6)
 
   def testMeanValue(self):
     with self.test_session() as sess:
