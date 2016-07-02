@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import tempfile
 
 import numpy as np
@@ -266,6 +267,16 @@ class EstimatorTest(tf.test.TestCase):
     iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
     est.fit(input_fn=iris_input_fn, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    predictions = est.predict(x=iris.data)['class']
+    self.assertEqual(predictions.shape[0], iris.target.shape[0])
+
+  def testIrisIterator(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 100)
+    y_iter = itertools.islice(np.int32(iris.target), 100)
+    est.fit(x_iter, y_iter, steps=100)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1)
     predictions = est.predict(x=iris.data)['class']
     self.assertEqual(predictions.shape[0], iris.target.shape[0])
