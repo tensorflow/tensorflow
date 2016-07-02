@@ -311,7 +311,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn_train, steps=100)
     probs = classifier.predict_proba(input_fn=_input_fn_predict)
-    self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.01)
+    self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.05)
     classes = classifier.predict(input_fn=_input_fn_predict)
     self.assertListEqual([0] * 4, list(classes))
 

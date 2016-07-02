@@ -186,6 +186,7 @@ class _LinearComposableModel(_ComposableModel):
     if optimizer_name is None:
       optimizer_name = "Ftrl"
     default_learning_rate = 1. / math.sqrt(len(self._get_feature_columns()))
+    default_learning_rate = min(0.2, default_learning_rate)
     return layers.OPTIMIZER_CLS_NAMES[optimizer_name](
         learning_rate=default_learning_rate)
 
@@ -539,11 +540,13 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
   def _get_linear_training_ops(self, linear_grads, linear_vars):
     if self._get_linear_feature_columns():
+      default_learning_rate = 1. / math.sqrt(len(
+          self._get_linear_feature_columns()))
+      default_learning_rate = min(0.2, default_learning_rate)
       self._linear_optimizer = self._get_optimizer(
           self._linear_optimizer,
           default_optimizer="Ftrl",
-          default_learning_rate=1. / math.sqrt(len(
-              self._get_linear_feature_columns())))
+          default_learning_rate=default_learning_rate)
       return [
           self._linear_optimizer.apply_gradients(zip(linear_grads, linear_vars))
       ]
