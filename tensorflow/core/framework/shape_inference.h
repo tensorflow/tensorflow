@@ -86,7 +86,7 @@ class InferenceContext {
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
   InferenceContext(const NodeDef* node_def,
                    const std::vector<string>& input_shapes, int num_outputs,
-                   const std::vector<const Tensor*>& input_tensors = {});
+                   const std::vector<const Tensor*>& input_tensors);
   ~InferenceContext();
 
   const Shape* input(int idx) const { return inputs_[idx]; }

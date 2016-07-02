@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -47,7 +49,7 @@ TEST(MathOpsTest, UnchangedShape_ShapeFn) {
   INFER_OK("Cast", "[1,?,3,4]", "in0");
 }
 
-TEST(MathOpsTest, FFT) {
+TEST(MathOpsTest, FFT_ShapeFn) {
   for (const auto* op : {"FFT", "IFFT"}) {
     INFER_OK(op, "?", "[?]");
     INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[1,2]");
@@ -94,7 +96,7 @@ TEST(MathOpsTest, FFT) {
   }
 }
 
-TEST(MathOpsTest, Segment) {
+TEST(MathOpsTest, Segment_ShapeFn) {
   // Tests SegmentReductionShapeFn.
   for (const auto* op : {"SegmentMax", "SegmentMean", "SegmentMin",
                          "SegmentProd", "SegmentSum"}) {
@@ -121,7 +123,7 @@ TEST(MathOpsTest, Segment) {
   }
 }
 
-TEST(MathOpsTest, BroadcastBinaryOps) {
+TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
   for (const auto* op : {"Add",        "Complex",
                          "Div",        "Equal",
                          "Greater",    "GreaterEqual",
@@ -167,6 +169,94 @@ TEST(MathOpsTest, BroadcastBinaryOps) {
     INFER_OK(op, "[3,1,?];[?,1,2,3,4,5]",
              "[d1_0,d1_1,d1_2,d1_3|d0_0,d1_4,d1_5]");
   }
+}
+
+TEST(MathOpsTest, Select_ShapeFn) {
+  const char op[] = "Select";
+  INFER_OK(op, "?;?;?", "in1|in2");
+
+  INFER_OK(op, "[];?;?", "in0");
+  INFER_OK(op, "[1];?;?",
+           "in1|in2");  // When cond is vector, t/e may not match it.
+  INFER_OK(op, "[1,2];?;?", "in0");
+
+  INFER_OK(op, "?;[];?", "in1");
+  INFER_OK(op, "?;?;[]", "in2");
+  INFER_OK(op, "?;[1];?", "in1");
+  INFER_OK(op, "?;?;[1]", "in2");
+  INFER_OK(op, "?;[1,2];?", "in1");
+  INFER_OK(op, "?;?;[1,2]", "in2");
+
+  INFER_ERROR("Shapes must be equal rank, but are 0 and 1", op, "[1];[];?");
+  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[];[1];?");
+  INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[1,2];[1];?");
+  INFER_OK(op, "[2];[?];[?]", "in0");
+
+  INFER_OK(op, "[?];[?,?,3];[1,2,?]", "[d2_0,d2_1,d1_2]");
+  INFER_OK(op, "[2];[?,?,3];[?,2,?]", "[d0_0,d2_1,d1_2]");
+  INFER_ERROR("Dimensions must be equal, but are 2 and 1", op,
+              "[1];[2,?,3];[?,2,?]");
+  INFER_ERROR("Shapes must be equal rank, but are 3 and 2", op,
+              "[2,?];[?,?,3];[?,2,?]");
+  INFER_OK(op, "[2,?,?];[?,?,3];[?,2,?]", "[d0_0,d2_1,d1_2]");
+  INFER_ERROR("Dimension 2 in both shapes must be equal, but are 3 and 5", op,
+              "[2,?,5];[?,?,3];[?,2,?]");
+}
+
+TEST(MathOpsTest, Range_ShapeFn) {
+  const char op[] = "Range";
+  std::vector<const Tensor*> in_tensors{nullptr, nullptr, nullptr};
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[?]");
+  INFER_ERROR_WITH_TENSORS("Shape must be rank 0 but is rank 2\n\t for 'start'",
+                           op, "[1,2];?;?", in_tensors);
+  INFER_ERROR_WITH_TENSORS("Shape must be rank 0 but is rank 2\n\t for 'limit'",
+                           op, "?;[1,2];?", in_tensors);
+  INFER_ERROR_WITH_TENSORS("Shape must be rank 0 but is rank 2\n\t for 'delta'",
+                           op, "?;?;[1,2]", in_tensors);
+
+  Tensor start_t = test::AsScalar(1);
+  in_tensors[0] = &start_t;
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[?]");
+  Tensor limit_t = test::AsScalar(1);
+  in_tensors[1] = &limit_t;
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[?]");
+
+  Tensor delta_t = test::AsScalar(1);
+  in_tensors[2] = &delta_t;
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[0]");
+
+  delta_t = test::AsScalar(0);
+  INFER_ERROR_WITH_TENSORS("Requires delta > 0: 0", op, "?;?;?", in_tensors);
+  delta_t = test::AsScalar(3);
+
+  limit_t = test::AsScalar(-1);
+  INFER_ERROR_WITH_TENSORS("Requires start <= limit: 1/-1", op, "?;?;?",
+                           in_tensors);
+
+  limit_t = test::AsScalar(100);
+  start_t = test::AsScalar(2);
+  delta_t = test::AsScalar(3);
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[33]");
+}
+
+TEST(MathOpsTest, LinSpace_ShapeFn) {
+  const char op[] = "LinSpace";
+  std::vector<const Tensor*> in_tensors{nullptr, nullptr, nullptr};
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[?]");
+  INFER_ERROR_WITH_TENSORS("Shape must be rank 0 but is rank 2\n\t for 'start'",
+                           op, "[1,2];?;?", in_tensors);
+  INFER_ERROR_WITH_TENSORS("Shape must be rank 0 but is rank 2\n\t for 'stop'",
+                           op, "?;[1,2];?", in_tensors);
+  INFER_ERROR_WITH_TENSORS("Shape must be rank 0 but is rank 2\n\t for 'num'",
+                           op, "?;?;[1,2]", in_tensors);
+
+  Tensor num_t = test::AsScalar(1);
+  in_tensors[2] = &num_t;
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[1]");
+  num_t = test::AsScalar(2);
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "[2]");
+  num_t = test::AsScalar(-1);
+  INFER_ERROR_WITH_TENSORS("Requires num > 0: -1", op, "?;?;?", in_tensors);
 }
 
 }  // end namespace tensorflow

@@ -24,7 +24,7 @@ namespace shape_inference {
 
 TEST(ShapeInferenceTest, RankAndDimInspection) {
   NodeDef def;
-  InferenceContext c(&def, {"?", "[1,?,3]", "[]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"?", "[1,?,3]", "[]"}, 2 /* num_outputs */, {});
   EXPECT_EQ(3, c.num_inputs());
   EXPECT_EQ(2, c.num_outputs());
 
@@ -58,7 +58,7 @@ TEST(ShapeInferenceTest, RankAndDimInspection) {
 
 TEST(ShapeInferenceTest, WithRank) {
   NodeDef def;
-  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -96,7 +96,7 @@ TEST(ShapeInferenceTest, WithRank) {
 
 TEST(ShapeInferenceTest, WithRankAtMost) {
   NodeDef def;
-  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -131,7 +131,7 @@ TEST(ShapeInferenceTest, WithRankAtMost) {
 
 TEST(ShapeInferenceTest, WithRankAtLeast) {
   NodeDef def;
-  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -166,7 +166,7 @@ TEST(ShapeInferenceTest, WithRankAtLeast) {
 
 TEST(ShapeInferenceTest, WithValue) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,?]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,?]"}, 2 /* num_outputs */, {});
 
   auto d0 = c.Dim(c.input(0), 0);
   auto d1 = c.Dim(c.input(0), 1);
@@ -205,7 +205,7 @@ TEST(ShapeInferenceTest, WithValue) {
 
 TEST(ShapeInferenceTest, MergeDim) {
   NodeDef def;
-  InferenceContext c(&def, {"[2,?,2,1,?]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[2,?,2,1,?]"}, 2 /* num_outputs */, {});
 
   auto d2 = c.Dim(c.input(0), 0);
   auto d_unknown = c.Dim(c.input(0), 1);
@@ -247,7 +247,7 @@ TEST(ShapeInferenceTest, MergeShape) {
   NodeDef def;
   InferenceContext c(&def,
                      {"?", "[1,2]", "[?,2]", "[1,?]", "[1,3]", "?", "[1]"},
-                     2 /* num_outputs */);
+                     2 /* num_outputs */, {});
 
   auto s_unknown = c.input(0);
   auto s_1_2 = c.input(1);
@@ -305,7 +305,7 @@ TEST(ShapeInferenceTest, MergeShape) {
 
 TEST(ShapeInferenceTest, Subshape) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,2,3,?,5]", "?"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,2,3,?,5]", "?"}, 2 /* num_outputs */, {});
 
   const Shape* unknown = c.input(1);
   const Shape* out;
@@ -343,7 +343,7 @@ TEST(ShapeInferenceTest, Subshape) {
 
 TEST(ShapeInferenceTest, Concatenate) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,?,3]", "[4,5]", "?"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,?,3]", "[4,5]", "?"}, 2 /* num_outputs */, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -369,7 +369,7 @@ TEST(ShapeInferenceTest, Concatenate) {
 
 TEST(ShapeInferenceTest, CreateShape) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,2,3,?,5]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,2,3,?,5]"}, 2 /* num_outputs */, {});
 
   std::vector<const Dimension*> dims;
   auto in0 = c.input(0);
@@ -389,7 +389,7 @@ TEST(ShapeInferenceTest, CreateShape) {
 
 TEST(ShapeInferenceTest, CreateUnknownShape) {
   NodeDef def;
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
 
   auto u0 = c.CreateUnknownShape();
   auto u1 = c.CreateUnknownShape();
@@ -436,7 +436,7 @@ TEST(ShapeInferenceTest, CreateShapeFromShapeTensor) {
 
 TEST(ShapeInferenceTest, CreateDim) {
   NodeDef def;
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
 
   auto* d0 = c.CreateDim(1);
   auto* d1 = c.CreateDim(1);
@@ -449,7 +449,7 @@ TEST(ShapeInferenceTest, CreateDim) {
 
 TEST(ShapeInferenceTest, CreateUnknownDim) {
   NodeDef def;
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
 
   auto* d0 = c.CreateUnknownDim();
   auto* d1 = c.CreateUnknownDim();
@@ -479,7 +479,7 @@ TEST(ShapeInferenceTest, GetAttr) {
             .Finalize(&def)
             .ok());
 
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
   string value;
   EXPECT_TRUE(c.GetAttr("foo", &value).ok());
   EXPECT_EQ("bar", value);
