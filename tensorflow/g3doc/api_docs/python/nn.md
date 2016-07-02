@@ -163,7 +163,7 @@ case where both types are quantized.
 
 
 *  <b>`value`</b>: A `Tensor` with type `float`, `double`, `int64`, `int32`, `uint8`,
-    `int16`, `int8`, or `complex64`.
+    `int16`, `int8`, `complex64`, or `complex128`.
 *  <b>`bias`</b>: A 1-D `Tensor` with size matching the last dimension of `value`.
     Must be the same type as `value` unless `value` is a quantized type,
     in which case a different quantized type may be used.
@@ -186,7 +186,7 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -205,14 +205,14 @@ Computes hyperbolic tangent of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
-    or `qint32`.
+*  <b>`x`</b>: A Tensor or SparseTensor with type `float`, `double`, `int32`,
+    `complex64`, `int64`, or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-    the return type is `quint8`.
+  A Tensor or SparseTensor respectively with the same type as `x` if
+  `x.dtype != qint32` otherwise the return type is `quint8`.
 
 
 
@@ -315,7 +315,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
 *  <b>`strides`</b>: A list of `ints`.
     1-D of length 4.  The stride of the sliding window for each dimension
@@ -368,6 +368,7 @@ same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 *  <b>`strides`</b>: 1-D of size 4.  The stride of the sliding window for each
     dimension of `input`.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -412,11 +413,18 @@ horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 *  <b>`strides`</b>: 1-D of size 4.  The strides for the depthwise convolution for
     each dimension of `input`.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
 
   A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If channel_multiplier * in_channels > out_channels,
+    which means that the separable convolution is overparameterized.
 
 
 - - -
@@ -450,15 +458,15 @@ the field of view of filters without increasing the number of parameters or
 the amount of computation.
 
 For a description of atrous convolution and how it can be used for dense
-feature extraction, please see: (Semantic Image Segmentation with Deep
-Convolutional Nets and Fully Connected CRFs)[http://arxiv.org/abs/1412.7062].
-The same operation is investigated further in (Multi-Scale Context Aggregation
-by Dilated Convolutions)[http://arxiv.org/abs/1511.07122]. Previous works
+feature extraction, please see: [Semantic Image Segmentation with Deep
+Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
+The same operation is investigated further in [Multi-Scale Context Aggregation
+by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
 that effectively use atrous convolution in different ways are, among others,
-(OverFeat: Integrated Recognition, Localization and Detection using
-Convolutional Networks) [http://arxiv.org/abs/1312.6229] and (Fast Image
-Scanning with Deep Max-Pooling Convolutional Neural Networks)
-[http://arxiv.org/abs/1302.1700]. Atrous convolution is also closely related
+[OverFeat: Integrated Recognition, Localization and Detection using
+Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
+Scanning with Deep Max-Pooling Convolutional Neural Networks]
+(http://arxiv.org/abs/1302.1700). Atrous convolution is also closely related
 to the so-called noble identities in multi-rate signal processing.
 
 There are many different ways to implement atrous convolution (see the refs
@@ -535,8 +543,8 @@ inputs are identical.
 
 The transpose of `conv2d`.
 
-This operation is sometimes called "deconvolution" after (Deconvolutional
-Networks)[http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf], but is
+This operation is sometimes called "deconvolution" after [Deconvolutional
+Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
 actually the transpose (gradient) of `conv2d` rather than an actual
 deconvolution.
 
@@ -553,6 +561,7 @@ deconvolution.
 *  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
     dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
 *  <b>`name`</b>: Optional name for the returned tensor.
 
 ##### Returns:
@@ -584,8 +593,8 @@ Our Conv3D implements a form of cross-correlation.
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     Shape `[batch, in_depth, in_height, in_width, in_channels]`.
 *  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
-    Shape `[filter_depth, filter_height, filter_width, in_channels, out_channels]`.
-    `in_channels` must match between `input` and `filter`.
+    Shape `[filter_depth, filter_height, filter_width, in_channels,
+    out_channels]`. `in_channels` must match between `input` and `filter`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The stride of the sliding window for each
     dimension of `input`. Must have `strides[0] = strides[4] = 1`.
@@ -634,6 +643,7 @@ window in `value`.
     The stride of the sliding window for each dimension of the
     input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
 *  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
@@ -658,6 +668,7 @@ Performs the max pooling on the input.
 *  <b>`strides`</b>: A list of ints that has length >= 4.  The stride of the sliding
     window for each dimension of the input tensor.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
 *  <b>`data_format`</b>: A string. 'NHWC' and 'NCHW' are supported.
 *  <b>`name`</b>: Optional name for the operation.
 
@@ -679,7 +690,7 @@ The indices in `argmax` are flattened, so that a maximum value at position
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `float32`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
     4-D with shape `[batch, height, width, channels]`.  Input to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 4`.
     The size of the window for each dimension of the input tensor.
@@ -695,7 +706,7 @@ The indices in `argmax` are flattened, so that a maximum value at position
 
   A tuple of `Tensor` objects (output, argmax).
 
-*  <b>`output`</b>: A `Tensor` of type `float32`. The max pooled output tensor.
+*  <b>`output`</b>: A `Tensor`. Has the same type as `input`. The max pooled output tensor.
 *  <b>`argmax`</b>: A `Tensor` of type `Targmax`. 4-D.  The flattened indices of the max values chosen for each output.
 
 
@@ -712,7 +723,7 @@ Performs 3D average pooling on the input.
     Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The size of the window for each dimension of
-    the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+    the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The stride of the sliding window for each
     dimension of `input`. Must have `strides[0] = strides[4] = 1`.
@@ -739,7 +750,7 @@ Performs 3D max pooling on the input.
     Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 *  <b>`ksize`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The size of the window for each dimension of
-    the input tensor. Must have `ksize[0] = ksize[1] = 1`.
+    the input tensor. Must have `ksize[0] = ksize[4] = 1`.
 *  <b>`strides`</b>: A list of `ints` that has length `>= 5`.
     1-D tensor of length 5. The stride of the sliding window for each
     dimension of `input`. Must have `strides[0] = strides[4] = 1`.
@@ -750,6 +761,152 @@ Performs 3D max pooling on the input.
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`. The max pooled output tensor.
+
+
+
+## Morphological filtering
+
+Morphological operators are non-linear filters used in image processing.
+
+[Greyscale morphological dilation]
+(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        max_{dy, dx} input[b,
+                           strides[1] * y + rates[1] * dy,
+                           strides[2] * x + rates[2] * dx,
+                           c] +
+                     filter[dy, dx, c]
+
+The `filter` is usually called structuring function. Max-pooling is a special
+case of greyscale morphological dilation when the filter assumes all-zero
+values (a.k.a. flat structuring function).
+
+[Greyscale morphological erosion]
+(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        min_{dy, dx} input[b,
+                           strides[1] * y - rates[1] * dy,
+                           strides[2] * x - rates[2] * dx,
+                           c] -
+                     filter[dy, dx, c]
+
+Dilation and erosion are dual to each other. The dilation of the input signal
+`f` by the structuring signal `g` is equal to the negation of the erosion of
+`-f` by the reflected `g`, and vice versa.
+
+Striding and padding is carried out in exactly the same way as in standard
+convolution. Please refer to the `Convolution` section for details.
+
+- - -
+
+### `tf.nn.dilation2d(input, filter, strides, rates, padding, name=None)` {#dilation2d}
+
+Computes the grayscale dilation of 4-D `input` and 3-D `filter` tensors.
+
+The `input` tensor has shape `[batch, in_height, in_width, depth]` and the
+`filter` tensor has shape `[filter_height, filter_width, depth]`, i.e., each
+input channel is processed independently of the others with its own structuring
+function. The `output` tensor has shape
+`[batch, out_height, out_width, depth]`. The spatial dimensions of the output
+tensor depend on the `padding` algorithm. We currently only support the default
+"NHWC" `data_format`.
+
+In detail, the grayscale morphological 2-D dilation is the max-sum correlation
+(for consistency with `conv2d`, we use unmirrored filters):
+
+    output[b, y, x, c] =
+       max_{dy, dx} input[b,
+                          strides[1] * y + rates[1] * dy,
+                          strides[2] * x + rates[2] * dx,
+                          c] +
+                    filter[dy, dx, c]
+
+Max-pooling is a special case when the filter has size equal to the pooling
+kernel size and contains all zeros.
+
+Note on duality: The dilation of `input` by the `filter` is equal to the
+negation of the erosion of `-input` by the reflected `filter`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
+    4-D with shape `[batch, in_height, in_width, depth]`.
+*  <b>`filter`</b>: A `Tensor`. Must have the same type as `input`.
+    3-D with shape `[filter_height, filter_width, depth]`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
+    The stride of the sliding window for each dimension of the input
+    tensor. Must be: `[1, stride_height, stride_width, 1]`.
+*  <b>`rates`</b>: A list of `ints` that has length `>= 4`.
+    The input stride for atrous morphological dilation. Must be:
+    `[1, rate_height, rate_width, 1]`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  4-D with shape `[batch, out_height, out_width, depth]`.
+
+
+- - -
+
+### `tf.nn.erosion2d(value, kernel, strides, rates, padding, name=None)` {#erosion2d}
+
+Computes the grayscale erosion of 4-D `value` and 3-D `kernel` tensors.
+
+The `value` tensor has shape `[batch, in_height, in_width, depth]` and the
+`kernel` tensor has shape `[kernel_height, kernel_width, depth]`, i.e.,
+each input channel is processed independently of the others with its own
+structuring function. The `output` tensor has shape
+`[batch, out_height, out_width, depth]`. The spatial dimensions of the
+output tensor depend on the `padding` algorithm. We currently only support the
+default "NHWC" `data_format`.
+
+In detail, the grayscale morphological 2-D erosion is given by:
+
+    output[b, y, x, c] =
+       min_{dy, dx} value[b,
+                          strides[1] * y - rates[1] * dy,
+                          strides[2] * x - rates[2] * dx,
+                          c] -
+                    kernel[dy, dx, c]
+
+Duality: The erosion of `value` by the `kernel` is equal to the negation of
+the dilation of `-value` by the reflected `kernel`.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor`. 4-D with shape `[batch, in_height, in_width, depth]`.
+*  <b>`kernel`</b>: A `Tensor`. Must have the same type as `value`.
+    3-D with shape `[kernel_height, kernel_width, depth]`.
+*  <b>`strides`</b>: A list of `ints` that has length `>= 4`.
+    1-D of length 4. The stride of the sliding window for each dimension of
+    the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+*  <b>`rates`</b>: A list of `ints` that has length `>= 4`.
+    1-D of length 4. The input stride for atrous morphological dilation.
+    Must be: `[1, rate_height, rate_width, 1]`.
+*  <b>`padding`</b>: A `string` from: `"SAME", "VALID"`.
+    The type of padding algorithm to use.
+*  <b>`name`</b>: A name for the operation (optional). If not specified "erosion2d"
+    is used.
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `value`.
+  4-D with shape `[batch, out_height, out_width, depth]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `value` depth does not match `kernel`' shape, or if
+    padding is other than `'VALID'` or `'SAME'`.
 
 
 
@@ -807,7 +964,8 @@ convolutional neural networks (NIPS 2012)]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor` of type `float32`. 4-D.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `half`.
+    4-D.
 *  <b>`depth_radius`</b>: An optional `int`. Defaults to `5`.
     0-D.  Half-width of the 1-D normalization window.
 *  <b>`bias`</b>: An optional `float`. Defaults to `1`.
@@ -819,18 +977,17 @@ convolutional neural networks (NIPS 2012)]
 
 ##### Returns:
 
-  A `Tensor` of type `float32`.
+  A `Tensor`. Has the same type as `input`.
 
 
 - - -
 
-### `tf.nn.sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None)` {#sufficient_statistics}
+### `tf.nn.sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None)` {#sufficient_statistics}
 
 Calculate the sufficient statistics for the mean and variance of `x`.
 
 These sufficient statistics are computed using the one pass algorithm on
-an input that's optionally shifted using the value of the 1st element in `x`.
-See:
+an input that's optionally shifted. See:
 https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
 ##### Args:
@@ -838,7 +995,9 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: Array of ints. Axes along which to compute mean and variance.
-*  <b>`shift`</b>: If true, shift the data to provide more numerically stable results.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce statistics with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the sufficient stats.
 
@@ -848,7 +1007,7 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.
   * the (possibly shifted) sum of squares of the elements in the array.
-  * the shift by which the mean must be corrected or None if `shift` is False.
+  * the shift by which the mean must be corrected or None if `shift` is None.
 
 
 - - -
@@ -876,7 +1035,7 @@ Calculate the mean and variance of based on the sufficient statistics.
 
 - - -
 
-### `tf.nn.moments(x, axes, name=None, keep_dims=False)` {#moments}
+### `tf.nn.moments(x, axes, shift=None, name=None, keep_dims=False)` {#moments}
 
 Calculate the mean and variance of `x`.
 
@@ -896,6 +1055,9 @@ When using these moments for batch normalization (see
 *  <b>`x`</b>: A `Tensor`.
 *  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
     variance.
+*  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
+    numerical stability, or `None` if no shift is to be performed. A shift
+    close to the true mean provides the most numerically stable results.
 *  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
 
@@ -997,12 +1159,12 @@ Computes softmax activations.
 
 For each batch `i` and class `j` we have
 
-    softmax[i, j] = exp(logits[i, j]) / sum(exp(logits[i]))
+    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
 
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1024,7 +1186,7 @@ For each batch `i` and class `j` we have
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
     2-D with shape `[batch_size, num_classes]`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1094,23 +1256,30 @@ a probability distribution for each entry, see
 on `logits` internally for efficiency.  Do not call this op with the
 output of `softmax`, as it will produce incorrect results.
 
-`logits` must have the shape `[batch_size, num_classes]`
-and dtype `float32` or `float64`.
-
-`labels` must have the shape `[batch_size]` and dtype `int32` or `int64`.
+A common use case is to have logits of shape `[batch_size, num_classes]` and
+labels of shape `[batch_size]`. But higher dimensions are supported.
 
 ##### Args:
 
 
-*  <b>`logits`</b>: Unscaled log probabilities.
-*  <b>`labels`</b>: Each entry `labels[i]` must be an index in `[0, num_classes)`. Other
-    values will result in a loss of 0, but incorrect gradient computations.
+*  <b>`logits`</b>: Unscaled log probabilities of rank `r` and shape
+    `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
+*  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
+    `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
+    Other values will result in a loss of 0, but incorrect gradient
+    computations.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A 1-D `Tensor` of length `batch_size` of the same type as `logits` with the
-  softmax cross entropy loss.
+  A `Tensor` of the same shape as `labels` and of the same type as `logits`
+  with the softmax cross entropy loss.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If logits are scalars (need to have rank >= 1) or if the rank
+    of the labels is not equal to the rank of the labels minus one.
 
 
 - - -
@@ -1297,6 +1466,407 @@ is the sum of the size of params along dimension 0.
 
 
 
+## Recurrent Neural Networks
+
+TensorFlow provides a number of methods for constructing Recurrent
+Neural Networks.  Most accept an `RNNCell`-subclassed object
+(see the documentation for `tf.nn.rnn_cell`).
+
+- - -
+
+### `tf.nn.dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None, dtype=None, parallel_iterations=None, swap_memory=False, time_major=False, scope=None)` {#dynamic_rnn}
+
+Creates a recurrent neural network specified by RNNCell `cell`.
+
+This function is functionally identical to the function `rnn` above, but
+performs fully dynamic unrolling of `inputs`.
+
+Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`.  Instead,
+it is a single `Tensor` where the maximum time is either the first or second
+dimension (see the parameter `time_major`).  The corresponding output is
+a single `Tensor` having the same number of time steps and batch size.
+
+The parameter `sequence_length` is required and dynamic calculation is
+automatically performed.
+
+##### Args:
+
+
+*  <b>`cell`</b>: An instance of RNNCell.
+*  <b>`inputs`</b>: The RNN inputs.
+    If time_major == False (default), this must be a tensor of shape:
+      `[batch_size, max_time, input_size]`, or a nested tuple of such
+      elements.
+    If time_major == True, this must be a tensor of shape:
+      `[max_time, batch_size, input_size]`, or a nested tuple of such
+      elements.
+*  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
+*  <b>`initial_state`</b>: (optional) An initial state for the RNN.
+    If `cell.state_size` is an integer, this must be
+    a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
+    If `cell.state_size` is a tuple, this should be a tuple of
+    tensors having shapes `[batch_size, s] for s in cell.state_size`.
+*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
+    initial_state is not provided.
+*  <b>`parallel_iterations`</b>: (Default: 32).  The number of iterations to run in
+    parallel.  Those operations which do not have any temporal dependency
+    and can be run in parallel, will be.  This parameter trades off
+    time for space.  Values >> 1 use more memory but take less time,
+    while smaller values use less memory but computations take longer.
+*  <b>`swap_memory`</b>: Transparently swap the tensors produced in forward inference
+    but needed for back prop from GPU to CPU.  This allows training RNNs
+    which would typically not fit on a single GPU, with very minimal (or no)
+    performance penalty.
+*  <b>`time_major`</b>: The shape format of the `inputs` and `outputs` Tensors.
+    If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
+    If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
+    Using `time_major = True` is a bit more efficient because it avoids
+    transposes at the beginning and end of the RNN calculation.  However,
+    most TensorFlow data is batch-major, so by default this function
+    accepts input and emits output in batch-major form.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+
+##### Returns:
+
+  A pair (outputs, state) where:
+
+*  <b>`outputs`</b>: The RNN output `Tensor`.
+      If time_major == False (default), this will be a `Tensor` shaped:
+        `[batch_size, max_time, cell.output_size]`.
+      If time_major == True, this will be a `Tensor` shaped:
+        `[max_time, batch_size, cell.output_size]`.
+*  <b>`state`</b>: The final state.  If `cell.state_size` is a `Tensor`, this
+      will be shaped `[batch_size, cell.state_size]`.  If it is a tuple,
+      this be a tuple with shapes `[batch_size, s] for s in cell.state_size`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell` is not an instance of RNNCell.
+*  <b>`ValueError`</b>: If inputs is None or an empty list.
+
+
+- - -
+
+### `tf.nn.rnn(cell, inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#rnn}
+
+Creates a recurrent neural network specified by RNNCell `cell`.
+
+##### The simplest form of RNN network generated is:
+
+  state = cell.zero_state(...)
+  outputs = []
+  for input_ in inputs:
+    output, state = cell(input_, state)
+    outputs.append(output)
+  return (outputs, state)
+
+However, a few other options are available:
+
+An initial state can be provided.
+If the sequence_length vector is provided, dynamic calculation is performed.
+This method of calculation does not compute the RNN steps past the maximum
+sequence length of the minibatch (thus saving computational time),
+and properly propagates the state at an example's sequence length
+to the final state output.
+
+The dynamic calculation performed is, at time t for batch row b,
+  (output, state)(b, t) =
+    (t >= sequence_length(b))
+      ? (zeros(cell.output_size), states(b, sequence_length(b) - 1))
+      : cell(input(b, t), state(b, t - 1))
+
+##### Args:
+
+
+*  <b>`cell`</b>: An instance of RNNCell.
+*  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
+    [batch_size, input_size], or a nested tuple of such elements.
+*  <b>`initial_state`</b>: (optional) An initial state for the RNN.
+    If `cell.state_size` is an integer, this must be
+    a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
+    If `cell.state_size` is a tuple, this should be a tuple of
+    tensors having shapes `[batch_size, s] for s in cell.state_size`.
+*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
+    initial_state is not provided.
+*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs.
+    An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+
+##### Returns:
+
+  A pair (outputs, state) where:
+    - outputs is a length T list of outputs (one for each input), or a nested
+      tuple of such elements.
+    - state is the final state
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell` is not an instance of RNNCell.
+*  <b>`ValueError`</b>: If `inputs` is `None` or an empty list, or if the input depth
+    (column size) cannot be inferred from inputs via shape inference.
+
+
+- - -
+
+### `tf.nn.state_saving_rnn(cell, inputs, state_saver, state_name, sequence_length=None, scope=None)` {#state_saving_rnn}
+
+RNN that accepts a state saver for time-truncated RNN calculation.
+
+##### Args:
+
+
+*  <b>`cell`</b>: An instance of `RNNCell`.
+*  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
+    `[batch_size, input_size]`.
+*  <b>`state_saver`</b>: A state saver object with methods `state` and `save_state`.
+*  <b>`state_name`</b>: Python string or tuple of strings.  The name to use with the
+    state_saver. If the cell returns tuples of states (i.e.,
+    `cell.state_size` is a tuple) then `state_name` should be a tuple of
+    strings having the same length as `cell.state_size`.  Otherwise it should
+    be a single string.
+*  <b>`sequence_length`</b>: (optional) An int32/int64 vector size [batch_size].
+    See the documentation for rnn() for more details about sequence_length.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+
+##### Returns:
+
+  A pair (outputs, state) where:
+    outputs is a length T list of outputs (one for each input)
+    states is the final state
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell` is not an instance of RNNCell.
+*  <b>`ValueError`</b>: If `inputs` is `None` or an empty list, or if the arity and
+   type of `state_name` does not match that of `cell.state_size`.
+
+
+- - -
+
+### `tf.nn.bidirectional_rnn(cell_fw, cell_bw, inputs, initial_state_fw=None, initial_state_bw=None, dtype=None, sequence_length=None, scope=None)` {#bidirectional_rnn}
+
+Creates a bidirectional recurrent neural network.
+
+Similar to the unidirectional case above (rnn) but takes input and builds
+independent forward and backward RNNs with the final forward and backward
+outputs depth-concatenated, such that the output will have the format
+[time][batch][cell_fw.output_size + cell_bw.output_size]. The input_size of
+forward and backward cell must match. The initial state for both directions
+is zero by default (but can be set optionally) and no intermediate states are
+ever returned -- the network is fully unrolled for the given (passed in)
+length(s) of the sequence(s) or completely unrolled if length(s) is not given.
+
+##### Args:
+
+
+*  <b>`cell_fw`</b>: An instance of RNNCell, to be used for forward direction.
+*  <b>`cell_bw`</b>: An instance of RNNCell, to be used for backward direction.
+*  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
+    [batch_size, input_size], or a nested tuple of such elements.
+*  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
+    This must be a tensor of appropriate type and shape
+    `[batch_size x cell_fw.state_size]`.
+    If `cell_fw.state_size` is a tuple, this should be a tuple of
+    tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
+*  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using
+    the corresponding properties of `cell_bw`.
+*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
+    either of the initial states are not provided.
+*  <b>`sequence_length`</b>: (optional) An int32/int64 vector, size `[batch_size]`,
+    containing the actual lengths for each of the sequences.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
+
+##### Returns:
+
+  A tuple (outputs, output_state_fw, output_state_bw) where:
+    outputs is a length `T` list of outputs (one for each input), which
+      are depth-concatenated forward and backward outputs.
+    output_state_fw is the final state of the forward rnn.
+    output_state_bw is the final state of the backward rnn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
+*  <b>`ValueError`</b>: If inputs is None or an empty list.
+
+
+
+## Conectionist Temporal Classification (CTC)
+
+- - -
+
+### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True)` {#ctc_loss}
+
+Computes the CTC (Connectionist Temporal Classification) Loss.
+
+This op implements the CTC loss as presented in the article:
+
+A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
+Connectionist Temporal Classification: Labelling Unsegmented Sequence Data
+with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.
+
+http://www.cs.toronto.edu/~graves/icml_2006.pdf
+
+Input requirements:
+
+```
+sequence_length(b) <= time for all b
+
+max(labels.indices(labels.indices[:, 1] == b, 2))
+  <= sequence_length(b) for all b.
+```
+
+Regarding the arguments `preprocess_collapse_repeated` and
+`ctc_merge_repeated`:
+
+If `preprocess_collapse_repeated` is True, then a preprocessing step runs
+before loss calculation, wherein repeated labels passed to the loss
+are merged into single labels.  This is useful if the training labels come
+from, e.g., forced alignments and therefore have unnecessary repetitions.
+
+If `ctc_merge_repeated` is set False, then deep within the CTC calculation,
+repeated non-blank labels will not be merged and are interpreted
+as individual labels.  This is a simplified (non-standard) version of CTC.
+
+Here is a table of the (roughly) expected first order behavior:
+
+* `preprocess_collapse_repeated=False`, `ctc_merge_repeated=True`
+
+  Classical CTC behavior: Outputs true repeated classes with blanks in
+  between, and can also output repeated classes with no blanks in
+  between that need to be collapsed by the decoder.
+
+* `preprocess_collapse_repeated=True`, `ctc_merge_repeated=False`
+
+  Never learns to output repeated classes, as they are collapsed
+  in the input labels before training.
+
+* `preprocess_collapse_repeated=False`, `ctc_merge_repeated=False`
+
+  Outputs repeated classes with blanks in between, but generally does not
+  require the decoder to collapse/merge repeated classes.
+
+* `preprocess_collapse_repeated=True`, `ctc_merge_repeated=True`
+
+  Untested.  Very likely will not learn to output repeated classes.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: 3-D `float` `Tensor` sized
+    `[max_time x batch_size x num_classes]`.  The logits.
+*  <b>`labels`</b>: An `int32` `SparseTensor`.
+    `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
+    the id for (batch b, time t).  See `core/ops/ctc_ops.cc` for more details.
+*  <b>`sequence_length`</b>: 1-D `int32` vector, size `[batch_size]`.
+    The sequence lengths.
+*  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.
+    If True, repeated labels are collapsed prior to the CTC calculation.
+*  <b>`ctc_merge_repeated`</b>: Boolean.  Default: True.
+
+##### Returns:
+
+  A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if labels is not a `SparseTensor`.
+
+
+- - -
+
+### `tf.nn.ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True)` {#ctc_greedy_decoder}
+
+Performs greedy decoding on the logits given in input (best path).
+
+Note: Regardless of the value of merge_repeated, if the maximum index of a
+given time and batch corresponds to the blank index `(num_classes - 1)`, no
+new element is emitted.
+
+If `merge_repeated` is `True`, merge repeated classes in output.
+This means that if consecutive logits' maximum indices are the same,
+only the first of these is emitted.  The sequence `A B B * B * B` (where '*'
+is the blank label) becomes
+
+  * `A B` if `merge_repeated=True`.
+  * `A B B B B B` if `merge_repeated=False`.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: 3-D `float` `Tensor` sized
+    `[max_time x batch_size x num_classes]`.  The logits.
+*  <b>`sequence_length`</b>: 1-D `int32` vector containing sequence lengths,
+    having size `[batch_size]`.
+*  <b>`merge_repeated`</b>: Boolean.  Default: True.
+
+##### Returns:
+
+  A tuple `(decoded, log_probabilities)` where
+
+*  <b>`decoded`</b>: A single-element list. `decoded[0]`
+    is an `SparseTensor` containing the decoded outputs s.t.:
+    `decoded.indices`: Indices matrix `(total_decoded_outputs x 2)`.
+      The rows store: `[batch, time]`.
+    `decoded.values`: Values vector, size `(total_decoded_outputs)`.
+      The vector stores the decoded classes.
+    `decoded.shape`: Shape vector, size `(2)`.
+      The shape values are: `[batch_size, max_decoded_length]`
+*  <b>`log_probability`</b>: A `float` matrix `(batch_size x 1)` containing sequence
+      log-probabilities.
+
+
+- - -
+
+### `tf.nn.ctc_beam_search_decoder(inputs, sequence_length, beam_width=100, top_paths=1, merge_repeated=True)` {#ctc_beam_search_decoder}
+
+Performs beam search decoding on the logits given in input.
+
+**Note** The `ctc_greedy_decoder` is a special case of the
+`ctc_beam_search_decoder` with `top_paths=1` (but that decoder is faster
+for this special case).
+
+If `merge_repeated` is `True`, merge repeated classes in the output beams.
+This means that if consecutive entries in a beam are the same,
+only the first of these is emitted.  That is, when the top path
+is `A B B B B`, the return value is:
+
+  * `A B` if `merge_repeated = True`.
+  * `A B B B B` if `merge_repeated = False`.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: 3-D `float` `Tensor`, size
+    `[max_time x batch_size x num_classes]`.  The logits.
+*  <b>`sequence_length`</b>: 1-D `int32` vector containing sequence lengths,
+    having size `[batch_size]`.
+*  <b>`beam_width`</b>: An int scalar >= 0 (beam search beam width).
+*  <b>`top_paths`</b>: An int scalar >= 0, <= beam_width (controls output size).
+*  <b>`merge_repeated`</b>: Boolean.  Default: True.
+
+##### Returns:
+
+  A tuple `(decoded, log_probabilities)` where
+
+*  <b>`decoded`</b>: A list of length top_paths, where `decoded[j]`
+    is a `SparseTensor` containing the decoded outputs:
+    `decoded[j].indices`: Indices matrix `(total_decoded_outputs[j] x 2)`
+      The rows store: [batch, time].
+    `decoded[j].values`: Values vector, size `(total_decoded_outputs[j])`.
+      The vector stores the decoded classes for beam j.
+    `decoded[j].shape`: Shape vector, size `(2)`.
+      The shape values are: `[batch_size, max_decoded_length[j]]`.
+*  <b>`log_probability`</b>: A `float` matrix `(batch_size x top_paths)` containing
+      sequence log-probabilities.
+
+
+
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
@@ -1459,7 +2029,7 @@ This operation is for training only.  It is generally an underestimate of
 the full softmax loss.
 
 At inference time, you can compute full softmax probabilities with the
-expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
+expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
 See our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
@@ -1511,14 +2081,14 @@ classes when using one of the sampled loss functions above.
 Samples a set of classes using a uniform base distribution.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from
 the base distribution.
 
 The base distribution for this operation is the uniform distribution
-over the range of integers `[0, range_max]`.
+over the range of integers `[0, range_max)`.
 
 In addition, this operation returns tensors `true_expected_count`
 and `sampled_expected_count` representing the number of times each
@@ -1563,7 +2133,7 @@ compute them approximately.
 Samples a set of classes using a log-uniform (Zipfian) base distribution.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from
@@ -1622,7 +2192,7 @@ compute them approximately.
 Samples a set of classes from a distribution learned during training.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from
@@ -1630,7 +2200,7 @@ the base distribution.
 
 The base distribution for this operation is constructed on the fly
 during training.  It is a unigram distribution over the target
-classes seen so far during training.  Every integer in `[0, range_max]`
+classes seen so far during training.  Every integer in `[0, range_max)`
 begins with a weight of 1, and is incremented by 1 each time it is
 seen as a target class.  The base distribution is not saved to checkpoints,
 so it is reset when the model is reloaded.
@@ -1678,7 +2248,7 @@ compute them approximately.
 Samples a set of classes using the provided (fixed) base distribution.
 
 This operation randomly samples a tensor of sampled classes
-(`sampled_candidates`) from the range of integers `[0, range_max]`.
+(`sampled_candidates`) from the range of integers `[0, range_max)`.
 
 The elements of `sampled_candidates` are drawn without replacement
 (if `unique=True`) or with replacement (if `unique=False`) from

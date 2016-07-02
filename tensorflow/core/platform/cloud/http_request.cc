@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -123,6 +124,10 @@ class LibCurlProxy : public LibCurl {
     CHECK(dll_handle_);
     return curl_easy_cleanup_(curl);
   }
+  char* curl_easy_escape(CURL* curl, const char* str, int length) override {
+    CHECK(dll_handle_);
+    return curl_easy_escape_(curl, str, length);
+  }
 
   curl_slist* curl_slist_append(curl_slist* list, const char* str) override {
     CHECK(dll_handle_);
@@ -132,6 +137,11 @@ class LibCurlProxy : public LibCurl {
   void curl_slist_free_all(curl_slist* list) override {
     CHECK(dll_handle_);
     return curl_slist_free_all_(list);
+  }
+
+  void curl_free(void* p) override {
+    CHECK(dll_handle_);
+    curl_free_(p);
   }
 
  private:
@@ -156,6 +166,8 @@ class LibCurlProxy : public LibCurl {
     BIND_CURL_FUNC(curl_slist_append);
     BIND_CURL_FUNC(curl_slist_free_all);
     BIND_CURL_FUNC(curl_easy_cleanup);
+    BIND_CURL_FUNC(curl_easy_escape);
+    BIND_CURL_FUNC(curl_free);
 
 #undef BIND_CURL_FUNC
 
@@ -177,6 +189,8 @@ class LibCurlProxy : public LibCurl {
   curl_slist* (*curl_slist_append_)(curl_slist* list,
                                     const char* str) = nullptr;
   void (*curl_slist_free_all_)(curl_slist* list) = nullptr;
+  char* (*curl_easy_escape_)(CURL* curl, const char* str, int length) = nullptr;
+  void (*curl_free_)(void* p) = nullptr;
 };
 }  // namespace
 
@@ -200,8 +214,11 @@ HttpRequest::~HttpRequest() {
 }
 
 Status HttpRequest::Init() {
+  if (is_initialized_) {
+    return errors::FailedPrecondition("Already initialized.");
+  }
   if (!libcurl_) {
-    return errors::Internal("libcurl proxy cannot be nullptr.");
+    return errors::FailedPrecondition("libcurl proxy cannot be nullptr.");
   }
   TF_RETURN_IF_ERROR(libcurl_->MaybeLoadDll());
   curl_ = libcurl_->curl_easy_init();
@@ -211,6 +228,9 @@ Status HttpRequest::Init() {
 
   libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_CAPATH, kCertsPath);
+  libcurl_->curl_easy_setopt(
+      curl_, CURLOPT_USERAGENT,
+      strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
@@ -222,6 +242,13 @@ Status HttpRequest::Init() {
     return s;
   }
   return Status::OK();
+}
+
+string HttpRequest::EscapeString(const string& str) {
+  char* out_char_str = libcurl_->curl_easy_escape(curl_, str.c_str(), 0);
+  string out_str(out_char_str);
+  libcurl_->curl_free(out_char_str);
+  return out_str;
 }
 
 Status HttpRequest::SetUri(const string& uri) {
@@ -240,13 +267,19 @@ Status HttpRequest::SetRange(uint64 start, uint64 end) {
   return Status::OK();
 }
 
+Status HttpRequest::AddHeader(const string& name, const string& value) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  curl_headers_ = libcurl_->curl_slist_append(
+      curl_headers_, strings::StrCat(name, ": ", value).c_str());
+  return Status::OK();
+}
+
 Status HttpRequest::AddAuthBearerHeader(const string& auth_token) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   if (!auth_token.empty()) {
-    curl_headers_ = libcurl_->curl_slist_append(
-        curl_headers_,
-        strings::StrCat("Authorization: Bearer ", auth_token).c_str());
+    return AddHeader("Authorization", strings::StrCat("Bearer ", auth_token));
   }
   return Status::OK();
 }
@@ -270,7 +303,7 @@ Status HttpRequest::SetPostRequest(const string& body_filepath) {
   }
   post_body_ = fopen(body_filepath.c_str(), "r");
   if (!post_body_) {
-    return errors::InvalidArgument("Couldnt' open the specified file: " +
+    return errors::InvalidArgument("Couldn't open the specified file: " +
                                    body_filepath);
   }
   fseek(post_body_, 0, SEEK_END);
@@ -282,6 +315,22 @@ Status HttpRequest::SetPostRequest(const string& body_filepath) {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                              reinterpret_cast<void*>(post_body_));
+  return Status::OK();
+}
+
+Status HttpRequest::SetPostRequest(const char* buffer, size_t size) {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+  is_method_set_ = true;
+  curl_headers_ = libcurl_->curl_slist_append(
+      curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                             reinterpret_cast<void*>(this));
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
+  post_body_buffer_ = StringPiece(buffer, size);
   return Status::OK();
 }
 
@@ -337,6 +386,19 @@ size_t HttpRequest::WriteCallback(const void* ptr, size_t size, size_t nmemb,
   return bytes_to_copy;
 }
 
+size_t HttpRequest::ReadCallback(void* ptr, size_t size, size_t nmemb,
+                                 FILE* this_object) {
+  CHECK(ptr);
+  auto that = reinterpret_cast<HttpRequest*>(this_object);
+  CHECK(that->post_body_read_ <= that->post_body_buffer_.size());
+  const size_t bytes_to_copy = std::min(
+      size * nmemb, that->post_body_buffer_.size() - that->post_body_read_);
+  memcpy(ptr, that->post_body_buffer_.data() + that->post_body_read_,
+         bytes_to_copy);
+  that->post_body_read_ += bytes_to_copy;
+  return bytes_to_copy;
+}
+
 Status HttpRequest::Send() {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
@@ -359,13 +421,13 @@ Status HttpRequest::Send() {
   uint64 response_code;
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code);
 
-  if (curl_result != CURLE_OK) {
-    return errors::Internal(string("curl error: ") + error_buffer);
-  }
   switch (response_code) {
     case 200:  // OK
     case 204:  // No Content
     case 206:  // Partial Content
+      if (curl_result != CURLE_OK) {
+        return errors::Internal(string("curl error: ") + error_buffer);
+      }
       if (response_buffer_ && response_string_piece_) {
         *response_string_piece_ = StringPiece(response_buffer_, written_size);
       }

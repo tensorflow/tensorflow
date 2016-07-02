@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
@@ -53,6 +53,7 @@ def optimize_loss(loss,
                   clip_gradients=None,
                   moving_average_decay=0.9,
                   learning_rate_decay_fn=None,
+                  update_ops=None,
                   variables=None,
                   name=None):
   """Given loss and parameters for optimizer, returns a training op.
@@ -81,6 +82,8 @@ def optimize_loss(loss,
                             Can be used to implement any learning rate decay
                             functions.
                             For example: tf.train.exponential_decay.
+    update_ops: list of update `Operation`s to execute at each step. If `None`,
+                uses elements of UPDATE_OPS collection.
     variables: list of variables to optimize or
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
@@ -92,6 +95,15 @@ def optimize_loss(loss,
     ValueError: if optimizer is wrong type.
   """
   with vs.variable_op_scope([loss, global_step], name, "OptimizeLoss"):
+    # Update ops take UPDATE_OPS collection if not provided.
+    update_ops = (set(update_ops or []) or
+                  set(ops.get_collection(ops.GraphKeys.UPDATE_OPS)))
+    # Make sure update ops are ran before computing loss.
+    if update_ops:
+      with ops.control_dependencies(update_ops):
+        barrier = control_flow_ops.no_op(name="update_barrier")
+      loss = control_flow_ops.with_dependencies([barrier], loss)
+
     # Moving average of the loss with decay.
     if moving_average_decay is not None:
       # Generate moving averages of the loss.
@@ -115,6 +127,7 @@ def optimize_loss(loss,
                            str(learning_rate), str(type(learning_rate))))
     if learning_rate_decay_fn is not None:
       lr = learning_rate_decay_fn(lr, global_step)
+      logging_ops.scalar_summary("learning_rate", lr)
 
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):

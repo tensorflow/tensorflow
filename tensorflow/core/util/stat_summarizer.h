@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,9 +69,9 @@ class Stat {
                    : static_cast<HighPrecisionValueType>(sum_) / count_;
   }
 
-  ValueType rms() const { return sqrt(squared_sum_ / count_); }
-
-  ValueType std_deviation() const { return all_same() ? 0 : rms() - avg(); }
+  ValueType std_deviation() const {
+    return all_same() ? 0 : sqrt(squared_sum_ / count_ - avg() * avg());
+  }
 
   void OutputToStream(std::ostream* stream) const {
     if (empty()) {

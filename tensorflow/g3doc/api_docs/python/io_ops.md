@@ -219,6 +219,33 @@ finished with the previous file).
 
 - - -
 
+#### `tf.ReaderBase.read_up_to(queue, num_records, name=None)` {#ReaderBase.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
+
+
+- - -
+
 #### `tf.ReaderBase.reader_ref` {#ReaderBase.reader_ref}
 
 Op that implements the reader.
@@ -368,6 +395,33 @@ finished with the previous file).
 
 *  <b>`key`</b>: A string scalar Tensor.
 *  <b>`value`</b>: A string scalar Tensor.
+
+
+- - -
+
+#### `tf.TextLineReader.read_up_to(queue, num_records, name=None)` {#TextLineReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
 
 
 - - -
@@ -525,6 +579,33 @@ finished with the previous file).
 
 - - -
 
+#### `tf.WholeFileReader.read_up_to(queue, num_records, name=None)` {#WholeFileReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
+
+
+- - -
+
 #### `tf.WholeFileReader.reader_ref` {#WholeFileReader.reader_ref}
 
 Op that implements the reader.
@@ -678,6 +759,33 @@ finished with the previous file).
 
 - - -
 
+#### `tf.IdentityReader.read_up_to(queue, num_records, name=None)` {#IdentityReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
+
+
+- - -
+
 #### `tf.IdentityReader.reader_ref` {#IdentityReader.reader_ref}
 
 Op that implements the reader.
@@ -756,7 +864,7 @@ A Reader that outputs the records from a TFRecords file.
 See ReaderBase for supported methods.
 - - -
 
-#### `tf.TFRecordReader.__init__(name=None)` {#TFRecordReader.__init__}
+#### `tf.TFRecordReader.__init__(name=None, options=None)` {#TFRecordReader.__init__}
 
 Create a TFRecordReader.
 
@@ -764,6 +872,7 @@ Create a TFRecordReader.
 
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`options`</b>: A TFRecordOptions object (optional).
 
 
 - - -
@@ -824,6 +933,33 @@ finished with the previous file).
 
 *  <b>`key`</b>: A string scalar Tensor.
 *  <b>`value`</b>: A string scalar Tensor.
+
+
+- - -
+
+#### `tf.TFRecordReader.read_up_to(queue, num_records, name=None)` {#TFRecordReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
 
 
 - - -
@@ -977,6 +1113,33 @@ finished with the previous file).
 
 *  <b>`key`</b>: A string scalar Tensor.
 *  <b>`value`</b>: A string scalar Tensor.
+
+
+- - -
+
+#### `tf.FixedLengthRecordReader.read_up_to(queue, num_records, name=None)` {#FixedLengthRecordReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
 
 
 - - -
@@ -1289,7 +1452,7 @@ example_names: ["input0", "input1"],
 features: {
     "kw": VarLenFeature(tf.string),
     "dank": VarLenFeature(tf.int64),
-    "gps": VarLenFeature(tf.float),
+    "gps": VarLenFeature(tf.float32),
 }
 ```
 
@@ -1472,10 +1635,20 @@ Enqueues one element to this queue.
 If the queue is full when this operation executes, it will block
 until the element has been enqueued.
 
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed before this operation runs,
+`tf.errors.AbortedError` will be raised. If this operation is
+blocked, and either (i) the queue is closed by a close operation
+with `cancel_pending_enqueues=True`, or (ii) the session is
+[closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
+
 ##### Args:
 
 
-*  <b>`vals`</b>: The tuple of `Tensor` objects to be enqueued.
+*  <b>`vals`</b>: A tensor, a list or tuple of tensors, or a dictionary containing
+    the values to enqueue.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1496,11 +1669,20 @@ same size in the 0th dimension.
 If the queue is full when this operation executes, it will block
 until all of the elements have been enqueued.
 
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed before this operation runs,
+`tf.errors.AbortedError` will be raised. If this operation is
+blocked, and either (i) the queue is closed by a close operation
+with `cancel_pending_enqueues=True`, or (ii) the session is
+[closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
+
 ##### Args:
 
 
-*  <b>`vals`</b>: The tensor or tuple of tensors from which the queue elements
-    are taken.
+*  <b>`vals`</b>: A tensor, a list or tuple of tensors, or a dictionary
+    from which the queue elements are taken.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1517,6 +1699,14 @@ Dequeues one element from this queue.
 
 If the queue is empty when this operation executes, it will block
 until there is an element to dequeue.
+
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed, the queue is empty, and there are no pending
+enqueue operations that can fulfil this request,
+`tf.errors.OutOfRangeError` will be raised. If the session is
+[closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
 
 ##### Args:
 
@@ -1540,6 +1730,14 @@ components in the dequeued tuple will have size `n` in the 0th dimension.
 
 If the queue is closed and there are less than `n` elements left, then an
 `OutOfRange` exception is raised.
+
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed, the queue contains fewer than `n` elements, and
+there are no pending enqueue operations that can fulfil this
+request, `tf.errors.OutOfRangeError` will be raised. If the
+session is [closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
 
 ##### Args:
 
@@ -1602,9 +1800,13 @@ be cancelled.
 #### Other Methods
 - - -
 
-#### `tf.QueueBase.__init__(dtypes, shapes, queue_ref)` {#QueueBase.__init__}
+#### `tf.QueueBase.__init__(dtypes, shapes, names, queue_ref)` {#QueueBase.__init__}
 
 Constructs a queue object from a queue reference.
+
+The two optional lists, `shapes` and `names`, must be of the same length
+as `dtypes` if provided.  The values at a given index `i` indicate the
+shape and name to use for the corresponding queue component in `dtypes`.
 
 ##### Args:
 
@@ -1615,7 +1817,15 @@ Constructs a queue object from a queue reference.
     A list of shape tuples or None. This list is the same length
     as dtypes.  If the shape of any tensors in the element are constrained,
     all must be; shapes can be None if the shapes should not be constrained.
+*  <b>`names`</b>: Optional list of names.  If provided, the `enqueue()` and
+    `dequeue()` methods will use dictionaries with these names as keys.
+    Must be None or a list or tuple of the same length as `dtypes`.
 *  <b>`queue_ref`</b>: The queue reference, i.e. the output of the queue op.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If one of the arguments is invalid.
 
 
 - - -
@@ -1625,18 +1835,20 @@ Constructs a queue object from a queue reference.
 Dequeues and concatenates `n` elements from this queue.
 
 **Note** This operation is not supported by all queues.  If a queue does not
-support DequeueUpTo, then an Unimplemented exception is raised.
+support DequeueUpTo, then a `tf.errors.UnimplementedError` is raised.
 
-This operation concatenates queue-element component tensors along the
-0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size `n` in the 0th dimension.
+This operation concatenates queue-element component tensors along
+the 0th dimension to make a single component tensor. If the queue
+has not been closed, all of the components in the dequeued tuple
+will have size `n` in the 0th dimension.
 
-If the queue is closed and there are more than `0` but less than `n`
-elements remaining, then instead of raising an `OutOfRange` exception like
-`dequeue_many`, the remaining elements are returned immediately.
-If the queue is closed and there are `0` elements left in the queue, then
-an `OutOfRange` exception is raised just like in `dequeue_many`.
-Otherwise the behavior is identical to `dequeue_many`:
+If the queue is closed and there are more than `0` but fewer than
+`n` elements remaining, then instead of raising a
+`tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
+less than `n` elements are returned immediately.  If the queue is
+closed and there are `0` elements left in the queue, then a
+`tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
+Otherwise the behavior is identical to `dequeue_many`.
 
 ##### Args:
 
@@ -1689,6 +1901,13 @@ The name of the underlying queue.
 
 - - -
 
+#### `tf.QueueBase.names` {#QueueBase.names}
+
+The list of names for each component of a queue element.
+
+
+- - -
+
 #### `tf.QueueBase.queue_ref` {#QueueBase.queue_ref}
 
 The underlying queue reference.
@@ -1706,7 +1925,7 @@ this class.
 
 - - -
 
-#### `tf.FIFOQueue.__init__(capacity, dtypes, shapes=None, shared_name=None, name='fifo_queue')` {#FIFOQueue.__init__}
+#### `tf.FIFOQueue.__init__(capacity, dtypes, shapes=None, names=None, shared_name=None, name='fifo_queue')` {#FIFOQueue.__init__}
 
 Creates a queue that dequeues elements in a first-in first-out order.
 
@@ -1730,11 +1949,74 @@ but the use of `dequeue_many` is disallowed.
     that may be stored in this queue.
 *  <b>`dtypes`</b>: A list of `DType` objects. The length of `dtypes` must equal
     the number of tensors in each queue element.
-*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects,
-    with the same length as `dtypes` or `None`.
+*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects
+    with the same length as `dtypes`, or `None`.
+*  <b>`names`</b>: (Optional.) A list of string naming the components in the queue
+    with the same length as `dtypes`, or `None`.  If specified the dequeue
+    methods return a dictionary with the names as keys.
 *  <b>`shared_name`</b>: (Optional.) If non-empty, this queue will be shared under
     the given name across multiple sessions.
 *  <b>`name`</b>: Optional name for the queue operation.
+
+
+
+- - -
+
+### `class tf.PaddingFIFOQueue` {#PaddingFIFOQueue}
+
+A FIFOQueue that supports batching variable-sized tensors by padding.
+
+A `PaddingFIFOQueue` may contain components with dynamic shape, while also
+supporting `dequeue_many`.  See the constructor for more details.
+
+See [`tf.QueueBase`](#QueueBase) for a description of the methods on
+this class.
+
+- - -
+
+#### `tf.PaddingFIFOQueue.__init__(capacity, dtypes, shapes, names=None, shared_name=None, name='padding_fifo_queue')` {#PaddingFIFOQueue.__init__}
+
+Creates a queue that dequeues elements in a first-in first-out order.
+
+A `PaddingFIFOQueue` has bounded capacity; supports multiple concurrent
+producers and consumers; and provides exactly-once delivery.
+
+A `PaddingFIFOQueue` holds a list of up to `capacity` elements. Each
+element is a fixed-length tuple of tensors whose dtypes are
+described by `dtypes`, and whose shapes are described by the `shapes`
+argument.
+
+The `shapes` argument must be specified; each component of a queue
+element must have the respective shape.  Shapes of fixed
+rank but variable size are allowed by setting any shape dimension to None.
+In this case, the inputs' shape may vary along the given dimension, and
+`dequeue_many` will pad the given dimension with zeros up to the maximum
+shape of all elements in the given batch.
+
+##### Args:
+
+
+*  <b>`capacity`</b>: An integer. The upper bound on the number of elements
+    that may be stored in this queue.
+*  <b>`dtypes`</b>: A list of `DType` objects. The length of `dtypes` must equal
+    the number of tensors in each queue element.
+*  <b>`shapes`</b>: A list of `TensorShape` objects, with the same length as
+    `dtypes`.  Any dimension in the `TensorShape` containing value
+    `None` is dynamic and allows values to be enqueued with
+     variable size in that dimension.
+*  <b>`names`</b>: (Optional.) A list of string naming the components in the queue
+    with the same length as `dtypes`, or `None`.  If specified the dequeue
+    methods return a dictionary with the names as keys.
+*  <b>`shared_name`</b>: (Optional.) If non-empty, this queue will be shared under
+    the given name across multiple sessions.
+*  <b>`name`</b>: Optional name for the queue operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If shapes is not a list of shapes, or the lengths of dtypes
+    and shapes do not match, or if names is specified and the lengths of
+    dtypes and names do not match.
 
 
 
@@ -1749,7 +2031,7 @@ this class.
 
 - - -
 
-#### `tf.RandomShuffleQueue.__init__(capacity, min_after_dequeue, dtypes, shapes=None, seed=None, shared_name=None, name='random_shuffle_queue')` {#RandomShuffleQueue.__init__}
+#### `tf.RandomShuffleQueue.__init__(capacity, min_after_dequeue, dtypes, shapes=None, names=None, seed=None, shared_name=None, name='random_shuffle_queue')` {#RandomShuffleQueue.__init__}
 
 Create a queue that dequeues elements in a random order.
 
@@ -1783,8 +2065,11 @@ queue has been closed.
 *  <b>`min_after_dequeue`</b>: An integer (described above).
 *  <b>`dtypes`</b>: A list of `DType` objects. The length of `dtypes` must equal
     the number of tensors in each queue element.
-*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects,
-    with the same length as `dtypes` or `None`.
+*  <b>`shapes`</b>: (Optional.) A list of fully-defined `TensorShape` objects
+    with the same length as `dtypes`, or `None`.
+*  <b>`names`</b>: (Optional.) A list of string naming the components in the queue
+    with the same length as `dtypes`, or `None`.  If specified the dequeue
+    methods return a dictionary with the names as keys.
 *  <b>`seed`</b>: A Python integer. Used to create a random seed. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.

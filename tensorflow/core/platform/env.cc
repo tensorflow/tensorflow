@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,29 +85,31 @@ Status Env::RegisterFileSystem(const string& scheme,
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
-                                RandomAccessFile** result) {
+                                std::unique_ptr<RandomAccessFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewRandomAccessFile(fname, result);
 }
 
-Status Env::NewWritableFile(const string& fname, WritableFile** result) {
+Status Env::NewReadOnlyMemoryRegionFromFile(
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
+}
+
+Status Env::NewWritableFile(const string& fname,
+                            std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewWritableFile(fname, result);
 }
 
-Status Env::NewAppendableFile(const string& fname, WritableFile** result) {
+Status Env::NewAppendableFile(const string& fname,
+                              std::unique_ptr<WritableFile>* result) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->NewAppendableFile(fname, result);
-}
-
-Status Env::NewReadOnlyMemoryRegionFromFile(const string& fname,
-                                            ReadOnlyMemoryRegion** result) {
-  FileSystem* fs;
-  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
-  return fs->NewReadOnlyMemoryRegionFromFile(fname, result);
 }
 
 bool Env::FileExists(const string& fname) {
@@ -170,7 +172,7 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   if (!s.ok()) {
     return s;
   }
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   s = env->NewRandomAccessFile(fname, &file);
   if (!s.ok()) {
     return s;
@@ -190,13 +192,12 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   } else {
     memmove(p, result.data(), result.size());
   }
-  delete file;
   return s;
 }
 
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data) {
-  WritableFile* file;
+  std::unique_ptr<WritableFile> file;
   Status s = env->NewWritableFile(fname, &file);
   if (!s.ok()) {
     return s;
@@ -205,7 +206,6 @@ Status WriteStringToFile(Env* env, const string& fname,
   if (s.ok()) {
     s = file->Close();
   }
-  delete file;
   return s;
 }
 
@@ -249,13 +249,12 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   auto s = env->NewRandomAccessFile(fname, &file);
   if (!s.ok()) {
     return s;
   }
-  std::unique_ptr<RandomAccessFile> file_holder(file);
-  std::unique_ptr<FileStream> stream(new FileStream(file));
+  std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   // TODO(jiayq): the following coded stream is for debugging purposes to allow
   // one to parse arbitrarily large messages for MessageLite. One most likely

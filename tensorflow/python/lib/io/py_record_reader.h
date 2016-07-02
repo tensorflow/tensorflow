@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,11 @@ class RecordReader;
 // by multiple threads.
 class PyRecordReader {
  public:
-  static PyRecordReader* New(const string& filename, uint64 start_offset);
+  // TODO(vrv): make this take a shared proto to configure
+  // the compression options.
+  static PyRecordReader* New(const string& filename, uint64 start_offset,
+                             const string& compression_type_string);
+
   ~PyRecordReader();
 
   // Attempt to get the next record at "current_offset()".  If

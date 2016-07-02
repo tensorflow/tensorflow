@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ string QuantizedActivationModeString(QuantizedActivationMode mode) {
       LOG(FATAL) << "Unknown quantized_activation_mode "
                  << static_cast<int32>(mode);
   }
+  return "unknown quantized_activation_mode";
 }
 
 string ActivationModeString(ActivationMode mode) {
@@ -66,6 +67,7 @@ string ActivationModeString(ActivationMode mode) {
     default:
       LOG(FATAL) << "Unknown activation_mode " << static_cast<int32>(mode);
   }
+  return "unknown activation_mode";
 }
 
 string ElementwiseOperationString(ElementwiseOperation op) {
@@ -77,6 +79,7 @@ string ElementwiseOperationString(ElementwiseOperation op) {
     default:
       LOG(FATAL) << "Unknown elementwise op " << static_cast<int32>(op);
   }
+  return "unknown element wise op";
 }
 
 string DataLayoutString(DataLayout layout) {
@@ -92,6 +95,7 @@ string DataLayoutString(DataLayout layout) {
     default:
       LOG(FATAL) << "Unknown data layout " << static_cast<int32>(layout);
   }
+  return "unknown data layout";
 }
 
 string FilterLayoutString(FilterLayout layout) {
@@ -105,6 +109,7 @@ string FilterLayoutString(FilterLayout layout) {
     default:
       LOG(FATAL) << "Unknown filter layout " << static_cast<int32>(layout);
   }
+  return "unknown filter layout";
 }
 
 string ShortPoolingModeString(PoolingMode mode) {
@@ -116,6 +121,7 @@ string ShortPoolingModeString(PoolingMode mode) {
     default:
       LOG(FATAL) << "Unknown filter layout " << static_cast<int32>(mode);
   }
+  return "unknown filter layout";
 }
 
 std::tuple<int, int, int> GetDimIndices(const DataLayout& layout,
@@ -166,7 +172,7 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
   reordered[b_idx_to] = input[b_idx_from];
   reordered[d_idx_to] = input[d_idx_from];
 
-  for (int i = 0; i < input.size() - 2;
+  for (size_t i = 0; i < input.size() - 2;
        i++, spatial_idx_from++, spatial_idx_to++) {
     reordered[spatial_idx_to] = input[spatial_idx_from];
   }

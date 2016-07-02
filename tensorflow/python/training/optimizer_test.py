@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import tensorflow as tf
 class OptimizerTest(tf.test.TestCase):
 
   def testBasic(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -43,7 +43,7 @@ class OptimizerTest(tf.test.TestCase):
         self.assertAllClose([-6., -5.], var1.eval())
 
   def testAggregationMethod(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -67,7 +67,7 @@ class OptimizerTest(tf.test.TestCase):
         self.assertAllClose([-6., -5.], var1.eval())
 
   def testPrecomputedGradient(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -92,7 +92,7 @@ class OptimizerTest(tf.test.TestCase):
             [3.0 - 3 * 3 * 42.0, 4.0 - 3 * 3 * (-42.0)], var1.eval())
 
   def testNoVariables(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype, trainable=False)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype, trainable=False)
@@ -102,7 +102,7 @@ class OptimizerTest(tf.test.TestCase):
           sgd_op.minimize(cost)
 
   def testNoGradients(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)

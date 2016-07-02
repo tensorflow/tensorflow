@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ namespace cuda {
 
 bool CUDATimer::Init() {
   CHECK(start_event_ == nullptr && stop_event_ == nullptr);
-  CUcontext context = parent_->cuda_context();
+  CudaContext* context = parent_->cuda_context();
   if (!CUDADriver::CreateEvent(context, &start_event_,
                                CUDADriver::EventFlags::kDefault)
            .ok()) {
@@ -48,7 +48,7 @@ bool CUDATimer::Init() {
 }
 
 void CUDATimer::Destroy() {
-  CUcontext context = parent_->cuda_context();
+  CudaContext* context = parent_->cuda_context();
   port::Status status = CUDADriver::DestroyEvent(context, &start_event_);
   if (!status.ok()) {
     LOG(ERROR) << status;

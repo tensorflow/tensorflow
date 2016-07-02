@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,8 @@ class ExampleParserOp : public OpKernel {
                 errors::InvalidArgument("len(dense_keys) != len(dense_types"));
     OP_REQUIRES(ctx, static_cast<size_t>(num_dense_) == dense_shapes_.size(),
                 errors::InvalidArgument("len(dense_keys) != len(dense_shapes"));
+    OP_REQUIRES(ctx, num_dense_ <= std::numeric_limits<int32>::max(),
+                errors::InvalidArgument("num_dense_ too large"));
     for (const DataType& type : dense_types_) {
       OP_REQUIRES_OK(ctx, CheckValidType(type));
     }
@@ -108,7 +110,7 @@ class ExampleParserOp : public OpKernel {
                     "Expected len(dense_defaults) == len(dense_keys) but got: ",
                     dense_defaults.size(), " vs. ", num_dense_));
 
-    for (int d = 0; d < num_dense_; ++d) {
+    for (int d = 0; d < static_cast<int>(num_dense_); ++d) {
       const Tensor& def_value = dense_defaults[d];
       if (def_value.NumElements() > 0) {
         OP_REQUIRES(ctx, def_value.shape() == dense_shapes_[d],
@@ -126,7 +128,7 @@ class ExampleParserOp : public OpKernel {
 
     auto serialized_t = serialized->vec<string>();
 
-    const int batch_size = serialized_t.size();
+    const int64 batch_size = serialized_t.size();
 
     OpOutputList sparse_indices;
     OpOutputList sparse_values;
@@ -146,7 +148,8 @@ class ExampleParserOp : public OpKernel {
       // Preallocate dense_values, since we know their sizes
       TensorShape out_shape;
       out_shape.AddDim(batch_size);
-      for (const int dim : dense_shapes_[d].dim_sizes()) out_shape.AddDim(dim);
+      for (const int64 dim : dense_shapes_[d].dim_sizes())
+        out_shape.AddDim(dim);
       Tensor* out = nullptr;
       dense_values.allocate(d, out_shape, &out);
 
@@ -180,9 +183,9 @@ class ExampleParserOp : public OpKernel {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
     // Estimate the cost of parsing each batch element.
-    int64 work_unit_size = 100 + 100 * num_sparse_;
+    int64 work_unit_size = 1000 + 100 * num_sparse_;
     for (int d = 0; d < num_dense_; ++d) {
-      work_unit_size += dense_shapes_[d].num_elements();
+      work_unit_size += 100 + dense_shapes_[d].num_elements();
     }
 
     mutex mu;

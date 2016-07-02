@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ struct BatchNorm {
                   typename TTypes<T>::ConstVec mean,
                   typename TTypes<T>::ConstVec var,
                   typename TTypes<T>::ConstVec beta,
-                  typename TTypes<T>::ConstVec gamma, float variance_epsilon,
+                  typename TTypes<T>::ConstVec gamma, T variance_epsilon,
                   bool scale_after_normalization,
                   typename TTypes<T, 4>::Tensor output) {
     const int depth = mean.dimension(0);
@@ -77,7 +77,7 @@ struct BatchNormGrad {
                   typename TTypes<T>::ConstVec var,
                   typename TTypes<T>::ConstVec gamma,
                   typename TTypes<T, 4>::ConstTensor out_backprop,
-                  float variance_epsilon, bool scale_after_normalization,
+                  T variance_epsilon, bool scale_after_normalization,
                   typename TTypes<T, 4>::Tensor dx, typename TTypes<T>::Vec dm,
                   typename TTypes<T>::Vec dv, typename TTypes<T>::Vec db,
                   typename TTypes<T>::Vec dg, typename TTypes<T>::Vec scratch1,

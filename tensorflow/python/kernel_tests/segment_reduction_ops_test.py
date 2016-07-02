@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,7 +70,9 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     dtypes = [tf.float32,
               tf.float64,
               tf.int64,
-              tf.int32]
+              tf.int32,
+              tf.complex64,
+              tf.complex128]
 
     # Each item is np_op1, np_op2, tf_op
     ops_list = [(np.add, None, tf.segment_sum),
@@ -79,14 +81,23 @@ class SegmentReductionOpTest(SegmentReductionHelper):
                 (np.ndarray.__mul__, None, tf.segment_prod),
                 (np.minimum, None, tf.segment_min),
                 (np.maximum, None, tf.segment_max)]
+    
+    # A subset of ops has been enabled for complex numbers
+    complex_ops_list = [(np.add, None, tf.segment_sum),
+                        (np.ndarray.__mul__, None, tf.segment_prod)]
 
     n = 10
     shape = [n, 2]
     indices = [i // 3 for i in range(n)]
     for dtype in dtypes:
+      if dtype in (tf.complex64, tf.complex128):
+          curr_ops_list = complex_ops_list
+      else:
+          curr_ops_list = ops_list
+
       with self.test_session(use_gpu=False):
         tf_x, np_x = self._input(shape, dtype=dtype)
-        for np_op1, np_op2, tf_op in ops_list:
+        for np_op1, np_op2, tf_op in curr_ops_list:
           np_ans = self._segmentReduce(indices, np_x, np_op1, np_op2)
           s = tf_op(data=tf_x, segment_ids=indices)
           tf_ans = s.eval()
@@ -213,7 +224,9 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     dtypes = [tf.float32,
               tf.float64,
               tf.int64,
-              tf.int32]
+              tf.int32,
+              tf.complex64,
+              tf.complex128]
     indices_flat = np.array([0, 4, 0, 8, 3, 8, 4, 7, 7, 3])
     num_segments = 12
     for indices in indices_flat, indices_flat.reshape(5, 2):

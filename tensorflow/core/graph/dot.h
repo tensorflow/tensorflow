@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,11 @@ struct DotOptions {
   // A function that returns the "cost" of the edge.  The dot display
   // makes a edge thickness proportional to its cost.
   std::function<double(const Edge*)> edge_cost;
+
+  // A function that returns a color number to apply to each node. < 0 means
+  // no color. A color will be assigned to each color number from a palette;
+  // adjacent color numbers will receive different colors.
+  std::function<int(const Node*)> node_color;
 };
 
 // Return a string that contains a graphviz specification of the graph.

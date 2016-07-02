@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -26,8 +28,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 # Import gradients to register _IndexedSlicesToTensor.
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
@@ -1423,6 +1423,55 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
       with self.test_session(graph=g):
         with self.assertRaisesRegexp(errors.UnimplementedError, self._error()):
           old.run()
+
+
+class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
+
+  def testSuccess(self):
+    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(),
+                       [], [dtypes.float32])
+    t = op.outputs[0]
+    self.assertTrue(ops.is_dense_tensor_like(t))
+
+    v = variables.Variable([17])
+    self.assertTrue(ops.is_dense_tensor_like(v))
+
+  class BadClassNoName(object):
+    pass
+
+  class BadClassBadName(object):
+
+    def name(self):
+      pass
+
+  class BadClassNoDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+  class BadClassBadDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+    def dtype(self):
+      pass
+
+  def testBadClass(self):
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoName)
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadName)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoDtype)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadDtype)
 
 
 if __name__ == "__main__":

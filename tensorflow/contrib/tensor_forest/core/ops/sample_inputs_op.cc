@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,58 +31,64 @@ namespace tensorflow {
 using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
 
-
 REGISTER_OP("SampleInputs")
-  .Attr("split_initializations_per_input: int32")
-  .Attr("split_sampling_random_seed: int32")
-  .Input("input_data: float")
-  .Input("node_to_accumulator: int32")
-  .Input("leaves: int32")
-  .Input("candidate_split_features: int32")
-  .Input("candidate_split_thresholds: float")
-  .Output("accumulators_to_update: int32")
-  .Output("new_split_feature_rows: int32")
-  .Output("new_split_threshold_rows: float")
-  .Doc(R"doc(
-  Initializes candidate splits for newly fertile nodes.
+    .Attr("split_initializations_per_input: int")
+    .Attr("split_sampling_random_seed: int")
+    .Input("input_data: float")
+    .Input("sparse_input_indices: int64")
+    .Input("sparse_input_values: float")
+    .Input("sparse_input_shape: int64")
+    .Input("node_to_accumulator: int32")
+    .Input("leaves: int32")
+    .Input("candidate_split_features: int32")
+    .Input("candidate_split_thresholds: float")
+    .Output("accumulators_to_update: int32")
+    .Output("new_split_feature_rows: int32")
+    .Output("new_split_threshold_rows: float")
+    .Doc(R"doc(
+Initializes candidate splits for newly fertile nodes.
 
-  In an extremely random forest, we don't consider all possible threshold
-  values for a candidate split feature, but rather only a sampling of them.
-  This Op takes those samples from the training data in `input_data`.  The
-  feature and threshold samples are stored in tensors that are indexed by
-  accumulator slot, so for each input, we must first look up which leaf
-  it ended up in (using `leaves`) and then which accumulator slot if any
-  that leaf maps to (using `node_to_accumulator`).
+In an extremely random forest, we don't consider all possible threshold
+values for a candidate split feature, but rather only a sampling of them.
+This Op takes those samples from the training data in `input_data`.  The
+feature and threshold samples are stored in tensors that are indexed by
+accumulator slot, so for each input, we must first look up which leaf
+it ended up in (using `leaves`) and then which accumulator slot if any
+that leaf maps to (using `node_to_accumulator`).
 
-  The attribute `split_initializations_per_input` controls how many splits
-  a single training example can initialize, and the attribute
-  `split_sampling_random_seed` sets the random number generator's seed
-  (a value of 0 means use the current time as the seed).
+The attribute `split_initializations_per_input` controls how many splits
+a single training example can initialize, and the attribute
+`split_sampling_random_seed` sets the random number generator's seed
+(a value of 0 means use the current time as the seed).
 
-  input_data: The features for the current batch of training data.
-    `input_data[i][j]` is the j-th feature of the i-th input.
-  node_to_accumulator: For a fertile node i, node_to_accumulator[i] is the
-    associated accumulator slot.  For non-fertile nodes, it is -1.
-  leaves: `leaves[i]` is the leaf that the i-th input landed in, as
-    calculated by CountExtremelyRandomStats.
-  candidate_split_features: The current features for the candidate splits;
-    `candidate_split_features[a][s]` is the index of the feature being
-    considered by split s in accumulator slot a.
-  candidate_split_thresholds: The current thresholds for the candidate splits;
-    `candidate_split_thresholds[a][s]` is the threshold value being
-    considered by split s in accumulator slot a.
-  accumulators_to_update: A list of the accumulators to change in the
-    candidate_split_features and candidate_split_thresholds tensors.
-  new_split_feature_rows: The new values for the candidate_split_features
-    tensor.  Intended to be used with
-    `tf.scatter_update(candidate_split_features,
-                       accumulators_to_update,
-                       new_split_feature_rows)`
-  new_split_threshold_rows:  The new values for the candidate_split_thresholds
-    tensor.  Intended to be used with
-    `tf.scatter_update(candidate_split_thresholds,
-                       accumulators_to_update,
-                       new_split_feature_thresholds)`
+input_data: The features for the current batch of training data.
+  `input_data[i][j]` is the j-th feature of the i-th input.
+sparse_input_indices: The indices tensor from the SparseTensor input.
+sparse_input_values: The values tensor from the SparseTensor input.
+sparse_input_shape: The shape tensor from the SparseTensor input.
+node_to_accumulator: For a fertile node i, node_to_accumulator[i] is the
+  associated accumulator slot.  For non-fertile nodes, it is -1.
+leaves: `leaves[i]` is the leaf that the i-th input landed in, as
+  calculated by CountExtremelyRandomStats.
+candidate_split_features: The current features for the candidate splits;
+  `candidate_split_features[a][s]` is the index of the feature being
+  considered by split s in accumulator slot a.
+candidate_split_thresholds: The current thresholds for the candidate splits;
+  `candidate_split_thresholds[a][s]` is the threshold value being
+  considered by split s in accumulator slot a.
+accumulators_to_update: A list of the accumulators to change in the
+  candidate_split_features and candidate_split_thresholds tensors.
+new_split_feature_rows: The new values for the candidate_split_features
+  tensor.  Intended to be used with
+  `tf.scatter_update(candidate_split_features,
+                     accumulators_to_update,
+                     new_split_feature_rows)`
+new_split_threshold_rows:  The new values for the candidate_split_thresholds
+  tensor.  Intended to be used with
+  `tf.scatter_update(candidate_split_thresholds,
+                     accumulators_to_update,
+                     new_split_feature_thresholds)`
+
 )doc");
 
 class SampleInputs : public OpKernel {
@@ -107,16 +113,74 @@ class SampleInputs : public OpKernel {
         new random::SimplePhilox(single_rand_.get()));
   }
 
+  template <typename T>
+  void GetRandomFeatureDense(const T& inputs, int32 num_features,
+                             int32 input_index, int32* index, float* val) {
+    *index = rng_->Uniform(num_features);
+    *val = inputs(input_index, *index);
+  }
+
+  template <typename T1, typename T2>
+  void GetRandomFeatureSparse(const T1& sparse_indices, const T2& sparse_values,
+                              int32 input_index, int32* index, float* val) {
+    int32 low = 0;
+    int32 high = sparse_values.dimension(0);
+    while (low < high) {
+      int32 vi = low + rng_->Uniform(high - low);
+      int64 i = internal::SubtleMustCopy(sparse_indices(vi, 0));
+      if (i == input_index) {
+        *index = internal::SubtleMustCopy(sparse_indices(vi, 1));
+        *val = sparse_values(vi);
+        return;
+      }
+      if (i < input_index) {
+        low = vi + 1;
+      } else {
+        high = vi;
+      }
+    }
+    LOG(FATAL) << "Could not find any values for input " << input_index
+               << " inside sparse_input_indices";
+  }
+
   void Compute(OpKernelContext* context) override {
     const Tensor& input_data = context->input(0);
-    const Tensor& node_to_accumulator = context->input(1);
-    const Tensor& leaves = context->input(2);
-    const Tensor& split_features = context->input(3);
-    const Tensor& split_thresholds = context->input(4);
+    const Tensor& sparse_input_indices = context->input(1);
+    const Tensor& sparse_input_values = context->input(2);
+    const Tensor& sparse_input_shape = context->input(3);
+    const Tensor& node_to_accumulator = context->input(4);
+    const Tensor& leaves = context->input(5);
+    const Tensor& split_features = context->input(6);
+    const Tensor& split_thresholds = context->input(7);
 
-    OP_REQUIRES(context, input_data.shape().dims() == 2,
-                errors::InvalidArgument(
-                    "input_data should be two-dimensional"));
+    bool sparse_input = (sparse_input_indices.shape().dims() == 2);
+
+    if (sparse_input) {
+      OP_REQUIRES(context, sparse_input_shape.shape().dims() == 1,
+                  errors::InvalidArgument(
+                      "sparse_input_shape should be one-dimensional"));
+      OP_REQUIRES(context,
+                  sparse_input_shape.shape().dim_size(0) == 2,
+                  errors::InvalidArgument(
+                      "The sparse input data should be two-dimensional"));
+      OP_REQUIRES(context, sparse_input_values.shape().dims() == 1,
+                  errors::InvalidArgument(
+                      "sparse_input_values should be one-dimensional"));
+      OP_REQUIRES(context, sparse_input_indices.shape().dims() == 2,
+                  errors::InvalidArgument(
+                      "The sparse input data should be two-dimensional"));
+      OP_REQUIRES(context,
+                  sparse_input_indices.shape().dim_size(0) ==
+                  sparse_input_values.shape().dim_size(0),
+                  errors::InvalidArgument(
+                      "sparse_input_indices and sparse_input_values should "
+                      "agree on the number of non-zero values"));
+    } else {
+      OP_REQUIRES(context, input_data.shape().dims() == 2,
+                  errors::InvalidArgument(
+                  "input_data should be two-dimensional"));
+    }
+
     OP_REQUIRES(context, node_to_accumulator.shape().dims() == 1,
                 errors::InvalidArgument(
                     "node_to_accumulator should be one-dimensional"));
@@ -138,12 +202,36 @@ class SampleInputs : public OpKernel {
 
     // Check tensor bounds.
     if (!CheckTensorBounds(context, input_data)) return;
+    if (!CheckTensorBounds(context, sparse_input_indices)) return;
+    if (!CheckTensorBounds(context, sparse_input_values)) return;
+    if (!CheckTensorBounds(context, sparse_input_shape)) return;
     if (!CheckTensorBounds(context, node_to_accumulator)) return;
     if (!CheckTensorBounds(context, leaves)) return;
     if (!CheckTensorBounds(context, split_features)) return;
     if (!CheckTensorBounds(context, split_thresholds)) return;
 
-    const auto inputs = input_data.tensor<float, 2>();
+    int32 num_features;
+    std::function<void(int32, int32*, float*)> get_random_feature;
+    // TODO(thomaswc): Figure out a way to avoid calling .vec, etc. over and
+    // over again
+    if (sparse_input) {
+      num_features = sparse_input_shape.unaligned_flat<int64>()(1);
+      get_random_feature = [&sparse_input_indices, &sparse_input_values, this](
+          int32 input_index, int32* index, float* val) {
+        const auto sparse_indices = sparse_input_indices.matrix<int64>();
+        const auto sparse_values = sparse_input_values.vec<float>();
+        GetRandomFeatureSparse(sparse_indices, sparse_values, input_index,
+                               index, val);
+      };
+    } else {
+      num_features = static_cast<int32>(input_data.shape().dim_size(1));
+      get_random_feature = [&input_data, num_features, this](
+          int32 input_index, int32* index, float* val) {
+        const auto inputs = input_data.tensor<float, 2>();
+        GetRandomFeatureDense(inputs, num_features, input_index, index, val);
+      };
+    }
+
     const auto leaves_vec = leaves.unaligned_flat<int32>();
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
     const auto features = split_features.tensor<int32, 2>();
@@ -152,8 +240,6 @@ class SampleInputs : public OpKernel {
     const int32 num_data = static_cast<int32>(leaves.shape().dim_size(0));
     const int32 num_splits = static_cast<int32>(
         split_features.shape().dim_size(1));
-    const int32 num_features = static_cast<int32>(
-        input_data.shape().dim_size(1));
     const int32 num_accumulators = static_cast<int32>(
         split_features.shape().dim_size(0));
 
@@ -235,10 +321,11 @@ class SampleInputs : public OpKernel {
         for (int split = 0; split < num_splits && num_inits > 0; split++) {
           if (new_split_feature_rows_flat(output_slot, split) < 0) {
             VLOG(1) << "Over-writing @ " << output_slot << "," << split;
-            const int32 index = rng_->Uniform(num_features);
+            int32 index;
+            float val;
+            get_random_feature(i, &index, &val);
             new_split_feature_rows_flat(output_slot, split) = index;
-            new_split_threshold_rows_flat(output_slot, split) =
-                inputs(i, index);
+            new_split_threshold_rows_flat(output_slot, split) = val;
             --num_inits;
           }
         }

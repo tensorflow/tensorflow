@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -185,6 +185,49 @@ class SummaryWriterTestCase(tf.test.TestCase):
       test_dir = self._CleanTestDir("basics_string_instead_of_graph")
       sw = tf.train.SummaryWriter(test_dir, "string instead of graph object")
       sw.close()
+
+  def testCloseAndReopen(self):
+    test_dir = self._CleanTestDir("close_and_reopen")
+    sw = tf.train.SummaryWriter(test_dir)
+    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
+    sw.close()
+    # Sleep at least one second to make sure we get a new event file name.
+    time.sleep(1.2)
+    sw.reopen()
+    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 2)
+    sw.close()
+
+    # We should now have 2 events files.
+    event_paths = sorted(glob.glob(os.path.join(test_dir, "event*")))
+    self.assertEquals(2, len(event_paths))
+
+    # Check the first file contents.
+    rr = tf.train.summary_iterator(event_paths[0])
+    # The first event should list the file_version.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals("brain.Event:2", ev.file_version)
+    # The next event should be the START message.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(1, ev.step)
+    self.assertEquals(SessionLog.START, ev.session_log.status)
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
+
+    # Check the second file contents.
+    rr = tf.train.summary_iterator(event_paths[1])
+    # The first event should list the file_version.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals("brain.Event:2", ev.file_version)
+    # The next event should be the START message.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(2, ev.step)
+    self.assertEquals(SessionLog.START, ev.session_log.status)
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
 
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the

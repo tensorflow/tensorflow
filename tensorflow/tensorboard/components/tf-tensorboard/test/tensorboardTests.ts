@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -15,11 +15,10 @@ limitations under the License.
 describe('tf-tensorboard tests', () => {
   window.HTMLImports.whenReady(() => {
     let assert = chai.assert;
-    let demoRouter = TF.Backend.router('data', true);
     let tensorboard: any;
     beforeEach(function() {
       tensorboard = fixture('tensorboardFixture');
-      tensorboard.router = demoRouter;
+      tensorboard.demoDir = 'data';
       tensorboard.autoReloadEnabled = false;
     });
 
@@ -27,12 +26,19 @@ describe('tf-tensorboard tests', () => {
       setTimeout(function() {
         let tabs = tensorboard.$.tabs.getElementsByTagName('paper-tab');
         let tabMode = Array.prototype.map.call(tabs, (x) => x.dataMode);
-        assert.deepEqual(tabMode, TF.TensorBoard.TABS, 'mode is correct');
+        assert.deepEqual(tabMode, TF.Globals.TABS, 'mode is correct');
         let tabText =
             Array.prototype.map.call(tabs, (x) => x.innerText.toLowerCase());
-        assert.deepEqual(tabText, TF.TensorBoard.TABS, 'text is correct');
+        assert.deepEqual(tabText, TF.Globals.TABS, 'text is correct');
         done();
       });
+    });
+
+    it('respects router manually provided', function() {
+      let router = TF.Backend.router('data', true);
+      tensorboard.router = router;
+      tensorboard.demoDir = null;
+      assert.equal(tensorboard._backend.router, router);
     });
 
     it('renders injected content', function() {
@@ -41,7 +47,7 @@ describe('tf-tensorboard tests', () => {
     });
 
     describe('non-graph tabs: reloading the selected dashboard', function() {
-      TF.TensorBoard.TABS.forEach((name, tabIndex) => {
+      TF.Globals.TABS.forEach((name, tabIndex) => {
         if (name === 'graphs') {
           return;
         }
@@ -64,7 +70,7 @@ describe('tf-tensorboard tests', () => {
     });
 
     it('reload is disabled for graph dashboard', function(done) {
-      let idx = TF.TensorBoard.TABS.indexOf('graphs');
+      let idx = TF.Globals.TABS.indexOf('graphs');
       assert.notEqual(idx, -1, 'graphs was found');
       tensorboard.$.tabs.set('selected', idx);
       setTimeout(
@@ -96,10 +102,19 @@ describe('tf-tensorboard tests', () => {
 
       it('settings icon button opens the settings pane', function(done) {
         tensorboard.$$('#settings-button').click();
-        setTimeout(function() {  // async, give it a moment
-          assert.notEqual(tensorboard.$.settings.style['display'], 'none');
-          done();
-        });
+        // This test is a little hacky since we depend on polymer's
+        // async behavior, which is difficult to predict.
+
+        // keep checking until the panel is visible. error with a timeout if it
+        // is broken.
+        function verify() {
+          if (tensorboard.$.settings.style['display'] !== 'none') {
+            done();
+          } else {
+            setTimeout(verify, 3);  // wait and see if it becomes true
+          }
+        }
+        verify();
       });
 
       it('Autoreload checkbox toggle works', function() {

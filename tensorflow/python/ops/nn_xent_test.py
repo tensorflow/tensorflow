@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -81,6 +81,14 @@ class SigmoidCrossEntropyWithLogitsTest(tf.test.TestCase):
       err = tf.test.compute_gradient_error(logits, sizes, loss, sizes)
     print("logistic loss gradient err = ", err)
     self.assertLess(err, 1e-7)
+
+  def testGradientAtZero(self):
+    with self.test_session():
+      logits = tf.constant([0.0, 0.0], dtype=tf.float64)
+      targets = tf.constant([0.0, 1.0], dtype=tf.float64)
+      loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
+      grads = tf.gradients(loss, logits)[0].eval()
+    self.assertAllClose(grads, [0.5, -0.5])
 
   def testShapeError(self):
     with self.assertRaisesRegexp(ValueError, "must have the same shape"):

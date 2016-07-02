@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,12 @@
 
 set -eux
 
-TFDIR=$TEST_SRCDIR/tensorflow
+if [ -d $TEST_SRCDIR/org_tensorflow ]; then
+  TFDIR=$TEST_SRCDIR/org_tensorflow/tensorflow
+else
+  # Support 0.2.1- runfiles.
+  TFDIR=$TEST_SRCDIR/tensorflow
+fi
 DOXYGEN=doxygen
 DOXYGEN_CONFIG="tf-doxy_for_md-config"
 TMP_DIR=/tmp/tensorflow-docs

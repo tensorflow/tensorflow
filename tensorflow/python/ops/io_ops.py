@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,6 +77,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 
 @@QueueBase
 @@FIFOQueue
+@@PaddingFIFOQueue
 @@RandomShuffleQueue
 
 ## Dealing with the filesystem
@@ -132,10 +133,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import common_shapes
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import gen_io_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -331,6 +333,35 @@ class ReaderBase(object):
       queue_ref = queue.queue_ref
     return gen_io_ops._reader_read(self._reader_ref, queue_ref, name=name)
 
+  def read_up_to(self, queue, num_records,  # pylint: disable=invalid-name
+                 name=None):
+    """Returns up to num_records (key, value pairs) produced by a reader.
+
+    Will dequeue a work unit from queue if necessary (e.g., when the
+    Reader needs to start reading from a new file since it has
+    finished with the previous file).
+    It may return less than num_records even before the last batch.
+
+    Args:
+      queue: A Queue or a mutable string Tensor representing a handle
+        to a Queue, with string work items.
+      num_records: Number of records to read.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tuple of Tensors (keys, values).
+      keys: A 1-D string Tensor.
+      values: A 1-D string Tensor.
+    """
+    if isinstance(queue, ops.Tensor):
+      queue_ref = queue
+    else:
+      queue_ref = queue.queue_ref
+    return gen_io_ops._reader_read_up_to(self._reader_ref,
+                                         queue_ref,
+                                         num_records,
+                                         name=name)
+
   def num_records_produced(self, name=None):
     """Returns the number of records this reader has produced.
 
@@ -406,6 +437,7 @@ class ReaderBase(object):
 
 
 ops.NoGradient("ReaderRead")
+ops.NoGradient("ReaderReadUpTo")
 ops.NoGradient("ReaderNumRecordsProduced")
 ops.NoGradient("ReaderNumWorkUnitsCompleted")
 ops.NoGradient("ReaderSerializeState")
@@ -492,13 +524,20 @@ class TFRecordReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
-  def __init__(self, name=None):
+  def __init__(self, name=None, options=None):
     """Create a TFRecordReader.
 
     Args:
       name: A name for the operation (optional).
+      options: A TFRecordOptions object (optional).
     """
-    rr = gen_io_ops._tf_record_reader(name=name)
+    compression_type_string = ""
+    if (options and
+        options.compression_type == python_io.TFRecordCompressionType.ZLIB):
+      compression_type_string = "ZLIB"
+
+    rr = gen_io_ops._tf_record_reader(name=name,
+                                      compression_type=compression_type_string)
     super(TFRecordReader, self).__init__(rr)
 
 
@@ -552,6 +591,13 @@ def _ReaderReadShape(op):
   unused_queue_shape = op.inputs[1].get_shape().merge_with(
       tensor_shape.scalar())
   return [tensor_shape.scalar(), tensor_shape.scalar()]
+
+
+@ops.RegisterShape("ReaderReadUpTo")
+def _ReaderReadUpToShape(_):
+  """Shape function for the ReaderBase.ReadUpTo op."""
+  return [tensor_shape.unknown_shape(ndims=1),
+          tensor_shape.unknown_shape(ndims=1)]
 
 
 @ops.RegisterShape("ReaderReset")

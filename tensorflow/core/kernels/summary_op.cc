@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -87,9 +87,13 @@ class SummaryHistoOp : public OpKernel {
     histogram::Histogram histo;
     for (int64 i = 0; i < flat.size(); i++) {
       T v = flat(i);
-      if (!Eigen::numext::isfinite(v)) {
+      if (Eigen::numext::isnan(v)) {
         c->SetStatus(
             errors::InvalidArgument("Nan in summary histogram for: ", name()));
+        break;
+      } else if (Eigen::numext::isinf(v)) {
+        c->SetStatus(errors::InvalidArgument(
+            "Infinity in summary histogram for: ", name()));
         break;
       }
       histo.Add(static_cast<double>(v));

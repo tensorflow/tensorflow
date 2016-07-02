@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,6 +53,9 @@ class _FakeAccumulator(object):
             event_accumulator.HISTOGRAMS: ['hst1', 'hst2'],
             event_accumulator.COMPRESSED_HISTOGRAMS: ['cmphst1', 'cmphst2'],
             event_accumulator.SCALARS: ['sv1', 'sv2']}
+
+  def FirstEventTimestamp(self):
+    return 0
 
   def Scalars(self, tag_name):
     if tag_name not in self.Tags()[event_accumulator.SCALARS]:

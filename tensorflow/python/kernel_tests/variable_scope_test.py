@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 
 
-class VariableStoreTest(tf.test.TestCase):
+class VariableScopeTest(tf.test.TestCase):
 
   def testGetVar(self):
     vs = variable_scope._get_default_variable_store()
@@ -254,9 +254,12 @@ class VariableStoreTest(tf.test.TestCase):
         with tf.variable_scope("tower") as tower:
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower/scope2/")
-        with tf.variable_scope("tower"):  # Re-enter adds suffix.
+        with tf.variable_scope(tower):  # Re-entering acts like another "tower".
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower_1/scope2/")
+        with tf.variable_scope("tower"):  # Re-entering by string acts the same.
+          with tf.name_scope("scope2") as sc2:
+            self.assertEqual(sc2, "scope1/tower_2/scope2/")
 
       with tf.name_scope("scope3"):
         with tf.variable_scope("tower"):
@@ -271,6 +274,29 @@ class VariableStoreTest(tf.test.TestCase):
         with tf.variable_scope(root_var_scope):
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope4/scope2/")
+
+  def testVarScopeOriginalNameScope(self):
+    with self.test_session():
+      with tf.name_scope("scope1"):
+        with tf.variable_scope("tower") as tower:
+          self.assertEqual(tower.original_name_scope, "scope1/tower/")
+          with tf.name_scope("scope2") as sc2:
+            self.assertEqual(sc2, "scope1/tower/scope2/")
+      with tf.name_scope("scope2"):
+        with tf.variable_scope(tower) as tower1:
+          # Re-entering preserves original name scope.
+          self.assertEqual(tower1.original_name_scope, "scope1/tower/")
+          with tf.name_scope("foo") as sc2:
+            self.assertEqual(sc2, "scope2/tower/foo/")
+        # Test re-entering original name scope.
+        with tf.name_scope(tower.original_name_scope):
+          with tf.name_scope("bar") as sc3:
+            self.assertEqual(sc3, "scope1/tower/bar/")
+      with tf.name_scope("scope2"):
+        with tf.variable_scope(tower):
+          with tf.name_scope(tower.original_name_scope):
+            with tf.name_scope("bar") as sc3:
+              self.assertEqual(sc3, "scope1/tower/bar_1/")
 
   def testVarScopeObjectReuse(self):
     with self.test_session():
@@ -556,27 +582,35 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
 
   def testResultNameMatchesRequested(self):
     with tf.variable_scope("scope0", partitioner=axis0_into2_partitioner):
-      v_concat = tf.get_variable("name0", shape=(3, 1, 1))
+      v = tf.get_variable("name0", shape=(3, 1, 1))
+      self.assertEqual(v.name, "scope0/name0")
+      v_concat = v.as_tensor()
       self.assertEqual(v_concat.name, "scope0/name0:0")
       variables = tf.get_collection(tf.GraphKeys.VARIABLES)
-      concat_variables = tf.get_collection(tf.GraphKeys.CONCATENATED_VARIABLES)
-      self.assertTrue(v_concat.name in [x.name for x in concat_variables])
-      self.assertTrue("scope0/name0_0:0" in [x.name for x in variables])
-      self.assertTrue("scope0/name0_1:0" in [x.name for x in variables])
-      self.assertFalse("scope0/name0_2:0" in [x.name for x in variables])
+      self.assertTrue("scope0/name0/part_0:0" in [x.name for x in variables])
+      self.assertTrue("scope0/name0/part_1:0" in [x.name for x in variables])
+      self.assertFalse("scope0/name0/part_2:0" in [x.name for x in variables])
 
   def testBreaksIfPartitioningChanges(self):
     with tf.variable_scope("scope0", partitioner=axis0_into2_partitioner):
       tf.get_variable("name0", shape=(3, 1, 1))
 
-    with tf.variable_scope("scope0", partitioner=axis0_into3_partitioner):
+    with tf.variable_scope("scope0",
+                           partitioner=axis0_into3_partitioner,
+                           reuse=True):
       with self.assertRaisesRegexp(
-          ValueError, "Partitioner returned a different partitioning"):
+          ValueError,
+          "Trying to reuse partitioned variable .* but specified partitions .* "
+          "and found partitions .*"):
         tf.get_variable("name0", shape=(3, 1, 1))
 
-    with tf.variable_scope("scope0", partitioner=axis0_into1_partitioner):
+    with tf.variable_scope("scope0",
+                           partitioner=axis0_into1_partitioner,
+                           reuse=True):
       with self.assertRaisesRegexp(
-          ValueError, "Partitioner returned a different partitioning"):
+          ValueError,
+          "Trying to reuse partitioned variable .* but specified partitions .* "
+          "and found partitions .*"):
         tf.get_variable("name0", shape=(3, 1, 1))
 
   def testReturnsExistingConcatenatedValueIfReuse(self):
@@ -585,6 +619,19 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
       tf.get_variable_scope().reuse_variables()
       v_concat_2 = tf.get_variable("name0", shape=(3, 1, 1))
       self.assertEqual(v_concat, v_concat_2)
+
+  def testAllowsReuseWithoutPartitioner(self):
+    with tf.variable_scope("scope0", partitioner=axis0_into2_partitioner):
+      v = tf.get_variable("name0", shape=(3, 1, 1))
+    with tf.variable_scope("scope0", reuse=True):
+      v_reused = tf.get_variable("name0")
+    self.assertEqual(v, v_reused)
+
+  def testPropagatePartitionerOnReopening(self):
+    with tf.variable_scope("scope0", partitioner=axis0_into2_partitioner) as vs:
+      self.assertEqual(axis0_into2_partitioner, vs.partitioner)
+      with tf.variable_scope(vs) as vs1:
+        self.assertEqual(axis0_into2_partitioner, vs1.partitioner)
 
   def testPartitionConcatenatesAlongCorrectAxis(self):
     def _part_axis_0(**unused_kwargs):
@@ -600,13 +647,13 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
     self.assertEqual(v0.get_shape(), (2, 2, 2))
     self.assertEqual(v1.get_shape(), (2, 2, 2))
 
-    n0_0 = tf.get_default_graph().get_tensor_by_name("root/n0_0:0")
-    n0_1 = tf.get_default_graph().get_tensor_by_name("root/n0_1:0")
+    n0_0 = tf.get_default_graph().get_tensor_by_name("root/n0/part_0:0")
+    n0_1 = tf.get_default_graph().get_tensor_by_name("root/n0/part_1:0")
     self.assertEqual(n0_0.get_shape(), (1, 2, 2))
     self.assertEqual(n0_1.get_shape(), (1, 2, 2))
 
-    n1_0 = tf.get_default_graph().get_tensor_by_name("root/n1_0:0")
-    n1_1 = tf.get_default_graph().get_tensor_by_name("root/n1_1:0")
+    n1_0 = tf.get_default_graph().get_tensor_by_name("root/n1/part_0:0")
+    n1_1 = tf.get_default_graph().get_tensor_by_name("root/n1/part_1:0")
     self.assertEqual(n1_0.get_shape(), (2, 1, 2))
     self.assertEqual(n1_1.get_shape(), (2, 1, 2))
 

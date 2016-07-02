@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import common_shapes
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -261,7 +261,7 @@ def merge_all_summaries(key=ops.GraphKeys.SUMMARIES):
 
   Returns:
     If no summaries were collected, returns None.  Otherwise returns a scalar
-    `Tensor` of type`string` containing the serialized `Summary` protocol
+    `Tensor` of type `string` containing the serialized `Summary` protocol
     buffer resulting from the merging.
   """
   summary_ops = ops.get_collection(key)
@@ -269,6 +269,30 @@ def merge_all_summaries(key=ops.GraphKeys.SUMMARIES):
     return None
   else:
     return merge_summary(summary_ops)
+
+
+def get_summary_op():
+  """Returns a single Summary op that would run all summaries.
+
+  Either existing one from `SUMMARY_OP` collection or merges all existing
+  summaries.
+
+  Returns:
+    If no summaries were collected, returns None. Otherwise returns a scalar
+    `Tensor` of type `string` containing the serialized `Summary` protocol
+    buffer resulting from the merging.
+  """
+  summary_op = ops.get_collection(ops.GraphKeys.SUMMARY_OP)
+  if summary_op is not None:
+    if summary_op:
+      summary_op = summary_op[0]
+    else:
+      summary_op = None
+  if summary_op is None:
+    summary_op = merge_all_summaries()
+    if summary_op is not None:
+      ops.add_to_collection(ops.GraphKeys.SUMMARY_OP, summary_op)
+  return summary_op
 
 
 def scalar_summary(tags, values, collections=None, name=None):

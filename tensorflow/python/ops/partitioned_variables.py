@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,11 +61,15 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 
-__all__ = ["create_partitioned_variables", "variable_axis_size_partitioner"]
+__all__ = [
+    "create_partitioned_variables",
+    "variable_axis_size_partitioner",
+    "min_max_variable_partitioner",
+]
 
 
 def variable_axis_size_partitioner(
-    max_shard_bytes, axis=0, bytes_per_string_element=16):
+    max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None):
   """Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
 
   This partitioner will shard a Variable along one axis, attempting to keep
@@ -73,6 +77,10 @@ def variable_axis_size_partitioner(
   always possible when sharding along only one axis.  When this happens,
   this axis is sharded as much as possible (i.e., every dimension becomes
   a separate shard).
+
+  If the partitioner hits the `max_shards` limit, then each shard may end up
+  larger than `max_shard_bytes`. By default `max_shards` equals `None` and no
+  limit on the number of shards is enforced.
 
   One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
   `64MB`, to keep below the protobuf byte limit.
@@ -82,6 +90,8 @@ def variable_axis_size_partitioner(
     axis: The axis to partition along.  Default: outermost axis.
     bytes_per_string_element: If the `Variable` is of type string, this provides
       an estimate of how large each scalar in the `Variable` is.
+    max_shards: The maximum number of shards in int created taking precedence
+      over `max_shard_bytes`.
 
   Returns:
     A partition function usable as the `partitioner` argument to
@@ -93,6 +103,9 @@ def variable_axis_size_partitioner(
   if max_shard_bytes < 1 or bytes_per_string_element < 1:
     raise ValueError(
         "Both max_shard_bytes and bytes_per_string_element must be positive.")
+  if max_shards and max_shards < 1:
+    raise ValueError(
+        "max_shards must be positive.")
 
   def _partitioner(shape, dtype):
     """Partitioner that partitions shards to have max_shard_bytes total size.
@@ -123,14 +136,84 @@ def variable_axis_size_partitioner(
     partitions = [1] * shape.ndims
     bytes_per_slice = 1.0 * (
         shape.num_elements() / shape[axis].value) * element_size
-
-    axis_shards = bytes_per_slice / max_shard_bytes
-    axis_shards = min(shape[axis].value, max(1, int(math.ceil(axis_shards))))
+    # How many slices can we fit on one shard of size at most max_shard_bytes?
+    # At least one slice is required.
+    slices_per_shard = max(1, math.floor(max_shard_bytes / bytes_per_slice))
+    # How many shards do we need for axis given that each shard fits
+    # slices_per_shard slices from a total of shape[axis].value slices?
+    axis_shards = int(math.ceil(1.0 * shape[axis].value / slices_per_shard))
+    if max_shards:
+      axis_shards = min(max_shards, axis_shards)
 
     partitions[axis] = axis_shards
+
     return partitions
 
   return _partitioner
+
+
+def min_max_variable_partitioner(max_partitions=1, axis=0,
+                                 min_slice_size=256 << 10,
+                                 bytes_per_string_element=16):
+  """Partitioner to allocate minimum size per slice.
+
+  Returns a partitioner that partitions the variable of given shape and dtype
+  such that each partition has a minimum of `min_slice_size` slice of the
+  variable. The maximum number of such partitions (upper bound) is given by
+  `max_partitions`.
+
+  Args:
+    max_partitions: Upper bound on the number of partitions. Defaults to 1.
+    axis: Axis along which to partition the variable. Defaults to 0.
+    min_slice_size: Minimum size of the variable slice per partition. Defaults
+      to 256K.
+    bytes_per_string_element: If the `Variable` is of type string, this provides
+      an estimate of how large each scalar in the `Variable` is.
+
+  Returns:
+    A partition function usable as the `partitioner` argument to
+    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+
+  """
+  def _partitioner(shape, dtype):
+    """Partitioner that partitions list for a variable of given shape and type.
+
+    Ex: Consider partitioning a variable of type float32 with
+      shape=[1024, 1024].
+      If `max_partitions` >= 16, this function would return
+        [(1024 * 1024 * 4) / (256 * 1024), 1] = [16, 1].
+      If `max_partitions` < 16, this function would return
+        [`max_partitions`, 1].
+
+    Args:
+      shape: Shape of the variable.
+      dtype: Type of the variable.
+
+    Returns:
+      List of partitions for each axis (currently only one axis can be
+      partitioned).
+
+    Raises:
+      ValueError: If axis to partition along does not exist for the variable.
+    """
+    if axis >= len(shape):
+      raise ValueError("Can not partition variable along axis %d when shape is "
+                       "only %s" % (axis, shape))
+    if dtype.base_dtype == dtypes.string:
+      bytes_per_element = bytes_per_string_element
+    else:
+      bytes_per_element = dtype.size
+    total_size_bytes = shape.num_elements() * bytes_per_element
+    partitions = total_size_bytes / min_slice_size
+    partitions_list = [1] * len(shape)
+    # We can not partition the variable beyond what its shape or
+    # `max_partitions` allows.
+    partitions_list[axis] = max(1, min(shape[axis].value,
+                                       max_partitions,
+                                       int(math.ceil(partitions))))
+    return partitions_list
+  return _partitioner
+
 
 def create_partitioned_variables(
     shape, slicing, initializer, dtype=dtypes.float32,
@@ -194,20 +277,15 @@ def create_partitioned_variables(
   partitioner = lambda **unused_kwargs: slicing
 
   with variable_scope.variable_op_scope(
-      [], name, "PartitionedVariable", reuse=reuse) as scope:
-
+      [], name, "PartitionedVariable", reuse=reuse):
     # pylint: disable=protected-access
-    vs, _ = variable_scope._get_partitioned_variable_list(
-        name="part",
+    partitioned_var = variable_scope._get_partitioned_variable(
+        name=None,
         shape=shape,
         dtype=dtype,
         initializer=initializer,
         trainable=trainable,
         partitioner=partitioner,
         collections=collections)
-
-    for var in vs:
-      var._save_slice_info.full_name = scope.name
+    return partitioned_var._get_variable_list()
     # pylint: enable=protected-access
-
-  return vs

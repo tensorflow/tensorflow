@@ -1,34 +1,37 @@
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """TensorFlow Ops for loss computation."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.contrib.losses.python.losses import loss_ops
 
 
 def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
   """Returns prediction and loss for mean squared error regression."""
   with ops.op_scope([tensor_in, labels], name, "mean_squared_error_regressor"):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
-    if len(labels.get_shape()) == 1:
-      labels = array_ops_.reshape(labels, [-1, 1])
+    if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
+      predictions = array_ops_.squeeze(predictions, squeeze_dims=[1])
     return predictions, loss_ops.sum_of_squares(predictions, labels)
 
 
@@ -48,6 +51,7 @@ def softmax_classifier(tensor_in,
     biases: Tensor, [batch_size], biases.
     class_weight: Tensor, optional, [n_classes], weight for each class.
       If not given, all classes are supposed to have weight one.
+    name: Operation name.
 
   Returns:
     Prediction and loss tensors.

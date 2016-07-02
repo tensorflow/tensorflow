@@ -1078,7 +1078,7 @@ with tf.variable_scope("foo", reuse=True)
 
 If initializer is `None` (the default), the default initializer passed in
 the variable scope will be used. If that one is `None` too, a
-`UniformUnitScalingInitializer` will be used. The initializer can also be
+`uniform_unit_scaling_initializer` will be used. The initializer can also be
 a Tensor, in which case the variable is initialized to this value and shape.
 
 Similarly, if the regularizer is `None` (the default), the default regularizer
@@ -1086,7 +1086,7 @@ passed in the variable scope will be used (if that is `None` too,
 then by default no regularization is performed).
 
 If a partitioner is provided, first a sharded `Variable` is created
-via `_get_partitioned_variable_list`, and the return value is a
+via `_get_partitioned_variable`, and the return value is a
 `Tensor` composed of the shards concatenated along the partition axis.
 
 Some useful partitioners are available.  See, e.g.,
@@ -1106,8 +1106,6 @@ Some useful partitioners are available.  See, e.g.,
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
     Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
-    If partitioning is enabled and used, the concatenated return value
-    is also added to collection `GraphKeys.CONCATENATED_VARIABLES`.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
     Variable should be cached for reading.  Defaults to the Variable's
     device.  If not `None`, caches on another device.  Typical use is to
@@ -1181,6 +1179,13 @@ Gets an existing variable with this name or create a new one.
 - - -
 
 #### `tf.VariableScope.name` {#VariableScope.name}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.original_name_scope` {#VariableScope.original_name_scope}
 
 
 
@@ -1373,7 +1378,6 @@ def my_op_with_vars(a, b, scope=None):
 *  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 
-
 ##### Returns:
 
   A context manager for use in defining a Python op.
@@ -1395,7 +1399,7 @@ Returns the current variable scope.
 
 - - -
 
-### `tf.make_template(name_, func_, **kwargs)` {#make_template}
+### `tf.make_template(name_, func_, create_scope_now_=False, **kwargs)` {#make_template}
 
 Given an arbitrary function, wrap it so that it does variable sharing.
 
@@ -1465,10 +1469,14 @@ with tf.variable_scope(vs, reuse=True):
   w2 = scale_by_y2(input2)
 ```
 
-Note: The full variable scope is captured at the time of the first call.
+Depending on the value of `create_scope_now_`, the full variable scope may be
+captured either at the time of first call or at the time of construction. If
+this option is set to True, then all Tensors created by repeated calls to the
+template will have an extra trailing _N+1 to their name, as the first time the
+scope is entered in the Template constructor no Tensors are created.
 
-Note: `name_` and `func_` have a following underscore to reduce the likelihood
-of collisions with kwargs.
+Note: `name_`, `func_` and `create_scope_now_` have a trailing underscore to
+reduce the likelihood of collisions with kwargs.
 
 ##### Args:
 
@@ -1476,14 +1484,20 @@ of collisions with kwargs.
 *  <b>`name_`</b>: A name for the scope created by this template. If necessary, the name
     will be made unique by appending `_N` to the name.
 *  <b>`func_`</b>: The function to wrap.
+*  <b>`create_scope_now_`</b>: Boolean controlling whether the scope should be created
+    when the template is constructed or when the template is called. Default
+    is False, meaning the scope is created when the template is called.
 *  <b>`**kwargs`</b>: Keyword arguments to apply to `func_`.
 
 ##### Returns:
 
-  A function that will enter a `variable_scope` before calling `func_`. The
-  first time it is called, it will create a non-reusing scope so that the
-  variables will be unique.  On each subsequent call, it will reuse those
-  variables.
+  A function to encapsulate a set of variables which should be created once
+  and reused. An enclosing scope will created, either where `make_template`
+  is called, or wherever the result is called, depending on the value of
+  `create_scope_now_`. Regardless of the value, the first time the template
+  is called it will enter the scope with no reuse, and call `func_` to create
+  variables, which are guaranteed to be unique. All subsequent calls will
+  re-enter the scope and reuse those variables.
 
 ##### Raises:
 
@@ -1682,7 +1696,7 @@ An adaptor for ones() to match the Initializer spec.
 
 - - -
 
-### `tf.variable_axis_size_partitioner(max_shard_bytes, axis=0, bytes_per_string_element=16)` {#variable_axis_size_partitioner}
+### `tf.variable_axis_size_partitioner(max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None)` {#variable_axis_size_partitioner}
 
 Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
 
@@ -1691,6 +1705,10 @@ the maximum shard size below `max_shard_bytes`.  In practice, this is not
 always possible when sharding along only one axis.  When this happens,
 this axis is sharded as much as possible (i.e., every dimension becomes
 a separate shard).
+
+If the partitioner hits the `max_shards` limit, then each shard may end up
+larger than `max_shard_bytes`. By default `max_shards` equals `None` and no
+limit on the number of shards is enforced.
 
 One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
 `64MB`, to keep below the protobuf byte limit.
@@ -1702,6 +1720,8 @@ One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
 *  <b>`axis`</b>: The axis to partition along.  Default: outermost axis.
 *  <b>`bytes_per_string_element`</b>: If the `Variable` is of type string, this provides
     an estimate of how large each scalar in the `Variable` is.
+*  <b>`max_shards`</b>: The maximum number of shards in int created taking precedence
+    over `max_shard_bytes`.
 
 ##### Returns:
 
@@ -1712,6 +1732,33 @@ One reasonable value for `max_shard_bytes` is `(64 << 20) - 1`, or almost
 
 
 *  <b>`ValueError`</b>: If any of the byte counts are non-positive.
+
+
+- - -
+
+### `tf.min_max_variable_partitioner(max_partitions=1, axis=0, min_slice_size=262144, bytes_per_string_element=16)` {#min_max_variable_partitioner}
+
+Partitioner to allocate minimum size per slice.
+
+Returns a partitioner that partitions the variable of given shape and dtype
+such that each partition has a minimum of `min_slice_size` slice of the
+variable. The maximum number of such partitions (upper bound) is given by
+`max_partitions`.
+
+##### Args:
+
+
+*  <b>`max_partitions`</b>: Upper bound on the number of partitions. Defaults to 1.
+*  <b>`axis`</b>: Axis along which to partition the variable. Defaults to 0.
+*  <b>`min_slice_size`</b>: Minimum size of the variable slice per partition. Defaults
+    to 256K.
+*  <b>`bytes_per_string_element`</b>: If the `Variable` is of type string, this provides
+    an estimate of how large each scalar in the `Variable` is.
+
+##### Returns:
+
+  A partition function usable as the `partitioner` argument to
+  `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
 
 
 
@@ -1881,8 +1928,8 @@ Requires `updates.shape = indices.shape + ref.shape[1:]`.
 Masks elements of `IndexedSlices`.
 
 Given an `IndexedSlices` instance `a`, returns another `IndexedSlices` that
-contains a subset of the slices of `a`. Only the slices at indices specified
-in `mask_indices` are returned.
+contains a subset of the slices of `a`. Only the slices at indices not
+specified in `mask_indices` are returned.
 
 This is useful when you need to extract a subset of slices in an
 `IndexedSlices` object.
@@ -1896,7 +1943,7 @@ a.indices => [12, 26, 37, 45]
 tf.shape(a.values) => [4, 10]
 
 # `b` will be the subset of `a` slices at its second and third indices, so
-# we want to mask of its first and last indices (which are at absolute
+# we want to mask its first and last indices (which are at absolute
 # indices 12, 45)
 b = tf.sparse_mask(a, [12, 45])
 

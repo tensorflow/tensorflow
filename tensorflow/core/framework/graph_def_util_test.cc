@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,12 +27,19 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+Status FinalizeOpDef(OpDefBuilder b, OpDef* op_def) {
+  OpRegistrationData op_reg_data;
+  const Status s = b.Finalize(&op_reg_data);
+  *op_def = op_reg_data.op_def;
+  return s;
+}
+
 // Producer and consumer have default for an attr -> graph unchanged.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeWithDefault) {
   OpList op_list;
-  TF_ASSERT_OK(OpDefBuilder("NoChangeWithDefault")
-                   .Attr("a: int = 12")
-                   .Finalize(op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("NoChangeWithDefault").Attr("a: int = 12"),
+                    op_list.add_op()));
   OpListOpRegistry registry(&op_list);
 
   GraphDef graph_def;
@@ -51,9 +58,8 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeWithDefault) {
 // Producer and consumer both have an attr -> graph unchanged.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeNoDefault) {
   OpList op_list;
-  TF_ASSERT_OK(OpDefBuilder("NoChangeNoDefault")
-                   .Attr("a: int")
-                   .Finalize(op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("NoChangeNoDefault").Attr("a: int"),
+                             op_list.add_op()));
   OpListOpRegistry registry(&op_list);
 
   GraphDef graph_def;
@@ -75,13 +81,13 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeNoDefault) {
 // attr removed from graph (and so able to be consumed).
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, UsesDefault) {
   OpList consumer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("UsesDefault").Finalize(consumer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("UsesDefault"), consumer_op_list.add_op()));
   OpListOpRegistry consumer_registry(&consumer_op_list);
 
   OpList producer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("UsesDefault")
-                   .Attr("a: int = 17")
-                   .Finalize(producer_op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("UsesDefault").Attr("a: int = 17"),
+                             producer_op_list.add_op()));
   OpListOpRegistry producer_registry(&producer_op_list);
 
   GraphDef produced_graph_def;
@@ -107,14 +113,14 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, UsesDefault) {
 // graph unchanged (but not able to be consumed by consumer).
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, ChangedFromDefault) {
   OpList consumer_op_list;
-  TF_ASSERT_OK(
-      OpDefBuilder("ChangedFromDefault").Finalize(consumer_op_list.add_op()));
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("ChangedFromDefault"),
+                             consumer_op_list.add_op()));
   OpListOpRegistry consumer_registry(&consumer_op_list);
 
   OpList producer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("ChangedFromDefault")
-                   .Attr("a: int = 17")
-                   .Finalize(producer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("ChangedFromDefault").Attr("a: int = 17"),
+                    producer_op_list.add_op()));
   OpListOpRegistry producer_registry(&producer_op_list);
 
   GraphDef produced_graph_def;
@@ -136,11 +142,13 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, ChangedFromDefault) {
 // Attrs starting with underscores should not be removed.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, UnderscoreAttrs) {
   OpList consumer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("Underscore").Finalize(consumer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("Underscore"), consumer_op_list.add_op()));
   OpListOpRegistry consumer_registry(&consumer_op_list);
 
   OpList producer_op_list;
-  TF_ASSERT_OK(OpDefBuilder("Underscore").Finalize(producer_op_list.add_op()));
+  TF_ASSERT_OK(
+      FinalizeOpDef(OpDefBuilder("Underscore"), producer_op_list.add_op()));
   // Add the _underscore attr manually since OpDefBuilder would complain
   OpDef::AttrDef* attr = producer_op_list.mutable_op(0)->add_attr();
   attr->set_name("_underscore");

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
@@ -84,12 +84,13 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
-    y = np.array([-3, -2, -1], dtype=np.int32)
-    z = (x - y)*(x - y)
-    with self.test_session():
-      z_tf = math_ops.squared_difference(x, y).eval()
-      self.assertAllClose(z, z_tf)
+    for dtype in [np.int32, np.float16]:
+      x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
+      y = np.array([-3, -2, -1], dtype=dtype)
+      z = (x - y)*(x - y)
+      with self.test_session():
+        z_tf = math_ops.squared_difference(x, y).eval()
+        self.assertAllClose(z, z_tf)
 
 if __name__ == "__main__":
   googletest.main()

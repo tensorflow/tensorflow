@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import tensorflow as tf
 class MomentumOptimizerTest(tf.test.TestCase):
 
   def testBasic(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -81,7 +81,7 @@ class MomentumOptimizerTest(tf.test.TestCase):
             var1.eval())
 
   def testTensorLearningRateAndMomentum(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -136,39 +136,6 @@ class MomentumOptimizerTest(tf.test.TestCase):
                       3.98 - ((0.9 * 0.01 + 0.01) * 2.0)]),
             var1.eval())
 
-  def testFloat64(self):
-    with self.test_session():
-      opt = tf.train.MomentumOptimizer(learning_rate=2.0, momentum=0.9)
-
-      # compute_gradients.
-      values = [1.0, 3.0]
-      good_vars = [tf.Variable([v]) for v in values]
-      bad_loss = tf.constant(2.0, tf.float64, name="bad_loss")
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_loss.*expected.*float32",
-          opt.compute_gradients, bad_loss, good_vars)
-      bad_vars = [
-          tf.Variable(np.array([v], np.float64), name="bad_var")
-          for v in values]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.compute_gradients, tf.cast(bad_vars[0] + bad_vars[1], tf.float32),
-          bad_vars)
-      opt.compute_gradients(good_vars[0] + good_vars[1], good_vars)
-
-      # apply_gradients.
-      bad_grads = [
-          tf.constant([0.1], dtype=np.float64, name="bad_grad"),
-          tf.constant([0.01])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_grad.*expected.*float32",
-          opt.apply_gradients, zip(bad_grads, good_vars))
-      good_grads = [tf.constant([0.01]), tf.constant([0.02])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.apply_gradients, zip(good_grads, bad_vars))
-      opt.apply_gradients(zip(good_grads, good_vars))
-
   def _dbParamsMom01(self):
     """Return dist-belief momentum values.
 
@@ -222,7 +189,7 @@ class MomentumOptimizerTest(tf.test.TestCase):
         self.assertAllClose(np.array(db_out[i]), var0.eval())
 
   def testSparse(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable(tf.zeros([4, 2], dtype=dtype))
         var1 = tf.Variable(tf.constant(1.0, dtype, [4, 2]))
@@ -290,7 +257,7 @@ class MomentumOptimizerTest(tf.test.TestCase):
             var1.eval()[2])
 
   def testSharing(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -69,6 +69,17 @@ def _ApplyAdagradShape(op):
   grad_shape = op.inputs[3].get_shape().merge_with(accum_shape)
   return [grad_shape]
 
+@ops.RegisterShape("ApplyProximalAdagrad")
+def _ApplyProximalAdagradShape(op):
+  """Shape function for the ApplyProximalAdagrad op."""
+  var_shape = op.inputs[0].get_shape()
+  accum_shape = op.inputs[1].get_shape().merge_with(var_shape)
+  _AssertInputIsScalar(op, 2)  # lr
+  _AssertInputIsScalar(op, 3)  # l1
+  _AssertInputIsScalar(op, 4)  # l2
+  grad_shape = op.inputs[5].get_shape().merge_with(accum_shape)
+  return [grad_shape]
+
 
 @ops.RegisterShape("ApplyFtrl")
 def _ApplyFtrlShape(op):
@@ -133,6 +144,49 @@ def _ApplyGradientDescentShape(op):
   delta_shape = op.inputs[2].get_shape().merge_with(var_shape)
   return [delta_shape]
 
+
+@ops.RegisterShape("ApplyProximalGradientDescent")
+def _ApplyProximalGradientDescentShape(op):
+  """Shape function for the ApplyProximalGradientDescent op."""
+  var_shape = op.inputs[0].get_shape()
+  _AssertInputIsScalar(op, 1)  # alpha
+  _AssertInputIsScalar(op, 2)  # l1
+  _AssertInputIsScalar(op, 3)  # l2
+  delta_shape = op.inputs[4].get_shape().merge_with(var_shape)
+  return [delta_shape]
+
+
+@ops.RegisterShape("SparseApplyProximalGradientDescent")
+def _SparseApplyProximalGradientDescentShape(op):
+  """Shape function for the SparseApplyGradientDescent op."""
+  var_shape = op.inputs[0].get_shape()
+  _AssertInputIsScalar(op, 1)  # lr
+  _AssertInputIsScalar(op, 2)  # l1
+  _AssertInputIsScalar(op, 3)  # l2
+  grad_shape = op.inputs[4].get_shape().merge_with(
+      tensor_shape.TensorShape([None]).concatenate(var_shape[1:]))
+  unused_indices_shape = op.inputs[5].get_shape().merge_with(
+      tensor_shape.vector(grad_shape[0]))
+  return [var_shape]
+
+
+@ops.RegisterShape("SparseApplyRMSProp")
+def _SparseApplyRMSPropShape(op):
+  """Shape function for the SparseApplyRMSProp op."""
+  var_shape = op.inputs[0].get_shape()
+  ms_shape = op.inputs[1].get_shape().merge_with(var_shape)
+  mom_shape = op.inputs[2].get_shape().merge_with(ms_shape)
+  _AssertInputIsScalar(op, 3)  # lr
+  _AssertInputIsScalar(op, 4)  # rho
+  _AssertInputIsScalar(op, 5)  # momentum
+  _AssertInputIsScalar(op, 6)  # epsilon
+  grad_shape = op.inputs[7].get_shape().merge_with(
+      tensor_shape.TensorShape([None]).concatenate(mom_shape[1:]))
+  unused_indices_shape = op.inputs[8].get_shape().merge_with(
+      tensor_shape.vector(grad_shape[0]))
+  return [mom_shape]
+
+
 @ops.RegisterShape("SparseApplyAdadelta")
 def _SparseApplyAdadeltaShape(op):
    """Shape function for the SparseApplyAdadelta op."""
@@ -148,6 +202,7 @@ def _SparseApplyAdadeltaShape(op):
        tensor_shape.vector(grad_shape[0]))
    return [accum_update_shape]
 
+
 @ops.RegisterShape("SparseApplyAdagrad")
 def _SparseApplyAdagradShape(op):
   """Shape function for the SparseApplyAdagrad op."""
@@ -157,6 +212,21 @@ def _SparseApplyAdagradShape(op):
   grad_shape = op.inputs[3].get_shape().merge_with(
       tensor_shape.TensorShape([None]).concatenate(accum_shape[1:]))
   unused_indices_shape = op.inputs[4].get_shape().merge_with(
+      tensor_shape.vector(grad_shape[0]))
+  return [accum_shape]
+
+
+@ops.RegisterShape("SparseApplyProximalAdagrad")
+def _SparseApplyProximalAdagradShape(op):
+  """Shape function for the SparseApplyProximalAdagrad op."""
+  var_shape = op.inputs[0].get_shape()
+  accum_shape = op.inputs[1].get_shape().merge_with(var_shape)
+  _AssertInputIsScalar(op, 2)  # lr
+  _AssertInputIsScalar(op, 3)  # l1
+  _AssertInputIsScalar(op, 4)  # l2
+  grad_shape = op.inputs[5].get_shape().merge_with(
+      tensor_shape.TensorShape([None]).concatenate(accum_shape[1:]))
+  unused_indices_shape = op.inputs[6].get_shape().merge_with(
       tensor_shape.vector(grad_shape[0]))
   return [accum_shape]
 

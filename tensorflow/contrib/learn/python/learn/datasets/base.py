@@ -1,30 +1,32 @@
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Base utilities for loading datasets."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import csv
 import collections
+import csv
 import os
 from os import path
 import tempfile
+import numpy as np
 from six.moves import urllib
 
-import numpy as np
 from tensorflow.python.platform import gfile
 
 Dataset = collections.namedtuple('Dataset', ['data', 'target'])
@@ -32,13 +34,13 @@ Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
 def load_csv(filename, target_dtype, target_column=-1, has_header=True):
+  """Load dataset from CSV file."""
   with gfile.Open(filename) as csv_file:
     data_file = csv.reader(csv_file)
     if has_header:
       header = next(data_file)
       n_samples = int(header[0])
       n_features = int(header[1])
-      target_names = np.array(header[2:])
       data = np.empty((n_samples, n_features))
       target = np.empty((n_samples,), dtype=np.int)
       for i, ir in enumerate(data_file):
@@ -49,7 +51,23 @@ def load_csv(filename, target_dtype, target_column=-1, has_header=True):
       for ir in data_file:
         target.append(ir.pop(target_column))
         data.append(ir)
+      target = np.array(target, dtype=target_dtype)
+      data = np.array(data)
   return Dataset(data=data, target=target)
+
+
+def shrink_csv(filename, ratio):
+  """Create a smaller dataset of only 1/ratio of original data."""
+  filename_small = filename.replace('.', '_small.')
+  with gfile.Open(filename_small, 'w') as csv_file_small:
+    writer = csv.writer(csv_file_small)
+    with gfile.Open(filename) as csv_file:
+      reader = csv.reader(csv_file)
+      i = 0
+      for row in reader:
+        if i % ratio == 0:
+          writer.writerow(row)
+        i += 1
 
 
 def load_iris():

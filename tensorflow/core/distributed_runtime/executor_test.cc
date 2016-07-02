@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -127,10 +127,15 @@ float V(const Tensor& tensor) {
 
 static uint64 kIncarnation = 1;  // Uses in following tests.
 
-string Key(const string& sender, const uint64 incarnation,
-           const string& receiver, const string& name) {
-  return Rendezvous::CreateKey(sender, incarnation, receiver, name,
-                               FrameAndIter(0, 0));
+Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
+                          const string& receiver, const string& name) {
+  Rendezvous::ParsedKey result;
+  CHECK(
+      Rendezvous::ParseKey(Rendezvous::CreateKey(sender, incarnation, receiver,
+                                                 name, FrameAndIter(0, 0)),
+                           &result)
+          .ok());
+  return result;
 }
 
 #define ALICE "/job:j/replica:0/task:0/cpu:0"

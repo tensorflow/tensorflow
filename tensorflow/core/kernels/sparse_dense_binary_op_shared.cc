@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -171,7 +171,10 @@ class SparseDenseBinaryOpShared : public OpKernel {
                                                                              \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("SparseDenseCwiseDiv").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseDenseBinaryOpShared<CPUDevice, T, functor::div<T>>)
+      SparseDenseBinaryOpShared<CPUDevice, T, functor::div<T>>)              \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("SparseDenseCwiseAdd").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SparseDenseBinaryOpShared<CPUDevice, T, functor::add<T>>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

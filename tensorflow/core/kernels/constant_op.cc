@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,6 +61,7 @@ REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
+REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
@@ -113,36 +114,6 @@ struct FillFunctor<CPUDevice, T> {
   }
 };
 
-// Partial specialization of SetZeroFunctor<Device=CPUDevice, T>.
-template <typename T>
-struct SetZeroFunctor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(T(0));
-  }
-};
-
-// Specialization of SetZeroFunctor<Device=CPUDevice, T=string>.
-template <>
-struct SetZeroFunctor<CPUDevice, string> {
-  void operator()(const CPUDevice& d, typename TTypes<string>::Flat out) {
-    out.device(d) = out.constant(string());
-  }
-};
-
-#define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>;
-DEFINE_SETZERO_CPU(Eigen::half);
-DEFINE_SETZERO_CPU(float);
-DEFINE_SETZERO_CPU(double);
-DEFINE_SETZERO_CPU(uint8);
-DEFINE_SETZERO_CPU(int8);
-DEFINE_SETZERO_CPU(int16);
-DEFINE_SETZERO_CPU(int32);
-DEFINE_SETZERO_CPU(int64);
-DEFINE_SETZERO_CPU(complex64);
-DEFINE_SETZERO_CPU(complex128);
-DEFINE_SETZERO_CPU(string);
-#undef DEFINE_SETZERO_CPU
-
 }  // end namespace functor
 
 template <typename Device, typename T>
@@ -190,6 +161,7 @@ REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
+REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 // Currently we do not support filling strings and complex64 on GPU
@@ -270,5 +242,10 @@ class PlaceholderOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
+// The following GPU kernel registration is used to address the situation that
+// a placeholder is added in a GPU device context and soft placement is false.
+// Since a placeholder should never be executed, adding these GPU kernels has
+// no effect on graph execution.
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
 
 }  // namespace tensorflow

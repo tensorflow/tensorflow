@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
-# TF_BUILD_NO_CACHING_VIRTUALENV, NO_TEST_ON_INSTALL
+# NO_TEST_ON_INSTALL
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
@@ -32,10 +32,6 @@
 # TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES overrides the default extra pip packages
 # to be installed in virtualenv before test_installation.sh is called. Multiple
 # pakcage names are separated with spaces.
-#
-# TF_BUILD_NO_CACHING_VIRTUALENV: If set to any non-empty and non-0 value,
-# will cause the script to force remove any existing (cached) virtualenv
-# directory.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
@@ -158,17 +154,15 @@ echo "Installing pip whl file: ${WHL_PATH}"
 
 # Create virtualenv directory for install test
 VENV_DIR="${PIP_TEST_ROOT}/venv"
-if [[ -d "${VENV_DIR}" ]] &&
-   [[ ! -z "${TF_BUILD_NO_CACHING_VIRTUALENV}" ]] &&
-   [[ "${TF_BUILD_NO_CACHING_VIRTUALENV}" != "0" ]]; then
-  echo "TF_BUILD_NO_CACHING_VIRTUALENV=${TF_BUILD_NO_CACHING_VIRTUALENV}:"
-  echo "Removing existing virtualenv directory: ${VENV_DIR}"
 
-  rm -rf "${VENV_DIR}" || \
+if [[ -d "${VENV_DIR}" ]]; then
+  rm -rf "${VENV_DIR}" && \
+      echo "Removed existing virtualenv directory: ${VENV_DIR}" || \
       die "Failed to remove existing virtualenv directory: ${VENV_DIR}"
 fi
 
-mkdir -p ${VENV_DIR} || \
+mkdir -p ${VENV_DIR} && \
+    echo "Created virtualenv directory: ${VENV_DIR}" || \
     die "FAILED to create virtualenv directory: ${VENV_DIR}"
 
 # Verify that virtualenv exists
@@ -184,10 +178,11 @@ source "${VENV_DIR}/bin/activate" || \
 
 
 # Install the pip file in virtual env (plus missing dependencies)
-pip install -v ${WHL_PATH} || die "pip install (without --upgrade) FAILED"
+
 # Force tensorflow reinstallation. Otherwise it may not get installed from
 # last build if it had the same version number as previous build.
-pip install -v --upgrade --no-deps --force-reinstall ${WHL_PATH} || \
+PIP_FLAGS="--upgrade --force-reinstall"
+pip install -v ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
 echo "Successfully installed pip package ${WHL_PATH}"
 

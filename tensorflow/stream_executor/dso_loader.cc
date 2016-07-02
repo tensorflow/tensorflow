@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ string GetCudnnVersion() { return ""; }
 }
 
 /* static */ port::Status DsoLoader::GetLibcudaDsoHandle(void** dso_handle) {
-  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cuda", ""),
+  return GetDsoHandle(FindDsoPath(tensorflow::internal::FormatLibraryFileName("cuda", "1"),
                                   GetCudaDriverLibraryPath()),
                       dso_handle);
 }
@@ -138,9 +138,9 @@ string GetCudnnVersion() { return ""; }
 static std::vector<string>* CreatePrimordialRpaths() {
   auto rpaths = new std::vector<string>;
 #if defined(__APPLE__)
-  rpaths->push_back("driver/driver_sh.runfiles/third_party/gpus/cuda/lib");
+  rpaths->push_back("driver/driver_sh.runfiles/org_tensorflow/third_party/gpus/cuda/lib");
 #else
-  rpaths->push_back("driver/driver_sh.runfiles/third_party/gpus/cuda/lib64");
+  rpaths->push_back("driver/driver_sh.runfiles/org_tensorflow/third_party/gpus/cuda/lib64");
 #endif
   return rpaths;
 }

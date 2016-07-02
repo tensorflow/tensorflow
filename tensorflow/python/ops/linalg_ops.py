@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ from tensorflow.python.ops.gen_linalg_ops import *
 
 
 @ops.RegisterShape("Cholesky")
+@ops.RegisterShape("CholeskyGrad")
 @ops.RegisterShape("MatrixInverse")
 def _UnchangedSquare(op):
   input_shape = op.inputs[0].get_shape().with_rank(2)
@@ -37,16 +38,13 @@ def _UnchangedSquare(op):
 
 
 @ops.RegisterShape("BatchCholesky")
+@ops.RegisterShape("BatchCholeskyGrad")
 @ops.RegisterShape("BatchMatrixInverse")
 def _BatchUnchangedSquare(op):
   input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
   return [input_shape]
-
-@ops.RegisterShape("CholeskyGrad")
-def _cholesky_grad_shape(op):
-  return [op.inputs[0].get_shape()]
 
 @ops.RegisterShape("MatrixDeterminant")
 def _MatrixDeterminantShape(op):

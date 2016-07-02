@@ -4,7 +4,8 @@
   "description": "Visualizers for TensorFlow",
   "scripts": {
     "test": "gulp test",
-    "prepare": "npm install && bower install && typings install"
+    "prepare": "npm install && bower install && typings install",
+    "compile": "gulp compile"
   },
   "keywords": [
     "tensorflow"
@@ -30,6 +31,6 @@
     "gulp-header": "~1.7.1",
     "gulp-rename": "~1.2.2",
     "gulp-bower": "0.0.13",
-    "typings": "~0.7.12"
+    "typings": "~1.0.4"
   }
 }

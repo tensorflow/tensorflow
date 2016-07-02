@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,6 +63,10 @@ class AdamOptimizer(optimizer.Optimizer):
     The default value of 1e-8 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a
     current good choice is 1.0 or 0.1.
+
+    Note that in dense implement of this algorithm, m_t, v_t and variable will 
+    update even if g is zero, but in sparse implement, m_t, v_t and variable 
+    will not update in iterations g is zero.
 
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.

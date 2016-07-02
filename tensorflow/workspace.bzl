@@ -5,27 +5,10 @@
 # local_repository rule (e.g. "@tf").
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
-    name = "gmock_archive",
-    url = "https://archive.openswitch.net/gmock-1.7.0.zip",
-    sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
-    build_file = path_prefix + "google/protobuf/gmock.BUILD",
-  )
-
-  native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/50812b426b7c.tar.gz",
-    sha256 = "fa95e425c379c2c7b8a49d9ef7bd0c5a8369171c987affd6dbae5de8a8911c1a",
+    url = "https://bitbucket.org/eigen/eigen/get/334b1d428283.tar.gz",
+    sha256 = "6d5efd02c7c11fbb9d02df4f0b64f22ecbd348e7549f8a83c13fb4d8d9e19d4b",
     build_file = path_prefix + "eigen.BUILD",
-  )
-
-  native.bind(
-    name = "gtest",
-    actual = "@gmock_archive//:gtest",
-  )
-
-  native.bind(
-    name = "gtest_main",
-    actual = "@gmock_archive//:gtest_main",
   )
 
   native.git_repository(
@@ -38,6 +21,25 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "gemmlowp",
     remote = "https://github.com/google/gemmlowp.git",
     commit = "96d3acab46fbb03855ca22c2ee2bb9831ac8c83c",
+  )
+
+  native.new_http_archive(
+    name = "farmhash_archive",
+    url = "https://github.com/google/farmhash/archive/34c13ddfab0e35422f4c3979f360635a8c050260.zip",
+    sha256 = "e3d37a59101f38fd58fb799ed404d630f0eee18bfc2a2433910977cc8fea9c28",
+    build_file = path_prefix + "farmhash.BUILD",
+  )
+
+  native.bind(
+    name = "farmhash",
+    actual = "@farmhash//:farmhash",
+  )
+
+  native.git_repository(
+    name = "highwayhash",
+    remote = "https://github.com/google/highwayhash.git",
+    commit = "be5edafc2e1a455768e260ccd68ae7317b6690ee",
+    init_submodules = True,
   )
 
   native.new_http_archive(
@@ -66,23 +68,52 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@six_archive//:six",
   )
 
+  native.git_repository(
+    name = "protobuf",
+    remote = "https://github.com/google/protobuf",
+    commit = "ed87c1fe2c6e1633cadb62cf54b2723b2b25c280",
+  )
+
+  native.new_http_archive(
+    name = "gmock_archive",
+    url = "https://archive.openswitch.net/gmock-1.7.0.zip",
+    sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
+    build_file = path_prefix + "gmock.BUILD",
+  )
+
+  native.bind(
+    name = "gtest",
+    actual = "@gmock_archive//:gtest",
+  )
+
+  native.bind(
+    name = "gtest_main",
+    actual = "@gmock_archive//:gtest_main",
+  )
+
+  native.bind(
+      name = "python_headers",
+      actual = tf_repo_name + "//util/python:python_headers",
+  )
+
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
   # to point to the protobuf's compiler library.
   native.bind(
     name = "protobuf_clib",
-    actual = tf_repo_name + "//google/protobuf:protoc_lib",
+    actual = "@protobuf//:protoc_lib",
   )
 
   native.bind(
     name = "protobuf_compiler",
-    actual = tf_repo_name + "//google/protobuf:protoc_lib",
+    actual = "@protobuf//:protoc_lib",
   )
 
-  native.git_repository(
+  native.new_git_repository(
     name = "grpc",
-    commit = "2bc7d80",
+    commit = "39650266",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
+    build_file = path_prefix + "grpc.BUILD",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
@@ -107,4 +138,56 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "jsoncpp",
     actual = "@jsoncpp_git//:jsoncpp",
+  )
+
+  native.new_git_repository(
+    name = "boringssl_git",
+    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
+    remote = "https://github.com/google/boringssl.git",
+    build_file = path_prefix + "boringssl.BUILD",
+  )
+
+  native.bind(
+    name = "boringssl_err_data_c",
+    actual = tf_repo_name + "//third_party/boringssl:err_data_c",
+  )
+
+  native.new_git_repository(
+    name = "nanopb_git",
+    commit = "1251fa1",
+    remote = "https://github.com/nanopb/nanopb.git",
+    build_file = path_prefix + "nanopb.BUILD",
+  )
+
+  native.bind(
+    name = "nanopb",
+    actual = "@nanopb_git//:nanopb",
+  )
+
+  native.new_http_archive(
+    name = "avro_archive",
+    url = "http://www-us.apache.org/dist/avro/avro-1.8.0/cpp/avro-cpp-1.8.0.tar.gz",
+    sha256 = "ec6e2ec957e95ca07f70cc25f02f5c416f47cb27bd987a6ec770dcbe72527368",
+    build_file = path_prefix + "avro.BUILD",
+  )
+
+  native.new_http_archive(
+    name = "boost_archive",
+    url = "http://pilotfiber.dl.sourceforge.net/project/boost/boost/1.61.0/boost_1_61_0.tar.gz",
+    sha256 = "a77c7cc660ec02704c6884fbb20c552d52d60a18f26573c9cee0788bf00ed7e6",
+    build_file = path_prefix + "boost.BUILD",
+  )
+
+  native.new_http_archive(
+    name = "bzip2_archive",
+    url = "http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz",
+    sha256 = "a2848f34fcd5d6cf47def00461fcb528a0484d8edef8208d6d2e2909dc61d9cd",
+    build_file = path_prefix + "bzip2.BUILD",
+  )
+
+  native.new_http_archive(
+    name = "zlib_archive",
+    url = "http://zlib.net/zlib-1.2.8.tar.gz",
+    sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
+    build_file = path_prefix + "zlib.BUILD",
   )

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER6(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
-          complex64, int64);
+REGISTER7(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
+          complex64, int64, complex128);
 #if GOOGLE_CUDA
 REGISTER4(UnaryOp, GPU, "Neg", functor::neg, float, Eigen::half, double, int64);
 

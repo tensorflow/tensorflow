@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ from __future__ import print_function
 import base64
 import gzip
 import json
+import numbers
 import os
 import shutil
 import threading
@@ -35,6 +36,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from google.protobuf import text_format
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
@@ -107,15 +109,19 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
-    self.assertEqual(
-        self._getJson('/data/runs'),
-        {'run1': {'compressedHistograms': ['histogram'],
-                  'scalars': ['simple_values'],
-                  'histograms': ['histogram'],
-                  'images': ['image'],
-                  'audio': ['audio'],
-                  'graph': True,
-                  'run_metadata': ['test run']}})
+    run_json = self._getJson('/data/runs')
+
+    # Don't check the actual timestamp since it's time-dependent.
+    self.assertTrue(isinstance(run_json['run1']['firstEventTimestamp'],
+                               numbers.Number))
+    del run_json['run1']['firstEventTimestamp']
+    self.assertEqual(run_json, {'run1': {'compressedHistograms': ['histogram'],
+                                         'scalars': ['simple_values'],
+                                         'histograms': ['histogram'],
+                                         'images': ['image'],
+                                         'audio': ['audio'],
+                                         'graph': True,
+                                         'run_metadata': ['test run']}})
 
   def testHistograms(self):
     """Test the format of /data/histograms."""
@@ -281,6 +287,13 @@ class ParseEventFilesSpecTest(tf.test.TestCase):
     logdir_string = 'gs://foo/path'
     expected = {'gs://foo/path': None}
     self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+
+class TensorBoardAssetsTest(tf.test.TestCase):
+
+  def testTagFound(self):
+    tag = resource_loader.load_resource('tensorboard/TAG')
+    self.assertTrue(tag)
 
 
 if __name__ == '__main__':

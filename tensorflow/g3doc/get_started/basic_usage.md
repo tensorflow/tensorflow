@@ -274,9 +274,9 @@ example we fetched the single node `state`, but you can also fetch multiple
 tensors:
 
 ```python
-input1 = tf.constant(3.0)
-input2 = tf.constant(2.0)
-input3 = tf.constant(5.0)
+input1 = tf.constant([3.0])
+input2 = tf.constant([2.0])
+input3 = tf.constant([5.0])
 intermed = tf.add(input2, input3)
 mul = tf.mul(input1, intermed)
 
@@ -319,6 +319,6 @@ with tf.Session() as sess:
 A `placeholder()` operation generates an error if you do not supply a feed for
 it. See the
 [MNIST fully-connected feed tutorial](../tutorials/mnist/tf/index.md)
-([source code](https://www.tensorflow.org/code/tensorflow/g3doc/tutorials/mnist/fully_connected_feed.py))
+([source code](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/fully_connected_feed.py))
 for a larger-scale example of feeds.
 

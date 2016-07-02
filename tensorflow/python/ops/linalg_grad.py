@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,9 +28,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+
+ops.NoGradient("CholeskyGrad")
+ops.NoGradient("BatchCholeskyGrad")
 
 
 @ops.RegisterGradient("MatrixInverse")
@@ -76,9 +78,15 @@ def _BatchMatrixDeterminantGrad(op, grad):
 
 
 @ops.RegisterGradient("Cholesky")
-def _cholesky_grad(op, grad):
+def _CholeskyGrad(op, grad):
   """Gradient for Cholesky."""
   return linalg_ops.cholesky_grad(op.outputs[0], grad)
+
+
+@ops.RegisterGradient("BatchCholesky")
+def _BatchCholeskyGrad(op, grad):
+  """Gradient for BatchCholesky."""
+  return linalg_ops.batch_cholesky_grad(op.outputs[0], grad)
 
 
 @ops.RegisterGradient("MatrixSolve")

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@
 String hashing ops take a string input tensor and map each element to an
 integer.
 
+@@string_to_hash_bucket_fast
+@@string_to_hash_bucket_strong
 @@string_to_hash_bucket
 
 ## Joining
@@ -26,6 +28,11 @@ String joining ops concatenate elements of input string tensors to produce a new
 string tensor.
 
 @@reduce_join
+@@string_join
+
+## Conversion
+
+@@as_string
 """
 
 from __future__ import absolute_import
@@ -34,10 +41,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import common_shapes
 # pylint: disable=unused-import
 from tensorflow.python.ops import gen_string_ops
 # pylint: enable=unused-import
@@ -47,9 +54,16 @@ from tensorflow.python.ops.gen_string_ops import *
 # pylint: enable=wildcard-import
 
 ops.NoGradient("StringToHashBucket")
+ops.NoGradient("StringToHashBucketFast")
+ops.NoGradient("StringToHashBucketStrong")
 ops.NoGradient("ReduceJoin")
+ops.NoGradient("StringJoin")
+ops.NoGradient("AsString")
 
 ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToHashBucketFast")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToHashBucketStrong")(common_shapes.unchanged_shape)
+ops.RegisterShape("AsString")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("ReduceJoin")
@@ -95,3 +109,19 @@ def _ReduceJoinShape(op):
 
   return [tensor_shape.TensorShape(returned_dims)]
 
+
+@ops.RegisterShape("StringJoin")
+def _StringJoinShape(op):
+  """Shape function for the StringJoin op."""
+  input_shapes = [x.get_shape() for x in op.inputs]
+
+  # First check if all inputs are scalars.  In the next section
+  # we may have *some* scalars and we will be broadcasting them
+  if all([s.ndims == 0 for s in input_shapes]):
+    return [tensor_shape.scalar()]
+
+  base_shape = tensor_shape.unknown_shape()
+  for shape in input_shapes:
+    if shape.ndims != 0:
+      base_shape = base_shape.merge_with(shape)
+  return [base_shape]

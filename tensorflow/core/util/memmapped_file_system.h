@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,15 +61,19 @@ class MemmappedFileSystem : public FileSystem {
   MemmappedFileSystem();
   ~MemmappedFileSystem() override = default;
   bool FileExists(const string& fname) override;
-  Status NewRandomAccessFile(const string& filename,
-                             RandomAccessFile** result) override;
+  Status NewRandomAccessFile(
+      const string& filename,
+      std::unique_ptr<RandomAccessFile>* result) override;
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& filename, ReadOnlyMemoryRegion** result) override;
+      const string& filename,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
   // All these functions return Unimplemented error, the memmapped storage is
   // read only.
-  Status NewWritableFile(const string& fname, WritableFile** result) override;
-  Status NewAppendableFile(const string& fname, WritableFile** result) override;
+  Status NewWritableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result) override;
+  Status NewAppendableFile(const string& fname,
+                           std::unique_ptr<WritableFile>* result) override;
   Status GetChildren(const string& dir, std::vector<string>* r) override;
   Status DeleteFile(const string& f) override;
   Status CreateDir(const string& d) override;

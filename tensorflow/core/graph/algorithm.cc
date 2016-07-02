@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,19 +109,15 @@ void GetReversePostOrder(const Graph& g, std::vector<Node*>* order) {
   std::reverse(order->begin(), order->end());
 }
 
-void PruneForReverseReachability(Graph* g,
-                                 const std::unordered_set<const Node*>& nodes) {
-  std::unordered_set<const Node*> visited;
-
+bool PruneForReverseReachability(Graph* g,
+                                 std::unordered_set<const Node*> visited) {
   // Compute set of nodes that we need to traverse in order to reach
   // the nodes in "nodes" by performing a breadth-first search from those
   // nodes, and accumulating the visited nodes.
   std::deque<const Node*> queue;
-  for (const Node* n : nodes) {
-    if (visited.insert(n).second) {
-      VLOG(2) << "Reverse reach init: " << n->name();
-      queue.push_back(n);
-    }
+  for (const Node* n : visited) {
+    VLOG(2) << "Reverse reach init: " << n->name();
+    queue.push_back(n);
   }
   while (!queue.empty()) {
     const Node* n = queue.front();
@@ -140,14 +136,15 @@ void PruneForReverseReachability(Graph* g,
     all_nodes.push_back(n);
   }
 
+  bool any_removed = false;
   for (Node* n : all_nodes) {
     if (visited.count(n) == 0 && !n->IsSource() && !n->IsSink()) {
       g->RemoveNode(n);
+      any_removed = true;
     }
   }
 
-  // Reconnect nodes with no outgoing edges to the sink node
-  FixupSourceAndSinkEdges(g);
+  return any_removed;
 }
 
 bool FixupSourceAndSinkEdges(Graph* g) {

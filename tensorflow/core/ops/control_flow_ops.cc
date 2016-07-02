@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ REGISTER_OP("RefSwitch")
     .Output("output_false: Ref(T)")
     .Output("output_true: Ref(T)")
     .Attr("T: type")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Forwards the ref tensor `data` to the output port determined by `pred`.
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -133,6 +133,7 @@ REGISTER_SELECT_GPU(double);
 REGISTER_SELECT_GPU(int32);
 REGISTER_SELECT_GPU(int64);
 REGISTER_SELECT_GPU(complex64);
+REGISTER_SELECT_GPU(complex128);
 
 #undef REGISTER_SELECT_GPU
 

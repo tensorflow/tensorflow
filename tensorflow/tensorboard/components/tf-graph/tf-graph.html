@@ -62,10 +62,8 @@ Polymer({
       observer: '_graphChanged'
     },
     basicGraph: Object,
-    stats: {
-      type: Object,
-      observer: '_statsChanged'
-    },
+    stats: Object,
+    devicesForStats: Object,
     hierarchyParams: Object,
     progress: {
       type: Object,
@@ -102,12 +100,15 @@ Polymer({
     },
   },
   observers: [
+    '_statsChanged(stats, devicesForStats)',
     '_buildRenderHierarchy(graphHierarchy)'
   ],
-  _statsChanged: function(stats) {
-    if (stats != null) {
-      tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
-      tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
+  _statsChanged: function(stats, devicesForStats) {
+    if (this.graphHierarchy) {
+      if (stats && devicesForStats) {
+        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats, devicesForStats);
+        tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
+      }
       // Recompute the rendering information.
       this._buildRenderHierarchy(this.graphHierarchy);
     }
@@ -120,7 +121,8 @@ Polymer({
         // and thus mistakenly pass non-metanode to this module.
         return;
       }
-      var renderGraph = new tf.graph.render.RenderGraphInfo(graphHierarchy);
+      var renderGraph = new tf.graph.render.RenderGraphInfo(
+          graphHierarchy, !!this.stats /** displayingStats */);
       // Producing the 'color by' parameters to be consumed
       // by the tf-graph-controls panel. It contains information about the
       // min and max values and their respective colors, as well as list

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for representing statistical distributions.
+"""Ops for representing Bayesian computation.
 
-## This package provides classes for statistical distributions.
-
+## This package provides classes for Bayesian computation with TensorFlow.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import, line-too-long
-from tensorflow.contrib.distributions.python.ops import gaussian_conjugate_posteriors
-from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
-from tensorflow.contrib.distributions.python.ops.gaussian import *
-# from tensorflow.contrib.distributions.python.ops.dirichlet import *  # pylint: disable=line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long
+from tensorflow.contrib.bayesflow.python.ops import stochastic_graph

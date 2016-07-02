@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -71,18 +71,23 @@ class CholeskyOpTest(tf.test.TestCase):
   def testNonSquareMatrix(self):
     with self.assertRaises(ValueError):
       tf.cholesky(np.array([[1., 2., 3.], [3., 4., 5.]]))
+    with self.assertRaises(ValueError):
+      tf.batch_cholesky(np.array([[[1., 2., 3.], [3., 4., 5.]],
+                                  [[1., 2., 3.], [3., 4., 5.]]]))
 
   def testWrongDimensions(self):
     tensor3 = tf.constant([1., 2.])
     with self.assertRaises(ValueError):
       tf.cholesky(tensor3)
+    with self.assertRaises(ValueError):
+      tf.batch_cholesky(tensor3)
 
   def testNotInvertible(self):
-     # The input should be invertible.
+    # The input should be invertible.
     with self.test_session():
       with self.assertRaisesOpError("LLT decomposition was not successful. The"
                                     " input might not be valid."):
-         # All rows of the matrix below add to zero
+        # All rows of the matrix below add to zero
         self._verifyCholesky(np.array([[1., -1., 0.], [-1., 1., -1.], [0., -1.,
                                                                        1.]]))
 
@@ -122,24 +127,36 @@ class CholeskyGradTest(tf.test.TestCase):
                            scalarTest=False):
     with self.test_session(use_gpu=False):
       for shape in shapes:
-        for dtype in dtypes:
-          if not(scalarTest):
-            x = tf.constant(np.random.randn(shape[0], shape[1]), dtype)
-            K = tf.matmul(x, tf.transpose(x)) / shape[0]  # K is posdef
-            y = tf.cholesky(K)
-          else:  # This is designed to be a faster test for larger matrices.
-            x = tf.constant(np.random.randn(), dtype)
-            R = tf.constant(np.random.randn(shape[0], shape[1]), dtype)
-            e = tf.mul(R, x)
-            K = tf.matmul(e, tf.transpose(e)) / shape[0]  # K is posdef
-            y = tf.reduce_mean(tf.cholesky(K))
-          error = tf.test.compute_gradient_error(x, x._shape_as_list(),
-                                                 y, y._shape_as_list())
-          tf.logging.info("error = %f", error)
-          if dtype == tf.float64:
-            self.assertLess(error, 1e-5)
-          else:
-            self.assertLess(error, 2e-3)
+        for batch in False, True:
+          for dtype in dtypes:
+            if not scalarTest:
+              x = tf.constant(np.random.randn(shape[0], shape[1]), dtype)
+              tensor = tf.matmul(x, tf.transpose(x)) / shape[0]
+            else:
+              # This is designed to be a faster test for larger matrices.
+              x = tf.constant(np.random.randn(), dtype)
+              R = tf.constant(np.random.randn(shape[0], shape[1]), dtype)
+              e = tf.mul(R, x)
+              tensor = tf.matmul(e, tf.transpose(e)) / shape[0]
+
+            # Inner-most matrices in tensor are positive definite.
+            if batch:
+              tensor = tf.tile(tf.expand_dims(tensor, 0), [4, 1, 1])
+              op = tf.batch_cholesky
+            else:
+              op = tf.cholesky
+
+            if not (scalarTest):
+              y = op(tensor)
+            else:
+              y = tf.reduce_mean(op(tensor))
+            error = tf.test.compute_gradient_error(x, x._shape_as_list(), y,
+                                                   y._shape_as_list())
+            tf.logging.info("error = %f", error)
+            if dtype == tf.float64:
+              self.assertLess(error, 1e-5)
+            else:
+              self.assertLess(error, 3e-3)
 
 if __name__ == "__main__":
   tf.test.main()

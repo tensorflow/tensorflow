@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ class AbsOpTest(tf.test.TestCase):
 
   def _testGrad(self, shape, dtype=None, max_error=None, bias=None, sigma=None):
     np.random.seed(7)
-    if dtype == tf.complex64:
+    if dtype in (tf.complex64, tf.complex128):
       value = tf.complex(self._biasedRandN(shape, bias=bias, sigma=sigma),
                          self._biasedRandN(shape, bias=bias, sigma=sigma))
     else:
@@ -74,7 +74,7 @@ class AbsOpTest(tf.test.TestCase):
 
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu):
-        if dtype == tf.complex64:
+        if dtype in (tf.complex64, tf.complex128):
           output = tf.complex_abs(value)
         else:
           output = tf.abs(value)

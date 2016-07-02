@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,13 +23,14 @@ import warnings
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
@@ -37,7 +38,6 @@ from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
-from tensorflow.python.ops.constant_op import constant
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 
 from tensorflow.python.ops.nn_ops import bias_add
@@ -171,6 +171,25 @@ class GradientsTest(test_util.TensorFlowTestCase):
       y = constant(1.0, shape=[1, 2])
       wx = math_ops.matmul(w, x)
       wy = math_ops.matmul(w, y)
+      with g.device("/gpu:0"):
+        z = wx + wy
+
+      gw1 = gradients.gradients(z, [w], colocate_gradients_with_ops=True)[0]
+      self.assertEqual(gw1.op.colocation_groups(), wx.op.colocation_groups())
+
+      gw2 = gradients.gradients(z, [w], colocate_gradients_with_ops=False)[0]
+      self.assertTrue(wx.op.colocation_groups() != gw2.op.colocation_groups())
+
+  def testColocateGradientsWithAggregationInMultipleDevices(self):
+    with ops.Graph().as_default() as g:
+      with g.device("/gpu:1"):
+        w = constant(1.0, shape=[1, 1])
+      x = constant(1.0, shape=[1, 2])
+      y = constant(1.0, shape=[1, 2])
+      with g.device("/task:1"):
+        wx = math_ops.matmul(w, x)
+      with g.device("/task:2"):
+        wy = math_ops.matmul(w, y)
       with g.device("/gpu:0"):
         z = wx + wy
 

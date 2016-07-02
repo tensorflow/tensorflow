@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -217,6 +217,7 @@ REGISTER_OP("TFRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("compression_type: string = ''")
     .SetIsStateful()
     .Doc(R"doc(
 A Reader that outputs the records from a TensorFlow Records file.
@@ -264,6 +265,27 @@ reader_handle: Handle to a Reader.
 queue_handle: Handle to a Queue, with string work items.
 key: A scalar.
 value: A scalar.
+)doc");
+
+REGISTER_OP("ReaderReadUpTo")
+    .Input("reader_handle: Ref(string)")
+    .Input("queue_handle: Ref(string)")
+    .Input("num_records: int64")
+    .Output("keys: string")
+    .Output("values: string")
+    .Doc(R"doc(
+Returns up to `num_records` (key, value) pairs produced by a Reader.
+
+Will dequeue from the input queue if necessary (e.g. when the
+Reader needs to start reading from a new file since it has finished
+with the previous file).
+It may return less than `num_records` even before the last batch.
+
+reader_handle: Handle to a `Reader`.
+queue_handle: Handle to a `Queue`, with string work items.
+num_records: number of records to read from `Reader`.
+keys: A 1-D tensor.
+values: A 1-D tensor.
 )doc");
 
 REGISTER_OP("ReaderNumRecordsProduced")

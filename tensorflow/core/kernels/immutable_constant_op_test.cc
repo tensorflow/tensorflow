@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,7 +60,8 @@ class TestFileSystem : public NullFileSystem {
  public:
   ~TestFileSystem() override = default;
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, ReadOnlyMemoryRegion** result) override {
+      const string& fname,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
     // For the tests create in-memory regions with float values equal to the
     // first letter of the region name.
@@ -78,7 +79,7 @@ class TestFileSystem : public NullFileSystem {
 
     auto region = new TestReadOnlyMemoryRegion(kTestTensorSizeBytes);
     std::fill_n(region->GetWritableDataStart(), kTestTensorSize, val);
-    *result = region;
+    result->reset(region);
     return Status::OK();
   }
 };
@@ -143,9 +144,8 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
 Status CreateTempFile(Env* env, float value, uint64 size, string* filename) {
   const string dir = testing::TmpDir();
   *filename = io::JoinPath(dir, strings::StrCat("file_", value));
-  WritableFile* file;
+  std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
-  std::unique_ptr<WritableFile> file_unique_ptr(file);
   for (uint64 i = 0; i < size; ++i) {
     StringPiece sp;
     sp.set(&value, sizeof(value));

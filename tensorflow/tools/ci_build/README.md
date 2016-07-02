@@ -20,7 +20,7 @@ run continuous integration [ci.tensorflow.org](http://ci.tensorflow.org).
 2. Clone tensorflow repository.
 
    ```bash
-git clone --recurse-submodules https://github.com/tensorflow/tensorflow.git
+git clone https://github.com/tensorflow/tensorflow.git
 ```
 
 3. Go to tensorflow directory

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -147,6 +147,14 @@ class CastOpTest(tf.test.TestCase):
   def testNotImplemented(self):
     self._OpError(np.arange(0, 10), tf.string,
                   "Cast.*int64.*string.*")
+
+  def testCastToTypeOfVariable(self):
+    with self.test_session() as sess:
+      x = tf.Variable(5, dtype=tf.float32)
+      y = tf.Variable(True, dtype=tf.bool)
+      cast = tf.cast(y, x.dtype)
+      tf.initialize_all_variables().run()
+      self.assertEqual(1.0, sess.run(cast))
 
   def testGradients(self):
     t = [tf.float32, tf.float64]

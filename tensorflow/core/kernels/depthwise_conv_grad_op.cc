@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,16 +79,13 @@ typedef Eigen::GpuDevice GPUDevice;
       errors::InvalidArgument(                                                 \
           label, ": depth_multiplier * in_depth not equal to out_depth"));     \
   const auto stride = strides_[1];                                             \
-  int out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                  \
-  if (filter_cols == filter_rows && filter_rows == 1 && stride == 1) {         \
-    out_rows = input_rows;                                                     \
-    out_cols = input_cols;                                                     \
-  } else {                                                                     \
-    OP_REQUIRES_OK(                                                            \
-        context, Get2dOutputSize(input_rows, input_cols, filter_rows,          \
-                                 filter_cols, stride, stride, padding_,        \
-                                 &out_rows, &out_cols, &pad_rows, &pad_cols)); \
-  }                                                                            \
+  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSize(input_rows, filter_rows, stride,        \
+                                       padding_, &out_rows, &pad_rows));       \
+  OP_REQUIRES_OK(context,                                                      \
+                 GetWindowedOutputSize(input_cols, filter_cols, stride,        \
+                                       padding_, &out_cols, &pad_cols));       \
   OP_REQUIRES(                                                                 \
       context, output_rows == out_rows,                                        \
       errors::InvalidArgument(                                                 \
@@ -566,16 +563,14 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropInputOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        DepthwiseConv2dNativeBackpropInputOp<CPUDevice, float>);
-
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNativeBackpropInput")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<double>("T"),
-    DepthwiseConv2dNativeBackpropInputOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                                       \
+  REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput") \
+                              .Device(DEVICE_CPU)                    \
+                              .TypeConstraint<T>("T"),               \
+                          DepthwiseConv2dNativeBackpropInputOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput")
@@ -951,17 +946,15 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeBackpropFilterOp);
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNativeBackpropFilter")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<float>("T"),
-    DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, float>);
-
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNativeBackpropFilter")
-        .Device(DEVICE_CPU)
-        .TypeConstraint<double>("T"),
-    DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                    \
+  REGISTER_KERNEL_BUILDER(                        \
+      Name("DepthwiseConv2dNativeBackpropFilter") \
+          .Device(DEVICE_CPU)                     \
+          .TypeConstraint<T>("T"),                \
+      DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(

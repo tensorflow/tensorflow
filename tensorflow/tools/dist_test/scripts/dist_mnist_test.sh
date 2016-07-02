@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -147,7 +147,7 @@ done
 COUNTER=0
 while true; do
   ((COUNTER++))
-  if [[ $(echo "${COUNTER}>${TIMEOUT}" | bc -l) == "1" ]]; then
+  if [[ "${COUNTER}" -gt "${TIMEOUT}" ]]; then
     die "Reached maximum polling steps while polling for final validation "\
 "cross entropies from all workers"
   fi
@@ -188,9 +188,9 @@ VAL_XENT=$(get_final_val_xent "${WKR_LOG_PREFIX}0.log")
 # Sanity check on the validation entropies
 # TODO(cais): In addition to this basic sanity check, we could run the training
 # with 1 and 2 workers, each for a few times and use scipy.stats to do a t-test
-# to verify tha tthe 2-worker training gives significantly lower final cross
+# to verify that the 2-worker training gives significantly lower final cross
 # entropy
 echo "Final validation cross entropy from worker0: ${VAL_XENT}"
-if [[ $(echo "${VAL_XENT}>0" | bc -l) != "1" ]]; then
+if [[ $(python -c "print(${VAL_XENT}>0)") != "True" ]]; then
   die "Sanity checks on the final validation cross entropy values FAILED"
 fi

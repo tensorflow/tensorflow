@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -87,14 +87,18 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  # TODO(ebrevdo): Change to using colocate_with here and in other methods.
-  with vs.variable_op_scope([elems], name, "foldl") as varscope:
-    # Any get_variable calls fn will cache the first call locally
+  with ops.op_scope([elems], name, "foldl"):
+    # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
+    varscope = vs.get_variable_scope()
+    varscope_caching_device_was_none = False
     if varscope.caching_device is None:
+      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
       varscope.set_caching_device(lambda op: op.device)
+      varscope_caching_device_was_none = True
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
@@ -116,6 +120,9 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory)
+
+    if varscope_caching_device_was_none:
+      varscope.set_caching_device(None)
     return r_a
 
 
@@ -160,13 +167,18 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  with vs.variable_op_scope([elems], name, "foldr") as varscope:
-    # Any get_variable calls fn will cache the first call locally
+  with ops.op_scope([elems], name, "foldr"):
+    # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
+    varscope = vs.get_variable_scope()
+    varscope_caching_device_was_none = False
     if varscope.caching_device is None:
+      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
       varscope.set_caching_device(lambda op: op.device)
+      varscope_caching_device_was_none = True
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
@@ -188,6 +200,9 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory)
+
+    if varscope_caching_device_was_none:
+      varscope.set_caching_device(None)
     return r_a
 
 
@@ -230,12 +245,17 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  with vs.variable_op_scope([elems], name, "map") as varscope:
-    # Any get_variable calls fn will cache the first call locally
+  with ops.op_scope([elems], name, "map"):
+    # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
+    varscope = vs.get_variable_scope()
+    varscope_caching_device_was_none = False
     if varscope.caching_device is None:
+      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
       varscope.set_caching_device(lambda op: op.device)
+      varscope_caching_device_was_none = True
 
+    elems = ops.convert_to_tensor(elems, name="elems")
     dtype = dtype if dtype else elems.dtype
 
     # Convert elems to tensor array.
@@ -258,10 +278,11 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         back_prop=back_prop,
         swap_memory=swap_memory)
     result = r_a.pack()
-    elems_dims = ops.convert_to_tensor(elems).get_shape().dims
-    result_dims = result.get_shape().dims
-    if elems_dims and result_dims:
-      result.set_shape([elems_dims[0]] + result_dims[1:])
+    result.set_shape(elems.get_shape().with_rank_at_least(1)[0:1].concatenate(
+        result.get_shape()[1:]))
+
+    if varscope_caching_device_was_none:
+      varscope.set_caching_device(None)
     return result
 
 
@@ -306,13 +327,18 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  with vs.variable_op_scope([elems], name, "scan") as varscope:
-    # Any get_variable calls fn will cache the first call locally
+  with ops.op_scope([elems], name, "scan"):
+    # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
+    varscope = vs.get_variable_scope()
+    varscope_caching_device_was_none = False
     if varscope.caching_device is None:
+      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
       varscope.set_caching_device(lambda op: op.device)
+      varscope_caching_device_was_none = True
 
     # Convert elems to tensor array.
+    elems = ops.convert_to_tensor(elems, name="elems")
     n = array_ops.shape(elems)[0]
     elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
                                             dynamic_size=False,
@@ -342,10 +368,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory)
     result = r_a.pack()
-    elems_dims = ops.convert_to_tensor(elems).get_shape().dims
-    result_dims = result.get_shape().dims
-    if elems_dims and result_dims:
-      result.set_shape([elems_dims[0]] + result_dims[1:])
+    result.set_shape(elems.get_shape().with_rank_at_least(1)[0:1].concatenate(
+        result.get_shape()[1:]))
+
+    if varscope_caching_device_was_none:
+      varscope.set_caching_device(None)
     return result
 
 

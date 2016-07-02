@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,17 +56,14 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
         node_offset, " with total nodes in graph: ", graph_def->node_size());
   }
 
-  Status s;
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
-    const OpDef* op_def = op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) {
-      return s;
-    }
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(node_def->op(), &op_def));
     AddDefaultsToNodeDef(*op_def, node_def);
   }
 
-  return s;
+  return Status::OK();
 }
 
 Status RemoveNewDefaultAttrsFromGraphDef(
@@ -77,12 +74,13 @@ Status RemoveNewDefaultAttrsFromGraphDef(
   std::vector<string> to_remove;
   for (int n = 0; n < graph_def->node_size(); ++n) {
     NodeDef* node_def = graph_def->mutable_node(n);
-    const OpDef* producer_op_def =
-        producer_op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) return s;
-    const OpDef* consumer_op_def =
-        consumer_op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) return s;
+    const OpDef* producer_op_def;
+    const OpDef* consumer_op_def;
+
+    TF_RETURN_IF_ERROR(
+        producer_op_registry.LookUpOpDef(node_def->op(), &producer_op_def));
+    TF_RETURN_IF_ERROR(
+        consumer_op_registry.LookUpOpDef(node_def->op(), &consumer_op_def));
 
     for (const auto& attr : node_def->attr()) {
       // If the attr is not in consumer_op_def and doesn't start with '_'...
@@ -172,13 +170,12 @@ Status StrippedOpListForGraph(const GraphDef& graph_def,
   OpsUsedByGraph(graph_def, &used_ops);
 
   // Build the stripped op list in sorted order, ignoring functions.
-  Status status;
   stripped_op_list->clear_op();
   for (const string& op_name : used_ops) {
-    const OpDef* op = op_registry.LookUp(op_name, &status);
-    if (!op) return status;
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(op_name, &op_def));
     OpDef* stripped_op = stripped_op_list->add_op();
-    stripped_op->CopyFrom(*op);
+    stripped_op->CopyFrom(*op_def);
     RemoveDescriptionsFromOpDef(stripped_op);
   }
   return Status::OK();

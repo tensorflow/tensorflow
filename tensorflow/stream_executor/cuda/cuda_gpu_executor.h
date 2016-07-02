@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -217,7 +217,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   void *CudaContextHack() override;
 
-  CUcontext cuda_context();
+  CudaContext* cuda_context();
 
  private:
   // Attempts to find a more specific version of the file indicated by
@@ -272,7 +272,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   CUdevice device_;
 
   // Handle for session with the library/driver. Immutable post-initialization.
-  CUcontext context_;
+  CudaContext* context_;
 
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.

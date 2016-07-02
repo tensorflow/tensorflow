@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -87,6 +87,11 @@ class BatchToSpaceErrorHandlingTest(tf.test.TestCase):
     block_size = 3
     with self.assertRaises(IndexError):
       _ = tf.batch_to_space(x_np, crops, block_size)
+
+  def testUnknownShape(self):
+    t = tf.batch_to_space(tf.placeholder(tf.float32), tf.placeholder(tf.int32),
+                          block_size=4)
+    self.assertEqual(4, t.get_shape().ndims)
 
 
 class BatchToSpaceGradientTest(tf.test.TestCase):

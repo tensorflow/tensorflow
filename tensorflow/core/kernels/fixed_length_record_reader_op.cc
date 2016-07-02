@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,9 +48,9 @@ class FixedLengthRecordReader : public ReaderBase {
     TF_RETURN_IF_ERROR(env_->GetFileSize(current_work(), &file_size));
     file_pos_limit_ = file_size - footer_bytes_;
 
-    RandomAccessFile* file = nullptr;
-    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file));
-    input_buffer_.reset(new io::InputBuffer(file, kBufferSize));
+    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
+
+    input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
     TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(header_bytes_));
     return Status::OK();
   }
@@ -90,6 +90,7 @@ class FixedLengthRecordReader : public ReaderBase {
   Env* const env_;
   int64 file_pos_limit_;
   int64 record_number_;
+  std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
   std::unique_ptr<io::InputBuffer> input_buffer_;
 };
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -258,6 +258,12 @@ extern void TF_CloseSession(TF_Session*, TF_Status* status);
 // Destroy a session.  Even if error information is recorded in *status,
 // this call discards all resources associated with the session.
 extern void TF_DeleteSession(TF_Session*, TF_Status* status);
+
+// Closes all existing sessions connected to the `target` specified in the
+// `SessionOptions`, and frees shared resources in `containers` on `target'.
+// If no containers are provided, all containers are cleared.
+extern void TF_Reset(const TF_SessionOptions* opt, const char** containers,
+                     int ncontainers, TF_Status* status);
 
 // Treat the bytes proto[0,proto_len-1] as a serialized GraphDef and
 // add the nodes in that GraphDef to the graph for the session.

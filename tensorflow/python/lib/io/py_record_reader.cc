@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,17 +28,22 @@ namespace io {
 
 PyRecordReader::PyRecordReader() {}
 
-PyRecordReader* PyRecordReader::New(const string& filename,
-                                    uint64 start_offset) {
-  RandomAccessFile* file;
+PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
+                                    const string& compression_type_string) {
+  std::unique_ptr<RandomAccessFile> file;
   Status s = Env::Default()->NewRandomAccessFile(filename, &file);
   if (!s.ok()) {
     return nullptr;
   }
   PyRecordReader* reader = new PyRecordReader;
   reader->offset_ = start_offset;
-  reader->file_ = file;
-  reader->reader_ = new RecordReader(reader->file_);
+  reader->file_ = file.release();
+
+  RecordReaderOptions options;
+  if (compression_type_string == "ZLIB") {
+    options.compression_type = RecordReaderOptions::ZLIB_COMPRESSION;
+  }
+  reader->reader_ = new RecordReader(reader->file_, options);
   return reader;
 }
 

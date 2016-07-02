@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -251,8 +251,12 @@ class FunctionCallFrame {
 // FunctionDefLibrary and function definitions.
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
+  explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   explicit FunctionLibraryDefinition(const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;
+
+  FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
+      delete;
 
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
@@ -273,17 +277,26 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   //
   // If "op" is defined in the library, returns its signature.
   // Otherwise, assume "op" is a primitive op and returns its op
-  // signature.
-  const OpDef* LookUp(const string& op, Status* status) const override;
+  // signature and shape inference function.
+  Status LookUp(const string& op_type_name,
+                const OpRegistrationData** op_reg_data) const override;
 
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const;
 
  private:
-  std::unordered_map<string, FunctionDef> function_defs_;
-  std::unordered_map<string, string> func_grad_;
+  // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
+  struct FunctionDefAndOpRegistration {
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
+        : fdef(fdef_in), op_registration_data(fdef.signature()) {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryDefinition);
+    FunctionDef fdef;
+    OpRegistrationData op_registration_data;
+  };
+
+  std::unordered_map<string, std::unique_ptr<FunctionDefAndOpRegistration>>
+      function_defs_;
+  std::unordered_map<string, string> func_grad_;
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -326,6 +339,8 @@ class FunctionLibraryRuntime {
     CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
+
+    std::function<void(std::function<void()>)>* runner = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,

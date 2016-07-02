@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python definitions for ops related to FFmpeg."""
+# pylint: disable=g-short-docstring-punctuation
+"""## Encoding and decoding audio using FFmpeg
+
+TensorFlow provides Ops to decode and encode audio files using the
+[FFmpeg](https://www.ffmpeg.org/) library. FFmpeg must be
+locally [installed](https://ffmpeg.org/download.html) for these Ops to succeed.
+
+Example:
+
+```python
+from tensorflow.contrib import ffmpeg
+
+audio_binary = tf.read_file('song.mp3')
+waveform = ffmpeg.decode_audio(
+    audio_binary, file_format='mp3', samples_per_second=44100, channel_count=2)
+uncompressed_binary = ffmpeg.encode_audio(
+    waveform, file_format='wav', samples_per_second=44100)
+```
+
+@@decode_audio
+@@encode_audio
+"""
 
 from __future__ import absolute_import
 from __future__ import division

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,6 +36,13 @@ realpath() {
   fi
 
   [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
+to_lower () {
+  # Convert string to lower case.
+  # Usage: to_lower <string>
+
+  echo "$1" | tr '[:upper:]' '[:lower:]'
 }
 
 calc_elapsed_time() {

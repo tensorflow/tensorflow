@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -129,24 +129,22 @@ function buildShape(aGroup, a: render.Annotation) {
 function addAnnotationLabelFromNode(aGroup, a: render.Annotation) {
   let namePath = a.node.name.split('/');
   let text = namePath[namePath.length - 1];
-  let shortenedText = text.length > 8 ? text.substring(0, 8) + '...' : text;
-  return addAnnotationLabel(aGroup, shortenedText, a, null, text);
+  return addAnnotationLabel(aGroup, text, a, null);
 }
 
-function addAnnotationLabel(aGroup, label, a, additionalClassNames,
-    fullLabel?) {
+function addAnnotationLabel(
+    aGroup, label: string, a: render.Annotation, additionalClassNames) {
   let classNames = Class.Annotation.LABEL;
   if (additionalClassNames) {
     classNames += ' ' + additionalClassNames;
   }
-  let titleText = fullLabel ? fullLabel : label;
-  return aGroup.append('text')
-      .attr('class', classNames)
-      .attr('dy', '.35em')
-      .attr('text-anchor', a.isIn ? 'end' : 'start')
-      .text(label)
-      .append('title')
-      .text(titleText);
+  let txtElement = aGroup.append('text')
+                       .attr('class', classNames)
+                       .attr('dy', '.35em')
+                       .attr('text-anchor', a.isIn ? 'end' : 'start')
+                       .text(label);
+
+  return tf.graph.scene.node.enforceLabelWidth(txtElement, -1);
 }
 
 function addInteraction(selection, d: render.RenderNodeInfo,
@@ -185,7 +183,7 @@ function addInteraction(selection, d: render.RenderNodeInfo,
  * @param aGroup selection of a 'g.annotation' element.
  * @param d Host node data.
  * @param a annotation node data.
- * @param scene <tf-graph-scene> polymer element.
+ * @param sceneElement <tf-graph-scene> polymer element.
  */
 function update(aGroup, d: render.RenderNodeInfo, a: render.Annotation,
     sceneElement) {

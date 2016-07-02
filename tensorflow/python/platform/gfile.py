@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -291,7 +291,11 @@ def MakeDirs(path, mode=0o755):  # pylint: disable=invalid-name
   # NOTE(mrry): MakeDirs("") should be a no-op to match other
   # implementations of tf.gfile.
   if path:
-    os.makedirs(path, mode)
+    try:
+      os.makedirs(path, mode)
+    except OSError as e:
+      if e.errno != errno.EEXIST:
+        raise
 
 
 def RmDir(directory):   # pylint: disable=invalid-name

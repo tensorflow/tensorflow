@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,16 +42,24 @@ public class TensorflowImageListener implements OnImageAvailableListener {
 
   private static final boolean SAVE_PREVIEW_BITMAP = false;
 
+  // These are the settings for the original v1 Inception model. If you want to
+  // use a model that's been produced from the TensorFlow for Poets codelab,
+  // you'll need to set IMAGE_SIZE = 299, IMAGE_MEAN = 128, IMAGE_STD = 128,
+  // INPUT_NAME = "Mul:0", and OUTPUT_NAME = "final_result:0".
+  // You'll also need to update the MODEL_FILE and LABEL_FILE paths to point to
+  // the ones you produced.
+  private static final int NUM_CLASSES = 1001;
+  private static final int INPUT_SIZE = 224;
+  private static final int IMAGE_MEAN = 117;
+  private static final float IMAGE_STD = 1;
+  private static final String INPUT_NAME = "input:0";
+  private static final String OUTPUT_NAME = "output:0";
+
   private static final String MODEL_FILE = "file:///android_asset/tensorflow_inception_graph.pb";
   private static final String LABEL_FILE =
       "file:///android_asset/imagenet_comp_graph_label_strings.txt";
 
-  private static final int NUM_CLASSES = 1001;
-  private static final int INPUT_SIZE = 224;
-  private static final int IMAGE_MEAN = 117;
-
-  // TODO(andrewharp): Get orientation programatically.
-  private final int screenRotation = 90;
+  private Integer sensorOrientation;
 
   private final TensorflowClassifier tensorflow = new TensorflowClassifier();
 
@@ -70,11 +78,15 @@ public class TensorflowImageListener implements OnImageAvailableListener {
   public void initialize(
       final AssetManager assetManager,
       final RecognitionScoreView scoreView,
-      final Handler handler) {
+      final Handler handler,
+      final Integer sensorOrientation) {
+    Assert.assertNotNull(sensorOrientation);
     tensorflow.initializeTensorflow(
-        assetManager, MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN);
+        assetManager, MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD,
+        INPUT_NAME, OUTPUT_NAME);
     this.scoreView = scoreView;
     this.handler = handler;
+    this.sensorOrientation = sensorOrientation;
   }
 
   private void drawResizedBitmap(final Bitmap src, final Bitmap dst) {
@@ -92,9 +104,9 @@ public class TensorflowImageListener implements OnImageAvailableListener {
     matrix.postScale(scaleFactor, scaleFactor);
 
     // Rotate around the center if necessary.
-    if (screenRotation != 0) {
+    if (sensorOrientation != 0) {
       matrix.postTranslate(-dst.getWidth() / 2.0f, -dst.getHeight() / 2.0f);
-      matrix.postRotate(screenRotation);
+      matrix.postRotate(sensorOrientation);
       matrix.postTranslate(dst.getWidth() / 2.0f, dst.getHeight() / 2.0f);
     }
 

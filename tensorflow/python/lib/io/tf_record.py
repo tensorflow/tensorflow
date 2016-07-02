@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,11 +23,25 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.util import compat
 
 
-def tf_record_iterator(path):
+class TFRecordCompressionType(object):
+  NONE = 0
+  ZLIB = 1
+
+
+# NOTE(vrv): This will eventually be converted into a proto.  to match
+# the interface used by the C++ RecordWriter.
+class TFRecordOptions(object):
+
+  def __init__(self, compression_type):
+    self.compression_type = compression_type
+
+
+def tf_record_iterator(path, options=None):
   """An iterator that read the records from a TFRecords file.
 
   Args:
     path: The path to the TFRecords file.
+    options: (optional) A TFRecordOptions object.
 
   Yields:
     Strings.
@@ -35,7 +49,14 @@ def tf_record_iterator(path):
   Raises:
     IOError: If `path` cannot be opened for reading.
   """
-  reader = pywrap_tensorflow.PyRecordReader_New(compat.as_bytes(path), 0)
+  compression_type_string = ""
+  if options:
+    if options.compression_type == TFRecordCompressionType.ZLIB:
+      compression_type_string = "ZLIB"
+
+  reader = pywrap_tensorflow.PyRecordReader_New(
+      compat.as_bytes(path), 0, compat.as_bytes(compression_type_string))
+
   if reader is None:
     raise IOError("Could not open %s." % path)
   while reader.GetNext():
@@ -54,16 +75,23 @@ class TFRecordWriter(object):
   @@close
   """
   # TODO(josh11b): Support appending?
-  def __init__(self, path):
+  def __init__(self, path, options=None):
     """Opens file `path` and creates a `TFRecordWriter` writing to it.
 
     Args:
       path: The path to the TFRecords file.
+      options: (optional) A TFRecordOptions object.
 
     Raises:
       IOError: If `path` cannot be opened for writing.
     """
-    self._writer = pywrap_tensorflow.PyRecordWriter_New(compat.as_bytes(path))
+    compression_type_string = ""
+    if options:
+      if options.compression_type == TFRecordCompressionType.ZLIB:
+        compression_type_string = "ZLIB"
+
+    self._writer = pywrap_tensorflow.PyRecordWriter_New(
+        compat.as_bytes(path), compat.as_bytes(compression_type_string))
     if self._writer is None:
       raise IOError("Could not write to %s." % path)
 

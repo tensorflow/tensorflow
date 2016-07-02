@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ for ITEM in ${ITEMS_TO_DELETE}; do
       sleep 1
 
       ((COUNTER++))
-      if [[ $(echo "${COUNTER}>${MAX_STEPS}" | bc -l) == "1" ]]; then
+      if [[ "${COUNTER}" -gt "${MAX_STEPS}" ]]; then
         die "Reached maximum polling steps while trying to delete all tf ${ITEM}"
       fi
 

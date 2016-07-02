@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -120,7 +120,10 @@ class Tensor {
   // underlying refcounted storage
   size_t BufferHash() const;
 
-  /// Has this Tensor been initialized?
+  /// \brief If necessary, has this Tensor been initialized?
+  ///
+  /// Zero-element Tensors are always considered initialized, even if they
+  /// have never been assigned to and do not have any memory allocated.
   bool IsInitialized() const;
 
   /// Returns the estimated memory usage of this tensor.

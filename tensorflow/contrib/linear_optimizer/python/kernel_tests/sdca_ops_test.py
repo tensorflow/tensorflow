@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import uuid
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import tensorflow as tf
+from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.platform import googletest
@@ -95,20 +96,14 @@ def make_variable_dict(max_age, max_gender):
               dense_features_weights=[])
 
 
-def make_dense_variable_dict(num_dense_features, num_examples):
+def make_dense_variable_dict(num_dense_features):
   feature_weights = ([
       tf.Variable(tf.zeros([1],
                            dtype=tf.float32))
       for _ in xrange(0, num_dense_features)
   ])
   return dict(sparse_features_weights=[],
-              dense_features_weights=feature_weights,
-              dual=tf.Variable(tf.zeros(
-                  [num_examples],
-                  dtype=tf.float32)),
-              primal_loss=tf.Variable(tf.zeros(
-                  [],
-                  dtype=tf.float64)))
+              dense_features_weights=feature_weights)
 
 
 def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
@@ -128,12 +123,6 @@ def get_binary_predictions_for_hinge(predictions):
 CONTAINER = uuid.uuid4().hex
 
 
-# Clear the shared container.
-def tearDown():
-  # TODO(sibyl-Mooth6ku): Proper cleanup of Containers when possible.
-  pass
-
-
 # TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
 # TODO(sibyl-vie3Poto): Refactor tests to avoid repetition of boilerplate code.
 class SdcaOptimizerTest(TensorFlowTestCase):
@@ -143,37 +132,6 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     config = tf.ConfigProto(inter_op_parallelism_threads=1,
                             intra_op_parallelism_threads=1)
     return self.test_session(use_gpu=False, config=config)
-
-  # The following tests, check that operations raise errors when certain
-  # preconditions on the input data are not satisfied. These errors are raised
-  # regardless of the loss type.
-  def testNoWeightedExamples(self):
-    # Setup test data with 1 positive, and 1 negative example.
-    example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
-    ]
-    # Zeroed out example weights.
-    example_weights = [0.0, 0.0]
-    with self._single_threaded_test_session():
-      examples = make_example_dict(example_protos, example_weights)
-      variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=1,
-                     symmetric_l1_regularization=0,
-                     loss_type='logistic_loss')
-
-      lr = SdcaModel(CONTAINER, examples, variables, options)
-      tf.initialize_all_variables().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
-      lr.minimize().run()
-      self.assertAllClose([0.5, 0.5], lr.predictions(examples).eval())
-      with self.assertRaisesOpError(
-          'No examples found or all examples have zero weight.'):
-        lr.approximate_duality_gap().eval()
 
 
 class SdcaWithLogisticLossTest(SdcaOptimizerTest):
@@ -455,6 +413,7 @@ class SdcaWithLogisticLossTest(SdcaOptimizerTest):
   # TODO(katsiaspis): add a test for the case when examples at the end of an
   # epoch are repeated, since example id may be duplicated.
 
+
 class SdcaWithLinearLossTest(SdcaOptimizerTest):
   """SDCA optimizer test class for linear (squared) loss."""
 
@@ -488,9 +447,11 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
       self.assertAllClose([-20.0 / 3.0, 28.0 / 3.0],
                           predictions.eval(),
                           rtol=0.005)
-      self.assertAllClose(0.01,
+      # Approximate gap should be very close to 0.0. (In fact, because the gap
+      # is only approximate, it is likely that upon convergence the duality gap
+      # can have a tiny negative value).
+      self.assertAllClose(0.00,
                           lr.approximate_duality_gap().eval(),
-                          rtol=1e-2,
                           atol=1e-2)
 
   def testL2Regularization(self):
@@ -580,7 +541,7 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
             {'age': [1],
              'gender': [1]}, 14.0, 2.0),
     ]
-    example_weights = [1.0, 1.0]
+    example_weights = [5.0, 3.0]
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
 
@@ -597,20 +558,30 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
       for _ in xrange(_MAX_ITERATIONS):
         train_op.run()
 
-      # Predictions should be 8/9 of label due to minimizing regularized loss:
-      #   (label - 2 * 2 * weight)^2 / 2 + L2 * 2 * weight^2
-      self.assertAllClose([-10.0 * 8 / 9, 14.0 * 8 / 9],
+      # There are 4 (sparse) variable weights to be learned. 2 for age and 2 for
+      # gender. Let w_1, w_2 be age weights, w_3, w_4 be gender weights, y_1,
+      # y_2 be the labels for examples 1 and 2 respectively and s_1, s_2 the
+      # corresponding *example* weights. With the given feature values, the loss
+      # function is given by:
+      # s_1/2(y_1 + 2w_1 + 2w_3)^2 + s_2/2(y_2 - 2w_2 - 2w_4)^2
+      # + \lambda/2 (w_1^2 + w_2^2 + w_3^2 + w_4^2). Solving for the optimal, it
+      # can be verified that:
+      # w_1* = w_3* = -2.0 s_1 y_1/(\lambda + 8 s_1) and
+      # w_2* = w_4* = 2 \cdot s_2 y_2/(\lambda + 8 s_2). Equivalently, due to
+      # regularization and example weights, the predictions are within:
+      # 8 \cdot s_i /(\lambda + 8 \cdot s_i) of the labels.
+      self.assertAllClose([-10 * 40.0 / 41.0, 14.0 * 24 / 25.0],
                           predictions.eval(),
-                          rtol=0.07)
+                          atol=0.01)
 
-  def testDenseFeatures(self):
+  def testDenseFeaturesWithDefaultWeights(self):
     with self._single_threaded_test_session():
       examples = make_dense_examples_dict(
-          dense_feature_values=[[-2.0, 0.0], [0.0, 2.0]],
+          dense_feature_values=[[1.0, 0.0], [0.0, 1.0]],
           weights=[1.0, 1.0],
-          labels=[-10.0, 14.0])
-      variables = make_dense_variable_dict(2, 2)
-      options = dict(symmetric_l2_regularization=1,
+          labels=[10.0, -5.0])
+      variables = make_dense_variable_dict(2)
+      options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
       lr = SdcaModel(CONTAINER, examples, variables, options)
@@ -621,14 +592,51 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
       for _ in xrange(_MAX_ITERATIONS):
         train_op.run()
 
-      # Predictions should be 4/5 of label due to minimizing regularized loss:
-      #   (label - 2 * weight)^2 / 2 + L2 * weight^2
-      self.assertAllClose([-10.0 * 4 / 5, 14.0 * 4 / 5],
+      # The loss function for these particular features is given by:
+      # 1/2(label_1-w_1)^2 + 1/2(label_2-w_2)^2 + \lambda/2 (w_1^2 + w_2^2). So,
+      # differentiating wrt to w_1, w_2 yields the following optimal values:
+      # w_1* = label_1/(\lambda + 1)= 10/2, w_2* =label_2/(\lambda + 1)= -5/2.
+      # In this case the (unnormalized regularized) loss will be:
+      # 1/2(10-5)^2 + 1/2(5-5/2)^2 + 1/2(5^2 + (5/2)^2) = 125.0/4. The actual
+      # loss should be further normalized by the sum of example weights.
+      self.assertAllClose([5.0, -2.5],
                           predictions.eval(),
                           rtol=0.01)
-
       loss = lr.regularized_loss(examples)
-      self.assertAllClose(148.0 / 10.0, loss.eval(), atol=0.01)
+      self.assertAllClose(125.0 / 8.0, loss.eval(), atol=0.01)
+
+  def testDenseFeaturesWithArbitraryWeights(self):
+    with self._single_threaded_test_session():
+      examples = make_dense_examples_dict(
+          dense_feature_values=[[1.0, 0.0], [0.0, 1.0]],
+          weights=[20.0, 10.0],
+          labels=[10.0, -5.0])
+      variables = make_dense_variable_dict(2)
+      options = dict(symmetric_l2_regularization=5.0,
+                     symmetric_l1_regularization=0,
+                     loss_type='squared_loss')
+      lr = SdcaModel(CONTAINER, examples, variables, options)
+      tf.initialize_all_variables().run()
+      predictions = lr.predictions(examples)
+
+      train_op = lr.minimize()
+      for _ in xrange(_MAX_ITERATIONS):
+        train_op.run()
+
+      # The loss function for these particular features is given by:
+      # 1/2 s_1 (label_1-w_1)^2 + 1/2 s_2(label_2-w_2)^2 +
+      # \lambda/2 (w_1^2 + w_2^2) where s_1, s_2 are the *example weights. It
+      # turns out that the optimal (variable) weights are given by:
+      # w_1* = label_1 \cdot s_1/(\lambda + s_1)= 8.0 and
+      # w_2* =label_2 \cdot s_2/(\lambda + s_2)= -10/3.
+      # In this case the (unnormalized regularized) loss will be:
+      # s_1/2(8-10)^2 + s_2/2(5-10/3)^2 + 5.0/2(8^2 + (10/3)^2) = 2175.0/9. The
+      # actual loss should be further normalized by the sum of example weights.
+      self.assertAllClose([8.0, -10.0/3],
+                          predictions.eval(),
+                          rtol=0.01)
+      loss = lr.regularized_loss(examples)
+      self.assertAllClose(2175.0 / 270.0, loss.eval(), atol=0.01)
 
 
 class SdcaWithHingeLossTest(SdcaOptimizerTest):
@@ -684,7 +692,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 1.0], [1.0, -1.0]],
           weights=[1.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
@@ -715,7 +723,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
           weights=[1.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
@@ -745,7 +753,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
           dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
           weights=[3.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2, 2)
+      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
@@ -770,6 +778,26 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
       regularized_loss = model.regularized_loss(examples)
       self.assertAllClose(0.2, unregularized_loss.eval(), atol=0.02)
       self.assertAllClose(0.4, regularized_loss.eval(), atol=0.02)
+
+
+class SdcaFprintTest(TensorFlowTestCase):
+  """Tests for the SdcaFprint op.
+
+  This is one way of enforcing the platform-agnostic nature of SdcaFprint.
+  Basically we are checking against exact values and this test could be running
+  across different platforms. Note that it is fine for expected values to change
+  in the future, if the implementation of SdcaFprint changes (ie this is *not* a
+  frozen test).
+  """
+
+  def testFprint(self):
+    with self.test_session():
+      in_data = tf.constant(['abc', 'very looooooong string', 'def'])
+      out_data = _sdca_ops.sdca_fprint(in_data)
+      self.assertAllEqual([b'a085f09013029e45-3980b2afd2126c04',
+                           b'bc5a254df959f26c-512e479a50910f9f',
+                           b'79999cd817a03f12-085f182230e03022'],
+                          out_data.eval())
 
 if __name__ == '__main__':
   googletest.main()

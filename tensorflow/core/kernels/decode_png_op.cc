@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,8 +70,8 @@ class DecodePngOp : public OpKernel {
     //   verify single dimension is not too large.
     // - verify when width and height are multiplied together, there are a few
     //   bits to spare as well.
-    const int width = decode.width;
-    const int height = decode.height;
+    const int width = static_cast<int>(decode.width);
+    const int height = static_cast<int>(decode.height);
     const int64 total_size =
         static_cast<int64>(width) * static_cast<int64>(height);
     if (width != static_cast<int64>(decode.width) || width <= 0 ||

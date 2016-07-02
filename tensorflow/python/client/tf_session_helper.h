@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -95,6 +95,10 @@ void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
 void TF_PRun_wrapper(TF_Session* session, const char* handle,
                      const FeedVector& inputs, const NameVector& output_names,
                      TF_Status* out_status, PyObjectVector* out_values);
+
+// Wrapper for TF_Reset that converts the string vectors to character arrays.
+void TF_Reset_wrapper(const TF_SessionOptions* opt,
+                      const NameVector& containers, TF_Status* out_status);
 
 // Convenience wrapper around EqualGraphDef to make it easier to wrap.
 // Returns an explanation if a difference is found, or the empty string

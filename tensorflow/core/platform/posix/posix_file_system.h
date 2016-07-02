@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,15 +26,19 @@ class PosixFileSystem : public FileSystem {
 
   ~PosixFileSystem() {}
 
-  Status NewRandomAccessFile(const string& fname,
-                             RandomAccessFile** result) override;
+  Status NewRandomAccessFile(
+      const string& filename,
+      std::unique_ptr<RandomAccessFile>* result) override;
 
-  Status NewWritableFile(const string& fname, WritableFile** result) override;
+  Status NewWritableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname, WritableFile** result) override;
+  Status NewAppendableFile(const string& fname,
+                           std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, ReadOnlyMemoryRegion** result) override;
+      const string& filename,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
   bool FileExists(const string& fname) override;
 

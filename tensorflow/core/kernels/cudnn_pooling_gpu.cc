@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
+
+#include <array>
 
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 #include "tensorflow/core/kernels/conv_2d.h"
@@ -70,9 +72,9 @@ void DnnPooling3dOp<T>::Compute(
       .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
   for (size_t i = 0; i < window.size(); ++i) {
     const auto dim_i = static_cast<perftools::gputools::dnn::DimIndex>(i);
-    pooling_desc.set_window(dim_i, window.rbegin()[i]);
-    pooling_desc.set_stride(dim_i, stride.rbegin()[i]);
-    pooling_desc.set_padding(dim_i, padding.rbegin()[i]);
+    pooling_desc.set_window(dim_i, window[i]);
+    pooling_desc.set_stride(dim_i, stride[i]);
+    pooling_desc.set_padding(dim_i, padding[i]);
     input_desc.set_spatial_dim(dim_i, in_shape.dim_size(3 - i));
     output_desc.set_spatial_dim(dim_i, out_shape.dim_size(3 - i));
   }

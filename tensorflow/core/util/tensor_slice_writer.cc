@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,10 +68,10 @@ class TableBuilder : public TensorSliceWriter::Builder {
 Status CreateTableTensorSliceBuilder(const string& name,
                                      TensorSliceWriter::Builder** builder) {
   *builder = nullptr;
-  WritableFile* f;
+  std::unique_ptr<WritableFile> f;
   Status s = Env::Default()->NewWritableFile(name, &f);
   if (s.ok()) {
-    *builder = new TableBuilder(name, f);
+    *builder = new TableBuilder(name, f.release());
     return Status::OK();
   } else {
     return s;
@@ -124,6 +124,71 @@ Status TensorSliceWriter::Finish() {
     Env::Default()->DeleteFile(tmpname_);
   }
   return s;
+}
+
+/* static */
+size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
+  switch (dt) {
+    case DT_FLOAT:
+      return 4;
+    case DT_DOUBLE:
+      return 8;
+    case DT_INT32:
+      return 10;
+    case DT_UINT8:
+      return 2;
+    case DT_INT16:
+      return 10;
+    case DT_INT8:
+      return 10;
+    case DT_COMPLEX64:
+      return 8;
+    case DT_INT64:
+      return 10;
+    case DT_BOOL:
+      return 1;
+    case DT_QINT8:
+      return 10;
+    case DT_QUINT8:
+      return 2;
+    case DT_QINT32:
+      return 10;
+    case DT_QINT16:
+      return 10;
+    case DT_QUINT16:
+      return 3;
+    case DT_UINT16:
+      return 3;
+    case DT_COMPLEX128:
+      return 16;
+    case DT_HALF:
+      return 3;
+    case DT_INVALID:
+    case DT_STRING:
+    case DT_BFLOAT16:
+    default:
+      CHECK(false) << "MaxBytesPerElement not implemented for dtype: " << dt;
+  }
+  return 0;
+}
+
+template <>
+Status TensorSliceWriter::SaveData(const string* data, int num_elements,
+                                   SavedSlice* ss) {
+  size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
+                      (num_elements * MaxBytesPerElement(DT_INT32));
+  for (int i = 0; i < num_elements; ++i) {
+    size_bound += data[i].size();
+  }
+  if (size_bound > kMaxMessageBytes) {
+    return errors::InvalidArgument(
+        "Tensor slice is too large to serialize (conservative estimate: ",
+        size_bound, " bytes)");
+  }
+  Fill(data, num_elements, ss->mutable_data());
+  DCHECK_GE(ss->ByteSize(), 0);
+  DCHECK_LE(ss->ByteSize(), size_bound);
+  return Status::OK();
 }
 
 }  // namespace checkpoint

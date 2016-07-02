@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,11 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -36,6 +38,21 @@ def _safe_shape_div(x, y):
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
+  # Fast path for when reducing to a scalar and ndims is known: adds only
+  # Reshape and Tile ops (and possibly a Shape).
+  if (op.inputs[0].get_shape().ndims is not None and op.inputs[1].op.type ==
+      "Const"):
+    rank = op.inputs[0].get_shape().ndims
+    axes = tensor_util.MakeNdarray(op.inputs[1].op.get_attr("value"))
+    if np.array_equal(axes, np.arange(rank)):  # Reduce all dims.
+      grad = array_ops.reshape(grad, [1] * rank)
+      # If shape is not fully defined (but rank is), we use Shape.
+      if op.inputs[0].get_shape().is_fully_defined():
+        input_shape = op.inputs[0].get_shape().as_list()
+      else:
+        input_shape = array_ops.shape(op.inputs[0])
+      return [array_ops.tile(grad, input_shape), None]
+
   input_shape = array_ops.shape(op.inputs[0])
   output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
   tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
@@ -44,7 +61,7 @@ def _SumGrad(op, grad):
 
 
 def _MinOrMaxGrad(op, grad):
-  """Gradient for Max or Max. Amazingly it's precisely the same code."""
+  """Gradient for Min or Max. Amazingly it's precisely the same code."""
   input_shape = array_ops.shape(op.inputs[0])
   output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
   y = op.outputs[0]
@@ -256,7 +273,7 @@ def _TanhGrad(op, grad):
   with ops.control_dependencies([grad.op]):
     if y.dtype.is_complex:
       y = math_ops.conj(y)
-    return grad * (1 - math_ops.square(y))
+    return gen_math_ops._tanh_grad(y, grad)
 
 
 @ops.RegisterGradient("Erf")
@@ -358,7 +375,7 @@ def _SigmoidGrad(op, grad):
   with ops.control_dependencies([grad.op]):
     if y.dtype.is_complex:
       y = math_ops.conj(y)
-    return grad * (y * (1 - y))
+    return gen_math_ops._sigmoid_grad(y, grad)
 
 
 @ops.RegisterGradient("Sign")
@@ -386,6 +403,51 @@ def _CosGrad(op, grad):
     if x.dtype.is_complex:
       x = math_ops.conj(x)
     return -grad * math_ops.sin(x)
+
+
+@ops.RegisterGradient("Tan")
+def _TanGrad(op, grad):
+  """Returns grad * 1/sec^2(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    secx = math_ops.inv(math_ops.cos(x))
+    secx2 = math_ops.square(secx)
+    return grad * secx2
+
+
+@ops.RegisterGradient("Asin")
+def _AsinGrad(op, grad):
+  """Returns grad * 1/sqrt(1-x^2)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x2 = math_ops.square(x)
+    one = constant_op.constant(1, dtype=grad.dtype)
+    den = math_ops.sqrt(math_ops.sub(one, x2))
+    inv = math_ops.inv(den)
+    return grad * inv
+
+
+@ops.RegisterGradient("Acos")
+def _AcosGrad(op, grad):
+  """Returns grad * -1/sqrt(1-x^2)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x2 = math_ops.square(x)
+    one = constant_op.constant(1, dtype=grad.dtype)
+    den = math_ops.sqrt(math_ops.sub(one, x2))
+    inv = math_ops.inv(den)
+    return -grad * inv
+
+
+@ops.RegisterGradient("Atan")
+def _AtanGrad(op, grad):
+  """Returns grad * 1/ (1 + x^2)"""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x2 = math_ops.square(x)
+    one = constant_op.constant(1, dtype=grad.dtype)
+    inv = math_ops.inv(math_ops.add(one, x2))
+    return grad * inv
 
 
 @ops.RegisterGradient("AddN")
@@ -526,7 +588,7 @@ ops.NoGradient("LogicalNot")
 def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
-  zeros = array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
+  zeros = array_ops.zeros_like(x)
   return (None, math_ops.select(c, grad, zeros),
           math_ops.select(c, zeros, grad))
 
@@ -636,9 +698,15 @@ ops.NoGradient("LinSpace")
 
 
 @ops.RegisterGradient("Complex")
-def _ComplexGrad(_, grad):
+def _ComplexGrad(op, grad):
   """Returns the real and imaginary components of 'grad', respectively."""
-  return math_ops.real(grad), math_ops.imag(grad)
+  x = op.inputs[0]
+  y = op.inputs[1]
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  return (array_ops.reshape(math_ops.reduce_sum(math_ops.real(grad), rx), sx),
+          array_ops.reshape(math_ops.reduce_sum(math_ops.imag(grad), ry), sy))
 
 
 @ops.RegisterGradient("Real")

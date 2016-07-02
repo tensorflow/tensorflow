@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.layers.python.layers.embedding_ops import *
+from tensorflow.contrib.layers.python.layers.feature_column import *
+from tensorflow.contrib.layers.python.layers.feature_column_ops import *
 from tensorflow.contrib.layers.python.layers.initializers import *
 from tensorflow.contrib.layers.python.layers.layers import *
 from tensorflow.contrib.layers.python.layers.optimizers import *
 from tensorflow.contrib.layers.python.layers.regularizers import *
 from tensorflow.contrib.layers.python.layers.summaries import *
+from tensorflow.contrib.layers.python.layers.target_column import *
+from tensorflow.contrib.layers.python.ops.bucketization_op import *
+from tensorflow.contrib.layers.python.ops.sparse_feature_cross_op import *

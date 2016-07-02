@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -295,10 +295,9 @@ Allocator* cpu_allocator();
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
 
-// If 'enable' is true, the process-wide cpu allocator collects
-// detailed statistics. This can be slow, so this is disabled by
-// default.
-void EnableCPUAllocatorDetailedStats(bool enable);
+// If 'enable' is true, the process-wide cpu allocator collects full
+// statistics. By default, it's disabled.
+void EnableCPUAllocatorFullStats(bool enable);
 
 // Abstract interface of an object that does the underlying suballoc/free of
 // memory for a higher-level allocator.
