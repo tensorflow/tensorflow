@@ -721,6 +721,7 @@
   * [`streaming_mean`](../../api_docs/python/contrib.metrics.md#streaming_mean)
   * [`streaming_mean_absolute_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_absolute_error)
   * [`streaming_mean_cosine_distance`](../../api_docs/python/contrib.metrics.md#streaming_mean_cosine_distance)
+  * [`streaming_mean_iou`](../../api_docs/python/contrib.metrics.md#streaming_mean_iou)
   * [`streaming_mean_relative_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_relative_error)
   * [`streaming_mean_squared_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_squared_error)
   * [`streaming_percentage_less`](../../api_docs/python/contrib.metrics.md#streaming_percentage_less)
