@@ -24,7 +24,6 @@ import math
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-from tensorflow.contrib.metrics.python.ops import metric_ops
 
 NAN = float('nan')
 
@@ -135,108 +134,6 @@ def _binary_3d_label_to_sparse(labels):
   return tf.SparseTensor(tf.constant(v.indices, tf.int64),
                          tf.constant(v.values, tf.int64),
                          tf.constant(v.shape, tf.int64))
-
-
-class RemoveSqueezableDimensionsTest(tf.test.TestCase):
-
-  def testRemoveSqueezableDimensions(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
-
-  def testRemoveSqueezableDimensions_extraLabelDim(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=True)
-
-  def testRemoveSqueezableDimensions_staticLabel(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
-
-  def testRemoveSqueezableDimensions_staticLabel_extraLabelDim(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=True)
-
-  def testRemoveSqueezableDimensions_extraPredictionDim(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=True,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
-
-  def testRemoveSqueezableDimensions_extraPredictionDim_staticLabel(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=False, predictions_have_extra_dim=True,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
-
-  def testRemoveSqueezableDimensions_staticPrediction(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
-
-  def testRemoveSqueezableDimensions_staticPrediction_extraLabelDim(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=False, labels_have_extra_dim=True)
-
-  def testRemoveSqueezableDimensions_static(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
-
-  def testRemoveSqueezableDimensions_static_extraLabelDim(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=False,
-        labels_have_static_shape=True, labels_have_extra_dim=True)
-
-  def testRemoveSqueezableDimensions_staticPrediction_extraPredictionDim(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=True,
-        labels_have_static_shape=False, labels_have_extra_dim=False)
-
-  def testRemoveSqueezableDimensions_static_extraPredictionDim(self):
-    self._testRemoveSqueezableDimensions(
-        predictions_have_static_shape=True, predictions_have_extra_dim=True,
-        labels_have_static_shape=True, labels_have_extra_dim=False)
-
-  # TODO(ptucker): Replace this with parameterized test.
-  def _testRemoveSqueezableDimensions(
-      self,
-      predictions_have_static_shape,
-      predictions_have_extra_dim,
-      labels_have_static_shape,
-      labels_have_extra_dim):
-    assert not (predictions_have_extra_dim and labels_have_extra_dim)
-    predictions_value = (0, 1, 1, 0, 0, 1, 0)
-    labels_value = (0, 0, 1, 1, 0, 0, 0)
-
-    input_predictions_value = (
-        [[p] for p in predictions_value] if predictions_have_extra_dim else
-        predictions_value)
-    input_labels_value = (
-        [[l] for l in labels_value] if labels_have_extra_dim else labels_value)
-
-    with tf.Graph().as_default() as g:
-      feed_dict = {}
-      if predictions_have_static_shape:
-        predictions = tf.constant(input_predictions_value, dtype=tf.int32)
-      else:
-        predictions = tf.placeholder(dtype=tf.int32, name='predictions')
-        feed_dict[predictions] = input_predictions_value
-      if labels_have_static_shape:
-        labels = tf.constant(input_labels_value, dtype=tf.int32)
-      else:
-        labels = tf.placeholder(dtype=tf.int32, name='labels')
-        feed_dict[labels] = input_labels_value
-
-      squeezed_predictions, squeezed_labels = (
-          metric_ops.remove_squeezable_dimensions(predictions, labels))
-      with self.test_session(g):
-        tf.initialize_local_variables().run()
-        self.assertAllClose(
-            predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))
-        self.assertAllClose(
-            labels_value, squeezed_labels.eval(feed_dict=feed_dict))
 
 
 class StreamingMeanTest(tf.test.TestCase):
@@ -1794,7 +1691,8 @@ class StreamingMeanRelativeErrorTest(tf.test.TestCase):
         labels=tf.ones((10, 1)),
         normalizer=tf.ones((10, 1)),
         metrics_collections=[my_collection_name])
-    self.assertListEqual(tf.get_collection(my_collection_name), [mean])
+    self.assertListEqual(
+        tf.get_collection(my_collection_name), [mean])
 
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
@@ -2299,6 +2197,239 @@ class PcntBelowThreshTest(tf.test.TestCase):
       self.assertAlmostEqual(1.0, pcnt0, 5)
       self.assertAlmostEqual(0.5, pcnt1, 5)
       self.assertAlmostEqual(0.0, pcnt2, 5)
+
+
+class StreamingMeanIOUTest(tf.test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    tf.reset_default_graph()
+
+  def testMetricsCollections(self):
+    my_collection_name = '__metrics__'
+    mean_iou, _ = tf.contrib.metrics.streaming_mean_iou(
+        predictions=tf.ones([10, 1]),
+        labels=tf.ones([10, 1]),
+        num_classes=2,
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [mean_iou])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = tf.contrib.metrics.streaming_mean_iou(
+        predictions=tf.ones([10, 1]),
+        labels=tf.ones([10, 1]),
+        num_classes=2,
+        updates_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [update_op])
+
+  def testPredictionsAndLabelsOfDifferentSizeRaisesValueError(self):
+    predictions = tf.ones([10, 3])
+    labels = tf.ones([10, 4])
+    with self.assertRaises(ValueError):
+      tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes=2)
+
+  def testLabelsAndIgnoreMaskOfDifferentSizeRaisesValueError(self):
+    predictions = tf.ones([10])
+    labels = tf.ones([10])
+    ignore_mask = tf.cast(tf.ones([9]), tf.bool)
+    with self.assertRaises(ValueError):
+      tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes=2, ignore_mask=ignore_mask)
+
+  def testIgnoreMaskIsNotBooleanRaisesValueError(self):
+    predictions = tf.ones([10])
+    labels = tf.ones([10])
+    ignore_mask = tf.ones([10])
+    with self.assertRaises(ValueError):
+      tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes=2, ignore_mask=ignore_mask)
+
+  def testValueTensorIsIdempotent(self):
+    num_classes = 3
+    predictions = tf.random_uniform([10], maxval=num_classes,
+                                    dtype=tf.int64, seed=1)
+    labels = tf.random_uniform([10], maxval=num_classes,
+                               dtype=tf.int64, seed=1)
+    miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+        predictions, labels, num_classes=num_classes)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_miou = miou.eval()
+      for _ in range(10):
+        self.assertEqual(initial_miou, miou.eval())
+
+  def testMultipleUpdates(self):
+    num_classes = 3
+    with self.test_session() as sess:
+      # Create the queue that populates the predictions.
+      preds_queue = tf.FIFOQueue(5, dtypes=tf.int32, shapes=(1, 1))
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [2])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      predictions = preds_queue.dequeue()
+
+      # Create the queue that populates the labels.
+      labels_queue = tf.FIFOQueue(5, dtypes=tf.int32, shapes=(1, 1))
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [2])
+      _enqueue_vector(sess, labels_queue, [1])
+      labels = labels_queue.dequeue()
+
+      miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(5):
+        sess.run(update_op)
+      desired_output = np.mean([1.0/2.0, 1.0/4.0, 0.])
+      self.assertEqual(desired_output, miou.eval())
+
+  def testMultipleUpdatesWithIgnoreMask(self):
+    num_classes = 2
+    with self.test_session() as sess:
+      # Create the queue that populates the predictions.
+      preds_queue = tf.FIFOQueue(5, dtypes=tf.int32, shapes=(1, 1))
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      predictions = preds_queue.dequeue()
+
+      # Create the queue that populates the labels.
+      labels_queue = tf.FIFOQueue(5, dtypes=tf.int32, shapes=(1, 1))
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [0])
+      labels = labels_queue.dequeue()
+
+      # Create the queue that populates the ignore_masks.
+      ignore_masks_queue = tf.FIFOQueue(5, dtypes=tf.bool, shapes=(1, 1))
+      _enqueue_vector(sess, ignore_masks_queue, [False])
+      _enqueue_vector(sess, ignore_masks_queue, [False])
+      _enqueue_vector(sess, ignore_masks_queue, [False])
+      _enqueue_vector(sess, ignore_masks_queue, [True])
+      _enqueue_vector(sess, ignore_masks_queue, [False])
+      ignore_mask = ignore_masks_queue.dequeue()
+
+      miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes, ignore_mask)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(5):
+        sess.run(update_op)
+      desired_output = np.mean([2.0/3.0, 1.0/2.0])
+      self.assertAlmostEqual(desired_output, miou.eval())
+
+  def testMultipleUpdatesWithMissingClass(self):
+    # Test the case where there are no predicions and labels for
+    # one class, and thus there is one row and one column with
+    # zero entries in the confusion matrix.
+    num_classes = 3
+    with self.test_session() as sess:
+      # Create the queue that populates the predictions.
+      # There is no prediction for class 2.
+      preds_queue = tf.FIFOQueue(5, dtypes=tf.int32, shapes=(1, 1))
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      predictions = preds_queue.dequeue()
+
+      # Create the queue that populates the labels.
+      # There is label for class 2.
+      labels_queue = tf.FIFOQueue(5, dtypes=tf.int32, shapes=(1, 1))
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      labels = labels_queue.dequeue()
+
+      miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(5):
+        sess.run(update_op)
+      desired_output = np.mean([1.0/3.0, 2.0/4.0, 0.])
+      self.assertAlmostEqual(desired_output, miou.eval())
+
+  def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
+    predictions = tf.concat(0,
+                            [tf.constant(0, shape=[5]),
+                             tf.constant(1, shape=[5])])
+    labels = tf.concat(0,
+                       [tf.constant(0, shape=[3]),
+                        tf.constant(1, shape=[7])])
+    num_classes = 2
+    with self.test_session() as sess:
+      miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+      sess.run(tf.initialize_local_variables())
+      confusion_matrix = update_op.eval()
+      self.assertAllEqual([[3, 2], [0, 5]], confusion_matrix)
+      desired_miou = np.mean([3./5., 5./7.])
+      self.assertAlmostEqual(desired_miou, miou.eval())
+
+  def testAllCorrect(self):
+    predictions = tf.zeros([40])
+    labels = tf.zeros([40])
+    num_classes = 1
+    with self.test_session() as sess:
+      miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+      sess.run(tf.initialize_local_variables())
+      self.assertEqual(40, update_op.eval()[0])
+      self.assertEqual(1.0, miou.eval())
+
+  def testAllWrong(self):
+    predictions = tf.zeros([40])
+    labels = tf.ones([40])
+    num_classes = 2
+    with self.test_session() as sess:
+      miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+      sess.run(tf.initialize_local_variables())
+      self.assertAllEqual([[0, 40], [0, 0]], update_op.eval())
+      self.assertEqual(0., miou.eval())
+
+  def testResultsWithIgnoreMask(self):
+    predictions = tf.concat(0,
+                            [tf.constant(0, shape=[5]),
+                             tf.constant(1, shape=[5])])
+    labels = tf.concat(0,
+                       [tf.constant(0, shape=[3]),
+                        tf.constant(1, shape=[7])])
+    num_classes = 2
+    ignore_mask = tf.concat(0,
+                            [tf.constant(1, shape=[1]),
+                             tf.constant(0, shape=[8]),
+                             tf.constant(1, shape=[1])])
+    ignore_mask = tf.cast(ignore_mask, tf.bool)
+    with self.test_session() as sess:
+      miou, update_op = tf.contrib.metrics.streaming_mean_iou(
+          predictions, labels, num_classes, ignore_mask)
+      sess.run(tf.initialize_local_variables())
+      self.assertAllEqual([[2, 2], [0, 4]], update_op.eval())
+      desired_miou = np.mean([2./4., 4./6.])
+      self.assertAlmostEqual(desired_miou, miou.eval())
 
 
 if __name__ == '__main__':
