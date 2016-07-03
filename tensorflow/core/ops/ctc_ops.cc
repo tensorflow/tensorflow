@@ -50,13 +50,14 @@ gradient: The gradient of `loss`.  3-D, shape:
 )doc");
 
 REGISTER_OP("CTCGreedyDecoder")
-    .Input("inputs: float")
+    .Input("inputs: T")
     .Input("sequence_length: int32")
     .Attr("merge_repeated: bool = false")
+    .Attr("T: {float, double} = DT_FLOAT")
     .Output("decoded_indices: int64")
     .Output("decoded_values: int64")
     .Output("decoded_shape: int64")
-    .Output("log_probability: float")
+    .Output("log_probability: T")
     .Doc(R"doc(
 Performs greedy decoding on the logits given in inputs.
 
@@ -84,15 +85,16 @@ log_probability: Matrix, size `(batch_size x 1)`, containing sequence
 )doc");
 
 REGISTER_OP("CTCBeamSearchDecoder")
-    .Input("inputs: float")
+    .Input("inputs: T")
     .Input("sequence_length: int32")
     .Attr("beam_width: int >= 1")
     .Attr("top_paths: int >= 1")
     .Attr("merge_repeated: bool = true")
+    .Attr("T: {float, double} = DT_FLOAT")
     .Output("decoded_indices: top_paths * int64")
     .Output("decoded_values: top_paths * int64")
     .Output("decoded_shape: top_paths * int64")
-    .Output("log_probability: float")
+    .Output("log_probability: T")
     .Doc(R"doc(
 Performs beam search decoding on the logits given in input.
 
