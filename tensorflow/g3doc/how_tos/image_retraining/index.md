@@ -131,7 +131,7 @@ Once TensorBoard is running, navigate your web browser to `localhost:6006` to vi
 
 The script will log TensorBoard summaries to `/tmp/retrain_logs` by default. You can change the directory with the `--summaries_dir` flag.
 
-The [TensorBoard README](../../../tensorboard/README.md) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
+The [TensorBoard README](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
 
 ## Using the Retrained Model
 
