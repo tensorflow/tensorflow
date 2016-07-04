@@ -21,7 +21,7 @@ directory by creating a `SummaryWriter`:
 ``` python
 # sess.graph_def is the graph definition; that enables the Graph Visualizer.
 
-summary_writer = tf.train.SummaryWriter('/path/to/logs', sess.graph_def)
+summary_writer = tf.train.SummaryWriter('/path/to/logs', sess.graph)
 ```
 
 For more details, see [this
