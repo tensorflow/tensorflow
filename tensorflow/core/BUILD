@@ -1843,6 +1843,8 @@ filegroup(
         "lib/jpeg/testdata/corrupt34_3.jpg",
         # -- hand-edited variant: stops after a restart marker
         "lib/jpeg/testdata/corrupt34_4.jpg",
+        # GIF data
+        "lib/gif/testdata/cock.gif",
     ],
 )
 

@@ -26,7 +26,7 @@ namespace gif {
 
 int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
   if (gif_file->UserData && memcpy(buf, gif_file->UserData, size)) {
-    gif_file->UserData += size;
+    gif_file->UserData = ((uint8_t*)gif_file->UserData) + size;
     return size;
   }
   return 0;

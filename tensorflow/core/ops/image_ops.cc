@@ -356,7 +356,7 @@ REGISTER_OP("DecodeGif")
     .Attr("dtype: {uint8, uint16} = DT_UINT8")
     .Output("image: dtype")
     .Doc(R"doc(
-Decode a GIF-encoded image to a uint8 or uint16 tensor.
+Decode the first frame of a GIF-encoded image to a uint8 or uint16 tensor.
 
 The attr `channels` indicates the desired number of color channels for the
 decoded image.
