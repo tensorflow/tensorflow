@@ -33,8 +33,10 @@ namespace tensorflow {
 // uses doubles and int64's to make sure we have enough room.
 template <class T>
 int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
+  const int64 lowest_quantized =
+      static_cast<double>(Eigen::NumTraits<T>::lowest());
   if (range_min == range_max) {
-    return 0;
+    return lowest_quantized;
   }
   const int number_of_bits = sizeof(T) * 8;
   const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
@@ -43,8 +45,6 @@ int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
   const double range_scale = (number_of_steps / range);
   int64 quantized =
       (round(input * range_scale) - round(range_min * range_scale));
-  const int64 lowest_quantized =
-      static_cast<double>(Eigen::NumTraits<T>::lowest());
   quantized += lowest_quantized;
   return quantized;
 }
@@ -167,7 +167,9 @@ struct FloatToQuantizedStruct {
 
   FloatToQuantizedStruct(float range_min, float range_max)
       : range_min(range_min),
-        range_scale((number_of_steps - 1.0) / (range_max - range_min)),
+        range_scale(range_max == range_min
+                        ? 0.0
+                        : (number_of_steps - 1.0) / (range_max - range_min)),
         range_min_scaled(round(range_min * range_scale)) {}
 
   const float range_min;
@@ -210,7 +212,9 @@ inline void RequantizeManyInNewRange<qint32, quint8>(
   const int64 recip_output_range_fp =
       static_cast<int64>(recip_output_range * (1 << fp_shift));
   const int64 range_scale_fp =
-      static_cast<int64>(255.0 * (1 << fp_shift) * input_range / output_range);
+      output_range == 0.0 ? 0.0
+                          : static_cast<int64>(255.0 * (1 << fp_shift) *
+                                               input_range / output_range);
   const int64 input_offset_fp =
       (min_input * recip_output_range_fp) + (range_scale_fp >> 1);
   const int64 output_offset_fp =
