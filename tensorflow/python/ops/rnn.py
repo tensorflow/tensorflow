@@ -37,6 +37,36 @@ _state_size_with_prefix = rnn_cell._state_size_with_prefix
 # pylint: enable=protected-access
 
 
+def _infer_state_dtype(explicit_dtype, state):
+  """Infer the dtype of an RNN state.
+
+  Args:
+    explicit_dtype: explicitly declared dtype or None.
+    state: RNN's hidden state. Must be a Tensor or a nested iterable containing
+      Tensors.
+
+  Returns:
+    dtype: inferred dtype of hidden state.
+
+  Raises:
+    ValueError: if `state` has heterogeneous dtypes or is empty.
+  """
+  if explicit_dtype is not None:
+    return explicit_dtype
+  elif nest.is_sequence(state):
+    inferred_dtypes = [element.dtype for element in nest.flatten(state)]
+    if not inferred_dtypes:
+      raise ValueError("Unable to infer dtype from empty state.")
+    all_same = all([x == inferred_dtypes[0] for x in inferred_dtypes])
+    if not all_same:
+      raise ValueError(
+          "State has tensors of different inferred_dtypes. Unable to infer a "
+          "single representative dtype.")
+    return inferred_dtypes[0]
+  else:
+    return state.dtype
+
+
 def rnn(cell, inputs, initial_state=None, dtype=None,
         sequence_length=None, scope=None):
   """Creates a recurrent neural network specified by RNNCell `cell`.
@@ -73,8 +103,9 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
       If `cell.state_size` is a tuple, this should be a tuple of
       tensors having shapes `[batch_size, s] for s in cell.state_size`.
-    dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
+    dtype: (optional) The data type for the initial state and expected output.
+      Required if initial_state is not provided or RNN state has a heterogeneous
+      dtype.
     sequence_length: Specifies the length of each sequence in inputs.
       An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
     scope: VariableScope for the created subgraph; defaults to "RNN".
@@ -148,7 +179,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       def _create_zero_output(output_size):
         # convert int to TensorShape if necessary
         size = _state_size_with_prefix(output_size, prefix=[batch_size])
-        output = array_ops.zeros(array_ops.pack(size), first_input.dtype)
+        output = array_ops.zeros(
+            array_ops.pack(size), _infer_state_dtype(dtype, state))
         shape = _state_size_with_prefix(
             output_size, prefix=[fixed_batch_size.value])
         output.set_shape(tensor_shape.TensorShape(shape))
@@ -685,8 +717,9 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
       If `cell.state_size` is a tuple, this should be a tuple of
       tensors having shapes `[batch_size, s] for s in cell.state_size`.
-    dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
+    dtype: (optional) The data type for the initial state and expected output.
+      Required if initial_state is not provided or RNN state has a heterogeneous
+      dtype.
     parallel_iterations: (Default: 32).  The number of iterations to run in
       parallel.  Those operations which do not have any temporal dependency
       and can be run in parallel, will be.  This parameter trades off
@@ -780,8 +813,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
               if input_is_tuple else flat_input[0])
 
     (outputs, final_state) = _dynamic_rnn_loop(
-        cell, inputs, state, parallel_iterations=parallel_iterations,
-        swap_memory=swap_memory, sequence_length=sequence_length)
+        cell,
+        inputs,
+        state,
+        parallel_iterations=parallel_iterations,
+        swap_memory=swap_memory,
+        sequence_length=sequence_length,
+        dtype=dtype)
 
     # Outputs of _dynamic_rnn_loop are always shaped [time, batch, depth].
     # If we are performing batch-major calculations, transpose output back
@@ -801,9 +839,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     return (outputs, final_state)
 
 
-def _dynamic_rnn_loop(
-    cell, inputs, initial_state, parallel_iterations, swap_memory,
-    sequence_length=None):
+def _dynamic_rnn_loop(cell,
+                      inputs,
+                      initial_state,
+                      parallel_iterations,
+                      swap_memory,
+                      sequence_length=None,
+                      dtype=None):
   """Internal implementation of Dynamic RNN.
 
   Args:
@@ -816,6 +858,8 @@ def _dynamic_rnn_loop(
     parallel_iterations: Positive Python int.
     swap_memory: A Python boolean
     sequence_length: (optional) An `int32` `Tensor` of shape [batch_size].
+    dtype: (optional) Expected dtype of output. If not specified, inferred from
+      initial_state.
 
   Returns:
     Tuple `(final_outputs, final_state)`.
@@ -868,7 +912,8 @@ def _dynamic_rnn_loop(
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
     size = _state_size_with_prefix(size, prefix=[batch_size])
-    return array_ops.zeros(array_ops.pack(size), flat_input[0].dtype)
+    return array_ops.zeros(
+        array_ops.pack(size), _infer_state_dtype(dtype, state))
 
   flat_zero_output = tuple(_create_zero_arrays(output)
                            for output in flat_output_size)
@@ -887,14 +932,16 @@ def _dynamic_rnn_loop(
   with ops.op_scope([], "dynamic_rnn") as scope:
     base_name = scope
 
-  def _create_ta(name):
-    return tensor_array_ops.TensorArray(
-        dtype=flat_input[0].dtype, size=time_steps,
-        tensor_array_name=base_name + name)
+  def _create_ta(name, dtype):
+    return tensor_array_ops.TensorArray(dtype=dtype,
+                                        size=time_steps,
+                                        tensor_array_name=base_name + name)
 
-  output_ta = tuple(_create_ta("output_%d" % i)
+  output_ta = tuple(_create_ta("output_%d" % i,
+                               _infer_state_dtype(dtype, state))
                     for i in range(len(flat_output_size)))
-  input_ta = tuple(_create_ta("input_%d" % i) for i in range(len(flat_input)))
+  input_ta = tuple(_create_ta("input_%d" % i, flat_input[0].dtype)
+                   for i in range(len(flat_input)))
 
   input_ta = tuple(ta.unpack(input_)
                    for ta, input_ in zip(input_ta, flat_input))
