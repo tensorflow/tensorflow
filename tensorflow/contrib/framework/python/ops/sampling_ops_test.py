@@ -126,8 +126,7 @@ class SamplingOpsTest(tf.test.TestCase):
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(coord=coord)
 
-      for _ in range(20):
-        sess.run(batch1 + batch2 + (summary_op,))
+      sess.run(batch1 + batch2 + (summary_op,))
 
       coord.request_stop()
       coord.join(threads)
