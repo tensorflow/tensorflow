@@ -56,8 +56,15 @@
 # other tests), separated with colons
 #
 # TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG: If set to a non-empty string
-# (e.g., "local"), will filter the Python install-tests by that string as a
-# bazel tag.
+# (e.g., "local"), will filter the Python install-tests by that string as
+# bazel tags. Multiple filter tags can be used. Both the inclusive filtering
+# mode and the exclusive filtering mode can be used. For example:
+#
+#   TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG="local,-manual"
+#
+# will let the script run the Python unit tests that have the tag "local"
+# and do not have the tag "manual". The "-" marks the exclusive filtering
+# mode. The inclusive mode is the default. Use commas to separate the tags.
 #
 # If the environmental variable NO_TEST_ON_INSTALL is set to any non-empty
 # value, the script will exit after the pip install step.
@@ -247,13 +254,52 @@ DIR0=$(pwd)
 ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
     -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
 
-if [[ ${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG} != "" ]]; then
-  # Find gpu-specific tests using bazel query
-  if [[ -z $(which bazel) ]]; then
-    die "ERROR: bazel is not on path"
+
+# Subroutine for filtering test file names by a bazel tag.
+filter_tests_by_bazel_tag() {
+  # Usage: filter_tests_by_bazel_tag (--inclusive | --exclusive)
+  #            <BAZEL_TAG> <INPUT_TESTS>
+  #
+  #   E.g., filter_tests_by_bazel_tag --inclusive "local"
+  #             "dir1/test1.py dir2/test2.py"
+  #
+  # Use the flag --inclusive so that only the tests that have the tag will be
+  # included in the returned string.
+  # Use the flag --exclusive so that the returned string will consist of only
+  # the tests that do not have the tag.
+  # INPUT_TESTS are the name of the input Python unit test files, seperated by
+  # spaces.
+  #
+  # The output string (through stdout) is: OUTPUT_TESTS | DISCARDED_TESTS
+  # That is: a list of tests that passed the filter, followed by " | ",
+  # followed by a list of tests that are discarded
+
+  FILTER_MODE=$1
+  TAG=$2
+  INPUT_TESTS=$3
+
+  # Input sanity checks
+  if [[ "${FILTER_MODE}" != "--inclusive" ]] &&
+     [[ "${FILTER_MODE}" != "--exclusive" ]]; then
+    echo "ERROR: Unrecognized filter mode: ${FILTER_MODE}"
+    exit 1
+  fi
+  if [[ -z "${TAG}" ]]; then
+    echo "ERROR: Bazal tag is not supplied"
+    exit 1
+  fi
+  if [[ -z "${INPUT_TESTS}" ]]; then
+    echo "ERROR: INPUT_TESTS is not supplied"
+    exit 1
   fi
 
-  TAG="${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG}"
+  # Check bazel on path
+  if [[ -z $(which bazel) ]]; then
+    echo "ERROR: bazel is not on path"
+    exit 1
+  fi
+
+  # Get all bazel targets that have the specified tag
   BAZEL_TARGETS=\
 $(bazel query "kind(py_test, attr(tags, "${TAG}", //tensorflow/...))" | sort)
 
@@ -262,7 +308,7 @@ $(bazel query "kind(py_test, attr(tags, "${TAG}", //tensorflow/...))" | sort)
     # Transform, e.g., //tensorflow/python/kernel_tests:xent_op_test -->
     #                  python-xent_op_test
     # to be compared with the transformed strings from the Python unit test
-    # files.
+    # file names.
     TARGET_1=$(echo "${TARGET}" | sed "s/:/ /g")
     TARGET_PATH_1=$(echo "${TARGET_1}" | sed "s/\/\// /g" | sed "s/\// /g" \
                     | awk '{print $2}')
@@ -272,14 +318,12 @@ $(bazel query "kind(py_test, attr(tags, "${TAG}", //tensorflow/...))" | sort)
     TARGET_ALIASES="${TARGET_ALIASES}${TARGET_ALIAS}:"
   done
   TARGET_ALIASES="${TARGET_ALIASES}:"
-  echo "${TARGET_ALIASES}"
 
   # Filter the list of tests obtained from listing files with the bazel query
   # results.
-  FILTERED_PY_TESTS=""
-  N_DISCARDED=0
-  ALL_PY_TESTS_1=""
-  for PY_TEST in ${ALL_PY_TESTS_0}; do
+  TESTS_PASSED_FILTER=""
+  TESTS_BLOCKED_BY_FILTER=""
+  for PY_TEST in ${INPUT_TESTS}; do
     # Transform, e.g., tensorflow/python/kernel_tests/xent_op_test.py -->
     #                  python-xent_op_test
     PY_TEST_PATH_1=$(echo "${PY_TEST}" | sed "s/\// /g" | awk '{print $2}')
@@ -287,17 +331,49 @@ $(bazel query "kind(py_test, attr(tags, "${TAG}", //tensorflow/...))" | sort)
                         | awk '{print $NF}' | sed "s/\.py//g")
     PY_TEST_ALIAS="${PY_TEST_PATH_1}-${PY_TEST_BASE_NAME}"
 
-    if [[ "${TARGET_ALIASES}" == *"${PY_TEST_ALIAS}"* ]]; then
-      ALL_PY_TESTS_1="${ALL_PY_TESTS_1} ${PY_TEST}"
+    TO_INCLUDE=0
+    if [[ "${TARGET_ALIASES}" == *"${PY_TEST_ALIAS}"* ]] && \
+       [[ "${FILTER_MODE}" == "--inclusive" ]]; then
+      TO_INCLUDE=1
+    elif [[ "${TARGET_ALIASES}" != *"${PY_TEST_ALIAS}"* ]] && \
+         [[ "${FILTER_MODE}" == "--exclusive" ]]; then
+      TO_INCLUDE=1
+    fi
+
+    if [[ ${TO_INCLUDE} == 1 ]]; then
+      TESTS_PASSED_FILTER="${TESTS_PASSED_FILTER} ${PY_TEST}"
     else
-      ((N_DISCARDED++))
-      echo "Will skip test due to filter tag \"${TAG}\": ${PY_TEST}"
+      TESTS_BLOCKED_BY_FILTER="${TESTS_BLOCKED_BY_FILTER} ${PY_TEST}"
     fi
   done
 
-  ALL_PY_TESTS_0="${ALL_PY_TESTS_1}"
-  echo ""
-  echo "Skipping ${N_DISCARDED} test(s) due to filter tag \"${TAG}\""
+  echo "${TESTS_PASSED_FILTER} | ${TESTS_BLOCKED_BY_FILTER}"
+}
+
+
+if [[ ${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG} != "" ]]; then
+  # Iteratively apply the filter tags
+  TAGS=(${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG//,/ })
+  for TAG in ${TAGS[@]}; do
+    if [[ ${TAG} == "-"* ]]; then
+      MODE="--exclusive"
+      TAG_1=$(echo ${TAG} | sed 's/-//')
+    else
+      MODE="--inclusive"
+      TAG_1=${TAG}
+    fi
+
+    FILTER_OUTPUT=$(filter_tests_by_bazel_tag ${MODE} \
+                   "${TAG_1}" "${ALL_PY_TESTS_0}")
+    ALL_PY_TESTS_0=$(echo "${FILTER_OUTPUT}" | cut -d \| -f 1)
+    DISCARDED_TESTS=$(echo "${FILTER_OUTPUT}" | cut -d \| -f 2)
+    N_DISCARDED=$(echo "${DISCARDED_TESTS}" | wc -w)
+
+    echo ""
+    echo "Skipping ${N_DISCARDED} test(s) due to filter tag \"${TAG}\":"
+    echo "${DISCARDED_TESTS}"
+    echo ""
+  done
 fi
 
 # Move the exclusive tests to the back of the list
