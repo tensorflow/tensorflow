@@ -283,6 +283,16 @@ class SumReductionTest(tf.test.TestCase):
       error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
+  def testDegenerate(self):
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        for dtype in (tf.float16, tf.float32, tf.float64, tf.complex64,
+                      tf.complex128):
+          # A large number is needed to get Eigen to die
+          x = tf.zeros((0, 9938), dtype=dtype)
+          y = tf.reduce_sum(x, [0])
+          self.assertAllEqual(y.eval(), np.zeros(9938))
+
 
 class MeanReductionTest(tf.test.TestCase):
 
@@ -376,6 +386,16 @@ class MeanReductionTest(tf.test.TestCase):
       error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
+  def testDegenerate(self):
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        for dtype in (tf.float16, tf.float32, tf.float64):
+          # A large number is needed to get Eigen to die
+          x = tf.zeros((0, 9938), dtype=dtype)
+          y = tf.reduce_mean(x, [0]).eval()
+          self.assertEqual(y.shape, (9938,))
+          self.assertTrue(np.all(np.isnan(y)))
+
 
 class ProdReductionTest(tf.test.TestCase):
 
@@ -466,6 +486,15 @@ class ProdReductionTest(tf.test.TestCase):
       y = tf.reduce_prod(x, [1])
       error = tf.test.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
+
+  def testDegenerate(self):
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        for dtype in (tf.float16, tf.float32, tf.float64):
+          # A large number is needed to get Eigen to die
+          x = tf.zeros((0, 9938), dtype=dtype)
+          y = tf.reduce_prod(x, [0])
+          self.assertAllEqual(y.eval(), np.ones(9938))
 
 
 class MinReductionTest(tf.test.TestCase):
