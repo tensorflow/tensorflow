@@ -969,7 +969,7 @@ Computes the percentage of times that predictions matches labels.
 
 - - -
 
-### `tf.contrib.metrics.confusion_matrix(predictions, labels, num_classes=None, name=None)` {#confusion_matrix}
+### `tf.contrib.metrics.confusion_matrix(predictions, labels, num_classes=None, dtype=tf.int32, name=None)` {#confusion_matrix}
 
 Computes the confusion matrix from predictions and labels.
 
@@ -1001,6 +1001,7 @@ the same shape in order for this function to work.
 *  <b>`num_classes`</b>: The possible number of labels the classification task can
                have. If this value is not provided, it will be calculated
                using both predictions and labels array.
+*  <b>`dtype`</b>: Data type of the confusion matrix.
 *  <b>`name`</b>: Scope name.
 
 ##### Returns:
