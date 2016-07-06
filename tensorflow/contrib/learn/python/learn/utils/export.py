@@ -103,8 +103,11 @@ def _default_input_fn(estimator, examples):
   return estimator._get_feature_ops_from_example(examples)
 
 
-def export_estimator(estimator, export_dir, input_fn=_default_input_fn,
-                     signature_fn=_generic_signature_fn, default_batch_size=1,
+def export_estimator(estimator,
+                     export_dir,
+                     input_fn=_default_input_fn,
+                     signature_fn=None,
+                     default_batch_size=1,
                      exports_to_keep=None):
   """Exports inference graph into given dir.
 
@@ -128,8 +131,13 @@ def export_estimator(estimator, export_dir, input_fn=_default_input_fn,
                                      name='input_example_tensor')
     features = input_fn(estimator, examples)
     predictions = estimator._get_predict_ops(features)
-    default_signature, named_graph_signatures = signature_fn(
-        examples, features, predictions)
+    if signature_fn:
+      default_signature, named_graph_signatures = signature_fn(examples,
+                                                               features,
+                                                               predictions)
+    else:
+      default_signature, named_graph_signatures = _generic_signature_fn(
+          examples, features, predictions)
     if exports_to_keep is not None:
       exports_to_keep = gc.largest_export_versions(exports_to_keep)
     _export_graph(g, _get_saver(), checkpoint_path, export_dir,
