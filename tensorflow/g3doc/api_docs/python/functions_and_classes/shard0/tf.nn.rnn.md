@@ -37,8 +37,9 @@ The dynamic calculation performed is, at time t for batch row b,
     a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
-*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
-    initial_state is not provided.
+*  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
+    Required if initial_state is not provided or RNN state has a heterogeneous
+    dtype.
 *  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs.
     An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
 *  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
