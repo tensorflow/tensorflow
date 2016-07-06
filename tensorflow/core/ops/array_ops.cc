@@ -549,6 +549,21 @@ REGISTER_OP("Reverse")
     .Input("dims: bool")
     .Output("output: T")
     .Attr("T: {uint8, int8, int32, bool, half, float, double}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* input = c->input(0);
+      const Shape* dims;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &dims));
+      const Dimension* dims_dim = c->Dim(dims, 0);
+      if (c->ValueKnown(dims_dim)) {
+        TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(dims_dim), &input));
+      }
+      if (c->Rank(input) > 8) {
+        return errors::InvalidArgument(
+            "reverse does not work on tensors with more than 8 dimensions");
+      }
+      c->set_output(0, input);
+      return Status::OK();
+    }))
     .Doc(R"Doc(
 Reverses specific dimensions of a tensor.
 
@@ -678,6 +693,12 @@ REGISTER_OP("Fill")
     .Input("value: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->CreateShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Creates a tensor filled with a scalar value.
 
@@ -703,6 +724,15 @@ REGISTER_OP("Gather")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* params_subshape;
+      TF_RETURN_IF_ERROR(c->Subshape(c->input(0), 1, &params_subshape));
+      const Shape* indices_shape = c->input(1);
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, params_subshape, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Gather slices from `params` according to `indices`.
 
@@ -759,6 +789,7 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
     .Doc(R"Doc(
 Return a tensor with the same shape and contents as the input tensor or value.
 )Doc");
@@ -768,6 +799,7 @@ REGISTER_OP("RefIdentity")
     .Input("input: Ref(T)")
     .Output("output: Ref(T)")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
     .Doc(R"Doc(
 Return the same ref tensor as the input ref tensor.
 )Doc");
@@ -777,6 +809,7 @@ REGISTER_OP("StopGradient")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
     .Doc(R"Doc(
 Stops gradient computation.
 
@@ -807,6 +840,7 @@ REGISTER_OP("CheckNumerics")
     .Output("output: T")
     .Attr("T: {half, float, double}")
     .Attr("message: string")
+    .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
     .Doc(R"doc(
 Checks a tensor for NaN and Inf values.
 
@@ -986,11 +1020,29 @@ idx: 1-D.
 count: 1-D.
 )doc");
 
+namespace {
+
+Status ShapeShapeFn(InferenceContext* c) {
+  for (int i = 0; i < c->num_inputs(); ++i) {
+    const Dimension* dim;
+    if (c->RankKnown(c->input(i))) {
+      dim = c->CreateDim(c->Rank(c->input(0)));
+    } else {
+      dim = c->CreateUnknownDim();
+    }
+    c->set_output(i, c->CreateShape({dim}));
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Shape")
     .Input("input: T")
     .Output("output: int32")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn(ShapeShapeFn))
     .Doc(R"doc(
 Returns the shape of a tensor.
 
@@ -2135,6 +2187,7 @@ REGISTER_OP("QuantizeAndDequantize")
     .Attr("input_max: float = 0")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
     .Doc(R"doc(
 Quantizes then dequantizes a tensor.
 

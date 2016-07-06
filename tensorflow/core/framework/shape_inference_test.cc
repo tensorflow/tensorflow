@@ -432,6 +432,15 @@ TEST(ShapeInferenceTest, CreateShapeFromShapeTensor) {
 
   t = ::tensorflow::test::AsTensor<int32>({1, 2}, TensorShape{2, 1});
   EXPECT_EQ("Input tensor must be rank 1, but was rank 2", create(&t));
+
+  // Test when the input shape is wrong.
+  {
+    NodeDef def;
+    InferenceContext c(&def, {"[1,?]"}, 0 /* num_outputs */, {nullptr});
+    const Shape* out;
+    EXPECT_EQ("Shape must be rank 1 but is rank 2",
+              c.CreateShapeFromShapeTensor(0, &out).error_message());
+  }
 }
 
 TEST(ShapeInferenceTest, CreateDim) {

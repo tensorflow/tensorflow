@@ -284,6 +284,9 @@ const Shape* InferenceContext::CreateUnknownShape() {
 
 Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
                                                     const Shape** out) {
+  const Shape* input_shape;
+  TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
+
   const Tensor* t = input_tensor(input_idx);
   if (t == nullptr) {
     return ReturnUnknownShape(out);
