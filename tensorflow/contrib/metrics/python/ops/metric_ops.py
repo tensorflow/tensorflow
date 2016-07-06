@@ -1712,7 +1712,7 @@ def streaming_mean_iou(predictions,
     # Local variable to accumulate the predictions in the confusion matrix.
     total_cm = _create_local('total_confusion_matrix',
                              shape=[num_classes, num_classes],
-                             dtype=dtypes.int32)
+                             dtype=dtypes.int64)
 
     # Cast the type to int64 required by confusion_matrix_ops.
     predictions = math_ops.to_int64(predictions)
@@ -1740,7 +1740,7 @@ def streaming_mean_iou(predictions,
 
     # Accumulate the prediction to current confusion matrix.
     current_cm = confusion_matrix_ops.confusion_matrix(
-        predictions, labels, num_classes)
+        predictions, labels, num_classes, dtype=dtypes.int64)
     update_op = state_ops.assign_add(total_cm, current_cm)
 
     def compute_mean_iou(name):
