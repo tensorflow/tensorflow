@@ -149,6 +149,49 @@ class QuantizationUtilsTest : public ::testing::Test {
       }
     }
   }
+
+  template <typename T>
+  void TestFloatToQuantizedInPlaceUsingEigen(
+      Eigen::ThreadPoolDevice* eigen_device) {
+    // These are the float values we're going to test the conversions on.
+    typedef std::pair<float, float> FPair;
+    for (FPair min_and_max : std::vector<FPair>{FPair(-255.0f, 255.0f),  //
+                                                FPair(-1.0f, 1.0f),      //
+                                                FPair(-1.0f, 255.0f),    //
+                                                FPair(0.0f, 1e6),        //
+                                                FPair(0.0f, 1.0f),       //
+                                                FPair(-31.0f, 13.0f)}) {
+      const float f_min = min_and_max.first;
+      const float f_max = min_and_max.second;
+      const float f_range = f_max - f_min;
+      const int values_count = 50000;
+      Tensor input(DT_FLOAT, TensorShape{values_count});
+      auto input_array = input.flat<float>();
+      for (int i = 0; i < values_count; ++i) {
+        input_array(i) = f_min + f_range * i / (values_count - 1);
+      }
+
+      Tensor output(DataTypeToEnum<T>::v(), TensorShape{values_count});
+      FloatTensorToQuantizedInPlaceUsingEigen<T>(*eigen_device, input, f_min,
+                                                 f_max, &output);
+      auto output_array = output.flat<T>();
+
+      const int tolerance = 1;
+      for (int i = 0; i < values_count; ++i) {
+        int32 expected = FloatToQuantized<T>(input_array(i), f_min, f_max);
+        int32 actual = output_array(i);
+        // The eigen computation uses float for constants and computation
+        // instead
+        // of doubles, so can be different by 1 or 2 in some cases (e.g., input
+        // value 144.062744140625, min -1, max 255, type quint8).
+        ASSERT_TRUE(std::abs(expected - actual) <= tolerance)
+            << "expected=" << expected << " actual=" << actual
+            << " tolerance=" << tolerance << " v=" << input_array(i)
+            << " i=" << i << " f_min=" << f_min << " f_max=" << f_max
+            << " type=" << DataTypeString(DataTypeToEnum<T>::v());
+      }
+    }
+  }
 };
 
 TEST_F(QuantizationUtilsTest, FloatToQuantized) {
@@ -336,6 +379,19 @@ TEST_F(QuantizationUtilsTest, FloatTensorToQuantized) {
   test::FillValues<quint8>(&expected, {1, 0, 10, 10, 127, 255, 255, 0, 23});
   Tensor output = FloatTensorToQuantized<quint8>(input, input_min, input_max);
   test::ExpectTensorEqual<quint8>(expected, output);
+}
+
+// Verify that FloatToQuantizedInPlaceUsingEigen is same result as
+// FloatToQuantized.
+TEST_F(QuantizationUtilsTest, FloatToQuantizedInPlaceUsingEigen) {
+  thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
+  EigenThreadPoolWrapper wrapper(&threadpool);
+  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+
+  TestFloatToQuantizedInPlaceUsingEigen<quint8>(&eigen_device);
+  TestFloatToQuantizedInPlaceUsingEigen<qint8>(&eigen_device);
+  TestFloatToQuantizedInPlaceUsingEigen<quint16>(&eigen_device);
+  TestFloatToQuantizedInPlaceUsingEigen<qint16>(&eigen_device);
 }
 
 TEST_F(QuantizationUtilsTest, QuantizedTensorToFloat) {

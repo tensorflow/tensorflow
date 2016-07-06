@@ -309,6 +309,19 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
 
 // REQUIRES: 'result->NumElements() == input.NumElements()'
 template <class T>
+void FloatTensorToQuantizedInPlaceUsingEigen(
+    const Eigen::ThreadPoolDevice& device, const Tensor& input, float min,
+    float max, Tensor* result) {
+  DCHECK_EQ(DataTypeToEnum<T>::v(), result->dtype());
+  auto flat_input = input.flat<float>();
+  auto flat_result = result->flat<T>();
+  DCHECK_EQ(flat_input.size(), flat_result.size());
+
+  FloatToQuantizedStruct<T> f2q(min, max);
+  flat_result.device(device) = QUANTIZE_WITH_EIGEN(flat_input, f2q, T);
+}
+
+template <class T>
 void FloatTensorToQuantizedInPlace(const Tensor& input, float min, float max,
                                    Tensor* result) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), result->dtype());
