@@ -255,6 +255,10 @@ class Variable(object):
 
     if collections is None:
       collections = [ops.GraphKeys.VARIABLES]
+    if not isinstance(collections, (list, tuple, set)):
+      raise ValueError(
+          "collections argument to Variable constructor must be a list, tuple, "
+          "or set. Got %s of type %s" % (collections, type(collections)))
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):

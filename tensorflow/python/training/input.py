@@ -80,7 +80,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
     epochs = variables.Variable(
         zero64, name="epochs", trainable=False,
-        collections=ops.GraphKeys.LOCAL_VARIABLES)
+        collections=[ops.GraphKeys.LOCAL_VARIABLES])
     counter = epochs.count_up_to(num_epochs)
     with ops.control_dependencies([counter]):
       return array_ops.identity(tensor, name=name)
