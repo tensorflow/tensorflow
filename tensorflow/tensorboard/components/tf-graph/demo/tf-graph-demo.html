@@ -111,7 +111,7 @@ Polymer({
         }
 
         if(typeof DEMO_DIR_PREFIX === 'undefined') {
-          DEMO_DIR_PREFIX = '';
+          DEMO_DIR_PREFIX = 'tf_model_zoo/';
         }
         _.each(datasets, function(dataset) {
           dataset.path = this._normalizePath(dataset.path);
@@ -125,8 +125,7 @@ Polymer({
     }.bind(this));
   },
   _normalizePath: function(path) {
-    return this.resolveUrl('tf_model_zoo/' + path)
-      .replace('tf_model_zoo', DEMO_DIR_PREFIX + 'tf_model_zoo');
+    return this.resolveUrl(DEMO_DIR_PREFIX + path);
   }
 });
 })();
