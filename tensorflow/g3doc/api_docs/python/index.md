@@ -581,15 +581,12 @@
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#value_type)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
-  * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
   * [`batch_matrix_diag_transform`](../../api_docs/python/contrib.distributions.md#batch_matrix_diag_transform)
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
-  * [`ContinuousDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousDistribution)
-  * [`ContinuousTransformedDistribution`](../../api_docs/python/contrib.distributions.md#ContinuousTransformedDistribution)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
-  * [`DiscreteDistribution`](../../api_docs/python/contrib.distributions.md#DiscreteDistribution)
+  * [`Distribution`](../../api_docs/python/contrib.distributions.md#Distribution)
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
   * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
   * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
@@ -603,6 +600,7 @@
   * [`OperatorPDFull`](../../api_docs/python/contrib.distributions.md#OperatorPDFull)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
+  * [`TransformedDistribution`](../../api_docs/python/contrib.distributions.md#TransformedDistribution)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:

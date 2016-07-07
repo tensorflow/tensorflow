@@ -80,6 +80,13 @@ Cumulative distribution function.
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.is_continuous` {#Categorical.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.is_reparameterized` {#Categorical.is_reparameterized}
 
 
@@ -94,14 +101,21 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.log_likelihood(value, name='log_likelihood')` {#Categorical.log_likelihood}
+#### `tf.contrib.distributions.Categorical.log_pdf(value, name='log_pdf')` {#Categorical.log_pdf}
 
-Log likelihood of this distribution (same as log_pmf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.log_pmf(k, name='log_pmf')` {#Categorical.log_pmf}
+#### `tf.contrib.distributions.Categorical.log_pmf(value, name='log_pmf')` {#Categorical.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_prob(k, name='log_prob')` {#Categorical.log_prob}
 
 Log-probability of class `k`.
 
@@ -153,7 +167,21 @@ Mean of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.pmf(k, name='pmf')` {#Categorical.pmf}
+#### `tf.contrib.distributions.Categorical.pdf(value, name='pdf')` {#Categorical.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.pmf(value, name='pmf')` {#Categorical.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.prob(k, name='prob')` {#Categorical.prob}
 
 Probability of class `k`.
 

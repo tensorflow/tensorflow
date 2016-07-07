@@ -98,6 +98,13 @@ Entropy of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.is_continuous` {#Bernoulli.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.is_reparameterized` {#Bernoulli.is_reparameterized}
 
 
@@ -112,14 +119,21 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.log_likelihood(value, name='log_likelihood')` {#Bernoulli.log_likelihood}
+#### `tf.contrib.distributions.Bernoulli.log_pdf(value, name='log_pdf')` {#Bernoulli.log_pdf}
 
-Log likelihood of this distribution (same as log_pmf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.log_pmf(event, name='log_pmf')` {#Bernoulli.log_pmf}
+#### `tf.contrib.distributions.Bernoulli.log_pmf(value, name='log_pmf')` {#Bernoulli.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.log_prob(event, name='log_prob')` {#Bernoulli.log_prob}
 
 Log of the probability mass function.
 
@@ -193,7 +207,21 @@ Mode of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.pmf(event, name='pmf')` {#Bernoulli.pmf}
+#### `tf.contrib.distributions.Bernoulli.pdf(value, name='pdf')` {#Bernoulli.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.pmf(value, name='pmf')` {#Bernoulli.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.prob(event, name='prob')` {#Bernoulli.prob}
 
 Probability mass function.
 

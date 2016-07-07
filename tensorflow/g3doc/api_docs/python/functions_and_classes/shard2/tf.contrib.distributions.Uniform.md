@@ -134,6 +134,13 @@ The entropy of Uniform distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.is_continuous` {#Uniform.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
 
 
@@ -148,14 +155,21 @@ The entropy of Uniform distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.log_likelihood(value, name='log_likelihood')` {#Uniform.log_likelihood}
+#### `tf.contrib.distributions.Uniform.log_pdf(value, name='log_pdf')` {#Uniform.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.log_pdf(x, name='log_pdf')` {#Uniform.log_pdf}
+#### `tf.contrib.distributions.Uniform.log_pmf(value, name='log_pmf')` {#Uniform.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.log_prob(x, name='log_prob')` {#Uniform.log_prob}
 
 
 
@@ -183,7 +197,21 @@ Mode of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.pdf(x, name='pdf')` {#Uniform.pdf}
+#### `tf.contrib.distributions.Uniform.pdf(value, name='pdf')` {#Uniform.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.pmf(value, name='pmf')` {#Uniform.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.prob(x, name='prob')` {#Uniform.prob}
 
 The PDF of observations in `x` under these Uniform distribution(s).
 
@@ -196,8 +224,8 @@ The PDF of observations in `x` under these Uniform distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`. If `x` is `nan`, will
-      return `nan`.
+*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`. If `x` is `nan`,
+      will return `nan`.
 
 
 - - -
