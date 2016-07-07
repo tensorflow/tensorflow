@@ -19,7 +19,7 @@ The class uses optional peep-hole connections, optional cell clipping, and
 an optional projection layer.
 - - -
 
-#### `tf.nn.rnn_cell.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, num_unit_shards=1, num_proj_shards=1, forget_bias=1.0, state_is_tuple=False, activation=tanh)` {#LSTMCell.__init__}
+#### `tf.nn.rnn_cell.LSTMCell.__init__(num_units, input_size=None, use_peepholes=False, cell_clip=None, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=1, num_proj_shards=1, forget_bias=1.0, state_is_tuple=False, activation=tanh)` {#LSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -35,6 +35,10 @@ Initialize the parameters for an LSTM cell.
     projection matrices.
 *  <b>`num_proj`</b>: (optional) int, The output dimensionality for the projection
     matrices.  If None, no projection is performed.
+*  <b>`proj_clip`</b>: (optional) A float value.  If `num_proj > 0` and `proj_clip` is
+  provided, then the projected values are clipped elementwise to within
+  `[-proj_clip, proj_clip]`.
+
 *  <b>`num_unit_shards`</b>: How to split the weight matrix.  If >1, the weight
     matrix is stored across num_unit_shards.
 *  <b>`num_proj_shards`</b>: How to split the projection matrix.  If >1, the
