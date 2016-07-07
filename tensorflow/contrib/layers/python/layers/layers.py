@@ -148,16 +148,24 @@ def batch_norm(inputs,
     scope: Optional scope for `variable_op_scope`.
 
   Returns:
-    a tensor representing the output of the operation.
+    A `Tensor` representing the output of the operation.
 
+  Raises:
+    ValueError: if rank or last dimension of `inputs` is undefined.
   """
   with variable_scope.variable_op_scope([inputs],
                                         scope, 'BatchNorm', reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Inputs %s has undefined rank.' % inputs.name)
     dtype = inputs.dtype.base_dtype
-    axis = list(range(len(inputs_shape) - 1))
+    axis = list(range(inputs_rank - 1))
     params_shape = inputs_shape[-1:]
+    if not params_shape.is_fully_defined():
+      raise ValueError('Inputs %s has undefined last dimension %s.' % (
+          inputs.name, params_shape))
     # Allocate parameters for the beta and gamma of the normalization.
     beta, gamma = None, None
     if center:
@@ -221,7 +229,7 @@ def batch_norm(inputs,
     else:
       outputs = nn.batch_normalization(
           inputs, moving_mean, moving_variance, beta, gamma, epsilon)
-    outputs.set_shape(inputs.get_shape())
+    outputs.set_shape(inputs_shape)
     if activation_fn:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
@@ -457,9 +465,13 @@ def flatten(inputs,
   """
   with ops.op_scope([inputs], scope, 'Flatten') as sc:
     inputs = ops.convert_to_tensor(inputs)
-    if len(inputs.get_shape()) < 2:
-      raise ValueError('Inputs must be have a least 2 dimensions')
-    dims = inputs.get_shape()[1:]
+    inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if (inputs_rank is None) or (inputs_rank < 2):
+      raise ValueError('Inputs must have a least 2 dimensions.')
+    dims = inputs_shape[1:]
+    if not dims.is_fully_defined():
+      raise ValueError('Inputs 2nd dimension must be defined.')
     k = dims.num_elements()
     outputs = array_ops.reshape(inputs, [-1, k])
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
@@ -529,9 +541,10 @@ def fully_connected(inputs,
                                         reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
-    num_input_units = utils.last_dimension(inputs.get_shape(), min_rank=2)
+    inputs_shape = inputs.get_shape()
+    num_input_units = utils.last_dimension(inputs_shape, min_rank=2)
 
-    static_shape = inputs.get_shape().as_list()
+    static_shape = inputs_shape.as_list()
     static_shape[-1] = num_outputs
 
     out_shape = array_ops.unpack(array_ops.shape(inputs))

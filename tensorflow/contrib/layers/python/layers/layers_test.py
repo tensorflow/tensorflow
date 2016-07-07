@@ -508,6 +508,21 @@ class DropoutTest(tf.test.TestCase):
 
 class FlattenTest(tf.test.TestCase):
 
+  def testInvalidRank(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5,)))
+      with self.assertRaisesRegexp(
+          ValueError, 'must have a least 2 dimensions'):
+        tf.contrib.layers.flatten(inputs)
+
+  def testUnknownLastDim(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5, None)))
+      with self.assertRaisesRegexp(ValueError, '2nd dimension must be defined'):
+        tf.contrib.layers.flatten(inputs)
+
   def testCollectOutputs(self):
     height, width = 3, 3
     with self.test_session():
@@ -680,6 +695,19 @@ class FCTest(tf.test.TestCase):
 
 
 class BatchNormTest(tf.test.TestCase):
+
+  def testUnknownShape(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesRegexp(ValueError, 'undefined rank'):
+        tf.contrib.layers.batch_norm(inputs)
+
+  def testUnknownLastDim(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
+      with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
+        tf.contrib.layers.batch_norm(inputs)
 
   def testCreateOp(self):
     height, width = 3, 3
