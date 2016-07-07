@@ -88,6 +88,7 @@ def avg_pool2d(inputs,
     a tensor representing the results of the pooling operation.
   """
   with ops.op_scope([inputs], scope, 'AvgPool2D') as sc:
+    inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
     outputs = nn.avg_pool(inputs,
@@ -152,6 +153,7 @@ def batch_norm(inputs,
   """
   with variable_scope.variable_op_scope([inputs],
                                         scope, 'BatchNorm', reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
     dtype = inputs.dtype.base_dtype
     axis = list(range(len(inputs_shape) - 1))
@@ -259,6 +261,7 @@ def bias_add(inputs,
   """
   with variable_scope.variable_op_scope([inputs],
                                         scope, 'BiasAdd', reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     num_features = utils.last_dimension(inputs.get_shape(), min_rank=2)
     biases_collections = utils.get_variable_collections(variables_collections,
@@ -346,6 +349,7 @@ def convolution2d(inputs,
   """
   with variable_scope.variable_op_scope([inputs],
                                         scope, 'Conv', reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -417,6 +421,7 @@ def dropout(inputs,
     a tensor representing the output of the operation.
   """
   with ops.op_scope([inputs], scope, 'Dropout') as sc:
+    inputs = ops.convert_to_tensor(inputs)
     is_training_value = utils.constant_value(is_training, dtypes.bool)
     if is_training_value is not None:
       if is_training_value:
@@ -450,11 +455,12 @@ def flatten(inputs,
   Raises:
     ValueError: if inputs.shape is wrong.
   """
-  if len(inputs.get_shape()) < 2:
-    raise ValueError('Inputs must be have a least 2 dimensions')
-  dims = inputs.get_shape()[1:]
-  k = dims.num_elements()
   with ops.op_scope([inputs], scope, 'Flatten') as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    if len(inputs.get_shape()) < 2:
+      raise ValueError('Inputs must be have a least 2 dimensions')
+    dims = inputs.get_shape()[1:]
+    k = dims.num_elements()
     outputs = array_ops.reshape(inputs, [-1, k])
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
@@ -521,6 +527,7 @@ def fully_connected(inputs,
                                         scope,
                                         'fully_connected',
                                         reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     num_input_units = utils.last_dimension(inputs.get_shape(), min_rank=2)
 
@@ -598,6 +605,7 @@ def max_pool2d(inputs,
     ValueError: if 'kernel_size' is not a 2-D list
   """
   with ops.op_scope([inputs], scope, 'MaxPool2D') as sc:
+    inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
     outputs = nn.max_pool(inputs,
@@ -628,6 +636,7 @@ def one_hot_encoding(labels,
     one hot encoding of the labels.
   """
   with ops.op_scope([labels, num_classes], scope, 'OneHotEncoding') as sc:
+    labels = ops.convert_to_tensor(labels)
     if labels.dtype == dtypes.int32:
       labels = standard_ops.to_int64(labels)
     outputs = standard_ops.one_hot(labels,
@@ -676,7 +685,7 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
   """
   scope = kwargs.pop('scope', None)
   with variable_scope.variable_op_scope([inputs], scope, 'Repeat'):
-    outputs = inputs
+    inputs = ops.convert_to_tensor(inputs)
     if scope is None:
       if hasattr(layer, '__name__'):
         scope = layer.__name__
@@ -684,6 +693,7 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
         scope = layer.func.__name__  # In case layer is a functools.partial.
       else:
         scope = 'repeat'
+    outputs = inputs
     for i in range(repetitions):
       kwargs['scope'] = scope + '_' + str(i+1)
       outputs = layer(outputs, *args, **kwargs)
@@ -727,7 +737,7 @@ def stack(inputs, layer, stack_args, **kwargs):
   if not isinstance(stack_args, (list, tuple)):
     raise ValueError('stack_args need to be a list or tuple')
   with variable_scope.variable_op_scope([inputs], scope, 'Stack'):
-    outputs = inputs
+    inputs = ops.convert_to_tensor(inputs)
     if scope is None:
       if hasattr(layer, '__name__'):
         scope = layer.__name__
@@ -735,6 +745,7 @@ def stack(inputs, layer, stack_args, **kwargs):
         scope = layer.func.__name__  # In case layer is a functools.partial.
       else:
         scope = 'stack'
+    outputs = inputs
     for i in range(len(stack_args)):
       kwargs['scope'] = scope + '_' + str(i+1)
       layer_args = stack_args[i]
@@ -824,6 +835,7 @@ def legacy_fully_connected(x,
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
   with variable_scope.variable_op_scope([x], name, 'fully_connected'):
+    x = ops.convert_to_tensor(x)
     dims = x.get_shape().dims
     if dims is None:
       raise ValueError('dims of x must be known but is None')

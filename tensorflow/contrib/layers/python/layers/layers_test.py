@@ -30,7 +30,7 @@ class AvgPool2DTest(tf.test.TestCase):
   def testCreateAvgPool(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.avg_pool2d(images, [3, 3])
       self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
@@ -88,7 +88,7 @@ class BiasAddTest(tf.test.TestCase):
   def testCreate(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.bias_add(images)
       self.assertEquals(output.op.name, 'BiasAdd/BiasAdd')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
@@ -119,7 +119,7 @@ class Convolution2dTest(tf.test.TestCase):
   def testCreateConv(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 4), seed=1)
+      images = np.random.uniform(size=(5, height, width, 4))
       output = tf.contrib.layers.convolution2d(images, 32, [3, 3])
       self.assertEquals(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
@@ -423,10 +423,11 @@ class DropoutTest(tf.test.TestCase):
   def testCreateDropout(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.dropout(images)
       self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
-      output.get_shape().assert_is_compatible_with(images.get_shape())
+      output.get_shape().assert_is_compatible_with(
+          tf.convert_to_tensor(images).get_shape())
 
   def testCreateDropoutWithConstant(self):
     height, width = 3, 3
@@ -510,7 +511,7 @@ class FlattenTest(tf.test.TestCase):
   def testCollectOutputs(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.flatten(images, outputs_collections='outputs')
       self.assertEquals(('Flatten', output),
                         tf.get_collection('outputs')[0])
@@ -553,7 +554,7 @@ class FCTest(tf.test.TestCase):
     height, width = 3, 3
     for layer_fn in (tf.contrib.layers.fully_connected, tf.contrib.layers.relu):
       with tf.Graph().as_default() as g, self.test_session(g):
-        inputs = tf.random_uniform((5, height * width * 3), seed=1)
+        inputs = np.random.uniform(size=(5, height * width * 3))
         output = layer_fn(inputs, 32)
         self.assertEquals(output.op.name, 'fully_connected/Relu')
         self.assertListEqual(output.get_shape().as_list(), [5, 32])
@@ -683,7 +684,7 @@ class BatchNormTest(tf.test.TestCase):
   def testCreateOp(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.batch_norm(images)
       self.assertTrue(output.op.name.startswith('BatchNorm/batchnorm'))
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
@@ -906,7 +907,7 @@ class MaxPool2DTest(tf.test.TestCase):
   def testCreateMaxPool(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
       output = tf.contrib.layers.max_pool2d(images, [3, 3])
       self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
@@ -963,7 +964,7 @@ class OneHotEncodingTest(tf.test.TestCase):
 
   def testOneHotEncodingCreate(self):
     with self.test_session():
-      labels = tf.constant([0, 1, 2])
+      labels = np.array([0, 1, 2])
       output = tf.contrib.layers.one_hot_encoding(labels, num_classes=3)
       self.assertEquals(output.op.name, 'OneHotEncoding/one_hot')
       self.assertListEqual(output.get_shape().as_list(), [3, 3])
@@ -1000,7 +1001,7 @@ class RepeatTests(tf.test.TestCase):
   def testRepeat(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.repeat(images, 3,
                                         tf.contrib.layers.conv2d, 32, [3, 3])
       self.assertEquals(output.op.name, 'Repeat/convolution2d_3/Relu')
@@ -1022,7 +1023,7 @@ class StackTests(tf.test.TestCase):
   def testStackFullyConnected(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
+      images = np.random.uniform(size=(5, height * width * 3))
       output = tf.contrib.layers.stack(images,
                                        tf.contrib.layers.fully_connected,
                                        [10, 20, 30])
@@ -1286,7 +1287,7 @@ class LegacyFullyConnectedTest(tf.test.TestCase):
     # order to drop missing entries, and in a particular batch all entries are
     # missing.
     with self.test_session():
-      x = tf.constant([[]], shape=[0, 3])
+      x = np.array([]).reshape(0, 3)
       self.assertEqual(0, tf.size(x).eval())
       y = tf.contrib.layers.legacy_fully_connected(x,
                                                    2,
