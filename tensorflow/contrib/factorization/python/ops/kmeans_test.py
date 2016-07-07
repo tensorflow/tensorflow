@@ -204,14 +204,14 @@ class KMeansTest(tf.test.TestCase):
 
     centers = normalize(kmeans.clusters())
     self.assertAllClose(np.sort(centers, axis=0),
-                        np.sort(true_centers, axis=0), rtol=1e-3)
+                        np.sort(true_centers, axis=0), atol=1e-2)
 
     assignments = kmeans.predict(points)
     self.assertAllClose(centers[assignments],
-                        true_centers[true_assignments], rtol=1e-3)
+                        true_centers[true_assignments], atol=1e-2)
 
     score = kmeans.score(points)
-    self.assertAllClose(score, true_score)
+    self.assertAllClose(score, true_score, atol=1e-2)
 
   def test_predict_with_cosine_distance_and_kmeans_plus_plus(self):
     # Most points are concetrated near one center. KMeans++ is likely to find
@@ -242,14 +242,14 @@ class KMeansTest(tf.test.TestCase):
     centers = normalize(kmeans.clusters())
     self.assertAllClose(sorted(centers.tolist()),
                         sorted(true_centers.tolist()),
-                        rtol=1e-3)
+                        atol=1e-2)
 
     assignments = kmeans.predict(points)
     self.assertAllClose(centers[assignments],
-                        true_centers[true_assignments], rtol=1e-3)
+                        true_centers[true_assignments], atol=1e-2)
 
     score = kmeans.score(points)
-    self.assertAllClose(score, true_score)
+    self.assertAllClose(score, true_score, atol=1e-2)
 
   def test_fit_raise_if_num_clusters_larger_than_num_points_random_init(self):
     points = np.array([[2.0, 3.0], [1.6, 8.2]])
