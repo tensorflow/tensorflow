@@ -303,6 +303,52 @@ TEST(ShapeInferenceTest, MergeShape) {
   EXPECT_TRUE(out == nullptr);
 }
 
+TEST(ShapeInferenceTest, MergePrefix) {
+  NodeDef def;
+  InferenceContext c(&def, {"?", "[?,2]", "[1,?,3]", "[2,4]"},
+                     2 /* num_outputs */, {});
+
+  auto s_unknown = c.input(0);
+  auto s_u_2 = c.input(1);
+  auto s_1_u_3 = c.input(2);
+  auto s_2_4 = c.input(3);
+
+  const Shape* s_out = nullptr;
+  const Shape* s_prefix_out = nullptr;
+
+  // Merging with unknown returns the inputs.
+  EXPECT_TRUE(c.MergePrefix(s_unknown, s_u_2, &s_out, &s_prefix_out).ok());
+  EXPECT_TRUE(s_out == s_unknown);
+  EXPECT_TRUE(s_prefix_out == s_u_2);
+  EXPECT_TRUE(c.MergePrefix(s_1_u_3, s_unknown, &s_out, &s_prefix_out).ok());
+  EXPECT_TRUE(s_out == s_1_u_3);
+  EXPECT_TRUE(s_prefix_out == s_unknown);
+
+  EXPECT_TRUE(c.MergePrefix(s_1_u_3, s_u_2, &s_out, &s_prefix_out).ok());
+  EXPECT_TRUE(s_out != s_1_u_3);
+  EXPECT_EQ("[1,2]", c.DebugString(s_prefix_out));
+  EXPECT_EQ("[1,2,3]", c.DebugString(s_out));
+  EXPECT_TRUE(c.Dim(s_prefix_out, 0) == c.Dim(s_out, 0));
+  EXPECT_TRUE(c.Dim(s_out, 0) == c.Dim(s_1_u_3, 0));
+  EXPECT_TRUE(c.Dim(s_prefix_out, 1) == c.Dim(s_out, 1));
+  EXPECT_TRUE(c.Dim(s_prefix_out, 1) == c.Dim(s_u_2, 1));
+
+  // Incompatible merges give errors and set outs to nullptr.
+  s_out = s_unknown;
+  s_prefix_out = s_unknown;
+  EXPECT_EQ(("Invalid argument: Dimensions must be equal, but are 1 and 2"),
+            c.MergePrefix(s_1_u_3, s_2_4, &s_out, &s_prefix_out).ToString());
+  EXPECT_TRUE(s_out == nullptr);
+  EXPECT_TRUE(s_prefix_out == nullptr);
+
+  s_out = s_unknown;
+  s_prefix_out = s_unknown;
+  EXPECT_EQ(("Invalid argument: Shape must be at least rank 3 but is rank 2"),
+            c.MergePrefix(s_2_4, s_1_u_3, &s_out, &s_prefix_out).ToString());
+  EXPECT_TRUE(s_out == nullptr);
+  EXPECT_TRUE(s_prefix_out == nullptr);
+}
+
 TEST(ShapeInferenceTest, Subshape) {
   NodeDef def;
   InferenceContext c(&def, {"[1,2,3,?,5]", "?"}, 2 /* num_outputs */, {});

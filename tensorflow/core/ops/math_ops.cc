@@ -1185,6 +1185,46 @@ REGISTER_OP("UnsortedSegmentSum")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* s_data = c->input(0);
+      const Shape* s_segment_ids = c->input(1);
+      const Shape* s_num_segments = c->input(2);
+      TF_RETURN_IF_ERROR(c->WithRank(s_num_segments, 0, &s_num_segments));
+
+      const Shape* out;
+
+      // Leading dimensions of data must be compatible with dimensions of
+      // <s_segment_ids>.
+      if (c->RankKnown(s_segment_ids)) {
+        TF_RETURN_IF_ERROR(
+            c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
+
+        // Get the value of the num_segments input tensor.
+        const auto* num_segments_t = c->input_tensor(2);
+        const Dimension* num_segments_dim;
+        if (num_segments_t == nullptr) {
+          num_segments_dim = c->CreateUnknownDim();
+        } else {
+          auto t_val = num_segments_t->scalar<int32>()();
+          if (t_val < 0) {
+            return errors::InvalidArgument(
+                "num_segments value must be non-negative, but was ", t_val);
+          }
+          num_segments_dim = c->CreateDim(t_val);
+        }
+
+        // Output is {segment_id_rank} + s_data[segment_id_rank:].
+        const Shape* s_data_suffix;
+        TF_RETURN_IF_ERROR(
+            c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
+        TF_RETURN_IF_ERROR(c->Concatenate(c->CreateShape({num_segments_dim}),
+                                          s_data_suffix, &out));
+      } else {
+        out = c->CreateUnknownShape();
+      }
+      c->set_output(0, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 

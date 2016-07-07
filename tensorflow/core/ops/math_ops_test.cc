@@ -259,4 +259,28 @@ TEST(MathOpsTest, LinSpace_ShapeFn) {
   INFER_ERROR_WITH_TENSORS("Requires num > 0: -1", op, "?;?;?", in_tensors);
 }
 
+TEST(MathOpsTest, UnsortedSegmentSum_ShapeFn) {
+  const char op[] = "UnsortedSegmentSum";
+  std::vector<const Tensor*> in_tensors{nullptr, nullptr, nullptr};
+  INFER_OK_WITH_TENSORS(op, "?;?;?", in_tensors, "?");
+  INFER_OK_WITH_TENSORS(op, "?;[?];?", in_tensors, "?");
+  INFER_ERROR_WITH_TENSORS("Shape must be rank 0 but is rank 2", op,
+                           "?;?;[1,2]", in_tensors);
+  INFER_ERROR_WITH_TENSORS("Dimensions must be equal, but are 2 and 3", op,
+                           "[1,?,2];[1,?,3];?", in_tensors);
+  INFER_OK_WITH_TENSORS(op, "?;[3];?", in_tensors, "?");
+  INFER_ERROR_WITH_TENSORS("Shape must be at least rank 3 but is rank 2", op,
+                           "[1,2];[1,2,3];?", in_tensors);
+
+  Tensor num_segments_t = test::AsScalar(100);
+  in_tensors[2] = &num_segments_t;
+  INFER_OK_WITH_TENSORS(op, "[?,2,3,?,5];[1,2,?];[]", in_tensors,
+                        "[100,d0_3,d0_4]");
+
+  num_segments_t = test::AsScalar(-1);
+  INFER_ERROR_WITH_TENSORS(
+      "num_segments value must be non-negative, but was -1", op, "[3];[3];?",
+      in_tensors);
+}
+
 }  // end namespace tensorflow
