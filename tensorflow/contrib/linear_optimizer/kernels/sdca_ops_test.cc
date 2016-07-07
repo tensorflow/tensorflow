@@ -26,15 +26,27 @@ namespace tensorflow {
 
 namespace {
 
-SessionOptions* GetOptions() {
-  static SessionOptions* options = []() {
-    // We focus on the single thread performance of training ops.
+const SessionOptions* GetSingleThreadedOptions() {
+  static const SessionOptions* const kSessionOptions = []() {
     SessionOptions* const result = new SessionOptions();
     result->config.set_intra_op_parallelism_threads(1);
     result->config.set_inter_op_parallelism_threads(1);
+    result->config.add_session_inter_op_thread_pool()->set_num_threads(1);
     return result;
   }();
-  return options;
+  return kSessionOptions;
+}
+
+const SessionOptions* GetMultiThreadedOptions() {
+  static const SessionOptions* const kSessionOptions = []() {
+    SessionOptions* const result = new SessionOptions();
+    result->config.set_intra_op_parallelism_threads(0);  // Auto-configured.
+    result->config.set_inter_op_parallelism_threads(0);  // Auto-configured.
+    result->config.add_session_inter_op_thread_pool()->set_num_threads(
+        0);  // Auto-configured.
+    return result;
+  }();
+  return kSessionOptions;
 }
 
 Node* Var(Graph* const g, const int n) {
@@ -200,7 +212,7 @@ void BM_SDCA(const int iters, const int num_examples) {
             5 /* sparse features per group */, 20 /* dense features */, &init,
             &train);
   testing::StartTiming();
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetSingleThreadedOptions(), init).Run(iters);
 }
 
 void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
@@ -211,7 +223,7 @@ void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
             1e6 /* sparse features per group */, 0 /* dense features */, &init,
             &train);
   testing::StartTiming();
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetMultiThreadedOptions(), init).Run(iters);
 }
 
 }  // namespace
