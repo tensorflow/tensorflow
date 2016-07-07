@@ -282,6 +282,7 @@ def convolution2d(inputs,
                   kernel_size,
                   stride=1,
                   padding='SAME',
+                  rate=1,
                   activation_fn=nn.relu,
                   normalizer_fn=None,
                   normalizer_params=None,
@@ -304,6 +305,9 @@ def convolution2d(inputs,
   created and added the activations. Finally, if `activation_fn` is not `None`,
   it is applied to the activations as well.
 
+  Performs a'trous convolution with input stride equal to rate if rate is
+  greater than one.
+
   Args:
     inputs: a 4-D tensor  `[batch_size, height, width, channels]`.
     num_outputs: integer, the number of output filters.
@@ -313,6 +317,9 @@ def convolution2d(inputs,
       Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
     padding: one of `VALID` or `SAME`.
+    rate: integer. If less than or equal to 1, a standard convolution is used.
+      If greater than 1, than the a'trous convolution is applied and `stride`
+      must be set to 1.
     activation_fn: activation function.
     normalizer_fn: normalization function to use instead of `biases`. If
       `normalize_fn` is provided then `biases_initializer` and
@@ -334,12 +341,16 @@ def convolution2d(inputs,
   Returns:
     a tensor representing the output of the operation.
 
+  Raises:
+    ValueError: if both 'rate' and `stride` are larger than one.
   """
   with variable_scope.variable_op_scope([inputs],
                                         scope, 'Conv', reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
+    if rate > 1 and (stride_h > 1 or stride_w > 1):
+      raise ValueError('Only one of rate or stride can be larger than one')
     num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
     weights_shape = [kernel_h, kernel_w,
                      num_filters_in, num_outputs]
@@ -352,8 +363,11 @@ def convolution2d(inputs,
                                        regularizer=weights_regularizer,
                                        collections=weights_collections,
                                        trainable=trainable)
-    outputs = nn.conv2d(inputs, weights, [1, stride_h, stride_w, 1],
-                        padding=padding)
+    if rate > 1:
+      outputs = nn.atrous_conv2d(inputs, weights, rate, padding=padding)
+    else:
+      outputs = nn.conv2d(inputs, weights, [1, stride_h, stride_w, 1],
+                          padding=padding)
     if normalizer_fn:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)

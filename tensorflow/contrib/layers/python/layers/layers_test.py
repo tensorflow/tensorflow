@@ -319,6 +319,104 @@ class Convolution2dTest(tf.test.TestCase):
       self.assertEquals(
           len(tf.contrib.framework.get_variables('Conv_1/BatchNorm')), 0)
 
+  def testCreateConvCreatesWeightsAndBiasesVarsWithRateTwo(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    with self.test_session():
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/weights'))
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/biases'))
+      tf.contrib.layers.convolution2d(images, 32, [3, 3], rate=2, scope='conv1')
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/weights'))
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/biases'))
+
+  def testOutputSizeWithRateTwoSamePadding(self):
+    num_filters = 32
+    input_size = [5, 10, 12, 3]
+    expected_size = [5, 10, 12, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters,
+                                             [3, 3], rate=2, padding='SAME')
+    self.assertListEqual(list(output.get_shape().as_list()), expected_size)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
+  def testOutputSizeWithRateTwoValidPadding(self):
+    num_filters = 32
+    input_size = [5, 10, 12, 3]
+    expected_size = [5, 6, 8, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                             rate=2, padding='VALID')
+    self.assertListEqual(list(output.get_shape().as_list()), expected_size)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
+  def testDynamicOutputSizeWithRateOneValidPadding(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [None, None, None, num_filters]
+    expected_size_dynamic = [5, 7, 9, num_filters]
+
+    with self.test_session():
+      images = tf.placeholder(np.float32, [None, None, None, input_size[3]])
+      output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                               rate=1, padding='VALID')
+      tf.initialize_all_variables().run()
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), expected_size)
+      eval_output = output.eval({images: np.zeros(input_size, np.float32)})
+      self.assertListEqual(list(eval_output.shape), expected_size_dynamic)
+
+  def testDynamicOutputSizeWithRateTwoValidPadding(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [None, None, None, num_filters]
+    expected_size_dynamic = [5, 5, 7, num_filters]
+
+    with self.test_session():
+      images = tf.placeholder(np.float32, [None, None, None, input_size[3]])
+      output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                               rate=2, padding='VALID')
+      tf.initialize_all_variables().run()
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), expected_size)
+      eval_output = output.eval({images: np.zeros(input_size, np.float32)})
+      self.assertListEqual(list(eval_output.shape), expected_size_dynamic)
+
+  def testWithScope(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [5, 5, 7, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                             rate=2, padding='VALID',
+                                             scope='conv7')
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'conv7/Relu')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
+  def testWithScopeWithoutActivation(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [5, 5, 7, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                             rate=2, padding='VALID',
+                                             activation_fn=None, scope='conv7')
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'conv7/BiasAdd')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
 
 class DropoutTest(tf.test.TestCase):
 
