@@ -370,7 +370,9 @@ After Docker is installed, launch a Docker container with the TensorFlow binary
 image as follows.
 
 ```bash
-$ docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow
+$ docker run -d -p 8888:8888 --name="tensor" gcr.io/tensorflow/tensorflow
+
+$ docker exec -it tensor bash
 ```
 
 The option `-p 8888:8888` is used to publish the Docker container᾿s internal port to the host machine, in this case to ensure Jupyter notebook connection.
