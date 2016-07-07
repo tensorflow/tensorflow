@@ -243,10 +243,11 @@ Returns predictions for given features.
 
 
 *  <b>`x`</b>: Features. If set, `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x` must be `None`.
-*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
+*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
+    'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
-           If `None`, returns all.
+    If `None`, returns all.
 
 ##### Returns:
 
@@ -539,10 +540,11 @@ Returns predictions for given features.
 
 
 *  <b>`x`</b>: Features. If set, `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x` must be `None`.
-*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
+*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
+    'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
-           If `None`, returns all.
+    If `None`, returns all.
 
 ##### Returns:
 
