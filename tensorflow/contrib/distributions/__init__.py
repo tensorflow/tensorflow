@@ -21,9 +21,7 @@ initialized with parameters that define the distributions.
 
 ### Base classes
 
-@@BaseDistribution
-@@ContinuousDistribution
-@@DiscreteDistribution
+@@Distribution
 
 ### Univariate (scalar) distributions
 
@@ -49,7 +47,7 @@ initialized with parameters that define the distributions.
 
 ### Transformed distributions
 
-@@ContinuousTransformedDistribution
+@@TransformedDistribution
 
 ## Operators allowing for matrix-free methods
 

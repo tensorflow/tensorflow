@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,7 +43,6 @@ import threading
 
 import six
 
-from tensorflow.contrib import distributions
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -383,8 +382,7 @@ class DistributionTensor(StochasticTensor):
 
     if isinstance(self._value_type, MeanValue):
       return value_tensor  # Using pathwise-derivative for this one.
-    if (isinstance(self._dist, distributions.ContinuousDistribution)
-        and self._dist.is_reparameterized):
+    if self._dist.is_continuous and self._dist.is_reparameterized:
       return value_tensor  # Using pathwise-derivative for this one.
     else:
       # Will have to perform some variant of score function
@@ -416,17 +414,16 @@ class DistributionTensor(StochasticTensor):
   def surrogate_loss(self, losses, name=None):
     # Return a loss term based on losses and the distribution.  Return
     # None if pathwise derivatives are supported
-    if (isinstance(self._dist, distributions.ContinuousDistribution)
-        and self._dist.is_reparameterized):
+    if self._dist.is_continuous and self._dist.is_reparameterized:
       # Can perform pathwise-derivative on this one; no surrogate loss needed.
       return None
 
     with ops.op_scope(losses, name, "DistributionSurrogateLoss"):
       if isinstance(self._value_type, SampleAndReshapeValue):
         # TODO(ebrevdo): use add_n instead of sum(losses) if shapes all match?
-        return self._dist.log_likelihood(self._value) * sum(losses)
+        return self._dist.log_prob(self._value) * sum(losses)
       elif isinstance(self._value_type, SampleValue):
-        return self._dist.log_likelihood(self._value) * sum(losses)
+        return self._dist.log_prob(self._value) * sum(losses)
       elif isinstance(self._value_type, MeanValue):
         return None  # MeanValue generally provides its own gradient
       else:

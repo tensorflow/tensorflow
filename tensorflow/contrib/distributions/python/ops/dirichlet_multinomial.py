@@ -58,7 +58,7 @@ def _log_combinations(n, counts, name='log_combinations'):
     return total_permutations - redundant_permutations
 
 
-class DirichletMultinomial(distribution.DiscreteDistribution):
+class DirichletMultinomial(distribution.Distribution):
   """DirichletMultinomial mixture distribution.
 
   This distribution is parameterized by a vector `alpha` of concentration
@@ -152,7 +152,7 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
         but are only a distribution over non-negative integers.  If `strict` is
         `False`, this assertion is turned off.
       strict: Whether to assert valid values for parameters `alpha` and `n`, and
-        `x` in `pmf` and `log_pmf`.  If False, correct behavior is not
+        `x` in `prob` and `log_prob`.  If False, correct behavior is not
         guaranteed.
       strict_statistics:  Boolean, default True.  If True, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
@@ -294,7 +294,7 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
     raise NotImplementedError(
         'DirichletMultinomial does not have a well-defined cdf.')
 
-  def log_pmf(self, counts, name='log_pmf'):
+  def log_prob(self, counts, name='log_prob'):
     """`Log(P[counts])`, computed for every batch member.
 
     For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
@@ -310,7 +310,7 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
         distribution in `self.alpha`. `counts` is only legal if it sums up to
         `n` and its components are equal to integral values. The second
         condition is relaxed if `allow_arbitrary_counts` is set.
-      name:  Name to give this Op, defaults to "log_pmf".
+      name:  Name to give this Op, defaults to "log_prob".
 
     Returns:
       Log probabilities for each record, shape `[N1,...,Nn]`.
@@ -323,22 +323,22 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
         # Use the same dtype as alpha for computations.
         counts = math_ops.cast(counts, self.dtype)
 
-        ordered_pmf = (special_math_ops.lbeta(alpha + counts) -
-                       special_math_ops.lbeta(alpha))
-        log_pmf = ordered_pmf + _log_combinations(n, counts)
-        # If alpha = counts = [[]], ordered_pmf carries the right shape, which
+        ordered_prob = (special_math_ops.lbeta(alpha + counts) -
+                        special_math_ops.lbeta(alpha))
+        log_prob = ordered_prob + _log_combinations(n, counts)
+        # If alpha = counts = [[]], ordered_prob carries the right shape, which
         # is [].  However, since reduce_sum([[]]) = [0], log_combinations = [0],
         # which is not correct.  Luckily, [] + [0] = [], so the sum is fine, but
-        # shape must be inferred from ordered_pmf. We must also make this
+        # shape must be inferred from ordered_prob. We must also make this
         # broadcastable with n, so this is multiplied by n to ensure the shape
         # is correctly inferred.
         # Note also that tf.constant([]).get_shape() =
         # TensorShape([Dimension(0)])
-        broadcasted_tensor = ordered_pmf * n
-        log_pmf.set_shape(broadcasted_tensor.get_shape())
-        return log_pmf
+        broadcasted_tensor = ordered_prob * n
+        log_prob.set_shape(broadcasted_tensor.get_shape())
+        return log_prob
 
-  def pmf(self, counts, name='pmf'):
+  def prob(self, counts, name='prob'):
     """`P[counts]`, computed for every batch member.
 
     For each batch of counts `[c_1,...,c_k]`, `P[counts]` is the probability
@@ -354,12 +354,12 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
         distribution in `self.alpha`. `counts` is only legal if it sums up to
         `n` and its components are equal to integral values. The second
         condition is relaxed if `allow_arbitrary_counts` is set.
-      name:  Name to give this Op, defaults to "pmf".
+      name:  Name to give this Op, defaults to "prob".
 
     Returns:
       Probabilities for each record, shape `[N1,...,Nn]`.
     """
-    return super(DirichletMultinomial, self).pmf(counts, name=name)
+    return super(DirichletMultinomial, self).prob(counts, name=name)
 
   def _check_counts(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
@@ -390,3 +390,11 @@ class DirichletMultinomial(distribution.DiscreteDistribution):
       return n
     return control_flow_ops.with_dependencies(
         [check_ops.assert_non_negative(n), _assert_integer_form(n)], n)
+
+  @property
+  def is_continuous(self):
+    return False
+
+  @property
+  def is_reparameterized(self):
+    return False

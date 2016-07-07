@@ -33,7 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-class Gamma(distribution.ContinuousDistribution):
+class Gamma(distribution.Distribution):
   """The `Gamma` distribution with parameter alpha and beta.
 
   The parameters are the shape and inverse scale parameters alpha, beta.
@@ -72,7 +72,7 @@ class Gamma(distribution.ContinuousDistribution):
         distribution(s).
         beta must contain only positive values.
       strict: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-        methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+        methods `prob(x)` and `log_prob(x)`.  If `strict` is False
         and the inputs are invalid, correct behavior is not guaranteed.
       strict_statistics:  Boolean, default True.  If True, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
@@ -226,15 +226,15 @@ class Gamma(distribution.ContinuousDistribution):
       with ops.op_scope([self._alpha, self._beta], name):
         return math_ops.sqrt(self._alpha) / self._beta
 
-  def log_pdf(self, x, name="log_pdf"):
-    """Log pdf of observations in `x` under these Gamma distribution(s).
+  def log_prob(self, x, name="log_prob"):
+    """Log prob of observations in `x` under these Gamma distribution(s).
 
     Args:
       x: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
       name: The name to give this op.
 
     Returns:
-      log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
+      log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
 
     Raises:
       TypeError: if `x` and `alpha` are different dtypes.
@@ -253,7 +253,7 @@ class Gamma(distribution.ContinuousDistribution):
         return (alpha * math_ops.log(beta) + (alpha - 1) * math_ops.log(x) -
                 beta * x - math_ops.lgamma(self._alpha))
 
-  def pdf(self, x, name="pdf"):
+  def prob(self, x, name="prob"):
     """Pdf of observations in `x` under these Gamma distribution(s).
 
     Args:
@@ -261,14 +261,12 @@ class Gamma(distribution.ContinuousDistribution):
       name: The name to give this op.
 
     Returns:
-      pdf: tensor of dtype `dtype`, the PDFs of `x`
+      prob: tensor of dtype `dtype`, the PDFs of `x`
 
     Raises:
       TypeError: if `x` and `alpha` are different dtypes.
     """
-    with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return math_ops.exp(self.log_pdf(x))
+    return super(Gamma, self).prob(x, name)
 
   def log_cdf(self, x, name="log_cdf"):
     """Log CDF of observations `x` under these Gamma distribution(s).
@@ -360,3 +358,7 @@ class Gamma(distribution.ContinuousDistribution):
 
   def _ones(self):
     return array_ops.ones_like(self._alpha + self._beta, dtype=self.dtype)
+
+  @property
+  def is_continuous(self):
+    return True

@@ -32,7 +32,7 @@ class Exponential(gamma.Gamma):
 
   The PDF of this distribution is:
 
-  ```pdf(x) = (lam * e^(-lam * x)), x > 0```
+  ```prob(x) = (lam * e^(-lam * x)), x > 0```
 
   Note that the Exponential distribution is a special case of the Gamma
   distribution, with Exponential(lam) = Gamma(1, lam).
@@ -46,7 +46,7 @@ class Exponential(gamma.Gamma):
       lam: `float` or `double` tensor, the rate of the distribution(s).
         `lam` must contain only positive values.
       strict: Whether to assert that `lam > 0`, and that `x > 0` in the
-        methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+        methods `prob(x)` and `log_prob(x)`.  If `strict` is False
         and the inputs are invalid, correct behavior is not guaranteed.
       strict_statistics:  Boolean, default True.  If True, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.

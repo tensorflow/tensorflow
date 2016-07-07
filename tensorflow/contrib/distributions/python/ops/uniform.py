@@ -20,8 +20,8 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,7 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-class Uniform(distribution.ContinuousDistribution):
+class Uniform(distribution.Distribution):
   """Uniform distribution with `a` and `b` parameters.
 
   The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
@@ -134,7 +134,7 @@ class Uniform(distribution.ContinuousDistribution):
   def b(self):
     return self._b
 
-  def pdf(self, x, name="pdf"):
+  def prob(self, x, name="prob"):
     """The PDF of observations in `x` under these Uniform distribution(s).
 
     Args:
@@ -142,8 +142,8 @@ class Uniform(distribution.ContinuousDistribution):
       name: The name to give this op.
 
     Returns:
-      pdf: tensor of dtype `dtype`, the pdf values of `x`. If `x` is `nan`, will
-          return `nan`.
+      prob: tensor of dtype `dtype`, the prob values of `x`. If `x` is `nan`,
+          will return `nan`.
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self.a, self.b, x], name):
@@ -160,8 +160,8 @@ class Uniform(distribution.ContinuousDistribution):
                 array_ops.zeros_like(broadcasted_x),
                 (1.0 / self.range()) * array_ops.ones_like(broadcasted_x)))
 
-  def log_pdf(self, x, name="log_pdf"):
-    return super(Uniform, self).log_pdf(x, name)
+  def log_prob(self, x, name="log_prob"):
+    return super(Uniform, self).log_prob(x, name)
 
   def cdf(self, x, name="cdf"):
     """CDF of observations in `x` under these Uniform distribution(s).
@@ -269,3 +269,7 @@ class Uniform(distribution.ContinuousDistribution):
 
   def _zeros(self):
     return array_ops.zeros_like(self.a + self.b)
+
+  @property
+  def is_continuous(self):
+    return True

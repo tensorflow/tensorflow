@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
-class Bernoulli(distribution.DiscreteDistribution):
+class Bernoulli(distribution.Distribution):
   """Bernoulli distribution.
 
   The Bernoulli distribution is parameterized by p, the probability of a
@@ -145,7 +145,7 @@ class Bernoulli(distribution.DiscreteDistribution):
     """1-p."""
     return self._q
 
-  def pmf(self, event, name="pmf"):
+  def prob(self, event, name="prob"):
     """Probability mass function.
 
     Args:
@@ -155,9 +155,9 @@ class Bernoulli(distribution.DiscreteDistribution):
     Returns:
       The probabilities of the events.
     """
-    return super(Bernoulli, self).pmf(event, name)
+    return super(Bernoulli, self).prob(event, name)
 
-  def log_pmf(self, event, name="log_pmf"):
+  def log_prob(self, event, name="log_prob"):
     """Log of the probability mass function.
 
     Args:
@@ -169,7 +169,6 @@ class Bernoulli(distribution.DiscreteDistribution):
     """
     # TODO(jaana): The current sigmoid_cross_entropy_with_logits has
     # inconsistent  behavior for logits = inf/-inf.
-
     with ops.name_scope(self.name):
       with ops.op_scope([self.logits, event], name):
         event = ops.convert_to_tensor(event, name="event")
@@ -271,3 +270,7 @@ class Bernoulli(distribution.DiscreteDistribution):
     with ops.name_scope(self.name):
       with ops.name_scope(name):
         return math_ops.sqrt(self.variance())
+
+  @property
+  def is_continuous(self):
+    return False
