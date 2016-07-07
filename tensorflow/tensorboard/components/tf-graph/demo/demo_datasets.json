@@ -106,6 +106,7 @@
     "path": "wolfe2.pbtxt"
   },
   {
+    "id": "alex",
     "name": "AlexNet",
     "path": "alexnet.pbtxt"
   },

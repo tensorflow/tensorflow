@@ -94,12 +94,15 @@ Polymer({
     },
     selectedDataset: {
       type: Number,
-      value: 1 // Mnist with metadata info.
+      value: 0
     },
     _renderHierarchy: Object,
     _progress: Object
   },
   created: function() {
+    let queryParams = tf.graph.util.getQueryParams(location.search);
+    let selectedDataset = 0;
+
     if(typeof DEMO_DATASETS === 'undefined') {
       DEMO_DATASETS = 'demo_datasets.json';
     }
@@ -113,7 +116,11 @@ Polymer({
         if(typeof DEMO_DIR_PREFIX === 'undefined') {
           DEMO_DIR_PREFIX = 'tf_model_zoo/';
         }
-        _.each(datasets, function(dataset) {
+        _.each(datasets, function(dataset, index) {
+          if (queryParams['graphid'] && dataset.id == queryParams['graphid']) {
+            selectedDataset = index;
+          }
+
           dataset.path = this._normalizePath(dataset.path);
           if (dataset.runMetadata != null) {
             _.each(dataset.runMetadata, function(metadata) {
@@ -122,6 +129,9 @@ Polymer({
           }
         }, this);
         this.set('datasets', datasets);
+        if (selectedDataset != 0) {
+          this.set('selectedDataset', selectedDataset);
+        }
     }.bind(this));
   },
   _normalizePath: function(path) {
