@@ -317,10 +317,11 @@ class BaseEstimator(sklearn.BaseEstimator):
 
     Args:
       x: Features. If set, `input_fn` must be `None`.
-      input_fn: Input function. If set, `x` must be `None`.
-      batch_size: Override default batch size.
+      input_fn: Input function. If set, `x` and 'batch_size' must be `None`.
+      batch_size: Override default batch size. If set, 'input_fn' must be
+        'None'.
       outputs: list of `str`, name of the output to predict.
-               If `None`, returns all.
+        If `None`, returns all.
 
     Returns:
       Numpy array of predicted classes or regression values.
