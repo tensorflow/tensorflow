@@ -10266,6 +10266,7 @@ op {
     type: "type"
   }
   summary: "Return the same ref tensor as the input ref tensor."
+  allows_uninitialized_input: true
 }
 op {
   name: "RefMerge"
