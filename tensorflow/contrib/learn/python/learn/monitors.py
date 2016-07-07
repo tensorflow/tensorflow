@@ -535,7 +535,7 @@ class ExportMonitor(EveryN):
 
     Args:
       every_n_steps: Run monitor every N steps.
-      export_dir: str, fodler to export.
+      export_dir: str, folder to export.
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that given `Tensor` of `Example` strings,
         `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
