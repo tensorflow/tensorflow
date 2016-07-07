@@ -800,6 +800,7 @@ REGISTER_OP("RefIdentity")
     .Output("output: Ref(T)")
     .Attr("T: type")
     .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
+    .SetAllowsUninitializedInput()
     .Doc(R"Doc(
 Return the same ref tensor as the input ref tensor.
 )Doc");
