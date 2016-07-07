@@ -573,6 +573,112 @@ class BatchTest(tf.test.TestCase):
       for thread in threads:
         thread.join()
 
+  def testOneThreadSmallerBatch(self):
+    with self.test_session() as sess:
+      batch_size = 10
+      num_batches = 3
+      extra_elements = 5
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size + extra_elements)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.reshape(tf.pack([zero64, zero64 + 1]), [2, 1]),
+          values=tf.cast(tf.pack([counter, -counter]), tf.float32),
+          shape=[2])
+      batched = tf.train.batch(
+          [counter, sparse_counter, "string"], batch_size=batch_size,
+          allow_smaller_final_batch=True)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      for i in range(num_batches):
+        results = sess.run(batched)
+        self.assertAllEqual(results[0], np.arange(i * batch_size,
+                                                  (i + 1) * batch_size))
+        self.assertAllEqual(
+            results[1].indices,
+            np.vstack((np.arange(2 * batch_size) // 2,  # 0, 0, 1, 1, ...
+                       [0, 1] * batch_size)).T)
+        #  [x, -x, x+1, -(x+1), ...]
+        expected = np.arange(2 * i * batch_size, 2 * (i + 1) * batch_size) // 2
+        expected *= ([1, -1] * batch_size)  # mult by [1, -1, 1, -1, ...]
+        self.assertAllEqual(results[1].values, expected)
+        self.assertAllEqual(results[1].shape, [batch_size, 2])
+        self.assertAllEqual(results[2], [b"string"] * batch_size)
+
+      # Reached the final batch with extra_elements.
+      results = sess.run(batched)
+      self.assertAllEqual(results[0],
+                          np.arange(num_batches * batch_size,
+                                    num_batches * batch_size + extra_elements))
+      self.assertAllEqual(
+          results[1].indices,
+          np.vstack((np.arange(2 * extra_elements) // 2,  # 0, 0, 1, 1, ...
+                     [0, 1] * extra_elements)).T)
+      self.assertAllEqual(results[1].shape, [extra_elements, 2])
+      self.assertAllEqual(results[2], [b"string"] * extra_elements)
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testManyThreasdSmallerBatch(self):
+    with self.test_session() as sess:
+      batch_size = 10
+      num_batches = 3
+      extra_elements = 5
+      zero64 = tf.constant(0, dtype=tf.int64)
+
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_batches * batch_size + extra_elements)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.reshape(zero64, [1, 1]),
+          values=tf.pack([tf.cast(counter, tf.float32)]),
+          shape=[1])
+      batched = tf.train.batch(
+          [counter, sparse_counter, "string"],
+          batch_size=batch_size, num_threads=4, allow_smaller_final_batch=True)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      all_counts = []
+      for i in range(num_batches):
+        results = sess.run(batched)
+        tf.logging.info("Batch %d: %s", i, results[0])
+        self.assertEqual(len(results[0]), batch_size)
+        self.assertAllEqual(results[0], results[1].values)
+        self.assertAllEqual(
+            results[1].indices,
+            np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
+        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        all_counts.extend(results[0])
+        self.assertAllEqual(results[2], [b"string"] * batch_size)
+      self.assertItemsEqual(all_counts, range(num_batches * batch_size))
+
+      # Reached the final batch with extra_elements.
+      results = sess.run(batched)
+      tf.logging.info("Last Batch: %s", results[0])
+      self.assertEqual(len(results[0]), extra_elements)
+      self.assertAllEqual(results[0], results[1].values)
+      self.assertAllEqual(
+          results[1].indices,
+          np.vstack((np.arange(extra_elements), np.zeros(extra_elements))).T)
+      self.assertAllEqual(results[1].shape, [extra_elements, 1])
+      all_counts.extend(results[0])
+      self.assertAllEqual(results[2], [b"string"] * extra_elements)
+      self.assertItemsEqual(all_counts,
+                            range(num_batches * batch_size + extra_elements))
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
   def testSharedName(self):
     with self.test_session():
       batch_size = 10
@@ -769,6 +875,181 @@ class BatchJoinTest(tf.test.TestCase):
         seen_b += len(which_b)
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
+
+      # Some minimum level of mixing of the results of both threads.
+      self.assertGreater(saw_both, 1)
+
+      # Verify the order of results from "a" were preserved.
+      self.assertAllEqual(  # tiled "a" with counter + 1
+          count_string_a, np.arange(num_a) + 1)
+      self.assertAllEqual(all_a, np.arange(num_a))
+      self.assertEqual(seen_b, num_b)
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testTwoThreadsSmallerBatch(self):
+    with self.test_session() as sess:
+      extra_elements = 2
+      batch_size = 5
+      # Two threads, the first generates (0..69, "a").
+      num_a = 70 + extra_elements
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_a)
+      sparse_counter = tf.SparseTensor(
+          indices=tf.reshape(zero64, [1, 1]),
+          values=tf.pack([tf.cast(counter, tf.float32)]),
+          shape=[1])
+
+      # The second generates (99, "b") 90 times and then stops.
+      num_b = 90 + extra_elements
+      ninety_nine = tf.train.limit_epochs(
+          tf.constant(99, dtype=tf.int64), num_b)
+      sparse_ninety_nine = tf.SparseTensor(
+          indices=tf.reshape(zero64, [1, 1]),
+          values=tf.pack([tf.cast(ninety_nine, tf.float32)]),
+          shape=[1])
+
+      # These get joined together and grouped into batches of 5.
+      batch_size = 5
+      batched = tf.train.batch_join(
+          [[counter, sparse_counter, "a"],
+           [ninety_nine, sparse_ninety_nine, "b"]],
+          batch_size=batch_size,
+          allow_smaller_final_batch=True)
+
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      # Should see the "a" and "b" threads mixed together.
+      all_a = []
+      seen_b = 0
+      saw_both = 0
+      num_batches = (num_a + num_b) // batch_size
+      for i in range(num_batches):
+        results = sess.run(batched)
+        tf.logging.info("Batch %d: %s", i, results[0])
+        self.assertEqual(len(results[0]), batch_size)
+        self.assertEqual(len(results[2]), batch_size)
+        self.assertAllEqual(results[0], results[1].values)
+        self.assertAllEqual(
+            results[1].indices,
+            np.vstack((np.arange(batch_size), np.zeros(batch_size))).T)
+        self.assertAllEqual(results[1].shape, [batch_size, 1])
+        which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
+        which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
+        self.assertEqual(len(which_a) + len(which_b), batch_size)
+        if which_a and which_b: saw_both += 1
+        all_a.extend([results[0][i] for i in which_a])
+        seen_b += len(which_b)
+        self.assertAllEqual([99] * len(which_b),
+                            [results[0][i] for i in which_b])
+
+      # Reached the final batch with 2 * extra_elements.
+      results = sess.run(batched)
+      tf.logging.info("Last Batch: %s", results[0])
+      self.assertEqual(len(results[0]), 2 * extra_elements)
+      self.assertEqual(len(results[2]), 2 * extra_elements)
+      self.assertAllEqual(results[0], results[1].values)
+      self.assertAllEqual(
+          results[1].indices,
+          np.vstack((np.arange(2 * extra_elements),
+                     np.zeros(2 * extra_elements))).T)
+      self.assertAllEqual(results[1].shape, [2 * extra_elements, 1])
+      which_a = [i for i, s in enumerate(results[2]) if s == b"a"]
+      which_b = [i for i, s in enumerate(results[2]) if s == b"b"]
+      self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
+      if which_a and which_b: saw_both += 1
+      all_a.extend([results[0][i] for i in which_a])
+      seen_b += len(which_b)
+
+      # Some minimum level of mixing of the results of both threads.
+      self.assertGreater(saw_both, 1)
+
+      # Verify the order of results from "a" were preserved.
+      self.assertAllEqual(all_a, np.arange(num_a))
+      self.assertEqual(seen_b, num_b)
+
+      # Reached the limit.
+      with self.assertRaises(tf.errors.OutOfRangeError):
+        sess.run(batched)
+      for thread in threads:
+        thread.join()
+
+  def testTwoThreadsDynamicPadSmallerBatch(self):
+    with self.test_session() as sess:
+      extra_elements = 2
+      # Two threads, the first generates (0..69, ["a"] * 1..70).
+      num_a = 70 + extra_elements
+      zero64 = tf.constant(0, dtype=tf.int64)
+      examples = tf.Variable(zero64)
+      counter = examples.count_up_to(num_a)
+
+      # The second generates (99, ["b"] * 99) 90 times and then stops.
+      num_b = 90 + extra_elements
+      ninety_nine = tf.train.limit_epochs(
+          tf.constant(99, dtype=tf.int64), num_b)
+
+      # These get joined together and grouped into batches of 5.
+      batch_size = 5
+      a = tf.tile(["a"], tf.to_int32(tf.pack([counter + 1])))
+      b = tf.tile(["b"], tf.to_int32(tf.pack([ninety_nine])))
+      batched = tf.train.batch_join(
+          [[counter, a],
+           [ninety_nine, b]],
+          batch_size=batch_size,
+          dynamic_pad=True,
+          allow_smaller_final_batch=True)
+      tf.initialize_all_variables().run()
+      tf.initialize_local_variables().run()
+      threads = tf.train.start_queue_runners()
+
+      # Should see the "a" and "b" threads mixed together.
+      all_a = []
+      count_string_a = []
+      seen_b = 0
+      saw_both = 0
+      num_batches = (num_a + num_b) // batch_size
+      for i in range(num_batches):
+        results = sess.run(batched)
+        tf.logging.info("Batch %d: %s", i, results[0])
+        self.assertEqual(len(results[0]), batch_size)
+        self.assertEqual(len(results[1]), batch_size)
+        for s in results[1]:
+          if s[0] == b"b":
+            self.assertAllEqual(s, [b"b"] * 99)
+          else:
+            count_string_a.append(sum(x == b"a" for x in s))
+        which_a = [i for i, s in enumerate(results[1]) if s[0] == b"a"]
+        which_b = [i for i, s in enumerate(results[1]) if s[0] == b"b"]
+        self.assertEqual(len(which_a) + len(which_b), batch_size)
+        if which_a and which_b: saw_both += 1
+        all_a.extend([results[0][i] for i in which_a])
+        seen_b += len(which_b)
+        self.assertAllEqual([99] * len(which_b),
+                            [results[0][i] for i in which_b])
+
+      # Reached the final batch with 2 * extra_elements.
+      results = sess.run(batched)
+      tf.logging.info("Last Batch: %s", results[0])
+      self.assertEqual(len(results[0]), 2 * extra_elements)
+      self.assertEqual(len(results[1]), 2 * extra_elements)
+      for s in results[1]:
+        if s[0] == b"b":
+          self.assertAllEqual(s, [b"b"] * 99)
+        else:
+          count_string_a.append(sum(x == b"a" for x in s))
+      which_a = [i for i, s in enumerate(results[1]) if s[0] == b"a"]
+      which_b = [i for i, s in enumerate(results[1]) if s[0] == b"b"]
+      self.assertEqual(len(which_a) + len(which_b), 2 * extra_elements)
+      if which_a and which_b: saw_both += 1
+      all_a.extend([results[0][i] for i in which_a])
+      seen_b += len(which_b)
 
       # Some minimum level of mixing of the results of both threads.
       self.assertGreater(saw_both, 1)
