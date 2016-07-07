@@ -75,6 +75,7 @@ import abc
 import collections
 import math
 
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import embedding_ops
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
@@ -85,10 +86,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.ops import variables
 
 
 class _FeatureColumn(object):
@@ -732,20 +732,13 @@ class _HashedEmbeddingColumn(collections.namedtuple(
                          input_tensor,
                          weight_collections=None,
                          trainable=True):
-    # Same heuristic for the number of shards as _max_size_embedding_partitioner
-    max_shard_bytes = (64 << 20) - 1
-    shards = self.size * 4.0  / max_shard_bytes
-    shards = max(1, int(math.ceil(shards)))
-
-    embeddings = partitioned_variables.create_partitioned_variables(
+    embeddings = _create_embeddings(
+        name=self.name + "_weights",
         shape=[self.size],
-        slicing=[shards],
         initializer=self.initializer,
         dtype=dtypes.float32,
-        collections=_add_variable_collection(weight_collections),
-        name=self.name + "_weights",
-        reuse=False,
-        trainable=trainable)
+        trainable=trainable,
+        weight_collections=_add_variable_collection(weight_collections))
 
     return embedding_ops.hashed_embedding_lookup_sparse(
         embeddings, input_tensor, self.dimension, name=self.name + "_lookup")
@@ -1386,30 +1379,46 @@ def _add_variable_collection(weight_collections):
   return weight_collections
 
 
-def _max_size_embedding_partitioner(max_shard_bytes=(64 << 20) - 1):
-  """Partitioner based on max size.
+def _create_embeddings(name, shape, dtype, initializer, trainable,
+                       weight_collections):
+  """Creates embedding variable.
+
+  If called within the scope of a partitioner, will partition the variable and
+  return a list of `tf.Variable`. If no partitioner is specified, returns a list
+  with just one variable.
 
   Args:
-    max_shard_bytes: max shard bytes.
+    name: A string specifying the name of the embedding variable.
+    shape: shape of the embeddding. Note this is not the shape of partitioned
+      variables.
+    dtype: type of the embedding. Also the shape of each partitioned variable.
+    initializer: A variable initializer function to be used in embedding
+      variable initialization.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    weight_collections: List of graph collections to which embedding variables
+      are added.
 
   Returns:
-    partitioner
-  """
-  # max_shard_bytes defaults to ~64MB to keep below open sourced proto buffer
-  # size limit.
-  # TODO(zakaria): b/28274688 might cause low performance if there are too many
-  #   partitions. Consider higher size, possily based on ps shards if the bug is
-  #   not fixed.
-  # TODO(zakaria): Use a better heuristic based on vocab size and upper/lower
-  #   bound. Partitioning only at over 16M vicab_size is suboptimal for most
-  #   cases.
-  def partitioner(vocab_size, embed_dim):
-    total_size = 1.0 * vocab_size * embed_dim * 4  # 4 bytes for float32
-    shards = total_size / max_shard_bytes
-    shards = min(vocab_size, max(1, int(math.ceil(shards))))
-    return [shards, 1]
+    A list of `tf.Variable` containing the partitioned embeddings.
 
-  return partitioner
+  Raises:
+    ValueError: If initializer is None or not callable.
+  """
+  if not initializer:
+    raise ValueError("initializer must be defined.")
+  if not callable(initializer):
+    raise ValueError("initializer must be callable.")
+  embeddings = contrib_variables.model_variable(name=name,
+                                                shape=shape,
+                                                dtype=dtype,
+                                                initializer=initializer,
+                                                trainable=trainable,
+                                                collections=weight_collections)
+  if isinstance(embeddings, variables.Variable):
+    return [embeddings]
+  else:  # Else it should be of type `_PartitionedVariable`.
+    return embeddings._get_variable_list()  # pylint: disable=protected-access
 
 
 def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
@@ -1439,27 +1448,14 @@ def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
 
   Returns:
     A Tensor with shape [batch_size, dimension] and embedding Variable.
-
-  Raises:
-    ValueError: If initializer is None or not callable.
   """
-  slicing = _max_size_embedding_partitioner()(vocab_size, dimension)
-  logging.info("Slicing=%s for name=%s, vocab_size=%d, embed_dim=%d",
-               str(slicing), name, vocab_size, dimension)
-  if not initializer:
-    raise ValueError("initializer must be defined.")
-  if not callable(initializer):
-    raise ValueError("initializer must be callable.")
-  embeddings = partitioned_variables.create_partitioned_variables(
-      shape=[vocab_size, dimension],
-      slicing=slicing,
-      initializer=initializer,
-      dtype=dtypes.float32,
-      collections=weight_collections,
-      name=name,
-      reuse=False,
-      trainable=trainable)
 
+  embeddings = _create_embeddings(name=name,
+                                  shape=[vocab_size, dimension],
+                                  dtype=dtypes.float32,
+                                  initializer=initializer,
+                                  trainable=trainable,
+                                  weight_collections=weight_collections)
   return embedding_ops.safe_embedding_lookup_sparse(
       embeddings,
       input_tensor,

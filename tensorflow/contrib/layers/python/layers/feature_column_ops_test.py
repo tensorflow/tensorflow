@@ -867,10 +867,16 @@ class WeightedSumTest(tf.test.TestCase):
                                      indices=[[0, 0], [0, 1]],
                                      shape=[1, 2])
       }
-      output, column_to_variable, _ = (
-          tf.contrib.layers.weighted_sum_from_feature_columns(
-              features, [country, language, country_language],
-              num_outputs=1))
+      with tf.variable_op_scope(
+          features.values(),
+          "weighted_sum_from_feature_columns",
+          partitioner=tf.min_max_variable_partitioner(
+              max_partitions=10, min_slice_size=((64 << 20) - 1))) as scope:
+        output, column_to_variable, _ = (
+            tf.contrib.layers.weighted_sum_from_feature_columns(
+                features, [country, language, country_language],
+                num_outputs=1,
+                scope=scope))
       with self.test_session() as sess:
         tf.initialize_all_variables().run()
         tf.initialize_all_tables().run()

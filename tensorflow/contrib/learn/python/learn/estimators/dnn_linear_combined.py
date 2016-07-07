@@ -77,7 +77,7 @@ class _ComposableModel(object):
     self._optimizer = optimizer
     self._weight_collection_name = weight_collection_name
     self._gradient_clip_norm = gradient_clip_norm
-    self._feature_columns=None
+    self._feature_columns = None
 
   def build_model(self, features, feature_columns, is_training):
     """Builds the model that can calculate the logits.
@@ -152,7 +152,8 @@ class _LinearComposableModel(_ComposableModel):
   def __init__(self,
                num_label_columns,
                optimizer=None,
-               gradient_clip_norm=None):
+               gradient_clip_norm=None,
+               config=None):
     """Initializes _LinearComposableModel objects.
 
     Args:
@@ -162,24 +163,32 @@ class _LinearComposableModel(_ComposableModel):
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
+      config: RunConfig object to configure the runtime settings.
     """
     super(_LinearComposableModel, self).__init__(
         num_label_columns=num_label_columns,
         optimizer=optimizer,
         weight_collection_name="linear",
         gradient_clip_norm=gradient_clip_norm)
+    self._config = config
 
   def build_model(self, features, feature_columns, is_training):
     """See base class."""
     features = self._get_feature_dict(features)
     self._feature_columns = feature_columns
 
-    logits, _, _ = layers.weighted_sum_from_feature_columns(
-        columns_to_tensors=features,
-        feature_columns=self._get_feature_columns(),
-        num_outputs=self._num_label_columns,
-        weight_collections=[self._weight_collection_name],
-        name="linear")
+    with variable_scope.variable_op_scope(
+        features.values(),
+        "linear",
+        partitioner=partitioned_variables.min_max_variable_partitioner(
+            max_partitions=self._config.num_ps_replicas,
+            min_slice_size=64 << 20)) as scope:
+      logits, _, _ = layers.weighted_sum_from_feature_columns(
+          columns_to_tensors=features,
+          feature_columns=self._get_feature_columns(),
+          num_outputs=self._num_label_columns,
+          weight_collections=[self._weight_collection_name],
+          scope=scope)
     return logits
 
   def _get_default_optimizer(self, optimizer_name=None):
@@ -244,10 +253,17 @@ class _DNNComposableModel(_ComposableModel):
     features = self._get_feature_dict(features)
     self._feature_columns = feature_columns
 
-    net = layers.input_from_feature_columns(
-        features,
-        self._get_feature_columns(),
-        weight_collections=[self._weight_collection_name])
+    with variable_scope.variable_op_scope(
+        features.values(),
+        "input_from_feature_columns",
+        partitioner=partitioned_variables.min_max_variable_partitioner(
+            max_partitions=self._config.num_ps_replicas,
+            min_slice_size=64 << 20)) as scope:
+      net = layers.input_from_feature_columns(
+          features,
+          self._get_feature_columns(),
+          weight_collections=[self._weight_collection_name],
+          scope=scope)
     for layer_id, num_hidden_units in enumerate(self._hidden_units):
       with variable_scope.variable_op_scope(
           [net], "hiddenlayer_%d" % layer_id,
@@ -350,7 +366,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._linear_model = _LinearComposableModel(
         num_label_columns=target_column.num_label_columns,
         optimizer=linear_optimizer,
-        gradient_clip_norm=gradient_clip_norm)
+        gradient_clip_norm=gradient_clip_norm,
+        config=self._config)
 
     self._dnn_model = _DNNComposableModel(
         num_label_columns=target_column.num_label_columns,
