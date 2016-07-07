@@ -192,7 +192,7 @@ typedef struct TF_Tensor TF_Tensor;
 //      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
-extern TF_Tensor* TF_NewTensor(TF_DataType, long long* dims, int num_dims,
+extern TF_Tensor* TF_NewTensor(TF_DataType, const long long* dims, int num_dims,
                                void* data, size_t len,
                                void (*deallocator)(void* data, size_t len,
                                                    void* arg),
