@@ -651,17 +651,16 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, ignore_mask=None):
 
 
 def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
-                  curve='ROC', metrics_collections=None,
-                  updates_collections=None, name=None):
+                  metrics_collections=None, updates_collections=None,
+                  name=None):
   """Computes the approximate AUC via a Riemann sum.
 
   The `streaming_auc` function creates four local variables, `true_positives`,
   `true_negatives`, `false_positives` and `false_negatives` that are used to
   compute the AUC. To discretize the AUC curve, a linearly spaced set of
   thresholds is used to compute pairs of recall and precision values. The area
-  under the ROC-curve is therefore computed using the height of the recall
-  values by the false positive rate, while the area under the PR-curve is the
-  computed using the height of the precision values by the recall.
+  under the curve is therefore computed using the height of the recall values
+  by the false positive rate.
 
   This value is ultimately returned as `auc`, an idempotent
   operation the computes the area under a discretized curve of precision versus
@@ -686,8 +685,6 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
     ignore_mask: An optional, binary tensor whose size matches `predictions`.
     num_thresholds: The number of thresholds to use when discretizing the roc
       curve.
-    curve: Specifies the name of the curve to be computed, 'ROC' [default] or
-    'PR' for the Precision-Recall-curve.
     metrics_collections: An optional list of collections that `auc` should be
       added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -707,9 +704,6 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
       tuple.
   """
   with variable_scope.variable_op_scope([predictions, labels], name, 'auc'):
-    if curve != 'ROC' and  curve != 'PR':
-      raise ValueError('curve must be either ROC or PR, %s unknown' %
-                       (curve))
     kepsilon = 1e-7  # to account for floating point imprecisions
     thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                   for i in range(num_thresholds-2)]
@@ -723,19 +717,11 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
     assert array_ops.squeeze(fp).get_shape().as_list()[0] == num_thresholds
 
     def compute_auc(tp, fn, tn, fp, name):
-      """Computes the roc-auc or pr-auc based on confusion counts."""
+      fp_rate = math_ops.div(fp, fp + tn + epsilon)
       recall = math_ops.div(tp + epsilon, tp + fn + epsilon)
-      if curve == 'ROC':
-        fp_rate = math_ops.div(fp, fp + tn + epsilon)
-        x = fp_rate
-        y = recall
-      else:  # curve == 'PR'.
-        precision = math_ops.div(tp + epsilon, tp + fp + epsilon)
-        x = recall
-        y = precision
       return math_ops.reduce_sum(math_ops.mul(
-          x[:num_thresholds - 1] - x[1:],
-          (y[:num_thresholds - 1] + y[1:]) / 2.), name=name)
+          fp_rate[:num_thresholds - 1] - fp_rate[1:],
+          (recall[:num_thresholds - 1] + recall[1:]) / 2.), name=name)
 
     # sum up the areas of all the trapeziums
     auc = compute_auc(tp, fn, tn, fp, 'value')

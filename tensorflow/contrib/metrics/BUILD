@@ -128,7 +128,6 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//third_party/py/sklearn",
     ],
 )
 
