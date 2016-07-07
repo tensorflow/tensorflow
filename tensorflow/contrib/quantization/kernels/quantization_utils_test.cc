@@ -144,8 +144,21 @@ class QuantizationUtilsTest : public ::testing::Test {
           eigen_device, i_tensor, input_min, input_max, output_min, output_max,
           &o_tensor_eigen);
 
+      const int tolerance = 1;
       for (int i = 0; i < values_quantized.size(); ++i) {
-        EXPECT_EQ(output_values_eigen(i), output_values_ref(i)) << i;
+        auto expected = output_values_ref(i);
+        auto actual = output_values_eigen(i);
+        // The eigen computation uses float for constants and computation
+        // instead of doubles, so can be different by 1 or 2 in some cases
+        // (e.g., input value 144.062744140625, min -1, max 255, type quint8).
+        ASSERT_TRUE(std::abs(expected - actual) <= tolerance)
+            << "expected=" << expected << " actual=" << actual
+            << " tolerance=" << tolerance << " v=" << values_quantized[i]
+            << " i=" << i << " input_min=" << input_min
+            << " input_max=" << input_max
+            << " input_type=" << DataTypeString(DataTypeToEnum<InputType>::v())
+            << " output_type="
+            << DataTypeString(DataTypeToEnum<OutputType>::v());
       }
     }
   }
