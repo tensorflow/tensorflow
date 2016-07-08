@@ -193,6 +193,7 @@ class QuantizationUtilsTest : public ::testing::Test {
       for (int i = 0; i < values_count; ++i) {
         int32 expected = FloatToQuantized<T>(input_array(i), f_min, f_max);
         int32 actual = output_array(i);
+
         // The eigen computation uses float for constants and computation
         // instead
         // of doubles, so can be different by 1 or 2 in some cases (e.g., input
@@ -405,6 +406,32 @@ TEST_F(QuantizationUtilsTest, FloatToQuantizedInPlaceUsingEigen) {
   TestFloatToQuantizedInPlaceUsingEigen<qint8>(&eigen_device);
   TestFloatToQuantizedInPlaceUsingEigen<quint16>(&eigen_device);
   TestFloatToQuantizedInPlaceUsingEigen<qint16>(&eigen_device);
+}
+
+TEST_F(QuantizationUtilsTest, OverflowWithEigen) {
+  thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
+  EigenThreadPoolWrapper wrapper(&threadpool);
+  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+
+  const int num_vals = 4;
+  const float input_min = 0.0f;
+  const float input_max = 2400.0f;
+  TensorShape shape({num_vals});
+  Tensor input(DT_FLOAT, shape);
+  test::FillValues<float>(&input, {-100.f, 0.f, 2400.0f, 2400.0f});
+  Tensor expected(DT_QINT32, shape);
+  // Note that the positive expected values are not the highest int32 value,
+  // because the implementation does a bounds check using float, not int32.
+  test::FillValues<qint32>(
+      &expected,
+      {static_cast<int32>(-2147483648), static_cast<int32>(-2147483648),
+       static_cast<int32>(2147483520), static_cast<int32>(2147483520)});
+
+  FloatToQuantizedStruct<qint32> f2q(input_min, input_max);
+  Tensor output(DT_QINT32, shape);
+  auto input_array = input.flat<float>();
+  output.flat<qint32>() = QUANTIZE_WITH_EIGEN(input_array, f2q, qint32);
+  test::ExpectTensorEqual<qint32>(expected, output);
 }
 
 TEST_F(QuantizationUtilsTest, QuantizedTensorToFloat) {

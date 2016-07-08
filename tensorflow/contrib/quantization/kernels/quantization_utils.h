@@ -122,8 +122,8 @@ void QuantizationRangeForMultiplication(float min_a, float max_a, float min_b,
 #define QUANTIZE_WITH_EIGEN(input_array, f2q, OutputType) \
   ((input_array * f2q.range_scale).round() -              \
    (f2q.range_min_scaled - f2q.lowest_quantized()))       \
-      .cwiseMax(f2q.lowest_quantized())                   \
-      .cwiseMin(f2q.highest_quantized())                  \
+      .cwiseMax(f2q.lower_bound_float())                  \
+      .cwiseMin(f2q.upper_bound_float())                  \
       .template cast<int32>()                             \
       .template cast<OutputType>()
 
@@ -155,14 +155,20 @@ struct FloatToQuantizedStruct {
   static constexpr double range_adjust =
       (number_of_steps / (number_of_steps - 1.0));
 
+  // Casting QInt32's lowest or highest to a float gives a float that can't be
+  // cast back to int32 or QInt32.  Instead, use bounds that can be converted
+  // back to int32 without going outside the range of an int32.
+  static float lower_bound_float() {
+    return Eigen::numext::maxi(
+        static_cast<float>(Eigen::NumTraits<T>::lowest()), -2.147483648e+09f);
+  }
+  static float upper_bound_float() {
+    return Eigen::numext::mini(
+        static_cast<float>(Eigen::NumTraits<T>::highest()), +2.147483520e+09f);
+  }
+
   static float lowest_quantized() {
     return static_cast<float>(Eigen::NumTraits<T>::lowest());
-  }
-  static double lowest_quantized_double() {
-    return static_cast<double>(Eigen::NumTraits<T>::lowest());
-  }
-  static float highest_quantized() {
-    return static_cast<float>(Eigen::NumTraits<T>::highest());
   }
 
   FloatToQuantizedStruct(float range_min, float range_max)
