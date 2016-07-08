@@ -88,6 +88,15 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "laplace_test",
+    srcs = ["python/kernel_tests/laplace_test.py"],
+    additional_deps = [
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "normal_test",
     size = "small",
     srcs = ["python/kernel_tests/normal_test.py"],
