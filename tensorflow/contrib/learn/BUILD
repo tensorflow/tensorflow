@@ -642,6 +642,36 @@ py_test(
     ],
 )
 
+py_test(
+    name = "wrapped_session_test",
+    size = "small",
+    srcs = ["python/learn/tests/wrapped_session_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "coordinated_session_test",
+    size = "small",
+    srcs = ["python/learn/tests/coordinated_session_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "recoverable_session_test",
+    size = "small",
+    srcs = ["python/learn/tests/recoverable_session_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_binary(
     name = "inspect_checkpoint",
     srcs = [

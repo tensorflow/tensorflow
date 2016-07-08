@@ -31,6 +31,7 @@ from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import ops
 from tensorflow.contrib.learn.python.learn import preprocessing
 from tensorflow.contrib.learn.python.learn import utils
+from tensorflow.contrib.learn.python.learn.coordinated_session import *
 from tensorflow.contrib.learn.python.learn.dataframe import *
 from tensorflow.contrib.learn.python.learn.estimators import *
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
@@ -41,4 +42,6 @@ from tensorflow.contrib.learn.python.learn.graph_actions import run_feeds
 from tensorflow.contrib.learn.python.learn.graph_actions import run_n
 from tensorflow.contrib.learn.python.learn.graph_actions import train
 from tensorflow.contrib.learn.python.learn.io import *
+from tensorflow.contrib.learn.python.learn.recoverable_session import *
+from tensorflow.contrib.learn.python.learn.wrapped_session import *
 # pylint: enable=wildcard-import
