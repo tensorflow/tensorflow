@@ -13,6 +13,8 @@ filegroup(
             "**/METADATA",
             "**/OWNERS",
         ],
-    ),
+    ) + [
+        "BUILD",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
 )
