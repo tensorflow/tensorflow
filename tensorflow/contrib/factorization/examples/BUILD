@@ -19,4 +19,5 @@ tf_py_test(
         "//tensorflow/examples/tutorials/mnist",
         "//tensorflow/examples/tutorials/mnist:input_data",
     ],
+    tags = ["notsan"],
 )

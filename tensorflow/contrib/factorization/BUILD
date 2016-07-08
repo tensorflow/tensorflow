@@ -88,6 +88,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["notsan"],
 )
 
 tf_py_test(
