@@ -239,9 +239,15 @@ class TensorArray(object):
       All the tensors in the TensorArray packed into one tensor.
     """
     with ops.colocate_with(self._handle):
-      value = gen_data_flow_ops._tensor_array_pack(
-          handle=self._handle, flow_in=self._flow, dtype=self._dtype,
-          name=name)
+      if self._elem_shape:
+        element_shape = self._elem_shape[0]
+      else:
+        element_shape = tensor_shape.TensorShape(None)
+      value = gen_data_flow_ops._tensor_array_pack(handle=self._handle,
+                                                   flow_in=self._flow,
+                                                   dtype=self._dtype,
+                                                   name=name,
+                                                   element_shape=element_shape)
       if self._elem_shape and self._elem_shape[0].dims is not None:
         value.set_shape([None] + self._elem_shape[0].dims)
       return value
@@ -258,10 +264,18 @@ class TensorArray(object):
     Returns:
       All the tensors in the TensorArray concatenated into one tensor.
     """
+    if self._elem_shape and self._elem_shape[0].dims is not None:
+      element_shape_except0 = tensor_shape.TensorShape(self._elem_shape[0].dims[
+          1:])
+    else:
+      element_shape_except0 = tensor_shape.TensorShape(None)
     with ops.colocate_with(self._handle):
       value, _ = gen_data_flow_ops._tensor_array_concat(
-          handle=self._handle, flow_in=self._flow, dtype=self._dtype,
-          name=name)
+          handle=self._handle,
+          flow_in=self._flow,
+          dtype=self._dtype,
+          name=name,
+          element_shape_except0=element_shape_except0)
       if self._elem_shape and self._elem_shape[0].dims is not None:
         value.set_shape([None] + self._elem_shape[0].dims[1:])
       return value

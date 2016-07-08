@@ -371,7 +371,7 @@ class LSTMCell(RNNCell):
 
   def __init__(self, num_units, input_size=None,
                use_peepholes=False, cell_clip=None,
-               initializer=None, num_proj=None,
+               initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=1, num_proj_shards=1,
                forget_bias=1.0, state_is_tuple=False,
                activation=tanh):
@@ -387,6 +387,9 @@ class LSTMCell(RNNCell):
         projection matrices.
       num_proj: (optional) int, The output dimensionality for the projection
         matrices.  If None, no projection is performed.
+      proj_clip: (optional) A float value.  If `num_proj > 0` and `proj_clip` is
+      provided, then the projected values are clipped elementwise to within
+      `[-proj_clip, proj_clip]`.
       num_unit_shards: How to split the weight matrix.  If >1, the weight
         matrix is stored across num_unit_shards.
       num_proj_shards: How to split the projection matrix.  If >1, the
@@ -410,6 +413,7 @@ class LSTMCell(RNNCell):
     self._cell_clip = cell_clip
     self._initializer = initializer
     self._num_proj = num_proj
+    self._proj_clip = proj_clip
     self._num_unit_shards = num_unit_shards
     self._num_proj_shards = num_proj_shards
     self._forget_bias = forget_bias
@@ -519,6 +523,10 @@ class LSTMCell(RNNCell):
             dtype, self._num_proj_shards)
 
         m = math_ops.matmul(m, concat_w_proj)
+        if self._proj_clip is not None:
+          # pylint: disable=invalid-unary-operand-type
+          m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
+          # pylint: enable=invalid-unary-operand-type
 
     new_state = (LSTMStateTuple(c, m) if self._state_is_tuple
                  else array_ops.concat(1, [c, m]))

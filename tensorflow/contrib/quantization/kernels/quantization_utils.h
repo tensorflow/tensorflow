@@ -33,8 +33,10 @@ namespace tensorflow {
 // uses doubles and int64's to make sure we have enough room.
 template <class T>
 int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
+  const int64 lowest_quantized =
+      static_cast<double>(Eigen::NumTraits<T>::lowest());
   if (range_min == range_max) {
-    return 0;
+    return lowest_quantized;
   }
   const int number_of_bits = sizeof(T) * 8;
   const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
@@ -43,8 +45,6 @@ int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
   const double range_scale = (number_of_steps / range);
   int64 quantized =
       (round(input * range_scale) - round(range_min * range_scale));
-  const int64 lowest_quantized =
-      static_cast<double>(Eigen::NumTraits<T>::lowest());
   quantized += lowest_quantized;
   return quantized;
 }
@@ -122,8 +122,8 @@ void QuantizationRangeForMultiplication(float min_a, float max_a, float min_b,
 #define QUANTIZE_WITH_EIGEN(input_array, f2q, OutputType) \
   ((input_array * f2q.range_scale).round() -              \
    (f2q.range_min_scaled - f2q.lowest_quantized()))       \
-      .cwiseMax(f2q.lowest_quantized())                   \
-      .cwiseMin(f2q.highest_quantized())                  \
+      .cwiseMax(f2q.lower_bound_float())                  \
+      .cwiseMin(f2q.upper_bound_float())                  \
       .template cast<int32>()                             \
       .template cast<OutputType>()
 
@@ -155,19 +155,27 @@ struct FloatToQuantizedStruct {
   static constexpr double range_adjust =
       (number_of_steps / (number_of_steps - 1.0));
 
+  // Casting QInt32's lowest or highest to a float gives a float that can't be
+  // cast back to int32 or QInt32.  Instead, use bounds that can be converted
+  // back to int32 without going outside the range of an int32.
+  static float lower_bound_float() {
+    return Eigen::numext::maxi(
+        static_cast<float>(Eigen::NumTraits<T>::lowest()), -2.147483648e+09f);
+  }
+  static float upper_bound_float() {
+    return Eigen::numext::mini(
+        static_cast<float>(Eigen::NumTraits<T>::highest()), +2.147483520e+09f);
+  }
+
   static float lowest_quantized() {
     return static_cast<float>(Eigen::NumTraits<T>::lowest());
-  }
-  static double lowest_quantized_double() {
-    return static_cast<double>(Eigen::NumTraits<T>::lowest());
-  }
-  static float highest_quantized() {
-    return static_cast<float>(Eigen::NumTraits<T>::highest());
   }
 
   FloatToQuantizedStruct(float range_min, float range_max)
       : range_min(range_min),
-        range_scale((number_of_steps - 1.0) / (range_max - range_min)),
+        range_scale(range_max == range_min
+                        ? 0.0
+                        : (number_of_steps - 1.0) / (range_max - range_min)),
         range_min_scaled(round(range_min * range_scale)) {}
 
   const float range_min;
@@ -210,7 +218,9 @@ inline void RequantizeManyInNewRange<qint32, quint8>(
   const int64 recip_output_range_fp =
       static_cast<int64>(recip_output_range * (1 << fp_shift));
   const int64 range_scale_fp =
-      static_cast<int64>(255.0 * (1 << fp_shift) * input_range / output_range);
+      output_range == 0.0 ? 0.0
+                          : static_cast<int64>(255.0 * (1 << fp_shift) *
+                                               input_range / output_range);
   const int64 input_offset_fp =
       (min_input * recip_output_range_fp) + (range_scale_fp >> 1);
   const int64 output_offset_fp =
@@ -308,6 +318,19 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
 #endif
 
 // REQUIRES: 'result->NumElements() == input.NumElements()'
+template <class T>
+void FloatTensorToQuantizedInPlaceUsingEigen(
+    const Eigen::ThreadPoolDevice& device, const Tensor& input, float min,
+    float max, Tensor* result) {
+  DCHECK_EQ(DataTypeToEnum<T>::v(), result->dtype());
+  auto flat_input = input.flat<float>();
+  auto flat_result = result->flat<T>();
+  DCHECK_EQ(flat_input.size(), flat_result.size());
+
+  FloatToQuantizedStruct<T> f2q(min, max);
+  flat_result.device(device) = QUANTIZE_WITH_EIGEN(flat_input, f2q, T);
+}
+
 template <class T>
 void FloatTensorToQuantizedInPlace(const Tensor& input, float min, float max,
                                    Tensor* result) {

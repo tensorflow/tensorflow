@@ -422,6 +422,18 @@ Node* BiasAdd(Graph* g, Node* value, Node* bias) {
   return ret;
 }
 
+Node* Conv2D(Graph* g, Node* in0, Node* in1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Conv2D")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("strides", {1, 1, 1, 1})
+                  .Attr("padding", "SAME")
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 void ToGraphDef(Graph* g, GraphDef* gdef) { g->ToGraphDef(gdef); }
 
 }  // end namespace graph

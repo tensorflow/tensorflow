@@ -20,6 +20,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import dtypes
+
 
 class ConfusionMatrixTest(tf.test.TestCase):
 
@@ -121,6 +123,24 @@ class ConfusionMatrixTest(tf.test.TestCase):
     self.assertRaisesRegexp(
         ValueError, "are not compatible",
         tf.contrib.metrics.confusion_matrix, predictions, labels)
+
+  def testOutputIsInt32(self):
+    predictions = np.arange(2)
+    labels = np.arange(2)
+    with self.test_session():
+      cm = tf.contrib.metrics.confusion_matrix(
+          predictions, labels, dtype=dtypes.int32)
+      tf_cm = cm.eval()
+    self.assertEqual(tf_cm.dtype, np.int32)
+
+  def testOutputIsInt64(self):
+    predictions = np.arange(2)
+    labels = np.arange(2)
+    with self.test_session():
+      cm = tf.contrib.metrics.confusion_matrix(
+          predictions, labels, dtype=dtypes.int64)
+      tf_cm = cm.eval()
+    self.assertEqual(tf_cm.dtype, np.int64)
 
 
 if __name__ == "__main__":

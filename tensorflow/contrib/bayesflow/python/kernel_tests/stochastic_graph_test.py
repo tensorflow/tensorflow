@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,9 +39,9 @@ class DistributionTensorTest(tf.test.TestCase):
       mu = [0.0, 0.1, 0.2]
       sigma = tf.constant([1.1, 1.2, 1.3])
       sigma2 = tf.constant([0.1, 0.2, 0.3])
-      with self.assertRaisesRegexp(ValueError, 'No value type currently set'):
-        prior = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
 
+      prior_default = sg.DistributionTensor(
+          distributions.Normal, mu=mu, sigma=sigma)
       prior_0 = sg.DistributionTensor(
           distributions.Normal, mu=mu, sigma=sigma,
           dist_value_type=sg.SampleAndReshapeValue())
@@ -52,20 +52,24 @@ class DistributionTensorTest(tf.test.TestCase):
             distributions.Normal, mu=prior, sigma=sigma2)
 
       coll = tf.get_collection(sg.STOCHASTIC_TENSOR_COLLECTION)
-      self.assertEqual(coll, [prior_0, prior, likelihood])
+      self.assertEqual(coll, [prior_default, prior_0, prior, likelihood])
 
+      # Also works: tf.convert_to_tensor(prior)
+      prior_default = tf.identity(prior_default)
       prior_0 = tf.identity(prior_0)
-      prior = tf.identity(prior)  # Also works: tf.convert_to_tensor(prior)
+      prior = tf.identity(prior)
       likelihood = tf.identity(likelihood)
 
       # Mostly a smoke test for now...
-      prior_0_val, prior_val, _ = sess.run(
-          [prior_0, prior, likelihood])
+      prior_0_val, prior_val, prior_default_val, _ = sess.run(
+          [prior_0, prior, prior_default, likelihood])
 
       self.assertEqual(prior_0_val.shape, prior_val.shape)
+      self.assertEqual(prior_default_val.shape, prior_val.shape)
       # These are different random samples from the same distribution,
       # so the values should differ.
       self.assertGreater(np.abs(prior_0_val - prior_val).sum(), 1e-6)
+      self.assertGreater(np.abs(prior_default_val - prior_val).sum(), 1e-6)
 
   def testMeanValue(self):
     with self.test_session() as sess:
@@ -160,7 +164,7 @@ class ValueTypeTest(tf.test.TestCase):
       with sg.value_type(type_full):
         self.assertEqual(sg.get_current_value_type(), type_full)
       self.assertEqual(sg.get_current_value_type(), type_mean)
-    with self.assertRaisesRegexp(ValueError, 'No value type currently set'):
+    with self.assertRaisesRegexp(ValueError, "No value type currently set"):
       sg.get_current_value_type()
 
 
@@ -181,14 +185,14 @@ class TestSurrogateLosses(tf.test.TestCase):
       sum_loss = tf.reduce_sum(loss)
 
       surrogate_from_loss = sg.surrogate_losses([loss])
-      surrogate_from_sum_loss = sg.surrogate_losses([sum_loss])
+      with self.assertRaisesRegexp(ValueError, "dimensionality 1 or greater"):
+        _ = sg.surrogate_losses([sum_loss])
       surrogate_from_both = sg.surrogate_losses(
-          [loss, sum_loss])
+          [loss, sum_loss * tf.ones_like(loss)])
 
       # Pathwise derivative terms do not require score function
       # surrogate losses.
       self.assertEqual(surrogate_from_loss, [])
-      self.assertEqual(surrogate_from_sum_loss, [])
       self.assertEqual(surrogate_from_both, [])
 
   def _testSurrogateLoss(self, session, losses, expected, xs):
@@ -256,7 +260,7 @@ class TestSurrogateLosses(tf.test.TestCase):
 
       self._testSurrogateLoss(
           session=sess,
-          losses=[sum_loss],
+          losses=[sum_loss * tf.ones_like(loss)],
           expected=set([
               (likelihood.distribution.log_pdf(likelihood.value())
                * sum_loss_nograd),
@@ -265,7 +269,7 @@ class TestSurrogateLosses(tf.test.TestCase):
 
       self._testSurrogateLoss(
           session=sess,
-          losses=[loss, sum_loss],
+          losses=[loss, sum_loss * tf.ones_like(loss)],
           expected=set([
               (likelihood.distribution.log_pdf(likelihood.value())
                * tf.stop_gradient(loss + sum_loss)),
@@ -295,5 +299,5 @@ class TestSurrogateLosses(tf.test.TestCase):
           xs=[mu, sigma])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

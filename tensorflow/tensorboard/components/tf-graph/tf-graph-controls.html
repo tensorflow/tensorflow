@@ -244,25 +244,29 @@ span.counter {
       </paper-menu>
     </paper-dropdown-menu>
   </div>
-  <div class="control-holder">
-    <div class="title">Session runs <span class="counter">([[_numSessionRuns(metadataTags)]])</span></div>
-    <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
-      <paper-menu id="select" class="dropdown-content" selected="{{selectedMetadataTag}}">
-        <template is="dom-repeat" items="[[metadataTags]]">
-          <paper-item>[[item.tag]]</paper-item>
-        </template>
-        <paper-item>None</paper-item>
-      </paper-menu>
-    </paper-dropdown-menu>
-  </div>
-  <div class="control-holder">
-    <div class="title">Upload</div>
-    <paper-button raised class="text-button upload-button"
-        on-click="_getFile">Choose File</paper-button>
-    <div class="hidden-input">
-      <input type="file" id="file" name="file" on-change="_updateFileInput" />
+  <template is="dom-if" if="[[showSessionRunsDropdown]]">
+    <div class="control-holder">
+      <div class="title">Session runs <span class="counter">([[_numSessionRuns(metadataTags)]])</span></div>
+      <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
+        <paper-menu id="select" class="dropdown-content" selected="{{selectedMetadataTag}}">
+          <template is="dom-repeat" items="[[metadataTags]]">
+            <paper-item>[[item.tag]]</paper-item>
+          </template>
+          <paper-item>None</paper-item>
+        </paper-menu>
+      </paper-dropdown-menu>
     </div>
-  </div>
+  </template>
+  <template is="dom-if" if="[[showUploadButton]]">
+    <div class="control-holder">
+      <div class="title">Upload</div>
+      <paper-button raised class="text-button upload-button"
+          on-click="_getFile">Choose File</paper-button>
+      <div class="hidden-input">
+        <input type="file" id="file" name="file" on-change="_updateFileInput" />
+      </div>
+    </div>
+  </template>
   <div class="control-holder">
     <div class="title">
       Trace inputs
@@ -550,6 +554,14 @@ Polymer({
     _currentGradientParams: {
       type: Object,
       computed: '_getCurrentGradientParams(colorByParams, colorBy)'
+    },
+    showSessionRunsDropdown: {
+      type: Boolean,
+      value: true
+    },
+    showUploadButton: {
+      type: Boolean,
+      value: true
     }
   },
   listeners: {

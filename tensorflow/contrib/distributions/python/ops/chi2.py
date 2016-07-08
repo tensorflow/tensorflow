@@ -41,7 +41,7 @@ class Chi2(gamma.Gamma):
       df: `float` or `double` tensor, the degrees of freedom of the
         distribution(s).  `df` must contain only positive values.
       strict: Whether to assert that `df > 0`, and that `x > 0` in the
-        methods `pdf(x)` and `log_pdf(x)`. If `strict` is False
+        methods `prob(x)` and `log_prob(x)`. If `strict` is False
         and the inputs are invalid, correct behavior is not guaranteed.
       strict_statistics:  Boolean, default True.  If True, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.

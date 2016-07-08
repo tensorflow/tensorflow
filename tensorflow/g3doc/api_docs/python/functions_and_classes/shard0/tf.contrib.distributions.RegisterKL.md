@@ -21,6 +21,6 @@ Initialize the KL registrar.
 
 
 *  <b>`TypeError`</b>: if dist_cls_a or dist_cls_b are not subclasses of
-    BaseDistribution.
+    Distribution.
 
 

@@ -36,7 +36,6 @@ limitations under the License.
 //   and fills it with error info on failure.
 //
 // Questions left to address:
-// * Might need to add stride info to TF_Tensor?
 // * Might at some point need a way for callers to provide their own Env.
 // * Should we remove the TF_Status arg from TF_AddProto calls and only
 //   report errors later (e.g., on Run call).
@@ -121,6 +120,24 @@ typedef enum {
 // else an error code with an associated error message.
 typedef struct TF_Status TF_Status;
 
+// Return a new status object.
+extern TF_Status* TF_NewStatus();
+
+// Delete a previously created status object.
+extern void TF_DeleteStatus(TF_Status*);
+
+// Record <code, msg> in *s.  Any previous information is lost.
+// A common use is to clear a status: TF_SetStatus(s, TF_OK, "");
+extern void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg);
+
+// Return the code record in *s.
+extern TF_Code TF_GetCode(const TF_Status* s);
+
+// Return a pointer to the error message in *s.  The return value
+// points to memory that is only usable until the next mutation to *s.
+// Always returns an empty string if TF_GetCode(s) is TF_OK.
+extern const char* TF_Message(const TF_Status* s);
+
 // --------------------------------------------------------------------------
 // TF_Buffer holds a pointer to a block of data and its associated length.
 // Typically, the data consists of a serialized protocol buffer, but other data
@@ -147,28 +164,6 @@ extern void TF_DeleteBuffer(TF_Buffer*);
 extern TF_Buffer TF_GetBuffer(TF_Buffer* buffer);
 
 // --------------------------------------------------------------------------
-// TF_Library holds information about dynamically loaded TensorFlow plugins.
-typedef struct TF_Library TF_Library;
-
-// Return a new status object.
-extern TF_Status* TF_NewStatus();
-
-// Delete a previously created status object.
-extern void TF_DeleteStatus(TF_Status*);
-
-// Record <code, msg> in *s.  Any previous information is lost.
-// A common use is to clear a status: TF_SetStatus(s, TF_OK, "");
-extern void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg);
-
-// Return the code record in *s.
-extern TF_Code TF_GetCode(const TF_Status* s);
-
-// Return a pointer to the error message in *s.  The return value
-// points to memory that is only usable until the next mutation to *s.
-// Always returns an empty string if TF_GetCode(s) is TF_OK.
-extern const char* TF_Message(const TF_Status* s);
-
-// --------------------------------------------------------------------------
 // TF_Tensor holds a multi-dimensional array of elements of a single data type.
 // For all types other than TF_STRING, the data buffer stores elements
 // in row major order.  E.g. if data is treated as a vector of TF_DataType:
@@ -177,7 +172,7 @@ extern const char* TF_Message(const TF_Status* s);
 //   element 1:   index (0, ..., 1)
 //   ...
 //
-// TODO(jeff,sanjay): Define format for TF_STRING tensors.  Perhaps:
+// The format for TF_STRING tensors is:
 //   start_offset: array[uint64]
 //   data:         byte[...]
 //
@@ -346,6 +341,9 @@ extern void TF_PRun(TF_Session*, const char* handle,
 
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels
+
+// TF_Library holds information about dynamically loaded TensorFlow plugins.
+typedef struct TF_Library TF_Library;
 
 // Load the library specified by library_filename and register the ops and
 // kernels present in that library.

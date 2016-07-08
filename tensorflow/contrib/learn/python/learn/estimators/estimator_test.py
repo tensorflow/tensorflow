@@ -19,33 +19,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import tempfile
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 
 
+_BOSTON_INPUT_DIM = 13
+_IRIS_INPUT_DIM = 4
+
+
 def boston_input_fn():
   boston = tf.contrib.learn.datasets.load_boston()
   features = tf.cast(
-      tf.reshape(
-          tf.constant(boston.data), [-1, 13]), tf.float32)
+      tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM]), tf.float32)
   target = tf.cast(
-      tf.reshape(
-          tf.constant(boston.target), [-1, 1]), tf.float32)
+      tf.reshape(tf.constant(boston.target), [-1, 1]), tf.float32)
   return features, target
 
 
 def iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   features = tf.cast(
-      tf.reshape(
-          tf.constant(iris.data), [-1, 4]), tf.float32)
+      tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM]), tf.float32)
   target = tf.cast(
-      tf.reshape(
-          tf.constant(iris.target), [-1]), tf.int32)
+      tf.reshape(tf.constant(iris.target), [-1]), tf.int32)
   return features, target
 
 
@@ -53,11 +55,10 @@ def boston_eval_fn():
   boston = tf.contrib.learn.datasets.load_boston()
   n_examples = len(boston.target)
   features = tf.cast(
-      tf.reshape(
-          tf.constant(boston.data), [n_examples, 13]), tf.float32)
+      tf.reshape(tf.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM]),
+      tf.float32)
   target = tf.cast(
-      tf.reshape(
-          tf.constant(boston.target), [n_examples, 1]), tf.float32)
+      tf.reshape(tf.constant(boston.target), [n_examples, 1]), tf.float32)
   return tf.concat(0, [features, features]), tf.concat(0, [target, target])
 
 
@@ -270,6 +271,16 @@ class EstimatorTest(tf.test.TestCase):
     predictions = est.predict(x=iris.data)['class']
     self.assertEqual(predictions.shape[0], iris.target.shape[0])
 
+  def testIrisIterator(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_no_mode_fn)
+    x_iter = itertools.islice(iris.data, 100)
+    y_iter = itertools.islice(np.int32(iris.target), 100)
+    est.fit(x_iter, y_iter, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    predictions = est.predict(x=iris.data)['class']
+    self.assertEqual(predictions.shape[0], iris.target.shape[0])
+
   def testTrainInputFn(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     est.fit(input_fn=boston_input_fn, steps=1)
@@ -315,6 +326,115 @@ class EstimatorTest(tf.test.TestCase):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     est.fit(input_fn=boston_input_fn, steps=21, monitors=[CheckCallsMonitor()])
 
+
+class InferRealValuedColumnsTest(tf.test.TestCase):
+
+  def testInvalidArgs(self):
+    with self.assertRaisesRegexp(ValueError, 'x or input_fn must be provided'):
+      tf.contrib.learn.infer_real_valued_columns_from_input(None)
+
+    with self.assertRaisesRegexp(ValueError, 'cannot be tensors'):
+      tf.contrib.learn.infer_real_valued_columns_from_input(tf.constant(1.0))
+
+  def _assert_single_feature_column(
+      self, expected_shape, expected_dtype, feature_columns):
+    self.assertEqual(1, len(feature_columns))
+    feature_column = feature_columns[0]
+    self.assertEqual('', feature_column.name)
+    self.assertEqual({
+        '': tf.FixedLenFeature(shape=expected_shape, dtype=expected_dtype)
+    }, feature_column.config)
+
+  # Note: See tf.contrib.learn.io.data_feeder for why int32 converts to float32.
+  def testInt32Input(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
+        np.ones(shape=[7, 8], dtype=np.int32))
+    self._assert_single_feature_column([8], tf.float32, feature_columns)
+
+  def testInt32InputFn(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+        lambda: (tf.ones(shape=[7, 8], dtype=tf.int32), None))
+    self._assert_single_feature_column([8], tf.int32, feature_columns)
+
+  # Note: See tf.contrib.learn.io.data_feeder for why int64 doesn't convert to
+  # float64.
+  def testInt64Input(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
+        np.ones(shape=[7, 8], dtype=np.int64))
+    self._assert_single_feature_column([8], tf.int64, feature_columns)
+
+  def testInt64InputFn(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+        lambda: (tf.ones(shape=[7, 8], dtype=tf.int64), None))
+    self._assert_single_feature_column([8], tf.int64, feature_columns)
+
+  def testFloat32Input(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
+        np.ones(shape=[7, 8], dtype=np.float32))
+    self._assert_single_feature_column([8], tf.float32, feature_columns)
+
+  def testFloat32InputFn(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+        lambda: (tf.ones(shape=[7, 8], dtype=tf.float32), None))
+    self._assert_single_feature_column([8], tf.float32, feature_columns)
+
+  # Note: See tf.contrib.learn.io.data_feeder for why float64 converts to
+  # float32.
+  def testFloat64Input(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
+        np.ones(shape=[7, 8], dtype=np.float64))
+    self._assert_single_feature_column([8], tf.float32, feature_columns)
+
+  def testFloat64InputFn(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+        lambda: (tf.ones(shape=[7, 8], dtype=tf.float64), None))
+    self._assert_single_feature_column([8], tf.float64, feature_columns)
+
+  def testBoolInput(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
+        np.array([[False for _ in xrange(8)] for _ in xrange(7)]))
+    self._assert_single_feature_column([8], tf.float32, feature_columns)
+
+  def testBoolInputFn(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'on integer or non floating types are not supported'):
+      # pylint: disable=g-long-lambda
+      tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+          lambda: (tf.constant(False, shape=[7, 8], dtype=tf.bool), None))
+
+  def testInvalidStringInput(self):
+    # pylint: disable=g-long-lambda
+    with self.assertRaisesRegexp(
+        ValueError, 'could not convert string to float'):
+      tf.contrib.learn.infer_real_valued_columns_from_input(
+          np.array([['foo%d' % i for i in xrange(8)] for _ in xrange(7)]))
+
+  def testStringInput(self):
+    # pylint: disable=g-long-lambda
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
+        np.array([['%d.0' % i for i in xrange(8)] for _ in xrange(7)]))
+    self._assert_single_feature_column([8], tf.float32, feature_columns)
+
+  def testStringInputFn(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'on integer or non floating types are not supported'):
+      # pylint: disable=g-long-lambda
+      tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+          lambda: (
+              tf.constant([['%d.0' % i for i in xrange(8)] for _ in xrange(7)]),
+              None))
+
+  def testBostonInputFn(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+        boston_input_fn)
+    self._assert_single_feature_column(
+        [_BOSTON_INPUT_DIM], tf.float32, feature_columns)
+
+  def testIrisInputFn(self):
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+        iris_input_fn)
+    self._assert_single_feature_column(
+        [_IRIS_INPUT_DIM], tf.float32, feature_columns)
 
 if __name__ == '__main__':
   tf.test.main()

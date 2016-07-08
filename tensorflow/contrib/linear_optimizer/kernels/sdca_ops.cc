@@ -161,7 +161,7 @@ class WeightsByGroup {
 
   size_t NumGroups() const { return weights_by_group_.size(); }
 
-  const TTypes<float>::Vec& WeightsOfGroup(size_t group) const {
+  const TTypes<float>::Vec& WeightsOfGroup(const size_t group) const {
     return weights_by_group_[group];
   }
 
@@ -186,39 +186,46 @@ class WeightsAndDeltas {
   Status Initialize(OpKernelContext* const context,
                     const string& input_list_name) {
     TF_RETURN_IF_ERROR(weights_by_group_.Initialize(context, input_list_name));
-    InitializeDeltaWeightsToZero();
+    InitializeDeltaWeightsToZero(
+        *context->device()->tensorflow_cpu_worker_threads());
     return Status::OK();
   }
 
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() {
-    // TODO(sibyl-Aix6ihai): Parallelize this.
-    for (size_t group = 0; group < delta_weights_by_group_.size(); ++group) {
-      for (size_t i = 0; i < delta_weights_by_group_[group].size(); ++i) {
-        weights_by_group_.AddDelta(group, i,
-                                   delta_weights_by_group_[group][i].load());
-      }
-    }
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    Shard(worker_threads.num_threads, worker_threads.workers,
+          static_cast<int64>(delta_weights_by_group_.size()),
+          kCostPerUnitGroupWeightAccess,
+          [this](const int64 begin, const int64 end) {
+            for (int64 group = begin; group < end; ++group) {
+              const std::vector<std::atomic<double>>& delta_weights =
+                  delta_weights_by_group_[group];
+              for (size_t i = 0; i < delta_weights.size(); ++i) {
+                weights_by_group_.AddDelta(
+                    group, i, static_cast<float>(delta_weights[i].load()));
+              }
+            }
+          });
   }
 
-  std::vector<std::atomic<double>>* DeltaWeightsOfGroup(size_t group) {
+  std::vector<std::atomic<double>>* DeltaWeightsOfGroup(const size_t group) {
     return &delta_weights_by_group_[group];
   }
 
   const std::vector<std::atomic<double>>& DeltaWeightsOfGroup(
-      size_t group) const {
+      const size_t group) const {
     return delta_weights_by_group_[group];
   }
 
-  const TTypes<float>::Vec& WeightsOfGroup(size_t group) const {
+  const TTypes<float>::Vec& WeightsOfGroup(const size_t group) const {
     return weights_by_group_.WeightsOfGroup(group);
   }
 
   size_t NumGroups() const { return delta_weights_by_group_.size(); }
 
-  size_t NumFeaturesOfGroup(int group) const {
+  size_t NumFeaturesOfGroup(const size_t group) const {
     return delta_weights_by_group_[group].size();
   }
 
@@ -227,16 +234,28 @@ class WeightsAndDeltas {
   Status ValidateAsDense() const { return weights_by_group_.ValidateAsDense(); }
 
  private:
-  void InitializeDeltaWeightsToZero() {
-    // TODO(sibyl-Mooth6ku): Maybe parallelize this.
-    for (size_t group = 0; group < weights_by_group_.NumGroups(); ++group) {
-      const TTypes<float>::Vec weights =
-          weights_by_group_.WeightsOfGroup(group);
-      delta_weights_by_group_.emplace_back(weights.size());
-      std::fill(delta_weights_by_group_.back().begin(),
-                delta_weights_by_group_.back().end(), 0);
-    }
+  void InitializeDeltaWeightsToZero(
+      const DeviceBase::CpuWorkerThreads& worker_threads) {
+    delta_weights_by_group_.resize(weights_by_group_.NumGroups());
+    Shard(worker_threads.num_threads, worker_threads.workers,
+          static_cast<int64>(weights_by_group_.NumGroups()),
+          kCostPerUnitGroupWeightAccess,
+          [this](const int64 begin, const int64 end) {
+            for (int64 group = begin; group < end; ++group) {
+              const TTypes<float>::Vec weights =
+                  weights_by_group_.WeightsOfGroup(group);
+              std::vector<std::atomic<double>>* delta_weights =
+                  &delta_weights_by_group_[group];
+              *delta_weights = std::vector<std::atomic<double>>(weights.size());
+              std::fill(delta_weights->begin(), delta_weights->end(), 0);
+            }
+          });
   }
+
+  // Assuming approximately 100K features per group with each feature having a
+  // cost of 1 gives decent parallelization for weight related access (eg
+  // traversals, initialization etc).
+  static constexpr int64 kCostPerUnitGroupWeightAccess = 100000;
 
   WeightsByGroup weights_by_group_;
 
@@ -310,7 +329,9 @@ class DenseFeaturesAndWeights {
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() { weights_and_deltas_.AddDeltaWeights(); }
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    weights_and_deltas_.AddDeltaWeights(worker_threads);
+  }
 
   size_t NumGroups() const { return features_by_group_.size(); }
 
@@ -331,12 +352,12 @@ class SparseFeaturesAndWeights {
 
   // Initialize() must be called immediately after construction.
   Status Initialize(OpKernelContext* const context,
-                    const int64 num_sparse_features, const int num_examples,
-                    const DeviceBase::CpuWorkerThreads& worker_threads) {
+                    const int64 num_sparse_features, const int num_examples) {
     TF_RETURN_IF_ERROR(
         weights_and_deltas_.Initialize(context, "sparse_weights"));
-    TF_RETURN_IF_ERROR(FillExamples(context, num_sparse_features, num_examples,
-                                    worker_threads));
+    TF_RETURN_IF_ERROR(
+        FillExamples(context, num_sparse_features, num_examples,
+                     *context->device()->tensorflow_cpu_worker_threads()));
     return Status::OK();
   }
 
@@ -398,7 +419,9 @@ class SparseFeaturesAndWeights {
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() { weights_and_deltas_.AddDeltaWeights(); }
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    weights_and_deltas_.AddDeltaWeights(worker_threads);
+  }
 
   size_t NumGroups() const { return examples_by_group_.size(); }
 
@@ -541,10 +564,9 @@ class FeaturesAndWeights {
 
   // Initialize() must be called immediately after construction.
   Status Initialize(OpKernelContext* const context,
-                    const int64 num_sparse_features, const int num_examples,
-                    const DeviceBase::CpuWorkerThreads& worker_threads) {
+                    const int64 num_sparse_features, const int num_examples) {
     TF_RETURN_IF_ERROR(sparse_features_and_weights_.Initialize(
-        context, num_sparse_features, num_examples, worker_threads));
+        context, num_sparse_features, num_examples));
     TF_RETURN_IF_ERROR(dense_features_and_weights_.Initialize(context));
     return Status::OK();
   }
@@ -577,9 +599,9 @@ class FeaturesAndWeights {
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() {
-    sparse_features_and_weights_.AddDeltaWeights();
-    dense_features_and_weights_.AddDeltaWeights();
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    sparse_features_and_weights_.AddDeltaWeights(worker_threads);
+    dense_features_and_weights_.AddDeltaWeights(worker_threads);
   }
 
   size_t NumGroups() const {
@@ -647,7 +669,7 @@ Status RunTrainStepsForMiniBatch(
       (*example_state_data)(example_index, 3) = example_weight;
     }
   };
-  // TODO(sibyl-Aix6ihai): Current multiplier 100000 works well empirically
+  // TODO(sibyl-Aix6ihai): Current multiplier 100K works well empirically
   // but perhaps we can tune it better.
   const int64 kCostPerUnit = 100000 * features_and_weights->NumGroups();
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
@@ -659,7 +681,7 @@ Status RunTrainStepsForMiniBatch(
 
 class SdcaSolver : public OpKernel {
  public:
-  explicit SdcaSolver(OpKernelConstruction* context) : OpKernel(context) {
+  explicit SdcaSolver(OpKernelConstruction* const context) : OpKernel(context) {
     string loss_type;
     OP_REQUIRES_OK(context, context->GetAttr("loss_type", &loss_type));
     if (loss_type == "logistic_loss") {
@@ -685,7 +707,7 @@ class SdcaSolver : public OpKernel {
                                              &num_inner_iterations_));
   }
 
-  void Compute(OpKernelContext* context) override {
+  void Compute(OpKernelContext* const context) override {
     const Tensor* example_weights_t;
     OP_REQUIRES_OK(context,
                    context->input("example_weights", &example_weights_t));
@@ -726,10 +748,8 @@ class SdcaSolver : public OpKernel {
     auto example_state_data = mutable_example_state_data_t.matrix<float>();
 
     FeaturesAndWeights features_and_weights;
-    OP_REQUIRES_OK(context,
-                   features_and_weights.Initialize(
-                       context, num_sparse_features_, num_examples,
-                       *context->device()->tensorflow_cpu_worker_threads()));
+    OP_REQUIRES_OK(context, features_and_weights.Initialize(
+                                context, num_sparse_features_, num_examples));
 
     for (int i = 0; i < num_inner_iterations_; ++i) {
       OP_REQUIRES_OK(
@@ -739,7 +759,8 @@ class SdcaSolver : public OpKernel {
                        regularizations_, *loss_updater_, &features_and_weights,
                        &example_state_data));
     }
-    features_and_weights.AddDeltaWeights();
+    features_and_weights.AddDeltaWeights(
+        *context->device()->tensorflow_cpu_worker_threads());
 
     context->set_output("example_data_data_out", mutable_example_state_data_t);
   }
@@ -758,11 +779,12 @@ REGISTER_KERNEL_BUILDER(Name("SdcaSolver").Device(DEVICE_CPU), SdcaSolver);
 
 class SdcaShrinkL1 : public OpKernel {
  public:
-  explicit SdcaShrinkL1(OpKernelConstruction* context) : OpKernel(context) {
+  explicit SdcaShrinkL1(OpKernelConstruction* const context)
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
   }
 
-  void Compute(OpKernelContext* context) override {
+  void Compute(OpKernelContext* const context) override {
     for (const string& list_name : {"sparse_weights", "dense_weights"}) {
       WeightsByGroup weights_by_group;
       OP_REQUIRES_OK(context, weights_by_group.Initialize(context, list_name));
@@ -783,12 +805,13 @@ REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 // approximately 10^-21 (ie 2^60 / 2^129).
 class SdcaFprint : public OpKernel {
  public:
-  explicit SdcaFprint(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit SdcaFprint(OpKernelConstruction* const context)
+      : OpKernel(context) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& input = ctx->input(0);
+  void Compute(OpKernelContext* const context) override {
+    const Tensor& input = context->input(0);
     Tensor* out;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &out));
+    OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &out));
 
     const auto in_values = input.flat<string>();
     auto out_values = out->flat<string>();

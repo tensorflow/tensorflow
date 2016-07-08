@@ -30,6 +30,11 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
+# Gradient ops that do not have gradients themselves.
+ops.NoGradient("SigmoidGrad")
+ops.NoGradient("TanhGrad")
+
+
 def _safe_shape_div(x, y):
   """Divides `x / y` assuming `x, y >= 0`, treating `0 / 0 = 0`."""
   return x // math_ops.maximum(y, 1)

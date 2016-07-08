@@ -1,4 +1,4 @@
-### `tf.train.batch(tensors, batch_size, num_threads=1, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, shared_name=None, name=None)` {#batch}
+### `tf.train.batch(tensors, batch_size, num_threads=1, capacity=32, enqueue_many=False, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, shared_name=None, name=None)` {#batch}
 
 Creates batches of tensors in `tensors`.
 
@@ -39,6 +39,13 @@ on the right to the maximum shape of the tensors in the current minibatch.
 For numbers, this padding takes value 0.  For strings, this padding is
 the empty string.  See `PaddingFIFOQueue` for more info.
 
+If `allow_smaller_final_batch` is `True`, a smaller batch value than
+`batch_size` is returned when the queue is closed and there are not enough
+elements to fill the batch, otherwise the pending elements are discarded.
+In addition, all output tensors' static shapes, as accessed via the
+`get_shape` method will have a first `Dimension` value of `None`, and
+operations that depend on fixed batch_size would fail.
+
 ##### Args:
 
 
@@ -52,7 +59,10 @@ the empty string.  See `PaddingFIFOQueue` for more info.
 *  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
     The given dimensions are padded upon dequeue so that tensors within a
     batch have the same shapes.
-*  <b>`shared_name`</b>: (optional). If set, this queue will be shared under the given
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+  batch to be smaller if there are insufficient items left in the queue.
+
+*  <b>`shared_name`</b>: (Optional). If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.
 

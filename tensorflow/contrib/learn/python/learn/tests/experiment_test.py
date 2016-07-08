@@ -154,6 +154,15 @@ class ExperimentTest(tf.test.TestCase):
     self.assertTrue(isinstance(est.monitors[0],
                                tf.contrib.learn.monitors.ValidationMonitor))
 
+  def test_test(self):
+    est = TestEstimator()
+    ex = tf.contrib.learn.Experiment(est,
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input')
+    ex.test()
+    self.assertEquals(1, est.fit_count)
+    self.assertEquals(1, est.eval_count)
+
 
 if __name__ == '__main__':
   tf.test.main()

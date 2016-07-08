@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
@@ -32,8 +34,8 @@ from tensorflow.python.platform import tf_logging as logging
 def input_from_feature_columns(columns_to_tensors,
                                feature_columns,
                                weight_collections=None,
-                               name=None,
-                               trainable=True):
+                               trainable=True,
+                               scope=None):
   """A tf.contrib.layer style input layer builder based on FeatureColumns.
 
   Generally a single example in training data is described with feature columns.
@@ -75,12 +77,9 @@ def input_from_feature_columns(columns_to_tensors,
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
-    name: The name for this operation is used to name operations and to find
-      variables. If specified it must be unique for this scope, otherwise a
-      unique name starting with "fully_connected" will be created.  See
-      `tf.variable_op_scope` for details.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    scope: Optional scope for variable_op_scope.
 
   Returns:
     A Tensor which can be consumed by hidden layers in the neural network.
@@ -89,7 +88,7 @@ def input_from_feature_columns(columns_to_tensors,
     ValueError: if FeatureColumn cannot be consumed by a neural network.
   """
   check_feature_columns(feature_columns)
-  with variable_scope.variable_op_scope(columns_to_tensors.values(), name,
+  with variable_scope.variable_op_scope(columns_to_tensors.values(), scope,
                                         'input_from_feature_columns'):
     output_tensors = []
     transformer = _Transformer(columns_to_tensors)
@@ -112,8 +111,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
                                       feature_columns,
                                       num_outputs,
                                       weight_collections=None,
-                                      name=None,
-                                      trainable=True):
+                                      trainable=True,
+                                      scope=None):
   """A tf.contrib.layer style linear prediction builder based on FeatureColumns.
 
   Generally a single example in training data is described with feature columns.
@@ -155,12 +154,9 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       set should be instances of classes derived from FeatureColumn.
     num_outputs: An integer specifying number of outputs. Default value is 1.
     weight_collections: List of graph collections to which weights are added.
-    name: The name for this operation is used to name operations and to find
-      variables. If specified it must be unique for this scope, otherwise a
-      unique name starting with "fully_connected" will be created.  See
-      `tf.variable_op_scope` for details.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    scope: Optional scope fpor variable_op_scope.
 
   Returns:
     A tuple of followings:
@@ -172,7 +168,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     ValueError: if FeatureColumn cannot be used for linear predictions.
   """
   check_feature_columns(feature_columns)
-  with variable_scope.variable_op_scope(columns_to_tensors.values(), name,
+  with variable_scope.variable_op_scope(columns_to_tensors.values(), scope,
                                         'weighted_sum_from_feature_columns'):
     output_tensors = []
     column_to_variable = dict()
@@ -192,10 +188,11 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       _log_variable(variable)
 
     predictions_no_bias = math_ops.add_n(output_tensors)
-    bias = variables.Variable(
-        array_ops.zeros([num_outputs]),
-        collections=fc._add_variable_collection(weight_collections),  # pylint: disable=protected-access
-        name='bias_weight')
+    bias = contrib_variables.model_variable(
+        'bias_weight',
+        shape=[num_outputs],
+        initializer=init_ops.zeros_initializer,
+        collections=fc._add_variable_collection(weight_collections))  # pylint: disable=protected-access
     _log_variable(bias)
     predictions = nn_ops.bias_add(predictions_no_bias, bias)
 
@@ -263,8 +260,10 @@ def parse_feature_columns_from_examples(serialized,
 def _log_variable(variable):
   if isinstance(variable, list):
     for var in variable:
-      logging.info('Created variable %s, with device=%s', var.name, var.device)
-  else:
+      if isinstance(variable, variables.Variable):
+        logging.info('Created variable %s, with device=%s', var.name,
+                     var.device)
+  elif isinstance(variable, variables.Variable):
     logging.info('Created variable %s, with device=%s', variable.name,
                  variable.device)
 

@@ -232,6 +232,22 @@ TEST(HttpRequestTest, GetRequest_RangeOutOfBound) {
   EXPECT_TRUE(result.empty());
 }
 
+TEST(HttpRequestTest, GetRequest_503) {
+  FakeLibCurl* libcurl = new FakeLibCurl("get response", 503);
+  libcurl->curl_easy_perform_result = CURLE_WRITE_ERROR;
+  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  TF_EXPECT_OK(http_request.Init());
+
+  char scratch[100] = "random original scratch content";
+  StringPiece result = "random original string piece";
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetRange(100, 199));
+  TF_EXPECT_OK(http_request.SetResultBuffer(scratch, 100, &result));
+  EXPECT_EQ(error::UNAVAILABLE, http_request.Send().code());
+}
+
 TEST(HttpRequestTest, PostRequest_WithBody_FromFile) {
   FakeLibCurl* libcurl = new FakeLibCurl("", 200);
   HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));

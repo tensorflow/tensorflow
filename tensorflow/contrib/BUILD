@@ -16,6 +16,7 @@ py_library(
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
@@ -40,6 +41,7 @@ cc_library(
     name = "contrib_kernels",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
         "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
@@ -51,6 +53,7 @@ cc_library(
     name = "contrib_ops_op_lib",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",

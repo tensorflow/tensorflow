@@ -74,6 +74,22 @@ py_test(
     ],
 )
 
+filegroup(
+    name = "session_bundle_srcs",
+    srcs = [
+        "session_bundle.cc",
+        "session_bundle.h",
+    ],
+)
+
+filegroup(
+    name = "signature_srcs",
+    srcs = [
+        "signature.cc",
+        "signature.h",
+    ],
+)
+
 cc_library(
     name = "session_bundle",
     srcs = ["session_bundle.cc"],

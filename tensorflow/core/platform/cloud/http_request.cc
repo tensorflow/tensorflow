@@ -443,7 +443,7 @@ Status HttpRequest::Send() {
       }
       return Status::OK();
     default:
-      return errors::Internal(
+      return errors::Unavailable(
           strings::StrCat("Unexpected HTTP response code ", response_code));
   }
 }

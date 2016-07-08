@@ -13,6 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+#
+# Usage: ci_sanity.sh [options]
+#
+# Options:
+#           run sanity checks: python 2&3 pylint checks and bazel nobuild
+#  --pep8   run pep8 test only
 
 # Current script directory
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
@@ -126,6 +132,48 @@ do_pylint() {
   fi
 }
 
+# Run pep8 check
+do_pep8() {
+  # Usage: do_pep8
+
+  PEP8_BIN="/usr/local/bin/pep8"
+  PYTHON_SRC_FILES=$(find tensorflow -name '*.py')
+  PEP8_CONFIG_FILE="${SCRIPT_DIR}/pep8"
+
+  if [[ ! -f "${PEP8_CONFIG_FILE}" ]]; then
+    die "ERROR: Cannot find pep8 config file at ${PEP8_CONFIG_FILE}"
+  fi
+  echo "See \"${PEP8_CONFIG_FILE}\" for pep8 config( e.g., ignored errors)"
+
+  NUM_SRC_FILES=$(echo ${PYTHON_SRC_FILES} | wc -w)
+
+  echo "Running pep8 on ${NUM_SRC_FILES} files"
+  echo ""
+
+  PEP8_START_TIME=$(date +'%s')
+  PEP8_OUTPUT_FILE="$(mktemp)_pep8_output.log"
+
+  rm -rf ${PEP8_OUTPUT_FILE}
+
+  ${PEP8_BIN} --config="${PEP8_CONFIG_FILE}" --statistics \
+      ${PYTHON_SRC_FILES} 2>&1 | tee ${PEP8_OUTPUT_FILE}
+  PEP8_END_TIME=$(date +'%s')
+
+  echo ""
+  echo "pep8 took $((${PEP8_END_TIME} - ${PEP8_START_TIME})) s"
+  echo ""
+
+  if [[ -s ${PEP8_OUTPUT_FILE} ]]; then
+    echo "FAIL: pep8 found above errors and/or warnings."
+    return 1
+  else
+    echo "PASS: No pep8 errors or warnings were found"
+    return 0
+  fi
+}
+
+
+
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
@@ -148,6 +196,12 @@ do_bazel_nobuild() {
 # Supply all sanity step commands and descriptions
 SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_bazel_nobuild")
 SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "bazel nobuild")
+
+# Only run pep8 test if "--pep8" option supplied
+if [[ "$1" == "--pep8" ]]; then
+  SANITY_STEPS=("do_pep8")
+  SANITY_STEPS_DESC=("pep8 test")
+fi
 
 FAIL_COUNTER=0
 PASS_COUNTER=0

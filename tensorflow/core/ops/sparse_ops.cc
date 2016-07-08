@@ -570,4 +570,58 @@ sp_shape: 1-D.  Shape of the input SparseTensor.
 output: 1-D.  The `NNZ` values for the result `SparseTensor`.
 )doc");
 
+REGISTER_OP("SparseSparseMaximum")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b_indices: int64")
+    .Input("b_values: T")
+    .Input("b_shape: int64")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Returns the element-wise max of two SparseTensors.
+
+Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+
+a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, in the canonical lexicographic ordering.
+a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
+a_shape: 1-D.  Shape of the input SparseTensor.
+b_indices: counterpart to `a_indices` for the other operand.
+b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
+b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
+
+output_indices: 2-D.  The indices of the output SparseTensor.
+output_values: 1-D.  The values of the output SparseTensor.
+)doc");
+
+REGISTER_OP("SparseSparseMinimum")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b_indices: int64")
+    .Input("b_values: T")
+    .Input("b_shape: int64")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Returns the element-wise min of two SparseTensors.
+
+Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+
+a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, in the canonical lexicographic ordering.
+a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
+a_shape: 1-D.  Shape of the input SparseTensor.
+b_indices: counterpart to `a_indices` for the other operand.
+b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
+b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
+
+output_indices: 2-D.  The indices of the output SparseTensor.
+output_values: 1-D.  The values of the output SparseTensor.
+)doc");
+
 }  // namespace tensorflow

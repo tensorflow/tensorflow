@@ -86,7 +86,7 @@ class InferenceContext {
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
   InferenceContext(const NodeDef* node_def,
                    const std::vector<string>& input_shapes, int num_outputs,
-                   const std::vector<const Tensor*>& input_tensors = {});
+                   const std::vector<const Tensor*>& input_tensors);
   ~InferenceContext();
 
   const Shape* input(int idx) const { return inputs_[idx]; }
@@ -118,6 +118,8 @@ class InferenceContext {
                   const Shape** out) TF_MUST_USE_RESULT;
   Status WithRankAtLeast(const Shape* shape, int32 rank,
                          const Shape** out) TF_MUST_USE_RESULT;
+  Status WithRankAtMost(const Shape* shape, int32 rank,
+                        const Shape** out) TF_MUST_USE_RESULT;
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
   // the dimension with asserted value in <*out>. Otherwise returns an error.
@@ -134,6 +136,13 @@ class InferenceContext {
   Status Merge(const Shape* in0, const Shape* in1,
                const Shape** out) TF_MUST_USE_RESULT;
 
+  // Asserts that <s>'s rank >= <prefix>'s rank, and the first
+  // <prefix.rank> dimensions of <s> are compatible with the dimensions of
+  // <prefix>.
+  // Returns the merged results in <*s_out> and <*prefix_out>.
+  Status MergePrefix(const Shape* s, const Shape* prefix, const Shape** s_out,
+                     const Shape** prefix_out) TF_MUST_USE_RESULT;
+
   // Merges <d0> and <d1> and returns the merged dimension in <*out>. If <d0>
   // and <d1> have incompatible values, returns an error.
   //
@@ -144,7 +153,7 @@ class InferenceContext {
   // Returns in <*out> a sub-shape of <s>, with dimensions at index [s[start],
   // ..).
   // Returns an error if the rank of <s> is < <start>.
-  Status Subshape(const Shape* s, int start,
+  Status Subshape(const Shape* s, int64 start,
                   const Shape** out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those

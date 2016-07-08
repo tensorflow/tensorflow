@@ -40,13 +40,24 @@ struct RequantizeCopier {
   inline void Copy(T* dst, const T* src, int input_index, size_t n) {
     const float input_min = (*input_min_and_max)[input_index].first;
     const float input_max = (*input_min_and_max)[input_index].second;
-    for (int k = 0; k < n; ++k) {
-      // TODO(petewarden): This is a very slow reference implementation of
-      // the range conversion, we need to offer an optimized approach. The
-      // biggest optimization will be making sure we construct graphs so
-      // that all inputs' ranges match, so this can just be a copy.
-      *dst++ = RequantizeInNewRange<T, T>(*src++, input_min, input_max,
-                                          output_min, output_max);
+    if (input_min == output_min && input_max == output_max) {
+      DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+      memcpy(dst, src, n * sizeof(T));
+    } else {
+      Eigen::array<Eigen::DenseIndex, 1> dims;
+      dims[0] = n;
+      typename TTypes<T, 1>::UnalignedConstTensor input_array(src, dims);
+      typename TTypes<T, 1>::UnalignedTensor output_array(dst, dims);
+
+      QuantizedToFloatStruct<T> q2f(input_min, input_max);
+      auto input_float = DEQUANTIZE_WITH_EIGEN(input_array, q2f);
+      FloatToQuantizedStruct<T> f2q(output_min, output_max);
+      auto input_requantized = QUANTIZE_WITH_EIGEN(input_float, f2q, T);
+
+      // RequantizeCopier::Copy is called from within a shard of computation, so
+      // don't use the threadpool device here, simply assign with default CPU
+      // device.
+      output_array = input_requantized;
     }
   }
 
@@ -81,7 +92,7 @@ class QuantizedConcatOp : public OpKernel {
     }
     if (std::is_signed<T>::value) {
       // For signed, we want a symmetrical distribution including zero for the
-      // output, so pick  a range that meets that need.
+      // output, so pick a range that meets that need.
       const float largest_value =
           std::max(std::abs(overall_min), std::abs(overall_max));
       *output_min = -largest_value;

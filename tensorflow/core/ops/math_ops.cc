@@ -731,12 +731,70 @@ Returns the truth value of x OR y element-wise.
 
 // --------------------------------------------------------------------------
 
+// TODO(cwhipkey): review what the python code here does.
 REGISTER_OP("Select")
     .Input("condition: bool")
     .Input("t: T")
     .Input("e: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* cond = c->input(0);
+      const Shape* data = c->input(1);
+      TF_RETURN_IF_ERROR(c->Merge(data, c->input(2), &data));
+
+      // Validate condition's shape if possible.
+      if (c->RankKnown(data)) {
+        const int32 data_rank = c->Rank(data);
+        if (data_rank == 0 || data_rank == 1) {
+          // Cond must match inputs since they are scalar or vector.
+          TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+        } else {
+          // cond must be the shape [data.dim[0]] or data.
+          if (c->RankKnown(cond)) {
+            if (c->Rank(cond) == 1) {
+              // Must be a vector whose first dimension matches first dimension
+              // of the data vectors.
+              const Dimension* merged_dim;
+              TF_RETURN_IF_ERROR(
+                  c->Merge(c->Dim(data, 0), c->Dim(cond, 0), &merged_dim));
+              if (merged_dim != c->Dim(data, 0)) {
+                // Merging used the cond dim.  Update data to refer to it.
+                std::vector<const Dimension*> dims{merged_dim};
+                for (int i = 1; i < data_rank; ++i) {
+                  dims.push_back(c->Dim(data, i));
+                }
+                data = c->CreateShape(dims);
+              }
+            } else {
+              // Must be the same as the data vectors.
+              TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+            }
+          } else {
+            // We want to express  that it's either [data.dim[0]] or data.
+            // - rank(cond) must be 1 or rank(data).
+            // - cond.dim[0] is same as data.dim[0]
+            // But neither of these are expressible with unknown rank cond.
+            // TODO(cwhipkey): improve this case.
+          }
+        }
+      } else if (c->RankKnown(cond)) {
+        if (c->Rank(cond) == 1) {
+          // cond is vector, so data is either the same shape, or a shape with
+          // higher rank or the same first dimension.
+          // TODO(cwhipkey): make the call to WithRankAtLeast do something when
+          // <data> is known.  Then we could assert the first dimensions are the
+          // same.
+          // TF_RETURN_IF_ERROR(c->WithRankAtLeast(data, 1, &data));
+        } else {
+          // If cond is a non-vector, it must be the same shape as data.
+          TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+        }
+      }
+
+      c->set_output(0, data);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
 
@@ -1127,6 +1185,46 @@ REGISTER_OP("UnsortedSegmentSum")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* s_data = c->input(0);
+      const Shape* s_segment_ids = c->input(1);
+      const Shape* s_num_segments = c->input(2);
+      TF_RETURN_IF_ERROR(c->WithRank(s_num_segments, 0, &s_num_segments));
+
+      const Shape* out;
+
+      // Leading dimensions of data must be compatible with dimensions of
+      // <s_segment_ids>.
+      if (c->RankKnown(s_segment_ids)) {
+        TF_RETURN_IF_ERROR(
+            c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
+
+        // Get the value of the num_segments input tensor.
+        const auto* num_segments_t = c->input_tensor(2);
+        const Dimension* num_segments_dim;
+        if (num_segments_t == nullptr) {
+          num_segments_dim = c->CreateUnknownDim();
+        } else {
+          auto t_val = num_segments_t->scalar<int32>()();
+          if (t_val < 0) {
+            return errors::InvalidArgument(
+                "num_segments value must be non-negative, but was ", t_val);
+          }
+          num_segments_dim = c->CreateDim(t_val);
+        }
+
+        // Output is {segment_id_rank} + s_data[segment_id_rank:].
+        const Shape* s_data_suffix;
+        TF_RETURN_IF_ERROR(
+            c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
+        TF_RETURN_IF_ERROR(c->Concatenate(c->CreateShape({num_segments_dim}),
+                                          s_data_suffix, &out));
+      } else {
+        out = c->CreateUnknownShape();
+      }
+      c->set_output(0, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
@@ -1335,6 +1433,35 @@ REGISTER_OP("Range")
     .Input("limit: int32")
     .Input("delta: int32")
     .Output("output: int32")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
+                                      " for 'start'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(1), 0, &unused),
+                                      " for 'limit'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(2), 0, &unused),
+                                      " for 'delta'");
+      const Tensor* start_t = c->input_tensor(0);
+      const Tensor* limit_t = c->input_tensor(1);
+      const Tensor* delta_t = c->input_tensor(2);
+      if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
+        c->set_output(0, c->CreateShape({c->CreateUnknownDim()}));
+        return Status::OK();
+      }
+      const int32 start = start_t->scalar<int32>()();
+      const int32 limit = limit_t->scalar<int32>()();
+      const int32 delta = delta_t->scalar<int32>()();
+      if (start > limit) {
+        return errors::InvalidArgument("Requires start <= limit: ", start, "/",
+                                       limit);
+      }
+      if (delta <= 0) {
+        return errors::InvalidArgument("Requires delta > 0: ", delta);
+      }
+      const int32 size = (limit - start + delta - 1) / delta;
+      c->set_output(0, c->CreateShape({c->CreateDim(size)}));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Creates a sequence of integers.
 
@@ -1362,6 +1489,24 @@ REGISTER_OP("LinSpace")
     .Input("num: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
+                                      " for 'start'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(1), 0, &unused),
+                                      " for 'stop'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(2), 0, &unused),
+                                      " for 'num'");
+      const Tensor* num_t = c->input_tensor(2);
+      if (num_t == nullptr) {
+        c->set_output(0, c->CreateShape({c->CreateUnknownDim()}));
+        return Status::OK();
+      }
+      const int64 num = num_t->scalar<int32>()();
+      if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
+      c->set_output(0, c->CreateShape({c->CreateDim(num)}));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Generates values in an interval.
 

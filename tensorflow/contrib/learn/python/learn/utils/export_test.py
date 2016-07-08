@@ -26,9 +26,24 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib import learn
+from tensorflow.contrib.session_bundle import manifest_pb2
 
 
 class ExportTest(tf.test.TestCase):
+
+  def _get_default_signature(self, export_meta_filename):
+    """Gets the default signature from the export.meta file."""
+    with tf.Session():
+      save = tf.train.import_meta_graph(export_meta_filename)
+      meta_graph_def = save.export_meta_graph()
+      collection_def = meta_graph_def.collection_def
+
+      signatures_any = collection_def['serving_signatures'].any_list.value
+      self.assertEquals(len(signatures_any), 1)
+      signatures = manifest_pb2.Signatures()
+      signatures_any[0].Unpack(signatures)
+      default_signature = signatures.default_signature
+      return default_signature
 
   def testExportMonitor(self):
     random.seed(42)
@@ -41,10 +56,41 @@ class ExportTest(tf.test.TestCase):
                                                   exports_to_keep=1)
     regressor.fit(x, y, steps=10,
                   monitors=[export_monitor])
+
     self.assertTrue(tf.gfile.Exists(export_dir))
     self.assertFalse(tf.gfile.Exists(export_dir + '00000000/export'))
     self.assertTrue(tf.gfile.Exists(export_dir + '00000010/export'))
+    # Validate the signature
+    signature = self._get_default_signature(export_dir + '00000010/export.meta')
+    self.assertTrue(signature.HasField('generic_signature'))
 
+  def testExportMonitorRegressionSignature(self):
+
+    def _regression_signature(examples, unused_features, predictions):
+      signatures = {}
+      signatures['regression'] = (
+          tf.contrib.session_bundle.exporter.regression_signature(examples,
+                                                                  predictions))
+      return signatures['regression'], signatures
+
+    random.seed(42)
+    x = np.random.rand(1000)
+    y = 2 * x + 3
+    regressor = learn.LinearRegressor()
+    export_dir = tempfile.mkdtemp() + 'export/'
+    export_monitor = learn.monitors.ExportMonitor(
+        every_n_steps=1,
+        export_dir=export_dir,
+        exports_to_keep=1,
+        signature_fn=_regression_signature)
+    regressor.fit(x, y, steps=10, monitors=[export_monitor])
+
+    self.assertTrue(tf.gfile.Exists(export_dir))
+    self.assertFalse(tf.gfile.Exists(export_dir + '00000000/export'))
+    self.assertTrue(tf.gfile.Exists(export_dir + '00000010/export'))
+    # Validate the signature
+    signature = self._get_default_signature(export_dir + '00000010/export.meta')
+    self.assertTrue(signature.HasField('regression_signature'))
 
 if __name__ == '__main__':
   tf.test.main()

@@ -71,6 +71,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import nest
 
 # TODO(ebrevdo): Remove once _linear is fully deprecated.
 linear = rnn_cell._linear  # pylint: disable=protected-access
@@ -341,12 +342,21 @@ def embedding_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
             embedding_size, output_projection=output_projection,
             feed_previous=feed_previous_bool,
             update_embedding_for_previous=False)
-        return outputs + [state]
+        state_list = [state]
+        if nest.is_sequence(state):
+          state_list = nest.flatten(state)
+        return outputs + state_list
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
-    return outputs_and_state[:-1], outputs_and_state[-1]
+    outputs_len = len(decoder_inputs)  # Outputs length same as decoder inputs.
+    state_list = outputs_and_state[outputs_len:]
+    state = state_list[0]
+    if nest.is_sequence(encoder_state):
+      state = nest.pack_sequence_as(structure=encoder_state,
+                                    flat_sequence=state_list)
+    return outputs_and_state[:outputs_len], state
 
 
 def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
@@ -436,12 +446,29 @@ def embedding_tied_rnn_seq2seq(encoder_inputs, decoder_inputs, cell,
         outputs, state = tied_rnn_seq2seq(
             emb_encoder_inputs, emb_decoder_inputs, cell,
             loop_function=loop_function, dtype=dtype)
-        return outputs + [state]
+        state_list = [state]
+        if nest.is_sequence(state):
+          state_list = nest.flatten(state)
+        return outputs + state_list
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
-    return outputs_and_state[:-1], outputs_and_state[-1]
+    outputs_len = len(decoder_inputs)  # Outputs length same as decoder inputs.
+    state_list = outputs_and_state[outputs_len:]
+    state = state_list[0]
+    # Calculate zero-state to know it's structure.
+    static_batch_size = encoder_inputs[0].get_shape()[0]
+    for inp in encoder_inputs[1:]:
+      static_batch_size.merge_with(inp.get_shape()[0])
+    batch_size = static_batch_size.value
+    if batch_size is None:
+      batch_size = array_ops.shape(encoder_inputs[0])[0]
+    zero_state = cell.zero_state(batch_size, dtype)
+    if nest.is_sequence(zero_state):
+      state = nest.pack_sequence_as(structure=zero_state,
+                                    flat_sequence=state_list)
+    return outputs_and_state[:outputs_len], state
 
 
 def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
@@ -745,12 +772,21 @@ def embedding_attention_seq2seq(encoder_inputs, decoder_inputs, cell,
             feed_previous=feed_previous_bool,
             update_embedding_for_previous=False,
             initial_state_attention=initial_state_attention)
-        return outputs + [state]
+        state_list = [state]
+        if nest.is_sequence(state):
+          state_list = nest.flatten(state)
+        return outputs + state_list
 
     outputs_and_state = control_flow_ops.cond(feed_previous,
                                               lambda: decoder(True),
                                               lambda: decoder(False))
-    return outputs_and_state[:-1], outputs_and_state[-1]
+    outputs_len = len(decoder_inputs)  # Outputs length same as decoder inputs.
+    state_list = outputs_and_state[outputs_len:]
+    state = state_list[0]
+    if nest.is_sequence(encoder_state):
+      state = nest.pack_sequence_as(structure=encoder_state,
+                                    flat_sequence=state_list)
+    return outputs_and_state[:outputs_len], state
 
 
 def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
@@ -818,6 +854,7 @@ def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
         else:
           # If feed_previous is a Tensor, we construct 2 graphs and use cond.
           def filled_embedding_rnn_decoder(feed_previous):
+            """The current decoder with a fixed feed_previous parameter."""
             # pylint: disable=cell-var-from-loop
             reuse = None if feed_previous else True
             vs = variable_scope.get_variable_scope()
@@ -827,14 +864,23 @@ def one2many_rnn_seq2seq(encoder_inputs, decoder_inputs_dict, cell,
                   num_decoder_symbols, embedding_size,
                   feed_previous=feed_previous)
             # pylint: enable=cell-var-from-loop
-            return outputs + [state]
+            state_list = [state]
+            if nest.is_sequence(state):
+              state_list = nest.flatten(state)
+            return outputs + state_list
+
           outputs_and_state = control_flow_ops.cond(
               feed_previous,
               lambda: filled_embedding_rnn_decoder(True),
               lambda: filled_embedding_rnn_decoder(False))
-          outputs = outputs_and_state[:-1]
-          state = outputs_and_state[-1]
-
+          # Outputs length is the same as for decoder inputs.
+          outputs_len = len(decoder_inputs)
+          outputs = outputs_and_state[:outputs_len]
+          state_list = outputs_and_state[outputs_len:]
+          state = state_list[0]
+          if nest.is_sequence(encoder_state):
+            state = nest.pack_sequence_as(structure=encoder_state,
+                                          flat_sequence=state_list)
       outputs_dict[name] = outputs
       state_dict[name] = state
 

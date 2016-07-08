@@ -11,7 +11,7 @@ tools. It explains:
    deep learning to get the advantages of both.
 
 Read this overview to decide whether the tf.learn linear model tools might be
-useful to you. Then do the [Linear Models tutorial](wide/) to
+useful to you. Then do the [Linear Models tutorial](../wide/) to
 give it a try. This overview uses code samples from the tutorial, but the
 tutorial walks through the code in greater detail.
 

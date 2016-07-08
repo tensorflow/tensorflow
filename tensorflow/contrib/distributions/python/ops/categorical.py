@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 
 
-class Categorical(distribution.DiscreteDistribution):
+class Categorical(distribution.Distribution):
   """Categorical distribution.
 
   The categorical distribution is parameterized by the log-probabilities
@@ -119,7 +119,7 @@ class Categorical(distribution.DiscreteDistribution):
   def logits(self):
     return self._logits
 
-  def log_pmf(self, k, name="log_pmf"):
+  def log_prob(self, k, name="log_prob"):
     """Log-probability of class `k`.
 
     Args:
@@ -135,7 +135,7 @@ class Categorical(distribution.DiscreteDistribution):
       return -nn_ops.sparse_softmax_cross_entropy_with_logits(
           self.logits, k, name=name)
 
-  def pmf(self, k, name="pmf"):
+  def prob(self, k, name="prob"):
     """Probability of class `k`.
 
     Args:
@@ -147,7 +147,7 @@ class Categorical(distribution.DiscreteDistribution):
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self.logits, k], name):
-        return math_ops.exp(self.log_pmf(k))
+        return math_ops.exp(self.log_prob(k))
 
   def sample(self, n, seed=None, name="sample"):
     """Sample `n` observations from the Categorical distribution.
@@ -194,3 +194,7 @@ class Categorical(distribution.DiscreteDistribution):
         ret = math_ops.cast(ret, self._dtype)
         ret.set_shape(self.get_batch_shape())
         return ret
+
+  @property
+  def is_continuous(self):
+    return False

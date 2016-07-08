@@ -148,8 +148,9 @@ class ExampleParserOp : public OpKernel {
       // Preallocate dense_values, since we know their sizes
       TensorShape out_shape;
       out_shape.AddDim(batch_size);
-      for (const int64 dim : dense_shapes_[d].dim_sizes())
+      for (const int64 dim : dense_shapes_[d].dim_sizes()) {
         out_shape.AddDim(dim);
+      }
       Tensor* out = nullptr;
       dense_values.allocate(d, out_shape, &out);
 
@@ -193,11 +194,14 @@ class ExampleParserOp : public OpKernel {
     auto DoWork = [&ctx, &mu, &serialized_t, has_names, &names_t,
                    &fixed_len_features, &var_len_features, &output_dense_values,
                    &sparse_values_tmp](int64 start, int64 limit) {
-      Example ex;
       // Processing each Example in the batch starts here.
       for (std::size_t b = static_cast<size_t>(start);
            b < static_cast<size_t>(limit); ++b) {
-        bool parse_success = ParseProtoUnlimited(&ex, serialized_t(b));
+        // Benchmarks indicate that a tight Arena+Example is most performant.
+        protobuf::Arena arena;
+        // ex is owned by the arena.
+        Example* ex = protobuf::Arena::CreateMessage<Example>(&arena);
+        bool parse_success = ParseProtoUnlimited(ex, serialized_t(b));
         if (!TF_PREDICT_TRUE(parse_success)) {
           mutex_lock l(mu);
           ctx->CtxFailure(errors::InvalidArgument(
@@ -206,7 +210,7 @@ class ExampleParserOp : public OpKernel {
         }
         const string& example_name = (has_names) ? names_t(b) : "<unknown>";
         Status s = SingleExampleProtoToTensors(
-            ex, example_name, b, fixed_len_features, var_len_features,
+            *ex, example_name, b, fixed_len_features, var_len_features,
             &output_dense_values, &sparse_values_tmp);
         if (!TF_PREDICT_TRUE(s.ok())) {
           mutex_lock l(mu);

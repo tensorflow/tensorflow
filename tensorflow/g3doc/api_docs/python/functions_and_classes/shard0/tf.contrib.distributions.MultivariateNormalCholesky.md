@@ -134,6 +134,13 @@ Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalCholesky.is_continuous` {#MultivariateNormalCholesky.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalCholesky.is_reparameterized` {#MultivariateNormalCholesky.is_reparameterized}
 
 
@@ -148,16 +155,23 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.log_likelihood(value, name='log_likelihood')` {#MultivariateNormalCholesky.log_likelihood}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_pdf(value, name='log_pdf')` {#MultivariateNormalCholesky.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.log_pdf(x, name='log_pdf')` {#MultivariateNormalCholesky.log_pdf}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_pmf(value, name='log_pmf')` {#MultivariateNormalCholesky.log_pmf}
 
-Log pdf of observations `x` given these Multivariate Normals.
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_prob(x, name='log_prob')` {#MultivariateNormalCholesky.log_prob}
+
+Log prob of observations `x` given these Multivariate Normals.
 
 ##### Args:
 
@@ -168,7 +182,7 @@ Log pdf of observations `x` given these Multivariate Normals.
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 
 - - -
@@ -208,7 +222,21 @@ Mode of each batch member.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.pdf(x, name='pdf')` {#MultivariateNormalCholesky.pdf}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.pdf(value, name='pdf')` {#MultivariateNormalCholesky.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.pmf(value, name='pmf')` {#MultivariateNormalCholesky.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.prob(x, name='prob')` {#MultivariateNormalCholesky.prob}
 
 The PDF of observations `x` under these Multivariate Normals.
 
@@ -221,7 +249,7 @@ The PDF of observations `x` under these Multivariate Normals.
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`.
+*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`.
 
 
 - - -

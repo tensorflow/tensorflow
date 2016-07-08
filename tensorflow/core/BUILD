@@ -134,6 +134,7 @@ cc_library(
         "lib/io/table_builder.h",
         "lib/io/table_options.h",
         "lib/jpeg/jpeg_mem.h",
+        "lib/monitoring/counter.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
         "lib/random/simple_philox.h",  # TODO(josh11b): make internal
@@ -1277,6 +1278,7 @@ tf_cc_tests(
         "lib/io/recordio_test.cc",
         "lib/io/table_test.cc",
         "lib/io/zlib_buffers_test.cc",
+        "lib/monitoring/counter_test.cc",
         "lib/random/distribution_sampler_test.cc",
         "lib/random/philox_random_test.cc",
         "lib/random/random_distributions_test.cc",

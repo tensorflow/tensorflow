@@ -169,6 +169,7 @@ int Main(int argc, char** argv) {
   string run_delay = "-1.0";
   int num_threads = -1;
   string benchmark_name = "";
+  string output_prefix = "";
 
   const bool parse_result = ParseFlags(
       &argc, argv, {
@@ -181,6 +182,7 @@ int Main(int argc, char** argv) {
                        Flag("run_delay", &run_delay),                  //
                        Flag("num_threads", &num_threads),              //
                        Flag("benchmark_name", &benchmark_name),        //
+                       Flag("output_prefix", &output_prefix),          //
                    });
 
   if (!parse_result) {
@@ -203,6 +205,7 @@ int Main(int argc, char** argv) {
   LOG(INFO) << "Inter-run delay (seconds): [" << run_delay << "]";
   LOG(INFO) << "Num threads: [" << num_threads << "]";
   LOG(INFO) << "Benchmark name: [" << benchmark_name << "]";
+  LOG(INFO) << "Output prefix: [" << output_prefix << "]";
 
   std::unique_ptr<Session> session;
   std::unique_ptr<StatSummarizer> stats;
@@ -238,7 +241,7 @@ int Main(int argc, char** argv) {
 
   stats->PrintStepStats();
 
-  if (!benchmark_name.empty()) {
+  if (!benchmark_name.empty() && !output_prefix.empty()) {
     // Compute the total number of values per input.
     int64 total_size = 1;
     for (int32 size : sizes) {
@@ -251,7 +254,7 @@ int Main(int argc, char** argv) {
                               (1024 * 1024);
 
     // Report the stats.
-    TestReporter reporter(benchmark_name);
+    TestReporter reporter(output_prefix, benchmark_name);
     reporter.Initialize();
     reporter.Benchmark(num_runs, -1.0, wall_time, throughput);
     reporter.Close();

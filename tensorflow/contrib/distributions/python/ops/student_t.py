@@ -36,7 +36,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
 
-class StudentT(distribution.ContinuousDistribution):
+class StudentT(distribution.Distribution):
   """Student's t distribution with degree-of-freedom parameter df.
 
   #### Mathematical details
@@ -258,15 +258,15 @@ class StudentT(distribution.ContinuousDistribution):
   def get_event_shape(self):
     return self._event_shape
 
-  def log_pdf(self, x, name="log_pdf"):
-    """Log pdf of observations in `x` under these Student's t-distribution(s).
+  def log_prob(self, x, name="log_prob"):
+    """Log prob of observations in `x` under these Student's t-distribution(s).
 
     Args:
       x: tensor of dtype `dtype`, must be broadcastable with `mu` and `df`.
       name: The name to give this op.
 
     Returns:
-      log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
+      log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self._df, self._mu, self._sigma, x], name):
@@ -281,7 +281,7 @@ class StudentT(distribution.ContinuousDistribution):
                 math_ops.log(1 + math_ops.square((x - self._mu) / self._sigma) /
                              self._df) - math_ops.log(self._sigma))
 
-  def pdf(self, x, name="pdf"):
+  def prob(self, x, name="prob"):
     """The PDF of observations in `x` under these Student's t distribution(s).
 
     Args:
@@ -290,7 +290,7 @@ class StudentT(distribution.ContinuousDistribution):
       name: The name to give this op.
 
     Returns:
-      pdf: tensor of dtype `dtype`, the pdf values of `x`.
+      prob: tensor of dtype `dtype`, the prob values of `x`.
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self._df, self._mu, self._sigma, x], name):
@@ -376,3 +376,7 @@ class StudentT(distribution.ContinuousDistribution):
 
   def _zeros(self):
     return array_ops.zeros_like(self._df + self._mu + self._sigma)
+
+  @property
+  def is_continuous(self):
+    return True

@@ -227,4 +227,24 @@ module tf.graph.util {
     }
     return _.map(strings, str => str.substring(largestIndex));
   }
+
+  /**
+   * Given a queryString, aka ?foo=1&bar=2, return the object representation.
+   */
+  export function getQueryParams(queryString: string) {
+    if (queryString.charAt(0) === '?') {
+      queryString = queryString.slice(1);
+    }
+
+    let queryParams = _.chain(queryString.split('&'))
+                          .map((item) => {
+                            if (item) {
+                              return item.split('=');
+                            }
+                          })
+                          .compact()
+                          .value();
+
+    return _.object(queryParams);
+  }
 }

@@ -11,15 +11,18 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Example of DNNClassifier for Iris plant dataset, with pipeline."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from sklearn.pipeline import Pipeline
-from sklearn.datasets import load_iris
 from sklearn import cross_validation
-from sklearn.preprocessing import StandardScaler
+from sklearn.datasets import load_iris
 from sklearn.metrics import accuracy_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 import tensorflow as tf
 
 from tensorflow.contrib import learn
@@ -34,8 +37,10 @@ def main(unused_argv):
   # will do the right thing.
   scaler = StandardScaler()
 
-  # DNN classifier
-  classifier = learn.DNNClassifier(hidden_units=[10, 20, 10], n_classes=3)
+  # DNN classifier.
+  classifier = learn.DNNClassifier(
+      feature_columns=learn.infer_real_valued_columns_from_input(x_train),
+      hidden_units=[10, 20, 10], n_classes=3)
 
   pipeline = Pipeline([('scaler', scaler),
                        ('DNNclassifier', classifier)])

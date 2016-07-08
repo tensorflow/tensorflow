@@ -48,6 +48,8 @@ dimension, and dense along all other dimensions.
 @@sparse_add
 @@sparse_softmax
 @@sparse_tensor_dense_matmul
+@@sparse_maximum
+@@sparse_minimum
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1487,3 +1489,84 @@ def _SparseSoftmaxShape(op):  # pylint: disable=invalid-name
   unused_shape_shape = op.inputs[2].get_shape().with_rank(1)
   nnz = values_shape[0]
   return [tensor_shape.vector(nnz)]
+
+
+def sparse_maximum(sp_a, sp_b, name=None):
+  """Returns the element-wise max of two SparseTensors.
+
+  Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+  Example:
+
+  ```python
+  sp_zero = ops.SparseTensor([[0]], [0], [7])
+  sp_one = ops.SparseTensor([[1]], [1], [7])
+  res = tf.sparse_maximum(sp_zero, sp_one).eval()
+  # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
+  ```
+
+  Args:
+    sp_a: a `SparseTensor` operand whose dtype is real, and indices
+      lexicographically ordered.
+    sp_b: the other `SparseTensor` operand with the same requirements (and the
+      same shape).
+    name: optional name of the operation.
+  Returns:
+    output: the output SparseTensor.
+  """
+  with ops.op_scope([sp_a.indices, sp_a.values, sp_b.indices, sp_b.values],
+                    name, "SparseSparseMaximum") as name:
+    out_indices, out_values = gen_sparse_ops.sparse_sparse_maximum(sp_a.indices,
+                                                                   sp_a.values,
+                                                                   sp_a.shape,
+                                                                   sp_b.indices,
+                                                                   sp_b.values,
+                                                                   sp_b.shape,
+                                                                   name=name)
+  return ops.SparseTensor(out_indices, out_values, sp_a.shape)
+
+
+def sparse_minimum(sp_a, sp_b, name=None):
+  """Returns the element-wise min of two SparseTensors.
+
+  Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+  Example:
+
+  ```python
+  sp_zero = ops.SparseTensor([[0]], [0], [7])
+  sp_one = ops.SparseTensor([[1]], [1], [7])
+  res = tf.sparse_minimum(sp_zero, sp_one).eval()
+  # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
+  ```
+
+  Args:
+    sp_a: a `SparseTensor` operand whose dtype is real, and indices
+      lexicographically ordered.
+    sp_b: the other `SparseTensor` operand with the same requirements (and the
+      same shape).
+    name: optional name of the operation.
+  Returns:
+    output: the output SparseTensor.
+  """
+  with ops.op_scope([sp_a.indices, sp_a.values, sp_b.indices, sp_b.values],
+                    name, "SparseSparseMinimum") as name:
+    out_indices, out_values = gen_sparse_ops.sparse_sparse_minimum(sp_a.indices,
+                                                                   sp_a.values,
+                                                                   sp_a.shape,
+                                                                   sp_b.indices,
+                                                                   sp_b.values,
+                                                                   sp_b.shape,
+                                                                   name=name)
+  return ops.SparseTensor(out_indices, out_values, sp_a.shape)
+
+
+@ops.RegisterShape("SparseSparseMaximum")
+@ops.RegisterShape("SparseSparseMinimum")
+def _SparseSparseMaximumMinimumShape(op):  # pylint: disable=invalid-name
+  """Shape function for SparseSparseMaximum and SparseSparseMinimum."""
+  op.inputs[0].get_shape().assert_has_rank(2)  # a_indices
+  op.inputs[1].get_shape().assert_has_rank(1)  # a_values
+  op.inputs[2].get_shape().assert_has_rank(1)  # a_shape
+  op.inputs[3].get_shape().assert_has_rank(2)  # b_indices
+  op.inputs[4].get_shape().assert_has_rank(1)  # b_values
+  op.inputs[5].get_shape().assert_has_rank(1)  # b_shape
+  return [tensor_shape.unknown_shape(2), tensor_shape.unknown_shape(1)]
