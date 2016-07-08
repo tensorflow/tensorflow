@@ -75,6 +75,20 @@ class GraphActionsTest(tf.test.TestCase):
         expected_added_graphs=expected_graphs,
         expected_session_logs=expected_session_logs)
 
+  # TODO(ptucker): Test number and contents of checkpoint files.
+  def _assert_ckpt(self, output_dir, expected=True):
+    ckpt_state = tf.train.get_checkpoint_state(output_dir)
+    if expected:
+      pattern = '%s/model.ckpt-.*' % output_dir
+      primary_ckpt_path = ckpt_state.model_checkpoint_path
+      self.assertRegexpMatches(primary_ckpt_path, pattern)
+      all_ckpt_paths = ckpt_state.all_model_checkpoint_paths
+      self.assertTrue(primary_ckpt_path in all_ckpt_paths)
+      for ckpt_path in all_ckpt_paths:
+        self.assertRegexpMatches(ckpt_path, pattern)
+    else:
+      self.assertTrue(ckpt_state is None)
+
   # TODO(ptucker): Test lock, multi-threaded access?
   def test_summary_writer(self):
     self._assert_summaries('log/dir/0')
@@ -110,39 +124,47 @@ class GraphActionsTest(tf.test.TestCase):
 
   def test_infer(self):
     with tf.Graph().as_default() as g, self.test_session(g):
+      self._assert_ckpt(self._output_dir, False)
       in0, in1, out = self._build_inference_graph()
       self.assertEqual(
           {'a': 1.0, 'b': 2.0, 'c': 6.0},
           learn.graph_actions.infer(None, {'a': in0, 'b': in1, 'c': out}))
+      self._assert_ckpt(self._output_dir, False)
 
   def test_infer_different_default_graph(self):
     with self.test_session():
+      self._assert_ckpt(self._output_dir, False)
       with tf.Graph().as_default():
         in0, in1, out = self._build_inference_graph()
       with tf.Graph().as_default():
         self.assertEqual(
             {'a': 1.0, 'b': 2.0, 'c': 6.0},
             learn.graph_actions.infer(None, {'a': in0, 'b': in1, 'c': out}))
+      self._assert_ckpt(self._output_dir, False)
 
   def test_infer_invalid_feed(self):
     with tf.Graph().as_default() as g, self.test_session(g):
+      self._assert_ckpt(self._output_dir, False)
       in0, _, _ = self._build_inference_graph()
       with self.assertRaisesRegexp(
           tf.errors.InvalidArgumentError, 'both fed and fetched'):
         learn.graph_actions.infer(None, {'a': in0}, feed_dict={in0: 4.0})
+      self._assert_ckpt(self._output_dir, False)
 
   def test_infer_feed(self):
     with tf.Graph().as_default() as g, self.test_session(g):
+      self._assert_ckpt(self._output_dir, False)
       in0, _, out = self._build_inference_graph()
       self.assertEqual(
           {'c': 9.0},
           learn.graph_actions.infer(None, {'c': out}, feed_dict={in0: 4.0}))
+      self._assert_ckpt(self._output_dir, False)
 
-  # TODO(ptucker): Test saver and ckpt_path for eval & train.
   # TODO(ptucker): Test eval for 1 epoch.
 
   def test_evaluate_invalid_args(self):
     with tf.Graph().as_default() as g, self.test_session(g):
+      self._assert_ckpt(self._output_dir, False)
       with self.assertRaisesRegexp(ValueError, 'utput directory'):
         learn.graph_actions.evaluate(
             g, output_dir=None, checkpoint_path=None,
@@ -151,11 +173,13 @@ class GraphActionsTest(tf.test.TestCase):
         learn.graph_actions.evaluate(
             g, output_dir='', checkpoint_path=None,
             eval_dict={'a': tf.constant(1.0)})
+      self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       _, _, out = self._build_inference_graph()
       self._assert_summaries(self._output_dir, expected_session_logs=[])
+      self._assert_ckpt(self._output_dir, False)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
           eval_dict={'a': out}, max_steps=1)
@@ -163,11 +187,13 @@ class GraphActionsTest(tf.test.TestCase):
       self._assert_summaries(
           self._output_dir, expected_summaries={0: {'a': 6.0}},
           expected_session_logs=[])
+      self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_feed_fn(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       in0, _, out = self._build_inference_graph()
       self._assert_summaries(self._output_dir, expected_session_logs=[])
+      self._assert_ckpt(self._output_dir, False)
       feeder = _Feeder(in0, 3)
       results = learn.graph_actions.evaluate(
           g, output_dir=self._output_dir, checkpoint_path=None,
@@ -177,6 +203,7 @@ class GraphActionsTest(tf.test.TestCase):
       self._assert_summaries(
           self._output_dir, expected_summaries={0: {'a': 25.0}},
           expected_session_logs=[])
+      self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_feed_fn_with_exhaustion(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -225,11 +252,13 @@ class GraphActionsTest(tf.test.TestCase):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       self._assert_summaries(self._output_dir)
+      self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions.train(
           g, output_dir=self._output_dir, train_op=train_op,
           loss_op=tf.constant(2.0), steps=1)
       self.assertEqual(2.0, loss)
       self._assert_summaries(self._output_dir, expected_graphs=[g])
+      self._assert_ckpt(self._output_dir, True)
 
   def test_train_steps_is_incremental(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -281,11 +310,13 @@ class GraphActionsTest(tf.test.TestCase):
           tf.assign_add(tf.contrib.framework.get_global_step(), 1),
           tf.assign_add(loss_var, -1.0))
       self._assert_summaries(self._output_dir)
+      self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions.train(
           g, output_dir=self._output_dir, train_op=train_op,
           loss_op=loss_var.value(), steps=6)
       self.assertEqual(4.0, loss)
       self._assert_summaries(self._output_dir, expected_graphs=[g])
+      self._assert_ckpt(self._output_dir, True)
 
   def test_train_summaries(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -294,6 +325,7 @@ class GraphActionsTest(tf.test.TestCase):
       loss_op = tf.constant(2.0)
       tf.scalar_summary('loss', loss_op)
       self._assert_summaries(self._output_dir)
+      self._assert_ckpt(self._output_dir, False)
       loss = learn.graph_actions.train(
           g, output_dir=self._output_dir, train_op=train_op, loss_op=loss_op,
           steps=1)
@@ -302,6 +334,7 @@ class GraphActionsTest(tf.test.TestCase):
           self._output_dir,
           expected_graphs=[g],
           expected_summaries={1: {'loss': 2.0}})
+      self._assert_ckpt(self._output_dir, True)
 
 
 if __name__ == '__main__':
