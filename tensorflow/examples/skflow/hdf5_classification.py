@@ -18,7 +18,7 @@ from __future__ import print_function
 from sklearn import metrics, cross_validation
 from tensorflow.contrib import learn
 import h5py
-
+import numpy as np
 # Load dataset.
 iris = learn.datasets.load_dataset('iris')
 X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
@@ -43,7 +43,9 @@ classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
     n_classes=3, steps=200)
 
 # Fit and predict.
-classifier.fit(X_train, y_train)
-score = metrics.accuracy_score(y_test, classifier.predict(X_test))
+# classifier.fit and metrics.accuracy_score takes ndarray as input.
+# use HDF5 dataset's value or convert to numpy array
+classifier.fit(np.array(X_train), np.array(y_train))
+score = metrics.accuracy_score(y_test, classifier.predict(X_test.value))
 print('Accuracy: {0:f}'.format(score))
 
