@@ -569,6 +569,7 @@ REGISTER_OP("TensorArrayPack")
     .Input("flow_in: float")
     .Output("value: dtype")
     .Attr("dtype: type")
+    .Attr("element_shape: shape = { unknown_rank: true }")
     .Doc(R"doc(
 Pack the elements from the TensorArray into output `value`.
 
@@ -576,6 +577,9 @@ All elements must have the same shape.
 
 handle: The handle to a TensorArray.
 dtype: The type of the elem that is returned.
+element_shape: The expected shape of an element, if known. Used to
+  validate the shapes of TensorArray elements. If this shape is not
+  fully specified, packing zero-size TensorArrays is an error.
 flow_in: A float scalar that enforces proper chaining of operations.
 value: All of the elements in the TensorArray, concatenated along a new
   axis (the new dimension 0).
@@ -602,6 +606,7 @@ REGISTER_OP("TensorArrayConcat")
     .Output("value: dtype")
     .Output("lengths: int64")
     .Attr("dtype: type")
+    .Attr("element_shape_except0: shape = { unknown_rank: true }")
     .Doc(R"doc(
 Concat the elements from the TensorArray into value `value`.
 
@@ -620,6 +625,10 @@ All elements must have the same shape (excepting the first dimension).
 handle: The handle to a TensorArray.
 dtype: The type of the elem that is returned.
 flow_in: A float scalar that enforces proper chaining of operations.
+element_shape_except0: The expected shape of an element, if known,
+  excluding the first dimension. Used to validate the shapes of
+  TensorArray elements. If this shape is not fully specified, concatenating
+  zero-size TensorArrays is an error.
 value: All of the elements in the TensorArray, concatenated along the first
   axis.
 lengths: A vector of the row sizes of the original T elements in the

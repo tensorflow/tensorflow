@@ -420,6 +420,7 @@ class TensorArrayPackOp : public OpKernel {
   explicit TensorArrayPackOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttr("element_shape", &element_shape_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -437,10 +438,21 @@ class TensorArrayPackOp : public OpKernel {
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
 
-    // Simplest case
+    // If there are no elements, return a zero-element Tensor with
+    // shape [0] + element_shape_
     if (array_size == 0) {
-      Tensor empty(dtype_, TensorShape({}));
-      ctx->set_output(0, empty);
+      OP_REQUIRES(ctx, element_shape_.IsFullyDefined(),
+                  errors::Unimplemented(
+                      "TensorArray has size zero, but element shape ",
+                      element_shape_.DebugString(),
+                      " is not fully defined. "
+                      "Currently only static shapes are supported when packing "
+                      "zero-size TensorArrays."));
+      TensorShape empty_shape;
+      element_shape_.AsTensorShape(&empty_shape);
+      empty_shape.InsertDim(0, 0);
+      Tensor* empty_unused;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &empty_unused));
       return;
     }
 
@@ -451,6 +463,14 @@ class TensorArrayPackOp : public OpKernel {
     OP_REQUIRES_OK(ctx, s);
 
     const Tensor* value_0_t = values[0].AccessTensor(ctx);
+
+    OP_REQUIRES(
+        ctx, element_shape_.IsCompatibleWith(value_0_t->shape()),
+        errors::InvalidArgument("TensorArray was passed element_shape ",
+                                element_shape_.DebugString(),
+                                " which does not match the Tensor at index 0: ",
+                                value_0_t->shape().DebugString()));
+
     TensorShape output_shape(value_0_t->shape());
     output_shape.InsertDim(0, array_size);
 
@@ -495,6 +515,7 @@ class TensorArrayPackOp : public OpKernel {
 
  private:
   DataType dtype_;
+  PartialTensorShape element_shape_;
 };
 
 #define REGISTER_PACK(type)                                  \
@@ -549,6 +570,8 @@ class TensorArrayConcatOp : public OpKernel {
   explicit TensorArrayConcatOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttr("element_shape_except0",
+                                             &element_shape_except0_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -566,10 +589,23 @@ class TensorArrayConcatOp : public OpKernel {
     int32 array_size;
     OP_REQUIRES_OK(ctx, tensor_array->PackOrConcatSize(&array_size));
 
-    // Simplest case
+    // If there are no elements, return a zero-element Tensor with
+    // shape [0] + element_shape_except0_
     if (array_size == 0) {
-      Tensor empty(dtype_, TensorShape({}));
-      ctx->set_output(0, empty);
+      OP_REQUIRES(
+          ctx, element_shape_except0_.IsFullyDefined(),
+          errors::Unimplemented(
+              "TensorArray has size zero, but element_shape_except0 ",
+              element_shape_except0_.DebugString(),
+              " is not fully defined. "
+              "Currently only static shapes are supported when concatenating "
+              "zero-size TensorArrays."));
+      TensorShape empty_shape;
+      element_shape_except0_.AsTensorShape(&empty_shape);
+      empty_shape.InsertDim(0, 0);
+      Tensor* empty_unused;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &empty_unused));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, {0}, &empty_unused));
       return;
     }
 
@@ -607,6 +643,13 @@ class TensorArrayConcatOp : public OpKernel {
       if (i == 0) {
         output_shape = value_shape_t;
         output_shape_except0 = value_shape_t_except0;
+        OP_REQUIRES(
+            ctx, element_shape_except0_.IsCompatibleWith(output_shape_except0),
+            errors::InvalidArgument(
+                "TensorArray was passed element_shape_except0 ",
+                element_shape_except0_.DebugString(),
+                " but index 0 has (excepting dimension 0) shape: ",
+                value_shape_t_except0.DebugString(), " which does not match."));
       } else {
         OP_REQUIRES(ctx, output_shape_except0 == value_shape_t_except0,
                     errors::InvalidArgument(
@@ -655,6 +698,7 @@ class TensorArrayConcatOp : public OpKernel {
 
  private:
   DataType dtype_;
+  PartialTensorShape element_shape_except0_;
 };
 
 #define REGISTER_CONCAT(type)                                \

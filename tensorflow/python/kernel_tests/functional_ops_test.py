@@ -332,6 +332,18 @@ class FunctionalOpsTest(tf.test.TestCase):
     y = tf.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
+  def testMapEmptyScalar(self):
+    with self.test_session():
+      map_return = tf.map_fn(lambda x: 1, tf.constant([]))
+      self.assertAllEqual([0], map_return.get_shape().dims)
+      self.assertAllEqual([0], map_return.eval().shape)
+
+  def testMapEmptyTensor(self):
+    with self.test_session():
+      map_return = tf.map_fn(lambda x: tf.zeros([3, 2]), tf.constant([]))
+      self.assertAllEqual([0, 3, 2], map_return.get_shape().dims)
+      self.assertAllEqual([0, 3, 2], map_return.eval().shape)
+
   def testScanShape(self):
     with self.test_session():
       x = tf.constant([[1, 2, 3], [4, 5, 6]])
@@ -340,6 +352,12 @@ class FunctionalOpsTest(tf.test.TestCase):
       initializer = tf.constant([0, 0, 0])
       y = tf.scan(fn, x, initializer=initializer)
       self.assertAllEqual(y.get_shape(), y.eval().shape)
+
+  def testScanEmptyTensor(self):
+    with self.test_session():
+      x = tf.scan(lambda x, _: x, tf.range(0), initializer=tf.ones([2, 4]))
+      self.assertAllEqual([0, 2, 4], x.get_shape())
+      self.assertAllEqual(x.get_shape(), x.eval().shape)
 
   def testScanUnknownShape(self):
     x = tf.placeholder(tf.float32)

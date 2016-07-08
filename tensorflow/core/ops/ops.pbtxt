@@ -14948,6 +14948,11 @@ op {
     type: "type"
     description: "The type of the elem that is returned."
   }
+  attr {
+    name: "element_shape_except0"
+    description: "The expected shape of a TensorArray element, excluding the first dimension, used to validate elements and return a sensible shape when the TensorArray has size zero. Must be fully specified if a zero-size TensorArray is being concatenated."
+    type: "shape"
+  }
   summary: "Concat the elements from the TensorArray into value `value`."
   description: "Takes `T` elements of shapes\n\n  ```\n  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)\n  ```\n\nand concatenates them into a Tensor of shape:\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```\n\nAll elements must have the same shape (excepting the first dimension)."
 }
@@ -15001,6 +15006,11 @@ op {
     type: "type"
     description: "The type of the elem that is returned."
   }
+  attr {
+    name: "element_shape"
+    description: "The expected shape of a TensorArray element, used to validate elements and return a sensible shape when the TensorArray has size zero. Must be fully specified if a zero-size TensorArray is being packed."
+    type: "shape"
+  }  
   summary: "Pack the elements from the TensorArray into output `value`."
   description: "All elements must have the same shape."
 }
