@@ -657,7 +657,6 @@ class BatchTest(tf.test.TestCase):
         self.assertAllEqual(results[1].shape, [batch_size, 1])
         all_counts.extend(results[0])
         self.assertAllEqual(results[2], [b"string"] * batch_size)
-      self.assertItemsEqual(all_counts, range(num_batches * batch_size))
 
       # Reached the final batch with extra_elements.
       results = sess.run(batched)
