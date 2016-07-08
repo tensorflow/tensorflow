@@ -195,11 +195,9 @@ class WeightsAndDeltas {
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
   void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
-    // Assuming approximately 100K features per group gives a decent
-    // parallelization.
-    static const int64 kCostPerUnit = 100000;
     Shard(worker_threads.num_threads, worker_threads.workers,
-          static_cast<int64>(delta_weights_by_group_.size()), kCostPerUnit,
+          static_cast<int64>(delta_weights_by_group_.size()),
+          kCostPerUnitGroupWeightAccess,
           [this](const int64 begin, const int64 end) {
             for (int64 group = begin; group < end; ++group) {
               const std::vector<std::atomic<double>>& delta_weights =
@@ -239,11 +237,9 @@ class WeightsAndDeltas {
   void InitializeDeltaWeightsToZero(
       const DeviceBase::CpuWorkerThreads& worker_threads) {
     delta_weights_by_group_.resize(weights_by_group_.NumGroups());
-    // Assuming approximately 100K features per group gives a decent
-    // parallelization.
-    static const int64 kCostPerUnit = 100000;
     Shard(worker_threads.num_threads, worker_threads.workers,
-          static_cast<int64>(weights_by_group_.NumGroups()), kCostPerUnit,
+          static_cast<int64>(weights_by_group_.NumGroups()),
+          kCostPerUnitGroupWeightAccess,
           [this](const int64 begin, const int64 end) {
             for (int64 group = begin; group < end; ++group) {
               const TTypes<float>::Vec weights =
@@ -255,6 +251,11 @@ class WeightsAndDeltas {
             }
           });
   }
+
+  // Assuming approximately 100K features per group with each feature having a
+  // cost of 1 gives decent parallelization for weight related access (eg
+  // traversals, initialization etc).
+  static constexpr int64 kCostPerUnitGroupWeightAccess = 100000;
 
   WeightsByGroup weights_by_group_;
 
@@ -668,7 +669,7 @@ Status RunTrainStepsForMiniBatch(
       (*example_state_data)(example_index, 3) = example_weight;
     }
   };
-  // TODO(sibyl-Aix6ihai): Current multiplier 100000 works well empirically
+  // TODO(sibyl-Aix6ihai): Current multiplier 100K works well empirically
   // but perhaps we can tune it better.
   const int64 kCostPerUnit = 100000 * features_and_weights->NumGroups();
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
