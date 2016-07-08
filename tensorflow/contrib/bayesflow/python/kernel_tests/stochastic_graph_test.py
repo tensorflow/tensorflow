@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -164,7 +164,7 @@ class ValueTypeTest(tf.test.TestCase):
       with sg.value_type(type_full):
         self.assertEqual(sg.get_current_value_type(), type_full)
       self.assertEqual(sg.get_current_value_type(), type_mean)
-    with self.assertRaisesRegexp(ValueError, 'No value type currently set'):
+    with self.assertRaisesRegexp(ValueError, "No value type currently set"):
       sg.get_current_value_type()
 
 
@@ -185,14 +185,14 @@ class TestSurrogateLosses(tf.test.TestCase):
       sum_loss = tf.reduce_sum(loss)
 
       surrogate_from_loss = sg.surrogate_losses([loss])
-      surrogate_from_sum_loss = sg.surrogate_losses([sum_loss])
+      with self.assertRaisesRegexp(ValueError, "dimensionality 1 or greater"):
+        _ = sg.surrogate_losses([sum_loss])
       surrogate_from_both = sg.surrogate_losses(
-          [loss, sum_loss])
+          [loss, sum_loss * tf.ones_like(loss)])
 
       # Pathwise derivative terms do not require score function
       # surrogate losses.
       self.assertEqual(surrogate_from_loss, [])
-      self.assertEqual(surrogate_from_sum_loss, [])
       self.assertEqual(surrogate_from_both, [])
 
   def _testSurrogateLoss(self, session, losses, expected, xs):
@@ -260,7 +260,7 @@ class TestSurrogateLosses(tf.test.TestCase):
 
       self._testSurrogateLoss(
           session=sess,
-          losses=[sum_loss],
+          losses=[sum_loss * tf.ones_like(loss)],
           expected=set([
               (likelihood.distribution.log_pdf(likelihood.value())
                * sum_loss_nograd),
@@ -269,7 +269,7 @@ class TestSurrogateLosses(tf.test.TestCase):
 
       self._testSurrogateLoss(
           session=sess,
-          losses=[loss, sum_loss],
+          losses=[loss, sum_loss * tf.ones_like(loss)],
           expected=set([
               (likelihood.distribution.log_pdf(likelihood.value())
                * tf.stop_gradient(loss + sum_loss)),
@@ -299,5 +299,5 @@ class TestSurrogateLosses(tf.test.TestCase):
           xs=[mu, sigma])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

@@ -468,8 +468,32 @@ def _stochastic_dependencies_map(fixed_losses):
   return stoch_dependencies_map
 
 
-def surrogate_losses(sample_losses, name=None):
-  with ops.op_scope(sample_losses, name, "SampleLosses"):
+def surrogate_losses(sample_losses, name="SurrogateLosses"):
+  """Compute surrogate losses for StochasticTensors in the graph.
+
+  This function will call `surrogate_loss` on each `StochasticTensor` in the
+  graph and pass the losses in `sample_losses` that that `StochasticTensor`
+  influenced.
+
+  Note that currently `surrogate_losses` does not work with `StochasticTensor`s
+  instantiated in `while_loop`s or other control structures.
+
+  Args:
+    sample_losses: a list or tuple of final losses. Each loss should be per
+      example in the batch (and possibly per sample); that is, it should have
+      dimensionality of 1 or greater. All losses should have the same shape.
+    name: the name with which to prepend created ops.
+
+  Returns:
+    A list of surrogate losses.
+
+  Raises:
+    TypeError: if `sample_losses` is not a list or tuple, or if its elements
+      are not `Tensor`s.
+    ValueError: if any loss in `sample_losses` does not have dimensionality 1
+      or greater.
+  """
+  with ops.op_scope(sample_losses, name):
     fixed_losses = []
     if not isinstance(sample_losses, (list, tuple)):
       raise TypeError("sample_losses must be a list or tuple")
@@ -477,9 +501,9 @@ def surrogate_losses(sample_losses, name=None):
       if not isinstance(loss, ops.Tensor):
         raise TypeError("loss is not a Tensor: %s" % loss)
       ndims = loss.get_shape().ndims
-      if not (ndims is not None and ndims <= 1):
-        raise ValueError(
-            "loss must be a scalar or batch-length vector loss: %s" % loss)
+      if not (ndims is not None and ndims >= 1):
+        raise ValueError("loss must have dimensionality 1 or greater: %s" %
+                         loss)
       fixed_losses.append(array_ops.stop_gradient(loss))
 
     stoch_dependencies_map = _stochastic_dependencies_map(fixed_losses)
