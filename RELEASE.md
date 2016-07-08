@@ -8,6 +8,11 @@
 * `env.h` replaces use of `New*File()` functions to use `std::unique_ptr`
   return arguments, removing the old raw pointer returns.
 
+
+## Big Fixes and Other Changes
+ * `tf.nn.per_image_whitening(images)` is now able to handel batches.
+    Parameter got renamed from `image` to `images`.
+
 # Release 0.9.0
 
 ## Major Features and Improvements
