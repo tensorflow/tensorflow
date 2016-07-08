@@ -100,7 +100,8 @@ Polymer({
     },
     selectedDataset: {
       type: Number,
-      value: 0
+      value: 0,
+      observer: '_selectedDatasetChanged'
     },
     _renderHierarchy: Object,
     _progress: Object,
@@ -162,6 +163,17 @@ Polymer({
   },
   _normalizePath: function(path) {
     return this.resolveUrl(DEMO_DIR_PREFIX + path);
+  },
+  _selectedDatasetChanged: function() {
+    if (this.datasets) {
+      let dataset = this.datasets[this.selectedDataset];
+      let queryParams = '';
+      if (dataset['id']) {
+        queryParams = '?graphid=' + dataset['id'];
+      }
+      window.history.replaceState(
+          null, null, location.pathname + queryParams);
+    }
   }
 });
 })();
