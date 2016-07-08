@@ -59,6 +59,7 @@ Hello, TensorFlow!
 
 * [TensorFlow website](http://tensorflow.org)
 * [TensorFlow whitepaper](http://download.tensorflow.org/paper/whitepaper2015.pdf)
+* [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 * [TensorFlow MOOC on Udacity] (https://www.udacity.com/course/deep-learning--ud730)
 
 The TensorFlow community has created amazing things with TensorFlow, please see the [resources section of tensorflow.org](https://www.tensorflow.org/versions/master/resources#community) for an incomplete list.
