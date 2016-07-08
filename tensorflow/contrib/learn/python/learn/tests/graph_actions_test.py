@@ -99,7 +99,8 @@ class GraphActionsTest(tf.test.TestCase):
         learn.graph_actions.get_summary_writer('log/dir/0') is not
         learn.graph_actions.get_summary_writer('log/dir/1'))
 
-  # TODO(ptucker): Test restore_checkpoint_path for eval.
+  # TODO(ptucker): Test restore_checkpoint_path for eval; this should obsolete
+  # test_evaluate_with_saver().
   # TODO(ptucker): Test start_queue_runners for both eval & train.
   # TODO(ptucker): Test coord.request_stop & coord.join for eval.
 
@@ -217,6 +218,20 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertEqual(({'a': 15.0}, 0), results)
       self._assert_summaries(
           self._output_dir, expected_summaries={0: {'a': 15.0}},
+          expected_session_logs=[])
+
+  def test_evaluate_with_saver(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      _, _, out = self._build_inference_graph()
+      tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
+
+      self._assert_summaries(self._output_dir, expected_session_logs=[])
+      results = learn.graph_actions.evaluate(
+          g, output_dir=self._output_dir, checkpoint_path=None,
+          eval_dict={'a': out}, max_steps=1)
+      self.assertEqual(({'a': 6.0}, 0), results)
+      self._assert_summaries(
+          self._output_dir, expected_summaries={0: {'a': 6.0}},
           expected_session_logs=[])
 
   def test_train_invalid_args(self):

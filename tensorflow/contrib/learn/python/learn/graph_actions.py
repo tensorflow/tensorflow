@@ -369,20 +369,14 @@ def train(graph,
 
 def _get_first_op_from_collection(collection_name):
   elements = ops.get_collection(collection_name)
-  if elements is not None:
-    if elements:
-      return elements[0]
+  if elements:
+    return elements[0]
   return None
 
 
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
-  if saver is not None:
-    if saver:
-      saver = saver[0]
-    else:
-      saver = None
   if saver is None and variables.all_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
