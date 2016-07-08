@@ -708,6 +708,8 @@
 
 * **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
   * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
+  * [`aggregate_metric_map`](../../api_docs/python/contrib.metrics.md#aggregate_metric_map)
+  * [`aggregate_metrics`](../../api_docs/python/contrib.metrics.md#aggregate_metrics)
   * [`auc_using_histogram`](../../api_docs/python/contrib.metrics.md#auc_using_histogram)
   * [`confusion_matrix`](../../api_docs/python/contrib.metrics.md#confusion_matrix)
   * [`set_difference`](../../api_docs/python/contrib.metrics.md#set_difference)
