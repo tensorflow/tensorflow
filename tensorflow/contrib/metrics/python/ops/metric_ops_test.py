@@ -558,12 +558,17 @@ class StreamingAUCTest(tf.test.TestCase):
         self.assertAlmostEqual(initial_auc, auc.eval(), 5)
 
   def testAllCorrect(self):
+    self.allCorrectAsExpected('ROC')
+
+  def allCorrectAsExpected(self, curve):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
     with self.test_session() as sess:
       predictions = tf.constant(inputs, dtype=tf.float32)
       labels = tf.constant(inputs)
-      auc, update_op = tf.contrib.metrics.streaming_auc(predictions, labels)
+      auc, update_op = tf.contrib.metrics.streaming_auc(predictions,
+                                                        labels,
+                                                        curve=curve)
 
       sess.run(tf.initialize_local_variables())
       self.assertEqual(1, sess.run(update_op))
@@ -574,12 +579,55 @@ class StreamingAUCTest(tf.test.TestCase):
     with self.test_session() as sess:
       predictions = tf.constant([1, 0, 1, 0], shape=(1, 4), dtype=tf.float32)
       labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
-      auc, update_op = tf.contrib.metrics.streaming_auc(predictions, labels)
+      auc, update_op = tf.contrib.metrics.streaming_auc(predictions,
+                                                        labels)
 
       sess.run(tf.initialize_local_variables())
       self.assertAlmostEqual(0.5, sess.run(update_op))
 
       self.assertAlmostEqual(0.5, auc.eval())
+
+  def testAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([0.1, 0.4, 0.35, 0.8],
+                                shape=(1, 4), dtype=tf.float32)
+      labels = tf.constant([0, 0, 1, 1], shape=(1, 4))
+      auc, update_op = tf.contrib.metrics.streaming_auc(predictions,
+                                                        labels,
+                                                        curve='PR')
+
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+
+      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
+
+  def testAnotherAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
+                                shape=(1, 7), dtype=tf.float32)
+      labels = tf.constant([0, 0, 1, 0, 1, 0, 1], shape=(1, 7))
+      auc, update_op = tf.contrib.metrics.streaming_auc(predictions,
+                                                        labels,
+                                                        curve='PR')
+
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+
+      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
+
+  def testThirdAUCPRSpecialCase(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
+                                shape=(1, 7), dtype=tf.float32)
+      labels = tf.constant([0, 0, 0, 0, 1, 1, 1], shape=(1, 7))
+      auc, update_op = tf.contrib.metrics.streaming_auc(predictions,
+                                                        labels,
+                                                        curve='PR')
+
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(0.90277, sess.run(update_op), delta=1e-3)
+
+      self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-3)
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
@@ -599,6 +647,19 @@ class StreamingAUCTest(tf.test.TestCase):
       predictions = tf.zeros([4], dtype=tf.float32)
       labels = tf.zeros([4])
       auc, update_op = tf.contrib.metrics.streaming_auc(predictions, labels)
+
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(1, sess.run(update_op), 6)
+
+      self.assertAlmostEqual(1, auc.eval(), 6)
+
+  def testRecallOneAndPrecisionOneGivesOnePRAUC(self):
+    with self.test_session() as sess:
+      predictions = tf.ones([4], dtype=tf.float32)
+      labels = tf.ones([4])
+      auc, update_op = tf.contrib.metrics.streaming_auc(predictions,
+                                                        labels,
+                                                        curve='PR')
 
       sess.run(tf.initialize_local_variables())
       self.assertAlmostEqual(1, sess.run(update_op), 6)
@@ -665,7 +726,7 @@ class StreamingAUCTest(tf.test.TestCase):
       tf_labels = labels_queue.dequeue()
 
       auc, update_op = tf.contrib.metrics.streaming_auc(
-          tf_predictions, tf_labels, num_thresholds=500)
+          tf_predictions, tf_labels, curve='ROC', num_thresholds=500)
 
       sess.run(tf.initialize_local_variables())
       for _ in range(int(num_samples / batch_size)):
