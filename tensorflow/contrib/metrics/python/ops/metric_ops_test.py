@@ -2493,5 +2493,64 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       self.assertAlmostEqual(desired_miou, miou.eval())
 
 
+class AggregateMetricsTest(tf.test.TestCase):
+
+  def testAggregateNoMetricsRaisesValueError(self):
+    with self.assertRaises(ValueError):
+      tf.contrib.metrics.aggregate_metrics()
+
+  def testAggregateSingleMetricReturnsOneItemLists(self):
+    values = tf.ones((10, 4))
+    value_tensors, update_ops = tf.contrib.metrics.aggregate_metrics(
+        tf.contrib.metrics.streaming_mean(values))
+    self.assertEqual(len(value_tensors), 1)
+    self.assertEqual(len(update_ops), 1)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      self.assertEqual(1, update_ops[0].eval())
+      self.assertEqual(1, value_tensors[0].eval())
+
+  def testAggregateMultipleMetricsReturnsListsInOrder(self):
+    predictions = tf.ones((10, 4))
+    labels = tf.ones((10, 4)) * 3
+    value_tensors, update_ops = tf.contrib.metrics.aggregate_metrics(
+        tf.contrib.metrics.streaming_mean_absolute_error(
+            predictions, labels),
+        tf.contrib.metrics.streaming_mean_squared_error(
+            predictions, labels))
+    self.assertEqual(len(value_tensors), 2)
+    self.assertEqual(len(update_ops), 2)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      self.assertEqual(2, update_ops[0].eval())
+      self.assertEqual(4, update_ops[1].eval())
+      self.assertEqual(2, value_tensors[0].eval())
+      self.assertEqual(4, value_tensors[1].eval())
+
+
+class AggregateMetricMapTest(tf.test.TestCase):
+
+  def testAggregateMultipleMetricsReturnsListsInOrder(self):
+    predictions = tf.ones((10, 4))
+    labels = tf.ones((10, 4)) * 3
+    names_to_values, names_to_updates = tf.contrib.metrics.aggregate_metric_map(
+        {
+            'm1': tf.contrib.metrics.streaming_mean_absolute_error(
+                predictions, labels),
+            'm2': tf.contrib.metrics.streaming_mean_squared_error(
+                predictions, labels),
+        })
+
+    self.assertEqual(2, len(names_to_values))
+    self.assertEqual(2, len(names_to_updates))
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      self.assertEqual(2, names_to_updates['m1'].eval())
+      self.assertEqual(4, names_to_updates['m2'].eval())
+      self.assertEqual(2, names_to_values['m1'].eval())
+      self.assertEqual(4, names_to_values['m2'].eval())
+
+
 if __name__ == '__main__':
   tf.test.main()
