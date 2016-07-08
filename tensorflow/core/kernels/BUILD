@@ -379,7 +379,6 @@ tf_kernel_libraries(
         "pack_op",
         "pad_op",
         "quantize_and_dequantize_op",
-        "random_shuffle_op",
         "reshape_op",
         "reverse_op",
         "reverse_sequence_op",
@@ -1516,9 +1515,12 @@ tf_kernel_libraries(
     ],
 )
 
-tf_kernel_library(
+tf_kernel_libraries(
     name = "random_ops",
-    prefix = "random_op",
+    prefixes = [
+        "random_op",
+        "random_shuffle_op",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
