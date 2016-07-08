@@ -46,7 +46,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           ></tf-categorizer>
           <paper-checkbox
             id="download-option"
-            checked="{{_show_download_links}}"
+            checked="{{_showDownloadLinks}}"
           >Data download links</paper-checkbox>
         </div>
         <div class="sidebar-section">
@@ -89,12 +89,12 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
                     ></tf-chart>
                     <paper-icon-button
                       class="expand-button"
-                      shift$="[[_show_download_links]]"
+                      shift$="[[_showDownloadLinks]]"
                       icon="fullscreen"
                       on-tap="toggleSelected"
                     ></paper-icon-button>
                   </div>
-                  <template is="dom-if" if="[[_show_download_links]]">
+                  <template is="dom-if" if="[[_showDownloadLinks]]">
                     <div class="card-bottom-row">
                       <tf-downloader
                         selected-runs="[[selectedRuns]]"
@@ -135,7 +135,13 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           type: Array,
           computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
         },
-        _show_download_links: Boolean,
+        _showDownloadLinks: {
+          type: Boolean,
+          notify: true,
+          value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
+              false),
+          observer: '_showDownloadLinksObserver'
+        },
         colorScale: {
           type: Object,
           notify: true,
@@ -146,8 +152,8 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           this.fire("rendered");
         });
       },
-      observers: ['redraw(_show_download_links)'],
-      redraw: function(_show_download_links) {
+      observers: ['redraw(_showDownloadLinks)'],
+      redraw: function(_showDownloadLinks) {
         var els = this.getElementsByTagName("tf-chart");
         for (var i=0; i<els.length; i++) {
           els[i].redraw();
@@ -161,6 +167,8 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
       _getScalarUrl: function() {
         return this.router.scalars;
       },
+      _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
+          '_showDownloadLinks', false),
       toggleSelected: function(e) {
         var currentTarget = Polymer.dom(e.currentTarget);
         var parentDiv = currentTarget.parentNode.parentNode;

@@ -50,7 +50,26 @@ module TF.URIStorage {
   export let DISAMBIGUATOR = 'disambiguator';
 
   /**
-   * Return a string stored in the URI, given a corresonding key.
+   * Return a boolean stored in the URI, given a corresponding key.
+   * Undefined if not found.
+   */
+  export function getBoolean(key: string): boolean {
+    let items = _componentToDict(_readComponent());
+    let item = items[key];
+    return item === 'true' ? true : item === 'false' ? false : undefined;
+  }
+
+  /**
+   * Store a boolean in the URI, with a corresponding key.
+   */
+  export function setBoolean(key: string, value: boolean) {
+    let items = _componentToDict(_readComponent());
+    items[key] = value.toString();
+    _writeComponent(_dictToComponent(items));
+  }
+
+  /**
+   * Return a string stored in the URI, given a corresponding key.
    * Undefined if not found.
    */
   export function getString(key: string): string {
@@ -118,6 +137,17 @@ module TF.URIStorage {
 
   /**
    * Return a function that:
+   * (1) Initializes a Polymer boolean property with a default value, if its
+   *     value is not already set
+   * (2) Sets up listener that updates Polymer property on hash change.
+   */
+  export function getBooleanInitializer(
+      propertyName: string, defaultVal: boolean): Function {
+    return _getInitializer(getBoolean, propertyName, defaultVal);
+  }
+
+  /**
+   * Return a function that:
    * (1) Initializes a Polymer string property with a default value, if its
    *     value is not already set
    * (2) Sets up listener that updates Polymer property on hash change.
@@ -150,6 +180,14 @@ module TF.URIStorage {
       propertyName: string, defaultVal: Object): Function {
     let clone = _.cloneDeep(defaultVal);
     return _getInitializer(getObject, propertyName, clone);
+  }
+
+  /**
+   * Return a function that updates URIStorage when a string property changes.
+   */
+  export function getBooleanObserver(
+      propertyName: string, defaultVal: boolean): Function {
+    return _getObserver(getBoolean, setBoolean, propertyName, defaultVal);
   }
 
   /**
