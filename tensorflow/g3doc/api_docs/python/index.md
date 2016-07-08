@@ -590,6 +590,7 @@
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
   * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
   * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
+  * [`Laplace`](../../api_docs/python/contrib.distributions.md#Laplace)
   * [`MultivariateNormalCholesky`](../../api_docs/python/contrib.distributions.md#MultivariateNormalCholesky)
   * [`MultivariateNormalFull`](../../api_docs/python/contrib.distributions.md#MultivariateNormalFull)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
