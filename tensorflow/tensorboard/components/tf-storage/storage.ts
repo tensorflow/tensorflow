@@ -42,6 +42,10 @@ module TF.URIStorage {
    *
    * The disambiguator should be set to any unique value so that multiple
    * instances of the component can store properties in URI storage.
+   *
+   * Because it's hard to dereference this variable in HTML property bindings,
+   * it is NOT safe to change the disambiguator string without find+replace
+   * across the codebase.
    */
   export let DISAMBIGUATOR = 'disambiguator';
 
@@ -107,12 +111,8 @@ module TF.URIStorage {
    */
   export function getURIStorageName(
       component: Object, propertyName: string): string {
-    let components: string[];
-    if (this[DISAMBIGUATOR] != null) {
-      components = [DISAMBIGUATOR, propertyName];
-    } else {
-      components = [propertyName];
-    }
+    let d = component[DISAMBIGUATOR];
+    let components = d == null ? [propertyName] : [d, propertyName];
     return components.join('.');
   }
 
@@ -143,10 +143,13 @@ module TF.URIStorage {
    * (1) Initializes a Polymer Object property with a default value, if its
    *     value is not already set
    * (2) Sets up listener that updates Polymer property on hash change.
+   *
+   * Generates a deep clone of the defaultVal to avoid mutation issues.
    */
   export function getObjectInitializer(
       propertyName: string, defaultVal: Object): Function {
-    return _getInitializer(getObject, propertyName, defaultVal);
+    let clone = _.cloneDeep(defaultVal);
+    return _getInitializer(getObject, propertyName, clone);
   }
 
   /**
@@ -154,7 +157,7 @@ module TF.URIStorage {
    */
   export function getStringObserver(
       propertyName: string, defaultVal: string): Function {
-    return _getObserver(setString, propertyName, defaultVal);
+    return _getObserver(getString, setString, propertyName, defaultVal);
   }
 
   /**
@@ -162,15 +165,17 @@ module TF.URIStorage {
    */
   export function getNumberObserver(
       propertyName: string, defaultVal: number): Function {
-    return _getObserver(setNumber, propertyName, defaultVal);
+    return _getObserver(getNumber, setNumber, propertyName, defaultVal);
   }
 
   /**
    * Return a function that updates URIStorage when an object property changes.
+   * Generates a deep clone of the defaultVal to avoid mutation issues.
    */
   export function getObjectObserver(
       propertyName: string, defaultVal: Object): Function {
-    return _getObserver(setObject, propertyName, defaultVal);
+    let clone = _.cloneDeep(defaultVal);
+    return _getObserver(getObject, setObject, propertyName, clone);
   }
 
   /**
@@ -252,22 +257,15 @@ module TF.URIStorage {
   function _getInitializer<T>(
       get: (name: string) => T, propertyName: string, defaultVal: T): Function {
     return function() {
-      // Set the value on the property
       let URIStorageName = getURIStorageName(this, propertyName);
-      this[propertyName] =
-          get(URIStorageName) !== undefined ? get(URIStorageName) : defaultVal;
-
-      // Update the property when the hash changes in the future.
-      window.addEventListener('hashchange', (function() {
-                                              // Update the property on the
-                                              // Polymer component itself.
-                                              this[propertyName] =
-                                                  get(URIStorageName) !==
-                                                      undefined ?
-                                                  get(URIStorageName) :
-                                                  defaultVal;
-
-                                            }).bind(this));
+      let setComponentValue = () => {
+        let uriValue = get(URIStorageName);
+        this[propertyName] = uriValue !== undefined ? uriValue : defaultVal;
+      };
+      // Set the value on the property.
+      setComponentValue();
+      // Update it when the hashchanges.
+      window.addEventListener('hashchange', setComponentValue);
     };
   }
 
@@ -275,14 +273,17 @@ module TF.URIStorage {
    * Return a function that updates URIStorage when a property changes.
    */
   function _getObserver<T>(
-      set: (name: string, newVal: T) => void, propertyName: string,
-      defaultVal: T): Function {
-    return function(newVal) {
+      get: (name: string) => T, set: (name: string, newVal: T) => void,
+      propertyName: string, defaultVal: T): Function {
+    return function() {
       let URIStorageName = getURIStorageName(this, propertyName);
-      if (!_.isEqual(newVal, defaultVal)) {
-        set(URIStorageName, newVal);
-      } else {
-        _unset(URIStorageName);
+      let newVal = this[propertyName];
+      if (!_.isEqual(newVal, get(URIStorageName))) {
+        if (_.isEqual(newVal, defaultVal)) {
+          _unset(URIStorageName);
+        } else {
+          set(URIStorageName, newVal);
+        }
       }
     };
   }
