@@ -326,7 +326,9 @@ class LinearRegressorTest(tf.test.TestCase):
     weights = 10 * rng.randn(n_weights)
     y = np.dot(x, weights)
     y += rng.randn(len(x)) * 0.05 + rng.normal(bias, 0.01)
-    regressor = tf.contrib.learn.LinearRegressor()
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(x)
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=feature_columns)
     regressor.fit(x, y, batch_size=32, steps=20000)
     # Have to flatten weights since they come in (x, 1) shape.
     self.assertAllClose(weights, regressor.weights_.flatten(), rtol=1)
@@ -341,10 +343,18 @@ def boston_input_fn():
   return features, target
 
 
-class InferedColumnTest(tf.test.TestCase):
+class FeatureColumnTest(tf.test.TestCase):
+
+  # TODO(b/29580537): Remove when we deprecate feature column inference.
+  def testTrainWithInferredFeatureColumns(self):
+    est = tf.contrib.learn.LinearRegressor()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    _ = est.evaluate(input_fn=boston_input_fn, steps=1)
 
   def testTrain(self):
-    est = tf.contrib.learn.LinearRegressor()
+    feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
+        boston_input_fn)
+    est = tf.contrib.learn.LinearRegressor(feature_columns=feature_columns)
     est.fit(input_fn=boston_input_fn, steps=1)
     _ = est.evaluate(input_fn=boston_input_fn, steps=1)
 

@@ -38,7 +38,9 @@ class RegressionTest(tf.test.TestCase):
     weights = 10 * rng.randn(n_weights)
     y = np.dot(x, weights)
     y += rng.randn(len(x)) * 0.05 + rng.normal(bias, 0.01)
-    regressor = learn.TensorFlowLinearRegressor(optimizer="SGD")
+    regressor = learn.TensorFlowLinearRegressor(
+        feature_columns=learn.infer_real_valued_columns_from_input(x),
+        optimizer="SGD")
     regressor.fit(x, y, steps=200)
     # Have to flatten weights since they come in (x, 1) shape.
     self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.01)

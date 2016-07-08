@@ -27,6 +27,20 @@ from tensorflow.contrib.learn.python.learn.estimators import sdca_optimizer
 from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixin
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.platform import tf_logging as logging
+
+
+# TODO(b/29580537): Replace with @changing decorator.
+def _changing(feature_columns):
+  if feature_columns is not None:
+    return
+  logging.warn(
+      "Change warning: `feature_columns` will be required after 2016-08-01.\n"
+      "Instructions for updating:\n"
+      "Pass `tf.contrib.learn.infer_real_valued_columns_from_input(x)` or"
+      " `tf.contrib.learn.infer_real_valued_columns_from_input_fn(input_fn)`"
+      " as `feature_columns`, where `x` or `input_fn` is your argument to"
+      " `fit`, `evaluate`, or `predict`.")
 
 
 class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
@@ -124,6 +138,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     Returns:
       A `LinearClassifier` estimator.
     """
+    _changing(feature_columns)
     super(LinearClassifier, self).__init__(
         model_dir=model_dir,
         n_classes=n_classes,
@@ -135,8 +150,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         config=config)
     self._feature_columns_inferred = False
 
-  # TODO(ptucker): Update this class to require caller pass `feature_columns` to
-  # ctor, so we can remove feature_column inference.
+  # TODO(b/29580537): Remove feature_columns inference.
   def _validate_linear_feature_columns(self, features):
     if self._linear_feature_columns is None:
       self._linear_feature_columns = layers.infer_real_valued_columns(features)
@@ -275,6 +289,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `LinearRegressor` estimator.
     """
+    _changing(feature_columns)
     super(LinearRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
@@ -286,6 +301,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         config=config)
     self._feature_columns_inferred = False
 
+  # TODO(b/29580537): Remove feature_columns inference.
   def _validate_linear_feature_columns(self, features):
     if self._linear_feature_columns is None:
       self._linear_feature_columns = layers.infer_real_valued_columns(features)

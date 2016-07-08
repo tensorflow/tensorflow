@@ -29,6 +29,7 @@ import numpy as np
 import six
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
@@ -72,6 +73,9 @@ def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
                                           contrib_framework.is_tensor(y)):
       raise ValueError('Inputs cannot be tensors. Please provide input_fn.')
 
+    if feed_fn is not None:
+      raise ValueError('Can not provide both feed_fn and x or y.')
+
     df = data_feeder.setup_train_data_feeder(x, y, n_classes=None,
                                              batch_size=batch_size,
                                              shuffle=shuffle,
@@ -84,6 +88,41 @@ def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
     raise ValueError('Can not provide both input_fn and batch_size.')
 
   return input_fn, feed_fn
+
+
+def infer_real_valued_columns_from_input_fn(input_fn):
+  """Creates `FeatureColumn` objects for inputs defined by `input_fn`.
+
+  This interprets all inputs as dense, fixed-length float values. This creates
+  a local graph in which it calls `input_fn` to build the tensors, then discards
+  it.
+
+  Args:
+    input_fn: Function returning a tuple of input and target `Tensor` objects.
+
+  Returns:
+    List of `FeatureColumn` objects.
+  """
+  with ops.Graph().as_default():
+    features, _ = input_fn()
+    return layers.infer_real_valued_columns(features)
+
+
+def infer_real_valued_columns_from_input(x):
+  """Creates `FeatureColumn` objects for inputs defined by input `x`.
+
+  This interprets all inputs as dense, fixed-length float values.
+
+  Args:
+    x: Real-valued matrix of shape [n_samples, n_features...]. Can be
+       iterator that returns arrays of features.
+
+  Returns:
+    List of `FeatureColumn` objects.
+  """
+  input_fn, _ = _get_input_fn(
+      x=x, y=None, input_fn=None, feed_fn=None, batch_size=None)
+  return infer_real_valued_columns_from_input_fn(input_fn)
 
 
 def _get_arguments(func):
@@ -156,10 +195,10 @@ class BaseEstimator(sklearn.BaseEstimator):
     """Trains a model given training data `x` predictions and `y` targets.
 
     Args:
-      x: matrix or tensor of shape [n_samples, n_features...]. Can be
-         iterator that returns arrays of features. The training input
-         samples for fitting the model. If set, `input_fn` must be `None`.
-      y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+      x: Matrix of shape [n_samples, n_features...]. Can be iterator that
+         returns arrays of features. The training input samples for fitting the
+         model. If set, `input_fn` must be `None`.
+      y: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
          iterator that returns array of targets. The training target values
          (class labels in classification, real numbers in regression). If set,
          `input_fn` must be `None`.
@@ -214,12 +253,12 @@ class BaseEstimator(sklearn.BaseEstimator):
     to converge, and you want to split up training into subparts.
 
     Args:
-      x: matrix or tensor of shape [n_samples, n_features...]. Can be
-        iterator that returns arrays of features. The training input
-        samples for fitting the model. If set, `input_fn` must be `None`.
-      y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-        iterator that returns array of targets. The training target values
-        (class label in classification, real numbers in regression). If set,
+      x: Matrix of shape [n_samples, n_features...]. Can be iterator that
+         returns arrays of features. The training input samples for fitting the
+         model. If set, `input_fn` must be `None`.
+      y: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+         iterator that returns array of targets. The training target values
+         (class labels in classification, real numbers in regression). If set,
          `input_fn` must be `None`.
       input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
         `None`.
@@ -264,8 +303,13 @@ class BaseEstimator(sklearn.BaseEstimator):
     for which this evaluation was performed.
 
     Args:
-      x: features.
-      y: targets.
+      x: Matrix of shape [n_samples, n_features...]. Can be iterator that
+         returns arrays of features. The training input samples for fitting the
+         model. If set, `input_fn` must be `None`.
+      y: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
+         iterator that returns array of targets. The training target values
+         (class labels in classification, real numbers in regression). If set,
+         `input_fn` must be `None`.
       input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
         `None`.
       feed_fn: Function creating a feed dict every time it is called. Called
@@ -316,7 +360,9 @@ class BaseEstimator(sklearn.BaseEstimator):
     """Returns predictions for given features.
 
     Args:
-      x: Features. If set, `input_fn` must be `None`.
+      x: Matrix of shape [n_samples, n_features...]. Can be iterator that
+         returns arrays of features. The training input samples for fitting the
+         model. If set, `input_fn` must be `None`.
       input_fn: Input function. If set, `x` and 'batch_size' must be `None`.
       batch_size: Override default batch size. If set, 'input_fn' must be
         'None'.

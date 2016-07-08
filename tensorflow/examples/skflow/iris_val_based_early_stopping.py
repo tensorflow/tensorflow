@@ -11,6 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Example of DNNClassifier for Iris plant dataset, with early stopping."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -35,6 +38,7 @@ def main(unused_argv):
 
   # classifier with early stopping on training data
   classifier1 = learn.DNNClassifier(
+      feature_columns=learn.infer_real_valued_columns_from_input(x_train),
       hidden_units=[10, 20, 10], n_classes=3, model_dir='/tmp/iris_model/')
   classifier1.fit(x=x_train, y=y_train, steps=2000)
   score1 = metrics.accuracy_score(y_test, classifier1.predict(x_test))
@@ -42,6 +46,7 @@ def main(unused_argv):
   # classifier with early stopping on validation data, save frequently for
   # monitor to pick up new checkpoints.
   classifier2 = learn.DNNClassifier(
+      feature_columns=learn.infer_real_valued_columns_from_input(x_train),
       hidden_units=[10, 20, 10], n_classes=3, model_dir='/tmp/iris_model_val/',
       config=tf.contrib.learn.RunConfig(save_checkpoints_secs=1))
   classifier2.fit(x=x_train, y=y_train, steps=2000, monitors=[val_monitor])

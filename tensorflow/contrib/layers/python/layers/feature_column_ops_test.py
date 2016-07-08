@@ -1314,11 +1314,31 @@ class ParseExampleTest(tf.test.TestCase):
 
 class InferRealValuedColumnTest(tf.test.TestCase):
 
-  def testTensor(self):
+  def testTensorInt32(self):
     self.assertEqual(
         tf.contrib.layers.infer_real_valued_columns(
             tf.zeros(shape=[33, 4], dtype=tf.int32)),
         [tf.contrib.layers.real_valued_column("", dimension=4, dtype=tf.int32)])
+
+  def testTensorInt64(self):
+    self.assertEqual(
+        tf.contrib.layers.infer_real_valued_columns(
+            tf.zeros(shape=[33, 4], dtype=tf.int64)),
+        [tf.contrib.layers.real_valued_column("", dimension=4, dtype=tf.int64)])
+
+  def testTensorFloat32(self):
+    self.assertEqual(
+        tf.contrib.layers.infer_real_valued_columns(
+            tf.zeros(shape=[33, 4], dtype=tf.float32)),
+        [tf.contrib.layers.real_valued_column(
+            "", dimension=4, dtype=tf.float32)])
+
+  def testTensorFloat64(self):
+    self.assertEqual(
+        tf.contrib.layers.infer_real_valued_columns(
+            tf.zeros(shape=[33, 4], dtype=tf.float64)),
+        [tf.contrib.layers.real_valued_column(
+            "", dimension=4, dtype=tf.float64)])
 
   def testDictionary(self):
     self.assertItemsEqual(

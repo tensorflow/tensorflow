@@ -11,11 +11,16 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Example of DNNClassifier for Iris plant dataset, with run config."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from sklearn import datasets, metrics, cross_validation
+from sklearn import cross_validation
+from sklearn import datasets
+from sklearn import metrics
 import tensorflow as tf
 
 
@@ -32,7 +37,10 @@ def main(unused_argv):
       num_cores=3, gpu_memory_fraction=0.6)
 
   # Build 3 layer DNN with 10, 20, 10 units respectively.
-  classifier = tf.contrib.learn.DNNClassifier(hidden_units=[10, 20, 10],
+  feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
+      x_train)
+  classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
+                                              hidden_units=[10, 20, 10],
                                               n_classes=3,
                                               config=run_config)
 
