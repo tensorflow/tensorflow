@@ -21,6 +21,13 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+# pylint: disable=g-import-not-at-top
+try:
+  from sklearn.cross_validation import cross_val_score
+  HAS_SKLEARN = True
+except ImportError:
+  HAS_SKLEARN = False
+
 
 def _iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
@@ -58,6 +65,28 @@ class DNNClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_iris_input_fn, steps=1000)
     self.assertFalse('centered_bias_weight' in classifier.get_variable_names())
+
+  def testSklearnCompatibility(self):
+    """Tests compatibility with sklearn"""
+    if not HAS_SKLEARN:
+      return
+    iris = tf.contrib.learn.datasets.load_iris()
+    kwargs = {
+            "n_classes": 3,
+            "optimizer" : "Adam",
+            "hidden_units" : [3, 4]
+    }
+
+    classifier = tf.contrib.learn.DNNClassifier(**kwargs)
+
+    scores = cross_val_score(
+      classifier,
+      iris.data[1:5],
+      iris.target[1:5],
+      scoring="accuracy",
+      fit_params={"steps": 2}
+    )
+    self.assertAllClose(scores, [1, 1, 1])
 
 
 class DNNRegressorTest(tf.test.TestCase):
