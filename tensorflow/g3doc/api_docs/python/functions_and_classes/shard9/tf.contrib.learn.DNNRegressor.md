@@ -323,20 +323,28 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.predict(x=None, input_fn=None, batch_size=None)` {#DNNRegressor.predict}
+#### `tf.contrib.learn.DNNRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#DNNRegressor.predict}
 
 Returns predictions for given features.
 
 ##### Args:
 
 
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x must be None.
-*  <b>`batch_size`</b>: Override default batch size.
+*  <b>`x`</b>: Features. If set, `input_fn` must be `None`.
+*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
+*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
+    'None'.
+*  <b>`outputs`</b>: list of `str`, name of the output to predict.
+    If `None`, returns all.
 
 ##### Returns:
 
   Numpy array of predicted classes or regression values.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
 
 
 - - -
