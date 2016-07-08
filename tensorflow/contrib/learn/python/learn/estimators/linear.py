@@ -170,7 +170,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         weight_collections=[self._linear_weight_collection],
         scope="linear")
     with ops.control_dependencies([self._centered_bias()]):
-      loss = self._loss(logits, targets, features)
+      loss = self._target_column.loss(logits, targets, features)
     logging_ops.scalar_summary("loss", loss)
 
     train_ops = self._linear_optimizer.get_train_step(

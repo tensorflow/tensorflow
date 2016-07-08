@@ -428,6 +428,18 @@ py_test(
 )
 
 py_test(
+    name = "composable_model_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/composable_model_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "grid_search_test",
     size = "small",
     srcs = ["python/learn/tests/grid_search_test.py"],
