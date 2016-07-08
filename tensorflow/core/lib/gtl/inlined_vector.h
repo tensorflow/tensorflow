@@ -276,6 +276,9 @@ class InlinedVector {
     unsigned char data[kSize];
     // Force data to be aligned enough for a pointer.
     T* unused_aligner;
+    // Some values placed here are uint64, which may require 8 byte alignment
+    // but on 32 bit archtectures, pointers are insufficiently aligned
+    uint64_t unused_aligner_64;
   } u_;
 
   inline void InitRep() { u_.data[kSize - 1] = 0; }
