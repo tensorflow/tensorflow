@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 #t Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-=======
-# Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
->>>>>>> 93367103edc6f79fd779bc1ed873f9f9da1dec3f
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
