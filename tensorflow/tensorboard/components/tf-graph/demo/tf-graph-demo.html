@@ -43,6 +43,10 @@ Example
 </style>
 <div class="all">
   <div class="side">
+    <!-- The observatory header component is injected in during vulcanization
+         and an instance of it is initialized and filled here when the demo
+         app initializes. -->
+    <div id="observatory-header"></div>
     <tf-graph-controls
         devices-for-stats="{{_devicesForStats}}"
         color-by-params="[[colorByParams]]"
@@ -53,6 +57,8 @@ Example
         selected-dataset="{{selectedDataset}}"
         selected-file="{{selectedFile}}"
         selected-metadata-tag="{{selectedMetadataTag}}"
+        show-session-runs-dropdown="[[showSessionRunsDropdown]]"
+        show-upload-button="[[showUploadButton]]"
     ></tf-graph-controls>
     <tf-graph-loader id="loader"
         datasets="[[datasets]]"
@@ -97,15 +103,24 @@ Polymer({
       value: 0
     },
     _renderHierarchy: Object,
-    _progress: Object
+    _progress: Object,
+    showSessionRunsDropdown: {
+      type: Boolean,
+      value: true
+    },
+    showUploadButton: {
+      type: Boolean,
+      value: true
+    }
   },
   created: function() {
     let queryParams = tf.graph.util.getQueryParams(location.search);
     let selectedDataset = 0;
 
-    if(typeof DEMO_DATASETS === 'undefined') {
+    if (typeof DEMO_DATASETS === 'undefined') {
       DEMO_DATASETS = 'demo_datasets.json';
     }
+
     d3.json(DEMO_DATASETS, function (error, datasets) {
         if (error) {
           console.log('Error loading demo datasets:');
@@ -133,6 +148,17 @@ Polymer({
           this.set('selectedDataset', selectedDataset);
         }
     }.bind(this));
+  },
+  ready: function() {
+    if (typeof IS_OBSERVATORY !== 'undefined' && IS_OBSERVATORY) {
+      // Create the header and add it to the DOM. This component is injected in
+      // during vulcanization.
+      document.getElementById('observatory-header').appendChild(
+          document.createElement('tf-graph-observatory-header'));
+
+      this.set('showSessionRunsDropdown', false);
+      this.set('showUploadButton', false);
+    }
   },
   _normalizePath: function(path) {
     return this.resolveUrl(DEMO_DIR_PREFIX + path);
