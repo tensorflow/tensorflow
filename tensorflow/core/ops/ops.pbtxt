@@ -14950,8 +14950,13 @@ op {
   }
   attr {
     name: "element_shape_except0"
-    description: "The expected shape of a TensorArray element, excluding the first dimension, used to validate elements and return a sensible shape when the TensorArray has size zero. Must be fully specified if a zero-size TensorArray is being concatenated."
     type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known,\nexcluding the first dimension. Used to validate the shapes of\nTensorArray elements. If this shape is not fully specified, concatenating\nzero-size TensorArrays is an error."
   }
   summary: "Concat the elements from the TensorArray into value `value`."
   description: "Takes `T` elements of shapes\n\n  ```\n  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)\n  ```\n\nand concatenates them into a Tensor of shape:\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```\n\nAll elements must have the same shape (excepting the first dimension)."
@@ -15008,9 +15013,14 @@ op {
   }
   attr {
     name: "element_shape"
-    description: "The expected shape of a TensorArray element, used to validate elements and return a sensible shape when the TensorArray has size zero. Must be fully specified if a zero-size TensorArray is being packed."
     type: "shape"
-  }  
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, packing zero-size TensorArrays is an error."
+  }
   summary: "Pack the elements from the TensorArray into output `value`."
   description: "All elements must have the same shape."
 }
