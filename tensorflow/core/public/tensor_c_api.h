@@ -361,6 +361,8 @@ typedef struct TF_Library TF_Library;
 extern TF_Library* TF_LoadLibrary(const char* library_filename,
                                   TF_Status* status);
 
+extern void TF_DeleteLibrary(TF_Library*);
+
 // Get the OpList of OpDefs defined in the library pointed by lib_handle.
 //
 // Returns a TF_Buffer. The memory pointed to by the result is owned by
