@@ -302,7 +302,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 
 - - -
 
-### `tf.contrib.metrics.streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200, metrics_collections=None, updates_collections=None, name=None)` {#streaming_auc}
+### `tf.contrib.metrics.streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200, metrics_collections=None, updates_collections=None, curve='ROC', name=None)` {#streaming_auc}
 
 Computes the approximate AUC via a Riemann sum.
 
@@ -310,8 +310,9 @@ The `streaming_auc` function creates four local variables, `true_positives`,
 `true_negatives`, `false_positives` and `false_negatives` that are used to
 compute the AUC. To discretize the AUC curve, a linearly spaced set of
 thresholds is used to compute pairs of recall and precision values. The area
-under the curve is therefore computed using the height of the recall values
-by the false positive rate.
+under the ROC-curve is therefore computed using the height of the recall
+values by the false positive rate, while the area under the PR-curve is the
+computed using the height of the precision values by the recall.
 
 This value is ultimately returned as `auc`, an idempotent
 operation the computes the area under a discretized curve of precision versus
@@ -342,6 +343,9 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
     added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
+*  <b>`curve`</b>: Specifies the name of the curve to be computed, 'ROC' [default] or
+  'PR' for the Precision-Recall-curve.
+
 *  <b>`name`</b>: An optional variable_op_scope name.
 
 ##### Returns:
