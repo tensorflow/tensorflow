@@ -70,8 +70,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
                master='', accuracy_metric=None,
-               tf_random_seed=None, verbose=1,
-               config=None):
+               tf_random_seed=None, config=None):
     self.params = params.fill()
     self.accuracy_metric = (accuracy_metric or
                             ('r2' if self.params.regression else 'accuracy'))
