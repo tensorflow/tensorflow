@@ -75,6 +75,7 @@ import abc
 import collections
 import math
 
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import embedding_ops
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
@@ -85,10 +86,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.ops import variables
 
 
 class _FeatureColumn(object):
@@ -153,8 +153,7 @@ class _SparseColumn(_FeatureColumn,
                     collections.namedtuple("_SparseColumn",
                                            ["column_name", "is_integerized",
                                             "bucket_size", "lookup_config",
-                                            "weight_column", "combiner",
-                                            "dtype"])):
+                                            "combiner", "dtype"])):
   """"Represents a sparse feature column also known as categorical features.
 
   Instances of this class are immutable. A sparse column means features are
@@ -170,9 +169,6 @@ class _SparseColumn(_FeatureColumn,
     bucket_size: An int that is > 1. The number of buckets.
     lookup_config: A _SparseIdLookupConfig defining feature-to-id lookup
       configuration
-    weight_column: A string defining a sparse column name which represents
-      weight or value of the corresponding sparse feature. Please check
-      weighted_sparse_column for more information.
     combiner: A string specifying how to reduce if the sparse column is
       multivalent. Currently "mean", "sqrtn" and "sum" are supported, with
       "sum" the default:
@@ -192,7 +188,6 @@ class _SparseColumn(_FeatureColumn,
               is_integerized=False,
               bucket_size=None,
               lookup_config=None,
-              weight_column=None,
               combiner="sum",
               dtype=dtypes.string):
     if is_integerized and bucket_size is None:
@@ -229,7 +224,7 @@ class _SparseColumn(_FeatureColumn,
 
     return super(_SparseColumn, cls).__new__(cls, column_name, is_integerized,
                                              bucket_size, lookup_config,
-                                             weight_column, combiner, dtype)
+                                             combiner, dtype)
 
   @property
   def name(self):
@@ -251,6 +246,15 @@ class _SparseColumn(_FeatureColumn,
     """Returns a string which will be used as a key when we do sorting."""
     return "{}".format(self)
 
+  def id_tensor(self, input_tensor):
+    """Returns the id tensor from the given transformed input_tensor."""
+    return input_tensor
+
+  # pylint: disable=unused-argument
+  def weight_tensor(self, input_tensor):
+    """Returns the weight tensor from the given transformed input_tensor."""
+    return None
+
   # pylint: disable=unused-argument
   def to_dnn_input_layer(self,
                          input_tensor,
@@ -265,7 +269,8 @@ class _SparseColumn(_FeatureColumn,
                       weight_collections=None,
                       trainable=True):
     return _create_embedding_lookup(
-        input_tensor=input_tensor,
+        input_tensor=self.id_tensor(input_tensor),
+        weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
         dimension=num_outputs,
         weight_collections=_add_variable_collection(weight_collections),
@@ -448,6 +453,119 @@ def sparse_column_with_keys(column_name,
                            combiner=combiner)
 
 
+class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
+    "_WeightedSparseColumn",
+    ["sparse_id_column", "weight_column_name", "dtype"])):
+  """See `weighted_sparse_column`."""
+
+  def __new__(cls, sparse_id_column, weight_column_name, dtype):
+    return super(_WeightedSparseColumn, cls).__new__(
+        cls, sparse_id_column, weight_column_name, dtype)
+
+  @property
+  def name(self):
+    return (self.sparse_id_column.name + "_weighted_by_" +
+            self.weight_column_name)
+
+  @property
+  def length(self):
+    """Returns id size."""
+    return self.sparse_id_column.length
+
+  @property
+  def config(self):
+    config = _get_feature_config(self.sparse_id_column)
+    config.update(
+        {self.weight_column_name: parsing_ops.VarLenFeature(self.dtype)})
+    return config
+
+  @property
+  def key(self):
+    """Returns a string which will be used as a key when we do sorting."""
+    return "{}".format(self)
+
+  def insert_transformed_feature(self, columns_to_tensors):
+    """Inserts a tuple with the id and weight tensors."""
+    if self.sparse_id_column not in columns_to_tensors:
+      self.sparse_id_column.insert_transformed_feature(columns_to_tensors)
+    columns_to_tensors[self] = tuple([
+        columns_to_tensors[self.sparse_id_column],
+        columns_to_tensors[self.weight_column_name]])
+
+  def id_tensor(self, input_tensor):
+    """Returns the id tensor from the given transformed input_tensor."""
+    return input_tensor[0]
+
+  def weight_tensor(self, input_tensor):
+    """Returns the weight tensor from the given transformed input_tensor."""
+    return input_tensor[1]
+
+  # pylint: disable=unused-argument
+  def to_dnn_input_layer(self,
+                         input_tensor,
+                         weight_collections=None,
+                         trainable=True):
+    raise ValueError("Column {} is not supported in DNN. "
+                     "Please use embedding_column.".format(self))
+
+  def to_weighted_sum(self,
+                      input_tensor,
+                      num_outputs=1,
+                      weight_collections=None,
+                      trainable=True):
+    return _create_embedding_lookup(
+        input_tensor=self.id_tensor(input_tensor),
+        weight_tensor=self.weight_tensor(input_tensor),
+        vocab_size=self.length,
+        dimension=num_outputs,
+        weight_collections=_add_variable_collection(weight_collections),
+        initializer=init_ops.zeros_initializer,
+        combiner=self.sparse_id_column.combiner,
+        trainable=trainable,
+        name=self.name + "_weights")
+
+
+def weighted_sparse_column(sparse_id_column,
+                           weight_column_name,
+                           dtype=dtypes.float32):
+  """Creates a _SparseColumn by combining sparse_id_column with a weight column.
+
+  Args:
+    sparse_id_column: A _SparseColumn which is created by `sparse_column_with_*`
+      functions.
+    weight_column_name: A string defining a sparse column name which represents
+      weight or value of the corresponding sparse id feature.
+    dtype: Type of weights, such as `tf.float32`
+  Returns:
+    A _WeightedSparseColumn composed of two sparse features: one represents id,
+    the other represents weight (value) of the id feature in that example.
+  Raises:
+    ValueError: if dtype is not convertible to float.
+
+  An example usage:
+    ```python
+    words = sparse_column_with_hash_bucket("words", 1000)
+    tfidf_weighted_words = weighted_sparse_column(words, "tfidf_score")
+    ```
+
+    This configuration assumes that input dictionary of model contains the
+    following two items:
+      * (key="words", value=word_tensor) where word_tensor is a SparseTensor.
+      * (key="tfidf_score", value=tfidf_score_tensor) where tfidf_score_tensor
+        is a SparseTensor.
+     Following are assumed to be true:
+       * word_tensor.indices = tfidf_score_tensor.indices
+       * word_tensor.shape = tfidf_score_tensor.shape
+  """
+  if not (dtype.is_integer or dtype.is_floating):
+    raise ValueError("dtype is not convertible to float. Given {}".format(
+        dtype))
+
+  return _WeightedSparseColumn(sparse_id_column,
+                               weight_column_name,
+                               dtype)
+
+
 class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     "_EmbeddingColumn",
     ["sparse_id_column", "dimension", "combiner", "initializer"])):
@@ -455,7 +573,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
 
   Args:
     sparse_id_column: A _SparseColumn which is created by `sparse_column_with_*`
-      functions.
+      or `weighted_sparse_column` functions.
     dimension: An integer specifying dimension of the embedding.
     combiner: A string specifying how to reduce if there are multiple entries
       in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
@@ -528,7 +646,8 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
                          weight_collections=None,
                          trainable=True):
     output, _ = _create_embedding_lookup(
-        input_tensor=input_tensor,
+        input_tensor=self.sparse_id_column.id_tensor(input_tensor),
+        weight_tensor=self.sparse_id_column.weight_tensor(input_tensor),
         vocab_size=self.length,
         dimension=self.dimension,
         weight_collections=_add_variable_collection(weight_collections),
@@ -613,20 +732,13 @@ class _HashedEmbeddingColumn(collections.namedtuple(
                          input_tensor,
                          weight_collections=None,
                          trainable=True):
-    # Same heuristic for the number of shards as _max_size_embedding_partitioner
-    max_shard_bytes = (64 << 20) - 1
-    shards = self.size * 4.0  / max_shard_bytes
-    shards = max(1, int(math.ceil(shards)))
-
-    embeddings = partitioned_variables.create_partitioned_variables(
+    embeddings = _create_embeddings(
+        name=self.name + "_weights",
         shape=[self.size],
-        slicing=[shards],
         initializer=self.initializer,
         dtype=dtypes.float32,
-        collections=_add_variable_collection(weight_collections),
-        name=self.name + "_weights",
-        reuse=False,
-        trainable=trainable)
+        trainable=trainable,
+        weight_collections=_add_variable_collection(weight_collections))
 
     return embedding_ops.hashed_embedding_lookup_sparse(
         embeddings, input_tensor, self.dimension, name=self.name + "_lookup")
@@ -948,6 +1060,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
     """Returns a Tensor as linear predictions and a list of created Variable."""
     return _create_embedding_lookup(
         input_tensor=self.to_sparse_tensor(input_tensor),
+        weight_tensor=None,
         vocab_size=self.length * self.source_column.dimension,
         dimension=num_outputs,
         weight_collections=_add_variable_collection(weight_collections),
@@ -1112,6 +1225,7 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
                       trainable=True):
     return _create_embedding_lookup(
         input_tensor=input_tensor,
+        weight_tensor=None,
         vocab_size=self.length,
         dimension=num_outputs,
         weight_collections=_add_variable_collection(weight_collections),
@@ -1149,9 +1263,9 @@ def _get_feature_config(feature_column):
     raise TypeError(
         "feature_columns should only contain instances of _FeatureColumn. "
         "Given column is {}".format(feature_column))
-  if isinstance(feature_column, (_SparseColumn, _EmbeddingColumn,
-                                 _RealValuedColumn, _BucketizedColumn,
-                                 _CrossedColumn)):
+  if isinstance(feature_column, (_SparseColumn, _WeightedSparseColumn,
+                                 _EmbeddingColumn, _RealValuedColumn,
+                                 _BucketizedColumn, _CrossedColumn)):
     return feature_column.config
 
   raise TypeError("Not supported _FeatureColumn type. "
@@ -1265,39 +1379,58 @@ def _add_variable_collection(weight_collections):
   return weight_collections
 
 
-def _max_size_embedding_partitioner(max_shard_bytes=(64 << 20) - 1):
-  """Partitioner based on max size.
+def _create_embeddings(name, shape, dtype, initializer, trainable,
+                       weight_collections):
+  """Creates embedding variable.
+
+  If called within the scope of a partitioner, will partition the variable and
+  return a list of `tf.Variable`. If no partitioner is specified, returns a list
+  with just one variable.
 
   Args:
-    max_shard_bytes: max shard bytes.
+    name: A string specifying the name of the embedding variable.
+    shape: shape of the embeddding. Note this is not the shape of partitioned
+      variables.
+    dtype: type of the embedding. Also the shape of each partitioned variable.
+    initializer: A variable initializer function to be used in embedding
+      variable initialization.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    weight_collections: List of graph collections to which embedding variables
+      are added.
 
   Returns:
-    partitioner
+    A list of `tf.Variable` containing the partitioned embeddings.
+
+  Raises:
+    ValueError: If initializer is None or not callable.
   """
-  # max_shard_bytes defaults to ~64MB to keep below open sourced proto buffer
-  # size limit.
-  # TODO(zakaria): b/28274688 might cause low performance if there are too many
-  #   partitions. Consider higher size, possily based on ps shards if the bug is
-  #   not fixed.
-  # TODO(zakaria): Use a better heuristic based on vocab size and upper/lower
-  #   bound. Partitioning only at over 16M vicab_size is suboptimal for most
-  #   cases.
-  def partitioner(vocab_size, embed_dim):
-    total_size = 1.0 * vocab_size * embed_dim * 4  # 4 bytes for float32
-    shards = total_size / max_shard_bytes
-    shards = min(vocab_size, max(1, int(math.ceil(shards))))
-    return [shards, 1]
+  if not initializer:
+    raise ValueError("initializer must be defined.")
+  if not callable(initializer):
+    raise ValueError("initializer must be callable.")
+  embeddings = contrib_variables.model_variable(name=name,
+                                                shape=shape,
+                                                dtype=dtype,
+                                                initializer=initializer,
+                                                trainable=trainable,
+                                                collections=weight_collections)
+  if isinstance(embeddings, variables.Variable):
+    return [embeddings]
+  else:  # Else it should be of type `_PartitionedVariable`.
+    return embeddings._get_variable_list()  # pylint: disable=protected-access
 
-  return partitioner
 
-
-def _create_embedding_lookup(input_tensor, vocab_size, dimension,
+def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
                              weight_collections, initializer, combiner,
                              trainable, name):
   """Creates embedding variable and does a lookup.
 
   Args:
-    input_tensor: A tensor which should contain sparse id to look up.
+    input_tensor: A `SparseTensor` which should contain sparse id to look up.
+    weight_tensor: A `SparseTensor` with the same shape and indices as
+      `input_tensor`, which contains the float weights corresponding to each
+      sparse id, or None if all weights are assumed to be 1.0.
     vocab_size: An integer specifying the vocabulary size.
     dimension: An integer specifying the embedding vector dimension.
     weight_collections: List of graph collections to which weights are added.
@@ -1315,30 +1448,18 @@ def _create_embedding_lookup(input_tensor, vocab_size, dimension,
 
   Returns:
     A Tensor with shape [batch_size, dimension] and embedding Variable.
-
-  Raises:
-    ValueError: If initializer is None or not callable.
   """
-  slicing = _max_size_embedding_partitioner()(vocab_size, dimension)
-  logging.info("Slicing=%s for name=%s, vocab_size=%d, embed_dim=%d",
-               str(slicing), name, vocab_size, dimension)
-  if not initializer:
-    raise ValueError("initializer must be defined.")
-  if not callable(initializer):
-    raise ValueError("initializer must be callable.")
-  embeddings = partitioned_variables.create_partitioned_variables(
-      shape=[vocab_size, dimension],
-      slicing=slicing,
-      initializer=initializer,
-      dtype=dtypes.float32,
-      collections=weight_collections,
-      name=name,
-      reuse=False,
-      trainable=trainable)
 
+  embeddings = _create_embeddings(name=name,
+                                  shape=[vocab_size, dimension],
+                                  dtype=dtypes.float32,
+                                  initializer=initializer,
+                                  trainable=trainable,
+                                  weight_collections=weight_collections)
   return embedding_ops.safe_embedding_lookup_sparse(
       embeddings,
       input_tensor,
+      sparse_weights=weight_tensor,
       default_id=0,
       combiner=combiner,
       name=name), embeddings

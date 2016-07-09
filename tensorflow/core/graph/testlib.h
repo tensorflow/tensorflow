@@ -182,6 +182,9 @@ Node* Relu6(Graph* g, Node* in);
 // Add a BiasAdd node in "g".
 Node* BiasAdd(Graph* g, Node* value, Node* bias);
 
+// Add a Conv2D node in "g".
+Node* Conv2D(Graph* g, Node* in0, Node* in1);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

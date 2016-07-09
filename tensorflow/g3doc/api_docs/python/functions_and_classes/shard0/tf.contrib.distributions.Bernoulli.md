@@ -8,17 +8,21 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(p, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
 ##### Args:
 
 
+*  <b>`logits`</b>: An N-D `Tensor` representing the log-odds
+    of a positive event. Each entry in the `Tensor` parametrizes
+    an independent Bernoulli distribution where the probability of an event
+    is sigmoid(logits).
 *  <b>`p`</b>: An N-D `Tensor` representing the probability of a positive
       event. Each entry in the `Tensor` parameterizes an independent
       Bernoulli distribution.
-*  <b>`dtype`</b>: dtype for samples. Note that other values will take the dtype of p.
+*  <b>`dtype`</b>: dtype for samples.
 *  <b>`strict`</b>: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
     return nans.
 *  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
@@ -26,6 +30,11 @@ Construct Bernoulli distributions.
     If False, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If p and logits are passed, or if neither are passed.
 
 
 - - -
@@ -89,6 +98,13 @@ Entropy of the distribution.
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.is_continuous` {#Bernoulli.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.is_reparameterized` {#Bernoulli.is_reparameterized}
 
 
@@ -103,14 +119,21 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.log_likelihood(value, name='log_likelihood')` {#Bernoulli.log_likelihood}
+#### `tf.contrib.distributions.Bernoulli.log_pdf(value, name='log_pdf')` {#Bernoulli.log_pdf}
 
-Log likelihood of this distribution (same as log_pmf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.log_pmf(event, name='log_pmf')` {#Bernoulli.log_pmf}
+#### `tf.contrib.distributions.Bernoulli.log_pmf(value, name='log_pmf')` {#Bernoulli.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.log_prob(event, name='log_prob')` {#Bernoulli.log_prob}
 
 Log of the probability mass function.
 
@@ -123,6 +146,13 @@ Log of the probability mass function.
 ##### Returns:
 
   The log-probabilities of the events.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.logits` {#Bernoulli.logits}
+
+
 
 
 - - -
@@ -177,7 +207,21 @@ Mode of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.pmf(event, name='pmf')` {#Bernoulli.pmf}
+#### `tf.contrib.distributions.Bernoulli.pdf(value, name='pdf')` {#Bernoulli.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.pmf(value, name='pmf')` {#Bernoulli.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.prob(event, name='prob')` {#Bernoulli.prob}
 
 Probability mass function.
 

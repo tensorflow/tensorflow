@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ContinuousTransformedDistribution."""
+"""Tests for TransformedDistribution."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,13 +23,13 @@ from scipy import stats
 import tensorflow as tf
 
 
-class ContinuousTransformedDistributionTest(tf.test.TestCase):
+class TransformedDistributionTest(tf.test.TestCase):
 
-  def testContinuousTransformedDistribution(self):
+  def testTransformedDistribution(self):
     with self.test_session():
       mu = 3.0
       sigma = 0.02
-      log_normal = tf.contrib.distributions.ContinuousTransformedDistribution(
+      log_normal = tf.contrib.distributions.TransformedDistribution(
           base_dist_cls=tf.contrib.distributions.Normal,
           mu=mu,
           sigma=sigma,
@@ -54,7 +54,7 @@ class ContinuousTransformedDistributionTest(tf.test.TestCase):
     with self.test_session() as sess:
       mu = 3.0
       sigma = 0.02
-      log_normal = tf.contrib.distributions.ContinuousTransformedDistribution(
+      log_normal = tf.contrib.distributions.TransformedDistribution(
           base_dist_cls=tf.contrib.distributions.Normal,
           mu=mu,
           sigma=sigma,

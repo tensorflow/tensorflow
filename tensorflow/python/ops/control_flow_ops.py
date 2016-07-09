@@ -1663,13 +1663,14 @@ class WhileContext(ControlFlowContext):
     self.ExitResult([acc_result])
     return acc_result
 
-  def AddBackPropIndexedSlicesAccumulator(self, grad):
+  def AddBackPropIndexedSlicesAccumulator(self, op, grad):
     """This is used for accumulating gradients that are IndexedSlices.
 
     This is essentially the equavalent of AddBackPropAccumulator but optimized
     for things like updating embeddings from within a while loop.
 
     Args:
+      op: The Enter op for a loop invariant.
       grad: The partial gradients represented as an IndexedSlices.
 
     Returns:
@@ -1677,41 +1678,65 @@ class WhileContext(ControlFlowContext):
     """
     values = grad.values
     indices = grad.indices
+    dense_shape = grad.dense_shape
 
     self.Exit()
-    shape = tensor_shape.TensorShape([tensor_shape.Dimension(1)] +
-                                     values.get_shape().dims[1:])
-    if not shape.is_fully_defined():
-      shape = None
     if self.outer_context: self.outer_context.Enter()
-    values_acc = constant_op.constant(0, values.dtype, shape=shape,
-                                      name="b_acc")
-    if not shape:
-      values_acc._shape = shape  # pylint: disable=protected-access
+    if values.get_shape().is_fully_defined():
+      values_shape = tensor_shape.TensorShape(
+          [tensor_shape.Dimension(1)] + values.get_shape().dims[1:])
+      if self.outer_context: self.outer_context.Enter()
+      values_acc = constant_op.constant(0, values.dtype, shape=values_shape,
+                                        name="b_acc")
+      if self.outer_context: self.outer_context.Exit()
+    else:
+      values_shape = array_ops.shape(op.inputs[0])[1:]
+      values_shape = array_ops.concat(0, [[1], values_shape])
+      values_acc = array_ops.zeros(values_shape)
     indices_acc = constant_op.constant([0], indices.dtype)
+    shape_acc = None
+    if dense_shape is not None:
+      if dense_shape.get_shape().is_fully_defined():
+        if self.outer_context: self.outer_context.Enter()
+        shape_acc = constant_op.constant(0, dense_shape.dtype,
+                                         shape=dense_shape.get_shape())
+        if self.outer_context: self.outer_context.Exit()
+      else:
+        shape_acc = array_ops.zeros_like(array_ops.shape(op.inputs[0]))
+
     if self.outer_context: self.outer_context.Exit()
 
     self.Enter()
     self.AddName(values_acc.name)
     self.AddName(indices_acc.name)
+    init_acc = [indices_acc, values_acc]
+    if shape_acc is not None:
+      self.AddName(shape_acc.name)
+      init_acc.append(shape_acc)
     enter_acc = [_Enter(x, self._name, is_constant=False,
                         parallel_iterations=self._parallel_iterations,
-                        name="b_acc") for x in [indices_acc, values_acc]]
+                        name="b_acc") for x in init_acc]
     merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
     switch_acc = [switch(x, self._pivot) for x in merge_acc]
 
     # The actual accumulation.
-    acc_value = [array_ops.concat(0, [xa[1], xv])
-                 for xa, xv in zip(switch_acc, [indices, values])]
+    acc_indexed_slices = [array_ops.concat(0, [xa[1], xv])
+                          for xa, xv in zip(switch_acc[:2], [indices, values])]
+    if shape_acc is not None:
+      # For the shape we just keep the maximum
+      acc_indexed_slices.append(
+          math_ops.maximum(dense_shape, switch_acc[2][1]))
 
-    next_acc = [_NextIteration(x) for x in acc_value]
+    next_acc = [_NextIteration(x) for x in acc_indexed_slices]
     for xm, xn in zip(merge_acc, next_acc):
       xm.op._update_input(1, xn)  # pylint: disable=protected-access
 
     acc_exits = [exit(x[0], name="b_acc") for x in switch_acc]
+
     self.ExitResult(acc_exits)
-    return ops.IndexedSlices(values=acc_exits[1], indices=acc_exits[0],
-                             dense_shape=grad.dense_shape)
+    return ops.IndexedSlices(
+        indices=acc_exits[0], values=acc_exits[1],
+        dense_shape=acc_exits[2] if shape_acc is not None else None)
 
   def _InitializeValues(self, values):
     self._values = set()

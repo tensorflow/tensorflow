@@ -34,7 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-class Normal(distribution.ContinuousDistribution):
+class Normal(distribution.Distribution):
   """The scalar Normal distribution with mean and stddev parameters mu, sigma.
 
   #### Mathematical details
@@ -216,15 +216,15 @@ class Normal(distribution.ContinuousDistribution):
       with ops.op_scope([], name):
         return math_ops.square(self.std())
 
-  def log_pdf(self, x, name="log_pdf"):
-    """Log pdf of observations in `x` under these Normal distribution(s).
+  def log_prob(self, x, name="log_prob"):
+    """Log prob of observations in `x` under these Normal distribution(s).
 
     Args:
       x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
       name: The name to give this op.
 
     Returns:
-      log_pdf: tensor of dtype `dtype`, the log-PDFs of `x`.
+      log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self._mu, self._sigma, x], name):
@@ -272,7 +272,7 @@ class Normal(distribution.ContinuousDistribution):
       with ops.op_scope([self._mu, self._sigma, x], name):
         return math_ops.log(self.cdf(x))
 
-  def pdf(self, x, name="pdf"):
+  def prob(self, x, name="prob"):
     """The PDF of observations in `x` under these Normal distribution(s).
 
     Args:
@@ -280,9 +280,9 @@ class Normal(distribution.ContinuousDistribution):
       name: The name to give this op.
 
     Returns:
-      pdf: tensor of dtype `dtype`, the pdf values of `x`.
+      prob: tensor of dtype `dtype`, the prob values of `x`.
     """
-    return super(Normal, self).pdf(x, name=name)
+    return super(Normal, self).prob(x, name=name)
 
   def entropy(self, name="entropy"):
     """The entropy of Normal distribution(s).
@@ -338,6 +338,10 @@ class Normal(distribution.ContinuousDistribution):
 
   def _zeros(self):
     return array_ops.zeros_like(self._mu + self._sigma)
+
+  @property
+  def is_continuous(self):
+    return True
 
 
 @kullback_leibler.RegisterKL(Normal, Normal)

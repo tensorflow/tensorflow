@@ -37,7 +37,7 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
     distribution(s).
     beta must contain only positive values.
 *  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-    methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
     and the inputs are invalid, correct behavior is not guaranteed.
 *  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
@@ -179,6 +179,13 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.is_continuous` {#Gamma.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.is_reparameterized` {#Gamma.is_reparameterized}
 
 
@@ -204,16 +211,23 @@ Log CDF of observations `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.log_likelihood(value, name='log_likelihood')` {#Gamma.log_likelihood}
+#### `tf.contrib.distributions.Gamma.log_pdf(value, name='log_pdf')` {#Gamma.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.log_pdf(x, name='log_pdf')` {#Gamma.log_pdf}
+#### `tf.contrib.distributions.Gamma.log_pmf(value, name='log_pmf')` {#Gamma.log_pmf}
 
-Log pdf of observations in `x` under these Gamma distribution(s).
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.log_prob(x, name='log_prob')` {#Gamma.log_prob}
+
+Log prob of observations in `x` under these Gamma distribution(s).
 
 ##### Args:
 
@@ -224,7 +238,7 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 ##### Raises:
 
@@ -268,7 +282,21 @@ Name to prepend to all ops.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.pdf(x, name='pdf')` {#Gamma.pdf}
+#### `tf.contrib.distributions.Gamma.pdf(value, name='pdf')` {#Gamma.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.pmf(value, name='pmf')` {#Gamma.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.prob(x, name='prob')` {#Gamma.prob}
 
 Pdf of observations in `x` under these Gamma distribution(s).
 
@@ -281,7 +309,7 @@ Pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+*  <b>`prob`</b>: tensor of dtype `dtype`, the PDFs of `x`
 
 ##### Raises:
 

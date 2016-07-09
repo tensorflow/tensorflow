@@ -32,6 +32,8 @@ from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedRegressor
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
 from tensorflow.contrib.learn.python.learn.estimators.estimator import Estimator
+from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input
+from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_real_valued_columns_from_input_fn
 from tensorflow.contrib.learn.python.learn.estimators.estimator import ModeKeys
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassifier
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor

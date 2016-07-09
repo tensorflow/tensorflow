@@ -32,12 +32,12 @@ class NestTest(tf.test.TestCase):
   def testFlattenAndPack(self):
     structure = ((3, 4), 5, (6, 7, (9, 10), 8))
     flat = ["a", "b", "c", "d", "e", "f", "g", "h"]
-    self.assertEqual(nest.flatten(structure), (3, 4, 5, 6, 7, 9, 10, 8))
+    self.assertEqual(nest.flatten(structure), [3, 4, 5, 6, 7, 9, 10, 8])
     self.assertEqual(nest.pack_sequence_as(structure, flat),
                      (("a", "b"), "c", ("d", "e", ("f", "g"), "h")))
     point = collections.namedtuple("Point", ["x", "y"])
     structure = (point(x=4, y=2), ((point(x=1, y=0),),))
-    flat = (4, 2, 1, 0)
+    flat = [4, 2, 1, 0]
     self.assertEqual(nest.flatten(structure), flat)
     restructured_from_flat = nest.pack_sequence_as(structure, flat)
     self.assertEqual(restructured_from_flat, structure)

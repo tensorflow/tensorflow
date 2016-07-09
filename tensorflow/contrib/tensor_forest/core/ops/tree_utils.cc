@@ -21,20 +21,23 @@ namespace tensorforest {
 
 using tensorflow::Tensor;
 
-void GetTwoBest(int max, std::function<float(int)> score_fn,
-                float *best_score, int *best_index,
-                float *second_best_score) {
+void GetTwoBest(int max, std::function<float(int)> score_fn, float* best_score,
+                int* best_index, float* second_best_score,
+                int* second_best_index) {
   *best_index = -1;
+  *second_best_index = -1;
   *best_score = FLT_MAX;
   *second_best_score = FLT_MAX;
   for (int i = 0; i < max; i++) {
     float score = score_fn(i);
     if (score < *best_score) {
       *second_best_score = *best_score;
+      *second_best_index = *best_index;
       *best_score = score;
       *best_index = i;
     } else if (score < *second_best_score) {
       *second_best_score = score;
+      *second_best_index = i;
     }
   }
 }
@@ -44,21 +47,23 @@ float ClassificationSplitScore(
     const Eigen::Tensor<float, 1, Eigen::RowMajor>& rights,
     int32 num_classes, int i) {
   Eigen::array<int, 1> offsets;
-  offsets[0] = i * num_classes + 1;
+  // Class counts are stored with the total in [0], so the length of each
+  // count vector is num_classes + 1.
+  offsets[0] = i * (num_classes + 1) + 1;
   Eigen::array<int, 1> extents;
-  extents[0] = num_classes - 1;
+  extents[0] = num_classes;
   return WeightedGiniImpurity(splits.slice(offsets, extents)) +
       WeightedGiniImpurity(rights.slice(offsets, extents));
 }
 
-void GetTwoBestClassification(
-    const Tensor& total_counts, const Tensor& split_counts,
-    int32 accumulator,
-    float *best_score, int *best_index,
-    float *second_best_score) {
+void GetTwoBestClassification(const Tensor& total_counts,
+                              const Tensor& split_counts, int32 accumulator,
+                              float* best_score, int* best_index,
+                              float* second_best_score,
+                              int* second_best_index) {
   const int32 num_splits = static_cast<int32>(split_counts.shape().dim_size(1));
-  const int32 num_classes = static_cast<int32>(
-      split_counts.shape().dim_size(2));
+  const int32 num_classes =
+      static_cast<int32>(split_counts.shape().dim_size(2)) - 1;
 
   // Ideally, Eigen::Tensor::chip would be best to use here but it results
   // in seg faults, so we have to go with flat views of these tensors.  However,
@@ -80,9 +85,8 @@ void GetTwoBestClassification(
       ClassificationSplitScore, splits, rights, num_classes,
       std::placeholders::_1);
 
-  GetTwoBest(
-      num_splits, score_fn,
-      best_score, best_index, second_best_score);
+  GetTwoBest(num_splits, score_fn, best_score, best_index, second_best_score,
+             second_best_index);
 }
 
 int32 BestFeatureClassification(
@@ -91,9 +95,10 @@ int32 BestFeatureClassification(
   float best_score;
   float second_best_score;
   int best_feature_index;
-  GetTwoBestClassification(
-      total_counts, split_counts, accumulator,
-      &best_score, &best_feature_index, &second_best_score);
+  int second_best_index;
+  GetTwoBestClassification(total_counts, split_counts, accumulator, &best_score,
+                           &best_feature_index, &second_best_score,
+                           &second_best_index);
   return best_feature_index;
 }
 
@@ -128,12 +133,10 @@ float RegressionSplitScore(
   return score;
 }
 
-void GetTwoBestRegression(
-    const Tensor& total_sums, const Tensor& total_squares,
-    const Tensor& split_sums, const Tensor& split_squares,
-    int32 accumulator,
-    float *best_score, int *best_index,
-    float *second_best_score) {
+void GetTwoBestRegression(const Tensor& total_sums, const Tensor& total_squares,
+                          const Tensor& split_sums, const Tensor& split_squares,
+                          int32 accumulator, float* best_score, int* best_index,
+                          float* second_best_score, int* second_best_index) {
   const int32 num_splits = static_cast<int32>(split_sums.shape().dim_size(1));
   const int32 num_regression_dims = static_cast<int32>(
       split_sums.shape().dim_size(2));
@@ -161,13 +164,12 @@ void GetTwoBestRegression(
   const auto right_sums = tc_sum.broadcast(bcast) - splits_sum;
   const auto right_squares = tc_square.broadcast(bcast) - splits_square;
 
-  GetTwoBest(
-      num_splits,
-      std::bind(RegressionSplitScore,
-                splits_count_accessor, totals_count_accessor,
-                splits_sum, splits_square, right_sums, right_squares,
-                accumulator, num_regression_dims, std::placeholders::_1),
-      best_score, best_index, second_best_score);
+  GetTwoBest(num_splits,
+             std::bind(RegressionSplitScore, splits_count_accessor,
+                       totals_count_accessor, splits_sum, splits_square,
+                       right_sums, right_squares, accumulator,
+                       num_regression_dims, std::placeholders::_1),
+             best_score, best_index, second_best_score, second_best_index);
 }
 
 int32 BestFeatureRegression(
@@ -177,12 +179,12 @@ int32 BestFeatureRegression(
   float best_score;
   float second_best_score;
   int best_feature_index;
-  GetTwoBestRegression(
-      total_sums, total_squares, split_sums, split_squares, accumulator,
-      &best_score, &best_feature_index, &second_best_score);
+  int second_best_index;
+  GetTwoBestRegression(total_sums, total_squares, split_sums, split_squares,
+                       accumulator, &best_score, &best_feature_index,
+                       &second_best_score, &second_best_index);
   return best_feature_index;
 }
-
 
 bool BestSplitDominatesRegression(
     const Tensor& total_sums, const Tensor& total_squares,
@@ -199,75 +201,33 @@ bool BestSplitDominatesClassification(
   float best_score;
   float second_best_score;
   int best_feature_index;
-  GetTwoBestClassification(
-      total_counts, split_counts, accumulator,
-      &best_score, &best_feature_index, &second_best_score);
+  int second_best_index;
+  VLOG(1) << "BSDC for accumulator " << accumulator;
+  GetTwoBestClassification(total_counts, split_counts, accumulator, &best_score,
+                           &best_feature_index, &second_best_score,
+                           &second_best_index);
+  VLOG(1) << "Best score = " << best_score;
+  VLOG(1) << "2nd best score = " << second_best_score;
 
-  // Total counts are stored in the first column.
-  const int32 num_classes = split_counts.shape().dim_size(2) - 1;
+  const int32 num_classes =
+      static_cast<int32>(split_counts.shape().dim_size(2)) - 1;
+  const float n = total_counts.Slice(accumulator, accumulator + 1)
+                      .unaligned_flat<float>()(0);
 
-  // total_class_counts(c) is the # of class c examples seen by this
-  // accumulator.
-  auto total_class_counts = total_counts.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
+  // Each term in the Gini impurity can range from 0 to 0.5 * 0.5.
+  float range = 0.25 * static_cast<float>(num_classes) * n;
 
-  const Eigen::Tensor<float, 1, Eigen::RowMajor> splits = split_counts.Slice(
-      accumulator, accumulator + 1).unaligned_flat<float>();
+  // TODO(thomaswc): The hoeffding bound is actually only valid for linear
+  // functions, which the Gini impurity is not.  Come up with a better bound!
+  float hoeffding_bound =
+      range * sqrt(log(1.0 / (1.0 - dominate_fraction)) / (2.0 * n));
 
-  // For some reason, Eigen is fine with offsets being an array<int, 1> in
-  // ClassificationSplitScore, but it demands an array<Index, 1> here.
-  const Eigen::array<Eigen::Index, 1> offsets =
-      {num_classes * best_feature_index};
-  const Eigen::array<Eigen::Index, 1> extents = {num_classes};
-
-  const Eigen::Tensor<float, 1, Eigen::RowMajor> left_counts =
-      splits.slice(offsets, extents);
-  // I can find no other way using Eigen to copy a const Tensor into a
-  // non-const Tensor.
-  Eigen::Tensor<float, 1, Eigen::RowMajor> left_counts_copy(num_classes+1);
-  for (int i = 0; i <= num_classes; i++) {
-    left_counts_copy(i) = left_counts(i);
-  }
-
-  Eigen::Tensor<float, 1, Eigen::RowMajor> right_counts_copy =
-      total_class_counts - left_counts_copy;
-
-  // "Reverse-jackknife" estimate of how often the chosen best split is
-  // truly better than the second best split.  We use the reverse jackknife
-  // (in which counts are incremented) rather than the normal jackknife
-  // (in which counts are decremented) because the later badly underestimates
-  // the score variance of perfect splits.
-  float better_count = 0.0;
-  float worse_count = 0.0;
-  for (int i = 1; i <= num_classes; i++) {
-    left_counts_copy(i) += 1.0;
-    float weight = left_counts_copy(i);
-    float v = WeightedGiniImpurity(left_counts_copy)
-        + WeightedGiniImpurity(right_counts_copy);
-    left_counts_copy(i) -= 1.0;
-    if (v < second_best_score) {
-      better_count += weight;
-    } else {
-      worse_count += weight;
-    }
-
-    right_counts_copy(i) += 1.0;
-    weight = right_counts_copy(i);
-    v = WeightedGiniImpurity(left_counts)
-        + WeightedGiniImpurity(right_counts_copy);
-    right_counts_copy(i) -= 1.0;
-    if (v < second_best_score) {
-      better_count += weight;
-    } else {
-      worse_count += weight;
-    }
-  }
-
-  VLOG(1) << "Better count = " << better_count;
-  VLOG(1) << "Worse count = " << worse_count;
-  return better_count > dominate_fraction * (better_count + worse_count);
+  VLOG(1) << "num_classes = " << num_classes;
+  VLOG(1) << "n = " << n;
+  VLOG(1) << "range = " << range;
+  VLOG(1) << "hoeffding_bound = " << hoeffding_bound;
+  return (second_best_score - best_score) > hoeffding_bound;
 }
-
 
 bool DecideNode(const Tensor& point, int32 feature, float bias,
                 DataColumnTypes type) {

@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes as tf_dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import input as tf_input
@@ -214,6 +215,11 @@ def parallel_read(data_sources,
           dtypes=dtypes)
     else:
       common_queue = data_flow_ops.FIFOQueue(capacity=capacity, dtypes=dtypes)
+
+    logging_ops.scalar_summary('queue/%s/fraction_of_%d_full' %
+                               (common_queue.name, capacity),
+                               math_ops.to_float(common_queue.size()) *
+                               (1. / capacity))
 
     return ParallelReader(reader_class,
                           common_queue,

@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import contextlib
 import os
-import threading
 import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
@@ -210,12 +209,6 @@ class Supervisor(object):
   # and 'global_step' parameters of Supervisor.__init__() to indicate that
   # the default behavior should be used.
   USE_DEFAULT = 0
-
-  # Protects _TENSORFLOW_LAUNCHED
-  _launch_lock = threading.Lock()
-
-  # True if we have already launched the tensorflow in-process server.
-  _TENSORFLOW_LAUNCHED = False
 
   def __init__(self, graph=None, ready_op=USE_DEFAULT, is_chief=True,
                init_op=USE_DEFAULT, init_feed_dict=None,

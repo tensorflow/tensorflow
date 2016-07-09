@@ -10266,6 +10266,7 @@ op {
     type: "type"
   }
   summary: "Return the same ref tensor as the input ref tensor."
+  allows_uninitialized_input: true
 }
 op {
   name: "RefMerge"
@@ -13697,6 +13698,135 @@ op {
   description: "Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept\na matrix of label probabilities, but rather a single label per row\nof features.  This label is considered to have probability 1.0 for the\ngiven row.\n\nInputs are the logits, not probabilities."
 }
 op {
+  name: "SparseSparseMaximum"
+  input_arg {
+    name: "a_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, in the canonical lexicographic ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "a_values"
+    description: "1-D.  `N` non-empty values corresponding to `a_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_indices"
+    description: "counterpart to `a_indices` for the other operand."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_values"
+    description: "counterpart to `a_values` for the other operand; must be of the same dtype."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b_shape"
+    description: "counterpart to `a_shape` for the other operand; the two shapes must be equal."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    description: "2-D.  The indices of the output SparseTensor."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "1-D.  The values of the output SparseTensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Returns the element-wise max of two SparseTensors."
+  description: "Assumes the two SparseTensors have the same shape, i.e., no broadcasting."
+}
+op {
+  name: "SparseSparseMinimum"
+  input_arg {
+    name: "a_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, in the canonical lexicographic ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "a_values"
+    description: "1-D.  `N` non-empty values corresponding to `a_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_indices"
+    description: "counterpart to `a_indices` for the other operand."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_values"
+    description: "counterpart to `a_values` for the other operand; must be of the same dtype."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b_shape"
+    description: "counterpart to `a_shape` for the other operand; the two shapes must be equal."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    description: "2-D.  The indices of the output SparseTensor."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "1-D.  The values of the output SparseTensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Returns the element-wise min of two SparseTensors."
+  description: "Assumes the two SparseTensors have the same shape, i.e., no broadcasting."
+}
+op {
   name: "SparseSplit"
   input_arg {
     name: "split_dim"
@@ -14818,6 +14948,16 @@ op {
     type: "type"
     description: "The type of the elem that is returned."
   }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known,\nexcluding the first dimension. Used to validate the shapes of\nTensorArray elements. If this shape is not fully specified, concatenating\nzero-size TensorArrays is an error."
+  }
   summary: "Concat the elements from the TensorArray into value `value`."
   description: "Takes `T` elements of shapes\n\n  ```\n  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)\n  ```\n\nand concatenates them into a Tensor of shape:\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```\n\nAll elements must have the same shape (excepting the first dimension)."
 }
@@ -14870,6 +15010,16 @@ op {
     name: "dtype"
     type: "type"
     description: "The type of the elem that is returned."
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, packing zero-size TensorArrays is an error."
   }
   summary: "Pack the elements from the TensorArray into output `value`."
   description: "All elements must have the same shape."

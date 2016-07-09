@@ -37,6 +37,7 @@ cc_library(
     deps = [
         ":google_auth_provider",
         ":http_request",
+        ":retrying_file_system",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
@@ -120,6 +121,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "retrying_file_system",
+    srcs = [
+        "retrying_file_system.cc",
+    ],
+    hdrs = [
+        "retrying_file_system.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 tf_cc_test(
     name = "gcs_file_system_test",
     size = "small",
@@ -185,6 +200,18 @@ tf_cc_test(
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "retrying_file_system_test",
+    size = "small",
+    deps = [
+        ":retrying_file_system",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

@@ -37,6 +37,36 @@ _state_size_with_prefix = rnn_cell._state_size_with_prefix
 # pylint: enable=protected-access
 
 
+def _infer_state_dtype(explicit_dtype, state):
+  """Infer the dtype of an RNN state.
+
+  Args:
+    explicit_dtype: explicitly declared dtype or None.
+    state: RNN's hidden state. Must be a Tensor or a nested iterable containing
+      Tensors.
+
+  Returns:
+    dtype: inferred dtype of hidden state.
+
+  Raises:
+    ValueError: if `state` has heterogeneous dtypes or is empty.
+  """
+  if explicit_dtype is not None:
+    return explicit_dtype
+  elif nest.is_sequence(state):
+    inferred_dtypes = [element.dtype for element in nest.flatten(state)]
+    if not inferred_dtypes:
+      raise ValueError("Unable to infer dtype from empty state.")
+    all_same = all([x == inferred_dtypes[0] for x in inferred_dtypes])
+    if not all_same:
+      raise ValueError(
+          "State has tensors of different inferred_dtypes. Unable to infer a "
+          "single representative dtype.")
+    return inferred_dtypes[0]
+  else:
+    return state.dtype
+
+
 def rnn(cell, inputs, initial_state=None, dtype=None,
         sequence_length=None, scope=None):
   """Creates a recurrent neural network specified by RNNCell `cell`.
@@ -73,8 +103,9 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
       If `cell.state_size` is a tuple, this should be a tuple of
       tensors having shapes `[batch_size, s] for s in cell.state_size`.
-    dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
+    dtype: (optional) The data type for the initial state and expected output.
+      Required if initial_state is not provided or RNN state has a heterogeneous
+      dtype.
     sequence_length: Specifies the length of each sequence in inputs.
       An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
     scope: VariableScope for the created subgraph; defaults to "RNN".
@@ -119,7 +150,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       fixed_batch_size = input_shape[0]
 
       flat_inputs = (nest.flatten(inputs)
-                     if nest.is_sequence(inputs) else (inputs,))
+                     if nest.is_sequence(inputs) else [inputs])
       for flat_input in flat_inputs:
         input_shape = flat_input.get_shape().with_rank_at_least(2)
         batch_size, input_size = input_shape[0], input_shape[1:]
@@ -148,7 +179,8 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       def _create_zero_output(output_size):
         # convert int to TensorShape if necessary
         size = _state_size_with_prefix(output_size, prefix=[batch_size])
-        output = array_ops.zeros(array_ops.pack(size), first_input.dtype)
+        output = array_ops.zeros(
+            array_ops.pack(size), _infer_state_dtype(dtype, state))
         shape = _state_size_with_prefix(
             output_size, prefix=[fixed_batch_size.value])
         output.set_shape(tensor_shape.TensorShape(shape))
@@ -157,7 +189,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       output_size = cell.output_size
       output_is_tuple = nest.is_sequence(output_size)
       flat_output_size = (
-          nest.flatten(output_size) if output_is_tuple else (output_size,))
+          nest.flatten(output_size) if output_is_tuple else [output_size])
       flat_zero_output = tuple(_create_zero_output(size)
                                for size in flat_output_size)
       if output_is_tuple:
@@ -260,7 +292,7 @@ def state_saving_rnn(cell, inputs, state_saver, state_name,
     last_output = outputs[-1]
     output_is_tuple = nest.is_sequence(last_output)
     flat_last_output = (
-        nest.flatten(last_output) if output_is_tuple else (last_output,))
+        nest.flatten(last_output) if output_is_tuple else [last_output])
     flat_last_output = tuple(
         array_ops.identity(output) for output in flat_last_output)
     if output_is_tuple:
@@ -329,10 +361,10 @@ def _rnn_step(
 
   # Convert state to a list for ease of use
   state_is_tuple = nest.is_sequence(state)
-  flat_state = nest.flatten(state) if state_is_tuple else (state,)
+  flat_state = nest.flatten(state) if state_is_tuple else [state]
   output_is_tuple = nest.is_sequence(zero_output)
   flat_zero_output = (
-      nest.flatten(zero_output) if output_is_tuple else (zero_output,))
+      nest.flatten(zero_output) if output_is_tuple else [zero_output])
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
@@ -342,12 +374,12 @@ def _rnn_step(
     # Use broadcasting select to determine which values should get
     # the previous state & zero output, and which values should get
     # a calculated state & output.
-    flat_new_output = tuple(
+    flat_new_output = [
         _copy_one_through(zero_output, new_output)
-        for zero_output, new_output in zip(flat_zero_output, flat_new_output))
-    flat_new_state = tuple(
+        for zero_output, new_output in zip(flat_zero_output, flat_new_output)]
+    flat_new_state = [
         _copy_one_through(state, new_state)
-        for state, new_state in zip(flat_state, flat_new_state))
+        for state, new_state in zip(flat_state, flat_new_state)]
     return flat_new_output + flat_new_state
 
   def _maybe_copy_some_through():
@@ -356,9 +388,9 @@ def _rnn_step(
 
     nest.assert_same_structure(state, new_state)
 
-    flat_new_state = nest.flatten(new_state) if state_is_tuple else (new_state,)
+    flat_new_state = nest.flatten(new_state) if state_is_tuple else [new_state]
     flat_new_output = (
-        nest.flatten(new_output) if output_is_tuple else (new_output,))
+        nest.flatten(new_output) if output_is_tuple else [new_output])
     return control_flow_ops.cond(
         # if t < min_seq_len: calculate and return everything
         time < min_sequence_length, lambda: flat_new_output + flat_new_state,
@@ -375,9 +407,9 @@ def _rnn_step(
     new_output, new_state = call_cell()
     nest.assert_same_structure(state, new_state)
     new_state = (
-        tuple(nest.flatten(new_state)) if state_is_tuple else (new_state,))
+        nest.flatten(new_state) if state_is_tuple else [new_state])
     new_output = (
-        tuple(nest.flatten(new_output)) if output_is_tuple else (new_output,))
+        nest.flatten(new_output) if output_is_tuple else [new_output])
     final_output_and_state = _copy_some_through(new_output, new_state)
   else:
     empty_update = lambda: flat_zero_output + flat_state
@@ -425,8 +457,8 @@ def _reverse_seq(input_seq, lengths):
     return list(reversed(input_seq))
 
   input_is_tuple = nest.is_sequence(input_seq[0])
-  flat_input_seq = tuple(nest.flatten(input_) if input_is_tuple else (input_,)
-                         for input_ in input_seq)
+  flat_input_seq = (nest.flatten(input_) if input_is_tuple else [input_]
+                    for input_ in input_seq)
 
   flat_results = [[] for _ in range(len(input_seq))]
   for sequence in zip(*flat_input_seq):
@@ -685,8 +717,9 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
       If `cell.state_size` is a tuple, this should be a tuple of
       tensors having shapes `[batch_size, s] for s in cell.state_size`.
-    dtype: (optional) The data type for the initial state.  Required if
-      initial_state is not provided.
+    dtype: (optional) The data type for the initial state and expected output.
+      Required if initial_state is not provided or RNN state has a heterogeneous
+      dtype.
     parallel_iterations: (Default: 32).  The number of iterations to run in
       parallel.  Those operations which do not have any temporal dependency
       and can be run in parallel, will be.  This parameter trades off
@@ -728,7 +761,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   #   [batch, time, depth]
   # For internal calculations, we transpose to [time, batch, depth]
   input_is_tuple = nest.is_sequence(inputs)
-  flat_input = nest.flatten(inputs) if input_is_tuple else (inputs,)
+  flat_input = nest.flatten(inputs) if input_is_tuple else [inputs]
 
   if not time_major:
     # (B,T,D) => (T,B,D)
@@ -780,8 +813,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
               if input_is_tuple else flat_input[0])
 
     (outputs, final_state) = _dynamic_rnn_loop(
-        cell, inputs, state, parallel_iterations=parallel_iterations,
-        swap_memory=swap_memory, sequence_length=sequence_length)
+        cell,
+        inputs,
+        state,
+        parallel_iterations=parallel_iterations,
+        swap_memory=swap_memory,
+        sequence_length=sequence_length,
+        dtype=dtype)
 
     # Outputs of _dynamic_rnn_loop are always shaped [time, batch, depth].
     # If we are performing batch-major calculations, transpose output back
@@ -789,7 +827,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       flat_output = (
-          nest.flatten(outputs) if nest.is_sequence(outputs) else (outputs,))
+          nest.flatten(outputs) if nest.is_sequence(outputs) else [outputs])
       flat_output = tuple(array_ops.transpose(output, [1, 0, 2])
                           for output in flat_output)
       if nest.is_sequence(outputs):
@@ -801,9 +839,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     return (outputs, final_state)
 
 
-def _dynamic_rnn_loop(
-    cell, inputs, initial_state, parallel_iterations, swap_memory,
-    sequence_length=None):
+def _dynamic_rnn_loop(cell,
+                      inputs,
+                      initial_state,
+                      parallel_iterations,
+                      swap_memory,
+                      sequence_length=None,
+                      dtype=None):
   """Internal implementation of Dynamic RNN.
 
   Args:
@@ -816,6 +858,8 @@ def _dynamic_rnn_loop(
     parallel_iterations: Positive Python int.
     swap_memory: A Python boolean
     sequence_length: (optional) An `int32` `Tensor` of shape [batch_size].
+    dtype: (optional) Expected dtype of output. If not specified, inferred from
+      initial_state.
 
   Returns:
     Tuple `(final_outputs, final_state)`.
@@ -836,9 +880,9 @@ def _dynamic_rnn_loop(
   input_is_tuple = nest.is_sequence(inputs)
   output_is_tuple = nest.is_sequence(cell.output_size)
 
-  flat_input = nest.flatten(inputs) if input_is_tuple else (inputs,)
+  flat_input = nest.flatten(inputs) if input_is_tuple else [inputs]
   flat_output_size = (nest.flatten(cell.output_size)
-                      if output_is_tuple else (cell.output_size,))
+                      if output_is_tuple else [cell.output_size])
 
   # Construct an initial output
   input_shape = array_ops.shape(flat_input[0])
@@ -868,7 +912,8 @@ def _dynamic_rnn_loop(
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
     size = _state_size_with_prefix(size, prefix=[batch_size])
-    return array_ops.zeros(array_ops.pack(size), flat_input[0].dtype)
+    return array_ops.zeros(
+        array_ops.pack(size), _infer_state_dtype(dtype, state))
 
   flat_zero_output = tuple(_create_zero_arrays(output)
                            for output in flat_output_size)
@@ -887,14 +932,16 @@ def _dynamic_rnn_loop(
   with ops.op_scope([], "dynamic_rnn") as scope:
     base_name = scope
 
-  def _create_ta(name):
-    return tensor_array_ops.TensorArray(
-        dtype=flat_input[0].dtype, size=time_steps,
-        tensor_array_name=base_name + name)
+  def _create_ta(name, dtype):
+    return tensor_array_ops.TensorArray(dtype=dtype,
+                                        size=time_steps,
+                                        tensor_array_name=base_name + name)
 
-  output_ta = tuple(_create_ta("output_%d" % i)
+  output_ta = tuple(_create_ta("output_%d" % i,
+                               _infer_state_dtype(dtype, state))
                     for i in range(len(flat_output_size)))
-  input_ta = tuple(_create_ta("input_%d" % i) for i in range(len(flat_input)))
+  input_ta = tuple(_create_ta("input_%d" % i, flat_input[0].dtype)
+                   for i in range(len(flat_input)))
 
   input_ta = tuple(ta.unpack(input_)
                    for ta, input_ in zip(input_ta, flat_input))
@@ -935,7 +982,7 @@ def _dynamic_rnn_loop(
       (output, new_state) = call_cell()
 
     # Pack state if using state tuples
-    output = nest.flatten(output) if output_is_tuple else (output,)
+    output = nest.flatten(output) if output_is_tuple else [output]
 
     output_ta_t = tuple(ta.write(time, out)
                         for ta, out in zip(output_ta_t, output))

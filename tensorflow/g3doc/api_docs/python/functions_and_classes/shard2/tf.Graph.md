@@ -347,6 +347,12 @@ with g.name_scope('my_layer') as scope:
   output = tf.nn.relu(affine, name=scope)
 ```
 
+NOTE: This constructor validates the given `name`. Valid scope
+names match one of the following regular expressions:
+
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (for scopes at the root)
+    [A-Za-z0-9_.\\-/]* (for other scopes)
+
 ##### Args:
 
 
@@ -355,6 +361,11 @@ with g.name_scope('my_layer') as scope:
 ##### Returns:
 
   A context manager that installs `name` as a new name scope.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `name` is not a valid scope name. The rules are the
 
 
 

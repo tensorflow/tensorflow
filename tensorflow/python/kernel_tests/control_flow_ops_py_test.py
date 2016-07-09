@@ -411,6 +411,25 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.cond(tf.constant(False), true_fn, false_fn)
       self.assertAllEqual([2.0], r.eval())
 
+  def testUninitializedRefIdentity(self):
+    with self.test_session() as sess:
+      v = state_ops.variable_op([1], tf.float32)
+      inited = state_ops.is_variable_initialized(v)
+      v_f, v_t = control_flow_ops.ref_switch(v, inited)
+      # Both v_f and v_t are uninitialized references. However, an actual use
+      # of the reference in the 'true' branch in the 'tf.identity' op will
+      # not 'fire' when v is uninitialized, so this is a valid construction.
+      # This test tests that _ref_identity allows uninitialized ref as input
+      # so that this construction is allowed.
+      v_f_op = gen_array_ops._ref_identity(v_f)
+      v_t_op = gen_array_ops._ref_identity(v_t)
+      with tf.control_dependencies([v_f_op]):
+        assign_v = tf.assign(v, [1.0])
+      with tf.control_dependencies([v_t_op]):
+        orig_v = tf.identity(v)
+      merged_op = control_flow_ops.merge([assign_v, orig_v])
+      self.assertAllEqual([1.0], sess.run(merged_op.output))
+
   def testCondGrad_1(self):
     with self.test_session():
       x = tf.constant(10.0, name="x")
@@ -1363,9 +1382,9 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testWhileGradGrad(self):
     theta = tf.Variable(initial_value=1.)
-    def fn(x, prev):
+    def fn(prev, x):
       return prev + x * theta
-    result = tf.scan(fn, [1., 2., 3.])
+    result = tf.scan(fn, np.array([1., 2., 3.], dtype=np.float32))
     grad_theta = tf.gradients(result, theta)
     with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
       tf.gradients(grad_theta, theta)

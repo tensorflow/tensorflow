@@ -579,6 +579,12 @@ class ImportGraphDefTest(tf.test.TestCase):
                             input_map=[tf.constant(5.0)])
       self.assertEqual("input_map must be a dictionary mapping strings to "
                        "Tensor objects.", str(e.exception))
+      with self.assertRaises(ValueError) as e:
+        tf.import_graph_def(self._MakeGraphDef(""),
+                            input_map={"a:0": tf.constant(5.0)},
+                            name="")
+      self.assertEqual("tf.import_graph_def() requires a non-empty `name` "
+                       "if `input_map` is used.", str(e.exception))
 
   def testInvalidInputForReturnOperations(self):
     with tf.Graph().as_default():
@@ -774,7 +780,6 @@ class ImportGraphDefTest(tf.test.TestCase):
           """),
           return_elements=["A"], producer_op_list=producer_op_list)
       self.assertEqual(987, a[0].get_attr("default_int"))
-
 
 if __name__ == "__main__":
   tf.test.main()

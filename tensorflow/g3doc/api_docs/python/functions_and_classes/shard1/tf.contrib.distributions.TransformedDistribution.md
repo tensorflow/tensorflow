@@ -23,7 +23,7 @@ A simple example constructing a Log-Normal distribution from a Normal
 distribution:
 
 ```
-logit_normal = ContinuousTransformedDistribution(
+logit_normal = TransformedDistribution(
   base_dist=Normal(mu, sigma),
   transform=lambda x: tf.sigmoid(x),
   inverse=lambda y: tf.log(y) - tf.log(1. - y),
@@ -35,7 +35,7 @@ logit_normal = ContinuousTransformedDistribution(
 ```
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.__init__(base_dist_cls, transform, inverse, log_det_jacobian, name='ContinuousTransformedDistribution', **base_dist_args)` {#ContinuousTransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(base_dist_cls, transform, inverse, log_det_jacobian, name='TransformedDistribution', **base_dist_args)` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
@@ -43,7 +43,7 @@ Construct a Transformed Distribution.
 
 
 *  <b>`base_dist_cls`</b>: the base distribution class to transform. Must be a
-      subclass of `ContinuousDistribution`.
+      subclass of `Distribution`.
 *  <b>`transform`</b>: a callable that takes a `Tensor` sample from `base_dist` and
       returns a `Tensor` of the same shape and type. `x => y`.
 *  <b>`inverse`</b>: a callable that computes the inverse of transform. `y => x`. If
@@ -57,19 +57,19 @@ Construct a Transformed Distribution.
 
 
 *  <b>`TypeError`</b>: if `base_dist_cls` is not a subclass of
-      `ContinuousDistribution`.
+      `Distribution`.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.base_distribution` {#ContinuousTransformedDistribution.base_distribution}
+#### `tf.contrib.distributions.TransformedDistribution.base_distribution` {#TransformedDistribution.base_distribution}
 
 Base distribution, p(x).
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.batch_shape(name='batch_shape')` {#ContinuousTransformedDistribution.batch_shape}
+#### `tf.contrib.distributions.TransformedDistribution.batch_shape(name='batch_shape')` {#TransformedDistribution.batch_shape}
 
 Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
@@ -88,28 +88,28 @@ independent distributions of this kind the instance represents.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.cdf(value, name='cdf')` {#ContinuousTransformedDistribution.cdf}
+#### `tf.contrib.distributions.TransformedDistribution.cdf(value, name='cdf')` {#TransformedDistribution.cdf}
 
 Cumulative distribution function.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.dtype` {#ContinuousTransformedDistribution.dtype}
+#### `tf.contrib.distributions.TransformedDistribution.dtype` {#TransformedDistribution.dtype}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.entropy(name='entropy')` {#ContinuousTransformedDistribution.entropy}
+#### `tf.contrib.distributions.TransformedDistribution.entropy(name='entropy')` {#TransformedDistribution.entropy}
 
 Entropy of the distribution in nats.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.event_shape(name='event_shape')` {#ContinuousTransformedDistribution.event_shape}
+#### `tf.contrib.distributions.TransformedDistribution.event_shape(name='event_shape')` {#TransformedDistribution.event_shape}
 
 Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
@@ -125,7 +125,7 @@ Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.get_batch_shape()` {#ContinuousTransformedDistribution.get_batch_shape}
+#### `tf.contrib.distributions.TransformedDistribution.get_batch_shape()` {#TransformedDistribution.get_batch_shape}
 
 `TensorShape` available at graph construction time.
 
@@ -138,7 +138,7 @@ Same meaning as `batch_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.get_event_shape()` {#ContinuousTransformedDistribution.get_event_shape}
+#### `tf.contrib.distributions.TransformedDistribution.get_event_shape()` {#TransformedDistribution.get_event_shape}
 
 `TensorShape` available at graph construction time.
 
@@ -151,44 +151,58 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.inverse` {#ContinuousTransformedDistribution.inverse}
+#### `tf.contrib.distributions.TransformedDistribution.inverse` {#TransformedDistribution.inverse}
 
 Inverse function of transform, y => x.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.is_reparameterized` {#ContinuousTransformedDistribution.is_reparameterized}
+#### `tf.contrib.distributions.TransformedDistribution.is_continuous` {#TransformedDistribution.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_cdf(value, name='log_cdf')` {#ContinuousTransformedDistribution.log_cdf}
+#### `tf.contrib.distributions.TransformedDistribution.is_reparameterized` {#TransformedDistribution.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.log_cdf(value, name='log_cdf')` {#TransformedDistribution.log_cdf}
 
 Log CDF.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_det_jacobian` {#ContinuousTransformedDistribution.log_det_jacobian}
+#### `tf.contrib.distributions.TransformedDistribution.log_det_jacobian` {#TransformedDistribution.log_det_jacobian}
 
 Function computing the log determinant of the Jacobian of transform.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_likelihood(value, name='log_likelihood')` {#ContinuousTransformedDistribution.log_likelihood}
+#### `tf.contrib.distributions.TransformedDistribution.log_pdf(value, name='log_pdf')` {#TransformedDistribution.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.log_pdf(y, name='log_pdf')` {#ContinuousTransformedDistribution.log_pdf}
+#### `tf.contrib.distributions.TransformedDistribution.log_pmf(value, name='log_pmf')` {#TransformedDistribution.log_pmf}
 
-Log pdf of observations in `y`.
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.log_prob(y, name='log_prob')` {#TransformedDistribution.log_prob}
+
+Log prob of observations in `y`.
 
 `log ( p(g(y)) / det|J(g(y))| )`, where `g` is the inverse of `transform`.
 
@@ -212,30 +226,44 @@ Log pdf of observations in `y`.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.mean(name='mean')` {#ContinuousTransformedDistribution.mean}
+#### `tf.contrib.distributions.TransformedDistribution.mean(name='mean')` {#TransformedDistribution.mean}
 
 Mean of the distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.mode(name='mode')` {#ContinuousTransformedDistribution.mode}
+#### `tf.contrib.distributions.TransformedDistribution.mode(name='mode')` {#TransformedDistribution.mode}
 
 Mode of the distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.name` {#ContinuousTransformedDistribution.name}
+#### `tf.contrib.distributions.TransformedDistribution.name` {#TransformedDistribution.name}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.pdf(y, name='pdf')` {#ContinuousTransformedDistribution.pdf}
+#### `tf.contrib.distributions.TransformedDistribution.pdf(value, name='pdf')` {#TransformedDistribution.pdf}
 
-The PDF of observations in `y`.
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.pmf(value, name='pmf')` {#TransformedDistribution.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.prob(y, name='prob')` {#TransformedDistribution.prob}
+
+The prob of observations in `y`.
 
 `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of `transform`.
 
@@ -253,7 +281,7 @@ The PDF of observations in `y`.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.sample(n, seed=None, name='sample')` {#ContinuousTransformedDistribution.sample}
+#### `tf.contrib.distributions.TransformedDistribution.sample(n, seed=None, name='sample')` {#TransformedDistribution.sample}
 
 Sample `n` observations.
 
@@ -274,35 +302,35 @@ Samples from the base distribution and then passes through the transform.
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.std(name='std')` {#ContinuousTransformedDistribution.std}
+#### `tf.contrib.distributions.TransformedDistribution.std(name='std')` {#TransformedDistribution.std}
 
 Standard deviation of the distribution.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.strict` {#ContinuousTransformedDistribution.strict}
+#### `tf.contrib.distributions.TransformedDistribution.strict` {#TransformedDistribution.strict}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.strict_statistics` {#ContinuousTransformedDistribution.strict_statistics}
+#### `tf.contrib.distributions.TransformedDistribution.strict_statistics` {#TransformedDistribution.strict_statistics}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.transform` {#ContinuousTransformedDistribution.transform}
+#### `tf.contrib.distributions.TransformedDistribution.transform` {#TransformedDistribution.transform}
 
 Function transforming x => y.
 
 
 - - -
 
-#### `tf.contrib.distributions.ContinuousTransformedDistribution.variance(name='variance')` {#ContinuousTransformedDistribution.variance}
+#### `tf.contrib.distributions.TransformedDistribution.variance(name='variance')` {#TransformedDistribution.variance}
 
 Variance of the distribution.
 

@@ -24,7 +24,7 @@ namespace shape_inference {
 
 TEST(ShapeInferenceTest, RankAndDimInspection) {
   NodeDef def;
-  InferenceContext c(&def, {"?", "[1,?,3]", "[]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"?", "[1,?,3]", "[]"}, 2 /* num_outputs */, {});
   EXPECT_EQ(3, c.num_inputs());
   EXPECT_EQ(2, c.num_outputs());
 
@@ -58,7 +58,7 @@ TEST(ShapeInferenceTest, RankAndDimInspection) {
 
 TEST(ShapeInferenceTest, WithRank) {
   NodeDef def;
-  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -94,9 +94,44 @@ TEST(ShapeInferenceTest, WithRank) {
   EXPECT_EQ("[1,?,3]", c.DebugString(in1));
 }
 
+TEST(ShapeInferenceTest, WithRankAtMost) {
+  NodeDef def;
+  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */, {});
+
+  auto in0 = c.input(0);
+  auto in1 = c.input(1);
+  const Shape* s1 = nullptr;
+  const Shape* s2 = nullptr;
+
+  // WithRankAtMost on a shape with unknown dimensionality always succeeds.
+  EXPECT_TRUE(c.WithRankAtMost(in0, 1, &s1).ok());
+  EXPECT_EQ("?", c.DebugString(s1));
+  EXPECT_TRUE(in0 != s1);  // different pointers
+
+  EXPECT_TRUE(c.WithRankAtMost(in0, 2, &s2).ok());
+  EXPECT_EQ("?", c.DebugString(s2));
+  EXPECT_TRUE(s1 != s2);  // different pointers
+
+  // WithRankAtMost on shape with known dimensionality.
+  s1 = in1;
+  EXPECT_EQ("Invalid argument: Shape must be at most rank 2 but is rank 3",
+            c.WithRankAtMost(in1, 2, &s1).ToString());
+  EXPECT_TRUE(s1 == nullptr);
+  EXPECT_TRUE(c.WithRankAtMost(in1, 3, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+  EXPECT_TRUE(c.WithRankAtMost(in1, 4, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+  EXPECT_TRUE(c.WithRankAtMost(in1, 5, &s1).ok());
+  EXPECT_TRUE(s1 == in1);  // same pointers
+
+  // Inputs are unchanged.
+  EXPECT_EQ("?", c.DebugString(in0));
+  EXPECT_EQ("[1,?,3]", c.DebugString(in1));
+}
+
 TEST(ShapeInferenceTest, WithRankAtLeast) {
   NodeDef def;
-  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"?", "[1,?,3]"}, 2 /* num_outputs */, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -131,7 +166,7 @@ TEST(ShapeInferenceTest, WithRankAtLeast) {
 
 TEST(ShapeInferenceTest, WithValue) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,?]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,?]"}, 2 /* num_outputs */, {});
 
   auto d0 = c.Dim(c.input(0), 0);
   auto d1 = c.Dim(c.input(0), 1);
@@ -170,7 +205,7 @@ TEST(ShapeInferenceTest, WithValue) {
 
 TEST(ShapeInferenceTest, MergeDim) {
   NodeDef def;
-  InferenceContext c(&def, {"[2,?,2,1,?]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[2,?,2,1,?]"}, 2 /* num_outputs */, {});
 
   auto d2 = c.Dim(c.input(0), 0);
   auto d_unknown = c.Dim(c.input(0), 1);
@@ -212,7 +247,7 @@ TEST(ShapeInferenceTest, MergeShape) {
   NodeDef def;
   InferenceContext c(&def,
                      {"?", "[1,2]", "[?,2]", "[1,?]", "[1,3]", "?", "[1]"},
-                     2 /* num_outputs */);
+                     2 /* num_outputs */, {});
 
   auto s_unknown = c.input(0);
   auto s_1_2 = c.input(1);
@@ -268,9 +303,55 @@ TEST(ShapeInferenceTest, MergeShape) {
   EXPECT_TRUE(out == nullptr);
 }
 
+TEST(ShapeInferenceTest, MergePrefix) {
+  NodeDef def;
+  InferenceContext c(&def, {"?", "[?,2]", "[1,?,3]", "[2,4]"},
+                     2 /* num_outputs */, {});
+
+  auto s_unknown = c.input(0);
+  auto s_u_2 = c.input(1);
+  auto s_1_u_3 = c.input(2);
+  auto s_2_4 = c.input(3);
+
+  const Shape* s_out = nullptr;
+  const Shape* s_prefix_out = nullptr;
+
+  // Merging with unknown returns the inputs.
+  EXPECT_TRUE(c.MergePrefix(s_unknown, s_u_2, &s_out, &s_prefix_out).ok());
+  EXPECT_TRUE(s_out == s_unknown);
+  EXPECT_TRUE(s_prefix_out == s_u_2);
+  EXPECT_TRUE(c.MergePrefix(s_1_u_3, s_unknown, &s_out, &s_prefix_out).ok());
+  EXPECT_TRUE(s_out == s_1_u_3);
+  EXPECT_TRUE(s_prefix_out == s_unknown);
+
+  EXPECT_TRUE(c.MergePrefix(s_1_u_3, s_u_2, &s_out, &s_prefix_out).ok());
+  EXPECT_TRUE(s_out != s_1_u_3);
+  EXPECT_EQ("[1,2]", c.DebugString(s_prefix_out));
+  EXPECT_EQ("[1,2,3]", c.DebugString(s_out));
+  EXPECT_TRUE(c.Dim(s_prefix_out, 0) == c.Dim(s_out, 0));
+  EXPECT_TRUE(c.Dim(s_out, 0) == c.Dim(s_1_u_3, 0));
+  EXPECT_TRUE(c.Dim(s_prefix_out, 1) == c.Dim(s_out, 1));
+  EXPECT_TRUE(c.Dim(s_prefix_out, 1) == c.Dim(s_u_2, 1));
+
+  // Incompatible merges give errors and set outs to nullptr.
+  s_out = s_unknown;
+  s_prefix_out = s_unknown;
+  EXPECT_EQ(("Invalid argument: Dimensions must be equal, but are 1 and 2"),
+            c.MergePrefix(s_1_u_3, s_2_4, &s_out, &s_prefix_out).ToString());
+  EXPECT_TRUE(s_out == nullptr);
+  EXPECT_TRUE(s_prefix_out == nullptr);
+
+  s_out = s_unknown;
+  s_prefix_out = s_unknown;
+  EXPECT_EQ(("Invalid argument: Shape must be at least rank 3 but is rank 2"),
+            c.MergePrefix(s_2_4, s_1_u_3, &s_out, &s_prefix_out).ToString());
+  EXPECT_TRUE(s_out == nullptr);
+  EXPECT_TRUE(s_prefix_out == nullptr);
+}
+
 TEST(ShapeInferenceTest, Subshape) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,2,3,?,5]", "?"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,2,3,?,5]", "?"}, 2 /* num_outputs */, {});
 
   const Shape* unknown = c.input(1);
   const Shape* out;
@@ -308,7 +389,7 @@ TEST(ShapeInferenceTest, Subshape) {
 
 TEST(ShapeInferenceTest, Concatenate) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,?,3]", "[4,5]", "?"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,?,3]", "[4,5]", "?"}, 2 /* num_outputs */, {});
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
@@ -334,7 +415,7 @@ TEST(ShapeInferenceTest, Concatenate) {
 
 TEST(ShapeInferenceTest, CreateShape) {
   NodeDef def;
-  InferenceContext c(&def, {"[1,2,3,?,5]"}, 2 /* num_outputs */);
+  InferenceContext c(&def, {"[1,2,3,?,5]"}, 2 /* num_outputs */, {});
 
   std::vector<const Dimension*> dims;
   auto in0 = c.input(0);
@@ -354,7 +435,7 @@ TEST(ShapeInferenceTest, CreateShape) {
 
 TEST(ShapeInferenceTest, CreateUnknownShape) {
   NodeDef def;
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
 
   auto u0 = c.CreateUnknownShape();
   auto u1 = c.CreateUnknownShape();
@@ -397,11 +478,20 @@ TEST(ShapeInferenceTest, CreateShapeFromShapeTensor) {
 
   t = ::tensorflow::test::AsTensor<int32>({1, 2}, TensorShape{2, 1});
   EXPECT_EQ("Input tensor must be rank 1, but was rank 2", create(&t));
+
+  // Test when the input shape is wrong.
+  {
+    NodeDef def;
+    InferenceContext c(&def, {"[1,?]"}, 0 /* num_outputs */, {nullptr});
+    const Shape* out;
+    EXPECT_EQ("Shape must be rank 1 but is rank 2",
+              c.CreateShapeFromShapeTensor(0, &out).error_message());
+  }
 }
 
 TEST(ShapeInferenceTest, CreateDim) {
   NodeDef def;
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
 
   auto* d0 = c.CreateDim(1);
   auto* d1 = c.CreateDim(1);
@@ -414,7 +504,7 @@ TEST(ShapeInferenceTest, CreateDim) {
 
 TEST(ShapeInferenceTest, CreateUnknownDim) {
   NodeDef def;
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
 
   auto* d0 = c.CreateUnknownDim();
   auto* d1 = c.CreateUnknownDim();
@@ -444,7 +534,7 @@ TEST(ShapeInferenceTest, GetAttr) {
             .Finalize(&def)
             .ok());
 
-  InferenceContext c(&def, {}, 2 /* num_outputs */);
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
   string value;
   EXPECT_TRUE(c.GetAttr("foo", &value).ok());
   EXPECT_EQ("bar", value);

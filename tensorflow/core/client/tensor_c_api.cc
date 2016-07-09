@@ -37,30 +37,25 @@ using tensorflow::error::Code;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::gtl::ArraySlice;
 using tensorflow::AllocationDescription;
-using tensorflow::Status;
 using tensorflow::DataType;
 using tensorflow::Env;
 using tensorflow::GraphDef;
 using tensorflow::NewSession;
+using tensorflow::Reset;
+using tensorflow::RunMetadata;
+using tensorflow::RunOptions;
 using tensorflow::Session;
+using tensorflow::SessionOptions;
+using tensorflow::Status;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
-using tensorflow::SessionOptions;
-using tensorflow::RunOptions;
-using tensorflow::RunMetadata;
 using tensorflow::TensorShape;
-using tensorflow::Reset;
 
 extern "C" {
 
 // --------------------------------------------------------------------------
 struct TF_Status {
   Status status;
-};
-
-struct TF_Library {
-  void* lib_handle;
-  TF_Buffer op_list;
 };
 
 TF_Status* TF_NewStatus() { return new TF_Status; }
@@ -555,6 +550,11 @@ void TF_PRun(TF_Session* s, const char* handle,
                 c_output_tensor_names, c_outputs, noutputs, c_target_node_names,
                 ntargets, nullptr, status);
 }
+
+struct TF_Library {
+  void* lib_handle;
+  TF_Buffer op_list;
+};
 
 TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
   TF_Library* lib_handle = new TF_Library;

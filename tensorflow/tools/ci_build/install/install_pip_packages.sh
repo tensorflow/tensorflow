@@ -79,3 +79,8 @@ pip3 install py-cpuinfo
 # pylint tests require the following:
 pip install pylint
 pip3 install pylint
+
+# pep8 tests require the following:
+pip install pep8
+pip3 install pep8
+

@@ -19,13 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import scipy.special
 import tensorflow as tf
 
 
 def make_bernoulli(batch_shape, dtype=tf.int32):
   p = np.random.uniform(size=list(batch_shape))
   p = tf.constant(p, dtype=tf.float32)
-  return tf.contrib.distributions.Bernoulli(p, dtype=dtype)
+  return tf.contrib.distributions.Bernoulli(p=p, dtype=dtype)
 
 
 def entropy(p):
@@ -37,22 +38,36 @@ class BernoulliTest(tf.test.TestCase):
 
   def testP(self):
     p = [0.2, 0.4]
-    dist = tf.contrib.distributions.Bernoulli(p)
+    dist = tf.contrib.distributions.Bernoulli(p=p)
     with self.test_session():
       self.assertAllClose(p, dist.p.eval())
+
+  def testLogits(self):
+    logits = [-42., 42.]
+    dist = tf.contrib.distributions.Bernoulli(logits=logits)
+    with self.test_session():
+      self.assertAllClose(logits, dist.logits.eval())
+
+    with self.test_session():
+      self.assertAllClose(scipy.special.expit(logits), dist.p.eval())
+
+    p = [0.01, 0.99, 0.42]
+    dist = tf.contrib.distributions.Bernoulli(p=p)
+    with self.test_session():
+      self.assertAllClose(scipy.special.logit(p), dist.logits.eval())
 
   def testInvalidP(self):
     invalid_ps = [1.01, -0.01, 2., -3.]
     for p in invalid_ps:
       with self.test_session():
         with self.assertRaisesOpError("x <= y"):
-          dist = tf.contrib.distributions.Bernoulli(p)
+          dist = tf.contrib.distributions.Bernoulli(p=p)
           dist.p.eval()
 
     valid_ps = [0.0, 0.5, 1.0]
     for p in valid_ps:
       with self.test_session():
-        dist = tf.contrib.distributions.Bernoulli(p)
+        dist = tf.contrib.distributions.Bernoulli(p=p)
         self.assertEqual(p, dist.p.eval())  # Should not fail
 
   def testShapes(self):
@@ -81,9 +96,8 @@ class BernoulliTest(tf.test.TestCase):
     self.assertEqual(dist64.dtype, dist64.sample(5).dtype)
     self.assertEqual(dist64.dtype, dist64.mode().dtype)
 
-  def testPmf(self):
-    p = [[0.2, 0.4], [0.3, 0.6]]
-    dist = tf.contrib.distributions.Bernoulli(p)
+  def _testPmf(self, **kwargs):
+    dist = tf.contrib.distributions.Bernoulli(**kwargs)
     with self.test_session():
       # pylint: disable=bad-continuation
       xs = [
@@ -106,29 +120,64 @@ class BernoulliTest(tf.test.TestCase):
         self.assertAllClose(dist.pmf(x).eval(), expected_pmf)
         self.assertAllClose(dist.log_pmf(x).eval(), np.log(expected_pmf))
 
+  def testPmfWithP(self):
+    p = [[0.2, 0.4], [0.3, 0.6]]
+    self._testPmf(p=p)
+    self._testPmf(logits=scipy.special.logit(p))
+
+  def testBroadcasting(self):
+    with self.test_session():
+      p = tf.placeholder(tf.float32)
+      dist = tf.contrib.distributions.Bernoulli(p=p)
+      self.assertAllClose(np.log(0.5), dist.log_pmf(1).eval({p: 0.5}))
+      self.assertAllClose(np.log([0.5, 0.5, 0.5]),
+                          dist.log_pmf([1, 1, 1]).eval({p: 0.5}))
+      self.assertAllClose(np.log([0.5, 0.5, 0.5]),
+                          dist.log_pmf(1).eval({p: [0.5, 0.5, 0.5]}))
+
+  def testPmfShapes(self):
+    with self.test_session():
+      p = tf.placeholder(tf.float32, shape=[None, 1])
+      dist = tf.contrib.distributions.Bernoulli(p=p)
+      self.assertEqual(2, len(dist.log_pmf(1).eval({p: [[0.5], [0.5]]}).shape))
+
+    with self.test_session():
+      dist = tf.contrib.distributions.Bernoulli(p=0.5)
+      self.assertEqual(2, len(dist.log_pmf([[1], [1]]).eval().shape))
+
+    with self.test_session():
+      dist = tf.contrib.distributions.Bernoulli(p=0.5)
+      self.assertEqual((), dist.log_pmf(1).get_shape())
+      self.assertEqual((1), dist.log_pmf([1]).get_shape())
+      self.assertEqual((2, 1), dist.log_pmf([[1], [1]]).get_shape())
+
+    with self.test_session():
+      dist = tf.contrib.distributions.Bernoulli(p=[[0.5], [0.5]])
+      self.assertEqual((2, 1), dist.log_pmf(1).get_shape())
+
   def testBoundaryConditions(self):
     with self.test_session():
-      dist = tf.contrib.distributions.Bernoulli(1.0)
-      self.assertEqual(-np.inf, dist.log_pmf(0).eval())
-      self.assertAllClose([0.0], [dist.log_pmf(1).eval()])
+      dist = tf.contrib.distributions.Bernoulli(p=1.0)
+      self.assertAllClose(np.nan, dist.log_pmf(0).eval())
+      self.assertAllClose([np.nan], [dist.log_pmf(1).eval()])
 
   def testEntropyNoBatch(self):
     p = 0.2
-    dist = tf.contrib.distributions.Bernoulli(p)
+    dist = tf.contrib.distributions.Bernoulli(p=p)
     with self.test_session():
       self.assertAllClose(dist.entropy().eval(), entropy(p))
 
   def testEntropyWithBatch(self):
-    p = [[0.0, 0.7], [1.0, 0.6]]
-    dist = tf.contrib.distributions.Bernoulli(p, strict=False)
+    p = [[0.1, 0.7], [0.2, 0.6]]
+    dist = tf.contrib.distributions.Bernoulli(p=p, strict=False)
     with self.test_session():
-      self.assertAllClose(dist.entropy().eval(), [[0.0, entropy(0.7)],
-                                                  [0.0, entropy(0.6)]])
+      self.assertAllClose(dist.entropy().eval(), [[entropy(0.1), entropy(0.7)],
+                                                  [entropy(0.2), entropy(0.6)]])
 
   def testSample(self):
     with self.test_session():
       p = [0.2, 0.6]
-      dist = tf.contrib.distributions.Bernoulli(p)
+      dist = tf.contrib.distributions.Bernoulli(p=p)
       n = 1000
       samples = dist.sample(n, seed=123)
       samples.set_shape([n, 2])
@@ -142,14 +191,14 @@ class BernoulliTest(tf.test.TestCase):
   def testMean(self):
     with self.test_session():
       p = np.array([[0.2, 0.7], [0.5, 0.4]], dtype=np.float32)
-      dist = tf.contrib.distributions.Bernoulli(p)
+      dist = tf.contrib.distributions.Bernoulli(p=p)
       self.assertAllEqual(dist.mean().eval(), p)
 
   def testVarianceAndStd(self):
     var = lambda p: p * (1. - p)
     with self.test_session():
       p = [[0.2, 0.7], [0.5, 0.4]]
-      dist = tf.contrib.distributions.Bernoulli(p)
+      dist = tf.contrib.distributions.Bernoulli(p=p)
       self.assertAllClose(dist.variance().eval(),
                           np.array([[var(0.2), var(0.7)], [var(0.5), var(0.4)]],
                                    dtype=np.float32))

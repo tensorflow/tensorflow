@@ -125,6 +125,21 @@ Status InferenceContext::WithRankAtLeast(const Shape* shape, int32 rank,
                                  " but is rank ", existing);
 }
 
+Status InferenceContext::WithRankAtMost(const Shape* shape, int32 rank,
+                                        const Shape** out) {
+  const int32 existing = Rank(shape);
+  if (existing == kUnknownRank) {
+    return ReturnUnknownShape(out);
+  }
+  if (existing <= rank) {
+    *out = shape;
+    return Status::OK();
+  }
+  *out = nullptr;
+  return errors::InvalidArgument("Shape must be at most rank ", rank,
+                                 " but is rank ", existing);
+}
+
 Status InferenceContext::WithValue(const Dimension* dim, int64 value,
                                    const Dimension** out) {
   const int64 existing = Value(dim);
@@ -158,6 +173,30 @@ Status InferenceContext::Merge(const Dimension* d0, const Dimension* d1,
     return errors::InvalidArgument("Dimensions must be equal, but are ",
                                    Value(d0), " and ", Value(d1));
   }
+}
+
+Status InferenceContext::MergePrefix(const Shape* s, const Shape* prefix,
+                                     const Shape** s_out,
+                                     const Shape** prefix_out) {
+  *s_out = *prefix_out = nullptr;
+  if (!RankKnown(prefix) || !RankKnown(s)) {
+    *s_out = s;
+    *prefix_out = prefix;
+    return Status::OK();
+  }
+  const int32 rank = Rank(prefix);
+  TF_RETURN_IF_ERROR(WithRankAtLeast(s, rank, &s));
+
+  // Merge the prefix dims and create the new output shapes.
+  std::vector<const Dimension*> dims;
+  dims.resize(rank);
+  for (int i = 0; i < rank; ++i) {
+    TF_RETURN_IF_ERROR(Merge(Dim(s, i), Dim(prefix, i), &dims[i]));
+  }
+  *prefix_out = CreateShape(dims);
+  for (int i = rank; i < Rank(s); ++i) dims.push_back(Dim(s, i));
+  *s_out = CreateShape(dims);
+  return Status::OK();
 }
 
 Status InferenceContext::Merge(const Shape* s0, const Shape* s1,
@@ -213,7 +252,7 @@ Status InferenceContext::Merge(const Shape* s0, const Shape* s1,
   return ReturnCreatedShape(dims, out);
 }
 
-Status InferenceContext::Subshape(const Shape* s, int start,
+Status InferenceContext::Subshape(const Shape* s, int64 start,
                                   const Shape** out) {
   if (start < 0) {
     *out = nullptr;
@@ -269,6 +308,9 @@ const Shape* InferenceContext::CreateUnknownShape() {
 
 Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
                                                     const Shape** out) {
+  const Shape* input_shape;
+  TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
+
   const Tensor* t = input_tensor(input_idx);
   if (t == nullptr) {
     return ReturnUnknownShape(out);

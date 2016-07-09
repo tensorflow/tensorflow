@@ -145,6 +145,13 @@ The entropy of Student t distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.is_continuous` {#StudentT.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
 
 
@@ -159,16 +166,23 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_likelihood(value, name='log_likelihood')` {#StudentT.log_likelihood}
+#### `tf.contrib.distributions.StudentT.log_pdf(value, name='log_pdf')` {#StudentT.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_pdf(x, name='log_pdf')` {#StudentT.log_pdf}
+#### `tf.contrib.distributions.StudentT.log_pmf(value, name='log_pmf')` {#StudentT.log_pmf}
 
-Log pdf of observations in `x` under these Student's t-distribution(s).
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.log_prob(x, name='log_prob')` {#StudentT.log_prob}
+
+Log prob of observations in `x` under these Student's t-distribution(s).
 
 ##### Args:
 
@@ -179,7 +193,7 @@ Log pdf of observations in `x` under these Student's t-distribution(s).
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 
 - - -
@@ -225,7 +239,21 @@ Locations of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.pdf(x, name='pdf')` {#StudentT.pdf}
+#### `tf.contrib.distributions.StudentT.pdf(value, name='pdf')` {#StudentT.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.pmf(value, name='pmf')` {#StudentT.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.prob(x, name='prob')` {#StudentT.prob}
 
 The PDF of observations in `x` under these Student's t distribution(s).
 
@@ -239,7 +267,7 @@ The PDF of observations in `x` under these Student's t distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`.
+*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`.
 
 
 - - -

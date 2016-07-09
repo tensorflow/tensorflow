@@ -21,7 +21,7 @@ from tensorflow.contrib.distributions.python.ops import distribution  # pylint: 
 from tensorflow.python.framework import ops
 
 
-class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
+class TransformedDistribution(distribution.Distribution):
   """A Transformed Distribution.
 
   A Transformed Distribution models `p(y)` given a base distribution `p(x)`,
@@ -47,7 +47,7 @@ class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
   distribution:
 
   ```
-  logit_normal = ContinuousTransformedDistribution(
+  logit_normal = TransformedDistribution(
     base_dist=Normal(mu, sigma),
     transform=lambda x: tf.sigmoid(x),
     inverse=lambda y: tf.log(y) - tf.log(1. - y),
@@ -64,13 +64,13 @@ class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
                transform,
                inverse,
                log_det_jacobian,
-               name="ContinuousTransformedDistribution",
+               name="TransformedDistribution",
                **base_dist_args):
     """Construct a Transformed Distribution.
 
     Args:
       base_dist_cls: the base distribution class to transform. Must be a
-          subclass of `ContinuousDistribution`.
+          subclass of `Distribution`.
       transform: a callable that takes a `Tensor` sample from `base_dist` and
           returns a `Tensor` of the same shape and type. `x => y`.
       inverse: a callable that computes the inverse of transform. `y => x`. If
@@ -82,11 +82,10 @@ class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
 
     Raises:
       TypeError: if `base_dist_cls` is not a subclass of
-          `ContinuousDistribution`.
+          `Distribution`.
     """
-    if not issubclass(base_dist_cls, distribution.ContinuousDistribution):
-      raise TypeError("base_dist_cls must be a subclass of"
-                      "ContinuousDistribution.")
+    if not issubclass(base_dist_cls, distribution.Distribution):
+      raise TypeError("base_dist_cls must be a subclass of Distribution.")
     with ops.op_scope(base_dist_args.values(), name) as scope:
       self._name = scope
       self._base_dist = base_dist_cls(**base_dist_args)
@@ -170,8 +169,8 @@ class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
     """Function computing the log determinant of the Jacobian of transform."""
     return self._log_det_jacobian
 
-  def log_pdf(self, y, name="log_pdf"):
-    """Log pdf of observations in `y`.
+  def log_prob(self, y, name="log_prob"):
+    """Log prob of observations in `y`.
 
     `log ( p(g(y)) / det|J(g(y))| )`, where `g` is the inverse of `transform`.
 
@@ -202,10 +201,10 @@ class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
                              "returned from `sample`.")
         with ops.name_scope("log_det_jacobian"):
           log_det_jacobian = self._log_det_jacobian(x)
-        return self._base_dist.log_likelihood(x) - log_det_jacobian
+        return self._base_dist.log_prob(x) - log_det_jacobian
 
-  def pdf(self, y, name="pdf"):
-    """The PDF of observations in `y`.
+  def prob(self, y, name="prob"):
+    """The prob of observations in `y`.
 
     `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of `transform`.
 
@@ -216,7 +215,7 @@ class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
     Returns:
       pdf: `Tensor` of dtype `dtype`, the pdf values of `y`.
     """
-    return super(ContinuousTransformedDistribution, self).pdf(y, name=name)
+    return super(TransformedDistribution, self).prob(y, name=name)
 
   def sample(self, n, seed=None, name="sample"):
     """Sample `n` observations.
@@ -250,3 +249,7 @@ class ContinuousTransformedDistribution(distribution.ContinuousDistribution):
   @property
   def strict(self):
     return self._base_dist.strict
+
+  @property
+  def is_continuous(self):
+    return True

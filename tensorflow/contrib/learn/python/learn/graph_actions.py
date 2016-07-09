@@ -321,6 +321,8 @@ def train(graph,
     except errors.OutOfRangeError as e:
       logging.warn('Got exception during tf.learn training loop possibly '
                    'due to exhausted input queue %s.', e)
+    except StopIteration:
+      logging.info('Exhausted input iterarator.')
     except BaseException as e:  # pylint: disable=broad-except
       # Hold on to any other exceptions while we try recording a final
       # checkpoint and summary.
@@ -367,20 +369,14 @@ def train(graph,
 
 def _get_first_op_from_collection(collection_name):
   elements = ops.get_collection(collection_name)
-  if elements is not None:
-    if elements:
-      return elements[0]
+  if elements:
+    return elements[0]
   return None
 
 
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
-  if saver is not None:
-    if saver:
-      saver = saver[0]
-    else:
-      saver = None
   if saver is None and variables.all_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)

@@ -26,6 +26,8 @@ from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import saver as tf_saver
 
@@ -59,10 +61,14 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   """Exports graph via session_bundle, by creating a Session."""
   with graph.as_default():
     with tf_session.Session('') as session:
-      session.run(variables.initialize_local_variables())
+      variables.initialize_local_variables()
+      data_flow_ops.initialize_all_tables()
       saver.restore(session, checkpoint_path)
+
       export = exporter.Exporter(saver)
-      export.init(session.graph.as_graph_def(),
+      export.init(init_op=control_flow_ops.group(
+          variables.initialize_local_variables(),
+          data_flow_ops.initialize_all_tables()),
                   default_graph_signature=default_graph_signature,
                   named_graph_signatures=named_graph_signatures)
       export.export(export_dir, contrib_variables.get_global_step(), session,
@@ -97,8 +103,11 @@ def _default_input_fn(estimator, examples):
   return estimator._get_feature_ops_from_example(examples)
 
 
-def export_estimator(estimator, export_dir, input_fn=_default_input_fn,
-                     signature_fn=_generic_signature_fn, default_batch_size=1,
+def export_estimator(estimator,
+                     export_dir,
+                     input_fn=_default_input_fn,
+                     signature_fn=None,
+                     default_batch_size=1,
                      exports_to_keep=None):
   """Exports inference graph into given dir.
 
@@ -122,8 +131,13 @@ def export_estimator(estimator, export_dir, input_fn=_default_input_fn,
                                      name='input_example_tensor')
     features = input_fn(estimator, examples)
     predictions = estimator._get_predict_ops(features)
-    default_signature, named_graph_signatures = signature_fn(
-        examples, features, predictions)
+    if signature_fn:
+      default_signature, named_graph_signatures = signature_fn(examples,
+                                                               features,
+                                                               predictions)
+    else:
+      default_signature, named_graph_signatures = _generic_signature_fn(
+          examples, features, predictions)
     if exports_to_keep is not None:
       exports_to_keep = gc.largest_export_versions(exports_to_keep)
     _export_graph(g, _get_saver(), checkpoint_path, export_dir,
@@ -131,4 +145,3 @@ def export_estimator(estimator, export_dir, input_fn=_default_input_fn,
                   named_graph_signatures=named_graph_signatures,
                   exports_to_keep=exports_to_keep)
 # pylint: enable=protected-access
-

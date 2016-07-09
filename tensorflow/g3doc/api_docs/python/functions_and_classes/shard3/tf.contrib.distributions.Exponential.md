@@ -2,7 +2,7 @@ The Exponential distribution with rate parameter lam.
 
 The PDF of this distribution is:
 
-```pdf(x) = (lam * e^(-lam * x)), x > 0```
+```prob(x) = (lam * e^(-lam * x)), x > 0```
 
 Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
@@ -18,7 +18,7 @@ Construct Exponential distribution with parameter `lam`.
 *  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
     `lam` must contain only positive values.
 *  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
-    methods `pdf(x)` and `log_pdf(x)`.  If `strict` is False
+    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
     and the inputs are invalid, correct behavior is not guaranteed.
 *  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
@@ -155,6 +155,13 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.is_continuous` {#Exponential.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.is_reparameterized` {#Exponential.is_reparameterized}
 
 
@@ -187,16 +194,23 @@ Log CDF of observations `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.log_likelihood(value, name='log_likelihood')` {#Exponential.log_likelihood}
+#### `tf.contrib.distributions.Exponential.log_pdf(value, name='log_pdf')` {#Exponential.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.log_pdf(x, name='log_pdf')` {#Exponential.log_pdf}
+#### `tf.contrib.distributions.Exponential.log_pmf(value, name='log_pmf')` {#Exponential.log_pmf}
 
-Log pdf of observations in `x` under these Gamma distribution(s).
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.log_prob(x, name='log_prob')` {#Exponential.log_prob}
+
+Log prob of observations in `x` under these Gamma distribution(s).
 
 ##### Args:
 
@@ -207,7 +221,7 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 ##### Raises:
 
@@ -251,7 +265,21 @@ Name to prepend to all ops.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.pdf(x, name='pdf')` {#Exponential.pdf}
+#### `tf.contrib.distributions.Exponential.pdf(value, name='pdf')` {#Exponential.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.pmf(value, name='pmf')` {#Exponential.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.prob(x, name='prob')` {#Exponential.prob}
 
 Pdf of observations in `x` under these Gamma distribution(s).
 
@@ -264,7 +292,7 @@ Pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+*  <b>`prob`</b>: tensor of dtype `dtype`, the PDFs of `x`
 
 ##### Raises:
 

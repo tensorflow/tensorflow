@@ -126,4 +126,12 @@ TEST(EnvTest, GetSchemeForURI) {
   EXPECT_EQ(GetSchemeFromURI("9dfd:///foo"), "");
 }
 
+TEST(EnvTest, SleepForMicroseconds) {
+  Env* env = Env::Default();
+  const int64 start = env->NowMicros();
+  env->SleepForMicroseconds(1e6 + 5e5);
+  const int64 delta = env->NowMicros() - start;
+  EXPECT_GE(delta, 1e6 + 5e5);
+}
+
 }  // namespace tensorflow

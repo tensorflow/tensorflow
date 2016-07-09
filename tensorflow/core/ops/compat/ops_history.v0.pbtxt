@@ -16891,6 +16891,24 @@ op {
   }
 }
 op {
+  name: "RefIdentity"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  allows_uninitialized_input: true
+}
+op {
   name: "RefMerge"
   input_arg {
     name: "inputs"
@@ -23174,6 +23192,115 @@ op {
   }
 }
 op {
+  name: "SparseSparseMaximum"
+  input_arg {
+    name: "a_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "a_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
+  name: "SparseSparseMinimum"
+  input_arg {
+    name: "a_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "a_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "a_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "b_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
   name: "SparseSplit"
   input_arg {
     name: "split_dim"
@@ -24739,6 +24866,39 @@ op {
   }
 }
 op {
+  name: "TensorArrayConcat"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape_except0"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
@@ -24778,6 +24938,35 @@ op {
   attr {
     name: "dtype"
     type: "type"
+  }
+}
+op {
+  name: "TensorArrayPack"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
   }
 }
 op {
