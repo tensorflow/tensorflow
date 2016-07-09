@@ -578,6 +578,17 @@ split0, split1, split2 = tf.split(1, 3, value)
 tf.shape(split0) ==> [5, 10]
 ```
 
+Note: If you are splitting along an axis by the length of that axis, consider
+using unpack, e.g.
+```python
+num_items = t.get_shape()[axis].value
+[tf.squeeze(s, [axis]) for s in tf.split(axis, num_items, t)]
+```
+can be rewritten as
+```python
+tf.unpack(t, axis=axis)
+```
+
 ##### Args:
 
 
@@ -713,6 +724,16 @@ tf.shape(tf.concat(0, [t3, t4])) ==> [4, 3]
 tf.shape(tf.concat(1, [t3, t4])) ==> [2, 6]
 ```
 
+Note: If you are concatenating along a new axis consider using pack.
+E.g.
+```python
+tf.concat(axis, [tf.expand_dims(t, axis) for t in ts])
+```
+can be rewritten as
+```
+tf.pack(tensors, axis=axis)
+```
+
 ##### Args:
 
 
@@ -731,9 +752,23 @@ tf.shape(tf.concat(1, [t3, t4])) ==> [2, 6]
 
 Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
-Packs tensors in `values` into a tensor with rank one higher than each tensor
-in `values` and shape `[len(values)] + values[0].shape`. The output satisfies
-`output[i, ...] = values[i][...]`.
+Packs the list of tensors in `values` into a tensor with rank one higher than
+each tensor in `values`, by packing them along the `axis` dimension.
+Given a list of length `N` of tensors of shape `(A, B, C)`;
+
+if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+Etc.
+
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+```
 
 This is the opposite of unpack.  The numpy equivalent is
 
@@ -764,12 +799,19 @@ This is the opposite of unpack.  The numpy equivalent is
 
 Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
-Unpacks `num` tensors from `value` along the given dimension.
+Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
 If `num` is not specified (the default), it is inferred from `value`'s shape.
 If `value.shape[axis]` is not known, `ValueError` is raised.
 
-The ith tensor in `output` is the slice `value[i, ...]`. Each tensor in
-`output` has shape `value.shape[1:]`.
+For example, given a tensor of shape `(A, B, C, D)`;
+
+If `axis == 0` then the i'th tensor in `output` is the slice
+  `value[i, :, :, :]` and each tensor in `output` will have shape `(B, C, D)`.
+  (Note that the dimension unpacked along is gone, unlike `split`).
+
+If `axis == 1` then the i'th tensor in `output` is the slice
+  `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
+Etc.
 
 This is the opposite of pack.  The numpy equivalent is
 

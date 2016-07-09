@@ -31,9 +31,11 @@ from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.framework.ops import op_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.platform import resource_loader
@@ -43,6 +45,129 @@ __all__ = ['SdcaModel']
 _sdca_ops = load_op_library(resource_loader.get_path_to_datafile(
     '_sdca_ops.so'))
 assert _sdca_ops, 'Could not load _sdca_ops.so'
+
+
+class _ShardedMutableHashTable(lookup_ops.LookupInterface):
+  """A sharded version of MutableHashTable.
+
+  It is designed to be interface compatible with LookupInterface and
+  MutableHashTable, with the exception of the export method, which is replaced
+  by a custom values_reduce_sum method for SDCA needs. The class is not part of
+  lookup ops because it is unclear how to make the device placement general
+  enough to be useful.
+
+  The _ShardedHashTable keeps `num_shards` MutableHashTables internally. If keys
+  are integers, the shard is computed via the modulo operation. If keys are
+  strings, the shard is computed via string_to_hash_bucket_fast.
+  """
+
+  # TODO(andreasst): consider moving this to lookup_ops
+
+  def __init__(self,
+               key_dtype,
+               value_dtype,
+               default_value,
+               num_shards=1,
+               name=None):
+    with ops.op_scope([], name, 'sharded_mutable_hash_table') as scope:
+      super(_ShardedMutableHashTable, self).__init__(key_dtype, value_dtype,
+                                                     scope)
+      table_shards = []
+      for _ in range(num_shards):
+        # TODO(andreasst): add placement hints once bug 30002625 is fixed.
+        table_shards.append(lookup_ops.MutableHashTable(
+            key_dtype=key_dtype,
+            value_dtype=value_dtype,
+            default_value=default_value,
+            name=name))
+      self._table_shards = table_shards
+      # TODO(andreasst): add a value_shape() method to LookupInterface
+      # pylint: disable=protected-access
+      self._value_shape = self._table_shards[0]._value_shape
+      # pylint: enable=protected-access
+
+  @property
+  def _num_shards(self):
+    return len(self._table_shards)
+
+  @property
+  def table_shards(self):
+    return self._table_shards
+
+  def size(self, name=None):
+    with ops.op_scope([], name, 'sharded_mutable_hash_table_size'):
+      sizes = [
+          self._table_shards[i].size() for i in range(self._num_shards)
+      ]
+      return math_ops.add_n(sizes)
+
+  def _shard_indices(self, keys):
+    if self._key_dtype == dtypes.string:
+      indices = string_ops.string_to_hash_bucket_fast(keys, self._num_shards)
+    else:
+      indices = math_ops.mod(keys, self._num_shards)
+    return math_ops.cast(indices, dtypes.int32)
+
+  def lookup(self, keys, name=None):
+    if keys.dtype != self._key_dtype:
+      raise TypeError('Signature mismatch. Keys must be dtype %s, got %s.' %
+                      (self._key_dtype, keys.dtype))
+    num_shards = self._num_shards
+    if num_shards == 1:
+      return self._table_shards[0].lookup(keys, name=name)
+
+    shard_indices = self._shard_indices(keys)
+    # TODO(andreasst): support 'keys' that are not vectors
+    key_shards = data_flow_ops.dynamic_partition(keys, shard_indices,
+                                                 num_shards)
+    value_shards = [
+        self._table_shards[i].lookup(key_shards[i], name=name)
+        for i in range(num_shards)
+    ]
+
+    original_indices = math_ops.range(array_ops.size(keys))
+    partitioned_indices = data_flow_ops.dynamic_partition(original_indices,
+                                                          shard_indices,
+                                                          num_shards)
+    result = data_flow_ops.dynamic_stitch(partitioned_indices, value_shards)
+    result.set_shape(keys.get_shape().concatenate(self._value_shape))
+    return result
+
+  def insert(self, keys, values, name=None):
+    num_shards = self._num_shards
+    if num_shards == 1:
+      return self._table_shards[0].insert(keys, values, name=name)
+
+    shard_indices = self._shard_indices(keys)
+    # TODO(andreasst): support 'keys' that are not vectors
+    key_shards = data_flow_ops.dynamic_partition(keys, shard_indices,
+                                                 num_shards)
+    value_shards = data_flow_ops.dynamic_partition(values, shard_indices,
+                                                   num_shards)
+    return_values = [
+        self._table_shards[i].insert(key_shards[i], value_shards[i], name=name)
+        for i in range(num_shards)
+    ]
+
+    return control_flow_ops.group(*return_values)
+
+  def values_reduce_sum(self, name=None):
+    """Computes reduce_sum reducing dimension 0 across all values in all shards.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor with the sum across all values in the same shape as the table's
+      value shape.
+    """
+    # TODO(andreasst): consider replacing with something like export_sharded
+    # and doing the sum in SdcaModel.
+    sums = []
+    for table_shard in self._table_shards:
+      _, exported_values = table_shard.export(name=name)
+      sums.append(math_ops.reduce_sum(exported_values, 0))
+    return math_ops.add_n(sums)
 
 
 # TODO(sibyl-Aix6ihai): add op_scope to appropriate methods.
@@ -99,7 +224,7 @@ class SdcaModel(object):
 
     ```python
     # Execute opt_op and train for num_steps.
-    for _ in xrange(num_steps):
+    for _ in range(num_steps):
       opt_op.run()
 
     # You can also check for convergence by calling
@@ -107,8 +232,12 @@ class SdcaModel(object):
     ```
   """
 
-  def __init__(self, container, examples, variables,
-               options):  # pylint: disable=unused-argument
+  def __init__(self,
+               container,
+               examples,
+               variables,
+               options,
+               num_table_shards=None):  # pylint: disable=unused-argument
     """Create a new sdca optimizer."""
     # TODO(andreasst): get rid of obsolete container parameter
 
@@ -137,13 +266,18 @@ class SdcaModel(object):
         raise ValueError('%s should be non-negative. Found (%f)' %
                          (name, value))
 
+    # TODO(andreasst): set num_table_shards automatically based on the number of
+    # parameter servers
+    if num_table_shards is None:
+      num_table_shards = 1
     self._examples = examples
     self._variables = variables
     self._options = options
     self._create_slots()
-    self._hashtable = lookup_ops.MutableHashTable(
+    self._hashtable = _ShardedMutableHashTable(
         key_dtype=dtypes.string,
         value_dtype=dtypes.float32,
+        num_shards=num_table_shards,
         default_value=[0.0, 0.0, 0.0, 0.0])
 
   def _symmetric_l2_regularization(self):
@@ -323,8 +457,7 @@ class SdcaModel(object):
       An Operation that computes the approximate duality gap over all
       examples.
     """
-    _, exported_values = self._hashtable.export()
-    summed_values = math_ops.reduce_sum(exported_values, 0)
+    summed_values = self._hashtable.values_reduce_sum()
     primal_loss = summed_values[1]
     dual_loss = summed_values[2]
     example_weights = summed_values[3]
