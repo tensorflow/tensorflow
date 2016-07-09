@@ -8591,7 +8591,7 @@ op {
     description: "Dimension along which to pack.  Negative values wrap around, so the\nvalid range is `[-(R+1), R+1)`."
   }
   summary: "Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor."
-  description: "Packs the `N` tensors in `values` into a tensor with rank one higher than each\ntensor in `values`, by packing them along the `axis` dimension.\nGiven a list tensors of shape (A, B, C);\n\nif `axis` == 0 then the `output` tensor will have the shape (`N`, A, B, C).\nif `axis` == 1 then the `output` tensor will have the shape (A, `N`, B, C).\nEtc.\n\nFor example:\n\n```prettyprint\n# \'x\' is [1, 4]\n# \'y\' is [2, 5]\n# \'z\' is [3, 6]\npack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\npack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]\n```\n\nThis is the opposite of `unpack`."
+  description: "Packs the `N` tensors in `values` into a tensor with rank one higher than each\ntensor in `values`, by packing them along the `axis` dimension.\nGiven a list of tensors of shape `(A, B, C)`;\n\nif `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.\nif `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.\nEtc.\n\nFor example:\n\n```prettyprint\n# \'x\' is [1, 4]\n# \'y\' is [2, 5]\n# \'z\' is [3, 6]\npack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\npack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]\n```\n\nThis is the opposite of `unpack`."
 }
 op {
   name: "Pad"
@@ -15652,7 +15652,7 @@ op {
     description: "Dimension along which to unpack.  Negative values wrap around, so the\nvalid range is `[-R, R)`."
   }
   summary: "Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors."
-  description: "Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.\nFor example, given a tensor of shape (A, B, C ,D);\n\nIf `axis` == 0 then the i\'th tensor in `output` is the slice `value[i, :, :, :]`\n  and each tensor in `output` will have shape `(B, C, D)`. (Note that the\n  dimension unpacked along is gone, unlike `split`).\n\nIf `axis` == 1 then the i\'th tensor in `output` is the slice `value[:, i, :, :]`\n  and each tensor in `output` will have shape `(A, C, D)`.\nEtc.\n\nThis is the opposite of `pack`."
+  description: "Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.\nFor example, given a tensor of shape `(A, B, C, D)`;\n\nIf `axis == 0` then the i\'th tensor in `output` is the slice `value[i, :, :, :]`\n  and each tensor in `output` will have shape `(B, C, D)`. (Note that the\n  dimension unpacked along is gone, unlike `split`).\n\nIf `axis == 1` then the i\'th tensor in `output` is the slice `value[:, i, :, :]`\n  and each tensor in `output` will have shape `(A, C, D)`.\nEtc.\n\nThis is the opposite of `pack`."
 }
 op {
   name: "UnsortedSegmentSum"
