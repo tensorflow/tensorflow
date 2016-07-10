@@ -15,7 +15,7 @@ type Session struct {
 	graph   *Graph
 }
 
-// ErrStatusTf is an error message comming out from the TensorFlow C++ libraries.
+// ErrStatusTf is an error message coming out from the TensorFlow C++ libraries.
 type ErrStatusTf struct {
 	Code    TF_Code
 	Message string

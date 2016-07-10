@@ -15,7 +15,7 @@ also to build, load and run Graphs.
 ## Installation
 
 This package depends on the TensorFlow shared libraries, in order to compile
-this libraries follow the [Installing fromsources](https://www.tensorflow.org/versions/r0.8/get_started/os_setup.html#installing-from-sources)
+this libraries follow the [Installing fromsources](https://www.tensorflow.org/versions/r0.9/get_started/os_setup.html#installing-from-sources)
 guide to clone and configure the repository.
 
 After you have cloned the repository, run the next commands at the root of the
@@ -102,6 +102,7 @@ func main() {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	graph, err := tensorflow.NewGraphFromReader(reader, true)
 	if err != nil {
 		log.Fatal("Error reading Graph from the text file:", err)
@@ -170,7 +171,7 @@ execute them:
 
 ### ld: library not found for -ltensorflow
 
-This package expects the linker to find the 'libtensorflow' shared library. 
+This package expects the linker to find the 'libtensorflow' shared library.
 
 To generate this file run:
 

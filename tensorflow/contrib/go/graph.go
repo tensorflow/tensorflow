@@ -33,14 +33,14 @@ type GraphNode struct {
 	outDataTypes map[string]DataType
 }
 
-// ErrExpectedVarAsinput is returned when the input value on an operation is
+// ErrExpectedVarAsInput is returned when the input value on an operation is
 // not a Variable and it must be a Variable.
-type ErrExpectedVarAsinput struct {
+type ErrExpectedVarAsInput struct {
 	Op       string
 	InputPos int
 }
 
-func (e *ErrExpectedVarAsinput) Error() string {
+func (e *ErrExpectedVarAsInput) Error() string {
 	return fmt.Sprintf(
 		"The input value at pos %d for the operation '%s' must be of type Variable",
 		e.InputPos, e.Op)
@@ -118,16 +118,16 @@ func NewGraph() *Graph {
 // content into a new graph. Use the asText parameter to specify if the graph
 // from the reader is provided in Text format.
 func NewGraphFromReader(reader io.Reader, asText bool) (*Graph, error) {
-	graphStr, err := ioutil.ReadAll(reader)
+	b, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
 
 	gr := NewGraph()
 	if asText {
-		err = proto.UnmarshalText(string(graphStr), gr.def)
+		err = proto.UnmarshalText(string(b), gr.def)
 	} else {
-		err = proto.Unmarshal(graphStr, gr.def)
+		err = proto.Unmarshal(b, gr.def)
 	}
 
 	return gr, err
@@ -159,7 +159,7 @@ func (gr *Graph) Op(opName string, name string, input []*GraphNode, device strin
 	for i, inNode := range input {
 		if op.InputArg[i].IsRef {
 			if inNode.ref == nil {
-				return nil, &ErrExpectedVarAsinput{
+				return nil, &ErrExpectedVarAsInput{
 					Op:       opName,
 					InputPos: i,
 				}
@@ -469,9 +469,9 @@ func (gr *Graph) Constant(name string, data interface{}) (*GraphNode, error) {
 }
 
 // matchTypes matches all the input/output parameters with their corresponding
-// data types specified on the attribues or deducing the data type from other
+// data types specified on the attributes or deducing the data type from other
 // parameters. This method can return an error if the matching is not possible,
-// for instance if two input paramters must have the same data type but one is
+// for instance if two input parameters must have the same data type but one is
 // int and the other float.
 func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[string]interface{}, op *pb.OpDef) error {
 	// On this part the data type tags are associated with the data type
@@ -495,7 +495,7 @@ func (gr *Graph) matchTypes(input []*GraphNode, outNode *GraphNode, attrs map[st
 		}
 	}
 
-	// Now assign all the types we got from the inputs/ouputs to their
+	// Now assign all the types we got from the inputs/outputs to their
 	// bound attributes
 	for _, attr := range op.Attr {
 		if attr.Type == "type" {
