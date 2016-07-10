@@ -625,7 +625,7 @@ REGISTER_OP("EditDistance")
     .Input("truth_indices: int64")
     .Input("truth_values: T")
     .Input("truth_shape: int64")
-    .Attr("normalize: bool = True")
+    .Attr("normalize: bool = true")
     .Attr("T: type")
     .Output("output: float")
     .Doc(R"doc(
