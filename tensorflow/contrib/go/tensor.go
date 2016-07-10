@@ -97,13 +97,13 @@ func (e *ErrSliceExpected) Error() string {
 	return fmt.Sprintf("The argument must be a Slice, but the data type is: '%s'", e.DataType)
 }
 
-// ErrDataTypeNotSupported is returned when the data type is not suported.
+// ErrDataTypeNotSupported is returned when the data type is not supported.
 type ErrDataTypeNotSupported struct {
 	DataType string
 }
 
 func (e *ErrDataTypeNotSupported) Error() string {
-	return fmt.Sprintf("The type of the provided data is not suported: '%s'", e.DataType)
+	return fmt.Sprintf("The type of the provided data is not supported: '%s'", e.DataType)
 }
 
 var (
@@ -165,7 +165,8 @@ func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 		}
 	}
 
-	dataType, err := getDataTypeFromReflect(v.Type().Elem().Kind(), int64(v.Type().Elem().Size()))
+	elem := v.Type().Elem()
+	dataType, err := getDataTypeFromReflect(elem.Kind(), int64(elem.Size()))
 	if err != nil {
 		return nil, err
 	}
