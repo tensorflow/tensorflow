@@ -19,7 +19,7 @@ namespace tensorflow {
 
 REGISTER2(UnaryOp, CPU, "Conj", functor::conj, complex64, complex128);
 #if GOOGLE_CUDA
-// REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_GPU),
-//                         UnaryOp<GPUDevice, functor::conj<complex64>>);
+REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_GPU),
+                        UnaryOp<GPUDevice, functor::conj<complex64>>);
 #endif
 }  // namespace tensorflow

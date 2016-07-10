@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-// DEFINE_UNARY1(conj, complex64);  // not working
+  DEFINE_UNARY1(conj, complex64);
 }  // namespace functor
 }  // namespace tensorflow
 
