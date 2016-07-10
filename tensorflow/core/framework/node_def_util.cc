@@ -369,9 +369,14 @@ Status NameRangesHelper(const NodeDef& node_def,
 
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs) {
-  TF_RETURN_IF_ERROR(
-      NameRangesHelper(node_def, op_def.input_arg(), op_def, inputs));
-  return NameRangesHelper(node_def, op_def.output_arg(), op_def, outputs);
+  if (inputs != nullptr) {
+    TF_RETURN_IF_ERROR(
+        NameRangesHelper(node_def, op_def.input_arg(), op_def, inputs));
+  }
+  if (outputs != nullptr) {
+    return NameRangesHelper(node_def, op_def.output_arg(), op_def, outputs);
+  }
+  return Status::OK();
 }
 
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
