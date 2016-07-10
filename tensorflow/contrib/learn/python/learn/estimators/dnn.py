@@ -152,6 +152,11 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         config=config)
+    self.feature_columns = feature_columns
+    self.optimizer = optimizer
+    self.activation_fn = activation_fn
+    self.dropout = dropout
+    self.hidden_units = hidden_units
     self._feature_columns_inferred = False
 
   # TODO(b/29580537): Remove feature_columns inference.
@@ -299,6 +304,11 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         config=config)
+    self.feature_columns = feature_columns
+    self.optimizer = optimizer
+    self.activation_fn = activation_fn
+    self.dropout = dropout
+    self.hidden_units = hidden_units
     self._feature_columns_inferred = False
 
   # TODO(b/29580537): Remove feature_columns inference.
