@@ -189,7 +189,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_example](../ios_example) shows how to use the static
+[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
 library in a simple app.
 
 ### Building by hand
@@ -227,7 +227,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app. 
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_example](../ios_example) shows how to use the static
+[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
 library in a simple app.
 
 #### Universal binaries
