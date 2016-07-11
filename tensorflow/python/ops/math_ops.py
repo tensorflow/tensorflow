@@ -348,6 +348,25 @@ def sqrt(x, name=None):
       return gen_math_ops.sqrt(x, name=name)
 
 
+def erf(x, name=None):
+  """Computes the Gauss error function of `x` element-wise.
+
+  Args:
+    x: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+  """
+  with ops.op_scope([x], name, "Erf") as name:
+    if isinstance(x, ops.SparseTensor):
+      x_erf = gen_math_ops.erf(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices, values=x_erf, shape=x.shape)
+    else:
+      return gen_math_ops.erf(x, name=name)
+
+
 def complex_abs(x, name=None):
   r"""Computes the complex absolute value of a tensor.
 

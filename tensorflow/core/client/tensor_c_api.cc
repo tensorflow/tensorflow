@@ -115,7 +115,7 @@ struct TF_Tensor {
   TensorBuffer* buffer;
 };
 
-TF_Tensor* TF_NewTensor(TF_DataType dtype, tensorflow::int64* dims,
+TF_Tensor* TF_NewTensor(TF_DataType dtype, const tensorflow::int64* dims,
                         int num_dims, void* data, size_t len,
                         void (*deallocator)(void* data, size_t len, void* arg),
                         void* deallocator_arg) {

@@ -20,16 +20,24 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.dataframe import tensorflow_dataframe as df
+
+# pylint: disable=g-import-not-at-top
+try:
+  import pandas as pd
+  HAS_PANDAS = True
+except ImportError:
+  HAS_PANDAS = False
 
 
 class SumTestCase(tf.test.TestCase):
   """Test class for `Sum` transform."""
 
   def testSum(self):
+    if not HAS_PANDAS:
+      return
     num_rows = 100
 
     pandas_df = pd.DataFrame({"a": np.arange(num_rows),

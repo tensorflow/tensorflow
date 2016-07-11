@@ -61,7 +61,7 @@ On Ubuntu, you can do this:
 ```bash
 sudo apt-get install autoconf automake libtool curl make g++ unzip
 pushd .
-cd tensforflow/contrib/makefile/downloads/protobuf
+cd tensorflow/contrib/makefile/downloads/protobuf
 ./autogen.sh
 ./configure
 make
@@ -104,7 +104,7 @@ tensorflow/contrib/makefile/gen/bin/benchmark \
 ## Android
 
 First, you will need to download and unzip the
-[Native Development Kit (NDK)](http://developers.google.com/ndk). You will not
+[Native Development Kit (NDK)](https://developer.android.com/ndk/). You will not
 need to install the standalone toolchain, however.
 
 Assign your NDK location to $NDK_ROOT:
@@ -153,7 +153,7 @@ For more details, see the [benchmark documentation](../../tools/benchmark).
 ## iOS
 
 _Note: To use this library in an iOS application, see related instructions in
-the [iOS examples](../ios_examples/] directory._
+the [iOS examples](../ios_examples/) directory._
 
 Install XCode 7.3 or more recent. If you have not already, you will need to
 install the command-line tools using `xcode-select`:
@@ -189,7 +189,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_example](../ios_example) shows how to use the static
+[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
 library in a simple app.
 
 ### Building by hand
@@ -227,7 +227,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app. 
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_example](../ios_example) shows how to use the static
+[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
 library in a simple app.
 
 #### Universal binaries
