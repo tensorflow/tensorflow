@@ -140,16 +140,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  native.new_git_repository(
-    name = "boringssl_git",
-    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
-    remote = "https://github.com/google/boringssl.git",
-    build_file = path_prefix + "boringssl.BUILD",
-  )
-
-  native.bind(
-    name = "boringssl_err_data_c",
-    actual = tf_repo_name + "//third_party/boringssl:err_data_c",
+  native.git_repository(
+      name = "boringssl_git",
+      remote = "https://github.com/google/boringssl.git",
+      commit = "bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",  # 2016-07-11
   )
 
   native.new_git_repository(
