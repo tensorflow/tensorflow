@@ -20,6 +20,7 @@ py_library(
         "python/ops/arg_scope.py",
         "python/ops/embedding_ops.py",
         "python/ops/ops.py",
+        "python/ops/prettyprint_ops.py",
         "python/ops/sampling_ops.py",
         "python/ops/variables.py",
     ],
@@ -43,6 +44,19 @@ py_test(
     name = "ops_test",
     size = "small",
     srcs = glob(["python/ops/ops_test.py"]),
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "prettyprint_ops_test",
+    size = "small",
+    srcs = ["python/ops/prettyprint_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",

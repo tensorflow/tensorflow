@@ -123,6 +123,8 @@ Polymer({
     }
 
     d3.json(DEMO_DATASETS, function (error, datasets) {
+        let publicDatasets = [];
+
         if (error) {
           console.log('Error loading demo datasets:');
           console.log(error);
@@ -135,6 +137,8 @@ Polymer({
         _.each(datasets, function(dataset, index) {
           if (queryParams['graphid'] && dataset.id == queryParams['graphid']) {
             selectedDataset = index;
+          } else if (dataset['private']) {
+            return;
           }
 
           dataset.path = this._normalizePath(dataset.path);
@@ -143,8 +147,9 @@ Polymer({
               metadata.path = this._normalizePath(metadata.path);
             }, this);
           }
+          publicDatasets.push(dataset);
         }, this);
-        this.set('datasets', datasets);
+        this.set('datasets', publicDatasets);
         if (selectedDataset != 0) {
           this.set('selectedDataset', selectedDataset);
         }

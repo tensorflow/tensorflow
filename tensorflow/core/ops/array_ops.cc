@@ -81,10 +81,10 @@ Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
 
 Packs the `N` tensors in `values` into a tensor with rank one higher than each
 tensor in `values`, by packing them along the `axis` dimension.
-Given a list tensors of shape (A, B, C);
+Given a list of tensors of shape `(A, B, C)`;
 
-if `axis` == 0 then the `output` tensor will have the shape (`N`, A, B, C).
-if `axis` == 1 then the `output` tensor will have the shape (A, `N`, B, C).
+if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
 Etc.
 
 For example:
@@ -139,13 +139,13 @@ REGISTER_OP("Unpack")
 Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
 
 Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
-For example, given a tensor of shape (A, B, C ,D);
+For example, given a tensor of shape `(A, B, C, D)`;
 
-If `axis` == 0 then the i'th tensor in `output` is the slice `value[i, :, :, :]`
+If `axis == 0` then the i'th tensor in `output` is the slice `value[i, :, :, :]`
   and each tensor in `output` will have shape `(B, C, D)`. (Note that the
   dimension unpacked along is gone, unlike `split`).
 
-If `axis` == 1 then the i'th tensor in `output` is the slice `value[:, i, :, :]`
+If `axis == 1` then the i'th tensor in `output` is the slice `value[:, i, :, :]`
   and each tensor in `output` will have shape `(A, C, D)`.
 Etc.
 
@@ -625,7 +625,7 @@ REGISTER_OP("EditDistance")
     .Input("truth_indices: int64")
     .Input("truth_values: T")
     .Input("truth_shape: int64")
-    .Attr("normalize: bool = True")
+    .Attr("normalize: bool = true")
     .Attr("T: type")
     .Output("output: float")
     .Doc(R"doc(

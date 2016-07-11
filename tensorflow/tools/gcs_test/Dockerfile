@@ -1,0 +1,22 @@
+FROM ubuntu:14.04
+
+MAINTAINER Shanqing Cai <cais@google.com>
+
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends \
+    curl \
+    python \
+    python-numpy \
+    python-pip
+
+# Install Google Cloud SDK
+RUN curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/install_google_cloud_sdk.bash
+RUN chmod +x install_google_cloud_sdk.bash
+RUN ./install_google_cloud_sdk.bash --disable-prompts --install-dir=/var/gcloud
+
+# Install nightly TensorFlow pip
+RUN pip install \
+   http://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_CONTAINER_TYPE=CPU,TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.9.0-py2-none-any.whl
+
+# Copy test files
+COPY python/gcs_smoke.py /

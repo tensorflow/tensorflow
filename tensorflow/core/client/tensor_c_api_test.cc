@@ -104,7 +104,29 @@ TEST(CApi, SessionOptions) {
   TF_DeleteSessionOptions(opt);
 }
 
+TEST(CApi, SessionWithRunMetadata) {
+  TF_Status* s = TF_NewStatus();
+  TF_SessionOptions* opt = TF_NewSessionOptions();
+  TF_Session* session = TF_NewSession(opt, s);
+  TF_DeleteSessionOptions(opt);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Buffer* run_options = TF_NewBufferFromString("", 0);
+  TF_Buffer* run_metadata = TF_NewBuffer();
+  TF_Run(session, run_options, nullptr, nullptr, 0, nullptr, nullptr, 0,
+         nullptr, 0, run_metadata, s);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(std::string("Session was not created with a graph before Run()!"),
+            std::string(TF_Message(s)));
+  TF_DeleteBuffer(run_metadata);
+  TF_DeleteBuffer(run_options);
+
+  TF_DeleteSession(session, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_DeleteStatus(s);
+}
+
 // TODO(jeff,sanjay): Session tests
-// . Create and delete
 // . Extend graph
 // . Run

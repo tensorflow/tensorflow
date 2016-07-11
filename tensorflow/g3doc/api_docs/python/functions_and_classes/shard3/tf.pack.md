@@ -2,9 +2,23 @@
 
 Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
-Packs tensors in `values` into a tensor with rank one higher than each tensor
-in `values` and shape `[len(values)] + values[0].shape`. The output satisfies
-`output[i, ...] = values[i][...]`.
+Packs the list of tensors in `values` into a tensor with rank one higher than
+each tensor in `values`, by packing them along the `axis` dimension.
+Given a list of length `N` of tensors of shape `(A, B, C)`;
+
+if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+Etc.
+
+For example:
+
+```prettyprint
+# 'x' is [1, 4]
+# 'y' is [2, 5]
+# 'z' is [3, 6]
+pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+```
 
 This is the opposite of unpack.  The numpy equivalent is
 

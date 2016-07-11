@@ -85,6 +85,7 @@ cc_library(
     ],
     deps = [
         ":ctc_loss_util_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
