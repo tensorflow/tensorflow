@@ -24,7 +24,8 @@ charts are larger.
 Organizationally, the #plumbing div contains components that have no concrete
 manifestation and just effect data bindings or data loading. The #sidebar contains
 shared controls like the tf-categorizer, tf-run-selector, and tf-x-type-selector.
-The #center div contains tf-charts embedded inside tf-collapsable-panes.
+The #center div contains tf-obsolete-histogram-charts embedded inside
+tf-collapsable-panes.
 -->
 <dom-module id="tf-histogram-dashboard">
   <template>
@@ -108,7 +109,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
     Polymer({
       is: "tf-histogram-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-chart"),
+        TF.Dashboard.ReloadBehavior("tf-obsolete-histogram-chart"),
         TF.Backend.Behavior,
       ],
       properties: {

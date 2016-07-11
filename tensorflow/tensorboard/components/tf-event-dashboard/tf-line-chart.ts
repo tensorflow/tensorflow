@@ -15,25 +15,33 @@ limitations under the License.
 /* tslint:disable:no-namespace variable-name */
 
 module TF {
-  export class BaseChart {
-    protected dataFn: TF.ChartHelpers.DataFn;
-    protected tag: string;
+  export class LineChart {
+    private dataFn: TF.ChartHelpers.DataFn;
+    private tag: string;
     private run2datasets: {[run: string]: Plottable.Dataset};
-    protected runs: string[];
+    private runs: string[];
 
-    protected xAccessor: Plottable.Accessor<number | Date>;
-    protected xScale: Plottable.QuantitativeScale<number | Date>;
-    protected yScale: Plottable.QuantitativeScale<number>;
-    protected gridlines: Plottable.Components.Gridlines;
-    protected center: Plottable.Components.Group;
-    protected xAxis: Plottable.Axes.Numeric | Plottable.Axes.Time;
-    protected yAxis: Plottable.Axes.Numeric;
-    protected xLabel: Plottable.Components.AxisLabel;
-    protected yLabel: Plottable.Components.AxisLabel;
-    protected outer: Plottable.Components.Table;
-    protected colorScale: Plottable.Scales.Color;
-    protected tooltip: d3.Selection<any>;
-    protected dzl: Plottable.DragZoomLayer;
+    private xAccessor: Plottable.Accessor<number|Date>;
+    private xScale: Plottable.QuantitativeScale<number|Date>;
+    private yScale: Plottable.QuantitativeScale<number>;
+    private gridlines: Plottable.Components.Gridlines;
+    private center: Plottable.Components.Group;
+    private xAxis: Plottable.Axes.Numeric|Plottable.Axes.Time;
+    private yAxis: Plottable.Axes.Numeric;
+    private outer: Plottable.Components.Table;
+    private colorScale: Plottable.Scales.Color;
+    private tooltip: d3.Selection<any>;
+    private dzl: Plottable.DragZoomLayer;
+
+    private linePlot: Plottable.Plots.Line<number|Date>;
+    private scatterPlot: Plottable.Plots.Scatter<number|Date, Number>;
+    private nanDisplay: Plottable.Plots.Scatter<number|Date, Number>;
+    private yAccessor: Plottable.Accessor<number>;
+    private lastPointsDataset: Plottable.Dataset;
+    private datasets: Plottable.Dataset[];
+    private updateSpecialDatasets;
+    private nanDataset: Plottable.Dataset;
+
     constructor(
         tag: string, dataFn: TF.ChartHelpers.DataFn, xType: string,
         colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
@@ -42,40 +50,18 @@ module TF {
       this.tag = tag;
       this.colorScale = colorScale;
       this.tooltip = tooltip;
+      this.datasets = [];
+      // lastPointDataset is a dataset that contains just the last point of
+      // every dataset we're currently drawing.
+      this.lastPointsDataset = new Plottable.Dataset();
+      this.nanDataset = new Plottable.Dataset();
+      // need to do a single bind, so we can deregister the callback from
+      // old Plottable.Datasets. (Deregistration is done by identity checks.)
+      this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
+      this.buildChart(xType);
     }
 
-    /**
-     * Change the runs on the chart. The work of actually setting the dataset
-     * on the plot is deferred to the subclass because it is impl-specific.
-     * Changing runs automatically triggers a reload; this ensures that the
-     * newly selected run will have data, and that all the runs will be current
-     * (it would be weird if one run was ahead of the others, and the display
-     * depended on the order in which runs were added)
-     */
-    public changeRuns(runs: string[]) {
-      this.runs = runs;
-      this.reload();
-    }
-
-    /**
-     * Reload data for each run in view.
-     */
-    public reload() {
-      this.runs.forEach((run) => {
-        let dataset = this.getDataset(run);
-        this.dataFn(this.tag, run).then((x) => dataset.data(x));
-      });
-    }
-
-    protected getDataset(run: string) {
-      if (this.run2datasets[run] === undefined) {
-        this.run2datasets[run] =
-            new Plottable.Dataset([], {run: run, tag: this.tag});
-      }
-      return this.run2datasets[run];
-    }
-
-    protected buildChart(xType: string) {
+    private buildChart(xType: string) {
       if (this.outer) {
         this.outer.destroy();
       }
@@ -106,48 +92,7 @@ module TF {
                                                   ]);
     }
 
-    protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      throw new Error('Abstract method not implemented.');
-    }
-
-    public renderTo(target: d3.Selection<any>) {
-      this.outer.renderTo(target);
-    }
-
-    public redraw() {
-      this.outer.redraw();
-    }
-
-    protected destroy() {
-      this.outer.destroy();
-    }
-  }
-
-  export class LineChart extends BaseChart {
-    private linePlot: Plottable.Plots.Line<number|Date>;
-    private scatterPlot: Plottable.Plots.Scatter<number|Date, Number>;
-    private nanDisplay: Plottable.Plots.Scatter<number|Date, Number>;
-    private yAccessor: Plottable.Accessor<number>;
-    private lastPointsDataset: Plottable.Dataset;
-    private datasets: Plottable.Dataset[];
-    private updateSpecialDatasets;
-    private nanDataset: Plottable.Dataset;
-
-    constructor(
-        tag: string, dataFn: TF.ChartHelpers.DataFn, xType: string,
-        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
-      super(tag, dataFn, xType, colorScale, tooltip);
-      this.datasets = [];
-      // lastPointDataset is a dataset that contains just the last point of
-      // every dataset we're currently drawing.
-      this.lastPointsDataset = new Plottable.Dataset();
-      this.nanDataset = new Plottable.Dataset();
-      // need to do a single bind, so we can deregister the callback from
-      // old Plottable.Datasets. (Deregistration is done by identity checks.)
-      this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
-      this.buildChart(xType);
-    }
-    protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
+    private buildPlot(xAccessor, xScale, yScale): Plottable.Component {
       this.yAccessor = (d: Backend.ScalarDatum) => d.scalar;
       let linePlot = new Plottable.Plots.Line<number|Date>();
       linePlot.x(xAccessor, xScale);
@@ -417,13 +362,44 @@ module TF {
       }
     }
 
+    private getDataset(run: string) {
+      if (this.run2datasets[run] === undefined) {
+        this.run2datasets[run] =
+            new Plottable.Dataset([], {run: run, tag: this.tag});
+      }
+      return this.run2datasets[run];
+    }
+
+    /**
+     * Change the runs on the chart.
+     * Changing runs automatically triggers a reload; this ensures that the
+     * newly selected run will have data, and that all the runs will be current
+     * (it would be weird if one run was ahead of the others, and the display
+     * depended on the order in which runs were added)
+     */
     public changeRuns(runs: string[]) {
-      super.changeRuns(runs);
+      this.runs = runs;
+      this.reload();
+
       runs.reverse();  // draw first run on top
       this.datasets.forEach((d) => d.offUpdate(this.updateSpecialDatasets));
       this.datasets = runs.map((r) => this.getDataset(r));
       this.datasets.forEach((d) => d.onUpdate(this.updateSpecialDatasets));
       this.linePlot.datasets(this.datasets);
     }
+
+    /**
+     * Reload data for each run in view.
+     */
+    public reload() {
+      this.runs.forEach((run) => {
+        let dataset = this.getDataset(run);
+        this.dataFn(this.tag, run).then((x) => dataset.data(x));
+      });
+    }
+
+    public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }
+
+    public redraw() { this.outer.redraw(); }
   }
 }

@@ -3,7 +3,7 @@
 <link rel="import" href="tf-x-type-selector.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
-<link rel="import" href="tf-chart.html">
+<link rel="import" href="tf-line-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
@@ -24,7 +24,7 @@ charts are larger.
 Organizationally, the #plumbing div contains components that have no concrete
 manifestation and just effect data bindings or data loading. The #sidebar contains
 shared controls like the tf-categorizer, tf-run-selector, and tf-x-type-selector.
-The #center div contains tf-charts embedded inside tf-collapsable-panes.
+The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
 -->
 <dom-module id="tf-event-dashboard">
   <template>
@@ -76,7 +76,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
                 <div class="card">
                   <span class="card-title">[[tag]]</span>
                   <div class="card-content">
-                    <tf-chart
+                    <tf-line-chart
                       tag="[[tag]]"
                       data-provider="[[dataProvider]]"
                       id="chart"
@@ -85,7 +85,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
                       color-scale="[[colorScale]]"
                       on-keyup="toggleSelected"
                       tabindex="2"
-                    ></tf-chart>
+                    ></tf-line-chart>
                     <paper-icon-button
                       class="expand-button"
                       shift$="[[_showDownloadLinks]]"
@@ -120,7 +120,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
     Polymer({
       is: "tf-event-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-chart"),
+        TF.Dashboard.ReloadBehavior("tf-line-chart"),
         TF.Backend.Behavior,
       ],
       properties: {
@@ -153,7 +153,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
       },
       observers: ['redraw(_showDownloadLinks)'],
       redraw: function(_showDownloadLinks) {
-        var els = this.getElementsByTagName("tf-chart");
+        var els = this.getElementsByTagName("tf-line-chart");
         for (var i=0; i<els.length; i++) {
           els[i].redraw();
         }
