@@ -639,6 +639,9 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   Returns:
     A CheckpointState if the state was available, None
     otherwise.
+
+  Raises:
+    ValueError: if the checkpoint read doesn't have model_checkpoint_path set.
   """
   ckpt = None
   coord_checkpoint_filename = _GetCheckpointFilename(
@@ -652,18 +655,21 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
           coord_checkpoint_filename).decode("utf-8")
       ckpt = CheckpointState()
       text_format.Merge(file_content, ckpt)
+      if not ckpt.model_checkpoint_path:
+        raise ValueError("Invalid checkpoint state loaded from %s", checkpoint_dir)
       # For relative model_checkpoint_path and all_model_checkpoint_paths,
       # prepend checkpoint_dir.
-      if not os.path.isabs(checkpoint_dir):
-        if not os.path.isabs(ckpt.model_checkpoint_path):
-          ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
+      if not os.path.isabs(ckpt.model_checkpoint_path):
+        ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
                                                     ckpt.model_checkpoint_path)
-        for i in range(len(ckpt.all_model_checkpoint_paths)):
-          p = ckpt.all_model_checkpoint_paths[i]
-          if not os.path.isabs(p):
-            ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
-  except IOError:
+      for i in range(len(ckpt.all_model_checkpoint_paths)):
+        p = ckpt.all_model_checkpoint_paths[i]
+        if not os.path.isabs(p):
+          ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
+  except IOError as e:
     # It's ok if the file cannot be read
+    logging.warning(str(e))
+    logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   except text_format.ParseError as e:
     logging.warning(str(e))
@@ -1135,6 +1141,9 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   if ckpt and ckpt.model_checkpoint_path:
     if pywrap_tensorflow.get_matching_files(ckpt.model_checkpoint_path):
       return ckpt.model_checkpoint_path
+    else:
+      logging.error("Couldn't match files for pattern %s",
+                    ckpt.model_checkpoint_path)
 
   return None
 
