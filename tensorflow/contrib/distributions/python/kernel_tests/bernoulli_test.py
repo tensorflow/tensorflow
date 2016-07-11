@@ -207,6 +207,24 @@ class BernoulliTest(tf.test.TestCase):
                                     [np.sqrt(var(0.5)), np.sqrt(var(0.4))]],
                                    dtype=np.float32))
 
+  def testBernoulliBernoulliKL(self):
+    with self.test_session() as sess:
+      batch_size = 6
+      a_p = np.array([0.5] * batch_size, dtype=np.float32)
+      b_p = np.array([0.4] * batch_size, dtype=np.float32)
+
+      a = tf.contrib.distributions.Bernoulli(p=a_p)
+      b = tf.contrib.distributions.Bernoulli(p=b_p)
+
+      kl = tf.contrib.distributions.kl(a, b)
+      kl_val = sess.run(kl)
+
+      kl_expected = (
+          a_p * np.log(a_p / b_p) +
+          (1. - a_p) * np.log((1. - a_p) / (1. - b_p)))
+
+      self.assertEqual(kl.get_shape(), (batch_size,))
+      self.assertAllClose(kl_val, kl_expected)
 
 if __name__ == "__main__":
   tf.test.main()
