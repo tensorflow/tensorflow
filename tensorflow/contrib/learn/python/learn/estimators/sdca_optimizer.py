@@ -124,6 +124,17 @@ class SDCAOptimizer(object):
                                                            column.length)
           sparse_features.append(math_ops.to_float(sparse_features_tensor))
           sparse_features_weights.append(columns_to_variables[column][0])
+        elif isinstance(
+            column,
+            layers.feature_column._WeightedSparseColumn):  # pylint: disable=protected-access
+          id_tensor = column.id_tensor(transformed_tensor)
+          weight_tensor = column.weight_tensor(transformed_tensor)
+          sparse_features_tensor = sparse_ops.sparse_merge(
+              id_tensor, weight_tensor, column.length,
+              name="{}_sparse_merge".format(column.name))
+          sparse_features.append(math_ops.to_float(
+              sparse_features_tensor, name="{}_to_float".format(column.name)))
+          sparse_features_weights.append(columns_to_variables[column][0])
         else:
           raise ValueError("SDCAOptimizer does not support column type %s." %
                            type(column).__name__)
