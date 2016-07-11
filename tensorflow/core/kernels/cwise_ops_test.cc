@@ -50,9 +50,10 @@ static int ColsFromArg(int arg) { return (arg % kRows); }
   BENCHMARK(BM_##DEVICE##_##FUNC_##TYPE)->Range(4 << 10, 1 << 20);
 
 BM_UNARY(cpu, Floor, DT_FLOAT);
-BM_UNARY(cpu, Floor, DT_COMPLEX64);
-BM_UNARY(gpu, Floor, DT_FLOAT);
-BM_UNARY(gpu, Floor, DT_COMPLEX64);
+BM_UNARY(cpu, Conj, DT_COMPLEX64);
+BM_UNARY(gpu, Conj, DT_COMPLEX64);
+BM_UNARY(cpu, Conj, DT_COMPLEX128);
+BM_UNARY(gpu, Conj, DT_COMPLEX128);
 
 // data func scalar.
 static Graph* BinaryScalar(int num, const string& func) {
