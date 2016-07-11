@@ -1011,52 +1011,6 @@ Stream &Stream::ThenNormalize(
   return *this;
 }
 
-Stream &Stream::ThenNormalizeWithDimensions(
-    const dnn::NormalizeDescriptor &normalize_descriptor,
-    const dnn::BatchDescriptor &dimensions,
-    const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(input_data),
-            PARAM(output_data));
-
-  if (ok()) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoNormalizeWithDimensions(
-          this, normalize_descriptor, dimensions, input_data, output_data));
-    } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
-    }
-  }
-  return *this;
-}
-
-Stream &Stream::ThenNormalizeBackwardWithDimensions(
-    const dnn::NormalizeDescriptor &normalize_descriptor,
-    const dnn::BatchDescriptor &dimensions, const DeviceMemory<float> &raw_data,
-    const DeviceMemory<float> &normalized_data,
-    const DeviceMemory<float> &normalized_variable_gradient,
-    DeviceMemory<float> *raw_variable_gradient) {
-  VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(raw_data),
-            PARAM(normalized_data), PARAM(normalized_variable_gradient),
-            PARAM(raw_variable_gradient));
-
-  if (ok()) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoNormalizeBackwardWithDimensions(
-          this, normalize_descriptor, dimensions, raw_data, normalized_data,
-          normalized_variable_gradient, raw_variable_gradient));
-    } else {
-      SetError();
-      LOG(WARNING)
-          << "attempting to perform DNN operation using StreamExecutor "
-             "without DNN support";
-    }
-  }
-  return *this;
-}
-
 Stream &Stream::ThenActivate(dnn::ActivationMode activation_mode,
                              const dnn::BatchDescriptor &dimensions,
                              const DeviceMemory<float> &input_data,

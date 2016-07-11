@@ -45,21 +45,18 @@ class LRNOpTest(tf.test.TestCase):
                 np.power(bias + alpha * np.sum(patch * patch), beta))
     return output
 
-  def _RunAndVerify(self, dtype, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+  def _RunAndVerify(self, dtype):
+    with self.test_session():
       # random shape
       shape = np.random.randint(1, 16, size=4)
       # Make depth at least 2 to make it meaningful
       shape[3] += 1
       p = tf.placeholder(dtype, shape=shape)
-      # random depth_radius, bias, alpha, beta. cuDNN requires depth_radius to
-      # be in [1, 7].
-      lrn_depth_radius = np.random.randint(1, min(8, shape[3]))
-
+      # random depth_radius, bias, alpha, beta
+      lrn_depth_radius = np.random.randint(1, shape[3])
       bias = 1.0 + np.random.rand()
       alpha = 2.0 * np.random.rand()
-      # cuDNN requires beta >= 0.01.
-      beta = 0.01 + 2.0 * np.random.rand()
+      beta = 2.0 * np.random.rand()
       lrn_t = tf.nn.local_response_normalization(
           p, name="lrn", depth_radius=lrn_depth_radius, bias=bias,
           alpha=alpha, beta=beta)
@@ -77,41 +74,35 @@ class LRNOpTest(tf.test.TestCase):
     self.assertShapeEqual(expected, lrn_t)
 
   def testCompute(self):
-    for use_gpu in (True, False):
-      for _ in range(2):
-        self._RunAndVerify(tf.float32, use_gpu)
-        # Enable when LRN supports tf.float16 on GPU.
-        if not use_gpu:
-          self._RunAndVerify(tf.float16, use_gpu)
+    for _ in range(2):
+      self._RunAndVerify(tf.float32)
+      self._RunAndVerify(tf.float16)
 
   def testGradientsZeroInput(self):
-    for use_gpu in (True, False):
-      with self.test_session(use_gpu=use_gpu):
-        shape = [4, 4, 4, 4]
-        p = tf.placeholder(tf.float32, shape=shape)
-        inp_array = np.zeros(shape).astype("f")
-        lrn_op = tf.nn.local_response_normalization(p, 2, 1.0, 0.0,
-                                                    1.0, name="lrn")
-        grad = tf.gradients([lrn_op], [p])[0]
-        params = {p: inp_array}
-        r = grad.eval(feed_dict=params)
-      expected = np.ones(shape).astype("f")
-      self.assertAllClose(r, expected)
-      self.assertShapeEqual(expected, grad)
+    with self.test_session():
+      shape = [4, 4, 4, 4]
+      p = tf.placeholder(tf.float32, shape=shape)
+      inp_array = np.zeros(shape).astype("f")
+      lrn_op = tf.nn.local_response_normalization(p, 2, 1.0, 0.0,
+                                                  1.0, name="lrn")
+      grad = tf.gradients([lrn_op], [p])[0]
+      params = {p: inp_array}
+      r = grad.eval(feed_dict=params)
+    expected = np.ones(shape).astype("f")
+    self.assertAllClose(r, expected)
+    self.assertShapeEqual(expected, grad)
 
-  def _RunAndVerifyGradients(self, dtype, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+  def _RunAndVerifyGradients(self, dtype):
+    with self.test_session():
       # random shape
       shape = np.random.randint(1, 5, size=4)
       # Make depth at least 2 to make it meaningful
       shape[3] += 1
-      # random depth_radius, bias, alpha, beta. cuDNN requires depth_radius to
-      # be in [1, 7].
-      lrn_depth_radius = np.random.randint(1, min(8, shape[3]))
+      # random depth_radius, bias, alpha, beta
+      lrn_depth_radius = np.random.randint(1, shape[3])
       bias = 1.0 + np.random.rand()
       alpha = 1.0 * np.random.rand()
-      # cuDNN requires beta >= 0.01.
-      beta = 0.01 + 1.0 * np.random.rand()
+      beta = 1.0 * np.random.rand()
       if dtype == tf.float32:
         inp_array = np.random.rand(*shape).astype(np.float32)
       else:
@@ -133,12 +124,9 @@ class LRNOpTest(tf.test.TestCase):
       self.assertLess(err, 1.0)
 
   def testGradients(self):
-    for use_gpu in (True, False):
-      for _ in range(2):
-        self._RunAndVerifyGradients(tf.float32, use_gpu)
-        # Enable when LRN supports tf.float16 on GPU.
-        if not use_gpu:
-          self._RunAndVerifyGradients(tf.float16, use_gpu)
+    for _ in range(2):
+      self._RunAndVerifyGradients(tf.float32)
+      self._RunAndVerifyGradients(tf.float16)
 
 
 if __name__ == "__main__":
