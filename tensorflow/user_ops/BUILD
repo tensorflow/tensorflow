@@ -44,6 +44,18 @@ py_tests(
     data = [":duplicate_op.so"],
 )
 
+tf_custom_op_library(
+    name = "invalid_op.so",
+    srcs = ["invalid_op.cc"],
+)
+
+py_tests(
+    name = "invalid_op_test",
+    size = "small",
+    srcs = ["invalid_op_test.py"],
+    data = [":invalid_op.so"],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
