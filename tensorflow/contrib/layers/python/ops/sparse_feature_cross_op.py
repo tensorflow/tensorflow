@@ -33,7 +33,7 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
                          name=None):
   """Crosses a list of Tensor or SparseTensor objects.
 
-  See sparse_cross_op.cc for more details.
+  See sparse_feature_cross_kernel.cc for more details.
 
   Args:
     inputs: List of `SparseTensor` or `Tensor` to be crossed.

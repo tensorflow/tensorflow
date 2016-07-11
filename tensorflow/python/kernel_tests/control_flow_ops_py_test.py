@@ -31,6 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
 def check_op_order(graph):
@@ -401,6 +402,33 @@ class ControlFlowTest(tf.test.TestCase):
       fn2 = lambda: [y, y]
       r = tf.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], sess.run(r))
+
+  def testCondRef(self):
+    with self.test_session():
+      x = state_ops.variable_op([1], tf.float32)
+      true_fn = lambda: x
+      false_fn = lambda: tf.constant([2.0])
+      r = tf.cond(tf.constant(False), true_fn, false_fn)
+      self.assertAllEqual([2.0], r.eval())
+
+  def testUninitializedRefIdentity(self):
+    with self.test_session() as sess:
+      v = state_ops.variable_op([1], tf.float32)
+      inited = state_ops.is_variable_initialized(v)
+      v_f, v_t = control_flow_ops.ref_switch(v, inited)
+      # Both v_f and v_t are uninitialized references. However, an actual use
+      # of the reference in the 'true' branch in the 'tf.identity' op will
+      # not 'fire' when v is uninitialized, so this is a valid construction.
+      # This test tests that _ref_identity allows uninitialized ref as input
+      # so that this construction is allowed.
+      v_f_op = gen_array_ops._ref_identity(v_f)
+      v_t_op = gen_array_ops._ref_identity(v_t)
+      with tf.control_dependencies([v_f_op]):
+        assign_v = tf.assign(v, [1.0])
+      with tf.control_dependencies([v_t_op]):
+        orig_v = tf.identity(v)
+      merged_op = control_flow_ops.merge([assign_v, orig_v])
+      self.assertAllEqual([1.0], sess.run(merged_op.output))
 
   def testCondGrad_1(self):
     with self.test_session():
@@ -950,6 +978,18 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertEqual([None], r.get_shape().as_list())
       self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
 
+  def testWhileGrad_BaseShape(self):
+    with self.test_session() as sess:
+      x = tf.placeholder(tf.float32, [None])
+      v0 = tf.constant([2.0, 2.0], name="v")
+      c = lambda v: tf.constant(False)
+      b = lambda v: tf.mul(v, x)
+      r = tf.while_loop(c, b, [v0])
+      y = tf.square(x)
+
+      r = tf.gradients([r, y], x)[0]
+      self.assertAllClose([2.0, 4.0], sess.run(r, feed_dict={x: [1.0, 2.0]}))
+
   def testWhileGrad_MultipleUses(self):
     with self.test_session():
       v = tf.constant(2.0, name="v")
@@ -1342,9 +1382,9 @@ class ControlFlowTest(tf.test.TestCase):
 
   def testWhileGradGrad(self):
     theta = tf.Variable(initial_value=1.)
-    def fn(x, prev):
+    def fn(prev, x):
       return prev + x * theta
-    result = tf.scan(fn, [1., 2., 3.])
+    result = tf.scan(fn, np.array([1., 2., 3.], dtype=np.float32))
     grad_theta = tf.gradients(result, theta)
     with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
       tf.gradients(grad_theta, theta)

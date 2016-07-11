@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,7 +43,6 @@ import threading
 
 import six
 
-from tensorflow.contrib import distributions
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -123,11 +122,19 @@ ops.register_tensor_conversion_function(
 
 
 class _StochasticValueType(object):
+  """Interface for the ValueType classes.
+
+  This is the base class for MeanValue, SampleValue, SampleAndReshapeValue,
+  and their descendants.
+  """
 
   def pushed_above(self, unused_value_type):
     pass
 
   def popped_above(self, unused_value_type):
+    pass
+
+  def declare_inputs(self, unused_stochastic_tensor, unused_inputs_dict):
     pass
 
   @abc.abstractproperty
@@ -286,10 +293,14 @@ def value_type(dist_value_type):
     stack[-1].popped_above(dist_value_type)
 
 
+class NoValueTypeSetError(ValueError):
+  pass
+
+
 def get_current_value_type():
   thread_id = threading.current_thread().ident
   if not _STOCHASTIC_VALUE_STACK[thread_id]:
-    raise ValueError(
+    raise NoValueTypeSetError(
         "No value type currently set for this thread (%s).  Did you forget to "
         "wrap 'with stochastic_graph.value_type(...)'?" % thread_id)
   return _STOCHASTIC_VALUE_STACK[thread_id][-1]
@@ -302,13 +313,18 @@ class DistributionTensor(StochasticTensor):
   def __init__(self, dist_cls, name=None, dist_value_type=None, **dist_args):
     self._dist_cls = dist_cls
     self._dist_args = dist_args
-    if dist_value_type is not None:
+    if dist_value_type is None:
+      try:
+        self._value_type = get_current_value_type()
+      except NoValueTypeSetError:
+        self._value_type = SampleAndReshapeValue()
+    else:
       # We want to enforce a value type here, but use the value_type()
       # context manager to enforce some error checking.
       with value_type(dist_value_type):
         self._value_type = get_current_value_type()
-    else:
-      self._value_type = get_current_value_type()
+
+    self._value_type.declare_inputs(self, dist_args)
 
     with ops.op_scope(dist_args.values(), name, "DistributionTensor") as scope:
       self._name = scope
@@ -366,8 +382,7 @@ class DistributionTensor(StochasticTensor):
 
     if isinstance(self._value_type, MeanValue):
       return value_tensor  # Using pathwise-derivative for this one.
-    if (isinstance(self._dist, distributions.ContinuousDistribution)
-        and self._dist.is_reparameterized):
+    if self._dist.is_continuous and self._dist.is_reparameterized:
       return value_tensor  # Using pathwise-derivative for this one.
     else:
       # Will have to perform some variant of score function
@@ -399,17 +414,16 @@ class DistributionTensor(StochasticTensor):
   def surrogate_loss(self, losses, name=None):
     # Return a loss term based on losses and the distribution.  Return
     # None if pathwise derivatives are supported
-    if (isinstance(self._dist, distributions.ContinuousDistribution)
-        and self._dist.is_reparameterized):
+    if self._dist.is_continuous and self._dist.is_reparameterized:
       # Can perform pathwise-derivative on this one; no surrogate loss needed.
       return None
 
     with ops.op_scope(losses, name, "DistributionSurrogateLoss"):
       if isinstance(self._value_type, SampleAndReshapeValue):
         # TODO(ebrevdo): use add_n instead of sum(losses) if shapes all match?
-        return self._dist.log_likelihood(self._value) * sum(losses)
+        return self._dist.log_prob(self._value) * sum(losses)
       elif isinstance(self._value_type, SampleValue):
-        return self._dist.log_likelihood(self._value) * sum(losses)
+        return self._dist.log_prob(self._value) * sum(losses)
       elif isinstance(self._value_type, MeanValue):
         return None  # MeanValue generally provides its own gradient
       else:
@@ -454,8 +468,32 @@ def _stochastic_dependencies_map(fixed_losses):
   return stoch_dependencies_map
 
 
-def surrogate_losses(sample_losses, name=None):
-  with ops.op_scope(sample_losses, name, "SampleLosses"):
+def surrogate_losses(sample_losses, name="SurrogateLosses"):
+  """Compute surrogate losses for StochasticTensors in the graph.
+
+  This function will call `surrogate_loss` on each `StochasticTensor` in the
+  graph and pass the losses in `sample_losses` that that `StochasticTensor`
+  influenced.
+
+  Note that currently `surrogate_losses` does not work with `StochasticTensor`s
+  instantiated in `while_loop`s or other control structures.
+
+  Args:
+    sample_losses: a list or tuple of final losses. Each loss should be per
+      example in the batch (and possibly per sample); that is, it should have
+      dimensionality of 1 or greater. All losses should have the same shape.
+    name: the name with which to prepend created ops.
+
+  Returns:
+    A list of surrogate losses.
+
+  Raises:
+    TypeError: if `sample_losses` is not a list or tuple, or if its elements
+      are not `Tensor`s.
+    ValueError: if any loss in `sample_losses` does not have dimensionality 1
+      or greater.
+  """
+  with ops.op_scope(sample_losses, name):
     fixed_losses = []
     if not isinstance(sample_losses, (list, tuple)):
       raise TypeError("sample_losses must be a list or tuple")
@@ -463,9 +501,9 @@ def surrogate_losses(sample_losses, name=None):
       if not isinstance(loss, ops.Tensor):
         raise TypeError("loss is not a Tensor: %s" % loss)
       ndims = loss.get_shape().ndims
-      if not (ndims is not None and ndims <= 1):
-        raise ValueError(
-            "loss must be a scalar or batch-length vector loss: %s" % loss)
+      if not (ndims is not None and ndims >= 1):
+        raise ValueError("loss must have dimensionality 1 or greater: %s" %
+                         loss)
       fixed_losses.append(array_ops.stop_gradient(loss))
 
     stoch_dependencies_map = _stochastic_dependencies_map(fixed_losses)

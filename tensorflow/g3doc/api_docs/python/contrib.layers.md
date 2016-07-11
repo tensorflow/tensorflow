@@ -25,6 +25,9 @@ None and a `biases_initializer` is provided then a `biases` variable would be
 created and added the activations. Finally, if `activation_fn` is not `None`,
 it is applied to the activations as well.
 
+Performs a'trous convolution with input stride equal to rate if rate is
+greater than one.
+
 ##### Args:
 
 
@@ -36,6 +39,9 @@ it is applied to the activations as well.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: one of `VALID` or `SAME`.
+*  <b>`rate`</b>: integer. If less than or equal to 1, a standard convolution is used.
+    If greater than 1, than the a'trous convolution is applied and `stride`
+    must be set to 1.
 *  <b>`activation_fn`</b>: activation function.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
     `normalize_fn` is provided then `biases_initializer` and
@@ -57,6 +63,11 @@ it is applied to the activations as well.
 ##### Returns:
 
   a tensor representing the output of the operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if both 'rate' and `stride` are larger than one.
 
 
 - - -

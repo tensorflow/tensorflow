@@ -87,10 +87,12 @@ class NanLossDuringTrainingError(RuntimeError):
     return 'NaN loss during training.'
 
 
-def _make_saver(graph):
+def _make_saver(graph, keep_checkpoint_max=5):
   vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
   if vars_to_save:
-    return tf_saver.Saver(vars_to_save, sharded=True)
+    return tf_saver.Saver(vars_to_save,
+                          sharded=True,
+                          max_to_keep=keep_checkpoint_max)
   else:
     return None
 
@@ -136,11 +138,13 @@ def train(graph,
           supervisor_is_chief=True,
           supervisor_master='',
           supervisor_save_model_secs=600,
+          keep_checkpoint_max=5,
           supervisor_save_summaries_steps=100,
           feed_fn=None,
           steps=None,
           fail_on_nan_loss=True,
-          monitors=None):
+          monitors=None,
+          max_steps=None):
   """Train a model.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
@@ -176,6 +180,10 @@ def train(graph,
     supervisor_master: The master string to use when preparing the session.
     supervisor_save_model_secs: Save a checkpoint every
       `supervisor_save_model_secs` seconds when training.
+    keep_checkpoint_max: The maximum number of recent checkpoint files to
+      keep. As new files are created, older files are deleted. If None or 0,
+      all checkpoint files are kept. This is simply passed as the max_to_keep
+      arg to tf.Saver constructor.
     supervisor_save_summaries_steps: Save summaries every
       `supervisor_save_summaries_steps` seconds when training.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
@@ -185,6 +193,10 @@ def train(graph,
       evaluates to `NaN`. If false, continue training as if nothing happened.
     monitors: List of `BaseMonitor` subclass instances. Used for callbacks
       inside the training loop.
+    max_steps: Number of total steps for which to train model. If `None`,
+      train forever. Two calls fit(steps=100) means 200 training iterations.
+      On the other hand two calls of fit(max_steps=100) means, second call
+      will not do any iteration since first call did all 100 steps.
 
   Returns:
     The final loss value.
@@ -195,7 +207,10 @@ def train(graph,
       look up the latter if not provided explicitly.
     NanLossDuringTrainingError: If `fail_on_nan_loss` is `True`, and loss ever
       evaluates to `NaN`.
+    ValueError: If both `steps` and `max_steps` are not `None`.
   """
+  if (steps is not None) and (max_steps is not None):
+    raise ValueError('Can not provide both steps and max_steps.')
   if not output_dir:
     raise ValueError('Output directory should be non-empty %s.' % output_dir)
   if train_op is None:
@@ -230,7 +245,8 @@ def train(graph,
           save_summary_steps=supervisor_save_summaries_steps,
           summary_writer=summary_writer)
 
-    max_steps = (start_step + steps) if steps else None
+    if max_steps is None:
+      max_steps = (start_step + steps) if steps else None
     # Start monitors, can create graph parts.
     for monitor in monitors:
       monitor.begin(max_steps=max_steps)
@@ -241,7 +257,7 @@ def train(graph,
       init_feed_dict=init_feed_dict,
       is_chief=supervisor_is_chief,
       logdir=output_dir,
-      saver=_make_saver(graph),
+      saver=_make_saver(graph, keep_checkpoint_max),
       global_step=global_step_tensor,
       summary_op=None,
       summary_writer=summary_writer,
@@ -305,6 +321,8 @@ def train(graph,
     except errors.OutOfRangeError as e:
       logging.warn('Got exception during tf.learn training loop possibly '
                    'due to exhausted input queue %s.', e)
+    except StopIteration:
+      logging.info('Exhausted input iterarator.')
     except BaseException as e:  # pylint: disable=broad-except
       # Hold on to any other exceptions while we try recording a final
       # checkpoint and summary.
@@ -351,20 +369,14 @@ def train(graph,
 
 def _get_first_op_from_collection(collection_name):
   elements = ops.get_collection(collection_name)
-  if elements is not None:
-    if elements:
-      return elements[0]
+  if elements:
+    return elements[0]
   return None
 
 
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
-  if saver is not None:
-    if saver:
-      saver = saver[0]
-    else:
-      saver = None
   if saver is None and variables.all_variables():
     saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)

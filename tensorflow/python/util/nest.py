@@ -87,14 +87,14 @@ def flatten(nest):
     nest: an arbitrarily nested structure.
 
   Returns:
-    The flattened version of the input.
+    A Python list, the flattened version of the input.
 
   Raises:
     TypeError: If the input is not a sequence.
   """
   if not is_sequence(nest):
     raise TypeError("input must be a sequence, but received %s" % nest)
-  return _sequence_like(nest, list(_yield_flat_nest(nest)))
+  return list(_yield_flat_nest(nest))
 
 
 def _recursive_assert_same_structure(nest1, nest2):

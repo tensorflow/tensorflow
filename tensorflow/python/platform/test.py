@@ -59,6 +59,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.util.all_util import make_all
@@ -95,6 +96,11 @@ def get_temp_dir():
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return test_util.IsGoogleCudaEnabled()
+
+
+def is_gpu_available():
+  """Returns whether TensorFlow can access a GPU."""
+  return any(x.device_type == 'GPU' for x in device_lib.list_local_devices())
 
 
 __all__ = make_all(__name__)

@@ -87,7 +87,6 @@ allows the user to toggle between various dashboards.
           <tf-graph-dashboard
             id="graphs"
             backend="[[_backend]]"
-            router="[[router]]"
           ></tf-graph-dashboard>
         </template>
 
@@ -171,11 +170,13 @@ allows the user to toggle between various dashboards.
       properties: {
         router: {
           type: Object,
-          value: function() {return TF.Backend.router()},
+          value: function() {
+            return TF.Backend.router();
+          },
         },
         _backend: {
           type: Object,
-          computed: "_makeBackend(router)",
+          computed: "_makeBackend(router, demoDir)",
         },
         // Which tab is selected (events, graph, images etc).
         mode: {
@@ -183,26 +184,35 @@ allows the user to toggle between various dashboards.
           computed: '_getModeFromIndex(modeIndex)',
           notify: true,
         },
-        // If true, tab switching in TensorBoard will not update
-        // location hash. Hash update interferes with selenium tests.
-        noHash: {
-          type: Boolean,
-          value: false
-        },
         tabs: {
           type: Array,
           readOnly: true,
           value: TF.Globals.TABS,
         },
+        // If this is set to a string, TensorBoard will switch to "demo mode"
+        // and attempt to load serialized json data from that directory. You can
+        // generate conformant json using
+        // tensorboard/scripts/serialize_tensorboard.py
+        demoDir: {
+          type: String,
+          value: null,
+        },
+        // Set this to true to store state in URI hash. Should be true for all non-test purposes.
+        useHash: {
+          type: Boolean,
+          value: false,
+        },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
-        if (!this.noHash) {
-          TF.URIStorage.setString(TF.URIStorage.TAB, this.tabs[0]);
-        }
+        TF.URIStorage.setString(TF.URIStorage.TAB, mode);
         return mode;
       },
-      _makeBackend: function(router) {
+      _makeBackend: function(router, demoDir) {
+        // use the demoDir if it is set, otherwise use the provided router
+        if (demoDir != null) {
+          router = TF.Backend.router(demoDir, true);
+        }
         return new TF.Backend.Backend(router);
       },
       _modeIsEvents: function(mode) {
@@ -228,6 +238,8 @@ allows the user to toggle between various dashboards.
         return dashboard;
       },
       ready: function() {
+        TF.Globals.USE_HASH = this.useHash;
+
         this._getModeFromHash();
         window.addEventListener('hashchange', function() {
           this._getModeFromHash();

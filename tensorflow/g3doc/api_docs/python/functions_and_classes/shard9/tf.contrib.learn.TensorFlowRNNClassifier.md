@@ -33,10 +33,15 @@ Initializes a TensorFlowRNNClassifier instance.
     used. Instead, a customized decay function can be passed that accepts
     global_step as parameter and returns a Tensor.
     e.g. exponential decay function:
+
+    ````python
     def exp_decay(global_step):
         return tf.train.exponential_decay(
             learning_rate=0.1, global_step,
             decay_steps=2, decay_rate=0.001)
+    ````
+
+
 *  <b>`class_weight`</b>: None or list of n_classes floats. Weight associated with
     classes for loss computation. If not given, all classes are
     supposed to have weight one.
@@ -104,7 +109,8 @@ Get parameters for this estimator.
 
 
 *  <b>`deep`</b>: boolean, optional
-    If True, will return the parameters for this estimator and
+
+    If `True`, will return the parameters for this estimator and
     contained subobjects that are estimators.
 
 ##### Returns:

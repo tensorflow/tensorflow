@@ -47,6 +47,74 @@ Add all input tensors element wise.
 inputs: Must all be the same size and shape.
 )doc");
 
+namespace {
+
+// Shape inference function for binary operators that broadcast their inputs.
+Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+  const Shape* shape_x = c->input(0);
+  const Shape* shape_y = c->input(1);
+  if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
+    c->set_output(0, c->CreateUnknownShape());
+    return Status::OK();
+  }
+  const int32 rank_x = c->Rank(shape_x);
+  const int32 rank_y = c->Rank(shape_y);
+  const int32 rank_out = std::max(rank_x, rank_y);
+
+  // To compute the broadcast dimensions, we zip together shape_x and shape_y
+  // and
+  // pad with 1 to make them the same length.
+  std::vector<const Dimension*> dims;
+  const Dimension* dim_one = rank_x == rank_y ? nullptr : c->CreateDim(1);
+  for (int i = 0; i < rank_out; ++i) {
+    const auto* dim_x = i < (rank_out - rank_x)
+                            ? dim_one
+                            : c->Dim(shape_x, i - (rank_out - rank_x));
+    const auto* dim_y = i < (rank_out - rank_y)
+                            ? dim_one
+                            : c->Dim(shape_y, i - (rank_out - rank_y));
+    if (!c->ValueKnown(dim_x) || !c->ValueKnown(dim_y)) {
+      // One or both dimensions is unknown.
+      //
+      // - If either dimension is greater than 1, we assume that the program is
+      // correct, and the other dimension will be broadcast to match it.
+      // TODO(cwhipkey): For shape inference, if we eliminate the shape checks
+      // in C++ op code, we must still assert that the unknown dim is either 1
+      // or the same as the known dim.
+      // - If either dimension is 1, the other dimension is the output.
+      if (c->Value(dim_x) > 1) {
+        dims.push_back(dim_x);
+      } else if (c->Value(dim_y) > 1) {
+        dims.push_back(dim_y);
+      } else if (c->Value(dim_x) == 1) {
+        dims.push_back(dim_y);
+      } else if (c->Value(dim_y) == 1) {
+        dims.push_back(dim_x);
+      } else {
+        dims.push_back(c->CreateUnknownDim());
+      }
+    } else if (c->Value(dim_x) == 1 || c->Value(dim_y) == 1) {
+      if (c->Value(dim_x) == 1 && dim_y != dim_one) {
+        // We will broadcast dim_x to dim_y.
+        dims.push_back(dim_y);
+      } else {
+        DCHECK_EQ(c->Value(dim_y), 1);
+        // We will broadcast dim_y to dim_x.
+        dims.push_back(dim_x);
+      }
+    } else {
+      const Dimension* dim;
+      TF_RETURN_IF_ERROR(c->Merge(dim_x, dim_y, &dim));
+      dims.push_back(dim);
+    }
+  }
+
+  c->set_output(0, c->CreateShape(dims));
+  return Status::OK();
+}
+
+}  // namespace
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BatchMatMul")
@@ -170,6 +238,13 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
       .Attr("T: {half, float, double, complex64, complex128}") \
       .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
 
+#define UNARY_GRADIENT_COMPLEX()                               \
+  Input("x: T")                                                \
+      .Input("y: T")                                           \
+      .Output("z: T")                                          \
+      .Attr("T: {half, float, double, complex64, complex128}") \
+      .SetShapeFn(OpShapeInferenceFn(shape_inference::UnchangedShape))
+
 REGISTER_OP("Neg")
     .UNARY()
     .Doc(R"doc(
@@ -224,6 +299,13 @@ REGISTER_OP("Tanh")
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
 
+REGISTER_OP("TanhGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the tanh of `x` wrt its input.
+
+Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
+is the corresponding input gradient.
+)doc");
+
 REGISTER_OP("Lgamma")
     .UNARY_REAL()
     .Doc(R"doc(
@@ -255,6 +337,13 @@ REGISTER_OP("Sigmoid")
 Computes sigmoid of `x` element-wise.
 
 Specifically, `y = 1 / (1 + exp(-x))`.
+)doc");
+
+REGISTER_OP("SigmoidGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient of the sigmoid of `x` wrt its input.
+
+Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
+`dy` is the corresponding input gradient.
 )doc");
 
 REGISTER_OP("Sin")
@@ -373,6 +462,7 @@ REGISTER_OP("Add")
     .Attr(
         "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
         "complex128, string}")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns x + y element-wise.
 
@@ -381,6 +471,7 @@ Returns x + y element-wise.
 
 REGISTER_OP("Sub")
     .BINARY_FEWER()
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns x - y element-wise.
 )doc");
@@ -388,12 +479,14 @@ Returns x - y element-wise.
 REGISTER_OP("Mul")
     .BINARY_MORE()
     .SetIsCommutative()
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns x * y element-wise.
 )doc");
 
 REGISTER_OP("Div")
     .BINARY_MORE()
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns x / y element-wise.
 )doc");
@@ -401,6 +494,7 @@ Returns x / y element-wise.
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns (x - y)(x - y) element-wise.
 )doc");
@@ -414,6 +508,7 @@ REGISTER_OP("Maximum")
     .Output("z: T")
     .Attr("T: {half, float, double, int32, int64}")
     .SetIsCommutative()
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
 )doc");
@@ -424,6 +519,7 @@ REGISTER_OP("Minimum")
     .Output("z: T")
     .Attr("T: {half, float, double, int32, int64}")
     .SetIsCommutative()
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts.
 )doc");
@@ -433,6 +529,7 @@ REGISTER_OP("Mod")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {int32, int64, float, double}")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns element-wise remainder of division.
 )doc");
@@ -442,6 +539,7 @@ REGISTER_OP("Pow")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {half, float, double, int32, int64, complex64, complex128}")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Computes the power of one value to another.
 
@@ -460,6 +558,7 @@ REGISTER_OP("Igammac")
     .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 
@@ -483,6 +582,7 @@ REGISTER_OP("Igamma")
     .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 
@@ -506,6 +606,7 @@ REGISTER_OP("Zeta")
     .Input("q: T")
     .Output("z: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 
@@ -521,6 +622,7 @@ REGISTER_OP("Polygamma")
     .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Compute the polygamma function \\(\psi^{(n)}(x)\\).
 
@@ -536,8 +638,12 @@ where \\(\psi(x)\\) is the digamma function.
 
 // Declares cwise binary comparison operations signature: 't, 't -> bool,
 // where 't has a natural total order.
-#define COMPARISON() \
-  Input("x: T").Input("y: T").Output("z: bool").Attr("T: realnumbertype")
+#define COMPARISON()             \
+  Input("x: T")                  \
+      .Input("y: T")             \
+      .Output("z: bool")         \
+      .Attr("T: realnumbertype") \
+      .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
 
 REGISTER_OP("Less")
     .COMPARISON()
@@ -567,10 +673,16 @@ Returns the truth value of (x >= y) element-wise.
 
 // --------------------------------------------------------------------------
 
-#define EQUALITY_COMPARISON()                                                  \
-  Input("x: T").Input("y: T").Output("z: bool").SetIsCommutative().Attr(       \
-      "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, " \
-      "quint8, qint8, qint32, string, bool, complex128}")
+#define EQUALITY_COMPARISON()                                           \
+  Input("x: T")                                                         \
+      .Input("y: T")                                                    \
+      .Output("z: bool")                                                \
+      .SetIsCommutative()                                               \
+      .Attr(                                                            \
+          "T: {half, float, double, uint8, int8, int16, int32, int64, " \
+          "complex64, "                                                 \
+          "quint8, qint8, qint32, string, bool, complex128}")           \
+      .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
 
 REGISTER_OP("Equal")
     .EQUALITY_COMPARISON()
@@ -596,8 +708,12 @@ REGISTER_OP("LogicalNot")
 Returns the truth value of NOT x element-wise.
 )doc");
 
-#define BINARY_LOGICAL() \
-  Input("x: bool").Input("y: bool").Output("z: bool").SetIsCommutative()
+#define BINARY_LOGICAL()  \
+  Input("x: bool")        \
+      .Input("y: bool")   \
+      .Output("z: bool")  \
+      .SetIsCommutative() \
+      .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
 
 REGISTER_OP("LogicalAnd")
     .BINARY_LOGICAL()
@@ -615,12 +731,70 @@ Returns the truth value of x OR y element-wise.
 
 // --------------------------------------------------------------------------
 
+// TODO(cwhipkey): review what the python code here does.
 REGISTER_OP("Select")
     .Input("condition: bool")
     .Input("t: T")
     .Input("e: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* cond = c->input(0);
+      const Shape* data = c->input(1);
+      TF_RETURN_IF_ERROR(c->Merge(data, c->input(2), &data));
+
+      // Validate condition's shape if possible.
+      if (c->RankKnown(data)) {
+        const int32 data_rank = c->Rank(data);
+        if (data_rank == 0 || data_rank == 1) {
+          // Cond must match inputs since they are scalar or vector.
+          TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+        } else {
+          // cond must be the shape [data.dim[0]] or data.
+          if (c->RankKnown(cond)) {
+            if (c->Rank(cond) == 1) {
+              // Must be a vector whose first dimension matches first dimension
+              // of the data vectors.
+              const Dimension* merged_dim;
+              TF_RETURN_IF_ERROR(
+                  c->Merge(c->Dim(data, 0), c->Dim(cond, 0), &merged_dim));
+              if (merged_dim != c->Dim(data, 0)) {
+                // Merging used the cond dim.  Update data to refer to it.
+                std::vector<const Dimension*> dims{merged_dim};
+                for (int i = 1; i < data_rank; ++i) {
+                  dims.push_back(c->Dim(data, i));
+                }
+                data = c->CreateShape(dims);
+              }
+            } else {
+              // Must be the same as the data vectors.
+              TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+            }
+          } else {
+            // We want to express  that it's either [data.dim[0]] or data.
+            // - rank(cond) must be 1 or rank(data).
+            // - cond.dim[0] is same as data.dim[0]
+            // But neither of these are expressible with unknown rank cond.
+            // TODO(cwhipkey): improve this case.
+          }
+        }
+      } else if (c->RankKnown(cond)) {
+        if (c->Rank(cond) == 1) {
+          // cond is vector, so data is either the same shape, or a shape with
+          // higher rank or the same first dimension.
+          // TODO(cwhipkey): make the call to WithRankAtLeast do something when
+          // <data> is known.  Then we could assert the first dimensions are the
+          // same.
+          // TF_RETURN_IF_ERROR(c->WithRankAtLeast(data, 1, &data));
+        } else {
+          // If cond is a non-vector, it must be the same shape as data.
+          TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+        }
+      }
+
+      c->set_output(0, data);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Selects elements from `t` or `e`, depending on `condition`.
 
@@ -1011,6 +1185,46 @@ REGISTER_OP("UnsortedSegmentSum")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* s_data = c->input(0);
+      const Shape* s_segment_ids = c->input(1);
+      const Shape* s_num_segments = c->input(2);
+      TF_RETURN_IF_ERROR(c->WithRank(s_num_segments, 0, &s_num_segments));
+
+      const Shape* out;
+
+      // Leading dimensions of data must be compatible with dimensions of
+      // <s_segment_ids>.
+      if (c->RankKnown(s_segment_ids)) {
+        TF_RETURN_IF_ERROR(
+            c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
+
+        // Get the value of the num_segments input tensor.
+        const auto* num_segments_t = c->input_tensor(2);
+        const Dimension* num_segments_dim;
+        if (num_segments_t == nullptr) {
+          num_segments_dim = c->CreateUnknownDim();
+        } else {
+          auto t_val = num_segments_t->scalar<int32>()();
+          if (t_val < 0) {
+            return errors::InvalidArgument(
+                "num_segments value must be non-negative, but was ", t_val);
+          }
+          num_segments_dim = c->CreateDim(t_val);
+        }
+
+        // Output is {segment_id_rank} + s_data[segment_id_rank:].
+        const Shape* s_data_suffix;
+        TF_RETURN_IF_ERROR(
+            c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
+        TF_RETURN_IF_ERROR(c->Concatenate(c->CreateShape({num_segments_dim}),
+                                          s_data_suffix, &out));
+      } else {
+        out = c->CreateUnknownShape();
+      }
+      c->set_output(0, out);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
@@ -1219,6 +1433,35 @@ REGISTER_OP("Range")
     .Input("limit: int32")
     .Input("delta: int32")
     .Output("output: int32")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
+                                      " for 'start'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(1), 0, &unused),
+                                      " for 'limit'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(2), 0, &unused),
+                                      " for 'delta'");
+      const Tensor* start_t = c->input_tensor(0);
+      const Tensor* limit_t = c->input_tensor(1);
+      const Tensor* delta_t = c->input_tensor(2);
+      if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
+        c->set_output(0, c->CreateShape({c->CreateUnknownDim()}));
+        return Status::OK();
+      }
+      const int32 start = start_t->scalar<int32>()();
+      const int32 limit = limit_t->scalar<int32>()();
+      const int32 delta = delta_t->scalar<int32>()();
+      if (start > limit) {
+        return errors::InvalidArgument("Requires start <= limit: ", start, "/",
+                                       limit);
+      }
+      if (delta <= 0) {
+        return errors::InvalidArgument("Requires delta > 0: ", delta);
+      }
+      const int32 size = (limit - start + delta - 1) / delta;
+      c->set_output(0, c->CreateShape({c->CreateDim(size)}));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Creates a sequence of integers.
 
@@ -1246,6 +1489,24 @@ REGISTER_OP("LinSpace")
     .Input("num: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
+                                      " for 'start'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(1), 0, &unused),
+                                      " for 'stop'");
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(2), 0, &unused),
+                                      " for 'num'");
+      const Tensor* num_t = c->input_tensor(2);
+      if (num_t == nullptr) {
+        c->set_output(0, c->CreateShape({c->CreateUnknownDim()}));
+        return Status::OK();
+      }
+      const int64 num = num_t->scalar<int32>()();
+      if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
+      c->set_output(0, c->CreateShape({c->CreateDim(num)}));
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Generates values in an interval.
 
@@ -1271,6 +1532,7 @@ REGISTER_OP("Complex")
     .Output("out: Tout")
     .Attr("T: {float, double} = DT_FLOAT")
     .Attr("Tout: {complex64, complex128} = DT_COMPLEX64")
+    .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Converts two real numbers to a complex number.
 

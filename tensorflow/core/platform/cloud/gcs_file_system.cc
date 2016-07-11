@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <stdio.h>
 #include <unistd.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/env.h"
@@ -61,50 +61,63 @@ Status GetTmpFilename(string* filename) {
 ///
 /// For example, "gs://bucket-name/path/to/file.txt" gets split into
 /// "bucket-name" and "path/to/file.txt".
-Status ParseGcsPath(const string& fname, string* bucket, string* object) {
+/// If fname only contains the bucket, the returned object is empty.
+Status ParseGcsPath(StringPiece fname, string* bucket, string* object) {
   if (!bucket || !object) {
     return errors::Internal("bucket and object cannot be null.");
   }
-  StringPiece matched_bucket, matched_object;
-  if (!strings::Scanner(fname)
-           .OneLiteral("gs://")
-           .RestartCapture()
-           .ScanEscapedUntil('/')
-           .OneLiteral("/")
-           .GetResult(&matched_object, &matched_bucket)) {
-    return errors::InvalidArgument("Couldn't parse GCS path: " + fname);
+  if (!fname.Consume("gs://")) {
+    return errors::InvalidArgument("GCS path must start with gs://");
   }
-  // 'matched_bucket' contains a trailing slash, exclude it.
-  *bucket = string(matched_bucket.data(), matched_bucket.size() - 1);
-  *object = string(matched_object.data(), matched_object.size());
+  auto first_slash = fname.find('/');
+  if (first_slash == -1) {
+    *bucket = fname.ToString();
+    *object = string();
+  } else {
+    *bucket = fname.substr(0, first_slash).ToString();
+    fname.remove_prefix(first_slash + 1);
+    *object = fname.ToString();
+  }
   return Status::OK();
 }
 
-/// GCS-based implementation of a random access file.
+/// A GCS-based implementation of a random access file with a read-ahead buffer.
 class GcsRandomAccessFile : public RandomAccessFile {
  public:
   GcsRandomAccessFile(const string& bucket, const string& object,
                       AuthProvider* auth_provider,
-                      HttpRequest::Factory* http_request_factory)
+                      HttpRequest::Factory* http_request_factory,
+                      size_t read_ahead_bytes)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
-        http_request_factory_(std::move(http_request_factory)) {}
+        http_request_factory_(std::move(http_request_factory)),
+        read_ahead_bytes_(read_ahead_bytes) {}
 
+  /// The implementation of reads with a read-ahead buffer.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    string auth_token;
-    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
+    if (offset >= buffer_start_offset_ &&
+        offset + n <= buffer_start_offset_ + buffer_content_size_) {
+      // If the requested range is fully in the buffer, just return it.
+      std::memcpy(scratch, buffer_.get() + offset - buffer_start_offset_, n);
+      *result = StringPiece(scratch, n);
+      return Status::OK();
+    }
 
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
+    // Update the buffer content based on the new requested range.
+    auto buffer_size = n + read_ahead_bytes_;
+    buffer_.reset(new char[buffer_size]);
+    buffer_start_offset_ = offset;
+    buffer_content_size_ = 0;
+    StringPiece buffer_content;
     TF_RETURN_IF_ERROR(
-        request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
-                                        "/", request->EscapeString(object_))));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
-    TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
-    TF_RETURN_IF_ERROR(request->Send());
+        ReadFromGCS(offset, buffer_size, &buffer_content, buffer_.get()));
+    buffer_content_size_ = buffer_content.size();
+
+    // Set the results.
+    *result = StringPiece(scratch, std::min(buffer_content_size_, n));
+    std::memcpy(scratch, buffer_.get(), result->size());
 
     if (result->size() < n) {
       // This is not an error per se. The RandomAccessFile interface expects
@@ -117,10 +130,36 @@ class GcsRandomAccessFile : public RandomAccessFile {
   }
 
  private:
+  /// A helper function to actually read the data from GCS.
+  Status ReadFromGCS(uint64 offset, size_t n, StringPiece* result,
+                     char* scratch) const {
+    string auth_token;
+    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
+
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    TF_RETURN_IF_ERROR(request->Init());
+    TF_RETURN_IF_ERROR(
+        request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
+                                        "/", request->EscapeString(object_))));
+    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+    TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
+    TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
+    TF_RETURN_IF_ERROR(request->Send());
+    return Status::OK();
+  }
+
   string bucket_;
   string object_;
   AuthProvider* auth_provider_;
   HttpRequest::Factory* http_request_factory_;
+  const size_t read_ahead_bytes_;
+
+  // The buffer-related members need to be mutable, because they are modified
+  // by the const Read() method.
+  mutable std::unique_ptr<char[]> buffer_;
+  // The original file offset of the first byte in the buffer.
+  mutable size_t buffer_start_offset_ = 0;
+  mutable size_t buffer_content_size_ = 0;
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -233,16 +272,19 @@ GcsFileSystem::GcsFileSystem()
 
 GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,
-    std::unique_ptr<HttpRequest::Factory> http_request_factory)
+    std::unique_ptr<HttpRequest::Factory> http_request_factory,
+    size_t read_ahead_bytes)
     : auth_provider_(std::move(auth_provider)),
-      http_request_factory_(std::move(http_request_factory)) {}
+      http_request_factory_(std::move(http_request_factory)),
+      read_ahead_bytes_(read_ahead_bytes) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
   result->reset(new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
-                                        http_request_factory_.get()));
+                                        http_request_factory_.get(),
+                                        read_ahead_bytes_));
   return Status::OK();
 }
 
@@ -328,9 +370,13 @@ bool GcsFileSystem::FileExists(const string& fname) {
     LOG(ERROR) << "Could not initialize the HTTP request.";
     return false;
   }
-  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
-                                  request->EscapeString(object_prefix),
-                                  "?fields=size"));
+  if (!object_prefix.empty()) {
+    request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
+                                    request->EscapeString(object_prefix),
+                                    "?fields=size"));
+  } else {
+    request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
+  }
   request->AddAuthBearerHeader(auth_token);
   return request->Send().ok();
 }
@@ -347,58 +393,74 @@ Status GcsFileSystem::GetChildren(const string& dirname,
   string bucket, object_prefix;
   TF_RETURN_IF_ERROR(ParseGcsPath(sanitized_dirname, &bucket, &object_prefix));
 
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+  string nextPageToken;
+  while (true) {  // A loop over multiple result pages.
+    string auth_token;
+    TF_RETURN_IF_ERROR(
+        AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
-  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
-  StringPiece response_piece;
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(
-      strings::StrCat(kGcsUriBase, "b/", bucket, "/o?prefix=",
-                      request->EscapeString(object_prefix), "&fields=items")));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-  // TODO(surkov): Implement pagination using maxResults and pageToken
-  //     instead, so that all items can be read regardless of their count.
-  //     Currently one item takes about 1KB in the response, so with a 1MB
-  //     buffer size this will read fewer than 1000 objects.
-  TF_RETURN_IF_ERROR(
-      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-  TF_RETURN_IF_ERROR(request->Send());
-  std::stringstream response_stream;
-  response_stream << response_piece;
-  Json::Value root;
-  Json::Reader reader;
-  if (!reader.parse(response_stream.str(), root)) {
-    return errors::Internal("Couldn't parse JSON response from GCS.");
-  }
-  const auto items = root.get("items", Json::Value::null);
-  if (items == Json::Value::null) {
-    // Empty results.
-    return Status::OK();
-  }
-  if (!items.isArray()) {
-    return errors::Internal("Expected an array 'items' in the GCS response.");
-  }
-  for (size_t i = 0; i < items.size(); i++) {
-    const auto item = items.get(i, Json::Value::null);
-    if (!item.isObject()) {
-      return errors::Internal(
-          "Unexpected JSON format: 'items' should be a list of objects.");
+    std::unique_ptr<char[]> scratch(new char[kBufferSize]);
+    StringPiece response_piece;
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    TF_RETURN_IF_ERROR(request->Init());
+    auto uri = strings::StrCat(kGcsUriBase, "b/", bucket,
+                               "/o?fields=items%2Fname%2CnextPageToken");
+    if (!object_prefix.empty()) {
+      uri = strings::StrCat(uri, "&prefix=",
+                            request->EscapeString(object_prefix));
     }
-    const auto name = item.get("name", Json::Value::null);
-    if (name == Json::Value::null || !name.isString()) {
-      return errors::Internal(
-          "Unexpected JSON format: 'items.name' is missing or not a string.");
+    if (!nextPageToken.empty()) {
+      uri = strings::StrCat(uri, "&pageToken=",
+                            request->EscapeString(nextPageToken));
     }
-    // The names should be relative to the 'dirname'. That means the
-    // 'object_prefix', which is part of 'dirname', should be removed from the
-    // beginning of 'name'.
-    string name_str(name.asString());
-    result->emplace_back(name_str.begin() + object_prefix.size(),
-                         name_str.end());
+    TF_RETURN_IF_ERROR(request->SetUri(uri));
+    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+    TF_RETURN_IF_ERROR(
+        request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+    TF_RETURN_IF_ERROR(request->Send());
+    std::stringstream response_stream;
+    response_stream << response_piece;
+    Json::Value root;
+    Json::Reader reader;
+    if (!reader.parse(response_stream.str(), root)) {
+      return errors::Internal("Couldn't parse JSON response from GCS.");
+    }
+    const auto items = root.get("items", Json::Value::null);
+    if (items == Json::Value::null) {
+      // Empty results.
+      return Status::OK();
+    }
+    if (!items.isArray()) {
+      return errors::Internal("Expected an array 'items' in the GCS response.");
+    }
+    for (size_t i = 0; i < items.size(); i++) {
+      const auto item = items.get(i, Json::Value::null);
+      if (!item.isObject()) {
+        return errors::Internal(
+            "Unexpected JSON format: 'items' should be a list of objects.");
+      }
+      const auto name = item.get("name", Json::Value::null);
+      if (name == Json::Value::null || !name.isString()) {
+        return errors::Internal(
+            "Unexpected JSON format: 'items.name' is missing or not a string.");
+      }
+      // The names should be relative to the 'dirname'. That means the
+      // 'object_prefix', which is part of 'dirname', should be removed from the
+      // beginning of 'name'.
+      string name_str(name.asString());
+      result->emplace_back(name_str.begin() + object_prefix.size(),
+                           name_str.end());
+    }
+    const auto token = root.get("nextPageToken", Json::Value::null);
+    if (token == Json::Value::null) {
+      return Status::OK();
+    }
+    if (!token.isString()) {
+      return errors::Internal(
+          "Unexpected response: nextPageToken is not a string");
+    }
+    nextPageToken = token.asString();
   }
-  return Status::OK();
 }
 
 Status GcsFileSystem::DeleteFile(const string& fname) {
@@ -424,12 +486,8 @@ Status GcsFileSystem::CreateDir(const string& dirname) { return Status::OK(); }
 // Checks that the directory is empty (i.e no objects with this prefix exist).
 // If it is, does nothing, because directories are not entities in GCS.
 Status GcsFileSystem::DeleteDir(const string& dirname) {
-  string sanitized_dirname = dirname;
-  if (!dirname.empty() && dirname.back() != '/') {
-    sanitized_dirname += "/";
-  }
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildren(sanitized_dirname, &children));
+  TF_RETURN_IF_ERROR(GetChildren(dirname, &children));
   if (!children.empty()) {
     return errors::InvalidArgument("Cannot delete a non-empty directory.");
   }
@@ -502,6 +560,6 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   return Status::OK();
 }
 
-REGISTER_FILE_SYSTEM("gs", GcsFileSystem);
+REGISTER_FILE_SYSTEM("gs", RetryingGcsFileSystem);
 
 }  // namespace tensorflow

@@ -124,8 +124,8 @@ class GraphIOTest(tf.test.TestCase):
           _VALID_FILE_PATTERN, batch_size, features, randomize_input=False,
           queue_capacity=queue_capacity, reader_num_threads=2,
           parser_num_threads=2, name=name)
-      self.assertEquals("%s/parse_example_batch_join:1" % name,
-                        features["feature"].name)
+      self.assertEqual("%s/parse_example_batch_join:1" % name,
+                       features["feature"].name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_names_name = "%s/input" % file_name_queue_name
       example_queue_name = "%s/fifo_queue" % name
@@ -153,7 +153,7 @@ class GraphIOTest(tf.test.TestCase):
           reader=tf.TFRecordReader, randomize_input=True,
           num_epochs=1,
           queue_capacity=queue_capacity, name=name)
-      self.assertEquals("%s:1" % name, inputs.name)
+      self.assertEqual("%s:1" % name, inputs.name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_name_queue_limit_name = (
           "%s/limit_epochs/epochs" % file_name_queue_name)
@@ -182,7 +182,7 @@ class GraphIOTest(tf.test.TestCase):
           _VALID_FILE_PATTERN, batch_size,
           reader=tf.TFRecordReader, randomize_input=True,
           queue_capacity=queue_capacity, name=name)
-      self.assertEquals("%s:1" % name, inputs.name)
+      self.assertEqual("%s:1" % name, inputs.name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_names_name = "%s/input" % file_name_queue_name
       example_queue_name = "%s/random_shuffle_queue" % name
@@ -273,11 +273,11 @@ class GraphIOTest(tf.test.TestCase):
       tf.train.start_queue_runners(session, coord=coord)
 
       self.assertAllEqual(session.run([keys, inputs]),
-                          [[b"%s:1" % filename], [b"ABC"]])
+                          [[filename.encode("utf-8") + b":1"], [b"ABC"]])
       self.assertAllEqual(session.run([keys, inputs]),
-                          [[b"%s:2" % filename], [b"DEF"]])
+                          [[filename.encode("utf-8") + b":2"], [b"DEF"]])
       self.assertAllEqual(session.run([keys, inputs]),
-                          [[b"%s:3" % filename], [b"GHK"]])
+                          [[filename.encode("utf-8") + b":3"], [b"GHK"]])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 
@@ -311,13 +311,13 @@ class GraphIOTest(tf.test.TestCase):
 
       key, age = session.run([keys, inputs["age"]])
       self.assertAllEqual(age, [[0]])
-      self.assertAllEqual(key, [b"%s:1" % filename])
+      self.assertAllEqual(key, [filename.encode("utf-8") + b":1"])
       key, age = session.run([keys, inputs["age"]])
       self.assertAllEqual(age, [[1]])
-      self.assertAllEqual(key, [b"%s:2" % filename])
+      self.assertAllEqual(key, [filename.encode("utf-8") + b":2"])
       key, age = session.run([keys, inputs["age"]])
       self.assertAllEqual(age, [[2]])
-      self.assertAllEqual(key, [b"%s:3" % filename])
+      self.assertAllEqual(key, [filename.encode("utf-8") + b":3"])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 

@@ -28,18 +28,38 @@ class Chi2(gamma.Gamma):
 
   The PDF of this distribution is:
 
-  ```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(k/2)Gamma(k/2)), x > 0```
+  ```pdf(x) = (x^(df/2 - 1)e^(-x/2))/(2^(df/2)Gamma(df/2)), x > 0```
 
   Note that the Chi2 distribution is a special case of the Gamma distribution,
   with Chi2(df) = Gamma(df/2, 1/2).
   """
 
-  def __init__(self, df, name="Chi2"):
-    with ops.op_scope([df], name, "init"):
+  def __init__(self, df, strict=True, strict_statistics=True, name="Chi2"):
+    """Construct Chi2 distributions with parameter `df`.
+
+    Args:
+      df: `float` or `double` tensor, the degrees of freedom of the
+        distribution(s).  `df` must contain only positive values.
+      strict: Whether to assert that `df > 0`, and that `x > 0` in the
+        methods `prob(x)` and `log_prob(x)`. If `strict` is False
+        and the inputs are invalid, correct behavior is not guaranteed.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
+      name: The name to prepend to all ops created by this distribution.
+    """
+    # Even though all stats of chi2 are defined for valid parameters, this is
+    # not true in the parent class "gamma."  therefore, passing
+    # strict_statistics=True
+    # through to the parent class results in unnecessary asserts.
+    with ops.op_scope([df], name):
       df = ops.convert_to_tensor(df)
       self._df = df
       super(Chi2, self).__init__(alpha=df / 2,
-                                 beta=math_ops.cast(0.5, dtype=df.dtype))
+                                 beta=math_ops.cast(0.5, dtype=df.dtype),
+                                 strict=strict,
+                                 strict_statistics=strict_statistics)
 
   @property
   def df(self):

@@ -35,6 +35,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
@@ -1100,7 +1101,8 @@ def _NodeDef(op_type, name, device=None, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-/]*")
+_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/]*$")
 
 
 class Operation(object):
@@ -1984,6 +1986,9 @@ class Graph(object):
     self._handle_movers = {}
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
+    # Resource container.
+    self._container = ""
+    self._registered_ops = op_def_registry.get_registered_ops()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2319,6 +2324,19 @@ class Graph(object):
       all_colocation_groups = sorted(set(all_colocation_groups))
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+
+    # Sets "container" attribute if
+    # (1) self._container is not None
+    # (2) "is_stateful" is set in OpDef
+    # (3) "container" attribute is in OpDef
+    # (4) "container" attribute is None
+    if (self._container and
+        op_type in self._registered_ops and
+        self._registered_ops[op_type].is_stateful and
+        "container" in ret.node_def.attr and
+        not ret.node_def.attr["container"].s):
+      ret.node_def.attr["container"].CopyFrom(
+          attr_value_pb2.AttrValue(s=compat.as_bytes(self._container)))
 
     return ret
 
@@ -2679,7 +2697,7 @@ class Graph(object):
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def name_scope(self, name):
-    """Returns a context manager that creates hierarchical names for operations.
+    r"""Returns a context manager that creates hierarchical names for operations.
 
     A graph maintains a stack of name scopes. A `with name_scope(...):`
     statement pushes a new name onto the stack for the lifetime of the context.
@@ -2746,12 +2764,33 @@ class Graph(object):
       output = tf.nn.relu(affine, name=scope)
     ```
 
+    NOTE: This constructor validates the given `name`. Valid scope
+    names match one of the following regular expressions:
+
+        [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (for scopes at the root)
+        [A-Za-z0-9_.\\-/]* (for other scopes)
+
     Args:
       name: A name for the scope.
 
     Returns:
       A context manager that installs `name` as a new name scope.
+
+    Raises:
+      ValueError: If `name` is not a valid scope name. The rules are the
     """
+    if name:
+      if self._name_stack:
+        # Scopes created in a nested scope may have initial characters
+        # that are illegal as the initial character of an op name
+        # (viz. '-', '\', '/', and '_').
+        if not _VALID_SCOPE_NAME_REGEX.match(name):
+          raise ValueError("'%s' is not a valid scope name" % name)
+      else:
+        # Scopes created in the root must match the more restrictive
+        # op name regex, which constrains the initial character.
+        if not _VALID_OP_NAME_REGEX.match(name):
+          raise ValueError("'%s' is not a valid scope name" % name)
     try:
       old_stack = self._name_stack
       if not name:  # Both for name=None and name="" we re-set to empty scope.
@@ -2957,6 +2996,60 @@ class Graph(object):
       if device_function is None:
         break
       op._set_device(device_function(op))
+
+  # pylint: disable=g-doc-return-or-yield
+  @contextlib.contextmanager
+  def container(self, container_name):
+    """Returns a context manager that specifies the resource container to use.
+
+    Stateful operations, such as variables and queues, can maintain their
+    states on devices so that they can be shared by multiple processes.
+    A resource container is a string name under which these stateful
+    operations are tracked. These resources can be released or cleared
+    with `tf.Session.reset()`.
+
+    For example:
+
+    ```python
+    with g.container('experiment0'):
+      # All stateful Operations constructed in this context will be placed
+      # in resource container "experiment0".
+      v1 = tf.Variable([1.0])
+      v2 = tf.Variable([2.0])
+      with g.container("experiment1"):
+        # All stateful Operations constructed in this context will be
+        # placed in resource container "experiment1".
+        v3 = tf.Variable([3.0])
+        q1 = tf.FIFOQueue(10, tf.float32)
+      # All stateful Operations constructed in this context will be
+      # be created in the "experiment0".
+      v4 = tf.Variable([4.0])
+      q1 = tf.FIFOQueue(20, tf.float32)
+      with g.container(""):
+        # All stateful Operations constructed in this context will be
+        # be placed in the default resource container.
+        v5 = tf.Variable([5.0])
+        q3 = tf.FIFOQueue(30, tf.float32)
+
+    # Resets container "experiment0", after which the state of v1, v2, v4, q1
+    # will become undefined (such as unitialized).
+    tf.Session.reset(target, ["experiment0"])
+    ```
+
+    Args:
+      container_name: container name string.
+
+    Returns:
+      A context manager for defining resource containers for stateful ops,
+        yields the container name.
+    """
+    original_container = self._container
+    try:
+      self._container = container_name
+      yield self._container
+    finally:
+      self._container = original_container
+  # pylint: enable=g-doc-return-or-yield
 
   class _ControlDependenciesController(object):
     """Context manager for `control_dependencies()`."""
@@ -3333,6 +3426,19 @@ def device(device_name_or_function):
     created ops.
   """
   return get_default_graph().device(device_name_or_function)
+
+
+def container(container_name):
+  """Wrapper for `Graph.container()` using the default graph.
+
+  Args:
+    container_name: The container string to use in the context.
+
+  Returns:
+    A context manager that specifies the default container to use for newly
+    created stateful ops.
+  """
+  return get_default_graph().container(container_name)
 
 
 def colocate_with(op, ignore_existing=False):

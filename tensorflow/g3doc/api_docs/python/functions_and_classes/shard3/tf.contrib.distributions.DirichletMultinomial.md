@@ -67,7 +67,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, name='DirichletMultinomial', allow_arbitrary_counts=False)` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -81,11 +81,19 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet multinomial distributions.
-*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.
+    but are only a distribution over non-negative integers.  If `strict` is
+    `False`, this assertion is turned off.
+*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
+    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
 *  <b>`Examples`</b>: 
@@ -191,6 +199,20 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.DirichletMultinomial.is_continuous` {#DirichletMultinomial.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.is_reparameterized` {#DirichletMultinomial.is_reparameterized}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.DirichletMultinomial.log_cdf(x, name='log_cdf')` {#DirichletMultinomial.log_cdf}
 
 
@@ -198,14 +220,21 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.log_likelihood(value, name='log_likelihood')` {#DirichletMultinomial.log_likelihood}
+#### `tf.contrib.distributions.DirichletMultinomial.log_pdf(value, name='log_pdf')` {#DirichletMultinomial.log_pdf}
 
-Log likelihood of this distribution (same as log_pmf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.log_pmf(counts, name='log_pmf')` {#DirichletMultinomial.log_pmf}
+#### `tf.contrib.distributions.DirichletMultinomial.log_pmf(value, name='log_pmf')` {#DirichletMultinomial.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.log_prob(counts, name='log_prob')` {#DirichletMultinomial.log_prob}
 
 `Log(P[counts])`, computed for every batch member.
 
@@ -224,7 +253,7 @@ probability includes a combinatorial coefficient.
     distribution in `self.alpha`. `counts` is only legal if it sums up to
     `n` and its components are equal to integral values. The second
     condition is relaxed if `allow_arbitrary_counts` is set.
-*  <b>`name`</b>: Name to give this Op, defaults to "log_pmf".
+*  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
 
 ##### Returns:
 
@@ -261,7 +290,21 @@ Name to prepend to all ops.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.pmf(counts, name='pmf')` {#DirichletMultinomial.pmf}
+#### `tf.contrib.distributions.DirichletMultinomial.pdf(value, name='pdf')` {#DirichletMultinomial.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.pmf(value, name='pmf')` {#DirichletMultinomial.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.prob(counts, name='prob')` {#DirichletMultinomial.prob}
 
 `P[counts]`, computed for every batch member.
 
@@ -280,7 +323,7 @@ probability includes a combinatorial coefficient.
     distribution in `self.alpha`. `counts` is only legal if it sums up to
     `n` and its components are equal to integral values. The second
     condition is relaxed if `allow_arbitrary_counts` is set.
-*  <b>`name`</b>: Name to give this Op, defaults to "pmf".
+*  <b>`name`</b>: Name to give this Op, defaults to "prob".
 
 ##### Returns:
 
@@ -312,6 +355,20 @@ Generate `n` samples.
 #### `tf.contrib.distributions.DirichletMultinomial.std(name='std')` {#DirichletMultinomial.std}
 
 Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

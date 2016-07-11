@@ -29,13 +29,20 @@ using shape_inference::Shape;
 using errors::Unknown;
 
 Status InferShapes(const string& op_name, const string& ins,
-                   const string& expected_outs) {
+                   const string& expected_outs, const NodeDef* node_def,
+                   const std::vector<const Tensor*>& input_tensors) {
   const OpRegistrationData* op_reg_data;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op_name, &op_reg_data));
   const int num_outputs = op_reg_data->op_def.output_arg_size();
 
   std::vector<string> ins_v = str_util::Split(ins, ';');
-  shape_inference::InferenceContext c(ins_v, num_outputs);
+  std::unique_ptr<const NodeDef> new_node_def;
+  if (node_def == nullptr) {
+    new_node_def.reset(new NodeDef);
+    node_def = new_node_def.get();
+  }
+  shape_inference::InferenceContext c(node_def, ins_v, num_outputs,
+                                      input_tensors);
   TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
 
   std::unordered_map<const Dimension*, std::pair<int, int>>

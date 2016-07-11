@@ -44,23 +44,23 @@ EIGEN_HASH := $(shell cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d-
 # Settings for the host compiler.
 HOST_CXX := $(CC_PREFIX) gcc
 HOST_CXXFLAGS := --std=c++11
-HOST_LDOPTS := \
--L/usr/local/lib
-
+HOST_LDOPTS := 
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_LDOPTS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
 endif
+HOST_LDOPTS += -L/usr/local/lib
 
 HOST_INCLUDES := \
--I/usr/local/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
 -I$(HOST_GENDIR)
-
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
 endif
+# This is at the end so any globally-installed frameworks like protobuf don't
+# override local versions in the source tree.
+HOST_INCLUDES += -I/usr/local/include
 
 HOST_LIBS := \
 -lstdc++ \
@@ -120,21 +120,18 @@ CXXFLAGS := --std=c++11 -DIS_SLIM_BUILD $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib
 
-ifeq ($(HAS_GEN_HOST_PROTOC),true)
-	HOST_LDOPTS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
-endif
-
 INCLUDES := \
--I/usr/local/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
-
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
 endif
+# This is at the end so any globally-installed frameworks like protobuf don't
+# override local versions in the source tree.
+INCLUDES += -I/usr/local/include
 
 LIBS := \
 -lstdc++ \
@@ -400,7 +397,7 @@ $(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH)
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 # Matches on the normal hand-written TensorFlow C++ source files.
-$(OBJDIR)%.o: %.cc 
+$(OBJDIR)%.o: %.cc | $(PBT_GEN_FILES)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 

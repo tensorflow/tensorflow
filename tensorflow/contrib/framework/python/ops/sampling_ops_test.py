@@ -63,6 +63,11 @@ class SamplingOpsTest(tf.test.TestCase):
       tf.contrib.framework.sampling_ops.stratified_sample(
           val, label, np.array([.1] * 5), batch_size)
 
+    # Probabilities must be 1D.
+    with self.assertRaises(ValueError):
+      tf.contrib.framework.sampling_ops.stratified_sample(
+          val, label, np.array([[.25, .25], [.25, .25]]), batch_size)
+
   def testRuntimeAssertionFailures(self):
     probs = [.2] * 5
     vals = tf.zeros([3, 1])
@@ -75,14 +80,14 @@ class SamplingOpsTest(tf.test.TestCase):
 
     # Set up graph with illegal label vector.
     label_ph = tf.placeholder(tf.int32, shape=[None])
-    batch_tf = tf.contrib.framework.sampling_ops._verify_input(
+    vals_tf, lbls_tf, _ = tf.contrib.framework.sampling_ops._verify_input(
         vals, label_ph, probs)
 
     for illegal_label in illegal_labels:
       # Run session that should fail.
       with self.test_session() as sess:
         with self.assertRaises(tf.errors.InvalidArgumentError):
-          sess.run(batch_tf, feed_dict={label_ph: illegal_label})
+          sess.run([vals_tf, lbls_tf], feed_dict={label_ph: illegal_label})
 
   def testBatchingBehavior(self):
     batch_size = 20
@@ -105,6 +110,27 @@ class SamplingOpsTest(tf.test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def testCanBeCalledMultipleTimes(self):
+    batch_size = 20
+    val_input_batch = tf.zeros([2, 3, 4])
+    lbl_input_batch = tf.ones([], dtype=tf.int32)
+    probs = np.array([0, 1, 0, 0, 0])
+    batch1 = tf.contrib.framework.sampling_ops.stratified_sample(
+        val_input_batch, lbl_input_batch, probs, batch_size)
+    batch2 = tf.contrib.framework.sampling_ops.stratified_sample(
+        val_input_batch, lbl_input_batch, probs, batch_size)
+    summary_op = tf.merge_summary(tf.get_collection(
+        tf.GraphKeys.SUMMARIES))
+
+    with self.test_session() as sess:
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(coord=coord)
+
+      sess.run(batch1 + batch2 + (summary_op,))
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testBatchDimensionNotRequired(self):
     classes = 5
     probs = [1.0/classes] * classes
@@ -119,13 +145,14 @@ class SamplingOpsTest(tf.test.TestCase):
     # Set up graph with placeholders.
     vals_ph = tf.placeholder(tf.float32)  # completely undefined shape
     labels_ph = tf.placeholder(tf.int32)  # completely undefined shape
-    batch_tf = tf.contrib.framework.sampling_ops._verify_input(
+    vals_tf, lbls_tf, _ = tf.contrib.framework.sampling_ops._verify_input(
         vals_ph, labels_ph, probs)
 
     # Run graph to make sure there are no shape-related runtime errors.
     for vals, labels in legal_input_pairs:
       with self.test_session() as sess:
-        sess.run(batch_tf, feed_dict={vals_ph: vals, labels_ph: labels})
+        sess.run([vals_tf, lbls_tf], feed_dict={vals_ph: vals,
+                                                labels_ph: labels})
 
   def testNormalBehavior(self):
     # Set up graph.

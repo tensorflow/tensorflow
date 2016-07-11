@@ -41,7 +41,20 @@ class TensorCApi;
 /// Represents an n-dimensional array of values.
 class Tensor {
  public:
-  /// Default Tensor constructor. Creates a 1-dimension, 0-element float tensor.
+  /// \brief Creates a 1-dimensional, 0-element float tensor.
+  ///
+  /// The returned Tensor is not a scalar (shape {}), but is instead
+  /// an empty one-dimensional Tensor (shape {0}, NumElements() ==
+  /// 0). Since it has no elements, it does not need to be assigned a
+  /// value and is initialized by default (IsInitialized() is
+  /// true). If this is undesirable, consider creating a one-element
+  /// scalar which does require initialization:
+  ///
+  /// ```c++
+  ///
+  ///     Tensor(DT_FLOAT, TensorShape({}))
+  ///
+  /// ```
   Tensor();
 
   /// \brief Creates a Tensor of the given `type` and `shape`.  If
@@ -79,7 +92,11 @@ class Tensor {
   Tensor(Allocator* a, DataType type, const TensorShape& shape,
          const AllocationAttributes& allocation_attr);
 
-  /// Creates an uninitialized Tensor of the given data type.
+  /// \brief Creates an empty Tensor of the given data type.
+  ///
+  /// Like Tensor(), returns a 1-dimensional, 0-element Tensor with
+  /// IsInitialized() returning True. See the Tensor() documentation
+  /// for details.
   explicit Tensor(DataType type);
 
   Tensor(const Tensor& other);  /// Copy constructor.
@@ -120,7 +137,10 @@ class Tensor {
   // underlying refcounted storage
   size_t BufferHash() const;
 
-  /// Has this Tensor been initialized?
+  /// \brief If necessary, has this Tensor been initialized?
+  ///
+  /// Zero-element Tensors are always considered initialized, even if they
+  /// have never been assigned to and do not have any memory allocated.
   bool IsInitialized() const;
 
   /// Returns the estimated memory usage of this tensor.

@@ -18,7 +18,9 @@ Instead, use `gulp regenerate` to create a new version with your changes.
 -->
 
 <html><head><meta charset="UTF-8">
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+</head><body><div hidden="" by-vulcanize=""><dom-module id="tf-globals" assetpath="../tf-globals/">
+ <script>/* Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,75 +34,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+/* tslint:disable:no-namespace */
 var TF;
 (function (TF) {
-    var TensorBoard;
-    (function (TensorBoard) {
-        TensorBoard.TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
-    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
+    var Globals;
+    (function (Globals) {
+        // The names of TensorBoard tabs.
+        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
+        // If true, TensorBoard stores its hash in the URI state.
+        // If false, tab switching in TensorBoard will not update location hash,
+        // because hash updates interfere with wct_tests.
+        Globals.USE_HASH = false;
+        // If USE_HASH is false, FAKE_HASH holds the hash contents.
+        Globals.FAKE_HASH = '';
+    })(Globals = TF.Globals || (TF.Globals = {}));
 })(TF || (TF = {}));
 </script>
-<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+</dom-module>
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-var TF;
-(function (TF) {
-    var TensorBoard;
-    (function (TensorBoard) {
-        TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY = 'TF.TensorBoard.autoReloadEnabled';
-        var getAutoReloadFromLocalStorage = function () {
-            var val = window.localStorage.getItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY);
-            return val === 'true' || val == null; // defaults to true
-        };
-        TensorBoard.AutoReloadBehavior = {
-            properties: {
-                autoReloadEnabled: {
-                    type: Boolean,
-                    observer: '_autoReloadObserver',
-                    value: getAutoReloadFromLocalStorage,
-                },
-                _autoReloadId: {
-                    type: Number,
-                },
-                autoReloadIntervalSecs: {
-                    type: Number,
-                    value: 120,
-                },
-            },
-            detached: function () { window.clearTimeout(this._autoReloadId); },
-            _autoReloadObserver: function (autoReload) {
-                window.localStorage.setItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
-                if (autoReload) {
-                    var _this = this;
-                    this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
-                }
-                else {
-                    window.clearTimeout(this._autoReloadId);
-                }
-            },
-            _doAutoReload: function () {
-                if (this.reload == null) {
-                    throw new Error('AutoReloadBehavior requires a reload method');
-                }
-                this.reload();
-                this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
-            }
-        };
-    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
-})(TF || (TF = {}));
-</script>
-</head><body><div hidden="" by-vulcanize="">
 <dom-module id="scrollbar-style" assetpath="../tf-dashboard-common/">
   <template>
     <style>
@@ -552,13 +504,15 @@ var TF;
             '#f4b400' // google yellow 700
         ],
         googleColorBlindAssist: [
-            '#c53929',
             '#ff7043',
-            '#f7cb4d',
+            '#00ACC1',
+            '#AB47BC',
+            '#2A56C6',
             '#0b8043',
-            '#80deea',
-            '#4285f4',
-            '#5e35b1' // deep purple 600
+            '#F7CB4D',
+            '#c0ca33',
+            '#5e35b1',
+            '#A52714',
         ],
         // These palettes try to be better for color differentiation.
         // https://personal.sron.nl/~pault/
@@ -579,11 +533,6 @@ var TF;
         mldash: [
             '#E47EAD', '#F4640D', '#FAA300', '#F5E636', '#00A077', '#0077B8',
             '#00B7ED'
-        ],
-        // This rainbow palette attempts to keep a constant brightness across hues.
-        constantValue: [
-            '#f44336', '#ffa216', '#c2d22d', '#51b455', '#1ca091', '#505ec4',
-            '#a633ba'
         ]
     };
 })(TF || (TF = {}));
@@ -602,20 +551,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Each color scale is initialized with a configurable number of base hues.
-// There are also several palettes available.
-// TF.palettes.googleStandard, TF.palettes.googleColorBlind,
-// TF.palettes.googleCool, TF.palettes.googleWarm, TF.palettes.constantValue
-// Each string is hashed to an integer,
-// then mapped to one of the base hues above.
-// If there is a collision, the color that is later in an alphabetical sort
-// gets nudged a little darker or lighter to disambiguate.
-// I would call it mostly stable, in that the same array of strings will
-// always return the same colors, but the same individual string may
-// shift a little depending on its peers.
-//
+// Example usage:
 // runs = ["train", "test", "test1", "test2"]
-// ccs = new TF.ColorScale(12, "googleStandard");
+// ccs = new TF.ColorScale();
 // ccs.domain(runs);
 // ccs.getColor("train");
 // ccs.getColor("test1");
@@ -623,104 +561,39 @@ var TF;
 (function (TF) {
     var ColorScale = (function () {
         /**
-         * The palette you provide defines your spectrum. The colorscale will
-         * always use the full spectrum you provide. When you define "numColors"
-         * it resamples at regular intervals along the full extent of the spectrum.
-         * Thus you get the maximum distance between hues for the "numColors"
-         * given. This allows the programmer to tweak the algorithm depending on
-         * how big your expected domain is. If you generally think you're going to
-         * have a small number of elements in the domain, then a small numColors
-         * will be serviceable. With large domains, a small numColors would produce
-         * too many hash collisions, so you'd want to bump it up to the threshold
-         * of human perception (probably around 14 or 18).
-         *
-         * @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
-         *                 palette you want as an Array of hex strings. Note, the
-         *                 length of the array in this palette is independent of the
-         *                 param numColors above. The scale will interpolate to
-         *                 create the proper "numColors" given in the first param.
-         *
-         * @param {number} [numColors] - The number of base colors you want
-         *                 in the palette. The more colors, the smaller the number
-         *                 the more hash collisions you will have, but the more
-         *                 differentiable the base colors will be.
+         * Creates a color scale with optional custom palette.
+         *  @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
+         *                 palette you want as an Array of hex strings.
          */
-        function ColorScale(palette, numColors) {
+        function ColorScale(palette) {
             if (palette === void 0) { palette = TF.palettes.googleColorBlindAssist; }
-            this.LIGHTNESS_NUDGE = 0.8;
-            this.numColors = numColors ? numColors : palette.length;
-            this.domain([]);
-            if (palette.length < 2) {
-                throw new Error('Not enough colors in palette. Must be more than one.');
-            }
-            var k = (this.numColors - 1) / (palette.length - 1);
-            this.internalColorScale =
-                d3.scale.linear()
-                    .domain(d3.range(palette.length).map(function (i) { return i * k; }))
-                    .range(palette);
+            this.identifiers = d3.map();
+            this.palette = palette;
         }
-        ColorScale.prototype.hash = function (s) {
-            function h(hash, str) {
-                hash = (hash << 5) - hash + str.charCodeAt(0);
-                return hash & hash;
-            }
-            return Math.abs(Array.prototype.reduce.call(s, h, 0)) % this.numColors;
-        };
         /**
-         * Set the domain of strings so we can calculate collisions preemptively.
-         * Can be reset at any point.
-         *
-         * @param {string[]} strings - An array of strings to use as the domain
-         *                             for your scale.
+         * Set the domain of strings.
+         * @param {string[]} strings - An array of possible strings to use as the
+         *                             domain for your scale.
          */
         ColorScale.prototype.domain = function (strings) {
             var _this = this;
-            this.buckets = d3.range(this.numColors).map(function () { return []; });
-            var sortedUniqueKeys = d3.set(strings).values().sort(function (a, b) {
-                return a.localeCompare(b);
+            this.identifiers = d3.map();
+            strings.forEach(function (s, i) {
+                _this.identifiers.set(s, _this.palette[i % _this.palette.length]);
             });
-            sortedUniqueKeys.forEach(function (s) { return _this.addToDomain(s); });
             return this;
-        };
-        ColorScale.prototype.getBucketForString = function (s) {
-            var bucketIdx = this.hash(s);
-            return this.buckets[bucketIdx];
-        };
-        ColorScale.prototype.addToDomain = function (s) {
-            var bucketIdx = this.hash(s);
-            var bucket = this.buckets[bucketIdx];
-            if (bucket.indexOf(s) === -1) {
-                bucket.push(s);
-            }
-        };
-        ColorScale.prototype.nudge = function (color, amount) {
-            // If amount is zero, just give back same color
-            if (amount === 0) {
-                return color;
-            }
-            else if (amount === 1) {
-                return d3.hcl(color).brighter(this.LIGHTNESS_NUDGE);
-            }
-            else {
-                return d3.hcl(color).darker((amount - 1) * this.LIGHTNESS_NUDGE);
-            }
         };
         /**
          * Use the color scale to transform an element in the domain into a color.
-         * If there was a hash conflict, the color will be "nudged" darker or
-         * lighter so that it is unique.
          * @param {string} The input string to map to a color.
          * @return {string} The color corresponding to that input string.
          * @throws Will error if input string is not in the scale's domain.
          */
         ColorScale.prototype.scale = function (s) {
-            var bucket = this.getBucketForString(s);
-            var idx = bucket.indexOf(s);
-            if (idx === -1) {
+            if (!this.identifiers.has(s)) {
                 throw new Error('String was not in the domain.');
             }
-            var color = this.internalColorScale(this.hash(s));
-            return this.nudge(color, idx).toString();
+            return this.identifiers.get(s);
         };
         return ColorScale;
     }());
@@ -2662,40 +2535,30 @@ var TF;
             }
             /**
              * Returns a listing of all the available data in the TensorBoard backend.
-             * Will be deprecated in the future, in favor of
-             * per-data-type methods.
              */
             Backend.prototype.runs = function () {
                 return this.requestManager.request(this.router.runs());
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for scalar data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.scalarRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'scalars'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for histogram data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.histogramRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'histograms'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for image data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.imageRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'images'); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for audio data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.audioRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'audio'); });
@@ -2703,24 +2566,18 @@ var TF;
             /**
              * Return a promise showing the Run-to-Tag mapping for compressedHistogram
              * data.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.compressedHistogramRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'compressedHistograms'); });
             };
             /**
              * Return a promise showing list of runs that contain graphs.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.graphRuns = function () {
                 return this.runs().then(function (x) { return _.keys(x).filter(function (k) { return x[k].graph; }); });
             };
             /**
              * Return a promise showing the Run-to-Tag mapping for run_metadata objects.
-             * TODO(cassandrax): Replace this with the direct route, when
-             * available.
              */
             Backend.prototype.runMetadataRuns = function () {
                 return this.runs().then(function (x) { return _.mapValues(x, 'run_metadata'); });
@@ -4106,6 +3963,7 @@ var tf;
             }
             return OpNodeImpl;
         }());
+        graph_1.OpNodeImpl = OpNodeImpl;
         ;
         function createMetanode(name, opt) {
             if (opt === void 0) { opt = {}; }
@@ -4116,8 +3974,14 @@ var tf;
          * Joins the information from the stats file (memory, compute time) with the
          * graph information.
          */
-        function joinStatsInfoWithGraph(graph, stats) {
+        function joinStatsInfoWithGraph(graph, stats, devicesForStats) {
+            // Reset stats for each node.
+            _.each(graph.nodes, function (node) { node.stats = null; });
             _.each(stats.dev_stats, function (devStats) {
+                // Ignore devices that are not selected.
+                if (devicesForStats && !devicesForStats[devStats.device]) {
+                    return;
+                }
                 _.each(devStats.node_stats, function (nodeStats) {
                     // Lookup the node in the graph by its original name, e.g. A. If not
                     // found, lookup by the rewritten name A/(A) in case the name is both
@@ -4173,6 +4037,11 @@ var tf;
          */
         var NodeStats = (function () {
             function NodeStats(outputSize) {
+                /**
+                 * Total number of bytes used for the node. Sum of all children
+                 * if it is a Group node.
+                 */
+                this.totalBytes = 0;
                 this.outputSize = outputSize;
             }
             /**
@@ -4303,6 +4172,7 @@ var tf;
             };
             return MetanodeImpl;
         }());
+        graph_1.MetanodeImpl = MetanodeImpl;
         ;
         function createMetaedge(v, w) {
             return new MetaedgeImpl(v, w);
@@ -4659,6 +4529,7 @@ var tf;
             var parts = name.split(graph_1.NAMESPACE_DELIM);
             return name + graph_1.NAMESPACE_DELIM + '(' + parts[parts.length - 1] + ')';
         }
+        graph_1.getStrictName = getStrictName;
         /**
          * For each op node (embedding or non-embedding), rename it if there is a
          * non-embedding node under its namespace. For example, assume node name 'A'.
@@ -5567,10 +5438,7 @@ var tf;
                      * element. The padding amounts are applied using an SVG transform of X and
                      * Y coordinates.
                      */
-                    padding: {
-                        paddingTop: 40,
-                        paddingLeft: 20
-                    }
+                    padding: { paddingTop: 40, paddingLeft: 20 }
                 },
                 subscene: {
                     meta: {
@@ -5601,6 +5469,7 @@ var tf;
                     meta: {
                         radius: 5,
                         width: 60,
+                        maxLabelWidth: 52,
                         /** A scale for the node's height based on number of nodes inside */
                         height: d3.scale.linear().domain([1, 200]).range([15, 60]).clamp(true),
                         /** The radius of the circle denoting the expand button. */
@@ -5611,7 +5480,8 @@ var tf;
                         width: 15,
                         height: 6,
                         radius: 3,
-                        labelOffset: -8
+                        labelOffset: -8,
+                        maxLabelWidth: 30
                     },
                     /** Size of series nodes. */
                     series: {
@@ -5652,16 +5522,9 @@ var tf;
                 },
                 shortcutSize: {
                     /** Size of shortcuts for op nodes */
-                    op: {
-                        width: 10,
-                        height: 4
-                    },
+                    op: { width: 10, height: 4 },
                     /** Size of shortcuts for meta nodes */
-                    meta: {
-                        width: 12,
-                        height: 4,
-                        radius: 1
-                    },
+                    meta: { width: 12, height: 4, radius: 1 },
                     /** Size of shortcuts for series nodes */
                     series: {
                         width: 14,
@@ -5679,15 +5542,10 @@ var tf;
                     yOffset: 3,
                     /** X-space between each annotation-node and its label. */
                     labelOffset: 2,
-                    /** Estimate max width for annotation label */
-                    labelWidth: 35
+                    /** Defines the max width for annotation label */
+                    maxLabelWidth: 120
                 },
-                constant: {
-                    size: {
-                        width: 4,
-                        height: 4
-                    }
-                },
+                constant: { size: { width: 4, height: 4 } },
                 series: {
                     /** Maximum number of repeated item for unexpanded series node. */
                     maxStackCount: 3,
@@ -6639,6 +6497,7 @@ var tf;
                     this.index[hierarchy.root.name] = this.root;
                     this.buildSubhierarchy(hierarchy.root.name);
                     this.root.expanded = true;
+                    this.traceInputs = false;
                 }
                 RenderGraphInfo.prototype.computeScales = function () {
                     this.deviceColorMap = d3.scale.ordinal()
@@ -7794,22 +7653,19 @@ var tf;
                 function addAnnotationLabelFromNode(aGroup, a) {
                     var namePath = a.node.name.split('/');
                     var text = namePath[namePath.length - 1];
-                    var shortenedText = text.length > 8 ? text.substring(0, 8) + '...' : text;
-                    return addAnnotationLabel(aGroup, shortenedText, a, null, text);
+                    return addAnnotationLabel(aGroup, text, a, null);
                 }
-                function addAnnotationLabel(aGroup, label, a, additionalClassNames, fullLabel) {
+                function addAnnotationLabel(aGroup, label, a, additionalClassNames) {
                     var classNames = scene.Class.Annotation.LABEL;
                     if (additionalClassNames) {
                         classNames += ' ' + additionalClassNames;
                     }
-                    var titleText = fullLabel ? fullLabel : label;
-                    return aGroup.append('text')
+                    var txtElement = aGroup.append('text')
                         .attr('class', classNames)
                         .attr('dy', '.35em')
                         .attr('text-anchor', a.isIn ? 'end' : 'start')
-                        .text(label)
-                        .append('title')
-                        .text(titleText);
+                        .text(label);
+                    return tf.graph.scene.node.enforceLabelWidth(txtElement, -1);
                 }
                 function addInteraction(selection, d, annotation, sceneElement) {
                     selection
@@ -7837,7 +7693,7 @@ var tf;
                  * @param aGroup selection of a 'g.annotation' element.
                  * @param d Host node data.
                  * @param a annotation node data.
-                 * @param scene <tf-graph-scene> polymer element.
+                 * @param sceneElement <tf-graph-scene> polymer element.
                  */
                 function update(aGroup, d, a, sceneElement) {
                     var cx = graph.layout.computeCXPositionOfNodeShape(d);
@@ -8606,10 +8462,73 @@ var tf;
                         var scale = getLabelFontScale(sceneElement);
                         label.attr('font-size', scale(text.length) + 'px');
                     }
-                    label.text(text);
+                    var txtElement = label.text(text);
+                    enforceLabelWidth(txtElement, renderNodeInfo.node.type, renderNodeInfo);
                     return label;
                 }
-                ;
+                /**
+                 * This function shortens text which would exceed the maximum pixel width of
+                 * a label.
+                 *
+                 * @param txtElementSelection The text element containing the label's text as d3
+                 * selection.
+                 * @param nodeType The type of the node the label belongs to. If the node is
+                 * an annotation, the value is -1. Label widths are defined in
+                 * layout.PARAMS.nodeSize.{meta|op|...}.maxLabelWidth for nodes and
+                 * layout.PARAMS.annotations.labelWidth for annotations.
+                 * @param renderNodeInfo The render information about the node, required to
+                 * determine whether META nodes are collapsed or expanded.
+                 */
+                function enforceLabelWidth(txtElementSelection, nodeType, renderNodeInfo) {
+                    // Get text element itself and its on-screen width.
+                    var txtNode = txtElementSelection.node();
+                    var computedTxtLength = txtNode.getComputedTextLength();
+                    var labelContent = txtNode.textContent;
+                    // Get maximum length from settings.
+                    var maxLength = null;
+                    switch (nodeType) {
+                        case graph.NodeType.META:
+                            if (renderNodeInfo && !renderNodeInfo.expanded) {
+                                // node expanded.
+                                maxLength = graph.layout.PARAMS.nodeSize.meta.maxLabelWidth;
+                            }
+                            break;
+                        case graph.NodeType.OP:
+                            maxLength = graph.layout.PARAMS.nodeSize.op.maxLabelWidth;
+                            break;
+                        case -1:
+                            maxLength = graph.layout.PARAMS.annotations.maxLabelWidth;
+                            break;
+                        default:
+                            break;
+                    }
+                    // Return if no max length provided for node type, or current label length is
+                    // less than or equal to the provided length limit.
+                    if (maxLength === null || computedTxtLength <= maxLength) {
+                        return;
+                    }
+                    // Find the index of the character which exceeds the width.
+                    // getSubStringLength performs far better than getComputedTextLength, and
+                    // results in a 3x speed-up on average.
+                    var index = 1;
+                    while (txtNode.getSubStringLength(0, index) < maxLength) {
+                        index++;
+                    }
+                    // Shorten the label starting at the string length known to be one
+                    // character above max pixel length.
+                    // When shortened the original label's substring is concatenated with
+                    // '...', baseText contains the substring not including the '...'.
+                    var baseText = txtNode.textContent.substr(0, index);
+                    do {
+                        baseText = baseText.substr(0, baseText.length - 1);
+                        // Recompute text length.
+                        txtNode.textContent = baseText + '...';
+                        computedTxtLength = txtNode.getComputedTextLength();
+                    } while (computedTxtLength > maxLength && baseText.length > 0);
+                    // Add tooltip with full name and return.
+                    return txtElementSelection.append('title').text(labelContent);
+                }
+                node_1.enforceLabelWidth = enforceLabelWidth;
                 /**
                  * d3 scale used for sizing font of labels, used by labelBuild,
                  * initialized once by getLabelFontScale.
@@ -8873,10 +8792,333 @@ var tf;
                         d3.rgb(fill).darker().toString();
                 }
                 node_1.getStrokeForFill = getStrokeForFill;
+                /**
+                 * Finds selected node and highlights all nodes which are providing direct
+                 * or indirect input to the node and all edges connecting these nodes
+                 * together and to the selected node.
+                 *
+                 * @param renderGraphInfo Information on the rendered state of the graph.
+                 */
+                function traceInputs(renderGraphInfo) {
+                    // Reset all styling.
+                    d3.selectAll('.input-highlight').classed('input-highlight', false);
+                    d3.selectAll('.non-input').classed('non-input', false);
+                    d3.selectAll('.input-parent').classed('input-parent', false);
+                    d3.selectAll('.input-child').classed('input-child', false);
+                    d3.selectAll('.input-edge-highlight').classed('input-edge-highlight', false);
+                    d3.selectAll('.non-input-edge-highlight')
+                        .classed('non-input-edge-highlight', false);
+                    d3.selectAll('.input-highlight-selected')
+                        .classed('input-highlight-selected', false);
+                    // Extract currently selected node. Return if input tracing disabled or no
+                    // node is selected.
+                    var selectedNodeSelectorString = 'g.node.selected,g.op.selected';
+                    var node = d3.select(selectedNodeSelectorString);
+                    var currentNode = undefined;
+                    if (renderGraphInfo && renderGraphInfo.traceInputs && node && node[0] &&
+                        node[0][0]) {
+                        currentNode = node[0][0];
+                    }
+                    else {
+                        return;
+                    }
+                    var nodeName = currentNode.getAttribute('data-name');
+                    var opNodes = _getAllContainedOpNodes(nodeName, renderGraphInfo);
+                    var allTracedNodes = {};
+                    _.each(opNodes, function (nodeInstance) {
+                        allTracedNodes =
+                            traceAllInputsOfOpNode(renderGraphInfo, nodeInstance, allTracedNodes);
+                    });
+                    d3.selectAll(selectedNodeSelectorString).classed({
+                        // Remove the input-highlight from the selected node.
+                        'input-highlight': false,
+                        // Add input-highlight-selected class to selected node, which allows
+                        // treating the selected not as a special case of an input node.
+                        'input-highlight-selected': true
+                    });
+                    // Highlight all parent nodes of each OpNode as input parent to allow
+                    // specific highlighting.
+                    var highlightedNodes = Object.keys(allTracedNodes);
+                    var visibleNodes = _findVisibleParentsFromOpNodes(renderGraphInfo, highlightedNodes);
+                    _markParentsOfNodes(visibleNodes);
+                    // Attach class to all non-input nodes and edges for styling.
+                    d3.selectAll('g.node:not(.selected):not(.input-highlight)' +
+                        ':not(.input-parent):not(.input-children)')
+                        .classed('non-input', true)
+                        .each(function (d) {
+                        // Mark all nodes with the specified name as non-inputs. This
+                        // results in Annotation nodes which are attached to inputs to be
+                        // tagged as well.
+                        var nodeName = d.node.name;
+                        d3.selectAll("[data-name=\"" + nodeName + "\"]").classed('non-input', true);
+                    });
+                    d3.selectAll('g.edge:not(.input-edge-highlight)')
+                        .classed('non-input-edge-highlight', true);
+                }
+                node_1.traceInputs = traceInputs;
+                /**
+                 * Recursively find all op nodes contained by the node identified by the
+                 * provided name.
+                 * @param nodeName The meta or op node of which the OpNode instances are
+                 * required.
+                 * @param renderGraphInfo The rendered graph information object.
+                 * @returns {Array} An array of OpNodeImpl instances.
+                 */
+                function _getAllContainedOpNodes(nodeName, renderGraphInfo) {
+                    var opNodes = [];
+                    // Get current node.
+                    var node = renderGraphInfo.getNodeByName(nodeName);
+                    // If node is already OpNode then return the node plus its input embeddings.
+                    if (node instanceof tf.graph.OpNodeImpl) {
+                        return [node].concat(node.inEmbeddings);
+                    }
+                    // Otherwise, make recursive call for each node contained by the GroupNode.
+                    var childNodeNames = node.metagraph.nodes();
+                    _.each(childNodeNames, function (childNodeName) {
+                        opNodes =
+                            opNodes.concat(_getAllContainedOpNodes(childNodeName, renderGraphInfo));
+                    });
+                    return opNodes;
+                }
+                node_1._getAllContainedOpNodes = _getAllContainedOpNodes;
+                function traceAllInputsOfOpNode(renderGraphInfo, startNode, allTracedNodes) {
+                    // To prevent infinite loops due to cyclical relationships and improving
+                    // performance by tracing OpNode which is input to 2+ nodes only once.
+                    if (allTracedNodes[startNode.name]) {
+                        return allTracedNodes;
+                    }
+                    else {
+                        allTracedNodes[startNode.name] = true;
+                    }
+                    // Extract the inputs.
+                    var inputs = startNode.inputs;
+                    // Get visible parent.
+                    var currentVisibleParent = getVisibleParent(renderGraphInfo, startNode);
+                    // Mark as input node.
+                    d3.select(".node[data-name=\"" + currentVisibleParent.name + "\"]")
+                        .classed('input-highlight', true);
+                    // Find the visible parent of each input.
+                    var visibleInputs = {};
+                    _.each(inputs, function (nodeInstance) {
+                        var resolvedNode = renderGraphInfo.getNodeByName(nodeInstance.name);
+                        if (resolvedNode === undefined) {
+                            // Node could not be found in rendered Hierarchy, which happens when
+                            // tracing inputs of a SummaryNode.
+                            return;
+                        }
+                        // Ensure node is resolved to OpNode if name collision with Metanode exists.
+                        if (resolvedNode instanceof graph.MetanodeImpl) {
+                            var resolvedNodeName = tf.graph.getStrictName(resolvedNode.name);
+                            resolvedNode = renderGraphInfo.getNodeByName(resolvedNodeName);
+                        }
+                        var visibleParent = getVisibleParent(renderGraphInfo, resolvedNode);
+                        // Append OpNode to visible parent entry.
+                        var visibleInputsEntry = visibleInputs[visibleParent.name];
+                        if (visibleInputsEntry) {
+                            visibleInputsEntry.opNodes.push(resolvedNode);
+                        }
+                        else {
+                            visibleInputs[visibleParent.name] = {
+                                visibleParent: visibleParent,
+                                opNodes: [resolvedNode]
+                            };
+                        }
+                    });
+                    // Find all parents of the start node.
+                    var startNodeParents = {};
+                    var indexedStartNodeParents = [currentVisibleParent];
+                    startNodeParents[currentVisibleParent.name] = {
+                        traced: false,
+                        index: 0,
+                        connectionEndpoints: []
+                    };
+                    var currentNode = currentVisibleParent;
+                    for (var index = 1; currentNode.name !== tf.graph.ROOT_NAME; index++) {
+                        currentNode = currentNode.parentNode;
+                        startNodeParents[currentNode.name] = {
+                            traced: false,
+                            index: index,
+                            connectionEndpoints: []
+                        };
+                        indexedStartNodeParents[index] = currentNode;
+                    }
+                    // Find first mutual parent of each input node and highlight connection.
+                    _.forOwn(visibleInputs, function (visibleParentInfo, key) {
+                        var nodeInstance = visibleParentInfo.visibleParent;
+                        // Make recursive call for each input-OpNode contained by the visible
+                        // parent.
+                        _.each(visibleParentInfo.opNodes, function (opNode) {
+                            allTracedNodes =
+                                traceAllInputsOfOpNode(renderGraphInfo, opNode, allTracedNodes);
+                        });
+                        if (nodeInstance.name !== currentVisibleParent.name) {
+                            _createVisibleTrace(nodeInstance, startNodeParents, indexedStartNodeParents);
+                        }
+                    });
+                    return allTracedNodes;
+                }
+                node_1.traceAllInputsOfOpNode = traceAllInputsOfOpNode;
+                /**
+                 * Colors the edges to connect the passed node to the start node. This is
+                 * done by:
+                 *
+                 * a) Finding the first (visible) common parent in the rendered
+                 * hierarchy.
+                 * NB: There are 2 types of connections:
+                 * 1) Direct connections between node A
+                 * and B, marked below as II,
+                 * 2) Connections from any node A to its parent, A'. Marked below as I and III.
+                 * For type 2 connection you need to know the inner-nested node, the
+                 * direct parent, and the ultimate destination of the connection.
+                 *
+                 *  A_parent      B_parent
+                 * +--------+    +---------+
+                 * |        |    |         |
+                 * |  +--+ I| II |III+--+  |
+                 * |  |A +----------\x3e+B |  |
+                 * |  +--+  |    |   +--+  |
+                 * |        |    |         |
+                 * +--------+    +---------+
+                 *
+                 *
+                 * b) Highlighting the direct connection between the parents of A and B,
+                 * called A_parent and B_parent, s.t. A_parent and B_parent are children of the
+                 * mutual parent of A and B found in a), marked above as II.
+                 *
+                 * c) Highlighting the connection from A to A_parent and B to B_parent
+                 * (through all layers of parents between A and A_parent and B and B_parent,
+                 * respectively). Marked above as I and III.
+                 *
+                 * @param nodeInstance The instance of the node to use as destination node, B.
+                 * @param startNodeParents Map of startNodeParent names to information objects
+                 * about the parent.
+                 * @param indexedStartNodeParents An array of all parents of the start node.
+                 * This is required to find the child of the mutual parent which is a parent
+                 * of the start node.
+                 * @private
+                 */
+                function _createVisibleTrace(nodeInstance, startNodeParents, indexedStartNodeParents) {
+                    var currentNode = nodeInstance;
+                    var previousNode = nodeInstance;
+                    // Ascend through parents until a mutual parent is found with the start
+                    // node.
+                    var destinationParentPairs = [];
+                    while (!startNodeParents[currentNode.name]) {
+                        if (previousNode.name !== currentNode.name) {
+                            destinationParentPairs.push([previousNode, currentNode]);
+                        }
+                        previousNode = currentNode;
+                        currentNode = currentNode.parentNode;
+                    }
+                    // Connection between nodes is drawn between the parents of each
+                    // respective node, both of which share the mutual parent.
+                    var startNodeIndex = startNodeParents[currentNode.name].index;
+                    var startNodeName = indexedStartNodeParents[Math.max(startNodeIndex - 1, 0)].name;
+                    var startNodeTopParentName = startNodeName;
+                    var targetNodeTopParentName = previousNode.name;
+                    var endNodeName = previousNode.name;
+                    d3.selectAll("[data-edge=\"" + endNodeName + "--" + startNodeName + "\"]")
+                        .classed('input-edge-highlight', true);
+                    // Trace up the parents of the input.
+                    _.each(destinationParentPairs, function (value) {
+                        var inner = value[0];
+                        var outer = value[1];
+                        var edgeSelector = ("[data-edge=\"" + inner.name + "--" + startNodeTopParentName) +
+                            ("~~" + outer.name + "~~OUT\"]");
+                        d3.selectAll(edgeSelector).classed('input-edge-highlight', true);
+                    });
+                    // Trace up the parents of the start node.
+                    for (var index = 1; index < startNodeIndex; index++) {
+                        var inner = indexedStartNodeParents[index - 1];
+                        var outer = indexedStartNodeParents[index];
+                        var edgeSelector = ("[data-edge=\"" + targetNodeTopParentName + "~~" + outer.name) +
+                            ("~~IN--" + inner.name + "\"]");
+                        d3.selectAll(edgeSelector).classed('input-edge-highlight', true);
+                    }
+                }
+                /**
+                 * Creates map { [name: string] -> Node } of all visible / rendered parents
+                 * of the nodes identified by the node names passed in.
+                 *
+                 * @param renderGraphInfo The information on the rendered graph.
+                 * @param nodeNames String array of node names.
+                 * @returns {[nodeName: string]: Node}
+                 * @private
+                 */
+                function _findVisibleParentsFromOpNodes(renderGraphInfo, nodeNames) {
+                    var visibleParents = {};
+                    _.each(nodeNames, function (nodeName) {
+                        var currentNode = renderGraphInfo.getNodeByName(nodeName);
+                        var visibleParent = getVisibleParent(renderGraphInfo, currentNode);
+                        visibleParents[visibleParent.name] = visibleParent;
+                    });
+                    return visibleParents;
+                }
+                /**
+                 * Traverse through the parents of all nodes in the list and mark each
+                 * encountered node as input-parent.
+                 * @param visibleNodes Map of input nodes, have to be visible/rendered when
+                 * called.
+                 * @private
+                 */
+                function _markParentsOfNodes(visibleNodes) {
+                    _.forOwn(visibleNodes, function (nodeInstance) {
+                        // Mark all parents of the node as input-parents.
+                        var currentNode = nodeInstance;
+                        while (currentNode.name !== tf.graph.ROOT_NAME) {
+                            var renderedElement = d3.select(".node[data-name=\"" + currentNode.name + "\"]");
+                            // Only mark the element as a parent node to an input if it is not
+                            // marked as input node itself.
+                            if (renderedElement[0][0] &&
+                                !renderedElement.classed('input-highlight') &&
+                                !renderedElement.classed('selected') &&
+                                // OpNode only parent if start node is embedded node, in which case
+                                // the OpNode should be faded as well.
+                                !renderedElement.classed('op')) {
+                                renderedElement.classed('input-parent', true);
+                            }
+                            currentNode = currentNode.parentNode;
+                        }
+                    });
+                }
+                /**
+                 * Find the parent of the passed in op node which is expanded. This is done
+                 * by going through all parents until the parent's parent is expanded, thus
+                 * finding the the first unexpanded parent which is rendered on the screen.
+                 * @param renderGraphInfo The graph info object used to gain access to the
+                 * render info of the parents.
+                 * @param currentNode The node whose parent is to be found.
+                 * @returns Node
+                 */
+                function getVisibleParent(renderGraphInfo, currentNode) {
+                    var found = false;
+                    var currentParent = currentNode;
+                    while (!found) {
+                        // Get parent element, to extract name.
+                        currentNode = currentParent;
+                        currentParent = currentNode.parentNode;
+                        if (currentParent === undefined) {
+                            found = true;
+                        }
+                        else {
+                            var renderNode = renderGraphInfo.getRenderNodeByName(currentParent.name);
+                            // Found if node is rendered on the screen (renderNode truthy), and
+                            // the parent is either expanded (i.e. it is a metanode or seriesnode)
+                            // or the parent is an OpNode in which case currentNode is an embedded
+                            // node which has another OpNode as parent.
+                            if (renderNode &&
+                                (renderNode.expanded || currentParent instanceof graph.OpNodeImpl)) {
+                                found = true;
+                            }
+                        }
+                    } // Close while loop.
+                    return currentNode;
+                }
+                node_1.getVisibleParent = getVisibleParent;
             })(node = scene.node || (scene.node = {}));
         })(scene = graph.scene || (graph.scene = {}));
     })(graph = tf.graph || (tf.graph = {}));
-})(tf || (tf = {})); // close module
+})(tf || (tf = {})); // Close module.
 </script>
 <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
@@ -9770,6 +10012,45 @@ var tf;
                 return false;
             }
             util.hasDisplayableNodeStats = hasDisplayableNodeStats;
+            /**
+             * Given a list of strings, it returns a new list of strings with the longest
+             * common prefix removed. If the common prefix is one of the strings in the
+             * list, it returns the original strings.
+             */
+            function removeCommonPrefix(strings) {
+                if (strings.length < 2) {
+                    return strings;
+                }
+                var index = 0;
+                var largestIndex = 0;
+                // Find the shortest name across all strings.
+                var minLength = _.min(_.map(strings, function (str) { return str.length; }));
+                var _loop_1 = function() {
+                    index++;
+                    var prefixes = _.map(strings, function (str) { return str.substring(0, index); });
+                    var allTheSame = prefixes.every(function (prefix, i) {
+                        return (i === 0 ? true : prefix === prefixes[i - 1]);
+                    });
+                    if (allTheSame) {
+                        if (index >= minLength) {
+                            // There is a string whose whole name is a prefix to other string.
+                            // In this case, we return the original list of string.
+                            return { value: strings };
+                        }
+                        largestIndex = index;
+                    }
+                    else {
+                        return "break";
+                    }
+                };
+                while (true) {
+                    var state_1 = _loop_1();
+                    if (typeof state_1 === "object") return state_1.value
+                    if (state_1 === "break") break;
+                }
+                return _.map(strings, function (str) { return str.substring(largestIndex); });
+            }
+            util.removeCommonPrefix = removeCommonPrefix;
         })(util = graph.util || (graph.util = {}));
     })(graph = tf.graph || (tf.graph = {}));
 })(tf || (tf = {}));
@@ -9987,11 +10268,11 @@ var tf;
                     downloadContext.clearRect(0, 0, _this.downloadCanvas.width, _this.downloadCanvas.height);
                     downloadContext.drawImage(image, 0, 0, _this.downloadCanvas.width, _this.downloadCanvas.height);
                 };
-                image.onerror = function() {
-                  var blob = new Blob([svgXml], {type: "image/svg+xml;charset=utf-8"});
-                  image.src = URL.createObjectURL(blob);
+                image.onerror = function () {
+                    var blob = new Blob([svgXml], { type: 'image/svg+xml;charset=utf-8' });
+                    image.src = URL.createObjectURL(blob);
                 };
-                image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgXml);
+                image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgXml);
             };
             /**
              * Handles changes in zooming/panning. Should be called from the main svg
@@ -10167,8 +10448,8 @@ Polymer({
   stroke-width: 3;
 }
 
-:content .annotation.meta.selected > .nodeshape > rect,
-:content .annotation.meta.selected > .annotation-node > rect {
+::content .annotation.meta.selected > .nodeshape > rect,
+::content .annotation.meta.selected > .annotation-node > rect {
   stroke: red;
   stroke-width: 2;
 }
@@ -10183,6 +10464,7 @@ Polymer({
 ::content .faded rect,
 ::content .faded ellipse,
 ::content .faded path,
+::content .faded use,
 ::content #rectHatch line,
 ::content #ellipseHatch line {
   color: #e0d4b3 !important;
@@ -10199,7 +10481,8 @@ Polymer({
   fill: url("#rectHatch") !important;
 }
 
-::content .faded ellipse {
+::content .faded ellipse,
+::content .faded use {
   fill: url("#ellipseHatch") !important;
 }
 
@@ -10207,6 +10490,81 @@ Polymer({
   opacity: 0;
 }
 
+/* Rules used for input-tracing. */
+::content .input-highlight > * > rect,
+::content .input-highlight > * > ellipse,
+::content .input-highlight > * > use
+{
+  fill: white;
+  stroke: #ff9800 !important;
+}
+
+/*  - Faded non-input styling */
+::content .non-input > * > rect,
+::content .non-input > * > ellipse,
+::content .non-input > * > use,
+/* For Const nodes. */
+::content .non-input > * > .constant:not([class*="input-highlight"]) >
+  .annotation-node > ellipse,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect {
+  stroke: #e0d4b3 !important;
+  stroke-width: inherit;
+  stroke-dasharray: inherit;
+}
+
+
+::content .non-input path {
+  visibility: hidden;
+}
+
+::content .non-input > .nodeshape > rect,
+::content .non-input > .annotation-node > rect,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect
+{
+  fill: url("#rectHatch") !important;
+}
+
+::content .non-input ellipse,
+::content .non-input use {
+  fill: url("#ellipseHatch") !important;
+}
+
+::content .non-input > text {
+  opacity: 0;
+}
+
+::content .non-input .annotation > .annotation-edge {
+  marker-end: url("#annotation-arrowhead-faded");
+}
+
+::content .non-input .annotation > .annotation-edge.refline {
+  marker-start: url("#ref-annotation-arrowhead-faded");
+}
+
+/* Input edges. */
+::content .input-edge-highlight > text {
+  fill: black !important;
+}
+::content .input-edge-highlight > path,
+::content .input-highlight > .in-annotations > .annotation > .annotation-edge,
+::content .input-highlight-selected > .in-annotations > .annotation >
+.annotation-edge {
+  stroke: #999 !important;
+}
+
+/* Non-input edges. */
+::content .non-input-edge-highlight,
+::content .non-input > g > .annotation > path,
+/* Annotation styles (label and edges respectively). */
+::content .non-input > g >
+.annotation:not(.input-highlight):not(.input-highlight-selected) >
+.annotation-label
+/*.annotation-edge*/
+{
+  visibility: hidden;
+}
 
 /* --- Op Node --- */
 
@@ -10735,6 +11093,7 @@ Polymer({
     tf.graph.util.time('tf-graph-scene (build scene):', function() {
       tf.graph.scene.buildGroup(d3.select(this.$.root), renderHierarchy.root, this);
       tf.graph.scene.addGraphClickListener(this.$.svg, this);
+      tf.graph.scene.node.traceInputs(renderHierarchy);
     }.bind(this));
     // Update the minimap again when the graph is done animating.
     setTimeout(function() {
@@ -10899,6 +11258,13 @@ Polymer({
     }, this);
   },
 
+  /**
+   * Handles new node selection. 1) Updates the selected-state of each node,
+   * 2) triggers input tracing.
+   * @param selectedNode {string} The name of the newly selected node.
+   * @param oldSelectedNode {string} The name of the previously selected node.
+   * @private
+   */
   _selectedNodeChanged: function(selectedNode, oldSelectedNode) {
     if (selectedNode === oldSelectedNode) {
       return;
@@ -10911,9 +11277,13 @@ Polymer({
       this._updateNodeState(oldSelectedNode);
     }
 
+    tf.graph.scene.node.traceInputs(this.renderHierarchy);
+
     if (!selectedNode) {
       return;
     }
+
+
     // Update the minimap to reflect the highlighted (selected) node.
     this.minimap.update();
     var node = this.renderHierarchy.hierarchy.node(selectedNode);
@@ -11019,10 +11389,8 @@ Polymer({
       observer: '_graphChanged'
     },
     basicGraph: Object,
-    stats: {
-      type: Object,
-      observer: '_statsChanged'
-    },
+    stats: Object,
+    devicesForStats: Object,
     hierarchyParams: Object,
     progress: {
       type: Object,
@@ -11059,15 +11427,15 @@ Polymer({
     },
   },
   observers: [
+    '_statsChanged(stats, devicesForStats)',
     '_buildRenderHierarchy(graphHierarchy)'
   ],
-  _statsChanged: function(stats) {
+  _statsChanged: function(stats, devicesForStats) {
     if (this.graphHierarchy) {
-      if (stats != null) {
-        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats);
+      if (stats && devicesForStats) {
+        tf.graph.joinStatsInfoWithGraph(this.basicGraph, stats, devicesForStats);
         tf.graph.hierarchy.joinAndAggregateStats(this.graphHierarchy, stats);
       }
-
       // Recompute the rendering information.
       this._buildRenderHierarchy(this.graphHierarchy);
     }
@@ -12344,10 +12712,10 @@ paper-progress {
 </template>
 <div class$="[[_getContainerClass(progress)]]">
   <div id="main">
-    <tf-graph id="graph" graph-hierarchy="{{graphHierarchy}}" basic-graph="[[graph]]" hierarchy-params="[[hierarchyParams]]" render-hierarchy="{{_renderHierarchy}}" stats="[[stats]]" selected-node="{{_selectedNode}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="{{colorByParams}}" progress="{{progress}}"></tf-graph>
+    <tf-graph id="graph" graph-hierarchy="{{graphHierarchy}}" basic-graph="[[graph]]" hierarchy-params="[[hierarchyParams]]" render-hierarchy="{{renderHierarchy}}" devices-for-stats="[[devicesForStats]]" stats="[[stats]]" selected-node="{{_selectedNode}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="{{colorByParams}}" progress="{{progress}}"></tf-graph>
   </div>
   <div id="info">
-    <tf-graph-info id="graph-info" title="selected" graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[_renderHierarchy]]" graph="[[graph]]" selected-node="{{_selectedNode}}" selected-node-include="{{_selectedNodeInclude}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="[[colorByParams]]"></tf-graph-info>
+    <tf-graph-info id="graph-info" title="selected" graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[renderHierarchy]]" graph="[[graph]]" selected-node="{{_selectedNode}}" selected-node-include="{{_selectedNodeInclude}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="[[colorByParams]]"></tf-graph-info>
   </div>
   <div class="context-menu"></div>
 </div>
@@ -12372,14 +12740,17 @@ Polymer({
     colorBy: String,
     colorByParams: {
       type: Object,
-      notify: true,
+      notify: true
+    },
+    renderHierarchy: {
+      type: Object,
+      notify: true
     },
     // Private API: Data routing between child components.
     _selectedNode: String,
     // The enum value of the include property of the selected node.
     _selectedNodeInclude: Number,
-    _highlightedNode: String,
-    _renderHierarchy: Object,
+    _highlightedNode: String
   },
   listeners: {
     'node-toggle-extract': '_nodeToggleExtract'
@@ -12515,6 +12886,12 @@ svg.icon {
   height: 24px;
 }
 
+.help-icon {
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
+
 .gray {
   color: #666;
 }
@@ -12528,7 +12905,7 @@ svg.icon {
   font-weight: normal;
 }
 .deviceList {
-  max-height: 100px;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -12660,6 +13037,14 @@ span.counter {
     </div>
   </div>
   <div class="control-holder">
+    <div class="title">
+      Trace inputs
+    </div>
+    <paper-toggle-button id="trace-inputs">
+
+    </paper-toggle-button>
+  </div>
+  <div class="control-holder">
     <div class="title">Color</div>
     <paper-radio-group selected="{{colorBy}}">
       <paper-radio-button name="structure">Structure</paper-radio-button>
@@ -12671,7 +13056,7 @@ span.counter {
     </paper-radio-group>
   </div>
   <div>
-    <template is="dom-if" if="[[_isGradientColoring(colorBy)]]">
+    <template is="dom-if" if="[[_isGradientColoring(stats, colorBy)]]">
       <svg width="140" height="20" style="margin: 0 5px" class="color-text">
         <defs>
           <linearGradient id="linearGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -12686,6 +13071,27 @@ span.counter {
         <div class="domainEnd">[[_currentGradientParams.maxValue]]</div>
       </div>
       <br style="clear: both">
+      <div>Devices included in stats:</div>
+      <div class="deviceList">
+        <table>
+        <template is="dom-repeat" items="[[_getDevices(devicesForStats)]]">
+          <tr>
+            <td>
+              <input type="checkbox" value$="[[item.device]]" checked$="[[item.used]]" on-click="_deviceCheckboxClicked">
+            </td>
+            <td>
+              <div>
+                <span>[[item.suffix]]</span>
+                <template is="dom-if" if="[[item.ignoredMsg]]">
+                  <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+                  <paper-tooltip position="right" animation-delay="0">[[item.ignoredMsg]]</paper-tooltip>
+                </template>
+              </div>
+            </td>
+          </tr>
+        </template>
+        </table>
+      </div>
     </template>
     <template is="dom-if" if="[[_equals(colorBy, 'structure')]]">
       <div class="color-text">
@@ -12737,100 +13143,125 @@ span.counter {
       </div>
     </template>
   </div>
-  <div class="legend-holder">
-    <table>
-      <tbody><tr>
-        <td><div class="title">Graph</div></td>
-        <td>(* = expandable)</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon">
-            <rect transform="translate(3, 1)" height="14" width="35" rx="5" ry="5"></rect>
-          </svg>
-        </td>
-        <td>Namespace<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" preserveAspectRatio="xMinYMid meet" viewBox="0 0 10 10">
-            <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5" y="6"></use>
-          </svg>
-        </td>
-        <td>OpNode</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 12 12">
-            <use xlink:href="#op-series-horizontal-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
-          </svg>
-        </td>
-        <td>Unconnected series<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <use xlink:href="#op-series-vertical-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
-          </svg>
-        </td>
-        <td>Connected series<span class="gray">*</span></td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon">
-            <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"></circle>
-          </svg>
-        </td>
-        <td>Constant</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
-            <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"></use>
-          </svg>
-        </td>
-        <td>Summary</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <defs>
-              <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10" markerHeight="10" refX="1" refY="5" orient="auto">
-                <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
-              </marker>
-            </defs>
-            <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
-          </svg>
-        </td>
-        <td>Dataflow edge</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2"></path>
-          </svg>
-        </td>
-        <td>Control dependency edge</td>
-      </tr>
-      <tr>
-        <td>
-          <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-            <path marker-start="url(#ref-arrowhead-legend)" stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
-          </svg>
-        </td>
-        <td>Reference edge</td>
-      </tr>
-    </tbody></table>
-  </div>
+  
+  <template is="dom-if" if="[[!_isGradientColoring(stats, colorBy)]]">
+    <div class="legend-holder">
+      <table>
+        <tbody><tr>
+          <td><div class="title">Graph</div></td>
+          <td>(* = expandable)</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <rect transform="translate(3, 1)" height="14" width="35" rx="5" ry="5"></rect>
+            </svg>
+          </td>
+          <td>Namespace<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" preserveAspectRatio="xMinYMid meet" viewBox="0 0 10 10">
+              <use xlink:href="#op-node-stamp" fill="white" stroke="#ccc" x="9.5" y="6"></use>
+            </svg>
+          </td>
+          <td>OpNode</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 12 12">
+              <use xlink:href="#op-series-horizontal-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
+            </svg>
+          </td>
+          <td>Unconnected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <use xlink:href="#op-series-vertical-stamp" fill="white" stroke="#ccc" x="2" y="2"></use>
+            </svg>
+          </td>
+          <td>Connected series<span class="gray">*</span></td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon">
+              <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"></circle>
+            </svg>
+          </td>
+          <td>Constant</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="image-icon" viewBox="0 0 12 12" width="24" height="24">
+              <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"></use>
+            </svg>
+          </td>
+          <td>Summary</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <defs>
+                <marker id="ref-arrowhead-legend" fill="#bbb" markerWidth="10" markerHeight="10" refX="1" refY="5" orient="auto">
+                  <path d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
+                </marker>
+              </defs>
+              <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
+            </svg>
+          </td>
+          <td>Dataflow edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2"></path>
+            </svg>
+          </td>
+          <td>Control dependency edge</td>
+        </tr>
+        <tr>
+          <td>
+            <svg class="icon" height="15px" preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
+              <path marker-start="url(#ref-arrowhead-legend)" stroke="#bbb" d="M2 9 l 23 0" stroke-linecap="round"></path>
+            </svg>
+          </td>
+          <td>Reference edge</td>
+        </tr>
+      </tbody></table>
+    </div>
+  </template>
   </div>
 </template>
 <script>
 (function() { // Private scope.
+/**
+ * Stats from device names that match these regexes will be excluded by default.
+ * The user can still turn on a device by selecting the checkbox in the device list.
+ * See b/29089982 for context.
+ */
+var DEVICE_NAMES_EXCLUDE = [
+  {
+    regex: /gpu:[0-9]+$/,
+    msg: 'Excluded by default since this is a CPU thread setting up GPU kernels.'
+  }
+];
+
 Polymer({
   is: 'tf-graph-controls',
   properties: {
     // Public API.
-    stats: Object,
+    stats: {
+      value: null,
+      type: Object,
+      observer: '_statsChanged'
+    },
+    devicesForStats: {
+      value: null,
+      type: Object,
+      notify: true,
+      readonly: true,
+    },
     colorBy: {
       type: String,
       value: 'structure',
@@ -12841,6 +13272,10 @@ Polymer({
     datasets: {
       type: Array,
       observer: '_datasetsChanged'
+    },
+    renderHierarchy: {
+      type: Object,
+      notify: true,
     },
     metadataTags: {
       type: Array,
@@ -12866,8 +13301,65 @@ Polymer({
       computed: '_getCurrentGradientParams(colorByParams, colorBy)'
     }
   },
+  listeners: {
+    'trace-inputs.change': '_traceInputToggleChanged'
+  },
+  _traceInputToggleChanged: function(event) {
+    // Flip the state of the trace inputs flag.
+    this.renderHierarchy.traceInputs = event.target.active;
+    tf.graph.scene.node.traceInputs(this.renderHierarchy);
+  },
   _statsNotNull: function(stats) {
     return stats != null;
+  },
+  _statsChanged: function(stats) {
+    if (stats == null) {
+      return;
+    }
+    var devicesForStats = {};
+    var devices = _.each(stats.dev_stats, function(d) {
+      // Avoid device names that are ignored by default.
+      var exclude = _.some(DEVICE_NAMES_EXCLUDE, function(rule) {
+        return rule.regex.test(d.device);
+      });
+      if (!exclude) {
+        devicesForStats[d.device] = true;
+      }
+    });
+    this.set('devicesForStats', devicesForStats);
+  },
+  _getDevices: function(devicesForStats) {
+    var devices = _.map(this.stats.dev_stats, function(d) {
+      return d.device;
+    });
+    // Devices names can be long so we remove the longest common prefix
+    // before showing the devices in a list.
+    var suffixes = tf.graph.util.removeCommonPrefix(devices);
+    return _.map(devices, function(device, i) {
+      var ignoredMsg = null;
+      _.each(DEVICE_NAMES_EXCLUDE, function(rule) {
+        if (rule.regex.test(device)) {
+          ignoredMsg = rule.msg;
+        }
+      });
+      return {
+        device: device,
+        suffix: suffixes[i],
+        used: devicesForStats[device],
+        ignoredMsg: ignoredMsg
+      };
+    });
+  },
+  _deviceCheckboxClicked: function(checkbox) {
+    // Update the device map.
+    var devicesForStats = _.extend({}, this.devicesForStats);
+    var device = checkbox.target.value;
+    if (checkbox.target.checked) {
+      devicesForStats[device] = true;
+    } else {
+      delete devicesForStats[device];
+    }
+    this.set('devicesForStats', devicesForStats);
   },
   _numSessionRuns: function(metadataTags) {
     return metadataTags != null ? metadataTags.length : 0;
@@ -12878,14 +13370,15 @@ Polymer({
   fit: function() {
     document.querySelector('#scene').fit();
   },
-  _isGradientColoring: function(colorBy) {
-    return ["compute_time", "memory"].indexOf(colorBy) !== -1;
+  _isGradientColoring: function(stats, colorBy) {
+    return ["compute_time", "memory"].indexOf(colorBy) !== -1
+        && stats != null;
   },
   _equals: function(a, b) {
     return a === b;
   },
   _getCurrentGradientParams: function(colorByParams, colorBy) {
-    if (!this._isGradientColoring(colorBy)) {
+    if (!this._isGradientColoring(this.stats, colorBy)) {
       return;
     }
     var params = colorByParams[colorBy];
@@ -12934,6 +13427,7 @@ Polymer({
     if (this.datasets) {
       this.set('selectedMetadataTag', -1);
       this.set('colorBy', 'structure');
+      this.$['trace-inputs'].active = false; // Set trace input to off-state.
       this._setDownloadFilename(this.datasets[newDataset].path);
     }
   },
@@ -12965,12 +13459,11 @@ Polymer({
 <template is="dom-if" if="[[!_datasetsEmpty(_datasets)]]">
 <tf-dashboard-layout>
 <div class="sidebar">
-  <tf-graph-controls id="controls" color-by-params="[[_colorByParams]]" stats="[[_stats]]" color-by="{{_colorBy}}" ,="" datasets="[[_datasets]]" selected-dataset="{{_selectedDataset}}" selected-file="{{_selectedFile}}" selected-metadata-tag="{{_selectedMetadataTag}}"></tf-graph-controls>
-  <tf-graph-loader id="loader" datasets="[[_datasets]]" ,="" selected-dataset="[[_selectedDataset]]" selected-metadata-tag="[[_selectedMetadataTag]]" selected-file="[[_selectedFile]]" out-graph-hierarchy="{{_graphHierarchy}}" out-graph="{{_graph}}" out-stats="{{_stats}}" progress="{{_progress}}" out-hierarchy-params="{{_hierarchyParams}}"></tf-graph-loader>
+  <tf-graph-controls id="controls" devices-for-stats="{{_devicesForStats}}" color-by-params="[[_colorByParams]]" stats="[[_stats]]" color-by="{{_colorBy}}" datasets="[[_datasets]]" render-hierarchy="[[_renderHierarchy]]" selected-dataset="{{_selectedDataset}}" selected-file="{{_selectedFile}}" selected-metadata-tag="{{_selectedMetadataTag}}"></tf-graph-controls>
+  <tf-graph-loader id="loader" datasets="[[_datasets]]" selected-dataset="[[_selectedDataset]]" selected-metadata-tag="[[_selectedMetadataTag]]" selected-file="[[_selectedFile]]" out-graph-hierarchy="{{_graphHierarchy}}" out-graph="{{_graph}}" out-stats="{{_stats}}" progress="{{_progress}}" out-hierarchy-params="{{_hierarchyParams}}"></tf-graph-loader>
 </div>
 <div class="center">
-    <tf-graph-board id="graphboard" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" stats="[[_stats]]" progress="[[_progress]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" hierarchy-params="[[_hierarchyParams]]">
-    </tf-graph-board>
+    <tf-graph-board id="graphboard" devices-for-stats="[[_devicesForStats]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" hierarchy-params="[[_hierarchyParams]]" progress="[[_progress]]" render-hierarchy="{{_renderHierarchy}}" stats="[[_stats]]"></tf-graph-board>
 </div>
 </tf-dashboard-layout>
 </template>
@@ -12995,9 +13488,9 @@ Polymer({
   is: 'tf-graph-dashboard',
   properties: {
     _datasets: Object,
+    _renderHierarchy: Object,
     backend: {type: Object, observer: 'reload'},
-    router: {type: Object},
-    runs: Array,
+    runs: Array
   },
   reload: function() {
     Promise.all([this.backend.graphRuns(), this.backend.runMetadataRuns()])
@@ -13007,12 +13500,12 @@ Polymer({
       var datasets = _.map(runsWithGraph, function(runName) {
         return {
           name: runName,
-          path: this.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
+          path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY),
           runMetadata: runToMetadata[runName] ? _.map(runToMetadata[runName].sort(), function(tag) {
             return {
               tag: tag,
-              path: this.router.runMetadata(tag, runName)
+              path: this.backend.router.runMetadata(tag, runName)
             };
           }, this) : []
         };
@@ -13026,7 +13519,219 @@ Polymer({
 });
 })();
 </script>
-</div><dom-module id="tf-tensorboard">
+<dom-module id="tf-storage" assetpath="../tf-storage/">
+ <script>/* Copyright 2015 Google Inc. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+/* tslint:disable:no-namespace */
+/**
+ * The Storage Module provides storage for URL parameters, and an API for
+ * getting and setting TensorBoard's stateful URI.
+ *
+ * It generates URI components like: events&runPrefix=train*
+ * which TensorBoard uses after like localhost:8000/#events&runPrefix=train*
+ * to store state in the URI.
+ */
+var TF;
+(function (TF) {
+    var URIStorage;
+    (function (URIStorage) {
+        /**
+         * A key that users cannot use, since TensorBoard uses this to store info
+         * about the active tab.
+         */
+        URIStorage.TAB = '__tab__';
+        /**
+         * Return a string stored in the URI, given a corresonding key.
+         * Null if not found.
+         */
+        function getString(key) {
+            var items = _componentToDict(_readComponent());
+            return _.isUndefined(items[key]) ? null : items[key];
+        }
+        URIStorage.getString = getString;
+        /**
+         * Store a string in the URI, with a corresponding key.
+         */
+        function setString(key, value) {
+            var items = _componentToDict(_readComponent());
+            items[key] = value;
+            _writeComponent(_dictToComponent(items));
+        }
+        URIStorage.setString = setString;
+        /**
+         * Return a number stored in the URI, given a corresponding key.
+         */
+        function getNumber(key) {
+            var items = _componentToDict(_readComponent());
+            return _.isUndefined(items[key]) ? null : +items[key];
+        }
+        URIStorage.getNumber = getNumber;
+        /**
+         * Store a number in the URI, with a corresponding key.
+         */
+        function setNumber(key, value) {
+            var items = _componentToDict(_readComponent());
+            items[key] = '' + value;
+            _writeComponent(_dictToComponent(items));
+        }
+        URIStorage.setNumber = setNumber;
+        /**
+         * Return an object stored in the URI, given a corresponding key.
+         */
+        function getObject(key) {
+            var items = _componentToDict(_readComponent());
+            return _.isUndefined(items[key]) ? null : JSON.parse(atob(items[key]));
+        }
+        URIStorage.getObject = getObject;
+        /**
+         * Store an object in the URI, with a corresponding key.
+         */
+        function setObject(key, value) {
+            var items = _componentToDict(_readComponent());
+            items[key] = btoa(JSON.stringify(value));
+            _writeComponent(_dictToComponent(items));
+        }
+        URIStorage.setObject = setObject;
+        /**
+         * Read component from URI (e.g. returns "events&runPrefix=train*").
+         */
+        function _readComponent() {
+            return TF.Globals.USE_HASH ? window.location.hash.slice(1) :
+                TF.Globals.FAKE_HASH;
+        }
+        /**
+         * Write component to URI.
+         */
+        function _writeComponent(component) {
+            if (TF.Globals.USE_HASH) {
+                window.location.hash = component;
+            }
+            else {
+                TF.Globals.FAKE_HASH = component;
+            }
+        }
+        /**
+         * Convert dictionary of strings into a URI Component.
+         * All key value entries get added as key value pairs in the component,
+         * with the exception of a key with the TAB value, which if present
+         * gets prepended to the URI Component string for backwards comptability
+         * reasons.
+         */
+        function _dictToComponent(items) {
+            var component = '';
+            // Add the tab name e.g. 'events', 'images', 'histograms' as a prefix
+            // for backwards compatbility.
+            if (items[URIStorage.TAB] !== undefined) {
+                component += items[URIStorage.TAB];
+            }
+            // Join other strings with &key=value notation
+            var nonTab = _.pairs(items)
+                .filter(function (pair) { return pair[0] !== URIStorage.TAB; })
+                .map(function (pair) {
+                return encodeURIComponent(pair[0]) + '=' +
+                    encodeURIComponent(pair[1]);
+            })
+                .join('&');
+            return nonTab.length > 0 ? (component + '&' + nonTab) : component;
+        }
+        /**
+         * Convert a URI Component into a dictionary of strings.
+         * Component should consist of key-value pairs joined by a delimiter
+         * with the exception of the tabName.
+         * Returns dict consisting of all key-value pairs and
+         * dict[TAB] = tabName
+         */
+        function _componentToDict(component) {
+            var items = {};
+            var tokens = component.split('&');
+            tokens.forEach(function (token) {
+                var kv = token.split('=');
+                // Special backwards compatibility for URI components like #events
+                if (kv.length === 1 && _.contains(TF.Globals.TABS, kv[0])) {
+                    items[URIStorage.TAB] = kv[0];
+                }
+                else if (kv.length === 2) {
+                    items[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+                }
+            });
+            return items;
+        }
+    })(URIStorage = TF.URIStorage || (TF.URIStorage = {}));
+})(TF || (TF = {}));
+</script>
+</dom-module>
+<script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+var TF;
+(function (TF) {
+    var TensorBoard;
+    (function (TensorBoard) {
+        TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY = 'TF.TensorBoard.autoReloadEnabled';
+        var getAutoReloadFromLocalStorage = function () {
+            var val = window.localStorage.getItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY);
+            return val === 'true' || val == null; // defaults to true
+        };
+        TensorBoard.AutoReloadBehavior = {
+            properties: {
+                autoReloadEnabled: {
+                    type: Boolean,
+                    observer: '_autoReloadObserver',
+                    value: getAutoReloadFromLocalStorage,
+                },
+                _autoReloadId: {
+                    type: Number,
+                },
+                autoReloadIntervalSecs: {
+                    type: Number,
+                    value: 120,
+                },
+            },
+            detached: function () { window.clearTimeout(this._autoReloadId); },
+            _autoReloadObserver: function (autoReload) {
+                window.localStorage.setItem(TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY, autoReload);
+                if (autoReload) {
+                    var _this = this;
+                    this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
+                }
+                else {
+                    window.clearTimeout(this._autoReloadId);
+                }
+            },
+            _doAutoReload: function () {
+                if (this.reload == null) {
+                    throw new Error('AutoReloadBehavior requires a reload method');
+                }
+                this.reload();
+                this._autoReloadId = window.setTimeout(this._doAutoReload.bind(this), this.autoReloadIntervalSecs * 1000);
+            }
+        };
+    })(TensorBoard = TF.TensorBoard || (TF.TensorBoard = {}));
+})(TF || (TF = {}));
+</script></div><dom-module id="tf-tensorboard">
   <template>
     <paper-dialog with-backdrop="" id="settings">
       <h2>Settings</h2>
@@ -13069,7 +13774,7 @@ Polymer({
         </template>
 
         <template is="dom-if" if="[[_modeIsGraphs(mode)]]">
-          <tf-graph-dashboard id="graphs" backend="[[_backend]]" router="[[router]]"></tf-graph-dashboard>
+          <tf-graph-dashboard id="graphs" backend="[[_backend]]"></tf-graph-dashboard>
         </template>
 
         <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
@@ -13149,11 +13854,13 @@ Polymer({
       properties: {
         router: {
           type: Object,
-          value: function() {return TF.Backend.router()},
+          value: function() {
+            return TF.Backend.router();
+          },
         },
         _backend: {
           type: Object,
-          computed: "_makeBackend(router)",
+          computed: "_makeBackend(router, demoDir)",
         },
         // Which tab is selected (events, graph, images etc).
         mode: {
@@ -13161,26 +13868,35 @@ Polymer({
           computed: '_getModeFromIndex(modeIndex)',
           notify: true,
         },
-        // If true, tab switching in TensorBoard will not update
-        // location hash. Hash update interferes with selenium tests.
-        noHash: {
-          type: Boolean,
-          value: false
-        },
         tabs: {
           type: Array,
           readOnly: true,
-          value: TF.TensorBoard.TABS,
+          value: TF.Globals.TABS,
+        },
+        // If this is set to a string, TensorBoard will switch to "demo mode"
+        // and attempt to load serialized json data from that directory. You can
+        // generate conformant json using
+        // tensorboard/scripts/serialize_tensorboard.py
+        demoDir: {
+          type: String,
+          value: null,
+        },
+        // Set this to true to store state in URI hash. Should be true for all non-test purposes.
+        useHash: {
+          type: Boolean,
+          value: false,
         },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
-        if (!this.noHash) {
-          window.location.hash = mode;
-        }
+        TF.URIStorage.setString(TF.URIStorage.TAB, mode);
         return mode;
       },
-      _makeBackend: function(router) {
+      _makeBackend: function(router, demoDir) {
+        // use the demoDir if it is set, otherwise use the provided router
+        if (demoDir != null) {
+          router = TF.Backend.router(demoDir, true);
+        }
         return new TF.Backend.Backend(router);
       },
       _modeIsEvents: function(mode) {
@@ -13206,17 +13922,18 @@ Polymer({
         return dashboard;
       },
       ready: function() {
+        TF.Globals.USE_HASH = this.useHash;
+
         this._getModeFromHash();
         window.addEventListener('hashchange', function() {
           this._getModeFromHash();
         }.bind(this));
       },
       _getModeFromHash: function() {
-        // Return the mode as it is stored in the hash.
-        var tabName = window.location.hash.trim().slice(1);
+        var tabName = TF.URIStorage.getString(TF.URIStorage.TAB);
         var modeIndex = this.tabs.indexOf(tabName);
         if (modeIndex == -1 && this.modeIndex == null) {
-          // Selecting the first tab as default.
+          // Select the first tab as default.
           this.set('modeIndex', 0);
         }
         if (modeIndex != -1 && modeIndex != this.modeIndex) {

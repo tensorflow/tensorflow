@@ -244,7 +244,7 @@ number.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float`, `double`, `int32`, or
+*  <b>`x`</b>: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
     `int64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -321,17 +321,18 @@ I.e., \\(y = 1 / x\\).
 
 Computes square of x element-wise.
 
-I.e., \\(y = x * x = x^2\\).
+I.e., \(y = x * x = x^2\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`. Has the same type as `x`.
 
 
 - - -
@@ -350,7 +351,7 @@ tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float` or `double`.
+*  <b>`x`</b>: A `Tensor` of type `float32` or `float64`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -364,17 +365,18 @@ tf.round(a) ==> [ 1.0, 3.0, 2.0, -4.0 ]
 
 Computes square root of x element-wise.
 
-I.e., \\(y = \sqrt{x} = x^{1/2}\\).
+I.e., \(y = \sqrt{x} = x^{1/2}\).
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+    `float32`, `float64`, `complex64`, `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `x`.
+  A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
 
 - - -
@@ -414,10 +416,10 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
-   `complex128`.
-*  <b>`y`</b>: A `Tensor` of type `float`, `double`, `int32`, `int64`, `complex64`, or
-   `complex128`.
+*  <b>`x`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
+*  <b>`y`</b>: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
+   or `complex128`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1200,7 +1202,7 @@ The inputs must be two-dimensional matrices, with matching inner dimensions,
 possibly after transposition.
 
 Both matrices must be of the same type. The supported types are:
-`float`, `double`, `int32`, `complex64`.
+`float32`, `float64`, `int32`, `complex64`.
 
 Either matrix can be transposed on the fly by setting the corresponding flag
 to `True`. This is `False` by default.
@@ -1226,7 +1228,7 @@ c = tf.matmul(a, b) => [[58 64]
 ##### Args:
 
 
-*  <b>`a`</b>: `Tensor` of type `float`, `double`, `int32` or `complex64`.
+*  <b>`a`</b>: `Tensor` of type `float32`, `float64`, `int32` or `complex64`.
 *  <b>`b`</b>: `Tensor` with same type as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.
@@ -1854,7 +1856,7 @@ tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
 Computes the complex absolute value of a tensor.
 
 Given a tensor `x` of complex numbers, this operation returns a tensor of type
-`float` or `double` that is the absolute value of each element in `x`. All
+`float32` or `float64` that is the absolute value of each element in `x`. All
 elements in `x` must be complex numbers of the form \\(a + bj\\). The
 absolute value is computed as \\( \sqrt{a^2 + b^2}\\).
 
@@ -1914,7 +1916,7 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 Returns the imaginary part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` or `double` that is the imaginary part of each element in
+type `float32` or `float64` that is the imaginary part of each element in
 `input`. All elements in `input` must be complex numbers of the form \(a +
 bj\), where *a* is the real part and *b* is the imaginary part returned by
 this operation.
@@ -1934,7 +1936,7 @@ tf.imag(input) ==> [4.75, 5.75]
 
 ##### Returns:
 
-  A `Tensor` of type `float` or `double`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -
@@ -1944,7 +1946,7 @@ tf.imag(input) ==> [4.75, 5.75]
 Returns the real part of a complex number.
 
 Given a tensor `input` of complex numbers, this operation returns a tensor of
-type `float` or `double` that is the real part of each element in `input`.
+type `float32` or `float64` that is the real part of each element in `input`.
 All elements in `input` must be complex numbers of the form \(a + bj\),
 where *a* is the real part returned by this operation and *b* is the
 imaginary part.
@@ -1965,7 +1967,7 @@ tf.real(input) ==> [-2.25, 3.25]
 
 ##### Returns:
 
-  A `Tensor` of type `float` or `double`.
+  A `Tensor` of type `float32` or `float64`.
 
 
 - - -

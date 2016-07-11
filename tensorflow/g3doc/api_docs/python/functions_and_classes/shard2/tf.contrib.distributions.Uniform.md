@@ -3,7 +3,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, strict_statistics=True, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -33,12 +33,18 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
 *  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
+*  <b>`strict`</b>: Whether to assert that `a > b`. If `strict` is False and inputs
+    are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `strict=True`.
 
 
 - - -
@@ -128,6 +134,13 @@ The entropy of Uniform distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.is_continuous` {#Uniform.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.is_reparameterized` {#Uniform.is_reparameterized}
 
 
@@ -142,14 +155,21 @@ The entropy of Uniform distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.log_likelihood(value, name='log_likelihood')` {#Uniform.log_likelihood}
+#### `tf.contrib.distributions.Uniform.log_pdf(value, name='log_pdf')` {#Uniform.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.log_pdf(x, name='log_pdf')` {#Uniform.log_pdf}
+#### `tf.contrib.distributions.Uniform.log_pmf(value, name='log_pmf')` {#Uniform.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.log_prob(x, name='log_prob')` {#Uniform.log_prob}
 
 
 
@@ -177,7 +197,21 @@ Mode of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.pdf(x, name='pdf')` {#Uniform.pdf}
+#### `tf.contrib.distributions.Uniform.pdf(value, name='pdf')` {#Uniform.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.pmf(value, name='pmf')` {#Uniform.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.prob(x, name='prob')` {#Uniform.prob}
 
 The PDF of observations in `x` under these Uniform distribution(s).
 
@@ -190,8 +224,8 @@ The PDF of observations in `x` under these Uniform distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`. If `x` is `nan`, will
-      return `nan`.
+*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`. If `x` is `nan`,
+      will return `nan`.
 
 
 - - -
@@ -226,6 +260,20 @@ Sample `n` observations from the Uniform Distributions.
 #### `tf.contrib.distributions.Uniform.std(name='std')` {#Uniform.std}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.strict` {#Uniform.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.strict_statistics` {#Uniform.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

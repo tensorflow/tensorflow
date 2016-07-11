@@ -303,7 +303,7 @@ Status HttpRequest::SetPostRequest(const string& body_filepath) {
   }
   post_body_ = fopen(body_filepath.c_str(), "r");
   if (!post_body_) {
-    return errors::InvalidArgument("Couldnt' open the specified file: " +
+    return errors::InvalidArgument("Couldn't open the specified file: " +
                                    body_filepath);
   }
   fseek(post_body_, 0, SEEK_END);
@@ -421,13 +421,13 @@ Status HttpRequest::Send() {
   uint64 response_code;
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code);
 
-  if (curl_result != CURLE_OK) {
-    return errors::Internal(string("curl error: ") + error_buffer);
-  }
   switch (response_code) {
     case 200:  // OK
     case 204:  // No Content
     case 206:  // Partial Content
+      if (curl_result != CURLE_OK) {
+        return errors::Internal(string("curl error: ") + error_buffer);
+      }
       if (response_buffer_ && response_string_piece_) {
         *response_string_piece_ = StringPiece(response_buffer_, written_size);
       }
@@ -443,7 +443,7 @@ Status HttpRequest::Send() {
       }
       return Status::OK();
     default:
-      return errors::Internal(
+      return errors::Unavailable(
           strings::StrCat("Unexpected HTTP response code ", response_code));
   }
 }

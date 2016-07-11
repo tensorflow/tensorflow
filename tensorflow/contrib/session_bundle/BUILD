@@ -32,7 +32,7 @@ py_library(
     deps = [
         ":gc",
         ":manifest_proto_py",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
     ],
 )
 
@@ -57,7 +57,7 @@ py_library(
     srcs = ["gc.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework",
     ],
 )
 
@@ -71,6 +71,22 @@ py_test(
     deps = [
         ":gc",
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+filegroup(
+    name = "session_bundle_srcs",
+    srcs = [
+        "session_bundle.cc",
+        "session_bundle.h",
+    ],
+)
+
+filegroup(
+    name = "signature_srcs",
+    srcs = [
+        "signature.cc",
+        "signature.h",
     ],
 )
 

@@ -10,6 +10,39 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
+cuda_py_tests(
+    name = "operator_pd_test",
+    size = "small",
+    srcs = ["python/kernel_tests/operator_pd_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "operator_pd_cholesky_test",
+    size = "small",
+    srcs = ["python/kernel_tests/operator_pd_cholesky_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "operator_pd_full_test",
+    size = "small",
+    srcs = ["python/kernel_tests/operator_pd_full_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 py_library(
     name = "distributions_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
@@ -108,6 +141,16 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "bernoulli_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bernoulli_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "mvn_test",
     size = "small",
     srcs = ["python/kernel_tests/mvn_test.py"],
@@ -122,6 +165,16 @@ cuda_py_tests(
     name = "normal_conjugate_posteriors_test",
     size = "small",
     srcs = ["python/kernel_tests/normal_conjugate_posteriors_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "transformed_distribution_test",
+    size = "small",
+    srcs = ["python/kernel_tests/transformed_distribution_test.py"],
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:platform_test",

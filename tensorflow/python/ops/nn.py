@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
 """## Activation Functions
@@ -772,13 +772,22 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.op_scope([x, axes, shift], name, "moments"):
-    counts, m_ss, v_ss, shift = sufficient_statistics(x,
+    # The dynamic range of fp16 is too limited to support the collection of
+    # sufficient statistics. As a workaround we simply perform the operations
+    # on 32-bit floats before converting the mean and variance back to fp16
+    y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
+    counts, m_ss, v_ss, shift = sufficient_statistics(y,
                                                       axes,
                                                       shift=shift,
                                                       keep_dims=keep_dims,
                                                       name=name)
     with ops.control_dependencies([counts, m_ss, v_ss]):
-      return normalize_moments(counts, m_ss, v_ss, shift, name=name)
+      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
+      if x.dtype == dtypes.float16:
+        return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+            variance, dtypes.float16))
+      else:
+        return (mean, variance)
 
 
 def batch_normalization(x,

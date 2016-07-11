@@ -1,4 +1,4 @@
-### `tf.pack(values, name='pack')` {#pack}
+### `tf.pack(values, axis=0, name='pack')` {#pack}
 
 Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -14,10 +14,17 @@ This is the opposite of unpack.  The numpy equivalent is
 
 
 *  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
+*  <b>`axis`</b>: An `int`. The axis to pack along. Defaults to the first dimension.
+    Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
 
 
 *  <b>`output`</b>: A packed `Tensor` with the same type as `values`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `axis` is out of the range [-(R+1), R+1).
 

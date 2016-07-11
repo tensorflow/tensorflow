@@ -159,9 +159,12 @@ struct LaunchConvOp<GPUDevice, T> {
     int64 out_cols = output->dim_size(3);
 
     if (padding == Padding::SAME) {
-      pad_planes = (out_planes - 1) * strides[0] + filter_planes - in_planes;
-      pad_rows = (out_rows - 1) * strides[1] + filter_rows - in_rows;
-      pad_cols = (out_cols - 1) * strides[2] + filter_cols - in_cols;
+      pad_planes = std::max<int64>(
+          0, (out_planes - 1) * strides[0] + filter_planes - in_planes);
+      pad_rows = std::max<int64>(
+          0, (out_rows - 1) * strides[1] + filter_rows - in_rows);
+      pad_cols = std::max<int64>(
+          0, (out_cols - 1) * strides[2] + filter_cols - in_cols);
     }
 
     // NOTE: This only works in NHWC.
@@ -239,6 +242,9 @@ struct LaunchConvOp<GPUDevice, T> {
         transformed_input.tensor<T, 5>());
     input = transformed_input;
 
+    CHECK(pad_rows >= 0 && pad_cols >= 0 && pad_planes >= 0)
+        << "Negative paddings: (" << pad_rows << ", " << pad_cols << ", "
+        << pad_planes << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(in_batch)
         .set_feature_map_count(in_depth)

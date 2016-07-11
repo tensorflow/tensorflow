@@ -15,11 +15,10 @@ limitations under the License.
 describe('tf-tensorboard tests', () => {
   window.HTMLImports.whenReady(() => {
     let assert = chai.assert;
-    let demoRouter = TF.Backend.router('data', true);
     let tensorboard: any;
     beforeEach(function() {
       tensorboard = fixture('tensorboardFixture');
-      tensorboard.router = demoRouter;
+      tensorboard.demoDir = 'data';
       tensorboard.autoReloadEnabled = false;
     });
 
@@ -33,6 +32,13 @@ describe('tf-tensorboard tests', () => {
         assert.deepEqual(tabText, TF.Globals.TABS, 'text is correct');
         done();
       });
+    });
+
+    it('respects router manually provided', function() {
+      let router = TF.Backend.router('data', true);
+      tensorboard.router = router;
+      tensorboard.demoDir = null;
+      assert.equal(tensorboard._backend.router, router);
     });
 
     it('renders injected content', function() {

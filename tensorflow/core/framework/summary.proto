@@ -1,10 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "SummaryProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+
+import "tensorflow/core/framework/tensor.proto";
 
 // Serialization format for histogram module in
 // core/lib/histogram/histogram.h
@@ -62,7 +64,16 @@ message Summary {
   }
 
   message Value {
-    // Tag name for the data.  Will be used as the title of the graph
+    // Name of the node that output this summary; in general, the name of a
+    // TensorSummary node. If the node in question has multiple outputs, then
+    // a ":\d+" suffix will be appended, like "some_op:13".
+    // Might not be set for legacy summaries (i.e. those not using the tensor
+    // value field)
+    string node_name = 7;
+
+    // Tag name for the data.  Will only be used by legacy summaries
+    // (ie. those not using the tensor value field)
+    // For legacy summaries, will be used as the title of the graph
     // in the visualizer.
     //
     // Tag is usually "op_name:value_name", where "op_name" itself can have
@@ -76,6 +87,7 @@ message Summary {
       Image image = 4;
       HistogramProto histo = 5;
       Audio audio = 6;
+      TensorProto tensor = 8;
     }
   }
 

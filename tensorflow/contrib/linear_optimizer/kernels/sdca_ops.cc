@@ -28,14 +28,12 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/resources.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -47,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
@@ -60,7 +59,7 @@ struct PerExampleData {
   // feature_weights dot feature_values for the example
   double wx = 0;
   // sum of squared feature values occurring in the example divided by
-  // (L2 * N)
+  // L2 * sum(example_weights).
   double normalized_squared_norm = 0;
 };
 
@@ -162,7 +161,7 @@ class WeightsByGroup {
 
   size_t NumGroups() const { return weights_by_group_.size(); }
 
-  const TTypes<float>::Vec& WeightsOfGroup(size_t group) const {
+  const TTypes<float>::Vec& WeightsOfGroup(const size_t group) const {
     return weights_by_group_[group];
   }
 
@@ -187,39 +186,46 @@ class WeightsAndDeltas {
   Status Initialize(OpKernelContext* const context,
                     const string& input_list_name) {
     TF_RETURN_IF_ERROR(weights_by_group_.Initialize(context, input_list_name));
-    InitializeDeltaWeightsToZero();
+    InitializeDeltaWeightsToZero(
+        *context->device()->tensorflow_cpu_worker_threads());
     return Status::OK();
   }
 
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() {
-    // TODO(sibyl-Aix6ihai): Parallelize this.
-    for (size_t group = 0; group < delta_weights_by_group_.size(); ++group) {
-      for (size_t i = 0; i < delta_weights_by_group_[group].size(); ++i) {
-        weights_by_group_.AddDelta(group, i,
-                                   delta_weights_by_group_[group][i].load());
-      }
-    }
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    Shard(worker_threads.num_threads, worker_threads.workers,
+          static_cast<int64>(delta_weights_by_group_.size()),
+          kCostPerUnitGroupWeightAccess,
+          [this](const int64 begin, const int64 end) {
+            for (int64 group = begin; group < end; ++group) {
+              const std::vector<std::atomic<double>>& delta_weights =
+                  delta_weights_by_group_[group];
+              for (size_t i = 0; i < delta_weights.size(); ++i) {
+                weights_by_group_.AddDelta(
+                    group, i, static_cast<float>(delta_weights[i].load()));
+              }
+            }
+          });
   }
 
-  std::vector<std::atomic<double>>* DeltaWeightsOfGroup(size_t group) {
+  std::vector<std::atomic<double>>* DeltaWeightsOfGroup(const size_t group) {
     return &delta_weights_by_group_[group];
   }
 
   const std::vector<std::atomic<double>>& DeltaWeightsOfGroup(
-      size_t group) const {
+      const size_t group) const {
     return delta_weights_by_group_[group];
   }
 
-  const TTypes<float>::Vec& WeightsOfGroup(size_t group) const {
+  const TTypes<float>::Vec& WeightsOfGroup(const size_t group) const {
     return weights_by_group_.WeightsOfGroup(group);
   }
 
   size_t NumGroups() const { return delta_weights_by_group_.size(); }
 
-  size_t NumFeaturesOfGroup(int group) const {
+  size_t NumFeaturesOfGroup(const size_t group) const {
     return delta_weights_by_group_[group].size();
   }
 
@@ -228,16 +234,28 @@ class WeightsAndDeltas {
   Status ValidateAsDense() const { return weights_by_group_.ValidateAsDense(); }
 
  private:
-  void InitializeDeltaWeightsToZero() {
-    // TODO(sibyl-Mooth6ku): Maybe parallelize this.
-    for (size_t group = 0; group < weights_by_group_.NumGroups(); ++group) {
-      const TTypes<float>::Vec weights =
-          weights_by_group_.WeightsOfGroup(group);
-      delta_weights_by_group_.emplace_back(weights.size());
-      std::fill(delta_weights_by_group_.back().begin(),
-                delta_weights_by_group_.back().end(), 0);
-    }
+  void InitializeDeltaWeightsToZero(
+      const DeviceBase::CpuWorkerThreads& worker_threads) {
+    delta_weights_by_group_.resize(weights_by_group_.NumGroups());
+    Shard(worker_threads.num_threads, worker_threads.workers,
+          static_cast<int64>(weights_by_group_.NumGroups()),
+          kCostPerUnitGroupWeightAccess,
+          [this](const int64 begin, const int64 end) {
+            for (int64 group = begin; group < end; ++group) {
+              const TTypes<float>::Vec weights =
+                  weights_by_group_.WeightsOfGroup(group);
+              std::vector<std::atomic<double>>* delta_weights =
+                  &delta_weights_by_group_[group];
+              *delta_weights = std::vector<std::atomic<double>>(weights.size());
+              std::fill(delta_weights->begin(), delta_weights->end(), 0);
+            }
+          });
   }
+
+  // Assuming approximately 100K features per group with each feature having a
+  // cost of 1 gives decent parallelization for weight related access (eg
+  // traversals, initialization etc).
+  static constexpr int64 kCostPerUnitGroupWeightAccess = 100000;
 
   WeightsByGroup weights_by_group_;
 
@@ -311,7 +329,9 @@ class DenseFeaturesAndWeights {
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() { weights_and_deltas_.AddDeltaWeights(); }
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    weights_and_deltas_.AddDeltaWeights(worker_threads);
+  }
 
   size_t NumGroups() const { return features_by_group_.size(); }
 
@@ -332,12 +352,12 @@ class SparseFeaturesAndWeights {
 
   // Initialize() must be called immediately after construction.
   Status Initialize(OpKernelContext* const context,
-                    const int64 num_sparse_features, const int num_examples,
-                    const DeviceBase::CpuWorkerThreads& worker_threads) {
+                    const int64 num_sparse_features, const int num_examples) {
     TF_RETURN_IF_ERROR(
         weights_and_deltas_.Initialize(context, "sparse_weights"));
-    TF_RETURN_IF_ERROR(FillExamples(context, num_sparse_features, num_examples,
-                                    worker_threads));
+    TF_RETURN_IF_ERROR(
+        FillExamples(context, num_sparse_features, num_examples,
+                     *context->device()->tensorflow_cpu_worker_threads()));
     return Status::OK();
   }
 
@@ -399,7 +419,9 @@ class SparseFeaturesAndWeights {
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() { weights_and_deltas_.AddDeltaWeights(); }
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    weights_and_deltas_.AddDeltaWeights(worker_threads);
+  }
 
   size_t NumGroups() const { return examples_by_group_.size(); }
 
@@ -542,10 +564,9 @@ class FeaturesAndWeights {
 
   // Initialize() must be called immediately after construction.
   Status Initialize(OpKernelContext* const context,
-                    const int64 num_sparse_features, const int num_examples,
-                    const DeviceBase::CpuWorkerThreads& worker_threads) {
+                    const int64 num_sparse_features, const int num_examples) {
     TF_RETURN_IF_ERROR(sparse_features_and_weights_.Initialize(
-        context, num_sparse_features, num_examples, worker_threads));
+        context, num_sparse_features, num_examples));
     TF_RETURN_IF_ERROR(dense_features_and_weights_.Initialize(context));
     return Status::OK();
   }
@@ -578,9 +599,9 @@ class FeaturesAndWeights {
   // Adds all of the delta weights which were computed during processing
   // of this mini-batch into the feature-weights.  Must be called once
   // at the end of mini-batch processing.
-  void AddDeltaWeights() {
-    sparse_features_and_weights_.AddDeltaWeights();
-    dense_features_and_weights_.AddDeltaWeights();
+  void AddDeltaWeights(const DeviceBase::CpuWorkerThreads& worker_threads) {
+    sparse_features_and_weights_.AddDeltaWeights(worker_threads);
+    dense_features_and_weights_.AddDeltaWeights(worker_threads);
   }
 
   size_t NumGroups() const {
@@ -596,22 +617,18 @@ class FeaturesAndWeights {
 };
 
 Status RunTrainStepsForMiniBatch(
-    const int num_examples, const TTypes<const string>::Vec example_ids,
-    const TTypes<const float>::Vec example_labels,
+    const int num_examples, const TTypes<const float>::Vec example_labels,
     const TTypes<const float>::Vec example_weights,
     const DeviceBase::CpuWorkerThreads& worker_threads,
     const Regularizations& regularizations, const DualLossUpdater& loss_updater,
     FeaturesAndWeights* const features_and_weights,
-    DataByExample* const data_by_example) {
+    TTypes<float>::Matrix* const example_state_data) {
   // Process examples in parallel, in a partitioned fashion.
   mutex mu;
   Status train_step_status GUARDED_BY(mu);
   auto train_step = [&](const int64 begin, const int64 end) {
     for (int64 example_index = begin; example_index < end; ++example_index) {
-      // Get example id, label, and weight.
-      const DataByExample::Key example_key =
-          DataByExample::MakeKey(example_ids(example_index));
-      DataByExample::Data data = data_by_example->Get(example_key);
+      const float dual = (*example_state_data)(example_index, 0);
       const float example_weight = example_weights(example_index);
       float example_label = example_labels(example_index);
       const Status conversion_status =
@@ -633,27 +650,26 @@ Status RunTrainStepsForMiniBatch(
       const double primal_loss = loss_updater.ComputePrimalLoss(
           per_example_data.wx, example_label, example_weight);
 
-      const double dual_loss = loss_updater.ComputeDualLoss(
-          data.dual, example_label, example_weight);
+      const double dual_loss =
+          loss_updater.ComputeDualLoss(dual, example_label, example_weight);
 
       const double new_dual = loss_updater.ComputeUpdatedDual(
-          example_label, example_weight, data.dual, per_example_data.wx,
+          example_label, example_weight, dual, per_example_data.wx,
           per_example_data.normalized_squared_norm, primal_loss, dual_loss);
 
       // Compute new weights.
-      const double bounded_dual_delta = (new_dual - data.dual) * example_weight;
+      const double bounded_dual_delta = (new_dual - dual) * example_weight;
       features_and_weights->UpdateDeltaWeights(
           example_index, bounded_dual_delta, regularizations.symmetric_l2());
 
       // Update example data.
-      data.dual = new_dual;
-      data.primal_loss = primal_loss;
-      data.dual_loss = dual_loss;
-      data.example_weight = example_weight;
-      data_by_example->Set(example_key, data);
+      (*example_state_data)(example_index, 0) = new_dual;
+      (*example_state_data)(example_index, 1) = primal_loss;
+      (*example_state_data)(example_index, 2) = dual_loss;
+      (*example_state_data)(example_index, 3) = example_weight;
     }
   };
-  // TODO(sibyl-Aix6ihai): Current multiplier 100000 works well empirically
+  // TODO(sibyl-Aix6ihai): Current multiplier 100K works well empirically
   // but perhaps we can tune it better.
   const int64 kCostPerUnit = 100000 * features_and_weights->NumGroups();
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
@@ -665,7 +681,7 @@ Status RunTrainStepsForMiniBatch(
 
 class SdcaSolver : public OpKernel {
  public:
-  explicit SdcaSolver(OpKernelConstruction* context) : OpKernel(context) {
+  explicit SdcaSolver(OpKernelConstruction* const context) : OpKernel(context) {
     string loss_type;
     OP_REQUIRES_OK(context, context->GetAttr("loss_type", &loss_type));
     if (loss_type == "logistic_loss") {
@@ -689,30 +705,9 @@ class SdcaSolver : public OpKernel {
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
     OP_REQUIRES_OK(context, context->GetAttr("num_inner_iterations",
                                              &num_inner_iterations_));
-    OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
-    OP_REQUIRES_OK(context, context->GetAttr("solver_uuid", &solver_uuid_));
   }
 
-  void Compute(OpKernelContext* context) override {
-    // Get a handle on a shared container across invocations of this Kernel.
-    // The shared container is intended to maintain state at the example level
-    // across invocations of the kernel on different input data.
-    //
-    // TODO(sibyl-Mooth6ku): Replace this in-Kernel data structure with a first class
-    // citizen mutable Dictionary in tensorflow proper, that we will initialize
-    // and update externally.
-    DataByExample* data_by_example = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->resource_manager()->LookupOrCreate<DataByExample>(
-                       container_, solver_uuid_, &data_by_example,
-                       [this](DataByExample** ret) {
-                         *ret = new DataByExample(container_, solver_uuid_);
-                         return Status::OK();
-                       }));
-    OP_REQUIRES(
-        context, !data_by_example->RefCountIsOne(),
-        errors::Internal("Expected shared-ownership of data_by_example."));
-
+  void Compute(OpKernelContext* const context) override {
     const Tensor* example_weights_t;
     OP_REQUIRES_OK(context,
                    context->input("example_weights", &example_weights_t));
@@ -738,36 +733,36 @@ class SdcaSolver : public OpKernel {
                     "number of example weights (%d).",
                     example_labels.size(), num_examples)));
 
-    const Tensor* example_ids_t;
-    OP_REQUIRES_OK(context, context->input("example_ids", &example_ids_t));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(example_ids_t->shape()),
-                errors::InvalidArgument("example_ids should be a vector."));
-    const auto example_ids = example_ids_t->vec<string>();
-    OP_REQUIRES(context, example_labels.size() == num_examples,
-                errors::InvalidArgument(strings::Printf(
-                    "The number of example ids (%ld) should match the number "
-                    "of example weights (%d).",
-                    example_ids.size(), num_examples)));
+    const Tensor* example_state_data_t;
+    OP_REQUIRES_OK(context,
+                   context->input("example_state_data", &example_state_data_t));
+    TensorShape expected_example_state_shape({num_examples, 4});
+    OP_REQUIRES(
+        context, example_state_data_t->shape() == expected_example_state_shape,
+        errors::InvalidArgument("Expected shape ",
+                                expected_example_state_shape.DebugString(),
+                                " for example_state_data, got ",
+                                example_state_data_t->shape().DebugString()));
+
+    Tensor mutable_example_state_data_t(*example_state_data_t);
+    auto example_state_data = mutable_example_state_data_t.matrix<float>();
 
     FeaturesAndWeights features_and_weights;
-    OP_REQUIRES_OK(context,
-                   features_and_weights.Initialize(
-                       context, num_sparse_features_, num_examples,
-                       *context->device()->tensorflow_cpu_worker_threads()));
+    OP_REQUIRES_OK(context, features_and_weights.Initialize(
+                                context, num_sparse_features_, num_examples));
 
     for (int i = 0; i < num_inner_iterations_; ++i) {
       OP_REQUIRES_OK(
-          context,
-          RunTrainStepsForMiniBatch(
-              num_examples, example_ids, example_labels, example_weights,
-              *context->device()->tensorflow_cpu_worker_threads(),
-              regularizations_, *loss_updater_, &features_and_weights,
-              data_by_example));
+          context, RunTrainStepsForMiniBatch(
+                       num_examples, example_labels, example_weights,
+                       *context->device()->tensorflow_cpu_worker_threads(),
+                       regularizations_, *loss_updater_, &features_and_weights,
+                       &example_state_data));
     }
-    features_and_weights.AddDeltaWeights();
+    features_and_weights.AddDeltaWeights(
+        *context->device()->tensorflow_cpu_worker_threads());
 
-    // TODO(sibyl-Mooth6ku): Use core::ScopedUnref once it's moved out of internal.
-    data_by_example->Unref();
+    context->set_output("example_data_data_out", mutable_example_state_data_t);
   }
 
  private:
@@ -779,18 +774,17 @@ class SdcaSolver : public OpKernel {
   int64 num_dense_features_;
   Regularizations regularizations_;
   int num_inner_iterations_;
-  string container_;
-  string solver_uuid_;
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaSolver").Device(DEVICE_CPU), SdcaSolver);
 
 class SdcaShrinkL1 : public OpKernel {
  public:
-  explicit SdcaShrinkL1(OpKernelConstruction* context) : OpKernel(context) {
+  explicit SdcaShrinkL1(OpKernelConstruction* const context)
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
   }
 
-  void Compute(OpKernelContext* context) override {
+  void Compute(OpKernelContext* const context) override {
     for (const string& list_name : {"sparse_weights", "dense_weights"}) {
       WeightsByGroup weights_by_group;
       OP_REQUIRES_OK(context, weights_by_group.Initialize(context, list_name));
@@ -803,72 +797,33 @@ class SdcaShrinkL1 : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 
-class SdcaTrainingStats : public OpKernel {
+// Computes platform independent, compact and unique (with very high
+// probability) representation of an example id. It shouldn't be put in
+// persistent storage, as its implementation may change in the future.
+//
+// The current probability of at least one collision for 1B example_ids is
+// approximately 10^-21 (ie 2^60 / 2^129).
+class SdcaFprint : public OpKernel {
  public:
-  explicit SdcaTrainingStats(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
-    OP_REQUIRES_OK(context, context->GetAttr("solver_uuid", &solver_uuid_));
+  explicit SdcaFprint(OpKernelConstruction* const context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* const context) override {
+    const Tensor& input = context->input(0);
+    Tensor* out;
+    OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &out));
+
+    const auto in_values = input.flat<string>();
+    auto out_values = out->flat<string>();
+
+    for (int64 i = 0; i < in_values.size(); ++i) {
+      const Fprint128 fprint = Fingerprint128(in_values(i));
+      // Hex encode the fprint as a string (33 characters).
+      out_values(i) = strings::StrCat(strings::FpToString(fprint.high64), "-",
+                                      strings::FpToString(fprint.low64));
+    }
   }
-
-  void Compute(OpKernelContext* context) override {
-    DataByExample* data_by_example = nullptr;
-    OP_REQUIRES_OK(context, context->resource_manager()->Lookup<DataByExample>(
-                                container_, solver_uuid_, &data_by_example));
-    OP_REQUIRES(
-        context, !data_by_example->RefCountIsOne(),
-        errors::Internal("Expected shared-ownership of data_by_example."));
-
-    double total_primal_loss = 0;
-    double total_dual_loss = 0;
-    double total_example_weight = 0;
-    OP_REQUIRES_OK(context,
-                   data_by_example->Visit([&](const DataByExample::Data& data) {
-                     total_primal_loss += data.primal_loss;
-                     total_dual_loss += data.dual_loss;
-                     total_example_weight += data.example_weight;
-                   }));
-
-    // TODO(sibyl-Mooth6ku): Think about the most arithmetically stable way of
-    // computing (dual + primal) loss (if it matters).
-
-    {
-      Tensor* tensor = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output("primal_loss", {}, &tensor));
-      tensor->scalar<double>()() = total_primal_loss;
-    }
-
-    {
-      Tensor* tensor = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output("dual_loss", {}, &tensor));
-      tensor->scalar<double>()() = total_dual_loss;
-    }
-
-    {
-      OP_REQUIRES(
-          context, total_example_weight > 0,
-          errors::FailedPrecondition(
-              "No examples found or all examples have zero weight. Either the "
-              "optimizer was trained with no instances or perhaps there is a "
-              "bug in the training data."));
-
-      Tensor* tensor = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output("example_weights", {}, &tensor));
-      tensor->scalar<double>()() = total_example_weight;
-    }
-
-    // TODO(sibyl-Mooth6ku): Use core::ScopedUnref once it's moved out of internal.
-    data_by_example->Unref();
-  }
-
- private:
-  string container_;
-  string solver_uuid_;
 };
-REGISTER_KERNEL_BUILDER(Name("SdcaTrainingStats").Device(DEVICE_CPU),
-                        SdcaTrainingStats);
+REGISTER_KERNEL_BUILDER(Name("SdcaFprint").Device(DEVICE_CPU), SdcaFprint);
 
 }  // namespace tensorflow

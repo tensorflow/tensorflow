@@ -45,7 +45,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, strict_statistics=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -63,6 +63,12 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
+*  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
+    and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -139,6 +145,13 @@ The entropy of Student t distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.is_continuous` {#StudentT.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
 
 
@@ -153,16 +166,23 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_likelihood(value, name='log_likelihood')` {#StudentT.log_likelihood}
+#### `tf.contrib.distributions.StudentT.log_pdf(value, name='log_pdf')` {#StudentT.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_pdf(x, name='log_pdf')` {#StudentT.log_pdf}
+#### `tf.contrib.distributions.StudentT.log_pmf(value, name='log_pmf')` {#StudentT.log_pmf}
 
-Log pdf of observations in `x` under these Student's t-distribution(s).
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.log_prob(x, name='log_prob')` {#StudentT.log_prob}
+
+Log prob of observations in `x` under these Student's t-distribution(s).
 
 ##### Args:
 
@@ -173,14 +193,27 @@ Log pdf of observations in `x` under these Student's t-distribution(s).
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
 
+Mean of the distribution.
 
+The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
+`self.strict_statistics=True`, then an exception will be raised rather than
+returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mean for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -206,7 +239,21 @@ Locations of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.pdf(x, name='pdf')` {#StudentT.pdf}
+#### `tf.contrib.distributions.StudentT.pdf(value, name='pdf')` {#StudentT.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.pmf(value, name='pmf')` {#StudentT.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.prob(x, name='prob')` {#StudentT.prob}
 
 The PDF of observations in `x` under these Student's t distribution(s).
 
@@ -220,7 +267,7 @@ The PDF of observations in `x` under these Student's t distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`.
+*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`.
 
 
 - - -
@@ -259,8 +306,43 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.strict` {#StudentT.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.strict_statistics` {#StudentT.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
 
+Variance of the distribution.
 
+Variance for Student's T equals
+
+```
+df / (df - 2), when df > 2
+infinity, when 1 < df <= 2
+NaN, when df <= 1
+```
+
+The NaN state occurs because mean is undefined for `df <= 1`, and if
+`self.strict_statistics` is `True`, an exception will be raised if any batch
+members fall into this state.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this op.
+
+##### Returns:
+
+  The variance for every batch member, a `Tensor` with same `dtype` as self.
 
 

@@ -25,16 +25,15 @@ REGISTER_OP("SdcaSolver")
     .Attr("l1: float")
     .Attr("l2: float")
     .Attr("num_inner_iterations: int >= 1")
-    .Attr("container: string")
-    .Attr("solver_uuid: string")
     .Input("sparse_features_indices: num_sparse_features * int64")
     .Input("sparse_features_values: num_sparse_features * float")
     .Input("dense_features: num_dense_features * float")
     .Input("example_weights: float")
     .Input("example_labels: float")
-    .Input("example_ids: string")
     .Input("sparse_weights: Ref(num_sparse_features * float)")
     .Input("dense_weights: Ref(num_dense_features * float)")
+    .Input("example_state_data: float")
+    .Output("example_data_data_out: float")
     .Doc(R"doc(
 Stochastic Dual Coordinate Ascent (SDCA) optimizer for linear models with
 L1 + L2 regularization. As global optimization objective is strongly-convex, the
@@ -54,9 +53,6 @@ num_dense_features: Number of dense feature groups to train on.
 l1: Symmetric l1 regularization strength.
 l2: Symmetric l2 regularization strength.
 num_inner_iterations: Number of iterations per mini-batch.
-container: Name of the Container that stores data across invocations of this
-  Kernel. Together with SolverUUID form an isolation unit for this solver.
-solver_uuid: Universally Unique Identifier for this solver.
 sparse_features_indices: a list of matrices with two columns that contain
   example_indices, and feature_indices.
 sparse_features_values: a list of vectors which contains feature value
@@ -66,12 +62,13 @@ example_weights: a vector which contains the weight associated with each
   example.
 example_labels: a vector which contains the label/target associated with each
   example.
-example_ids: a vector which contains the unique identifier associated with each
-  example.
 sparse_weights: a list of vectors where each value is the weight associated with
-  a feature group.
+  a sparse feature group.
 dense_weights: a list of vectors where the value is the weight associated with
   a dense feature group.
+example_state_data: a list of vectors containing the example state data.
+example_data_data_out: a list of vectors containing the updated example state
+  data.
 )doc");
 
 REGISTER_OP("SdcaShrinkL1")
@@ -87,30 +84,21 @@ Applies L1 regularization shrink step on the parameters.
 num_sparse_features: Number of sparse feature groups to train on.
 num_dense_features: Number of dense feature groups to train on.
 l1: Symmetric l1 regularization strength.
-l2: Symmetric l2 regularization strength.
+l2: Symmetric l2 regularization strength. Should be a positive float.
 sparse_weights: a list of vectors where each value is the weight associated with
-  a feature group.
+  a sparse feature group.
 dense_weights: a list of vectors where the value is the weight associated with
   a dense feature group.
 )doc");
 
-REGISTER_OP("SdcaTrainingStats")
-    .Attr("container: string")
-    .Attr("solver_uuid: string")
-    .Output("primal_loss: float64")
-    .Output("dual_loss: float64")
-    .Output("example_weights: float64")
+REGISTER_OP("SdcaFprint")
+    .Input("input: string")
+    .Output("output: string")
     .Doc(R"doc(
-Computes statistics over all examples seen by the optimizer.
+Computes fingerprints of the input strings.
 
-container: Name of the Container that stores data across invocations of this
-  Kernel. Together with SolverUUID form an isolation unit for this solver.
-solver_uuid: Universally Unique Identifier for this solver.
-primal_loss: total primal loss of all examples seen by the optimizer.
-dual_loss: total dual loss of all examples seen by the optimizer.
-example_weights: total example weights of all examples seen by the optimizer
-  (guaranteed to be positive; otherwise returns FAILED_PRECONDITION as it
-   probably indicates a bug in the training data).
+input: vector of strings to compute fingerprints on.
+output: vector containing the computed fingerprints.
 )doc");
 
 }  // namespace tensorflow

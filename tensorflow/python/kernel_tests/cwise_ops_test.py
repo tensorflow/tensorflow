@@ -213,7 +213,9 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(z, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(y, np.sign, tf.sign)
+    self._compareBothSparse(x, np.vectorize(math.erf), tf.erf)
 
   def testFloatTanhEdge(self):
     x = np.arange(40, 40 + 6).reshape(6).astype(np.float32)
@@ -251,7 +253,9 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(x, np.sign, tf.sign)
+    self._compareBothSparse(x, np.sign, tf.erf)
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
@@ -288,7 +292,9 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(z, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(y, np.sign, tf.sign)
+    self._compareBothSparse(x, np.vectorize(math.erf), tf.erf)
 
   def testHalfBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float16)
@@ -320,7 +326,9 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(z, np.sqrt, tf.sqrt, tol=1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
     self._compareBothSparse(y, np.sign, tf.sign)
+    self._compareBothSparse(x, np.vectorize(math.erf), tf.erf, tol=1e-3)
 
   def testInt32Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int32)
@@ -374,6 +382,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sqrt, tf.sqrt, 1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
 
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):
@@ -404,6 +413,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareBothSparse(x, np.negative, tf.neg)
     self._compareBothSparse(x, np.square, tf.square)
     self._compareBothSparse(x, np.sqrt, tf.sqrt, 1e-3)
+    self._compareBothSparse(x, np.tanh, tf.tanh)
 
     # Numpy uses an incorrect definition of sign; use the right one instead.
     def complex_sign(x):

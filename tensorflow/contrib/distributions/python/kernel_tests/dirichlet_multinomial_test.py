@@ -265,6 +265,16 @@ class DirichletMultinomialTest(tf.test.TestCase):
       self.assertLess(5 * pmf_different.eval(), pmf_same.eval())
       self.assertEqual((), pmf_same.get_shape())
 
+  def testNonStrictTurnsOffAllChecks(self):
+    # Make totally invalid input.
+    with self.test_session():
+      alpha = [[-1., 2]]  # alpha should be positive.
+      counts = [[1., 0], [0., -1]]  # counts should be non-negative.
+      n = [-5.3]  # n should be a non negative integer equal to counts.sum.
+      dist = tf.contrib.distributions.DirichletMultinomial(
+          n, alpha, strict=False)
+      dist.pmf(counts).eval()  # Should not raise.
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -198,7 +198,7 @@ from tensorflow.core.example.feature_pb2 import *
 from tensorflow.core.protobuf.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
-from tensorflow.python.training.learning_rate_decay import exponential_decay
+from tensorflow.python.training.learning_rate_decay import *
 
 
 # Distributed computing support

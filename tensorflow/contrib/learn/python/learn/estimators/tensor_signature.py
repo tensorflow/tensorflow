@@ -97,6 +97,9 @@ def tensors_compatible(tensors, signatures):
     True if all tensors are compatible, False otherwise.
   """
   # Dict of Tensors as input.
+  if tensors is None:
+    return signatures is None
+
   if isinstance(tensors, dict):
     if not isinstance(signatures, dict):
       return False
@@ -108,7 +111,7 @@ def tensors_compatible(tensors, signatures):
     return True
 
   # Single tensor as input.
-  if isinstance(signatures, dict):
+  if signatures is None or isinstance(signatures, dict):
     return False
   return TensorSignature(tensors).is_compatible_with(signatures)
 
@@ -125,6 +128,8 @@ def create_signatures(tensors):
   if isinstance(tensors, dict):
     return {
         key: TensorSignature(tensors[key]) for key in tensors}
+  if tensors is None:
+    return None
   return TensorSignature(tensors)
 
 
@@ -132,11 +137,14 @@ def create_placeholders_from_signatures(signatures):
   """Creates placeholders from given signatures.
 
   Args:
-    signatures: Dict of `TensorSignature` objects or single `TensorSignature`.
+    signatures: Dict of `TensorSignature` objects or single `TensorSignature`,
+      or `None`.
 
   Returns:
-    Dict of `tf.placeholder` objects or single `tf.placeholder`.
+    Dict of `tf.placeholder` objects or single `tf.placeholder`, or `None`.
   """
+  if signatures is None:
+    return None
   if not isinstance(signatures, dict):
     return signatures.get_placeholder()
   return {

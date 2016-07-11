@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 module tf.graph.scene.node {
+  import RenderNodeInfo = tf.graph.render.RenderNodeInfo;
   /**
    * Select or Create a 'g.nodes' group to a given sceneGroup
    * and builds a number of 'g.node' groups inside the group.
@@ -699,4 +700,374 @@ export function getStrokeForFill(fill: string) {
       d3.rgb(fill).darker().toString();
 }
 
-} // close module
+/**
+ * Finds selected node and highlights all nodes which are providing direct
+ * or indirect input to the node and all edges connecting these nodes
+ * together and to the selected node.
+ *
+ * @param renderGraphInfo Information on the rendered state of the graph.
+ */
+export function traceInputs(renderGraphInfo: tf.graph.render.RenderGraphInfo) {
+  // Reset all styling.
+  d3.selectAll('.input-highlight').classed('input-highlight', false);
+  d3.selectAll('.non-input').classed('non-input', false);
+  d3.selectAll('.input-parent').classed('input-parent', false);
+  d3.selectAll('.input-child').classed('input-child', false);
+  d3.selectAll('.input-edge-highlight').classed('input-edge-highlight', false);
+  d3.selectAll('.non-input-edge-highlight')
+      .classed('non-input-edge-highlight', false);
+  d3.selectAll('.input-highlight-selected')
+      .classed('input-highlight-selected', false);
+
+  // Extract currently selected node. Return if input tracing disabled or no
+  // node is selected.
+  let selectedNodeSelectorString = 'g.node.selected,g.op.selected';
+  let node = d3.select(selectedNodeSelectorString);
+  let currentNode = undefined;
+  if (renderGraphInfo && renderGraphInfo.traceInputs && node && node[0] &&
+      node[0][0]) {
+    currentNode = node[0][0] as Element;
+  } else {
+    return;
+  }
+  let nodeName = currentNode.getAttribute('data-name');
+  let opNodes = _getAllContainedOpNodes(nodeName, renderGraphInfo);
+  let allTracedNodes = {};
+  _.each(opNodes, function(nodeInstance) {
+    allTracedNodes =
+        traceAllInputsOfOpNode(renderGraphInfo, nodeInstance, allTracedNodes);
+  });
+
+  d3.selectAll(selectedNodeSelectorString).classed({
+    // Remove the input-highlight from the selected node.
+    'input-highlight': false,
+    // Add input-highlight-selected class to selected node, which allows
+    // treating the selected not as a special case of an input node.
+    'input-highlight-selected': true
+  });
+
+  // Highlight all parent nodes of each OpNode as input parent to allow
+  // specific highlighting.
+  let highlightedNodes = Object.keys(allTracedNodes);
+  let visibleNodes =
+      _findVisibleParentsFromOpNodes(renderGraphInfo, highlightedNodes);
+  _markParentsOfNodes(visibleNodes);
+
+  // Attach class to all non-input nodes and edges for styling.
+  d3.selectAll(
+        'g.node:not(.selected):not(.input-highlight)' +
+        ':not(.input-parent):not(.input-children)')
+      .classed('non-input', true)
+      .each(function(d: RenderNodeInfo) {
+        // Mark all nodes with the specified name as non-inputs. This
+        // results in Annotation nodes which are attached to inputs to be
+        // tagged as well.
+        let nodeName = d.node.name;
+        d3.selectAll(`[data-name="${nodeName}"]`).classed('non-input', true);
+      });
+  d3.selectAll('g.edge:not(.input-edge-highlight)')
+      .classed('non-input-edge-highlight', true);
+}
+
+/**
+ * Recursively find all op nodes contained by the node identified by the
+ * provided name.
+ * @param nodeName The meta or op node of which the OpNode instances are
+ * required.
+ * @param renderGraphInfo The rendered graph information object.
+ * @returns {Array} An array of OpNodeImpl instances.
+ */
+export function _getAllContainedOpNodes(
+    nodeName: string, renderGraphInfo: tf.graph.render.RenderGraphInfo) {
+  let opNodes = [];
+
+  // Get current node.
+  let node = renderGraphInfo.getNodeByName(nodeName) as tf.graph.GroupNode |
+      tf.graph.OpNode;
+
+  // If node is already OpNode then return the node plus its input embeddings.
+  if (node instanceof tf.graph.OpNodeImpl) {
+    return [node].concat(node.inEmbeddings);
+  }
+
+  // Otherwise, make recursive call for each node contained by the GroupNode.
+  let childNodeNames = (node as tf.graph.GroupNode).metagraph.nodes();
+  _.each(childNodeNames, function(childNodeName) {
+    opNodes =
+        opNodes.concat(_getAllContainedOpNodes(childNodeName, renderGraphInfo));
+  });
+
+  return opNodes;
+}
+
+/**
+ * When resolving inputs of a node the visible parent node of each input
+ * node (i.e. the first parent which is rendered to the screen) needs to be
+ * found, and since such a node may contain several input OpNodes a map
+ * of the visible parent to all the input OpNodes it contains is provided by
+ * opNodes.
+ */
+interface VisibleParent {
+  visibleParent: Node;
+  opNodes: OpNode[];
+}
+
+export function traceAllInputsOfOpNode(
+    renderGraphInfo: tf.graph.render.RenderGraphInfo, startNode: OpNode,
+    allTracedNodes: Object) {
+  // To prevent infinite loops due to cyclical relationships and improving
+  // performance by tracing OpNode which is input to 2+ nodes only once.
+  if (allTracedNodes[startNode.name]) {
+    return allTracedNodes;
+  } else {
+    allTracedNodes[startNode.name] = true;
+  }
+  // Extract the inputs.
+  let inputs = startNode.inputs;
+  // Get visible parent.
+  let currentVisibleParent = getVisibleParent(renderGraphInfo, startNode);
+  // Mark as input node.
+  d3.select(`.node[data-name="${currentVisibleParent.name}"]`)
+      .classed('input-highlight', true);
+
+  // Find the visible parent of each input.
+  let visibleInputs = {};
+  _.each(inputs, function(nodeInstance) {
+    let resolvedNode = renderGraphInfo.getNodeByName(nodeInstance.name);
+    if (resolvedNode === undefined) {
+      // Node could not be found in rendered Hierarchy, which happens when
+      // tracing inputs of a SummaryNode.
+      return;
+    }
+    // Ensure node is resolved to OpNode if name collision with Metanode exists.
+    if (resolvedNode instanceof MetanodeImpl) {
+      let resolvedNodeName = tf.graph.getStrictName(resolvedNode.name);
+      resolvedNode = renderGraphInfo.getNodeByName(resolvedNodeName) as OpNode;
+    }
+
+    let visibleParent = getVisibleParent(renderGraphInfo, resolvedNode);
+
+    // Append OpNode to visible parent entry.
+    let visibleInputsEntry = visibleInputs[visibleParent.name];
+    if (visibleInputsEntry) {
+      visibleInputsEntry.opNodes.push(resolvedNode);
+    } else {  // Create new entry.
+      visibleInputs[visibleParent.name] = {
+        visibleParent: visibleParent,
+        opNodes: [resolvedNode]
+      } as VisibleParent;
+    }
+  });
+
+  // Find all parents of the start node.
+  let startNodeParents = {};
+  let indexedStartNodeParents = [currentVisibleParent];
+  startNodeParents[currentVisibleParent.name] = {
+    traced: false,
+    index: 0,
+    connectionEndpoints: []
+  };
+
+  let currentNode = currentVisibleParent as Node;
+  for (let index = 1; currentNode.name !== tf.graph.ROOT_NAME; index++) {
+    currentNode = currentNode.parentNode;
+    startNodeParents[currentNode.name] = {
+      traced: false,
+      index: index,
+      connectionEndpoints: []
+    };
+    indexedStartNodeParents[index] = currentNode;
+  }
+
+  // Find first mutual parent of each input node and highlight connection.
+  _.forOwn(visibleInputs, function(visibleParentInfo: VisibleParent, key) {
+    let nodeInstance = visibleParentInfo.visibleParent;
+    // Make recursive call for each input-OpNode contained by the visible
+    // parent.
+    _.each(visibleParentInfo.opNodes, function(opNode: OpNode) {
+      allTracedNodes =
+          traceAllInputsOfOpNode(renderGraphInfo, opNode, allTracedNodes);
+    });
+
+    if (nodeInstance.name !== currentVisibleParent.name) {
+      _createVisibleTrace(
+          nodeInstance, startNodeParents, indexedStartNodeParents);
+    }
+  });
+
+  return allTracedNodes;
+}
+
+/**
+ * Colors the edges to connect the passed node to the start node. This is
+ * done by:
+ *
+ * a) Finding the first (visible) common parent in the rendered
+ * hierarchy.
+ * NB: There are 2 types of connections:
+ * 1) Direct connections between node A
+ * and B, marked below as II,
+ * 2) Connections from any node A to its parent, A'. Marked below as I and III.
+ * For type 2 connection you need to know the inner-nested node, the
+ * direct parent, and the ultimate destination of the connection.
+ *
+ *  A_parent      B_parent
+ * +--------+    +---------+
+ * |        |    |         |
+ * |  +--+ I| II |III+--+  |
+ * |  |A +---------->+B |  |
+ * |  +--+  |    |   +--+  |
+ * |        |    |         |
+ * +--------+    +---------+
+ *
+ *
+ * b) Highlighting the direct connection between the parents of A and B,
+ * called A_parent and B_parent, s.t. A_parent and B_parent are children of the
+ * mutual parent of A and B found in a), marked above as II.
+ *
+ * c) Highlighting the connection from A to A_parent and B to B_parent
+ * (through all layers of parents between A and A_parent and B and B_parent,
+ * respectively). Marked above as I and III.
+ *
+ * @param nodeInstance The instance of the node to use as destination node, B.
+ * @param startNodeParents Map of startNodeParent names to information objects
+ * about the parent.
+ * @param indexedStartNodeParents An array of all parents of the start node.
+ * This is required to find the child of the mutual parent which is a parent
+ * of the start node.
+ * @private
+ */
+function _createVisibleTrace(
+    nodeInstance: Node, startNodeParents, indexedStartNodeParents: Node[]) {
+  let currentNode = nodeInstance;
+  let previousNode = nodeInstance;
+
+  // Ascend through parents until a mutual parent is found with the start
+  // node.
+  let destinationParentPairs = [];
+  while (!startNodeParents[currentNode.name]) {
+    if (previousNode.name !== currentNode.name) {
+      destinationParentPairs.push([previousNode, currentNode]);
+    }
+    previousNode = currentNode;
+    currentNode = currentNode.parentNode;
+  }
+
+  // Connection between nodes is drawn between the parents of each
+  // respective node, both of which share the mutual parent.
+  let startNodeIndex = startNodeParents[currentNode.name].index;
+  let startNodeName =
+      indexedStartNodeParents[Math.max(startNodeIndex - 1, 0)].name;
+
+  let startNodeTopParentName = startNodeName;
+  let targetNodeTopParentName = previousNode.name;
+
+  let endNodeName = previousNode.name;
+  d3.selectAll(`[data-edge="${endNodeName}--${startNodeName}"]`)
+      .classed('input-edge-highlight', true);
+
+  // Trace up the parents of the input.
+  _.each(destinationParentPairs, function(value) {
+    let inner = value[0];
+    let outer = value[1];
+    let edgeSelector = `[data-edge="${inner.name}--${startNodeTopParentName}` +
+        `~~${outer.name}~~OUT"]`;
+    d3.selectAll(edgeSelector).classed('input-edge-highlight', true);
+  });
+
+  // Trace up the parents of the start node.
+  for (let index = 1; index < startNodeIndex; index++) {
+    let inner = indexedStartNodeParents[index - 1];
+    let outer = indexedStartNodeParents[index];
+    let edgeSelector = `[data-edge="${targetNodeTopParentName}~~${outer.name}` +
+        `~~IN--${inner.name}"]`;
+    d3.selectAll(edgeSelector).classed('input-edge-highlight', true);
+  }
+}
+
+/**
+ * Creates map { [name: string] -> Node } of all visible / rendered parents
+ * of the nodes identified by the node names passed in.
+ *
+ * @param renderGraphInfo The information on the rendered graph.
+ * @param nodeNames String array of node names.
+ * @returns {[nodeName: string]: Node}
+ * @private
+ */
+function _findVisibleParentsFromOpNodes(renderGraphInfo, nodeNames: string[]) {
+  let visibleParents: {[nodeName: string]: Node} = {};
+  _.each(nodeNames, function(nodeName) {
+    let currentNode = renderGraphInfo.getNodeByName(nodeName);
+    let visibleParent = getVisibleParent(renderGraphInfo, currentNode);
+    visibleParents[visibleParent.name] = visibleParent;
+  });
+
+  return visibleParents;
+}
+
+/**
+ * Traverse through the parents of all nodes in the list and mark each
+ * encountered node as input-parent.
+ * @param visibleNodes Map of input nodes, have to be visible/rendered when
+ * called.
+ * @private
+ */
+function _markParentsOfNodes(visibleNodes: {[nodeName: string]: Node}) {
+  _.forOwn(visibleNodes, function(nodeInstance: Node) {
+    // Mark all parents of the node as input-parents.
+    let currentNode = nodeInstance;
+
+    while (currentNode.name !== tf.graph.ROOT_NAME) {
+      let renderedElement = d3.select(`.node[data-name="${currentNode.name}"]`);
+      // Only mark the element as a parent node to an input if it is not
+      // marked as input node itself.
+      if (renderedElement[0][0] &&
+          !renderedElement.classed('input-highlight') &&
+          !renderedElement.classed('selected') &&
+          // OpNode only parent if start node is embedded node, in which case
+          // the OpNode should be faded as well.
+          !renderedElement.classed('op')) {
+        renderedElement.classed('input-parent', true);
+      }
+      currentNode = currentNode.parentNode;
+    }
+  });
+}
+
+/**
+ * Find the parent of the passed in op node which is expanded. This is done
+ * by going through all parents until the parent's parent is expanded, thus
+ * finding the the first unexpanded parent which is rendered on the screen.
+ * @param renderGraphInfo The graph info object used to gain access to the
+ * render info of the parents.
+ * @param currentNode The node whose parent is to be found.
+ * @returns Node
+ */
+export function getVisibleParent(
+    renderGraphInfo: tf.graph.render.RenderGraphInfo,
+    currentNode: tf.graph.Node) {
+  let found = false;
+  let currentParent = currentNode;
+
+  while (!found) {
+    // Get parent element, to extract name.
+    currentNode = currentParent;
+    currentParent = currentNode.parentNode;
+
+    if (currentParent === undefined) {
+      found = true;
+    } else {
+      let renderNode = renderGraphInfo.getRenderNodeByName(currentParent.name);
+      // Found if node is rendered on the screen (renderNode truthy), and
+      // the parent is either expanded (i.e. it is a metanode or seriesnode)
+      // or the parent is an OpNode in which case currentNode is an embedded
+      // node which has another OpNode as parent.
+      if (renderNode &&
+          (renderNode.expanded || currentParent instanceof graph.OpNodeImpl)) {
+        found = true;
+      }
+    }
+  }  // Close while loop.
+  return currentNode;
+}
+}  // Close module.

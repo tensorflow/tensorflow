@@ -436,12 +436,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     int padding_rows = 0, padding_cols = 0, padding_planes = 0;
 
     if (padding_ == Padding::SAME) {
-      padding_planes =
-          (output_planes - 1) * strides[0] + filter_size[0] - input_size[0];
-      padding_cols =
-          (output_cols - 1) * strides[2] + filter_size[2] - input_size[2];
-      padding_rows =
-          (output_rows - 1) * strides[1] + filter_size[1] - input_size[1];
+      padding_planes = std::max<int>(
+          0, (output_planes - 1) * strides[0] + filter_size[0] - input_size[0]);
+      padding_cols = std::max<int>(
+          0, (output_cols - 1) * strides[2] + filter_size[2] - input_size[2]);
+      padding_rows = std::max<int>(
+          0, (output_rows - 1) * strides[1] + filter_size[1] - input_size[1]);
     }
     const bool rows_odd = (padding_rows % 2 != 0);
     const bool cols_odd = (padding_cols % 2 != 0);
@@ -462,6 +462,9 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                                 input_size[2]};
     }
 
+    CHECK(padding_rows >= 0 && padding_cols >= 0 && padding_planes >= 0)
+        << "Negative paddings: (" << padding_rows << ", " << padding_cols
+        << ", " << padding_planes << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(batch)
         .set_spatial_dim(DimIndex::X, compatible_input_shape.dim_size(4))
@@ -657,12 +660,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     int padding_rows = 0, padding_cols = 0, padding_planes = 0;
 
     if (padding_ == Padding::SAME) {
-      padding_planes =
-          (output_planes - 1) * strides[0] + filter_size[0] - input_size[0];
-      padding_cols =
-          (output_cols - 1) * strides[2] + filter_size[2] - input_size[2];
-      padding_rows =
-          (output_rows - 1) * strides[1] + filter_size[1] - input_size[1];
+      padding_planes = std::max<int>(
+          0, (output_planes - 1) * strides[0] + filter_size[0] - input_size[0]);
+      padding_cols = std::max<int>(
+          0, (output_cols - 1) * strides[2] + filter_size[2] - input_size[2]);
+      padding_rows = std::max<int>(
+          0, (output_rows - 1) * strides[1] + filter_size[1] - input_size[1]);
     }
     bool rows_odd = (padding_rows % 2 != 0);
     bool cols_odd = (padding_cols % 2 != 0);
@@ -686,6 +689,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       compatible_input = input;
     }
 
+    CHECK(padding_rows >= 0 && padding_cols >= 0 && padding_planes >= 0)
+        << "Negative paddings: (" << padding_rows << ", " << padding_cols
+        << ", " << padding_planes << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(batch)
         .set_spatial_dim(DimIndex::X, compatible_input.dim_size(3))

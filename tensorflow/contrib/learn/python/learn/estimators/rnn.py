@@ -81,10 +81,14 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         used. Instead, a customized decay function can be passed that accepts
         global_step as parameter and returns a Tensor.
         e.g. exponential decay function:
+
+        ````python
         def exp_decay(global_step):
             return tf.train.exponential_decay(
                 learning_rate=0.1, global_step,
                 decay_steps=2, decay_rate=0.001)
+        ````
+
       class_weight: None or list of n_classes floats. Weight associated with
         classes for loss computation. If not given, all classes are
         supposed to have weight one.
@@ -186,18 +190,23 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
         used. Instead, a customized decay function can be passed that accepts
         global_step as parameter and returns a Tensor.
         e.g. exponential decay function:
+
+        ````python
         def exp_decay(global_step):
             return tf.train.exponential_decay(
                 learning_rate=0.1, global_step,
                 decay_steps=2, decay_rate=0.001)
+        ````
+
       continue_training: when continue_training is True, once initialized
         model will be continuely trained on every call of fit.
       config: RunConfig object that controls the configurations of the
         session, e.g. num_cores, gpu_memory_fraction, etc.
       verbose: Controls the verbosity, possible values:
-        0: the algorithm and debug information is muted.
-        1: trainer prints the progress.
-        2: log device placement is printed.
+
+        * 0: the algorithm and debug information is muted.
+        * 1: trainer prints the progress.
+        * 2: log device placement is printed.
     """
     self.rnn_size = rnn_size
     self.cell_type = cell_type

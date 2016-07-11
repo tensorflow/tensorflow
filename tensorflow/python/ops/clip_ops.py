@@ -99,7 +99,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     l2norm_inv = math_ops.rsqrt(
         math_ops.reduce_sum(t * t, axes, keep_dims=True))
     tclip = array_ops.identity(t * clip_norm * math_ops.minimum(
-        l2norm_inv, constant_op.constant(1.0 / clip_norm)), name=name)
+        l2norm_inv, constant_op.constant(1.0, dtype=t.dtype) / clip_norm),
+                               name=name)
 
   return tclip
 

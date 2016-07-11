@@ -30,7 +30,7 @@ class AvgPool2DTest(tf.test.TestCase):
   def testCreateAvgPool(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.avg_pool2d(images, [3, 3])
       self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
@@ -88,7 +88,7 @@ class BiasAddTest(tf.test.TestCase):
   def testCreate(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.bias_add(images)
       self.assertEquals(output.op.name, 'BiasAdd/BiasAdd')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
@@ -119,7 +119,7 @@ class Convolution2dTest(tf.test.TestCase):
   def testCreateConv(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 4), seed=1)
+      images = np.random.uniform(size=(5, height, width, 4))
       output = tf.contrib.layers.convolution2d(images, 32, [3, 3])
       self.assertEquals(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
@@ -319,16 +319,115 @@ class Convolution2dTest(tf.test.TestCase):
       self.assertEquals(
           len(tf.contrib.framework.get_variables('Conv_1/BatchNorm')), 0)
 
+  def testCreateConvCreatesWeightsAndBiasesVarsWithRateTwo(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    with self.test_session():
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/weights'))
+      self.assertFalse(tf.contrib.framework.get_variables('conv1/biases'))
+      tf.contrib.layers.convolution2d(images, 32, [3, 3], rate=2, scope='conv1')
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/weights'))
+      self.assertTrue(tf.contrib.framework.get_variables('conv1/biases'))
+
+  def testOutputSizeWithRateTwoSamePadding(self):
+    num_filters = 32
+    input_size = [5, 10, 12, 3]
+    expected_size = [5, 10, 12, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters,
+                                             [3, 3], rate=2, padding='SAME')
+    self.assertListEqual(list(output.get_shape().as_list()), expected_size)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
+  def testOutputSizeWithRateTwoValidPadding(self):
+    num_filters = 32
+    input_size = [5, 10, 12, 3]
+    expected_size = [5, 6, 8, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                             rate=2, padding='VALID')
+    self.assertListEqual(list(output.get_shape().as_list()), expected_size)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
+  def testDynamicOutputSizeWithRateOneValidPadding(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [None, None, None, num_filters]
+    expected_size_dynamic = [5, 7, 9, num_filters]
+
+    with self.test_session():
+      images = tf.placeholder(np.float32, [None, None, None, input_size[3]])
+      output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                               rate=1, padding='VALID')
+      tf.initialize_all_variables().run()
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), expected_size)
+      eval_output = output.eval({images: np.zeros(input_size, np.float32)})
+      self.assertListEqual(list(eval_output.shape), expected_size_dynamic)
+
+  def testDynamicOutputSizeWithRateTwoValidPadding(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [None, None, None, num_filters]
+    expected_size_dynamic = [5, 5, 7, num_filters]
+
+    with self.test_session():
+      images = tf.placeholder(np.float32, [None, None, None, input_size[3]])
+      output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                               rate=2, padding='VALID')
+      tf.initialize_all_variables().run()
+      self.assertEquals(output.op.name, 'Conv/Relu')
+      self.assertListEqual(output.get_shape().as_list(), expected_size)
+      eval_output = output.eval({images: np.zeros(input_size, np.float32)})
+      self.assertListEqual(list(eval_output.shape), expected_size_dynamic)
+
+  def testWithScope(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [5, 5, 7, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                             rate=2, padding='VALID',
+                                             scope='conv7')
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'conv7/Relu')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
+  def testWithScopeWithoutActivation(self):
+    num_filters = 32
+    input_size = [5, 9, 11, 3]
+    expected_size = [5, 5, 7, num_filters]
+
+    images = tf.random_uniform(input_size, seed=1)
+    output = tf.contrib.layers.convolution2d(images, num_filters, [3, 3],
+                                             rate=2, padding='VALID',
+                                             activation_fn=None, scope='conv7')
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      self.assertEquals(output.op.name, 'conv7/BiasAdd')
+      self.assertListEqual(list(output.eval().shape), expected_size)
+
 
 class DropoutTest(tf.test.TestCase):
 
   def testCreateDropout(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.dropout(images)
       self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
-      output.get_shape().assert_is_compatible_with(images.get_shape())
+      output.get_shape().assert_is_compatible_with(
+          tf.convert_to_tensor(images).get_shape())
 
   def testCreateDropoutWithConstant(self):
     height, width = 3, 3
@@ -409,10 +508,25 @@ class DropoutTest(tf.test.TestCase):
 
 class FlattenTest(tf.test.TestCase):
 
+  def testInvalidRank(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5,)))
+      with self.assertRaisesRegexp(
+          ValueError, 'must have a least 2 dimensions'):
+        tf.contrib.layers.flatten(inputs)
+
+  def testUnknownLastDim(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5, None)))
+      with self.assertRaisesRegexp(ValueError, '2nd dimension must be defined'):
+        tf.contrib.layers.flatten(inputs)
+
   def testCollectOutputs(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.flatten(images, outputs_collections='outputs')
       self.assertEquals(('Flatten', output),
                         tf.get_collection('outputs')[0])
@@ -455,7 +569,7 @@ class FCTest(tf.test.TestCase):
     height, width = 3, 3
     for layer_fn in (tf.contrib.layers.fully_connected, tf.contrib.layers.relu):
       with tf.Graph().as_default() as g, self.test_session(g):
-        inputs = tf.random_uniform((5, height * width * 3), seed=1)
+        inputs = np.random.uniform(size=(5, height * width * 3))
         output = layer_fn(inputs, 32)
         self.assertEquals(output.op.name, 'fully_connected/Relu')
         self.assertListEqual(output.get_shape().as_list(), [5, 32])
@@ -582,10 +696,23 @@ class FCTest(tf.test.TestCase):
 
 class BatchNormTest(tf.test.TestCase):
 
+  def testUnknownShape(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesRegexp(ValueError, 'undefined rank'):
+        tf.contrib.layers.batch_norm(inputs)
+
+  def testUnknownLastDim(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
+      with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
+        tf.contrib.layers.batch_norm(inputs)
+
   def testCreateOp(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.batch_norm(images)
       self.assertTrue(output.op.name.startswith('BatchNorm/batchnorm'))
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
@@ -808,7 +935,7 @@ class MaxPool2DTest(tf.test.TestCase):
   def testCreateMaxPool(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
       output = tf.contrib.layers.max_pool2d(images, [3, 3])
       self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
@@ -865,7 +992,7 @@ class OneHotEncodingTest(tf.test.TestCase):
 
   def testOneHotEncodingCreate(self):
     with self.test_session():
-      labels = tf.constant([0, 1, 2])
+      labels = np.array([0, 1, 2])
       output = tf.contrib.layers.one_hot_encoding(labels, num_classes=3)
       self.assertEquals(output.op.name, 'OneHotEncoding/one_hot')
       self.assertListEqual(output.get_shape().as_list(), [3, 3])
@@ -897,14 +1024,46 @@ class OneHotEncodingTest(tf.test.TestCase):
       self.assertAllClose(output.eval(), one_hot_labels.eval())
 
 
+class RepeatTests(tf.test.TestCase):
+
+  def testRepeat(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = np.random.uniform(size=(5, height, width, 3))
+      output = tf.contrib.layers.repeat(images, 3,
+                                        tf.contrib.layers.conv2d, 32, [3, 3])
+      self.assertEquals(output.op.name, 'Repeat/convolution2d_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
+
+  def testRepeatWithScope(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1, name='images')
+      output = tf.contrib.layers.repeat(images, 3,
+                                        tf.contrib.layers.conv2d, 32, [3, 3],
+                                        scope='conv1')
+      self.assertEquals(output.op.name, 'conv1/conv1_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
+
+
 class StackTests(tf.test.TestCase):
 
   def testStackFullyConnected(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
+      images = np.random.uniform(size=(5, height * width * 3))
       output = tf.contrib.layers.stack(images,
                                        tf.contrib.layers.fully_connected,
+                                       [10, 20, 30])
+      self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackRelu(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height * width * 3), seed=1, name='images')
+      output = tf.contrib.layers.stack(images,
+                                       tf.contrib.layers.relu,
                                        [10, 20, 30])
       self.assertEquals(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
@@ -1156,7 +1315,7 @@ class LegacyFullyConnectedTest(tf.test.TestCase):
     # order to drop missing entries, and in a particular batch all entries are
     # missing.
     with self.test_session():
-      x = tf.constant([[]], shape=[0, 3])
+      x = np.array([]).reshape(0, 3)
       self.assertEqual(0, tf.size(x).eval())
       y = tf.contrib.layers.legacy_fully_connected(x,
                                                    2,

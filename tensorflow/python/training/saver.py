@@ -285,7 +285,7 @@ class BaseSaverBuilder(object):
 
   def _AddShardedRestoreOps(self, filename_tensor, per_device,
                             restore_sequentially, reshape):
-    """Add Ops to save variables from multiple devices.
+    """Add Ops to restore variables from multiple devices.
 
     Args:
       filename_tensor: Tensor for the path of the file to load.
@@ -461,7 +461,8 @@ class BaseSaverBuilder(object):
             max_to_keep=5,
             keep_checkpoint_every_n_hours=10000.0,
             name=None,
-            restore_sequentially=False):
+            restore_sequentially=False,
+            filename="model"):
     """Adds save/restore nodes to the graph and creates a SaverDef proto.
 
     Args:
@@ -485,6 +486,8 @@ class BaseSaverBuilder(object):
       name: String.  Optional name to use as a prefix when adding operations.
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving.
 
     Returns:
       A SaverDef proto.
@@ -501,7 +504,7 @@ class BaseSaverBuilder(object):
 
     with ops.op_scope([vs.var for vs in vars_to_save], name, "save") as name:
       # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant("model")
+      filename_tensor = constant_op.constant(filename)
 
       # Add the save ops.
       if sharded:

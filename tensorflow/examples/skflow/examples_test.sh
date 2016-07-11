@@ -13,9 +13,23 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-# This script excercises the examples of using SkFlow.
+# This script exercises the examples of using SkFlow.
 
-SKFLOW_EXAMPLE_BASE_DIR=$TEST_SRCDIR/tensorflow/examples/skflow
+DIR="$TEST_SRCDIR"
+
+# Check if TEST_WORKSPACE is defined, and set as empty string if not.
+if [ -z "${TEST_WORKSPACE-}" ]
+then
+  TEST_WORKSPACE=""
+fi
+
+if [ ! -z "$TEST_WORKSPACE" ]
+then
+  DIR="$DIR"/"$TEST_WORKSPACE"
+fi
+
+SKFLOW_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/skflow
+
 
 function test() {
   echo "Test "$1":"
@@ -35,6 +49,10 @@ function test() {
 test boston
 test iris
 test iris_custom_model
+test iris_custom_decay_dnn
+test iris_run_config
+test iris_val_based_early_stopping
+test iris_with_pipeline
 test text_classification --test_with_fake_data
 test text_classification_builtin_rnn_model --test_with_fake_data
 test text_classification_cnn --test_with_fake_data

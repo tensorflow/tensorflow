@@ -23,6 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+class NodeDef;
+class Tensor;
+
 // Run shape inference for <op_name>, given inputs specified by <ins>
 // and returns an error if the inferred shape does not match expected_outs.
 //
@@ -45,11 +48,23 @@ namespace tensorflow {
 // <expected_outs> can be "e"; this is used to indicate that shape inference
 // should have failed.
 Status InferShapes(const string& op_name, const string& ins,
-                   const string& expected_outs);
+                   const string& expected_outs,
+                   const NodeDef* node_def = nullptr,
+                   const std::vector<const Tensor*>& input_tensors = {});
 
 #define INFER_OK(op, i, o) EXPECT_EQ("", InferShapes(op, i, o).error_message())
 #define INFER_ERROR(s, op, i) \
-  EXPECT_EQ(s, InferShapes(op, i, "x").error_message())
+  EXPECT_EQ(s, InferShapes(op, i, "e").error_message())
+
+#define INFER_OK_WITH_DEF(op, nd, i, o) \
+  EXPECT_EQ("", InferShapes(op, i, o, nd).error_message())
+#define INFER_ERROR_WITH_DEF(s, op, nd, i) \
+  EXPECT_EQ(s, InferShapes(op, i, "e", nd).error_message())
+
+#define INFER_OK_WITH_TENSORS(op, i, t, o) \
+  EXPECT_EQ("", InferShapes(op, i, o, nullptr, t).error_message())
+#define INFER_ERROR_WITH_TENSORS(s, op, i, t) \
+  EXPECT_EQ(s, InferShapes(op, i, "e", nullptr, t).error_message())
 
 }  // namespace tensorflow
 

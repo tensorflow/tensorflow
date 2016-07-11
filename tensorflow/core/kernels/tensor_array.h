@@ -441,7 +441,7 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
           " but the new input shape is ", value_t->shape().DebugString(), ".");
     }
 
-    if (!t.tensor.IsInitialized()) {
+    if (!t.tensor.IsInitialized() || t.tensor.NumElements() == 0) {
       // If existing_t == nullptr but written == true, then what was stored
       // was just a shape, which just means zeros.  So all we must do in this
       // case is copy the reference over and return early.
@@ -502,7 +502,7 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
                                    "clear_after_read = false?).");
   }
 
-  if (!t.tensor.IsInitialized()) {
+  if (!t.tensor.IsInitialized() || t.tensor.NumElements() == 0) {
     // We stored just a shape, but no value.  This means create and
     // return zeros of the appropriate shape.
     Tensor* tensor_t;

@@ -262,6 +262,8 @@ class OperationTest(test_util.TensorFlowTestCase):
       ops.Operation(ops._NodeDef("op", "-invalid"), g)
     with self.assertRaises(ValueError):
       ops.Operation(ops._NodeDef("op", "/invalid"), g)
+    with self.assertRaises(ValueError):
+      ops.Operation(ops._NodeDef("op", "invalid:0"), g)
 
   def testShapeFunctionAbsence(self):
     def _test():
@@ -444,6 +446,20 @@ class NameStackTest(test_util.TensorFlowTestCase):
     self.assertEqual("foo", g.unique_name("foo"))
     self.assertEqual("foo_1", g.unique_name("foo"))
     self.assertEqual("foo_3", g.unique_name("foo"))
+
+  def testInvalidNameRaisesError(self):
+    g = ops.Graph()
+    with g.name_scope(""):  # Should not raise
+      pass
+    with g.name_scope("foo/"):  # Should not raise
+      with g.name_scope("_bar"):  # Should not raise
+        pass
+    with self.assertRaises(ValueError):
+      with g.name_scope("foo:0"):
+        pass
+    with self.assertRaises(ValueError):
+      with g.name_scope("_bar"):
+        pass
 
 
 class NameTest(test_util.TensorFlowTestCase):

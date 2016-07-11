@@ -159,7 +159,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   attr.allocation_will_be_logged = true;
   Tensor new_temp(allocator_, type, shape, attr);
 
-  if (!new_temp.IsInitialized() && shape.num_elements() > 0) {
+  if (!new_temp.IsInitialized()) {
     return errors::ResourceExhausted(
         "OOM when allocating temporary tensor with shape", shape.DebugString());
   }
@@ -447,7 +447,7 @@ Status OpKernelContext::allocate_tensor(
   logged_attr.allocation_will_be_logged = true;
   Tensor new_tensor(a, type, shape, logged_attr);
 
-  if (!new_tensor.IsInitialized() && shape.num_elements() > 0) {
+  if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted("OOM when allocating tensor with shape",
                                      shape.DebugString());
   }
@@ -708,8 +708,10 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
 }
 
 Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
-                              const KernelRegistration** reg) {
+                              const KernelRegistration** reg,
+                              bool* was_attr_mismatch) {
   *reg = nullptr;
+  *was_attr_mismatch = false;
   string label;  // Label defaults to empty if not found in NodeDef.
   GetNodeAttr(node_def, "_kernel", &label);
   const string key = Key(node_def.op(), device_type, label);
@@ -728,6 +730,8 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
             ProtoShortDebugString(iter->second.def), "'");
       }
       *reg = &iter->second;
+    } else {
+      *was_attr_mismatch = true;
     }
   }
   return Status::OK();
@@ -738,12 +742,19 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
 Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
-  TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, node_def, &reg));
+  bool was_attr_mismatch;
+  TF_RETURN_IF_ERROR(
+      FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
-    return errors::NotFound("No registered '", node_def.op(), "' OpKernel for ",
-                            DeviceTypeString(device_type),
-                            " devices compatible with node ",
-                            SummarizeNodeDef(node_def));
+    Status s = errors::NotFound(
+        "No registered '", node_def.op(), "' OpKernel for ",
+        DeviceTypeString(device_type), " devices compatible with node ",
+        SummarizeNodeDef(node_def));
+    if (was_attr_mismatch) {
+      errors::AppendToMessage(
+          &s, " (OpKernel was found, but attributes didn't match)");
+    }
+    return s;
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
@@ -762,7 +773,9 @@ Status SupportedDeviceTypesForNode(
   if (s.ok()) {
     for (const DeviceType& device_type : prioritized_types) {
       const KernelRegistration* reg = nullptr;
-      TF_RETURN_IF_ERROR(FindKernelRegistration(device_type, def, &reg));
+      bool was_attr_mismatch;
+      TF_RETURN_IF_ERROR(
+          FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
       if (reg != nullptr) device_types->push_back(device_type);
     }
   } else {
@@ -772,6 +785,13 @@ Status SupportedDeviceTypesForNode(
     }
   }
   return Status::OK();
+}
+
+void LogAllRegisteredKernels() {
+  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
+    const KernelDef& kernel_def(key_registration.second.def);
+    LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
+  }
 }
 
 std::unique_ptr<OpKernel> CreateOpKernel(
@@ -800,7 +820,9 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 
   // Look up kernel registration.
   const KernelRegistration* registration;
-  s = FindKernelRegistration(device_type, node_def, &registration);
+  bool was_attr_mismatch;
+  s = FindKernelRegistration(device_type, node_def, &registration,
+                             &was_attr_mismatch);
   if (!s.ok()) {
     errors::AppendToMessage(&s, " when instantiating ", node_def.op());
     return s;
@@ -810,6 +832,10 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                               "' OpKernel for ", DeviceTypeString(device_type),
                               " devices compatible with node ",
                               SummarizeNodeDef(node_def)));
+    if (was_attr_mismatch) {
+      errors::AppendToMessage(
+          &s, " (OpKernel was found, but attributes didn't match)");
+    }
     return s;
   }
 

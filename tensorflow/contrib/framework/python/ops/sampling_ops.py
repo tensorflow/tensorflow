@@ -51,11 +51,11 @@ def stratified_sample(data, labels, probs, batch_size,
     threads_per_queue: Number of threads for each per-class queue.
     name: Optional prefix for ops created by this function.
   Raises:
-    AssertionError: enqueue_many is True and labels doesn't have a batch
+    ValueError: enqueue_many is True and labels doesn't have a batch
         dimension, or if enqueue_many is False and labels isn't a scalar.
-    AssertionError: enqueue_many is True, and batch dimension on data and labels
+    ValueError: enqueue_many is True, and batch dimension of data and labels
         don't match.
-    AssertionError: if probs don't sum to one.
+    ValueError: if probs don't sum to one.
     TFAssertion: if labels aren't integers in [0, num classes).
   Returns:
     (data_batch, label_batch)
@@ -81,11 +81,11 @@ def stratified_sample(data, labels, probs, batch_size,
       labels = array_ops.expand_dims(labels, 0)
 
     # Validate that input is consistent.
-    data, labels = _verify_input(data, labels, probs)
+    data, labels, probs = _verify_input(data, labels, probs)
 
     # Make per-class queues.
     per_class_queues = _make_per_class_queues(
-        data, labels, len(probs), queue_capacity, threads_per_queue)
+        data, labels, probs.size, queue_capacity, threads_per_queue)
 
     # Use the per-class queues to generate stratified batches.
     return _get_batch(per_class_queues, probs, batch_size)
@@ -93,15 +93,19 @@ def stratified_sample(data, labels, probs, batch_size,
 
 def _verify_input(data, labels, probs):
   """Verify that batched inputs are well-formed."""
-  # Probabilities must be a numpy array or a Python list.
-  if not (isinstance(probs, np.ndarray) or isinstance(probs, list)):
-    raise ValueError('Probabilities must be python or numpy array')
+  # Probabilities must be able to be converted to a 1D non-object numpy array.
+  probs = np.asarray(probs)
+  if probs.dtype == np.dtype('object'):
+    raise ValueError('Probabilities must be able to be converted to a numpy '
+                     'array.')
+  if len(probs.shape) != 1:
+    raise ValueError('Probabilities must be 1D.')
 
   # Probabilities must sum to one.
   # TODO(joelshor): Investigate whether logits should be passed instead of
   # probs.
-  if np.sum(probs) != 1.0:
-    raise ValueError('Probabilities must sum to one.')
+  if not np.isclose(np.sum(probs), 1.0):
+    raise ValueError('Probabilities must sum to one.', np.sum(probs))
 
   # Labels tensor should only have batch dimension.
   labels.get_shape().assert_has_rank(1)
@@ -129,7 +133,7 @@ def _verify_input(data, labels, probs):
        check_ops.assert_less(labels, math_ops.cast(len(probs), labels.dtype))],
       labels)
 
-  return data, labels
+  return data, labels, probs
 
 
 def _make_per_class_queues(data, labels, num_classes, queue_capacity,
@@ -144,7 +148,8 @@ def _make_per_class_queues(data, labels, num_classes, queue_capacity,
     q = data_flow_ops.FIFOQueue(capacity=queue_capacity,
                                 shapes=per_data_shape, dtypes=[data.dtype],
                                 name='stratified_sample_class%d_queue' % i)
-    logging_ops.scalar_summary('queue/stratified_sample_class%d' % i, q.size())
+    logging_ops.scalar_summary(
+        'queue/%s/stratified_sample_class%d' % (q.name, i), q.size())
     queues.append(q)
 
   # Partition tensors according to labels.
@@ -161,12 +166,12 @@ def _make_per_class_queues(data, labels, num_classes, queue_capacity,
 
 def _get_batch(per_class_queues, probs, batch_size):
   """Generates batches according to per-class-probabilities."""
-  num_classes = len(probs)
+  num_classes = probs.size
   # Number of examples per class is governed by a multinomial distribution.
   # Note: multinomial takes unnormalized log probabilities for its first
-  # argument.
+  # argument, of dimension [batch_size, num_classes].
   examples = random_ops.multinomial(
-      math_ops.log([[float(x) for x in probs]]), batch_size)
+      np.expand_dims(np.log(probs), 0), batch_size)
 
   # Prepare the data and label batches.
   val_list = []
@@ -182,8 +187,8 @@ def _get_batch(per_class_queues, probs, batch_size):
   batch_labels.set_shape([batch_size])
 
   # Debug instrumentation.
-  sample_tags = ['stratified_sample/samples_class%i' % i for i in
-                 range(num_classes)]
+  sample_tags = ['stratified_sample/%s/samples_class%i' % (batch_labels.name, i)
+                 for i in range(num_classes)]
   logging_ops.scalar_summary(sample_tags, math_ops.reduce_sum(
       array_ops.one_hot(batch_labels, num_classes), 0))
 

@@ -30,6 +30,13 @@ Sample `n` times and concatenate along a new outer dimension.
 
 - - -
 
+#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleValue.declare_inputs}
+
+
+
+
+- - -
+
 #### `tf.contrib.bayesflow.stochastic_graph.SampleValue.n` {#SampleValue.n}
 
 

@@ -186,7 +186,7 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
+*  <b>`x`</b>: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
     or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -205,14 +205,14 @@ Computes hyperbolic tangent of `x` element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A Tensor with type `float`, `double`, `int32`, `complex64`, `int64`,
-    or `qint32`.
+*  <b>`x`</b>: A Tensor or SparseTensor with type `float`, `double`, `int32`,
+    `complex64`, `int64`, or `qint32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A Tensor with the same type as `x` if `x.dtype != qint32` otherwise
-    the return type is `quint8`.
+  A Tensor or SparseTensor respectively with the same type as `x` if
+  `x.dtype != qint32` otherwise the return type is `quint8`.
 
 
 
@@ -1159,7 +1159,7 @@ Computes softmax activations.
 
 For each batch `i` and class `j` we have
 
-    softmax[i, j] = exp(logits[i, j]) / sum(exp(logits[i]))
+    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
 
 ##### Args:
 
@@ -1495,17 +1495,20 @@ automatically performed.
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: The RNN inputs.
     If time_major == False (default), this must be a tensor of shape:
-      `[batch_size, max_time, input_size]`.
+      `[batch_size, max_time, input_size]`, or a nested tuple of such
+      elements.
     If time_major == True, this must be a tensor of shape:
-      `[max_time, batch_size, input_size]`.
+      `[max_time, batch_size, input_size]`, or a nested tuple of such
+      elements.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
     a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
-*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
-    initial_state is not provided.
+*  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
+    Required if initial_state is not provided or RNN state has a heterogeneous
+    dtype.
 *  <b>`parallel_iterations`</b>: (Default: 32).  The number of iterations to run in
     parallel.  Those operations which do not have any temporal dependency
     and can be run in parallel, will be.  This parameter trades off
@@ -1579,14 +1582,15 @@ The dynamic calculation performed is, at time t for batch row b,
 
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
-    [batch_size, input_size].
+    [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
     a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
-*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
-    initial_state is not provided.
+*  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
+    Required if initial_state is not provided or RNN state has a heterogeneous
+    dtype.
 *  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs.
     An int32 or int64 vector (tensor) size `[batch_size]`, values in `[0, T)`.
 *  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
@@ -1594,7 +1598,8 @@ The dynamic calculation performed is, at time t for batch row b,
 ##### Returns:
 
   A pair (outputs, state) where:
-    - outputs is a length T list of outputs (one for each input)
+    - outputs is a length T list of outputs (one for each input), or a nested
+      tuple of such elements.
     - state is the final state
 
 ##### Raises:
@@ -1662,7 +1667,7 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
 *  <b>`cell_fw`</b>: An instance of RNNCell, to be used for forward direction.
 *  <b>`cell_bw`</b>: An instance of RNNCell, to be used for backward direction.
 *  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
-    [batch_size, input_size].
+    [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
     `[batch_size x cell_fw.state_size]`.
@@ -1767,7 +1772,7 @@ Here is a table of the (roughly) expected first order behavior:
 
 ##### Returns:
 
-  A 1-D `float` `Tensor`, size `[batch]`, containing logits.
+  A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
 
 ##### Raises:
 

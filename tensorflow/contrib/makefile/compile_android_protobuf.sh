@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +47,8 @@ while getopts "a:c" opt_name; do
 done
 shift $((OPTIND - 1))
 
+source "${SCRIPT_DIR}/build_helper.subr"
+
 if [[ -z "${NDK_ROOT}" ]]
 then
   echo "You need to pass in the Android NDK location as the environment \
@@ -82,26 +84,10 @@ fi
 cd downloads/protobuf
 
 PROTOC_PATH="${HOST_GENDIR}/bin/protoc"
-
 if [[ ! -f "${PROTOC_PATH}" || ${clean} == true ]]; then
   # Try building compatible protoc first on host
   echo "protoc not found at ${PROTOC_PATH}. Build it first."
-  ./autogen.sh
-  if [ $? -ne 0 ]
-  then
-    echo "./autogen.sh command failed."
-    exit 1
-  fi
-  make clean
-  rm -rf "${HOST_GENDIR}"
-  mkdir -p "${HOST_GENDIR}"
-  ./configure --disable-shared --prefix="${HOST_GENDIR}"
-  make
-  if [ $? -ne 0 ]; then
-    echo "make failed"
-    exit 1
-  fi
-  make install
+  make_host_protoc "${HOST_GENDIR}"
 else
   echo "protoc found. Skip building host tools."
 fi

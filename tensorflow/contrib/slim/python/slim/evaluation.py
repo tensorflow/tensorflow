@@ -136,14 +136,11 @@ from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor
 from tensorflow.python.training import training_util
 
-__all__ = [
-    'evaluation',
-    'evaluation_loop',
-    'wait_for_new_checkpoint'
-]
+__all__ = ['evaluation', 'evaluation_loop', 'wait_for_new_checkpoint']
 
 
-def wait_for_new_checkpoint(checkpoint_dir, last_checkpoint,
+def wait_for_new_checkpoint(checkpoint_dir,
+                            last_checkpoint,
                             seconds_to_sleep=1):
   """Waits until a new checkpoint file is found.
 
@@ -164,19 +161,18 @@ def wait_for_new_checkpoint(checkpoint_dir, last_checkpoint,
       return checkpoint_path
 
 
-def evaluation(
-    sess,
-    num_evals=1,
-    init_op=None,
-    init_op_feed_dict=None,
-    eval_op=None,
-    eval_op_feed_dict=None,
-    final_op=None,
-    final_op_feed_dict=None,
-    summary_op=None,
-    summary_op_feed_dict=None,
-    summary_writer=None,
-    global_step=None):
+def evaluation(sess,
+               num_evals=1,
+               init_op=None,
+               init_op_feed_dict=None,
+               eval_op=None,
+               eval_op_feed_dict=None,
+               final_op=None,
+               final_op_feed_dict=None,
+               summary_op=None,
+               summary_op_feed_dict=None,
+               summary_writer=None,
+               global_step=None):
   """Performs a single evaluation run.
 
   A single evaluation consists of several steps run in the following order:
@@ -208,21 +204,25 @@ def evaluation(
     ValueError: if `summary_op` is provided but `global_step` is `None`.
   """
   if init_op is not None:
+    logging.info('Executing init op')
     sess.run(init_op, init_op_feed_dict)
 
   if eval_op is not None:
+    logging.info('Executing eval ops')
     for i in range(int(num_evals)):
-      logging.info('Executing eval_op %d/%d', i+1, num_evals)
+      logging.info('Executing eval_op %d/%d', i + 1, num_evals)
       sess.run(eval_op, eval_op_feed_dict)
 
   if final_op is not None:
+    logging.info('Executing final op')
     final_op_value = sess.run(final_op, final_op_feed_dict)
   else:
     final_op_value = None
 
   if summary_op is not None:
+    logging.info('Executing summary op')
     if global_step is None:
-      global_step = variables.global_step()
+      global_step = variables.get_or_create_global_step()
 
     global_step = training_util.global_step(sess, global_step)
     summary = sess.run(summary_op, summary_op_feed_dict)
@@ -235,12 +235,19 @@ def evaluation(
 _USE_DEFAULT = 0
 
 
-def evaluation_loop(master, checkpoint_dir, logdir, num_evals=1,
-                    eval_op=None, eval_op_feed_dict=None,
-                    final_op=None, final_op_feed_dict=None,
-                    summary_op=_USE_DEFAULT, summary_op_feed_dict=None,
+def evaluation_loop(master,
+                    checkpoint_dir,
+                    logdir,
+                    num_evals=1,
+                    eval_op=None,
+                    eval_op_feed_dict=None,
+                    final_op=None,
+                    final_op_feed_dict=None,
+                    summary_op=_USE_DEFAULT,
+                    summary_op_feed_dict=None,
                     variables_to_restore=None,
-                    eval_interval_secs=60):
+                    eval_interval_secs=60,
+                    max_number_of_evaluations=None):
   """Runs TF-Slim's Evaluation Loop.
 
   Args:
@@ -261,57 +268,62 @@ def evaluation_loop(master, checkpoint_dir, logdir, num_evals=1,
       evaluation. If the argument is left as `None` then
       slim.variables.GetVariablesToRestore() is used.
     eval_interval_secs: The minimum number of seconds between evaluations.
+    max_number_of_evaluations: the max number of iterations of the evaluation.
+      If the value is left as 'None', the evaluation continues indefinitely.
   """
   if summary_op == _USE_DEFAULT:
     summary_op = logging_ops.merge_all_summaries()
 
   global_step = variables.get_or_create_global_step()
 
-  init_op = control_flow_ops.group(
-      tf_variables.initialize_all_variables(),
-      tf_variables.initialize_local_variables(),
-      data_flow_ops.initialize_all_tables())
+  init_op = control_flow_ops.group(tf_variables.initialize_all_variables(),
+                                   tf_variables.initialize_local_variables(),
+                                   data_flow_ops.initialize_all_tables())
 
-  saver = tf_saver.Saver(
-      variables_to_restore or variables.get_variables_to_restore())
+  saver = tf_saver.Saver(variables_to_restore or
+                         variables.get_variables_to_restore())
 
   summary_writer = summary_io.SummaryWriter(logdir)
 
-  sv = supervisor.Supervisor(
-      graph=ops.get_default_graph(),
-      logdir=logdir,
-      init_op=init_op,
-      summary_op=None,
-      summary_writer=None,
-      global_step=None,
-      saver=saver)
+  sv = supervisor.Supervisor(graph=ops.get_default_graph(),
+                             logdir=logdir,
+                             init_op=init_op,
+                             summary_op=None,
+                             summary_writer=None,
+                             global_step=None,
+                             saver=saver)
 
   last_checkpoint = None
+  number_of_evaluations = 0
   while True:
     last_checkpoint = wait_for_new_checkpoint(checkpoint_dir, last_checkpoint)
     start = time.time()
-    logging.info(
-        'Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                  time.gmtime()))
+    logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+                                                           time.gmtime()))
 
     with sv.managed_session(master, start_standard_services=False) as sess:
-      sv.start_queue_runners(sess)
       sv.saver.restore(sess, last_checkpoint)
-      evaluation(
-          sess,
-          num_evals=num_evals,
-          eval_op=eval_op,
-          eval_op_feed_dict=eval_op_feed_dict,
-          final_op=final_op,
-          final_op_feed_dict=final_op_feed_dict,
-          summary_op=summary_op,
-          summary_op_feed_dict=summary_op_feed_dict,
-          summary_writer=summary_writer,
-          global_step=global_step)
+      sv.start_queue_runners(sess)
+      evaluation(sess,
+                 num_evals=num_evals,
+                 eval_op=eval_op,
+                 eval_op_feed_dict=eval_op_feed_dict,
+                 final_op=final_op,
+                 final_op_feed_dict=final_op_feed_dict,
+                 summary_op=summary_op,
+                 summary_op_feed_dict=summary_op_feed_dict,
+                 summary_writer=summary_writer,
+                 global_step=global_step)
 
-    logging.info(
-        'Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                  time.gmtime()))
+    logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+                                                           time.gmtime()))
+    number_of_evaluations += 1
+    if (max_number_of_evaluations and
+        number_of_evaluations >= max_number_of_evaluations):
+      logging.info('Reached max_number_of_evaluations=%s. Exit',
+                   max_number_of_evaluations)
+      break
+
     time_to_next_eval = start + eval_interval_secs - time.time()
     if time_to_next_eval > 0:
       time.sleep(time_to_next_eval)

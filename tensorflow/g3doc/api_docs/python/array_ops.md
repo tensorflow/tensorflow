@@ -243,15 +243,15 @@ This operation returns an integer representing the number of elements in
 
 For example:
 
-```prettyprint
-# 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+```python
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
 size(t) ==> 12
 ```
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`.
+*  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -727,7 +727,7 @@ tf.shape(tf.concat(1, [t3, t4])) ==> [2, 6]
 
 - - -
 
-### `tf.pack(values, name='pack')` {#pack}
+### `tf.pack(values, axis=0, name='pack')` {#pack}
 
 Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -743,6 +743,8 @@ This is the opposite of unpack.  The numpy equivalent is
 
 
 *  <b>`values`</b>: A list of `Tensor` objects with the same shape and type.
+*  <b>`axis`</b>: An `int`. The axis to pack along. Defaults to the first dimension.
+    Supports negative indexes.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -750,16 +752,21 @@ This is the opposite of unpack.  The numpy equivalent is
 
 *  <b>`output`</b>: A packed `Tensor` with the same type as `values`.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `axis` is out of the range [-(R+1), R+1).
+
 
 - - -
 
-### `tf.unpack(value, num=None, name='unpack')` {#unpack}
+### `tf.unpack(value, num=None, axis=0, name='unpack')` {#unpack}
 
-Unpacks the outer dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
+Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
-Unpacks `num` tensors from `value` along the first dimension.
+Unpacks `num` tensors from `value` along the given dimension.
 If `num` is not specified (the default), it is inferred from `value`'s shape.
-If `value.shape[0]` is not known, `ValueError` is raised.
+If `value.shape[axis]` is not known, `ValueError` is raised.
 
 The ith tensor in `output` is the slice `value[i, ...]`. Each tensor in
 `output` has shape `value.shape[1:]`.
@@ -772,8 +779,10 @@ This is the opposite of pack.  The numpy equivalent is
 
 
 *  <b>`value`</b>: A rank `R > 0` `Tensor` to be unpacked.
-*  <b>`num`</b>: An `int`. The first dimension of value. Automatically inferred if
-    `None` (the default).
+*  <b>`num`</b>: An `int`. The length of the dimension `axis`. Automatically inferred
+    if `None` (the default).
+*  <b>`axis`</b>: An `int`. The axis to unpack along. Defaults to the first
+    dimension. Supports negative indexes.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -784,6 +793,7 @@ This is the opposite of pack.  The numpy equivalent is
 
 
 *  <b>`ValueError`</b>: If `num` is unspecified and cannot be inferred.
+*  <b>`ValueError`</b>: If `axis` is out of the range [-R, R).
 
 
 - - -

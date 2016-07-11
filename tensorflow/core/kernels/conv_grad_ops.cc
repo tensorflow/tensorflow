@@ -1024,6 +1024,9 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
       compatible_input_shape = input_shape;
     }
 
+    CHECK(padding_rows >= 0 && padding_cols >= 0)
+        << "Negative row or col paddings: (" << padding_rows << ", "
+        << padding_cols << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc;
     input_desc.set_count(dims.batch_size)
         .set_height(GetTensorDim(compatible_input_shape, data_format_, 'H'))
@@ -1382,6 +1385,9 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
       compatible_input = input;
     }
 
+    CHECK(padding_rows >= 0 && padding_cols >= 0)
+        << "Negative row or col paddings: (" << padding_rows << ", "
+        << padding_cols << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc;
     input_desc.set_count(dims.batch_size)
         .set_height(GetTensorDim(compatible_input, data_format_, 'H'))

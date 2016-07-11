@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from sklearn import datasets, metrics, cross_validation
+from sklearn import cross_validation
+from sklearn import datasets
+from sklearn import metrics
 import tensorflow as tf
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn

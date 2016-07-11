@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 
 
-class Categorical(distribution.DiscreteDistribution):
+class Categorical(distribution.Distribution):
   """Categorical distribution.
 
   The categorical distribution is parameterized by the log-probabilities
@@ -41,19 +41,32 @@ class Categorical(distribution.DiscreteDistribution):
     * log_cdf
   """
 
-  def __init__(self, logits, name="Categorical", dtype=dtypes.int32):
+  def __init__(
+      self,
+      logits,
+      dtype=dtypes.int32,
+      strict=True,
+      strict_statistics=True,
+      name="Categorical"):
     """Initialize Categorical distributions using class log-probabilities.
 
     Args:
-      logits: An N-D `Tensor` representing the log probabilities of a set of
-          Categorical distributions. The first N - 1 dimensions index into a
-          batch of independent distributions and the last dimension indexes
-          into the classes.
-      name: A name for this distribution (optional).
+      logits: An N-D `Tensor`, `N >= 1`, representing the log probabilities
+          of a set of Categorical distributions. The first `N - 1` dimensions
+          index into a batch of independent distributions and the last dimension
+          indexes into the classes.
       dtype: The type of the event samples (default: int32).
+      strict: Unused in this distribution.
+      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If False, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
+      name: A name for this distribution (optional).
     """
+    self._strict_statistics = strict_statistics
     self._name = name
     self._dtype = dtype
+    self._strict = strict
     with ops.op_scope([logits], name):
       self._logits = ops.convert_to_tensor(logits, name="logits")
       logits_shape = array_ops.shape(self._logits)
@@ -61,6 +74,16 @@ class Categorical(distribution.DiscreteDistribution):
       self._batch_shape = array_ops.slice(
           logits_shape, [0], array_ops.pack([self._batch_rank]))
       self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
+
+  @property
+  def strict_statistics(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._strict_statistics
+
+  @property
+  def strict(self):
+    """Boolean describing behavior on invalid input."""
+    return self._strict
 
   @property
   def name(self):
@@ -96,7 +119,7 @@ class Categorical(distribution.DiscreteDistribution):
   def logits(self):
     return self._logits
 
-  def log_pmf(self, k, name="log_pmf"):
+  def log_prob(self, k, name="log_prob"):
     """Log-probability of class `k`.
 
     Args:
@@ -112,7 +135,7 @@ class Categorical(distribution.DiscreteDistribution):
       return -nn_ops.sparse_softmax_cross_entropy_with_logits(
           self.logits, k, name=name)
 
-  def pmf(self, k, name="pmf"):
+  def prob(self, k, name="prob"):
     """Probability of class `k`.
 
     Args:
@@ -124,7 +147,7 @@ class Categorical(distribution.DiscreteDistribution):
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self.logits, k], name):
-        return math_ops.exp(self.log_pmf(k))
+        return math_ops.exp(self.log_prob(k))
 
   def sample(self, n, seed=None, name="sample"):
     """Sample `n` observations from the Categorical distribution.
@@ -171,3 +194,7 @@ class Categorical(distribution.DiscreteDistribution):
         ret = math_ops.cast(ret, self._dtype)
         ret.set_shape(self.get_batch_shape())
         return ret
+
+  @property
+  def is_continuous(self):
+    return False

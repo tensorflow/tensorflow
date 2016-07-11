@@ -1013,7 +1013,7 @@ Computes softmax activations.
 
 For each batch `i` and class `j` we have
 
-    softmax[i, j] = exp(logits[i, j]) / sum(exp(logits[i]))
+    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
 
 logits: 2-D with shape `[batch_size, num_classes]`.
 softmax: Same shape as `logits`.

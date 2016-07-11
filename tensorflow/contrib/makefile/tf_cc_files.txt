@@ -47,6 +47,7 @@ tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/identity_op.cc
 tensorflow/core/kernels/gather_op.cc
+tensorflow/core/kernels/fill_functor.cc
 tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
@@ -227,6 +228,7 @@ tensorflow/core/framework/graph_def_util.cc
 tensorflow/core/framework/function.cc
 tensorflow/core/framework/fake_input.cc
 tensorflow/core/framework/device_base.cc
+tensorflow/core/framework/common_shape_fns.cc
 tensorflow/core/framework/cancellation.cc
 tensorflow/core/framework/bfloat16.cc
 tensorflow/core/framework/attr_value_util.cc

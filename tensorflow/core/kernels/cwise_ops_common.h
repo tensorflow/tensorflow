@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/cwise_ops.h"
+#include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -127,6 +128,35 @@ class BinaryOp : public BinaryOpShared {
     if (Functor::has_errors && error) {
       SetComputeError(ctx);
     }
+  }
+};
+
+// Basic coefficient-wise binary operations that are known to not require
+// any broadcasting. This is the case for example of the gradients of
+// unary operations.
+//   Device: E.g., CPUDevice, GPUDevice.
+//   Functor: defined above. E.g., functor::tanh_grad.
+template <typename Device, typename Functor>
+class SimpleBinaryOp : public OpKernel {
+ public:
+  typedef typename Functor::in_type Tin;    // Input scalar data type.
+  typedef typename Functor::out_type Tout;  // Output scalar data type.
+
+  explicit SimpleBinaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& in0 = ctx->input(0);
+    const Tensor& in1 = ctx->input(1);
+
+    Tensor* out;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in0.shape(), &out));
+    auto out_flat = out->flat<Tout>();
+    auto in0_flat = in0.flat<Tin>();
+    auto in1_flat = in1.flat<Tin>();
+    const Device& eigen_device = ctx->eigen_device<Device>();
+
+    functor::SimpleBinaryFunctor<Device, Functor>()(eigen_device, out_flat,
+                                                    in0_flat, in1_flat);
   }
 };
 

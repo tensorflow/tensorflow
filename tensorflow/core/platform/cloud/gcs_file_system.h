@@ -21,16 +21,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
 
 /// Google Cloud Storage implementation of a file system.
+///
+/// The clients should use RetryingGcsFileSystem defined below,
+/// which adds retry logic to GCS operations.
 class GcsFileSystem : public FileSystem {
  public:
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
-                std::unique_ptr<HttpRequest::Factory> http_request_factory);
+                std::unique_ptr<HttpRequest::Factory> http_request_factory,
+                size_t read_ahead_bytes);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -63,7 +68,19 @@ class GcsFileSystem : public FileSystem {
  private:
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+
+  // The number of bytes to read ahead for buffering purposes in the
+  // RandomAccessFile implementation. Defaults to 256Mb.
+  const size_t read_ahead_bytes_ = 256 * 1024 * 1024;
+
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
+};
+
+/// Google Cloud Storage implementation of a file system with retry on failures.
+class RetryingGcsFileSystem : public RetryingFileSystem {
+ public:
+  RetryingGcsFileSystem()
+      : RetryingFileSystem(std::unique_ptr<FileSystem>(new GcsFileSystem)) {}
 };
 
 }  // namespace tensorflow

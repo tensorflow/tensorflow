@@ -645,6 +645,43 @@ class ExecutorState {
     }
   };
 
+  // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
+  // have that many nodes in the ready queue, so we just use a vector and
+  // don't free up memory from the queue as we consume nodes.
+  class TaggedNodeReadyQueue {
+   public:
+    TaggedNodeReadyQueue() : front_index_(0) {}
+
+    void push_back(TaggedNode node) { ready_.push_back(node); }
+    TaggedNode front() const {
+      DCHECK_LT(front_index_, ready_.size());
+      return ready_[front_index_];
+    }
+    void pop_front() {
+      DCHECK_LT(front_index_, ready_.size());
+      front_index_++;
+      if ((front_index_ == ready_.size()) || (front_index_ > 16384)) {
+        if (front_index_ == ready_.size()) {
+          ready_.clear();
+        } else {
+          // Lots of unused entries at beginning of vector: move everything down
+          // to start of vector.
+          ready_.erase(ready_.begin(), ready_.begin() + front_index_);
+        }
+        front_index_ = 0;
+      }
+    }
+    bool empty() const { return ready_.empty(); }
+    const TaggedNode* begin() const { return ready_.begin() + front_index_; }
+    const TaggedNode* end() const { return ready_.end(); }
+
+   private:
+    gtl::InlinedVector<TaggedNode, 16> ready_;
+    int front_index_;
+  };
+
+  struct AsyncState;
+
   typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
   typedef gtl::InlinedVector<Entry, 4> EntryVector;
 
@@ -767,15 +804,15 @@ class ExecutorState {
   // "node" just finishes. Takes ownership of "stats". Returns true if
   // execution has completed.
   bool NodeDone(const Status& s, const Node* node, const TaggedNodeSeq& ready,
-                NodeExecStats* stats, std::deque<TaggedNode>* inline_ready);
+                NodeExecStats* stats, TaggedNodeReadyQueue* inline_ready);
 
   // Call Process() on all nodes in 'inline_ready'.
-  void ProcessInline(const std::deque<TaggedNode>& inline_ready);
+  void ProcessInline(const TaggedNodeReadyQueue& inline_ready);
 
   // Schedule all the expensive nodes in 'ready', and put all the inexpensive
   // nodes in 'ready' into 'inline_ready'.
   void ScheduleReady(const TaggedNodeSeq& ready,
-                     std::deque<TaggedNode>* inline_ready);
+                     TaggedNodeReadyQueue* inline_ready);
 
   // Provide debugging output about an outstanding node in the executor.
   void DumpCompletedNodeState(const int node_id, const Entry* input_vector);
@@ -905,43 +942,55 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   }
 }
 
-namespace {
+// State kept alive for executing an asynchronous node in another
+// thread.  NOTE: We need to make a copy of p.input,
+// p.input_device_contexts, and p.input_alloc_attrs for asynchronous
+// kernels because OpKernelContext methods like input_type(i) needs
+// the param points to valid input type vector. It's not an issue for
+// sync kernels because these vectors are kept on the stack.
+struct ExecutorState::AsyncState {
+  AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
+             const NodeItem& _item, Entry* _first_input, NodeExecStats* _stats)
+      : saved_inputs(*p.inputs),
+        saved_input_device_contexts(*p.input_device_contexts),
+        saved_input_alloc_attrs(*p.input_alloc_attrs),
+        params(p),
+        tagged_node(_tagged_node),
+        item(_item),
+        first_input(_first_input),
+        // ParamsButClearingEigenGPUDevice does equivalent of
+        //   params.eigen_gpu_device = nullptr;
+        ctx(ParamsButClearingEigenGPUDevice(&params), item.num_outputs),
+        stats(_stats) {
+    params.inputs = &saved_inputs;
+    params.input_device_contexts = &saved_input_device_contexts;
+    params.input_alloc_attrs = &saved_input_alloc_attrs;
+  }
 
-// Helpers to make a copy of 'p' and makes a copy of the input type
-// vector and the device context vector.
-//
-// NOTE: We need to make a copy of p.input for asynchronous kernel
-// because OpKernelContext methods like input_type(i) needs the param
-// points to valid input type vector. It's not an issue for sync
-// kernels because the type vector is kept on the stack.
-OpKernelContext::Params* CopyParams(const OpKernelContext::Params& p) {
-  OpKernelContext::Params* ret = new OpKernelContext::Params;
-  *ret = p;
-  // Ensure the copy of Params will make a new eigen GPU device if
-  // necessary.
-  ret->eigen_gpu_device = nullptr;
-  ret->inputs = new TensorValueVec(*p.inputs);
-  ret->input_device_contexts = new DeviceContextVec(*p.input_device_contexts);
-  ret->input_alloc_attrs = new AllocatorAttributeVec(*p.input_alloc_attrs);
-  return ret;
-}
+  TensorValueVec saved_inputs;
+  DeviceContextVec saved_input_device_contexts;
+  AllocatorAttributeVec saved_input_alloc_attrs;
+  OpKernelContext::Params params;
+  TaggedNode tagged_node;
+  NodeItem item;
+  Entry* first_input;
+  OpKernelContext ctx;
+  NodeExecStats* stats;
 
-// Helpers to delete 'p' and copies made by CopyParams.
-void DeleteParams(OpKernelContext::Params* p) {
-  // No need to delete p->eigen_gpu_device since that is deleted in
-  // p's destructor
-  delete p->inputs;
-  delete p->input_device_contexts;
-  delete p->input_alloc_attrs;
-  delete p;
-}
-
-}  // namespace
+ private:
+  OpKernelContext::Params* ParamsButClearingEigenGPUDevice(
+      OpKernelContext::Params* p) {
+    // Ensure OpKernelContext constructor will make a new eigen GPU device if
+    // necessary.
+    p->eigen_gpu_device = nullptr;  // Force allocation
+    return p;
+  }
+};
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   const NodeItem* nodes = impl_->nodes_;
   TaggedNodeSeq ready;
-  std::deque<TaggedNode> inline_ready;
+  TaggedNodeReadyQueue inline_ready;
 
   // Parameters passed to OpKernel::Compute.
   TensorValueVec inputs;
@@ -1059,20 +1108,25 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         AsyncOpKernel* async = item.kernel->AsAsync();
         DCHECK(async != nullptr);
         launched_asynchronously = true;
-        auto pcopy = CopyParams(params);
-        auto ctx = new OpKernelContext(pcopy, item.num_outputs);
-        auto done = [this, tagged_node, item, first_input, ctx, stats, pcopy,
-                     device]() {
+        AsyncState* state =
+            new AsyncState(params, tagged_node, item, first_input, stats);
+
+        auto done = [this, state]() {
+
+          Device* device = impl_->params_.device;
+          NodeExecStats* stats = state->stats;      // Shorthand
+          Entry* first_input = state->first_input;  // Shorthand
+
           if (vlog_) {
             VLOG(2) << this << " Async kernel done: "
-                    << SummarizeNodeDef(item.node->def());
+                    << SummarizeNodeDef(state->item.node->def());
           }
           if (stats_collector_) nodestats::SetOpEnd(stats);
           EntryVector outputs;
-          Status s = ProcessOutputs(item, ctx, &outputs, stats);
-          if (stats_collector_) nodestats::SetMemory(stats, ctx);
+          Status s = ProcessOutputs(state->item, &state->ctx, &outputs, stats);
+          if (stats_collector_) nodestats::SetMemory(stats, &state->ctx);
           // Clears inputs.
-          int num_inputs = item.num_inputs;
+          const int num_inputs = state->item.num_inputs;
           for (int i = 0; i < num_inputs; ++i) {
             (first_input + i)->val = *kEmptyTensor;
           }
@@ -1080,31 +1134,32 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           // add better optional debugging support.
           if (vlog_ && VLOG_IS_ON(1)) {
             mutex_lock l(mu_);
-            tagged_node.input_frame->GetIteration(tagged_node.input_iter)
-                ->mark_completed(tagged_node.node->id());
+            state->tagged_node.input_frame
+                ->GetIteration(state->tagged_node.input_iter)
+                ->mark_completed(state->tagged_node.node->id());
           }
           TaggedNodeSeq ready;
           if (s.ok()) {
-            PropagateOutputs(tagged_node, outputs, &ready);
+            PropagateOutputs(state->tagged_node, outputs, &ready);
           }
           outputs.clear();
-          if (s.ok() && pcopy->device->RequiresRecordingAccessedTensors()) {
+          if (s.ok() &&
+              state->params.device->RequiresRecordingAccessedTensors()) {
             // Get the list of all tensors accessed during the execution
             TensorReferenceVector accessed;
-            ctx->retrieve_accessed_tensors(&accessed);
+            state->ctx.retrieve_accessed_tensors(&accessed);
             if (stats_collector_)
               nodestats::SetReferencedTensors(stats, accessed);
             // callee takes ownership of the vector
-            device->ConsumeListOfAccessedTensors(ctx->op_device_context(),
+            device->ConsumeListOfAccessedTensors(state->ctx.op_device_context(),
                                                  accessed);
           }
-          bool completed = NodeDone(s, item.node, ready, stats, nullptr);
-          delete ctx;
-          DeleteParams(pcopy);
+          bool completed = NodeDone(s, state->item.node, ready, stats, nullptr);
+          delete state;
           if (completed) Finish();
         };
         if (stats_collector_) nodestats::SetOpStart(stats);
-        device->ComputeAsync(async, ctx, done);
+        device->ComputeAsync(async, &state->ctx, done);
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
@@ -1260,6 +1315,13 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     device_context = dc_it->second;
   }
 
+  // Experimental: debugger (tfdb) access to intermediate node completion.
+  if (item.num_outputs == 0 && impl_->params_.node_outputs_cb != nullptr) {
+    // If the node has no output, invoke the callback with output slot set to
+    // -1, signifying that this is a no-output node.
+    impl_->params_.node_outputs_cb(item.node->name(), -1, nullptr, false, ctx);
+  }
+
   for (int i = 0; i < item.num_outputs; ++i) {
     TensorValue val = ctx->release_output(i);
     if (*ctx->is_output_dead() || val.tensor == nullptr) {
@@ -1299,6 +1361,12 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
                                           ctx->step_id(), i, to_log);
           }
+
+          // Experimental: debugger (tfdb) access to intermediate node outputs.
+          if (impl_->params_.node_outputs_cb != nullptr) {
+            impl_->params_.node_outputs_cb(item.node->name(), i, out->ref, true,
+                                           ctx);
+          }
         } else {
           // NOTE that std::move is used here, so val.tensor goes to
           // uninitialized state (val.tensor->IsInitialized return false).
@@ -1306,6 +1374,12 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
           if (log_memory_) {
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
                                           ctx->step_id(), i, out->val);
+          }
+
+          // Experimental: debugger access to intermediate node outputs.
+          if (impl_->params_.node_outputs_cb != nullptr) {
+            impl_->params_.node_outputs_cb(item.node->name(), i, &out->val,
+                                           false, ctx);
           }
         }
       } else {
@@ -1478,7 +1552,7 @@ void ExecutorState::AddLoopInv(FrameState* frame, const Node* node,
 
 bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              const TaggedNodeSeq& ready, NodeExecStats* stats,
-                             std::deque<TaggedNode>* inline_ready) {
+                             TaggedNodeReadyQueue* inline_ready) {
   if (stats_collector_) {
     nodestats::SetAllEnd(stats);
     stats_collector_->UpdateCostModelNode(stats, impl_->graph_, node);
@@ -1523,7 +1597,7 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
   return completed;
 }
 
-void ExecutorState::ProcessInline(const std::deque<TaggedNode>& inline_ready) {
+void ExecutorState::ProcessInline(const TaggedNodeReadyQueue& inline_ready) {
   if (inline_ready.empty()) return;
   int64 scheduled_usec = 0;
   if (stats_collector_) {
@@ -1535,7 +1609,7 @@ void ExecutorState::ProcessInline(const std::deque<TaggedNode>& inline_ready) {
 }
 
 void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
-                                  std::deque<TaggedNode>* inline_ready) {
+                                  TaggedNodeReadyQueue* inline_ready) {
   if (ready.empty()) return;
 
   int64 scheduled_usec = 0;

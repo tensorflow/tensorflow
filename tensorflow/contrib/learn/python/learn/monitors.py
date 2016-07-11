@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 import six
 
+from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver
@@ -241,7 +242,7 @@ class PrintTensor(EveryN):
     for tag, tensor_name in six.iteritems(self._tensor_names):
       if tensor_name in outputs:
         stats.append("%s = %s" % (tag, str(outputs[tensor_name])))
-    logging.info("Step %d: %s" % (step, ", ".join(stats)))
+    logging.info("Step %d: %s", step, ", ".join(stats))
 
 
 class SummarySaver(EveryN):
@@ -373,7 +374,7 @@ class ValidationMonitor(EveryN):
     stats = []
     for name in outputs:
       stats.append("%s = %s" % (name, str(outputs[name])))
-    logging.info("Validation (step %d): %s" % (step, ", ".join(stats)))
+    logging.info("Validation (step %d): %s", step, ", ".join(stats))
 
     # Early stopping logic.
     if self.early_stopping_rounds is not None:
@@ -520,3 +521,47 @@ class GraphDump(BaseMonitor):
         else:
           matched.append(key)
     return matched, non_matched
+
+
+class ExportMonitor(EveryN):
+  """Monitor that exports Estimator every N steps."""
+
+  def __init__(self,
+               every_n_steps,
+               export_dir,
+               exports_to_keep=5,
+               signature_fn=None):
+    """Initializes ExportMonitor.
+
+    Args:
+      every_n_steps: Run monitor every N steps.
+      export_dir: str, folder to export.
+      exports_to_keep: int, number of exports to keep.
+      signature_fn: Function that given `Tensor` of `Example` strings,
+        `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
+        and returns default and named exporting signautres.
+    """
+    super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
+    self.export_dir = export_dir
+    self.exports_to_keep = exports_to_keep
+    self.signature_fn = signature_fn
+
+  def every_n_step_end(self, step, outputs):
+    super(ExportMonitor, self).every_n_step_end(step, outputs)
+    try:
+      export.export_estimator(self._estimator,
+                              self.export_dir,
+                              exports_to_keep=self.exports_to_keep,
+                              signature_fn=self.signature_fn)
+    except (RuntimeError, TypeError):
+      # Currently we are not syncronized with saving checkpoints, which leads to
+      # runtime errors when we are calling export on the same global step.
+      logging.info("Skipping exporting for the same step. "
+                   "Consider exporting less frequently.")
+
+  def end(self):
+    super(ExportMonitor, self).end()
+    export.export_estimator(self._estimator,
+                            self.export_dir,
+                            exports_to_keep=self.exports_to_keep,
+                            signature_fn=self.signature_fn)

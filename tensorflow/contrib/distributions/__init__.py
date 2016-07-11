@@ -21,12 +21,11 @@ initialized with parameters that define the distributions.
 
 ### Base classes
 
-@@BaseDistribution
-@@ContinuousDistribution
-@@DiscreteDistribution
+@@Distribution
 
 ### Univariate (scalar) distributions
 
+@@Bernoulli
 @@Categorical
 @@Chi2
 @@Exponential
@@ -37,8 +36,29 @@ initialized with parameters that define the distributions.
 
 ### Multivariate distributions
 
-@@MultivariateNormal
+#### Multivariate normal
+
+@@MultivariateNormalFull
+@@MultivariateNormalCholesky
+
+#### Other multivariate distributions
+
 @@DirichletMultinomial
+
+### Transformed distributions
+
+@@TransformedDistribution
+
+## Operators allowing for matrix-free methods
+
+### Positive definite operators
+
+A matrix is positive definite if it is symmetric with all positive eigenvalues.
+
+@@OperatorPDBase
+@@OperatorPDFull
+@@OperatorPDCholesky
+@@batch_matrix_diag_transform
 
 ## Posterior inference with conjugate priors.
 
@@ -60,8 +80,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
@@ -72,5 +93,9 @@ from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
+from tensorflow.contrib.distributions.python.ops.operator_pd import *
+from tensorflow.contrib.distributions.python.ops.operator_pd_cholesky import *
+from tensorflow.contrib.distributions.python.ops.operator_pd_full import *
 from tensorflow.contrib.distributions.python.ops.student_t import *
+from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *

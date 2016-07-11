@@ -111,7 +111,7 @@ class FakeLibCurl : public LibCurl {
       write_callback(response_content.c_str(), 1, response_content.size(),
                      write_data);
     }
-    return CURLE_OK;
+    return curl_easy_perform_result;
   }
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              uint64* value) override {
@@ -185,6 +185,7 @@ class FakeLibCurl : public LibCurl {
                           FILE* userdata) = &fread;
   // Outcome of performing the request.
   string posted_content;
+  CURLcode curl_easy_perform_result = CURLE_OK;
 };
 
 TEST(HttpRequestTest, GetRequest) {
@@ -211,6 +212,40 @@ TEST(HttpRequestTest, GetRequest) {
   EXPECT_EQ(1, libcurl->headers->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
   EXPECT_FALSE(libcurl->is_post);
+}
+
+TEST(HttpRequestTest, GetRequest_RangeOutOfBound) {
+  FakeLibCurl* libcurl = new FakeLibCurl("get response", 416);
+  libcurl->curl_easy_perform_result = CURLE_WRITE_ERROR;
+  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  TF_EXPECT_OK(http_request.Init());
+
+  char scratch[100] = "random original scratch content";
+  StringPiece result = "random original string piece";
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetRange(100, 199));
+  TF_EXPECT_OK(http_request.SetResultBuffer(scratch, 100, &result));
+  TF_EXPECT_OK(http_request.Send());
+
+  EXPECT_TRUE(result.empty());
+}
+
+TEST(HttpRequestTest, GetRequest_503) {
+  FakeLibCurl* libcurl = new FakeLibCurl("get response", 503);
+  libcurl->curl_easy_perform_result = CURLE_WRITE_ERROR;
+  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  TF_EXPECT_OK(http_request.Init());
+
+  char scratch[100] = "random original scratch content";
+  StringPiece result = "random original string piece";
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetRange(100, 199));
+  TF_EXPECT_OK(http_request.SetResultBuffer(scratch, 100, &result));
+  EXPECT_EQ(error::UNAVAILABLE, http_request.Send().code());
 }
 
 TEST(HttpRequestTest, PostRequest_WithBody_FromFile) {

@@ -169,7 +169,8 @@ def input_fn(df):
       shape=[df[k].size, 1])
                       for k in CATEGORICAL_COLUMNS}
   # Merges the two dictionaries into one.
-  feature_cols = dict(continuous_cols.items() + categorical_cols.items())
+  feature_cols = dict(continuous_cols)
+  feature_cols.update(categorical_cols)
   # Converts the label column into a constant Tensor.
   label = tf.constant(df[LABEL_COLUMN].values)
   # Returns the feature columns and the label.

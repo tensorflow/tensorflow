@@ -1399,7 +1399,7 @@ Returns the current variable scope.
 
 - - -
 
-### `tf.make_template(name_, func_, create_scope_now_=False, **kwargs)` {#make_template}
+### `tf.make_template(name_, func_, create_scope_now_=False, unique_name_=None, **kwargs)` {#make_template}
 
 Given an arbitrary function, wrap it so that it does variable sharing.
 
@@ -1487,6 +1487,9 @@ reduce the likelihood of collisions with kwargs.
 *  <b>`create_scope_now_`</b>: Boolean controlling whether the scope should be created
     when the template is constructed or when the template is called. Default
     is False, meaning the scope is created when the template is called.
+*  <b>`unique_name_`</b>: When used, it overrides name_ and is not made unique. If a
+    template of the same scope/unique_name already exists and reuse is false,
+    an error is raised. Defaults to None.
 *  <b>`**kwargs`</b>: Keyword arguments to apply to `func_`.
 
 ##### Returns:

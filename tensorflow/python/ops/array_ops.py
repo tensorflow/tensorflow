@@ -495,7 +495,7 @@ def strided_slice(input_,
 ops.Tensor._override_operator("__getitem__", _SliceHelper)
 
 
-def pack(values, name="pack"):
+def pack(values, axis=0, name="pack"):
   """Packs a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
   Packs tensors in `values` into a tensor with rank one higher than each tensor
@@ -508,17 +508,31 @@ def pack(values, name="pack"):
 
   Args:
     values: A list of `Tensor` objects with the same shape and type.
+    axis: An `int`. The axis to pack along. Defaults to the first dimension.
+      Supports negative indexes.
     name: A name for this operation (optional).
 
   Returns:
     output: A packed `Tensor` with the same type as `values`.
+
+  Raises:
+    ValueError: If `axis` is out of the range [-(R+1), R+1).
   """
-  try:
-    # If the input is a constant list, it can just be converted to a constant op
-    return ops.convert_to_tensor(values, name=name)
-  except (TypeError, ValueError):
-    # Input list contains non-constant tensors
-    return gen_array_ops._pack(values, name=name)
+  if axis == 0:
+    try:
+      # If the input is a constant list, it can be converted to a constant op
+      return ops.convert_to_tensor(values, name=name)
+    except (TypeError, ValueError):
+      pass  # Input list contains non-constant tensors
+
+  value_shape = ops.convert_to_tensor(values[0], name=name).get_shape()
+  if value_shape.ndims is not None:
+    expanded_num_dims = value_shape.ndims + 1
+    if axis < -expanded_num_dims or axis >= expanded_num_dims:
+      raise ValueError("axis = %d not in [%d, %d)" %
+                       (axis, -expanded_num_dims, expanded_num_dims))
+
+  return gen_array_ops._pack(values, axis=axis, name=name)
 
 
 # pylint: disable=invalid-name
@@ -609,12 +623,12 @@ ops.register_tensor_conversion_function(
     (list, tuple), _autopacking_conversion_function, 99)
 
 
-def unpack(value, num=None, name="unpack"):
-  """Unpacks the outer dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
+def unpack(value, num=None, axis=0, name="unpack"):
+  """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
-  Unpacks `num` tensors from `value` along the first dimension.
+  Unpacks `num` tensors from `value` along the given dimension.
   If `num` is not specified (the default), it is inferred from `value`'s shape.
-  If `value.shape[0]` is not known, `ValueError` is raised.
+  If `value.shape[axis]` is not known, `ValueError` is raised.
 
   The ith tensor in `output` is the slice `value[i, ...]`. Each tensor in
   `output` has shape `value.shape[1:]`.
@@ -625,8 +639,10 @@ def unpack(value, num=None, name="unpack"):
 
   Args:
     value: A rank `R > 0` `Tensor` to be unpacked.
-    num: An `int`. The first dimension of value. Automatically inferred if
-      `None` (the default).
+    num: An `int`. The length of the dimension `axis`. Automatically inferred
+      if `None` (the default).
+    axis: An `int`. The axis to unpack along. Defaults to the first
+      dimension. Supports negative indexes.
     name: A name for the operation (optional).
 
   Returns:
@@ -634,14 +650,19 @@ def unpack(value, num=None, name="unpack"):
 
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
+    ValueError: If `axis` is out of the range [-R, R).
   """
   if num is None:
     value = ops.convert_to_tensor(value)
-    shape = value.get_shape()
-    num = shape[0].value
-    if num is None:
-      raise ValueError("Cannot infer num from shape %s" % shape)
-  return gen_array_ops._unpack(value, num=num, name=name)
+    value_shape = value.get_shape()
+    if value_shape.ndims is not None:
+      if axis < -value_shape.ndims or axis >= value_shape.ndims:
+        raise ValueError("axis = %d not in [%d, %d)" %
+                         (axis, -value_shape.ndims, value_shape.ndims))
+      num = value_shape[axis].value
+  if num is None:
+    raise ValueError("Cannot infer num from shape %s" % value_shape)
+  return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
 def concat(concat_dim, values, name="concat"):
@@ -707,15 +728,26 @@ def concat(concat_dim, values, name="concat"):
 @ops.RegisterShape("Pack")
 def _PackShape(op):
   input_shape = op.inputs[0].get_shape()
+  if input_shape.ndims is None:
+    return [tensor_shape.unknown_shape()]
+
   for inp in op.inputs[1:]:
     input_shape = input_shape.merge_with(inp.get_shape())
-  return [tensor_shape.TensorShape([len(op.inputs)]).concatenate(input_shape)]
+
+  input_shape = input_shape.as_list()
+  input_shape.insert(op.get_attr("axis"), len(op.inputs))
+  return [tensor_shape.TensorShape(input_shape)]
 
 
 @ops.RegisterShape("Unpack")
 def _UnpackShape(op):
   input_shape = op.inputs[0].get_shape()
-  return [input_shape[1:]] * op.get_attr("num")
+  if input_shape.ndims is None:
+    return [tensor_shape.unknown_shape()] * op.get_attr("num")
+
+  input_shape = input_shape.as_list()
+  del input_shape[op.get_attr("axis")]
+  return [tensor_shape.TensorShape(input_shape)] * op.get_attr("num")
 
 
 @ops.RegisterShape("Concat")
@@ -1437,6 +1469,12 @@ def _compute_size_of_strided_dim(spec, size):
     return unknown  # unknown because stride is unknown
 
 
+@ops.RegisterShape("StridedSliceGrad")
+def _StridedSliceGradShape(op):
+  """Shape function for gradient of array_ops.slice."""
+  return [tensor_util.constant_value(op.inputs[0])]
+
+
 @ops.RegisterShape("StridedSlice")
 def _StridedSliceShape(op):
   """Shape function for array_ops.slice."""
@@ -1742,45 +1780,38 @@ def _ReshapeShape(op):
       num_elements *= dim
   else:
     num_elements = tensor_shape.Dimension(None)
-  new_shape_shape = op.inputs[1].get_shape().with_rank(1)
-  new_shape = tensor_util.constant_value(op.inputs[1])
-  if new_shape is None:
-    # Attempt to infer the rank of the output from the length of
-    # new_shape.
-    return [tensor_shape.unknown_shape(ndims=new_shape_shape[0].value)]
-  new_shape = np.reshape(new_shape, -1).tolist()
-  if -1 not in new_shape:
+  new_shape = tensor_util.constant_value_as_shape(op.inputs[1])
+  if new_shape.ndims is None:
+    # We have no information about the shape of the output.
+    return [new_shape]
+  if None not in new_shape.as_list():
     # The new shape is fully defined.
     if (num_elements.value is not None
         and num_elements.value != np.prod(new_shape)):
       raise ValueError(
           "Cannot reshape a tensor with %d elements to shape %s (%d elements)"
           % (num_elements.value, new_shape, np.prod(new_shape)))
-    return [tensor_shape.TensorShape(new_shape)]
   elif num_elements.value is not None:
     # We know the number of elements, so we can calculate the missing
     # dimension in the new_shape.
     known_elements = 1
-    unknown_index = None
+    unknown_indices = []
     for i, dim in enumerate(new_shape):
-      if dim == -1:
-        unknown_index = i
+      if dim.value is None:
+        unknown_indices.append(i)
       else:
-        known_elements *= dim
-    if known_elements == 0:
-      raise ValueError("cannot infer the missing input size for "
-                       "an empty tensor unless all specified "
-                       "input sizes are non-zero")
-    if num_elements % known_elements != 0:
-      raise ValueError("input has %s elements, which isn't divisible by %d" %
-                       (num_elements, known_elements))
-    new_shape[unknown_index] = num_elements // known_elements
-    return [tensor_shape.TensorShape(new_shape)]
-  else:
-    # We don't know the input shape, but we know n-1 of the dimensions
-    # in the new shape.
-    new_shape[new_shape.index(-1)] = None
-    return [tensor_shape.TensorShape(new_shape)]
+        known_elements *= dim.value
+    if known_elements != 0:
+      if num_elements % known_elements != 0:
+        raise ValueError("input has %s elements, which isn't divisible by %d" %
+                         (num_elements, known_elements))
+      if len(unknown_indices) == 1:
+        unknown_index = unknown_indices[0]
+        new_shape = new_shape.merge_with(
+            new_shape[:unknown_index].concatenate(
+                [num_elements // known_elements]).concatenate(
+                    new_shape[unknown_index+1:]))
+  return [new_shape]
 
 
 @ops.RegisterShape("BroadcastGradientArgs")
@@ -1804,16 +1835,16 @@ def _FillShape(op):
 
   Returns:
     A single-element list containing the shape of the output.
+
+  Raises:
+    ValueError: If the shapes or arguments are known to be invalid.
   """
-  dimensions_shape = op.inputs[0].get_shape().with_rank(1)
-  op.inputs[1].get_shape().assert_is_compatible_with(tensor_shape.scalar())
+  op.inputs[0].get_shape().assert_has_rank(1)
+  op.inputs[1].get_shape().assert_has_rank(0)
   fill_dims = tensor_util.constant_value(op.inputs[0])
-  if fill_dims is None:
-    # Attempt to infer the rank of the output from the length of
-    # dimensions.
-    return [tensor_shape.unknown_shape(ndims=dimensions_shape[0].value)]
-  else:
-    return [tensor_shape.TensorShape(fill_dims.tolist())]
+  if fill_dims is not None and any(d < 0 for d in fill_dims):
+    raise ValueError("Fill dimensions must be >= 0")
+  return [tensor_util.constant_value_as_shape(op.inputs[0])]
 
 
 @ops.RegisterShape("InvertPermutation")

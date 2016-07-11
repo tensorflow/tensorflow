@@ -180,6 +180,13 @@ The DistributionTensor is a StochasticTensor backed by a distribution.
 
 - - -
 
+#### `tf.contrib.bayesflow.stochastic_graph.MeanValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#MeanValue.declare_inputs}
+
+
+
+
+- - -
+
 #### `tf.contrib.bayesflow.stochastic_graph.MeanValue.popped_above(unused_value_type)` {#MeanValue.popped_above}
 
 
@@ -232,6 +239,13 @@ Sample `n` times and concatenate along a new outer dimension.
 *  <b>`n`</b>: A python integer or int32 tensor. The number of samples to take.
 *  <b>`stop_gradient`</b>: If `True`, StochasticTensors' values are wrapped in
     `stop_gradient`, to avoid backpropagation through.
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleValue.declare_inputs}
+
+
 
 
 - - -
@@ -307,6 +321,13 @@ Sample `n` times and reshape the outer 2 axes so rank does not change.
 *  <b>`n`</b>: A python integer or int32 tensor.  The number of samples to take.
 *  <b>`stop_gradient`</b>: If `True`, StochasticTensors' values are wrapped in
     `stop_gradient`, to avoid backpropagation through.
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleAndReshapeValue.declare_inputs}
+
+
 
 
 - - -
@@ -387,8 +408,43 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
-### `tf.contrib.bayesflow.stochastic_graph.surrogate_losses(sample_losses, name=None)` {#surrogate_losses}
+### `tf.contrib.bayesflow.stochastic_graph.surrogate_losses(sample_losses, name='SurrogateLosses')` {#surrogate_losses}
 
+Compute surrogate losses for StochasticTensors in the graph.
+
+This function will call `surrogate_loss` on each `StochasticTensor` in the
+graph and pass the losses in `sample_losses` that that `StochasticTensor`
+influenced.
+
+Note that currently `surrogate_losses` does not work with `StochasticTensor`s
+instantiated in `while_loop`s or other control structures.
+
+##### Args:
+
+
+*  <b>`sample_losses`</b>: a list or tuple of final losses. Each loss should be per
+    example in the batch (and possibly per sample); that is, it should have
+    dimensionality of 1 or greater. All losses should have the same shape.
+*  <b>`name`</b>: the name with which to prepend created ops.
+
+##### Returns:
+
+  A list of surrogate losses.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `sample_losses` is not a list or tuple, or if its elements
+    are not `Tensor`s.
+*  <b>`ValueError`</b>: if any loss in `sample_losses` does not have dimensionality 1
+    or greater.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_graph.NoValueTypeSetError` {#NoValueTypeSetError}
 
 
 

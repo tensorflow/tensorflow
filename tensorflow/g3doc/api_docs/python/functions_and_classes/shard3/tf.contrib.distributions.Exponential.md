@@ -2,15 +2,29 @@ The Exponential distribution with rate parameter lam.
 
 The PDF of this distribution is:
 
-```pdf(x) = (lam * e^(-lam * x)), x > 0```
+```prob(x) = (lam * e^(-lam * x)), x > 0```
 
 Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, strict_statistics=True, name='Exponential')` {#Exponential.__init__}
+
+Construct Exponential distribution with parameter `lam`.
+
+##### Args:
 
 
+*  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
+    `lam` must contain only positive values.
+*  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
+    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
 - - -
@@ -141,6 +155,13 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.is_continuous` {#Exponential.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.is_reparameterized` {#Exponential.is_reparameterized}
 
 
@@ -173,16 +194,23 @@ Log CDF of observations `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.log_likelihood(value, name='log_likelihood')` {#Exponential.log_likelihood}
+#### `tf.contrib.distributions.Exponential.log_pdf(value, name='log_pdf')` {#Exponential.log_pdf}
 
-Log likelihood of this distribution (same as log_pdf).
+Log of the probability density function.
 
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.log_pdf(x, name='log_pdf')` {#Exponential.log_pdf}
+#### `tf.contrib.distributions.Exponential.log_pmf(value, name='log_pmf')` {#Exponential.log_pmf}
 
-Log pdf of observations in `x` under these Gamma distribution(s).
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.log_prob(x, name='log_prob')` {#Exponential.log_prob}
+
+Log prob of observations in `x` under these Gamma distribution(s).
 
 ##### Args:
 
@@ -193,7 +221,7 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 ##### Raises:
 
@@ -212,7 +240,20 @@ Mean of each batch member.
 
 #### `tf.contrib.distributions.Exponential.mode(name='mode')` {#Exponential.mode}
 
-Mode of each batch member.  Defined only if alpha >= 1.
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -224,7 +265,21 @@ Name to prepend to all ops.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.pdf(x, name='pdf')` {#Exponential.pdf}
+#### `tf.contrib.distributions.Exponential.pdf(value, name='pdf')` {#Exponential.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.pmf(value, name='pmf')` {#Exponential.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.prob(x, name='prob')` {#Exponential.prob}
 
 Pdf of observations in `x` under these Gamma distribution(s).
 
@@ -237,7 +292,7 @@ Pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+*  <b>`prob`</b>: tensor of dtype `dtype`, the PDFs of `x`
 
 ##### Raises:
 
@@ -270,6 +325,20 @@ Sample `n` observations from the Exponential Distributions.
 #### `tf.contrib.distributions.Exponential.std(name='std')` {#Exponential.std}
 
 Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.strict` {#Exponential.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.strict_statistics` {#Exponential.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

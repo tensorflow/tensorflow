@@ -551,6 +551,7 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
                                  const ExecutorsAndKeys* executors_and_keys,
                                  IntraProcessRendezvous* rendez) {
   Status s;
+  Rendezvous::ParsedKey parsed;
   // Insert the input tensors into the local rendezvous by their
   // rendezvous key.
   for (const auto& input : inputs) {
@@ -560,7 +561,14 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
                                      "' is not a pre-defined feed!");
     }
     const string& input_key = it->second;
-    s = rendez->Send(input_key, Rendezvous::Args(), input.second, false);
+
+    s = Rendezvous::ParseKey(input_key, &parsed);
+    if (!s.ok()) {
+      rendez->StartAbort(s);
+      return s;
+    }
+
+    s = rendez->Send(parsed, Rendezvous::Args(), input.second, false);
     if (!s.ok()) {
       rendez->StartAbort(s);
       return s;
@@ -578,6 +586,7 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
     outputs->resize(output_names.size());
   }
 
+  Rendezvous::ParsedKey parsed;
   // Get the outputs from the rendezvous
   for (size_t output_offset = 0; output_offset < output_names.size();
        ++output_offset) {
@@ -591,14 +600,16 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
     const string& output_key = it->second;
     Tensor output_tensor;
     bool is_dead;
-
-    // Fetch data from the Rendezvous.
     IntraProcessRendezvous* rendez = run_state->rendez;
-    s = rendez->Recv(output_key, Rendezvous::Args(), &output_tensor, &is_dead);
-    if (is_dead && s.ok()) {
-      s = errors::InvalidArgument("The tensor returned for ",
-                                  output_names[output_offset],
-                                  " was not valid.");
+
+    s = Rendezvous::ParseKey(output_key, &parsed);
+    if (s.ok()) {
+      // Fetch data from the Rendezvous.
+      s = rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead);
+      if (is_dead && s.ok()) {
+        s = errors::InvalidArgument("The tensor returned for ", output_name,
+                                    " was not valid.");
+      }
     }
     if (!s.ok()) {
       rendez->StartAbort(s);
@@ -784,8 +795,10 @@ Status DirectSession::GetOrCreateExecutors(
         delete kernel;
       }
     };
+    params.node_outputs_cb = node_outputs_callback_;
 
     optimizer.Optimize(lib, device, &partition_graph);
+
     s = EnsureMemoryTypes(DeviceType(device->device_type()), device->name(),
                           partition_graph);
     if (!s.ok()) {

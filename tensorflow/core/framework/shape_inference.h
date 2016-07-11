@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -80,8 +82,11 @@ class InferenceContext {
   //               the same Dimension*.
   //
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
-  InferenceContext(const std::vector<string>& input_shapes, int num_outputs,
-                   const std::vector<const Tensor*>& input_tensors = {});
+  //
+  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
+  InferenceContext(const NodeDef* node_def,
+                   const std::vector<string>& input_shapes, int num_outputs,
+                   const std::vector<const Tensor*>& input_tensors);
   ~InferenceContext();
 
   const Shape* input(int idx) const { return inputs_[idx]; }
@@ -113,6 +118,8 @@ class InferenceContext {
                   const Shape** out) TF_MUST_USE_RESULT;
   Status WithRankAtLeast(const Shape* shape, int32 rank,
                          const Shape** out) TF_MUST_USE_RESULT;
+  Status WithRankAtMost(const Shape* shape, int32 rank,
+                        const Shape** out) TF_MUST_USE_RESULT;
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
   // the dimension with asserted value in <*out>. Otherwise returns an error.
@@ -129,6 +136,13 @@ class InferenceContext {
   Status Merge(const Shape* in0, const Shape* in1,
                const Shape** out) TF_MUST_USE_RESULT;
 
+  // Asserts that <s>'s rank >= <prefix>'s rank, and the first
+  // <prefix.rank> dimensions of <s> are compatible with the dimensions of
+  // <prefix>.
+  // Returns the merged results in <*s_out> and <*prefix_out>.
+  Status MergePrefix(const Shape* s, const Shape* prefix, const Shape** s_out,
+                     const Shape** prefix_out) TF_MUST_USE_RESULT;
+
   // Merges <d0> and <d1> and returns the merged dimension in <*out>. If <d0>
   // and <d1> have incompatible values, returns an error.
   //
@@ -139,7 +153,7 @@ class InferenceContext {
   // Returns in <*out> a sub-shape of <s>, with dimensions at index [s[start],
   // ..).
   // Returns an error if the rank of <s> is < <start>.
-  Status Subshape(const Shape* s, int start,
+  Status Subshape(const Shape* s, int64 start,
                   const Shape** out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those
@@ -162,6 +176,12 @@ class InferenceContext {
   const Dimension* CreateDim(int64 value);
   const Dimension* CreateUnknownDim();
 
+  // Look up the attr for the NodeDef being evaluated with name attr_name and
+  // set *value to its value.  If no attr with attr_name is found in def(), or
+  // the attr does not have a matching type, a non-ok status will be returned.
+  template <class T>
+  Status GetAttr(StringPiece attr_name, T* value) const;
+
  private:
   Status ReturnUnknownShape(const Shape** out) {
     *out = CreateUnknownShape();
@@ -181,8 +201,13 @@ class InferenceContext {
   std::vector<const Tensor*> input_tensors_;
   std::vector<const Shape*> outputs_;
 
+  const NodeDef& node_def_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
 };
+
+// -----------------------------------------------------------------------------
+// Template and inline method implementations, please ignore
 
 inline Dimension::Dimension() : value_(InferenceContext::kUnknownDim) {}
 inline Dimension::Dimension(int64 value) : value_(value) {}
@@ -190,6 +215,11 @@ inline Dimension::Dimension(int64 value) : value_(value) {}
 inline Shape::Shape() : rank_(InferenceContext::kUnknownRank) {}
 inline Shape::Shape(const std::vector<const Dimension*> dims)
     : rank_(dims.size()), dims_(dims) {}
+
+template <class T>
+Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
+  return GetNodeAttr(node_def_, attr_name, value);
+}
 
 }  // namespace shape_inference
 }  // namespace tensorflow

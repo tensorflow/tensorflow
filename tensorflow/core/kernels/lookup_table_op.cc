@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -73,6 +74,8 @@ const float SubtleMustCopyUnlessStringOrFloat(const float value) {
 template <class K, class V>
 class HashTable : public InitializableLookupTable {
  public:
+  HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
+
   size_t size() const override {
     // return the size of the table only if it's initialized, otherwise 0.
     if (!is_initialized_) {
@@ -105,7 +108,7 @@ class HashTable : public InitializableLookupTable {
 
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
-    for (int i = 0; i < key_values.size(); ++i) {
+    for (int64 i = 0; i < key_values.size(); ++i) {
       const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
       const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
       const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
@@ -124,7 +127,7 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
 
-    for (int i = 0; i < key_values.size(); ++i) {
+    for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
           *table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
           default_val);
@@ -137,22 +140,23 @@ class HashTable : public InitializableLookupTable {
 };
 
 // Lookup table that wraps an unordered_map, where the key and value data type
-// is specified.
+// is specified. Each individual value must be a scalar. If vector values are
+// required, use MutableHashTableOfTensors.
 //
 // This table is mutable and thread safe - Insert can be called at any time.
 //
 // Sample use case:
 //
-// MutableHashTable<int64, int64> table;  // int64 -> int64.
+// MutableHashTableOfScalars<int64, int64> table;  // int64 -> int64.
 // // Populate the table, elements could be added in one or multiple calls.
 // table.Insert(key_tensor, value_tensor); // Populate the table.
 //
 // table.Find(in_t, &out_t, default_t)
 //
 template <class K, class V>
-class MutableHashTable : public LookupInterface {
+class MutableHashTableOfScalars : public LookupInterface {
  public:
-  MutableHashTable() {}
+  MutableHashTableOfScalars(OpKernelContext* ctx, OpKernel* kernel) {}
 
   size_t size() const override {
     mutex_lock l(mu_);
@@ -161,14 +165,12 @@ class MutableHashTable : public LookupInterface {
 
   Status Find(const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    TF_RETURN_IF_ERROR(CheckFindArguments(key, *value, default_value));
-
     const V default_val = default_value.flat<V>()(0);
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
 
     mutex_lock l(mu_);
-    for (int i = 0; i < key_values.size(); ++i) {
+    for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
           table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
           default_val);
@@ -178,16 +180,35 @@ class MutableHashTable : public LookupInterface {
   }
 
   Status Insert(const Tensor& keys, const Tensor& values) override {
-    TF_RETURN_IF_ERROR(CheckKeyAndValueTensors(keys, values));
-
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
 
     mutex_lock l(mu_);
-    for (int i = 0; i < key_values.size(); ++i) {
+    for (int64 i = 0; i < key_values.size(); ++i) {
       const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
       const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
       gtl::InsertOrUpdate(&table_, key, value);
+    }
+    return Status::OK();
+  }
+
+  Status ExportValues(OpKernelContext* ctx) override {
+    mutex_lock l(mu_);
+    int64 size = table_.size();
+
+    Tensor* keys;
+    Tensor* values;
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_output("keys", TensorShape({size}), &keys));
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_output("values", TensorShape({size}), &values));
+
+    auto keys_data = keys->flat<K>();
+    auto values_data = values->flat<V>();
+    int64 i = 0;
+    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
+      keys_data(i) = it->first;
+      values_data(i) = it->second;
     }
     return Status::OK();
   }
@@ -196,10 +217,114 @@ class MutableHashTable : public LookupInterface {
 
   DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
 
+  TensorShape value_shape() const override { return TensorShape(); }
+
  private:
   // TODO(andreasst): consider using a read/write lock or a concurrent map
   mutable mutex mu_;
-  std::unordered_map<K, V> table_;
+  std::unordered_map<K, V> table_ GUARDED_BY(mu_);
+};
+
+// Lookup table that wraps an unordered_map. Behaves identical to
+// MutableHashTableOfScalars except that each value must be a vector.
+template <class K, class V>
+class MutableHashTableOfTensors : public LookupInterface {
+ public:
+  MutableHashTableOfTensors(OpKernelContext* ctx, OpKernel* kernel) {
+    OP_REQUIRES_OK(ctx,
+                   GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(value_shape_),
+        errors::InvalidArgument("Default value must be a vector, got shape ",
+                                value_shape_.DebugString()));
+  }
+
+  size_t size() const override {
+    mutex_lock l(mu_);
+    return table_.size();
+  }
+
+  Status Find(const Tensor& key, Tensor* value,
+              const Tensor& default_value) override {
+    const auto default_flat = default_value.flat<V>();
+    const auto key_values = key.flat<K>();
+    auto value_values = value->flat_inner_dims<V, 2>();
+    int64 value_dim = value_shape_.dim_size(0);
+
+    mutex_lock l(mu_);
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      ValueArray* value_vec = gtl::FindOrNull(
+          table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)));
+      if (value_vec != nullptr) {
+        for (int64 j = 0; j < value_dim; j++) {
+          value_values(i, j) = value_vec->at(j);
+        }
+      } else {
+        for (int64 j = 0; j < value_dim; j++) {
+          value_values(i, j) = default_flat(j);
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Insert(const Tensor& keys, const Tensor& values) override {
+    const auto key_values = keys.flat<K>();
+    const auto value_values = values.flat_inner_dims<V, 2>();
+    int64 value_dim = value_shape_.dim_size(0);
+
+    mutex_lock l(mu_);
+    for (int64 i = 0; i < key_values.size(); ++i) {
+      const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
+      ValueArray value_vec;
+      for (int64 j = 0; j < value_dim; j++) {
+        V value = value_values(i, j);
+        value_vec.push_back(value);
+      }
+      gtl::InsertOrUpdate(&table_, key, value_vec);
+    }
+    return Status::OK();
+  }
+
+  Status ExportValues(OpKernelContext* ctx) override {
+    mutex_lock l(mu_);
+    int64 size = table_.size();
+    int64 value_dim = value_shape_.dim_size(0);
+
+    Tensor* keys;
+    Tensor* values;
+    TF_RETURN_IF_ERROR(
+        ctx->allocate_output("keys", TensorShape({size}), &keys));
+    TF_RETURN_IF_ERROR(ctx->allocate_output(
+        "values", TensorShape({size, value_dim}), &values));
+
+    auto keys_data = keys->flat<K>();
+    auto values_data = values->matrix<V>();
+    int64 i = 0;
+    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
+      K key = it->first;
+      ValueArray value = it->second;
+      keys_data(i) = key;
+      for (int64 j = 0; j < value_dim; j++) {
+        values_data(i, j) = value[j];
+      }
+    }
+    return Status::OK();
+  }
+
+  DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
+
+  DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
+
+  TensorShape value_shape() const override { return value_shape_; }
+
+ private:
+  TensorShape value_shape_;
+  // TODO(andreasst): consider using a read/write lock or a concurrent map
+  mutable mutex mu_;
+  typedef gtl::InlinedVector<V, 4> ValueArray;
+  std::unordered_map<K, ValueArray> table_ GUARDED_BY(mu_);
 };
 
 }  // namespace lookup
@@ -219,17 +344,16 @@ class LookupTableFindOp : public OpKernel {
     DataTypeVector expected_outputs = {table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
-    const Tensor& input = ctx->input(1);
-
+    const Tensor& key = ctx->input(1);
     const Tensor& default_value = ctx->input(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(default_value.shape()),
-                errors::InvalidArgument("Default value must be a scalar, not ",
-                                        default_value.shape().DebugString()));
+    OP_REQUIRES_OK(ctx, table->CheckFindArguments(key, default_value));
 
+    TensorShape output_shape = key.shape();
+    output_shape.AppendShape(table->value_shape());
     Tensor* out;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output("values", input.shape(), &out));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("values", output_shape, &out));
 
-    OP_REQUIRES_OK(ctx, table->Find(input, out, default_value));
+    OP_REQUIRES_OK(ctx, table->Find(key, out, default_value));
   }
 };
 
@@ -252,6 +376,7 @@ class LookupTableInsertOp : public OpKernel {
 
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
+    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensors(keys, values));
     OP_REQUIRES_OK(ctx, table->Insert(keys, values));
   }
 };
@@ -278,6 +403,23 @@ class LookupTableSizeOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("LookupTableSize").Device(DEVICE_CPU),
                         LookupTableSizeOp);
 
+// Op that outputs tensors of all keys and all values.
+class LookupTableExportOp : public OpKernel {
+ public:
+  explicit LookupTableExportOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
+    core::ScopedUnref unref_me(table);
+
+    OP_REQUIRES_OK(ctx, table->ExportValues(ctx));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("LookupTableExport").Device(DEVICE_CPU),
+                        LookupTableExportOp);
+
 // Register the HashTable op with the currently supported key and value types.
 #define REGISTER_KERNEL(key_dtype, value_dtype)                           \
   REGISTER_KERNEL_BUILDER(                                                \
@@ -294,13 +436,29 @@ REGISTER_KERNEL(int64, string);
 #undef REGISTER_KERNEL
 
 // Register the MutableHashTable op.
-#define REGISTER_KERNEL(key_dtype, value_dtype)                       \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("MutableHashTable")                                        \
-          .Device(DEVICE_CPU)                                         \
-          .TypeConstraint<key_dtype>("key_dtype")                     \
-          .TypeConstraint<value_dtype>("value_dtype"),                \
-      LookupTableOp<lookup::MutableHashTable<key_dtype, value_dtype>, \
+#define REGISTER_KERNEL(key_dtype, value_dtype)                                \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MutableHashTable")                                                 \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)
+
+REGISTER_KERNEL(string, float);
+REGISTER_KERNEL(string, int64);
+REGISTER_KERNEL(int64, string);
+
+#undef REGISTER_KERNEL
+
+// Register the MutableHashTableOfTensors op.
+#define REGISTER_KERNEL(key_dtype, value_dtype)                                \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MutableHashTableOfTensors")                                        \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
 REGISTER_KERNEL(string, float);

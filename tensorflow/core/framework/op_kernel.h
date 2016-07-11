@@ -199,7 +199,9 @@ class PersistentTensor {
 
   // The check for initialization does not need to access the
   // underlying tensor buffer.
-  bool IsInitialized() { return tensor_.IsInitialized(); }
+  bool IsInitialized() const { return tensor_.IsInitialized(); }
+
+  int64 NumElements() const { return tensor_.NumElements(); }
 
  private:
   Tensor tensor_;
@@ -1077,6 +1079,10 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
 // registered with the current library's global kernel registry (obtained by
 // calling GlobalKernelRegistry()), inserts 'k' into registry_ptr.
 extern "C" void RegisterKernels(void* registry_ptr);
+
+// Writes a list of all registered kernels to LOG(INFO), to help users debug
+// missing kernel errors.
+void LogAllRegisteredKernels();
 
 namespace kernel_factory {
 

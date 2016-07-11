@@ -573,6 +573,13 @@ void TF_PRun_wrapper(TF_Session* session, const char* handle,
                         NameVector(), out_status, out_values, nullptr);
 }
 
+// Wrapper for TF_Reset that converts the string vectors to character arrays.
+void TF_Reset_wrapper(const TF_SessionOptions* opt,
+                      const NameVector& containers, TF_Status* out_status) {
+  TF_Reset(opt, const_cast<const char**>(containers.data()), containers.size(),
+           out_status);
+}
+
 string EqualGraphDefWrapper(const string& actual, const string& expected) {
   GraphDef actual_def;
   if (!actual_def.ParseFromString(actual)) {

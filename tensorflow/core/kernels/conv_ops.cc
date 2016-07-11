@@ -334,8 +334,10 @@ class LaunchConvOp<GPUDevice, T> {
       // We pad Pr/2 on the left and Pr - Pr/2 on the right, Pc/2 on the top
       // and Pc - Pc/2 on the bottom.  When Pr or Pc is odd, this means
       // we pad more on the right and bottom than on the top and left.
-      padding_rows = (out_rows - 1) * row_stride + patch_rows - in_rows;
-      padding_cols = (out_cols - 1) * col_stride + patch_cols - in_cols;
+      padding_rows =
+          std::max<int>(0, (out_rows - 1) * row_stride + patch_rows - in_rows);
+      padding_cols =
+          std::max<int>(0, (out_cols - 1) * col_stride + patch_cols - in_cols);
       const bool rows_odd = (padding_rows % 2 != 0);
       const bool cols_odd = (padding_cols % 2 != 0);
       if (rows_odd || cols_odd) {
@@ -375,6 +377,9 @@ class LaunchConvOp<GPUDevice, T> {
       input = transformed_input;
     }
 
+    CHECK(padding_rows >= 0 && padding_cols >= 0)
+        << "Negative row or col paddings: (" << padding_rows << ", "
+        << padding_cols << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc;
     input_desc.set_count(in_batch)
         .set_feature_map_count(in_depths)

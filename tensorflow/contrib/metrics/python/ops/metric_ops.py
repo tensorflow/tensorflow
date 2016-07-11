@@ -1,3 +1,4 @@
+# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +24,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import framework
+from tensorflow.contrib.metrics.python.ops import confusion_matrix_ops
+from tensorflow.contrib.metrics.python.ops import metric_ops_util
 from tensorflow.contrib.metrics.python.ops import set_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -54,13 +57,14 @@ def _mask_to_weights(mask=None):
   return weights
 
 
-def _create_local(name, shape=None, collections=None):
+def _create_local(name, shape=None, collections=None, dtype=dtypes.float32):
   """Creates a new local variable.
 
   Args:
     name: The name of the new or existing variable.
     shape: Shape of the new or existing variable.
     collections: A list of collection names to which the Variable will be added.
+    dtype: Data type of the variables.
 
   Returns:
     The created variable.
@@ -69,21 +73,10 @@ def _create_local(name, shape=None, collections=None):
   collections = list(collections or [])
   collections += [ops.GraphKeys.LOCAL_VARIABLES]
   return variables.Variable(
-      initial_value=array_ops.zeros(shape),
+      initial_value=array_ops.zeros(shape, dtype=dtype),
       name=name,
       trainable=False,
       collections=collections)
-
-
-def _remove_squeezable_dimensions(predictions, labels):
-  predictions_rank = predictions.get_shape().ndims
-  labels_rank = labels.get_shape().ndims
-  if not (labels_rank is None or predictions_rank is None):
-    if labels_rank == (predictions_rank + 1):
-      labels = array_ops.squeeze(labels, [-1])
-    elif predictions_rank == (labels_rank + 1):
-      predictions = array_ops.squeeze(predictions, [-1])
-  return predictions, labels
 
 
 def _count_condition(values, ignore_mask=None, metrics_collections=None,
@@ -357,7 +350,8 @@ def streaming_accuracy(predictions, labels, weights=None,
       if either `metrics_collections` or `updates_collections` are not
       a list or tuple.
   """
-  predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+      predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   is_correct = math_ops.to_float(math_ops.equal(predictions, labels))
   return streaming_mean(is_correct, weights, metrics_collections,
@@ -412,7 +406,8 @@ def streaming_precision(predictions, labels, ignore_mask=None,
   with variable_scope.variable_op_scope(
       [predictions, labels], name, 'precision'):
 
-    predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+        predictions, labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     true_positives, true_positives_update_op = _streaming_true_positives(
@@ -489,7 +484,8 @@ def streaming_recall(predictions, labels, ignore_mask=None,
       or tuple.
   """
   with variable_scope.variable_op_scope([predictions, labels], name, 'recall'):
-    predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+        predictions, labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     true_positives, true_positives_update_op = _streaming_true_positives(
@@ -567,7 +563,8 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, ignore_mask=None):
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+      predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
   num_thresholds = len(thresholds)
@@ -655,15 +652,16 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, ignore_mask=None):
 
 def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
                   metrics_collections=None, updates_collections=None,
-                  name=None):
+                  curve='ROC', name=None):
   """Computes the approximate AUC via a Riemann sum.
 
   The `streaming_auc` function creates four local variables, `true_positives`,
   `true_negatives`, `false_positives` and `false_negatives` that are used to
   compute the AUC. To discretize the AUC curve, a linearly spaced set of
   thresholds is used to compute pairs of recall and precision values. The area
-  under the curve is therefore computed using the height of the recall values
-  by the false positive rate.
+  under the ROC-curve is therefore computed using the height of the recall
+  values by the false positive rate, while the area under the PR-curve is the
+  computed using the height of the precision values by the recall.
 
   This value is ultimately returned as `auc`, an idempotent
   operation the computes the area under a discretized curve of precision versus
@@ -692,6 +690,8 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
       added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
+    curve: Specifies the name of the curve to be computed, 'ROC' [default] or
+    'PR' for the Precision-Recall-curve.
     name: An optional variable_op_scope name.
 
   Returns:
@@ -707,38 +707,40 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
       tuple.
   """
   with variable_scope.variable_op_scope([predictions, labels], name, 'auc'):
+    if curve != 'ROC' and  curve != 'PR':
+      raise ValueError('curve must be either ROC or PR, %s unknown' %
+                       (curve))
     kepsilon = 1e-7  # to account for floating point imprecisions
     thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                   for i in range(num_thresholds-2)]
     thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
 
-    (true_positives, false_negatives, true_negatives, false_positives,
-     true_positives_compute_op, false_negatives_compute_op,
-     true_negatives_compute_op, false_positives_compute_op) = _tp_fn_tn_fp(
-         predictions, labels, thresholds, ignore_mask)
+    (tp, fn, tn, fp, tp_update_op, fn_update_op, tn_update_op,
+     fp_update_op) = _tp_fn_tn_fp(predictions, labels, thresholds, ignore_mask)
 
-    epsilon = 1.0e-6
-    assert array_ops.squeeze(
-        false_positives).get_shape().as_list()[0] == num_thresholds
     # Add epsilons to avoid dividing by 0.
-    false_positive_rate = math_ops.div(
-        false_positives,
-        false_positives + true_negatives + epsilon)
-    recall = math_ops.div(true_positives + epsilon,
-                          true_positives + false_negatives + epsilon)
+    epsilon = 1.0e-6
+    assert array_ops.squeeze(fp).get_shape().as_list()[0] == num_thresholds
 
-    def compute_auc(name):
+    def compute_auc(tp, fn, tn, fp, name):
+      """Computes the roc-auc or pr-auc based on confusion counts."""
+      recall = math_ops.div(tp + epsilon, tp + fn + epsilon)
+      if curve == 'ROC':
+        fp_rate = math_ops.div(fp, fp + tn + epsilon)
+        x = fp_rate
+        y = recall
+      else:  # curve == 'PR'.
+        precision = math_ops.div(tp + epsilon, tp + fp + epsilon)
+        x = recall
+        y = precision
       return math_ops.reduce_sum(math_ops.mul(
-          false_positive_rate[:num_thresholds - 1] - false_positive_rate[1:],
-          (recall[:num_thresholds - 1] + recall[1:]) / 2.), name=name)
+          x[:num_thresholds - 1] - x[1:],
+          (y[:num_thresholds - 1] + y[1:]) / 2.), name=name)
 
     # sum up the areas of all the trapeziums
-    auc = compute_auc('value')
-    with ops.control_dependencies([true_positives_compute_op,
-                                   false_negatives_compute_op,
-                                   true_negatives_compute_op,
-                                   false_positives_compute_op]):
-      update_op = compute_auc('update_op')
+    auc = compute_auc(tp, fn, tn, fp, 'value')
+    update_op = compute_auc(
+        tp_update_op, fn_update_op, tn_update_op, fp_update_op, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, auc)
@@ -1367,7 +1369,8 @@ def streaming_mean_absolute_error(predictions, labels, weights=None,
       `predictions` or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
-  predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+      predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   absolute_errors = math_ops.abs(predictions - labels)
   return streaming_mean(absolute_errors, weights, metrics_collections,
@@ -1419,10 +1422,11 @@ def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
       `predictions` or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
-  predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+      predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-  predictions, normalizer = _remove_squeezable_dimensions(
+  predictions, normalizer = metric_ops_util.remove_squeezable_dimensions(
       predictions, normalizer)
   predictions.get_shape().assert_is_compatible_with(normalizer.get_shape())
   relative_errors = math_ops.select(
@@ -1477,7 +1481,8 @@ def streaming_mean_squared_error(predictions, labels, weights=None,
       `predictions` or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
-  predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+      predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   squared_error = math_ops.square(labels - predictions)
   return streaming_mean(squared_error, weights, metrics_collections,
@@ -1528,7 +1533,8 @@ def streaming_root_mean_squared_error(predictions, labels, weights=None,
       `predictions` or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
-  predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+      predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   value_tensor, update_op = streaming_mean_squared_error(
       predictions, labels, weights, None, None,
@@ -1593,7 +1599,8 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
       ignore_mask is of the wrong size or if either `metrics_collections` or
       `updates_collections` are not a list or tuple.
   """
-  predictions, labels = _remove_squeezable_dimensions(predictions, labels)
+  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+      predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.mul(predictions, labels)
   radial_diffs = math_ops.reduce_sum(radial_diffs,
@@ -1662,6 +1669,168 @@ def streaming_percentage_less(values, threshold, ignore_mask=None,
   return streaming_mean(is_below_threshold, _mask_to_weights(ignore_mask),
                         metrics_collections, updates_collections,
                         name or 'percentage_below_threshold')
+
+
+def streaming_mean_iou(predictions,
+                       labels,
+                       num_classes,
+                       ignore_mask=None,
+                       metrics_collections=None,
+                       updates_collections=None,
+                       name=None):
+  """Calculate per-step mean Intersection-Over-Union (mIOU).
+
+  Mean Intersection-Over-Union is a common evaluation metric for
+  semantic image segmentation, which first computes the IOU for each
+  semantic class and then computes the average over classes.
+  IOU is defined as follows:
+    IOU = true_positive / (true_positive + false_positive + false_negative).
+  The predictions are accumulated in a confusion matrix, and mIOU is then
+  calculated from it.
+
+  Args:
+    predictions: A tensor of prediction results for semantic labels, whose
+      shape is [batch size] and type `int32` or `int64`. The tensor will be
+      flattened, if its rank > 1.
+    labels: A tensor of ground truth labels with shape [batch size] and of
+      type `int32` or `int64`. The tensor will be flattened, if its rank > 1.
+    num_classes: The possible number of labels the prediction task can
+      have. This value must be provided, since a confusion matrix of
+      dimension = [num_classes, num_classes] will be allocated.
+    ignore_mask: An optional, boolean tensor whose size matches `labels`. If an
+      element of `ignore_mask` is True, the corresponding prediction and label
+      pair is NOT used to compute the metrics. Otherwise, the pair is included.
+    metrics_collections: An optional list of collections that `mean_iou`
+      should be added to.
+    updates_collections: An optional list of collections `update_op` should be
+      added to.
+    name: An optional variable_op_scope name.
+
+  Returns:
+    mean_iou: A tensor representing the mean intersection-over-union.
+    update_op: An operation that increments the confusion matrix.
+
+  Raises:
+    ValueError: If the dimensions of `predictions` and `labels` don't match or
+      if `ignore_mask` is not `None` and its shape doesn't match `labels`
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
+  """
+  with variable_scope.variable_op_scope(
+      [predictions, labels], name, 'mean_iou'):
+    # Check if shape is compatible.
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    if ignore_mask is not None:
+      labels.get_shape().assert_is_compatible_with(ignore_mask.get_shape())
+
+    # Local variable to accumulate the predictions in the confusion matrix.
+    total_cm = _create_local('total_confusion_matrix',
+                             shape=[num_classes, num_classes],
+                             dtype=dtypes.int64)
+
+    # Cast the type to int64 required by confusion_matrix_ops.
+    predictions = math_ops.to_int64(predictions)
+    labels = math_ops.to_int64(labels)
+    num_classes = math_ops.to_int64(num_classes)
+
+    # Flatten the input if its rank > 1.
+    predictions_rank = predictions.get_shape().ndims
+    if predictions_rank > 1:
+      predictions = array_ops.reshape(predictions, [-1])
+
+    labels_rank = labels.get_shape().ndims
+    if labels_rank > 1:
+      labels = array_ops.reshape(labels, [-1])
+
+    if ignore_mask is not None:
+      ignore_mask_rank = ignore_mask.get_shape().ndims
+      if ignore_mask_rank > 1:
+        ignore_mask = array_ops.reshape(ignore_mask, [-1])
+
+      check_ops.assert_type(ignore_mask, dtypes.bool)
+      not_ignore_mask = math_ops.logical_not(ignore_mask)
+      predictions = array_ops.boolean_mask(predictions, not_ignore_mask)
+      labels = array_ops.boolean_mask(labels, not_ignore_mask)
+
+    # Accumulate the prediction to current confusion matrix.
+    current_cm = confusion_matrix_ops.confusion_matrix(
+        predictions, labels, num_classes, dtype=dtypes.int64)
+    update_op = state_ops.assign_add(total_cm, current_cm)
+
+    def compute_mean_iou(name):
+      """Compute the mean intersection-over-union via the confusion matrix."""
+      sum_over_row = math_ops.to_float(math_ops.reduce_sum(total_cm, 0))
+      sum_over_col = math_ops.to_float(math_ops.reduce_sum(total_cm, 1))
+      cm_diag = math_ops.to_float(array_ops.diag_part(total_cm))
+      denominator = sum_over_row + sum_over_col - cm_diag
+
+      # If the value of the denominator is 0, set it to 1 to avoid
+      # zero division.
+      denominator = math_ops.select(
+          math_ops.greater(denominator, 0),
+          denominator,
+          array_ops.ones_like(denominator))
+      iou = math_ops.div(cm_diag, denominator)
+      return math_ops.reduce_mean(iou, name=name)
+
+    mean_iou = compute_mean_iou('mean_iou')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, mean_iou)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return mean_iou, update_op
+
+
+def aggregate_metrics(*value_update_tuples):
+  """Aggregates the metric value tensors and update ops into two lists.
+
+  Args:
+    *value_update_tuples: a variable number of tuples, each of which contain the
+      pair of (value_tensor, update_op) from a streaming metric.
+
+  Returns:
+    a list of value tensors and a list of update ops.
+
+  Raises:
+    ValueError: if `value_update_tuples` is empty.
+  """
+  if not value_update_tuples:
+    raise ValueError('Expected at least one value_tensor/update_op pair')
+  value_ops, update_ops = zip(*value_update_tuples)
+  return list(value_ops), list(update_ops)
+
+
+def aggregate_metric_map(names_to_tuples):
+  """Aggregates the metric names to tuple dictionary.
+
+  This function is useful for pairing metric names with their associated value
+  and update ops when the list of metrics is long. For example:
+
+    metrics_to_values, metrics_to_updates = slim.metrics.aggregate_metric_map({
+        'Mean Absolute Error': new_slim.metrics.streaming_mean_absolute_error(
+            predictions, labels, weights),
+        'Mean Relative Error': new_slim.metrics.streaming_mean_relative_error(
+            predictions, labels, labels, weights),
+        'RMSE Linear': new_slim.metrics.streaming_root_mean_squared_error(
+            predictions, labels, weights),
+        'RMSE Log': new_slim.metrics.streaming_root_mean_squared_error(
+            predictions, labels, weights),
+    })
+
+  Args:
+    names_to_tuples: a map of metric names to tuples, each of which contain the
+      pair of (value_tensor, update_op) from a streaming metric.
+
+  Returns:
+    A dictionary from metric names to value ops and a dictionary from metric
+    names to update ops.
+  """
+  metric_names = names_to_tuples.keys()
+  value_ops, update_ops = zip(*names_to_tuples.values())
+  return dict(zip(metric_names, value_ops)), dict(zip(metric_names, update_ops))
 
 
 __all__ = make_all(__name__)

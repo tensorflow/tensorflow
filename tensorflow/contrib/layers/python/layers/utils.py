@@ -82,7 +82,7 @@ def constant_value(value_or_tensor, tensor_dtype=None):
 
 def get_variable_collections(variables_collections, name):
   if isinstance(variables_collections, dict):
-    variable_collections = variables_collections[name]
+    variable_collections = variables_collections.get(name, None)
   else:
     variable_collections = variables_collections
   return variable_collections

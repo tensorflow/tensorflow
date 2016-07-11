@@ -116,10 +116,13 @@ class BaseSession(SessionInterface):
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow session.
+      TypeError: If one of the arguments has the wrong type.
     """
     if graph is None:
       self._graph = ops.get_default_graph()
     else:
+      if not isinstance(graph, ops.Graph):
+        raise TypeError('graph must be a tf.Graph, but got %s' % type(graph))
       self._graph = graph
 
     self._opened = False
@@ -127,18 +130,30 @@ class BaseSession(SessionInterface):
 
     self._current_version = 0
     self._extend_lock = threading.Lock()
-    self._target = target
+    if target is not None:
+      try:
+        self._target = compat.as_bytes(target)
+      except TypeError:
+        raise TypeError('target must be a string, but got %s' % type(target))
+    else:
+      self._target = None
 
     self._delete_lock = threading.Lock()
     self._dead_handles = []
 
-    self._session = None
-    self._config = config
-    self._add_shapes = config.graph_options.infer_shapes if (
-        config and config.graph_options) else False
+    if config is not None:
+      if not isinstance(config, config_pb2.ConfigProto):
+        raise TypeError('config must be a tf.ConfigProto, but got %s'
+                        % type(config))
+      self._config = config
+      self._add_shapes = config.graph_options.infer_shapes
+    else:
+      self._config = None
+      self._add_shapes = False
 
+    self._session = None
+    opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
-      opts = tf_session.TF_NewSessionOptions(target=target, config=config)
       with errors.raise_exception_on_not_ok_status() as status:
         self._session = tf_session.TF_NewSession(opts, status)
     finally:
@@ -190,7 +205,7 @@ class BaseSession(SessionInterface):
 
     Use with the `with` keyword to specify that calls to
     [`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
-    [`Tensor.run()`](../../api_docs/python/framework.md#Tensor.run) should be
+    [`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval) should be
     executed in this session.
 
     ```python
@@ -853,6 +868,8 @@ class Session(BaseSession):
 
   @@as_default
 
+  @@reset
+
   """
 
   def __init__(self, target='', graph=None, config=None):
@@ -891,6 +908,40 @@ class Session(BaseSession):
       context_manager.__exit__(exec_type, exec_value, exec_tb)
 
     self.close()
+
+  @staticmethod
+  def reset(target, containers=None, config=None):
+    """Resets resource containers on `target`, and close all connected sessions.
+
+    A resource container is distributed across all workers in the
+    same cluster as `target`.  When a resource container on `target`
+    is reset, resources associated with that container will be cleared.
+    In particular, all Variables in the container will become undefined:
+    they lose their values and shapes.
+
+    NOTE:
+    (i) reset() is currently only implemented for distributed sessions.
+    (ii) Any sessions on the master named by `target` will be closed.
+
+    If no resource containers are provided, all containers are reset.
+
+    Args:
+      target: The execution engine to connect to.
+      containers: A list of resource container name strings, or `None` if all of
+        all the containers are to be reset.
+      config: (Optional.) Protocol buffer with configuration options.
+
+    Raises:
+      tf.errors.OpError: Or one of its subclasses if an error occurs while
+        resetting containers.
+    """
+    if target is not None:
+      target = compat.as_bytes(target)
+    if containers is not None:
+      containers = [compat.as_bytes(c) for c in containers]
+    else:
+      containers = []
+    tf_session.TF_Reset(target, containers, config)
 
 
 class InteractiveSession(BaseSession):

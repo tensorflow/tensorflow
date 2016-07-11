@@ -39,38 +39,14 @@ cc_test(
 )
 
 cc_library(
-    name = "resources",
-    srcs = ["resources.cc"],
-    hdrs = ["resources.h"],
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
-        "@protobuf//:protobuf",
-    ],
-)
-
-cc_test(
-    name = "resources_test",
-    size = "small",
-    srcs = ["resources_test.cc"],
-    deps = [
-        ":resources",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
     name = "sdca_ops",
     srcs = ["sdca_ops.cc"],
     deps = [
         ":loss_updaters",
-        ":resources",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
         "@protobuf//:protobuf",
     ],
     alwayslink = 1,
@@ -82,6 +58,7 @@ tf_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
+        "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

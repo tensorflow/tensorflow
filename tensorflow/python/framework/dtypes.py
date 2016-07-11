@@ -205,7 +205,7 @@ class DType(object):
         (bool, string, complex64, complex128)):
       raise TypeError("Cannot find maximum value of %s." % self)
 
-    # there is no simple way to get the min value of a dtype, we have to check
+    # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
     try:
       return np.finfo(self.as_numpy_dtype()).max

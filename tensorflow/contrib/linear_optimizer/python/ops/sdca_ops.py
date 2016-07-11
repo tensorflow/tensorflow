@@ -17,11 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import uuid
+import collections
 
 from six.moves import range  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.linear_optimizer.ops import gen_sdca_ops
+from tensorflow.contrib.lookup import lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
@@ -31,6 +32,7 @@ from tensorflow.python.framework.ops import op_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
@@ -93,8 +95,7 @@ class SdcaModel(object):
     ```
 
     In the training program you will just have to run the returned Op from
-    minimize(). You should also eventually cleanup the temporary state used by
-    the model, by resetting its (possibly shared) container.
+    minimize().
 
     ```python
     # Execute opt_op and train for num_steps.
@@ -102,33 +103,33 @@ class SdcaModel(object):
       opt_op.run()
 
     # You can also check for convergence by calling
-    # lr.approximate_duality_gap()
+    lr.approximate_duality_gap()
     ```
   """
 
-  def __init__(self, container, examples, variables, options):
+  def __init__(self, container, examples, variables,
+               options):  # pylint: disable=unused-argument
     """Create a new sdca optimizer."""
+    # TODO(andreasst): get rid of obsolete container parameter
 
-    if not container or not examples or not variables or not options:
-      raise ValueError('All arguments must be specified.')
+    if not examples or not variables or not options:
+      raise ValueError('examples, variables and options must all be specified.')
 
     supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss')
     if options['loss_type'] not in supported_losses:
       raise ValueError('Unsupported loss_type: ', options['loss_type'])
 
-    self._assertSpecified(
-        ['example_labels', 'example_weights', 'example_ids', 'sparse_features',
-         'dense_features'], examples)
+    self._assertSpecified(['example_labels', 'example_weights', 'example_ids',
+                           'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
 
-    self._assertSpecified(
-        ['sparse_features_weights', 'dense_features_weights'], variables)
-    self._assertList(
-        ['sparse_features_weights', 'dense_features_weights'], variables)
+    self._assertSpecified(['sparse_features_weights', 'dense_features_weights'],
+                          variables)
+    self._assertList(['sparse_features_weights', 'dense_features_weights'],
+                     variables)
 
-    self._assertSpecified(
-        ['loss_type', 'symmetric_l2_regularization',
-         'symmetric_l1_regularization'], options)
+    self._assertSpecified(['loss_type', 'symmetric_l2_regularization',
+                           'symmetric_l1_regularization'], options)
 
     for name in ['symmetric_l1_regularization', 'symmetric_l2_regularization']:
       value = options[name]
@@ -136,25 +137,24 @@ class SdcaModel(object):
         raise ValueError('%s should be non-negative. Found (%f)' %
                          (name, value))
 
-    self._container = container
     self._examples = examples
     self._variables = variables
     self._options = options
-    self._solver_uuid = uuid.uuid4().hex
     self._create_slots()
+    self._hashtable = lookup_ops.MutableHashTable(
+        key_dtype=dtypes.string,
+        value_dtype=dtypes.float32,
+        default_value=[0.0, 0.0, 0.0, 0.0])
 
   def _symmetric_l2_regularization(self):
-    # Algorithmic requirement (for now) is to have minimal l2 of 1.0
+    # Algorithmic requirement (for now) is to have minimal l2 of 1.0.
     return max(self._options['symmetric_l2_regularization'], 1.0)
 
   # TODO(sibyl-Aix6ihai): Use optimizer interface to make use of slot creation logic.
   def _create_slots(self):
     # Make internal variables which have the updates before applying L1
     # regularization.
-    self._slots = {
-        'unshrinked_sparse_features_weights': [],
-        'unshrinked_dense_features_weights': [],
-    }
+    self._slots = collections.defaultdict(list)
     for name in ['sparse_features_weights', 'dense_features_weights']:
       for var in self._variables[name]:
         self._slots['unshrinked_' + name].append(var_ops.Variable(
@@ -171,7 +171,7 @@ class SdcaModel(object):
         raise ValueError(x + ' must be a list.')
 
   def _l1_loss(self):
-    """Computes the l1 loss of the model."""
+    """Computes the (un-normalized) l1 loss of the model."""
     with name_scope('l1_loss'):
       sum = 0.0
       for name in ['sparse_features_weights', 'dense_features_weights']:
@@ -181,7 +181,7 @@ class SdcaModel(object):
       return self._options['symmetric_l1_regularization'] * sum
 
   def _l2_loss(self, l2):
-    """Computes the l2 loss of the model."""
+    """Computes the (un-normalized) l2 loss of the model."""
     with name_scope('l2_loss'):
       sum = 0.0
       for name in ['sparse_features_weights', 'dense_features_weights']:
@@ -207,7 +207,8 @@ class SdcaModel(object):
         fv = array_ops.reshape(st_i.values, [-1])
         # TODO(sibyl-Aix6ihai): This does not work if examples have empty features.
         result += math_ops.segment_sum(
-            math_ops.mul(array_ops.gather(sv, fi), fv), ei)
+            math_ops.mul(
+                array_ops.gather(sv, fi), fv), ei)
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
@@ -264,19 +265,23 @@ class SdcaModel(object):
         sparse_features_indices.append(convert_to_tensor(sf.indices))
         sparse_features_values.append(convert_to_tensor(sf.values))
 
-      step_op = _sdca_ops.sdca_solver(
+      example_ids_hashed = _sdca_ops.sdca_fprint(convert_to_tensor(
+          self._examples['example_ids']))
+      example_state_data = self._hashtable.lookup(example_ids_hashed)
+
+      example_state_data_updated = _sdca_ops.sdca_solver(
           sparse_features_indices,
           sparse_features_values,
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
-          convert_to_tensor(self._examples['example_ids']),
           self._convert_n_to_tensor(
               self._slots['unshrinked_sparse_features_weights'],
               as_ref=True),
           self._convert_n_to_tensor(
               self._slots['unshrinked_dense_features_weights'],
               as_ref=True),
+          example_state_data,
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
           # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
@@ -286,17 +291,17 @@ class SdcaModel(object):
           # reuse old samples than train on new samples.
           # See: http://arxiv.org/abs/1602.02136.
           num_inner_iterations=2,
-          loss_type=self._options['loss_type'],
-          container=self._container,
-          solver_uuid=self._solver_uuid)
-      with ops.control_dependencies([step_op]):
-        assign_ops = []
+          loss_type=self._options['loss_type'])
+      with ops.control_dependencies([example_state_data_updated]):
+        insert_op = self._hashtable.insert(example_ids_hashed,
+                                           example_state_data_updated)
+        update_ops = [insert_op]
         for name in ['sparse_features_weights', 'dense_features_weights']:
           for var, slot_var in zip(self._variables[name],
                                    self._slots['unshrinked_' + name]):
-            assign_ops.append(var.assign(slot_var))
-        assign_group = control_flow_ops.group(*assign_ops)
-        with ops.control_dependencies([assign_group]):
+            update_ops.append(var.assign(slot_var))
+        update_group = control_flow_ops.group(*update_ops)
+        with ops.control_dependencies([update_group]):
           shrink_l1 = _sdca_ops.sdca_shrink_l1(
               self._convert_n_to_tensor(
                   self._variables['sparse_features_weights'],
@@ -318,14 +323,17 @@ class SdcaModel(object):
       An Operation that computes the approximate duality gap over all
       examples.
     """
-    (primal_loss, dual_loss, example_weights) = _sdca_ops.sdca_training_stats(
-        container=self._container,
-        solver_uuid=self._solver_uuid)
-    # Note that example_weights is guaranteed to be positive by
-    # sdca_training_stats so dividing by it is safe.
-    return (primal_loss + dual_loss + math_ops.to_double(self._l1_loss()) +
-            (2.0 * math_ops.to_double(self._l2_loss(
-                self._symmetric_l2_regularization())))) / example_weights
+    _, exported_values = self._hashtable.export()
+    summed_values = math_ops.reduce_sum(exported_values, 0)
+    primal_loss = summed_values[1]
+    dual_loss = summed_values[2]
+    example_weights = summed_values[3]
+    # TODO(andreasst): what about handle examples_weights == 0?
+    return (
+        primal_loss + dual_loss + math_ops.to_float(self._l1_loss()) +
+        (2.0 *
+         math_ops.to_float(self._l2_loss(self._symmetric_l2_regularization())))
+    ) / example_weights
 
   def unregularized_loss(self, examples):
     """Add operations to compute the loss (without the regularization loss).
@@ -340,9 +348,8 @@ class SdcaModel(object):
     Raises:
       ValueError: if examples are not well defined.
     """
-    self._assertSpecified(
-        ['example_labels', 'example_weights', 'sparse_features',
-         'dense_features'], examples)
+    self._assertSpecified(['example_labels', 'example_weights',
+                           'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/unregularized_loss'):
       predictions = self._linear_predictions(examples)
@@ -351,19 +358,18 @@ class SdcaModel(object):
 
       if self._options['loss_type'] == 'logistic_loss':
         return math_ops.reduce_sum(math_ops.mul(
-            sigmoid_cross_entropy_with_logits(
-                predictions, labels), weights)) / math_ops.reduce_sum(weights)
+            sigmoid_cross_entropy_with_logits(predictions, labels),
+            weights)) / math_ops.reduce_sum(weights)
 
       if self._options['loss_type'] == 'hinge_loss':
         # hinge_loss = max{0, 1 - y_i w*x} where y_i \in {-1, 1}. So, we need to
         # first convert 0/1 labels into -1/1 labels.
         all_ones = array_ops.ones_like(predictions)
         adjusted_labels = math_ops.sub(2 * labels, all_ones)
-        all_zeros = array_ops.zeros_like(predictions)
         # Tensor that contains (unweighted) error (hinge loss) per
         # example.
-        error = math_ops.maximum(all_zeros, math_ops.sub(
-            all_ones, math_ops.mul(adjusted_labels, predictions)))
+        error = nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(adjusted_labels,
+                                                                predictions)))
         weighted_error = math_ops.mul(error, weights)
         return math_ops.reduce_sum(weighted_error) / math_ops.reduce_sum(
             weights)
@@ -388,17 +394,15 @@ class SdcaModel(object):
     Raises:
       ValueError: if examples are not well defined.
     """
-    self._assertSpecified(
-        ['example_labels', 'example_weights', 'sparse_features',
-         'dense_features'], examples)
+    self._assertSpecified(['example_labels', 'example_weights',
+                           'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/regularized_loss'):
       weights = convert_to_tensor(examples['example_weights'])
-      return (((
+      return ((
           self._l1_loss() +
           # Note that here we are using the raw regularization
           # (as specified by the user) and *not*
           # self._symmetric_l2_regularization().
           self._l2_loss(self._options['symmetric_l2_regularization'])) /
-               math_ops.reduce_sum(weights)) +
-              self.unregularized_loss(examples))
+              math_ops.reduce_sum(weights) + self.unregularized_loss(examples))
