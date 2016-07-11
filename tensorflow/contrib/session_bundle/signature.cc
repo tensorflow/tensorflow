@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 // Returns OK if the input and output batch sizes match.
@@ -235,7 +235,7 @@ Status GetNamedSignature(const string& name,
 Status BindGenericInputs(const GenericSignature& signature,
                          const std::vector<std::pair<string, Tensor>>& inputs,
                          std::vector<std::pair<string, Tensor>>* bound_inputs) {
-  const protobuf::Map<string, contrib::TensorBinding>& bindings =
+  const protobuf::Map<string, serving::TensorBinding>& bindings =
       signature.map();
 
   for (const auto& entry : inputs) {
@@ -252,7 +252,7 @@ Status BindGenericInputs(const GenericSignature& signature,
 Status BindGenericNames(const GenericSignature& signature,
                         const std::vector<string>& input_names,
                         std::vector<string>* bound_names) {
-  const protobuf::Map<string, contrib::TensorBinding>& bindings =
+  const protobuf::Map<string, serving::TensorBinding>& bindings =
       signature.map();
 
   for (const string& entry : input_names) {
@@ -266,5 +266,5 @@ Status BindGenericNames(const GenericSignature& signature,
   return Status::OK();
 }
 
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow

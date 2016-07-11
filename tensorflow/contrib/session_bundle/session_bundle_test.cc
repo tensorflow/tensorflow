@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 TEST(LoadSessionBundleFromPath, Basic) {
@@ -72,7 +72,7 @@ TEST(LoadSessionBundleFromPath, Basic) {
   ASSERT_EQ(1, collection_def[kSignaturesKey].any_list().value_size());
   collection_def[kSignaturesKey].any_list().value(0).UnpackTo(&signatures);
   ASSERT_TRUE(signatures.default_signature().has_regression_signature());
-  const tensorflow::contrib::RegressionSignature regression_signature =
+  const tensorflow::serving::RegressionSignature regression_signature =
       signatures.default_signature().regression_signature();
 
   const string input_name = regression_signature.input().tensor_name();
@@ -98,5 +98,5 @@ TEST(LoadSessionBundleFromPath, BadExportPath) {
 }
 
 }  // namespace
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow

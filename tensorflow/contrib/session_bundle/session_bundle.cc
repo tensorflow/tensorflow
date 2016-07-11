@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 // Create a session using the given options and load the graph.
@@ -184,5 +184,5 @@ tensorflow::Status LoadSessionBundleFromPath(
   return Status::OK();
 }
 
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow

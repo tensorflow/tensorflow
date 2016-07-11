@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 static bool HasSubstr(const string& base, const string& substr) {
@@ -598,5 +598,5 @@ TEST_F(GenericSignatureTest, BindGenericNamesMissingBinding) {
 }
 
 }  // namespace
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow
