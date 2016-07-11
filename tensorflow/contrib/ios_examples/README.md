@@ -72,5 +72,14 @@ rundown:
    unused because no other code references the variables, but in fact their
    constructors have the important side effect of registering the class.
  
+ - C++11 support (or later) should be enabled by setting `C++ Language Dialect` to
+   `GNU++11` (or `GNU++14`), and `C++ Standard Library` to `libc++`.
+ 
  - The library doesn't currently support bitcode, so you'll need to disable that
    in your project settings.
+
+ - Remove any use of the `-all_load` flag in your project. The protocol buffers
+   libraries (full and lite versions) contain duplicate symbols, and the `-all_load`
+   flag will cause these duplicates to become link errors. If you were using
+   `-all_load` to avoid issues with Objective-C categories in static libraries,
+   you may be able to replace it with the `-ObjC` flag.
