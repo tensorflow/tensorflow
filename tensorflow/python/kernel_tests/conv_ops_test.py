@@ -365,7 +365,7 @@ class Conv2DTest(tf.test.TestCase):
     # Testing for backprops
   def _RunAndVerifyBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                                  strides, padding, expected, data_format,
-                                 use_gpu):
+                                 use_gpu, err):
     total_output_size = 1
     total_filter_size = 1
     for s in output_sizes:
@@ -399,7 +399,7 @@ class Conv2DTest(tf.test.TestCase):
       self.assertShapeEqual(value, conv)
     print("expected = ", expected)
     print("actual = ", value)
-    self.assertArrayNear(expected, value.flatten(), 1e-5)
+    self.assertArrayNear(expected, value.flatten(), err)
 
   def _CompareBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                             conv_strides, padding):
@@ -446,7 +446,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="VALID",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropInput(self):
     expected_output = [14.0, 32.0, 50.0,
@@ -456,6 +457,8 @@ class Conv2DTest(tf.test.TestCase):
                        478.0, 541.0, 604.0,
                        437.0, 482.0, 527.0]
     for (data_format, use_gpu) in GetTestConfigs():
+      # The GPU version of this test is not very stable. So adjusting the
+      # error threshold to 1e-4.
       self._RunAndVerifyBackpropInput(input_sizes=[1, 2, 3, 3],
                                       filter_sizes=[2, 2, 3, 3],
                                       output_sizes=[1, 1, 2, 3],
@@ -463,7 +466,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="VALID",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-4)
 
   def testConv2D2x2Depth3ValidBackpropInputStride1x2(self):
     expected_output = [1.0, 2.0, 2.0, 4.0, 3.0, 6.0,
@@ -477,7 +481,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="VALID",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-5)
 
   def testConv2DStrideTwoFilterOneSameBackpropInput(self):
     expected_output = [1.0, 0.0, 2.0, 0.0,
@@ -492,7 +497,8 @@ class Conv2DTest(tf.test.TestCase):
                                       padding="SAME",
                                       expected=expected_output,
                                       data_format=data_format,
-                                      use_gpu=use_gpu)
+                                      use_gpu=use_gpu,
+                                      err=1e-5)
 
   # Testing for backprops
   def _RunAndVerifyBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
