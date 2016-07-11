@@ -350,6 +350,33 @@ contents: 0-D. PNG-encoded image.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("DecodeGif")
+    .Input("contents: string")
+    .Attr("channels: int = 0")
+    .Attr("dtype: {uint8, uint16} = DT_UINT8")
+    .Output("image: dtype")
+    .Doc(R"doc(
+Decode the first frame of a GIF-encoded image to a uint8 or uint16 tensor.
+
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the GIF-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+*   4: output an RGBA image.
+
+If needed, the GIF-encoded image is transformed to match the requested number
+of color channels.
+
+contents: 0-D.  The GIF-encoded image.
+channels: Number of color channels for the decoded image.
+image: 3-D with shape `[height, width, channels]`.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("RGBToHSV")
     .Input("images: float")
     .Output("output: float")
