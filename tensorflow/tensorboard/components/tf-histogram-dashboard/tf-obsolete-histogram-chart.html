@@ -17,25 +17,9 @@ It exposes the following methods:
 The data is expected to be an array of [wall_time, step, value] arrays.
 The wall_time is serialized as seconds since epoch.
 -->
-<dom-module id="tf-chart">
+<dom-module id="tf-obsolete-histogram-chart">
   <template>
     <svg id="chartsvg"></svg>
-    <div id="tooltip">
-      <table>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Run</th>
-            <th>Value</th>
-            <th>Step</th>
-            <th>Time</th>
-            <th>Relative</th>
-          </tr>
-        </thead>
-        <tbody>
-        </tbody>
-      </table>
-    </div>
     <style>
       :host {
         -webkit-user-select: none;
@@ -52,59 +36,15 @@ The wall_time is serialized as seconds since epoch.
         flex-grow: 1;
         flex-shrink: 1;
       }
-      td {
-        padding-left: 5px;
-        padding-right: 5px;
-        font-size: 13px;
-        opacity: 1;
-      }
-      #tooltip {
-        pointer-events: none;
-        position: absolute;
-        opacity: 0;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        font-size: 14px;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        border-radius: 4px;
-        line-height: 1.4em;
-        padding: 8px;
-        z-index: 5;
-        cursor: none;
-      }
-      .swatch {
-        border-radius: 50%;
-        width: 14px;
-        height: 14px;
-        display: block;
-        border: 2px solid rgba(0,0,0,0);
-      }
-      .closest .swatch {
-        border: 2px solid white;
-      }
-      th {
-        padding-left: 5px;
-        padding-right: 5px;
-        text-align: left;
-      }
-      .distant td {
-        opacity: 0.8;
-      }
-
-      .distant td.swatch {
-        opacity: 1;
-      }
 
     </style>
   </template>
-  <script src="dragZoomInteraction.js"></script>
-  <script src="tf-chart.js"></script>
-  <script src="tf-chart-helpers.js"></script>
+  <script src="tf-obsolete-histogram-chart.js"></script>
+  <script src="../tf-event-dashboard/tf-chart-helpers.js"></script>
   <script>
     Polymer({
-      is: "tf-chart",
+      is: "tf-obsolete-histogram-chart",
       properties: {
-        type: String, // "scalar" or "compressedHistogram"
         _chart: Object,
         colorScale: Object,
         tag: String,
@@ -135,9 +75,7 @@ The wall_time is serialized as seconds since epoch.
           return;
         }
         if (this._chart) this._chart.destroy();
-        var tooltip = d3.select(this.$.tooltip);
-        this.scopeSubtree(this.$.tooltip, true);
-        var chart = new TF.LineChart(tag, dataProvider, xType, colorScale, tooltip);
+        var chart = new TF.HistogramChart(tag, dataProvider, xType, colorScale);
         var svg = d3.select(this.$.chartsvg);
         this.async(function() {
           chart.renderTo(svg);

@@ -4,7 +4,7 @@
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
-<link rel="import" href="../tf-event-dashboard/tf-chart.html">
+<link rel="import" href="tf-obsolete-histogram-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
@@ -75,9 +75,8 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
                     <div class="card">
                       <span class="card-title">[[tag]]</span>
                       <div class="card-content">
-                        <tf-chart
+                        <tf-obsolete-histogram-chart
                           tag="[[tag]]"
-                          type="compressedHistogram"
                           id="chart"
                           selected-runs="[[_array(run)]]"
                           x-type="[[xType]]"
@@ -85,7 +84,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
                           color-scale="[[colorScale]]"
                           on-keyup="toggleSelected"
                           tabindex="2"
-                        ></tf-chart>
+                        ></tf-obsolete-histogram-chart>
                         <paper-icon-button
                           class="expand-button"
                           icon="fullscreen"

@@ -12,26 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+/* tslint:disable:no-namespace variable-name */
+
 module TF {
-  export type DataFn = (run: string, tag: string) =>
-      Promise<Array<Backend.Datum>>;
-
-  let Y_TOOLTIP_FORMATTER_PRECISION = 4;
-  let STEP_FORMATTER_PRECISION = 4;
-  let Y_AXIS_FORMATTER_PRECISION = 3;
-  let TOOLTIP_Y_PIXEL_OFFSET = 20;
-  let TOOLTIP_CIRCLE_SIZE = 4;
-  let NAN_SYMBOL_SIZE = 6;
-
-  interface Point {
-    x: number;  // pixel space
-    y: number;  // pixel space
-    datum: TF.Backend.ScalarDatum;
-    dataset: Plottable.Dataset;
-  }
-
   export class BaseChart {
-    protected dataFn: DataFn;
+    protected dataFn: TF.ChartHelpers.DataFn;
     protected tag: string;
     private run2datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];
@@ -50,7 +35,7 @@ module TF {
     protected tooltip: d3.Selection<any>;
     protected dzl: Plottable.DragZoomLayer;
     constructor(
-        tag: string, dataFn: DataFn, xType: string,
+        tag: string, dataFn: TF.ChartHelpers.DataFn, xType: string,
         colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
       this.dataFn = dataFn;
       this.run2datasets = {};
@@ -94,14 +79,15 @@ module TF {
       if (this.outer) {
         this.outer.destroy();
       }
-      let xComponents = getXComponents(xType);
+      let xComponents = TF.ChartHelpers.getXComponents(xType);
       this.xAccessor = xComponents.accessor;
       this.xScale = xComponents.scale;
       this.xAxis = xComponents.axis;
       this.xAxis.margin(0).tickLabelPadding(3);
       this.yScale = new Plottable.Scales.Linear();
       this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
-      let yFormatter = multiscaleFormatter(Y_AXIS_FORMATTER_PRECISION);
+      let yFormatter = TF.ChartHelpers.multiscaleFormatter(
+          TF.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
       this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
       this.yAxis.usesTextWidthApproximation(true);
 
@@ -148,7 +134,7 @@ module TF {
     private nanDataset: Plottable.Dataset;
 
     constructor(
-        tag: string, dataFn: DataFn, xType: string,
+        tag: string, dataFn: TF.ChartHelpers.DataFn, xType: string,
         colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
       super(tag, dataFn, xType, colorScale, tooltip);
       this.datasets = [];
@@ -180,7 +166,7 @@ module TF {
       scatterPlot.y(this.yAccessor, yScale);
       scatterPlot.attr('fill', (d: any) => this.colorScale.scale(d.run));
       scatterPlot.attr('opacity', 1);
-      scatterPlot.size(TOOLTIP_CIRCLE_SIZE * 2);
+      scatterPlot.size(TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
       scatterPlot.datasets([this.lastPointsDataset]);
       this.scatterPlot = scatterPlot;
 
@@ -189,7 +175,7 @@ module TF {
       nanDisplay.y((x) => x.displayY, yScale);
       nanDisplay.attr('fill', (d: any) => this.colorScale.scale(d.run));
       nanDisplay.attr('opacity', 1);
-      nanDisplay.size(NAN_SYMBOL_SIZE * 2);
+      nanDisplay.size(TF.ChartHelpers.NAN_SYMBOL_SIZE * 2);
       nanDisplay.datasets([this.nanDataset]);
       nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
       this.nanDisplay = nanDisplay;
@@ -212,7 +198,8 @@ module TF {
                   let idx = nonNanData.length - 1;
                   datum = nonNanData[idx];
                   datum.run = d.metadata().run;
-                  datum.relative = relativeAccessor(datum, -1, d);
+                  datum.relative =
+                      TF.ChartHelpers.relativeAccessor(datum, -1, d);
                 }
                 return datum;
               })
@@ -242,7 +229,7 @@ module TF {
           } else {
             data[i].run = d.metadata().run;
             data[i].displayY = displayY;
-            data[i].relative = relativeAccessor(data[i], -1, d);
+            data[i].relative = TF.ChartHelpers.relativeAccessor(data[i], -1, d);
             nanData.push(data[i]);
           }
         }
@@ -281,7 +268,7 @@ module TF {
         if (!enabled) {
           return;
         }
-        let target: Point = {
+        let target: TF.ChartHelpers.Point = {
           x: p.x,
           y: p.y,
           datum: null,
@@ -296,10 +283,11 @@ module TF {
             (p) => p != null &&
                 Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
         let pts: any = pointsComponent.content().selectAll('.point').data(
-            pointsToCircle, (p: Point) => p.dataset.metadata().run);
+            pointsToCircle,
+            (p: TF.ChartHelpers.Point) => p.dataset.metadata().run);
         if (points.length !== 0) {
           pts.enter().append('circle').classed('point', true);
-          pts.attr('r', TOOLTIP_CIRCLE_SIZE)
+          pts.attr('r', TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
               .attr('cx', (p) => p.x)
               .attr('cy', (p) => p.y)
               .style('stroke', 'none')
@@ -318,12 +306,14 @@ module TF {
       return group;
     }
 
-    private drawTooltips(points: Point[], target: Point) {
+    private drawTooltips(
+        points: TF.ChartHelpers.Point[], target: TF.ChartHelpers.Point) {
       // Formatters for value, step, and wall_time
       this.scatterPlot.attr('opacity', 0);
-      let valueFormatter = multiscaleFormatter(Y_TOOLTIP_FORMATTER_PRECISION);
+      let valueFormatter = TF.ChartHelpers.multiscaleFormatter(
+          TF.ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION);
 
-      let dist = (p: Point) =>
+      let dist = (p: TF.ChartHelpers.Point) =>
           Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
       let closestDist = _.min(points.map(dist));
       points = _.sortBy(points, (d) => d.dataset.metadata().run);
@@ -368,10 +358,13 @@ module TF {
       rows.append('td').text(
           (d) =>
               isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar));
-      rows.append('td').text((d) => stepFormatter(d.datum.step));
-      rows.append('td').text((d) => timeFormatter(d.datum.wall_time));
       rows.append('td').text(
-          (d) => relativeFormatter(relativeAccessor(d.datum, -1, d.dataset)));
+          (d) => TF.ChartHelpers.stepFormatter(d.datum.step));
+      rows.append('td').text(
+          (d) => TF.ChartHelpers.timeFormatter(d.datum.wall_time));
+      rows.append('td').text(
+          (d) => TF.ChartHelpers.relativeFormatter(
+              TF.ChartHelpers.relativeAccessor(d.datum, -1, d.dataset)));
 
       // compute left position
       let documentWidth = document.body.clientWidth;
@@ -383,18 +376,23 @@ module TF {
           Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
       this.tooltip.style('left', left + 'px');
       // compute top position
-      if (parentRect.bottom + nodeRect.height + TOOLTIP_Y_PIXEL_OFFSET <
+      if (parentRect.bottom + nodeRect.height +
+              TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET <
           document.body.clientHeight) {
-        this.tooltip.style('top', parentRect.bottom + TOOLTIP_Y_PIXEL_OFFSET);
+        this.tooltip.style(
+            'top', parentRect.bottom + TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
       } else {
-        this.tooltip.style('bottom', parentRect.top - TOOLTIP_Y_PIXEL_OFFSET);
+        this.tooltip.style(
+            'bottom', parentRect.top - TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
       }
 
       this.tooltip.style('opacity', 1);
     }
 
-    private findClosestPoint(target: Point, dataset: Plottable.Dataset): Point {
-      let points: Point[] = dataset.data().map((d, i) => {
+    private findClosestPoint(
+        target: TF.ChartHelpers.Point,
+        dataset: Plottable.Dataset): TF.ChartHelpers.Point {
+      let points: TF.ChartHelpers.Point[] = dataset.data().map((d, i) => {
         let x = this.xAccessor(d, i, dataset);
         let y = this.yAccessor(d, i, dataset);
         return {
@@ -404,7 +402,8 @@ module TF {
           dataset: dataset,
         };
       });
-      let idx: number = _.sortedIndex(points, target, (p: Point) => p.x);
+      let idx: number =
+          _.sortedIndex(points, target, (p: TF.ChartHelpers.Point) => p.x);
       if (idx === points.length) {
         return points[points.length - 1];
       } else if (idx === 0) {
@@ -425,183 +424,6 @@ module TF {
       this.datasets = runs.map((r) => this.getDataset(r));
       this.datasets.forEach((d) => d.onUpdate(this.updateSpecialDatasets));
       this.linePlot.datasets(this.datasets);
-    }
-  }
-
-  export class HistogramChart extends BaseChart {
-    private plots: Plottable.XYPlot<number | Date, number>[];
-    constructor(
-        tag: string, dataFn: DataFn, xType: string,
-        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
-      super(tag, dataFn, xType, colorScale, tooltip);
-      this.buildChart(xType);
-    }
-
-    public changeRuns(runs: string[]) {
-      super.changeRuns(runs);
-      let datasets = runs.map((r) => this.getDataset(r));
-      this.plots.forEach((p) => p.datasets(datasets));
-    }
-
-    protected buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      let percents = [0, 228, 1587, 3085, 5000, 6915, 8413, 9772, 10000];
-      let opacities = _.range(percents.length - 1)
-                          .map((i) => (percents[i + 1] - percents[i]) / 2500);
-      let accessors = percents.map((p, i) => (datum) => datum[i][1]);
-      let median = 4;
-      let medianAccessor = accessors[median];
-
-      let plots = _.range(accessors.length - 1).map((i) => {
-        let p = new Plottable.Plots.Area<number|Date>();
-        p.x(xAccessor, xScale);
-
-        let y0 = i > median ? accessors[i] : accessors[i + 1];
-        let y = i > median ? accessors[i + 1] : accessors[i];
-        p.y(y, yScale);
-        p.y0(y0);
-        p.attr(
-            'fill', (d: any, i: number, dataset: Plottable.Dataset) =>
-                        this.colorScale.scale(dataset.metadata().run));
-        p.attr(
-            'stroke', (d: any, i: number, dataset: Plottable.Dataset) =>
-                          this.colorScale.scale(dataset.metadata().run));
-        p.attr('stroke-weight', (d: any, i: number, m: any) => '0.5px');
-        p.attr('stroke-opacity', () => opacities[i]);
-        p.attr('fill-opacity', () => opacities[i]);
-        return p;
-      });
-
-      let medianPlot = new Plottable.Plots.Line<number|Date>();
-      medianPlot.x(xAccessor, xScale);
-      medianPlot.y(medianAccessor, yScale);
-      medianPlot.attr(
-          'stroke',
-          (d: any, i: number, m: any) => this.colorScale.scale(m.run));
-
-      this.plots = plots;
-      return new Plottable.Components.Group(plots);
-    }
-  }
-
-  /* Create a formatter function that will switch between exponential and
-   * regular display depending on the scale of the number being formatted,
-   * and show `digits` significant digits.
-   */
-  function multiscaleFormatter(digits: number): ((v: number) => string) {
-    return (v: number) => {
-      let absv = Math.abs(v);
-      if (absv < 1E-15) {
-        // Sometimes zero-like values get an annoying representation
-        absv = 0;
-      }
-      let f: (x: number) => string;
-      if (absv >= 1E4) {
-        f = d3.format('.' + digits + 'e');
-      } else if (absv > 0 && absv < 0.01) {
-        f = d3.format('.' + digits + 'e');
-      } else {
-        f = d3.format('.' + digits + 'g');
-      }
-      return f(v);
-    };
-  }
-
-  function accessorize(key: string): Plottable.Accessor<number> {
-    return (d: any, index: number, dataset: Plottable.Dataset) => d[key];
-  }
-
-  interface XComponents {
-    /* tslint:disable */
-    scale: Plottable.Scales.Linear | Plottable.Scales.Time,
-    axis: Plottable.Axes.Numeric | Plottable.Axes.Time,
-    accessor: Plottable.Accessor<number | Date>,
-    /* tslint:enable */
-  }
-
-  let stepFormatter = Plottable.Formatters.siSuffix(STEP_FORMATTER_PRECISION);
-  function stepX(): XComponents {
-    let scale = new Plottable.Scales.Linear();
-    let axis = new Plottable.Axes.Numeric(scale, 'bottom');
-    axis.formatter(stepFormatter);
-    return {
-      scale: scale,
-      axis: axis,
-      accessor: (d: Backend.Datum) => d.step,
-    };
-  }
-
-  let timeFormatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
-
-  function wallX(): XComponents {
-    let scale = new Plottable.Scales.Time();
-    return {
-      scale: scale,
-      axis: new Plottable.Axes.Time(scale, 'bottom'),
-      accessor: (d: Backend.Datum) => d.wall_time,
-    };
-  }
-  let relativeAccessor =
-      (d: any, index: number, dataset: Plottable.Dataset) => {
-        // We may be rendering the final-point datum for scatterplot.
-        // If so, we will have already provided the 'relative' property
-        if (d.relative != null) {
-          return d.relative;
-        }
-        let data = dataset.data();
-        // I can't imagine how this function would be called when the data is
-        // empty (after all, it iterates over the data), but lets guard just
-        // to be safe.
-        let first = data.length > 0 ? +data[0].wall_time : 0;
-        return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
-      };
-
-  let relativeFormatter = (n: number) => {
-    // we will always show 2 units of precision, e.g days and hours, or
-    // minutes and seconds, but not hours and minutes and seconds
-    let ret = '';
-    let days = Math.floor(n / 24);
-    n -= (days * 24);
-    if (days) {
-      ret += days + 'd ';
-    }
-    let hours = Math.floor(n);
-    n -= hours;
-    n *= 60;
-    if (hours || days) {
-      ret += hours + 'h ';
-    }
-    let minutes = Math.floor(n);
-    n -= minutes;
-    n *= 60;
-    if (minutes || hours || days) {
-      ret += minutes + 'm ';
-    }
-    let seconds = Math.floor(n);
-    return ret + seconds + 's';
-  };
-  function relativeX(): XComponents {
-    let scale = new Plottable.Scales.Linear();
-    return {
-      scale: scale,
-      axis: new Plottable.Axes.Numeric(scale, 'bottom'),
-      accessor: relativeAccessor,
-    };
-  }
-
-  // a very literal definition of NaN: true for NaN for a non-number type
-  // or null, etc. False for Infinity or -Infinity
-  let isNaN = (x) => +x !== x;
-
-  function getXComponents(xType: string): XComponents {
-    switch (xType) {
-      case 'step':
-        return stepX();
-      case 'wall_time':
-        return wallX();
-      case 'relative':
-        return relativeX();
-      default:
-        throw new Error('invalid xType: ' + xType);
     }
   }
 }
