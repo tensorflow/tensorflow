@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Functions to read and write images in GIF format.
+// Functions to read images in GIF format.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
 #include "tensorflow/core/platform/gif.h"
@@ -33,19 +33,18 @@ int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
 }
 
 uint8* Decode(const void* srcdata, int datasize,
-              std::function<uint8*(int, int, int)> allocate_output) {
+              std::function<uint8*(int, int, int, int)> allocate_output) {
   int error_code = D_GIF_SUCCEEDED;
-  GifFileType* gif_file = DGifOpen(const_cast<void *>(srcdata),
-                                   &input_callback,
-                                   &error_code);
+  GifFileType* gif_file =
+      DGifOpen(const_cast<void*>(srcdata), &input_callback, &error_code);
   if (error_code != D_GIF_SUCCEEDED) {
     LOG(ERROR) << "Fail to open gif file, reason: "
-        << GifErrorString(error_code);
+               << GifErrorString(error_code);
     return nullptr;
   }
   if (DGifSlurp(gif_file) != GIF_OK) {
     LOG(ERROR) << "Fail to slurp gif file, reason: "
-        << GifErrorString(gif_file->Error);
+               << GifErrorString(gif_file->Error);
     return nullptr;
   }
   if (gif_file->ImageCount <= 0) {
@@ -53,28 +52,41 @@ uint8* Decode(const void* srcdata, int datasize,
     return nullptr;
   }
 
-  SavedImage* first_image = &gif_file->SavedImages[0];
-  ColorMapObject* color_map = first_image->ImageDesc.ColorMap ?
-      first_image->ImageDesc.ColorMap : gif_file->SColorMap;
-  int width = first_image->ImageDesc.Width;
-  int height = first_image->ImageDesc.Height;
+  int num_frames = gif_file->ImageCount;
+  int width = gif_file->SWidth;
+  int height = gif_file->SHeight;
   int channel = 3;
 
-  uint8* dstdata = allocate_output(width, height, channel);
-  for (int i = 0; i < height; ++i) {
-    uint8* p_dst = dstdata + i * width * channel;
-    for (int j = 0; j < width; ++j) {
-      GifByteType color_index = first_image->RasterBits[i * width + j];
-      const GifColorType& gif_color = color_map->Colors[color_index];
-      p_dst[j * channel + 0] = gif_color.Red;
-      p_dst[j * channel + 1] = gif_color.Green;
-      p_dst[j * channel + 2] = gif_color.Blue;
+  uint8* dstdata = allocate_output(num_frames, width, height, channel);
+  for (int k = 0; k < num_frames; k++) {
+    SavedImage* this_image = &gif_file->SavedImages[k];
+    GifImageDesc* img_desc = &this_image->ImageDesc;
+    if (img_desc->Left != 0 || img_desc->Top != 0 || img_desc->Width != width ||
+        img_desc->Height != height) {
+      LOG(ERROR) << "Can't process optimized gif.";
+      return nullptr;
+    }
+
+    ColorMapObject* color_map = this_image->ImageDesc.ColorMap
+                                    ? this_image->ImageDesc.ColorMap
+                                    : gif_file->SColorMap;
+
+    uint8* this_dst = dstdata + k * width * channel * height;
+    for (int i = 0; i < height; ++i) {
+      uint8* p_dst = this_dst + i * width * channel;
+      for (int j = 0; j < width; ++j) {
+        GifByteType color_index = this_image->RasterBits[i * width + j];
+        const GifColorType& gif_color = color_map->Colors[color_index];
+        p_dst[j * channel + 0] = gif_color.Red;
+        p_dst[j * channel + 1] = gif_color.Green;
+        p_dst[j * channel + 2] = gif_color.Blue;
+      }
     }
   }
 
   if (DGifCloseFile(gif_file, &error_code) != GIF_OK) {
     LOG(WARNING) << "Fail to close gif file, reason: "
-        << GifErrorString(error_code);
+                 << GifErrorString(error_code);
   }
   return dstdata;
 }

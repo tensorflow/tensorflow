@@ -26,6 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
@@ -1281,26 +1282,53 @@ class PngTest(test_util.TensorFlowTestCase):
 
 class GifTest(test_util.TensorFlowTestCase):
 
-  def testExisting(self):
-    # Read some real GIFs, converting to different channel numbers
+  def testValid(self):
+    # Read some real GIFs
     prefix = 'tensorflow/core/lib/gif/testdata/'
-    inputs = (3, 'cock.gif'),
-    for channels_in, filename in inputs:
-      for channels in 0, 1, 3, 4:
-        with self.test_session() as sess:
-          gif0 = io_ops.read_file(prefix + filename)
-          image0 = image_ops.decode_gif(gif0, channels=channels)
-          gif0, image0 = sess.run([gif0, image0])
-          self.assertEqual(image0.shape, (55, 63, 3))
+    filename = 'scan.gif'
+    WIDTH = 20
+    HEIGHT = 40
+    STRIDE = 5
+    shape = (12, HEIGHT, WIDTH, 3)
+
+    with self.test_session() as sess:
+      gif0 = io_ops.read_file(prefix + filename)
+      image0 = image_ops.decode_gif(gif0)
+      gif0, image0 = sess.run([gif0, image0])
+
+      self.assertEqual(image0.shape, shape)
+
+      for frame_idx, frame in enumerate(image0):
+        gt = np.zeros(shape[1:], dtype=np.uint8)
+        start = frame_idx * STRIDE
+        end = (frame_idx + 1) * STRIDE
+        print(frame_idx)
+        if end <= WIDTH:
+          gt[:, start:end, :] = 255
+        else:
+          start -= WIDTH
+          end -= WIDTH
+          gt[start:end, :, :] = 255
+
+        self.assertAllClose(frame, gt)
+
+  def testInValid(self):
+    # Read some real GIFs
+    prefix = 'tensorflow/core/lib/gif/testdata/'
+    filename = 'optimized.gif'
+
+    with self.test_session() as sess:
+      gif0 = io_ops.read_file(prefix + filename)
+      image0 = image_ops.decode_gif(gif0)
+      with self.assertRaises(errors.InvalidArgumentError):
+        gif0, image0 = sess.run([gif0, image0])
 
   def testShape(self):
       with self.test_session() as sess:
         gif = constant_op.constant('nonsense')
-        for channels in 0, 1, 3:
-          image = image_ops.decode_gif(gif, channels=channels)
-          self.assertEqual(image.get_shape().as_list(),
-                           [None, None, channels or None])
-
+        image = image_ops.decode_gif(gif)
+        self.assertEqual(image.get_shape().as_list(),
+                [None, None, None, 3])
 
 class ConvertImageTest(test_util.TensorFlowTestCase):
 

@@ -897,10 +897,15 @@ def _ResizeShape(op):
   return [tensor_shape.TensorShape(
       [input_shape[0], height, width, input_shape[3]])]
 
+@ops.RegisterShape('DecodeGif')
+def _ImageDecodeShape(op):
+  """Shape function for decode gif."""
+  unused_input_shape = op.inputs[0].get_shape().merge_with(
+      tensor_shape.scalar())
+  return [tensor_shape.TensorShape([None, None, None, 3])]
 
 @ops.RegisterShape('DecodeJpeg')
 @ops.RegisterShape('DecodePng')
-@ops.RegisterShape('DecodeGif')
 def _ImageDecodeShape(op):
   """Shape function for image decoding ops."""
   unused_input_shape = op.inputs[0].get_shape().merge_with(

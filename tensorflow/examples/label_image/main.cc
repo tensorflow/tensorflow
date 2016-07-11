@@ -101,9 +101,8 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
         file_reader,
         b.opts().WithAttr("channels", wanted_channels).WithName("png_reader"));
   } else if (tensorflow::StringPiece(file_name).ends_with(".gif")) {
-    image_reader = tensorflow::ops::DecodeGif(
-        file_reader,
-        b.opts().WithAttr("channels", wanted_channels).WithName("gif_reader"));
+    image_reader = tensorflow::ops::DecodeGif(file_reader,
+                                              b.opts().WithName("gif_reader"));
   } else {
     // Assume if it's neither a PNG nor a GIF then it must be a JPEG.
     image_reader = tensorflow::ops::DecodeJpeg(

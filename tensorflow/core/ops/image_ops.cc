@@ -352,28 +352,17 @@ contents: 0-D. PNG-encoded image.
 // --------------------------------------------------------------------------
 REGISTER_OP("DecodeGif")
     .Input("contents: string")
-    .Attr("channels: int = 0")
-    .Attr("dtype: {uint8, uint16} = DT_UINT8")
-    .Output("image: dtype")
+    .Output("image: uint8")
     .Doc(R"doc(
-Decode the first frame of a GIF-encoded image to a uint8 or uint16 tensor.
+Decode the first frame of a GIF-encoded image to a uint8 tensor.
 
-The attr `channels` indicates the desired number of color channels for the
-decoded image.
+GIF with frame or transparency compression are not supported
+convert animated GIF from compressed to uncompressed by:
 
-Accepted values are:
-
-*   0: Use the number of channels in the GIF-encoded image.
-*   1: output a grayscale image.
-*   3: output an RGB image.
-*   4: output an RGBA image.
-
-If needed, the GIF-encoded image is transformed to match the requested number
-of color channels.
+convert $src.gif -coalesce $dst.gif
 
 contents: 0-D.  The GIF-encoded image.
-channels: Number of color channels for the decoded image.
-image: 3-D with shape `[height, width, channels]`.
+image: 4-D with shape `[num_frames, height, width, 3]`. RGB order
 )doc");
 
 // --------------------------------------------------------------------------
@@ -522,7 +511,6 @@ use_image_if_no_bounding_boxes: Controls behavior if no bounding boxes supplied.
   If true, assume an implicit bounding box covering the whole input. If false,
   raise an error.
 )doc");
-
 
 // --------------------------------------------------------------------------
 

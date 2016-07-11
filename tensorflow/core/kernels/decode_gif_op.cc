@@ -31,25 +31,7 @@ namespace tensorflow {
 // Decode the contents of a GIF file
 class DecodeGifOp : public OpKernel {
  public:
-  explicit DecodeGifOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
-    OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3 ||
-                             channels_ == 4,
-                errors::InvalidArgument("channels must be 0, 1, 3, or 4, got ",
-                                        channels_));
-
-    DataType dt;
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dt));
-    OP_REQUIRES(
-        context, dt == DataType::DT_UINT8 || dt == DataType::DT_UINT16,
-        errors::InvalidArgument("Type must be UINT8 or UINT16, got ", dt));
-    if (dt == DataType::DT_UINT8) {
-      desired_channel_bits_ = 8;
-    } else {
-      desired_channel_bits_ = 16;
-    }
-  }
-
+  explicit DecodeGifOp(OpKernelConstruction* context) : OpKernel(context) {}
   void Compute(OpKernelContext* context) override {
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
@@ -63,24 +45,21 @@ class DecodeGifOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES(
         context,
-        gif::Decode(
-            input.data(), input.size(),
-            [=, &output](int width, int height, int channels) -> uint8* {
-                Status status(context->allocate_output(
-                    0, TensorShape({height, width, channels}), &output));
-                if (!status.ok()) {
-                  VLOG(1) << status;
-                  context->SetStatus(status);
-                  return nullptr;
-                }
-                return output->flat<uint8>().data();
-            }),
+        gif::Decode(input.data(), input.size(),
+                    [=, &output](int num_frames, int width, int height,
+                                 int channels) -> uint8* {
+                      Status status(context->allocate_output(
+                          0, TensorShape({num_frames, height, width, channels}),
+                          &output));
+                      if (!status.ok()) {
+                        VLOG(1) << status;
+                        context->SetStatus(status);
+                        return nullptr;
+                      }
+                      return output->flat<uint8>().data();
+                    }),
         errors::InvalidArgument("Invalid GIF data, size ", input.size()));
   }
-
- private:
-  int channels_;
-  int desired_channel_bits_;
 };
 REGISTER_KERNEL_BUILDER(Name("DecodeGif").Device(DEVICE_CPU), DecodeGifOp);
 
