@@ -70,6 +70,15 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "inverse_gamma_test",
+    srcs = ["python/kernel_tests/inverse_gamma_test.py"],
+    additional_deps = [
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "chi2_test",
     srcs = ["python/kernel_tests/chi2_test.py"],
     additional_deps = [
