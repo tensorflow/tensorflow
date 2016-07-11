@@ -209,6 +209,52 @@ def train(graph,
       evaluates to `NaN`.
     ValueError: If both `steps` and `max_steps` are not `None`.
   """
+  while True:
+    try:
+      return _train_internal(graph,
+                             output_dir,
+                             train_op,
+                             loss_op,
+                             global_step_tensor,
+                             init_op,
+                             init_feed_dict,
+                             init_fn,
+                             log_every_steps,
+                             supervisor_is_chief,
+                             supervisor_master,
+                             supervisor_save_model_secs,
+                             keep_checkpoint_max,
+                             supervisor_save_summaries_steps,
+                             feed_fn,
+                             steps,
+                             fail_on_nan_loss,
+                             monitors,
+                             max_steps)
+    except errors.AbortedError:
+      # Happens when PS restarts, keep training.
+      logging.warning('Training got Aborted error. Keep training.')
+
+
+def _train_internal(graph,
+                    output_dir,
+                    train_op,
+                    loss_op,
+                    global_step_tensor,
+                    init_op,
+                    init_feed_dict,
+                    init_fn,
+                    log_every_steps,
+                    supervisor_is_chief,
+                    supervisor_master,
+                    supervisor_save_model_secs,
+                    keep_checkpoint_max,
+                    supervisor_save_summaries_steps,
+                    feed_fn,
+                    steps,
+                    fail_on_nan_loss,
+                    monitors,
+                    max_steps):
+  """See train."""
   if (steps is not None) and (max_steps is not None):
     raise ValueError('Can not provide both steps and max_steps.')
   if not output_dir:
@@ -284,13 +330,8 @@ def train(graph,
         start_time = time.time()
         feed_dict = feed_fn() if feed_fn is not None else None
 
-        try:
-          outputs, should_stop = _run_with_monitors(
-              session, last_step + 1, [train_op, loss_op], feed_dict, monitors)
-        except errors.AbortedError as e:
-          # Happens when PS restarts, keep training.
-          logging.warning('Training got Aborted error. Keep training.')
-          continue
+        outputs, should_stop = _run_with_monitors(
+            session, last_step + 1, [train_op, loss_op], feed_dict, monitors)
 
         loss_value = outputs[loss_op.name]
         if np.isnan(loss_value):

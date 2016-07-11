@@ -203,6 +203,33 @@ class LinearClassifierTest(tf.test.TestCase):
     scores = classifier.evaluate(input_fn=input_fn, steps=2)
     self.assertGreater(scores['accuracy'], 0.9)
 
+  def testSdcaOptimizerWeightedSparseFeatures(self):
+    """LinearClasssifier with SDCAOptimizer and weighted sparse features."""
+
+    def input_fn():
+      return {
+          'example_id': tf.constant(['1', '2', '3']),
+          'price': tf.SparseTensor(values=[2., 3., 1.],
+                                   indices=[[0, 0], [1, 0], [2, 0]],
+                                   shape=[3, 5]),
+          'country': tf.SparseTensor(values=['IT', 'US', 'GB'],
+                                     indices=[[0, 0], [1, 0], [2, 0]],
+                                     shape=[3, 5])
+      }, tf.constant([[1], [0], [1]])
+
+    country = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'country', hash_bucket_size=5)
+    country_weighted_by_price = tf.contrib.layers.weighted_sparse_column(
+        country, 'price')
+    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+        example_id_column='example_id')
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[country_weighted_by_price],
+        optimizer=sdca_optimizer)
+    classifier.fit(input_fn=input_fn, steps=50)
+    scores = classifier.evaluate(input_fn=input_fn, steps=2)
+    self.assertGreater(scores['accuracy'], 0.9)
+
   def testSdcaOptimizerCrossedFeatures(self):
     """Tests LinearClasssifier with SDCAOptimizer and crossed features."""
 

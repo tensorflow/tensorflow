@@ -194,7 +194,7 @@ Returns a context manager that makes this object the default session.
 
 Use with the `with` keyword to specify that calls to
 [`Operation.run()`](../../api_docs/python/framework.md#Operation.run) or
-[`Tensor.run()`](../../api_docs/python/framework.md#Tensor.run) should be
+[`Tensor.eval()`](../../api_docs/python/framework.md#Tensor.eval) should be
 executed in this session.
 
 ```python

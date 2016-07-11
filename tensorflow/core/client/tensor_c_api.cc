@@ -453,10 +453,13 @@ void TF_Run_Helper(TF_Session* s, const char* handle,
     // Serialize back to upstream client, who now owns the new buffer
     if (run_metadata != nullptr) {
       int proto_size = run_metadata_proto.ByteSize();
-      void* str_buf = reinterpret_cast<void*>(operator new(proto_size));
+      void* str_buf = malloc(proto_size);
       run_metadata_proto.SerializeToArray(str_buf, proto_size);
       run_metadata->data = str_buf;
       run_metadata->length = proto_size;
+      run_metadata->data_deallocator = [](void* data, size_t length) {
+        free(data);
+      };
     }
   } else {
     // NOTE(zongheng): PRun does not support RunOptions yet.

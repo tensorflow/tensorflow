@@ -1,5 +1,4 @@
-"""Linear Estimators."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -12,6 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Linear Estimators."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -123,6 +125,17 @@ class SDCAOptimizer(object):
                                                            weights_tensor,
                                                            column.length)
           sparse_features.append(math_ops.to_float(sparse_features_tensor))
+          sparse_features_weights.append(columns_to_variables[column][0])
+        elif isinstance(
+            column,
+            layers.feature_column._WeightedSparseColumn):  # pylint: disable=protected-access
+          id_tensor = column.id_tensor(transformed_tensor)
+          weight_tensor = column.weight_tensor(transformed_tensor)
+          sparse_features_tensor = sparse_ops.sparse_merge(
+              id_tensor, weight_tensor, column.length,
+              name="{}_sparse_merge".format(column.name))
+          sparse_features.append(math_ops.to_float(
+              sparse_features_tensor, name="{}_to_float".format(column.name)))
           sparse_features_weights.append(columns_to_variables[column][0])
         else:
           raise ValueError("SDCAOptimizer does not support column type %s." %

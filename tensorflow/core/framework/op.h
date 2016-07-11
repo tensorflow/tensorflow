@@ -111,8 +111,9 @@ class OpRegistry : public OpRegistryInterface {
 
   // Process the current list of deferred registrations. Note that calls to
   // Export, LookUp and DebugString would also implicitly process the deferred
-  // registrations.
-  void ProcessRegistrations() const;
+  // registrations. Returns the status of the first failed op registration or
+  // Status::OK() otherwise.
+  Status ProcessRegistrations() const;
 
   // Defer the registrations until a later call to a function that processes
   // deferred registrations are made. Normally, registrations that happen after
@@ -126,8 +127,13 @@ class OpRegistry : public OpRegistryInterface {
  private:
   // Ensures that all the functions in deferred_ get called, their OpDef's
   // registered, and returns with deferred_ empty.  Returns true the first
-  // time it is called.
-  bool CallDeferred() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // time it is called. Prints a fatal log if any op registration fails.
+  bool MustCallDeferred() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Calls the functions in deferred_ and registers their OpDef's
+  // It returns the Status of the first failed op registration or Status::OK()
+  // otherwise.
+  Status CallDeferred() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Add 'def' to the registry with additional data 'data'. On failure, or if
   // there is already an OpDef with that name registered, returns a non-okay

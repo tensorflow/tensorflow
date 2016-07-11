@@ -259,7 +259,7 @@ class _VariableStore(object):
 
     shape = tensor_shape.as_shape(shape)
     if initializing_from_value:
-      shape = initializer.get_shape()
+      shape = shape.merge_with(initializer.get_shape())
 
     if not reuse_without_partition:
       if not shape.is_fully_defined():

@@ -3,7 +3,9 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = [
+    "//visibility:public",
+])
 
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
@@ -14,6 +16,27 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "custom_op_sources",
+    srcs = glob(
+        [
+            "core/ops/*.cc",
+            "data/*.cc",
+        ],
+        exclude = ["core/ops/*_test.cc"],
+    ),
+)
+
+filegroup(
+    name = "custom_op_headers",
+    srcs = glob(
+        [
+            "core/ops/*.h",
         ],
     ),
 )

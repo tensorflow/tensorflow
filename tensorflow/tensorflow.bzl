@@ -128,7 +128,8 @@ def tf_gen_op_libs(op_lib_names):
                       alwayslink=1,
                       linkstatic=1,)
 
-def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
+def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
+                         op_gen="//tensorflow/cc:cc_op_gen_main"):
   # Construct an op generator binary for these ops.
   tool = out_ops_file + "_gen_cc"
   native.cc_binary(
@@ -136,8 +137,7 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg=""):
       copts = tf_copts(),
       linkopts = ["-lm"],
       linkstatic = 1,   # Faster to link this one-time-use binary dynamically
-      deps = (["//tensorflow/cc:cc_op_gen_main",
-               pkg + ":" + name + "_op_lib"])
+      deps = ([op_gen, pkg + ":" + name + "_op_lib"])
   )
 
   # Run the op generator.
@@ -174,11 +174,12 @@ def tf_gen_op_wrappers_cc(name,
                           op_lib_names=[],
                           other_srcs=[],
                           other_hdrs=[],
-                          pkg=""):
+                          pkg="",
+                          op_gen="//tensorflow/cc:cc_op_gen_main"):
   subsrcs = other_srcs
   subhdrs = other_hdrs
   for n in op_lib_names:
-    tf_gen_op_wrapper_cc(n, "ops/" + n, pkg=pkg)
+    tf_gen_op_wrapper_cc(n, "ops/" + n, pkg=pkg, op_gen=op_gen)
     subsrcs += ["ops/" + n + ".cc"]
     subhdrs += ["ops/" + n + ".h"]
 

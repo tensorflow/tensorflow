@@ -589,7 +589,9 @@
   * [`Distribution`](../../api_docs/python/contrib.distributions.md#Distribution)
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
   * [`Gamma`](../../api_docs/python/contrib.distributions.md#Gamma)
+  * [`InverseGamma`](../../api_docs/python/contrib.distributions.md#InverseGamma)
   * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
+  * [`Laplace`](../../api_docs/python/contrib.distributions.md#Laplace)
   * [`MultivariateNormalCholesky`](../../api_docs/python/contrib.distributions.md#MultivariateNormalCholesky)
   * [`MultivariateNormalFull`](../../api_docs/python/contrib.distributions.md#MultivariateNormalFull)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
@@ -708,6 +710,8 @@
 
 * **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
   * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
+  * [`aggregate_metric_map`](../../api_docs/python/contrib.metrics.md#aggregate_metric_map)
+  * [`aggregate_metrics`](../../api_docs/python/contrib.metrics.md#aggregate_metrics)
   * [`auc_using_histogram`](../../api_docs/python/contrib.metrics.md#auc_using_histogram)
   * [`confusion_matrix`](../../api_docs/python/contrib.metrics.md#confusion_matrix)
   * [`set_difference`](../../api_docs/python/contrib.metrics.md#set_difference)

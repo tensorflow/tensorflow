@@ -30,6 +30,8 @@ initialized with parameters that define the distributions.
 @@Chi2
 @@Exponential
 @@Gamma
+@@InverseGamma
+@@Laplace
 @@Normal
 @@StudentT
 @@Uniform
@@ -89,7 +91,9 @@ from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
+from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
+from tensorflow.contrib.distributions.python.ops.laplace import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
