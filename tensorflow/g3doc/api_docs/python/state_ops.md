@@ -1023,6 +1023,11 @@ proto, returns it.
   A CheckpointState if the state was available, None
   otherwise.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the checkpoint read doesn't have model_checkpoint_path set.
+
 
 - - -
 
