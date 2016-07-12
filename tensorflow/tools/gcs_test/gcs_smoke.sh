@@ -67,30 +67,8 @@ docker build --no-cache \
 
 # Run the docker image with the GCS key file mapped and the gcloud-required
 # environment variables set.
-LOG_FILE="/tmp/tf-gcs-test.log"
-rm -rf ${LOG_FILE}
-
 docker run --rm \
     -v ${GCLOUD_JSON_KEY_PATH}:/gcloud-key.json \
     -e "GOOGLE_APPLICATION_CREDENTIALS=/gcloud-key.json" \
     "${DOCKER_IMG}" \
-    python /gcs_smoke.py --gcs_bucket_url="${GCS_BUCKET_URL}" \
-    2>&1 > "${LOG_FILE}"
-
-if [[ $? != "0" ]]; then
-  cat ${LOG_FILE}
-  die "FAIL: End-to-end test of GCS access from TensorFlow failed."
-fi
-
-cat ${LOG_FILE}
-echo ""
-
-# Clean up the newly created tfrecord file in GCS bucket
-NEW_TFREC_URL=$(grep "Using input path" "${LOG_FILE}" | \
-                awk '{print $NF}')
-if [[ -z ${NEW_TFREC_URL} ]]; then
-  die "FAIL: Unable to determine the URL to the new tfrecord file in GCS"
-fi
-gsutil rm "${NEW_TFREC_URL}" && \
-    echo "Cleaned up new tfrecord file in GCS: ${NEW_TFREC_URL}" || \
-    die "FAIL: Unable to clean up new tfrecord file in GCS: ${NEW_TFREC_URL}"
+    /gcs-smoke/gcs_smoke_wrapper.sh "${GCS_BUCKET_URL}"
