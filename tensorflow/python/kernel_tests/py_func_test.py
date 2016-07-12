@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import queue
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -39,7 +40,7 @@ class PyOpTest(tf.test.TestCase):
       z = tf.py_func(my_func, [x, y], [tf.float32])
       self.assertEqual(z[0].eval(), my_func(1.0, 2.0).astype(np.float32))
 
-    # array
+        # array
     with self.test_session():
       x = tf.constant([1.0, 2.0], tf.float64)
       y = tf.constant([2.0, 3.0], tf.float64)
@@ -103,6 +104,12 @@ class PyOpTest(tf.test.TestCase):
       z, = tf.py_func(read_and_return_strings, [x, y], [tf.string])
       self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
 
+  def testStringPadding(self):
+    correct = [b"this", b"is", b"a", b"test"]
+    with self.test_session():
+      s, = tf.py_func(lambda: [correct], [], [tf.string])
+      self.assertAllEqual(s.eval(), correct)
+
   def testLarge(self):
     with self.test_session() as sess:
       x = tf.zeros([1000000], dtype=np.float32)
@@ -124,22 +131,28 @@ class PyOpTest(tf.test.TestCase):
         _ = tf.py_func(lambda x: x + 1, [c], [tf.float32])
     self.assertTrue(script_ops._py_funcs.size() < 100)
 
-  def testError(self):
+  def testBadNumpyReturnType(self):
     with self.test_session():
 
-      def bad1():
+      def bad():
         # Structured numpy arrays aren't supported.
         return np.array([], dtype=[("foo", np.float32)])
 
-      def bad2():
-        # Non-string python objects aren't supported.
-        return tf.float32
+      y, = tf.py_func(bad, [], [tf.float32])
 
-      y, = tf.py_func(bad1, [], [tf.string])
-      z, = tf.py_func(bad2, [], [tf.float64])
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported numpy type"):
         y.eval()
+
+  def testBadReturnType(self):
+    with self.test_session():
+
+      def bad():
+        # Non-string python objects aren't supported.
+        return tf.float32
+
+      z, = tf.py_func(bad, [], [tf.float64])
+
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported object type"):
         z.eval()
@@ -158,6 +171,28 @@ class PyOpTest(tf.test.TestCase):
       val = [[1, 2], [3, 4]]
       x, = tf.py_func(lambda: np.array(val, order="F"), [], [tf.int64])
       self.assertAllEqual(val, x.eval())
+
+  def testParallel(self):
+    # Tests that tf.py_func's can run in parallel if they release the GIL.
+    with self.test_session() as session:
+      q = queue.Queue(1)
+
+      def blocking_put():
+        q.put(42)
+        q.join()  # Wait for task_done().
+        return 42
+
+      def blocking_get():
+        v = q.get(block=True)  # Wait for put().
+        q.task_done()
+        return v
+
+      x, = tf.py_func(blocking_put, [], [tf.int64])
+      y, = tf.py_func(blocking_get, [], [tf.int64])
+
+      # This will result in a deadlock if the py_func's don't run in parallel.
+      session.run([x, y])
+
 
 if __name__ == "__main__":
   tf.test.main()

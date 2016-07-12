@@ -725,6 +725,8 @@ REGISTER_OP("Gather")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
       const Shape* params_subshape;
       TF_RETURN_IF_ERROR(c->Subshape(c->input(0), 1, &params_subshape));
       const Shape* indices_shape = c->input(1);

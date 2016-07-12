@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 // Returns OK if the input and output batch sizes match.
@@ -48,14 +48,23 @@ Status BatchSizesMatch(const Tensor& input, const Tensor& output) {
 
 Status GetSignatures(const tensorflow::MetaGraphDef& meta_graph_def,
                      Signatures* signatures) {
-  auto collection_def = meta_graph_def.collection_def();
-  auto any_list = collection_def[kSignaturesKey].any_list();
-  if (any_list.value_size() != 1) {
+  const auto& collection_def = meta_graph_def.collection_def();
+  const auto it = collection_def.find(kSignaturesKey);
+  if (it == collection_def.end() || it->second.any_list().value_size() != 1) {
     return errors::FailedPrecondition(
         strings::StrCat("Expected exactly one signatures proto in : ",
                         meta_graph_def.DebugString()));
   }
-  any_list.value(0).UnpackTo(signatures);
+  const auto& any = it->second.any_list().value(0);
+  if (!any.Is<Signatures>()) {
+    return errors::FailedPrecondition(
+        "Expected signature Any type_url for: ",
+        signatures->descriptor()->full_name(), ". Got: ",
+        string(any.type_url().data(), any.type_url().size()), ".");
+  }
+  if (!any.UnpackTo(signatures)) {
+    return errors::FailedPrecondition("Failed to unpack: ", any.DebugString());
+  }
   return Status::OK();
 }
 
@@ -235,7 +244,7 @@ Status GetNamedSignature(const string& name,
 Status BindGenericInputs(const GenericSignature& signature,
                          const std::vector<std::pair<string, Tensor>>& inputs,
                          std::vector<std::pair<string, Tensor>>* bound_inputs) {
-  const protobuf::Map<string, contrib::TensorBinding>& bindings =
+  const protobuf::Map<string, serving::TensorBinding>& bindings =
       signature.map();
 
   for (const auto& entry : inputs) {
@@ -252,7 +261,7 @@ Status BindGenericInputs(const GenericSignature& signature,
 Status BindGenericNames(const GenericSignature& signature,
                         const std::vector<string>& input_names,
                         std::vector<string>* bound_names) {
-  const protobuf::Map<string, contrib::TensorBinding>& bindings =
+  const protobuf::Map<string, serving::TensorBinding>& bindings =
       signature.map();
 
   for (const string& entry : input_names) {
@@ -266,5 +275,5 @@ Status BindGenericNames(const GenericSignature& signature,
   return Status::OK();
 }
 
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow

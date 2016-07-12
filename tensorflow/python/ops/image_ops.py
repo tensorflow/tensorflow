@@ -75,7 +75,7 @@ resized_image = tf.image.resize_images(image, 299, 299)
 
 @@crop_and_resize
 
-## Flipping and Transposing
+## Flipping, Rotating and Transposing
 
 @@flip_up_down
 @@random_flip_up_down
@@ -84,6 +84,8 @@ resized_image = tf.image.resize_images(image, 299, 299)
 @@random_flip_left_right
 
 @@transpose_image
+
+@@rot90
 
 ## Converting Between Colorspaces.
 
@@ -381,6 +383,33 @@ def flip_up_down(image):
   image = ops.convert_to_tensor(image, name='image')
   _Check3DImage(image, require_static=False)
   return array_ops.reverse(image, [True, False, False])
+
+
+def rot90(image, k=1):
+  """Rotate an image counter-clockwise by 90 degrees.
+
+  Args:
+    image: A 3-D tensor of shape `[height, width, channels].`
+    k: Number of times the image is rotated by 90 degrees.
+
+  Returns:
+    A rotated 3-D tensor of the same type and shape as `image`.
+  """
+  image = ops.convert_to_tensor(image, name='image')
+  _Check3DImage(image, require_static=False)
+  k %= 4
+  if k == 0:
+    return image
+  elif k == 1:
+    return array_ops.transpose(
+        array_ops.reverse(image, [False, True, False]),
+        [1, 0, 2], name='rot90')
+  elif k == 2:
+    return array_ops.reverse(image, [True, True, False], name='rot90')
+  elif k == 3:
+    return array_ops.reverse(
+        array_ops.transpose(image, [1, 0, 2], name='rot90'),
+        [False, True, False])
 
 
 def transpose_image(image):

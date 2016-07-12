@@ -1017,10 +1017,10 @@ dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
 namespace {
 
 Status SegmentReductionShapeFn(InferenceContext* c) {
-  const Shape* segment_ids_shape = c->input(1);
-  TF_RETURN_IF_ERROR(c->WithRank(segment_ids_shape, 1, &segment_ids_shape));
-
-  auto data_shape = c->input(0);
+  const Shape* data_shape;
+  const Shape* segment_ids_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &segment_ids_shape));
 
   const Shape* subshape;
   TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
@@ -1200,18 +1200,8 @@ REGISTER_OP("UnsortedSegmentSum")
             c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
 
         // Get the value of the num_segments input tensor.
-        const auto* num_segments_t = c->input_tensor(2);
         const Dimension* num_segments_dim;
-        if (num_segments_t == nullptr) {
-          num_segments_dim = c->CreateUnknownDim();
-        } else {
-          auto t_val = num_segments_t->scalar<int32>()();
-          if (t_val < 0) {
-            return errors::InvalidArgument(
-                "num_segments value must be non-negative, but was ", t_val);
-          }
-          num_segments_dim = c->CreateDim(t_val);
-        }
+        TF_RETURN_IF_ERROR(c->CreateDimForScalarInput(2, &num_segments_dim));
 
         // Output is {segment_id_rank} + s_data[segment_id_rank:].
         const Shape* s_data_suffix;

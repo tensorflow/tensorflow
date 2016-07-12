@@ -102,13 +102,15 @@ class UnpackOp : public OpKernel {
       Tensor* output;
       OP_REQUIRES_OK(context,
                      context->allocate_output(i, output_shape, &output));
-      auto output_shaped = output->shaped<T, 3>({1, before_dim, after_dim});
 
-      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, i * after_dim};
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, before_dim, after_dim};
-      functor::Split<Device, T>()(context->eigen_device<Device>(),
-                                  output_shaped, input_reshaped, indices,
-                                  sizes);
+      if (output_shape.num_elements() > 0) {
+        auto output_shaped = output->shaped<T, 3>({1, before_dim, after_dim});
+        Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, i * after_dim};
+        Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, before_dim, after_dim};
+        functor::Split<Device, T>()(context->eigen_device<Device>(),
+                                    output_shaped, input_reshaped, indices,
+                                    sizes);
+      }
     }
   }
 

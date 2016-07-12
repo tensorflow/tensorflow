@@ -792,6 +792,34 @@ class CheckpointStateTest(tf.test.TestCase):
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
 
+  def testCheckPointStateFailsWhenIncomplete(self):
+    save_dir = _TestDir("checkpoint_state_fails_when_incomplete")
+    os.chdir(save_dir)
+    ckpt_path = os.path.join(save_dir, "checkpoint")
+    ckpt_file = open(ckpt_path, "w")
+    ckpt_file.write("")
+    ckpt_file.close()
+    with self.assertRaises(ValueError):
+      tf.train.get_checkpoint_state(save_dir)
+
+  def testCheckPointCompletesRelativePaths(self):
+    save_dir = _TestDir("checkpoint_completes_relative_paths")
+    os.chdir(save_dir)
+    ckpt_path = os.path.join(save_dir, "checkpoint")
+    ckpt_file = open(ckpt_path, "w")
+    ckpt_file.write("""
+        model_checkpoint_path: "./model.ckpt-687529"
+        all_model_checkpoint_paths: "./model.ckpt-687500"
+        all_model_checkpoint_paths: "./model.ckpt-687529"
+        """)
+    ckpt_file.close()
+    ckpt = tf.train.get_checkpoint_state(save_dir)
+    self.assertEqual(ckpt.model_checkpoint_path,
+                     os.path.join(save_dir, "./model.ckpt-687529"))
+    self.assertEqual(ckpt.all_model_checkpoint_paths[0],
+                     os.path.join(save_dir, "./model.ckpt-687500"))
+    self.assertEqual(ckpt.all_model_checkpoint_paths[1],
+                     os.path.join(save_dir, "./model.ckpt-687529"))
 
 class MetaGraphTest(tf.test.TestCase):
 

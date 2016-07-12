@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import kullback_leibler  # pylint: disable=line-too-long
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -173,8 +174,12 @@ class Bernoulli(distribution.Distribution):
       with ops.op_scope([self.logits, event], name):
         event = ops.convert_to_tensor(event, name="event")
         event = math_ops.cast(event, self.logits.dtype)
-        logits = array_ops.ones_like(event) * self.logits
-        event = array_ops.ones_like(self.logits) * event
+        logits = self.logits
+        if ((event.get_shape().ndims is not None) or
+            (logits.get_shape().ndims is not None) or
+            event.get_shape() != logits.get_shape()):
+          logits = array_ops.ones_like(event) * logits
+          event = array_ops.ones_like(logits) * event
         return -nn.sigmoid_cross_entropy_with_logits(logits, event)
 
   def sample(self, n, seed=None, name="sample"):
@@ -274,3 +279,23 @@ class Bernoulli(distribution.Distribution):
   @property
   def is_continuous(self):
     return False
+
+
+@kullback_leibler.RegisterKL(Bernoulli, Bernoulli)
+def _kl_bernoulli_bernoulli(a, b, name=None):
+  """Calculate the batched KL divergence KL(a || b) with a and b Bernoulli.
+
+  Args:
+    a: instance of a Bernoulli distribution object.
+    b: instance of a Bernoulli distribution object.
+    name: (optional) Name to use for created operations.
+      default is "kl_bernoulli_bernoulli".
+
+  Returns:
+    Batchwise KL(a || b)
+  """
+  with ops.op_scope([a.logits, b.logits], name, "kl_bernoulli_bernoulli"):
+    return (math_ops.sigmoid(a.logits) * (-nn.softplus(-a.logits) +
+                                          nn.softplus(-b.logits)) +
+            math_ops.sigmoid(-a.logits) * (-nn.softplus(a.logits) +
+                                           nn.softplus(b.logits)))

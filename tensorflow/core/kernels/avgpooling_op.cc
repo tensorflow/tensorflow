@@ -39,6 +39,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
+#include "tensorflow/core/util/use_cudnn.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -150,7 +151,7 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
 
     TensorShape output_shape = params.forward_output_shape();
 
-    if (data_format_ == FORMAT_NCHW) {
+    if (internal::AvgPoolUseCudnn() || data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(
           context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
           stride_, padding_, data_format_, tensor_in, output_shape);

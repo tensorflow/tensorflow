@@ -438,6 +438,7 @@ cc_library(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:multinomial_op",
         "//tensorflow/core/kernels:nn",
+        "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:required",
@@ -1820,6 +1821,7 @@ tf_cc_tests(
     tests = [
         "ops/array_ops_test.cc",
         "ops/math_ops_test.cc",
+        "ops/nn_ops_test.cc",
     ],
     deps = [
         ":core",

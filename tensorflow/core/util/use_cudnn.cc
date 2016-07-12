@@ -40,4 +40,11 @@ bool CudnnUseAutotune() {
   return ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", true);
 }
 
+namespace internal {
+
+bool AvgPoolUseCudnn() {
+  return ReadBoolFromEnvVar("TF_AVGPOOL_USE_CUDNN", false);
+}
+
+}  // namespace internal
 }  // namespace tensorflow

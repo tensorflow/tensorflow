@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Operations for generating random numbers."""
 
 from __future__ import absolute_import
@@ -22,9 +21,9 @@ from __future__ import print_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
@@ -33,6 +32,7 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_random_ops import *
+
 # pylint: enable=wildcard-import
 
 
@@ -46,8 +46,12 @@ def _ShapeTensor(shape):
 
 
 # pylint: disable=protected-access
-def random_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
-                  seed=None, name=None):
+def random_normal(shape,
+                  mean=0.0,
+                  stddev=1.0,
+                  dtype=dtypes.float32,
+                  seed=None,
+                  name=None):
   """Outputs random values from a normal distribution.
 
   Args:
@@ -68,12 +72,11 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
   """
   with ops.op_scope([shape, mean, stddev], name, "random_normal") as name:
     shape_tensor = _ShapeTensor(shape)
-    mean_tensor = ops.convert_to_tensor(
-        mean, dtype=dtype, name="mean")
-    stddev_tensor = ops.convert_to_tensor(
-        stddev, dtype=dtype, name="stddev")
+    mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
+    stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._random_standard_normal(shape_tensor, dtype,
+    rnd = gen_random_ops._random_standard_normal(shape_tensor,
+                                                 dtype,
                                                  seed=seed1,
                                                  seed2=seed2)
     mul = rnd * stddev_tensor
@@ -84,8 +87,64 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
 ops.NoGradient("RandomStandardNormal")
 
 
-def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
-                     seed=None, name=None):
+def parameterized_truncated_normal(shape,
+                                   means=0.0,
+                                   stddevs=1.0,
+                                   minvals=-2.0,
+                                   maxvals=2.0,
+                                   dtype=dtypes.float32,
+                                   seed=None,
+                                   name=None):
+  """Outputs random values from a truncated normal distribution.
+
+  The generated values follow a normal distribution with specified mean and
+  standard deviation, except that values whose magnitude is more than 2 standard
+  deviations from the mean are dropped and re-picked.
+
+  Args:
+    shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
+    means: A 0-D Tensor or Python value of type `dtype`. The mean of the
+      truncated normal distribution.
+    stddevs: A 0-D Tensor or Python value of type `dtype`. The standard
+      deviation of the truncated normal distribution.
+    minvals: A 0-D Tensor or Python value of type `dtype`. The minimum value of
+      the truncated normal distribution.
+    maxvals: A 0-D Tensor or Python value of type `dtype`. The maximum value of
+      the truncated normal distribution.
+    dtype: The type of the output.
+    seed: A Python integer. Used to create a random seed for the distribution.
+      See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tensor of the specified shape filled with random truncated normal values.
+  """
+  with ops.op_scope([shape, means, stddevs, minvals, maxvals], name,
+                    "parameterized_truncated_normal") as name:
+    shape_tensor = _ShapeTensor(shape)
+    means_tensor = ops.convert_to_tensor(means, dtype=dtype, name="means")
+    stddevs_tensor = ops.convert_to_tensor(stddevs, dtype=dtype, name="stddevs")
+    minvals_tensor = ops.convert_to_tensor(minvals, dtype=dtype, name="minvals")
+    maxvals_tensor = ops.convert_to_tensor(maxvals, dtype=dtype, name="maxvals")
+    seed1, seed2 = random_seed.get_seed(seed)
+    rnd = gen_random_ops._parameterized_truncated_normal(shape_tensor,
+                                                         means_tensor,
+                                                         stddevs_tensor,
+                                                         minvals_tensor,
+                                                         maxvals_tensor,
+                                                         seed=seed1,
+                                                         seed2=seed2)
+    return rnd
+
+
+def truncated_normal(shape,
+                     mean=0.0,
+                     stddev=1.0,
+                     dtype=dtypes.float32,
+                     seed=None,
+                     name=None):
   """Outputs random values from a truncated normal distribution.
 
   The generated values follow a normal distribution with specified mean and
@@ -110,12 +169,11 @@ def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
   """
   with ops.op_scope([shape, mean, stddev], name, "truncated_normal") as name:
     shape_tensor = _ShapeTensor(shape)
-    mean_tensor = ops.convert_to_tensor(
-        mean, dtype=dtype, name="mean")
-    stddev_tensor = ops.convert_to_tensor(
-        stddev, dtype=dtype, name="stddev")
+    mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
+    stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._truncated_normal(shape_tensor, dtype,
+    rnd = gen_random_ops._truncated_normal(shape_tensor,
+                                           dtype,
                                            seed=seed1,
                                            seed2=seed2)
     mul = rnd * stddev_tensor
@@ -123,11 +181,15 @@ def truncated_normal(shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
     return value
 
 
+ops.NoGradient("ParameterizedTruncatedNormal")
 ops.NoGradient("TruncatedNormal")
 
 
-def random_uniform(shape, minval=0, maxval=None,
-                   dtype=dtypes.float32, seed=None,
+def random_uniform(shape,
+                   minval=0,
+                   maxval=None,
+                   dtype=dtypes.float32,
+                   seed=None,
                    name=None):
   """Outputs random values from a uniform distribution.
 
@@ -174,11 +236,16 @@ def random_uniform(shape, minval=0, maxval=None,
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
-      return gen_random_ops._random_uniform_int(shape, minval, maxval,
-                                                seed=seed1, seed2=seed2,
+      return gen_random_ops._random_uniform_int(shape,
+                                                minval,
+                                                maxval,
+                                                seed=seed1,
+                                                seed2=seed2,
                                                 name=name)
     else:
-      rnd = gen_random_ops._random_uniform(shape, dtype, seed=seed1,
+      rnd = gen_random_ops._random_uniform(shape,
+                                           dtype,
+                                           seed=seed1,
                                            seed2=seed2)
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
@@ -212,7 +279,9 @@ def random_shuffle(value, seed=None, name=None):
     dimension.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_random_ops._random_shuffle(value, seed=seed1, seed2=seed2,
+  return gen_random_ops._random_shuffle(value,
+                                        seed=seed1,
+                                        seed2=seed2,
                                         name=name)
 
 
@@ -244,12 +313,16 @@ def random_crop(value, size, seed=None, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
-    check = logging_ops.Assert(math_ops.reduce_all(shape >= size),
-                               ["Need value.shape >= size, got ", shape, size])
+    check = logging_ops.Assert(
+        math_ops.reduce_all(shape >= size),
+        ["Need value.shape >= size, got ", shape, size])
     shape = control_flow_ops.with_dependencies([check], shape)
     limit = shape - size + 1
-    offset = random_uniform(array_ops.shape(shape), dtype=size.dtype,
-                            maxval=size.dtype.max, seed=seed) % limit
+    offset = random_uniform(
+        array_ops.shape(shape),
+        dtype=size.dtype,
+        maxval=size.dtype.max,
+        seed=seed) % limit
     return array_ops.slice(value, offset, size, name=name)
 
 
@@ -280,7 +353,9 @@ def multinomial(logits, num_samples, seed=None, name=None):
   with ops.op_scope([logits], name, "multinomial"):
     logits = ops.convert_to_tensor(logits, name="logits")
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.multinomial(logits, num_samples, seed=seed1,
+    return gen_random_ops.multinomial(logits,
+                                      num_samples,
+                                      seed=seed1,
                                       seed2=seed2)
 
 
@@ -369,6 +444,7 @@ def _RandomGammaShape(op):  # pylint: disable=invalid-name
 ops.NoGradient("RandomGamma")
 
 
+@ops.RegisterShape("ParameterizedTruncatedNormal")
 @ops.RegisterShape("TruncatedNormal")
 @ops.RegisterShape("RandomStandardNormal")
 @ops.RegisterShape("RandomUniform")

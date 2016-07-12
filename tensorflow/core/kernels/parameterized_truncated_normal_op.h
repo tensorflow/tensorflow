@@ -13,22 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The utility to check whether we have Cudnn dependency.
-
-#ifndef TENSORFLOW_UTIL_USE_CUDNN_H_
-#define TENSORFLOW_UTIL_USE_CUDNN_H_
+#ifndef TENSORFLOW_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
+#define TENSORFLOW_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
 
 namespace tensorflow {
 
-bool CanUseCudnn();
-bool CudnnUseAutotune();
+class OpKernelContext;
 
-namespace internal {
+namespace functor {
 
-// This function is for transition only. And it may go away at any time.
-bool AvgPoolUseCudnn();
+template <typename Device, typename T>
+struct TruncatedNormalFunctor;
 
-}  // namespace internal
+}  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_USE_CUDNN_H_
+#endif  // TENSORFLOW_KERNELS_PARAMETERIZED_TRUNCATED_NORMAL_OP_H_
