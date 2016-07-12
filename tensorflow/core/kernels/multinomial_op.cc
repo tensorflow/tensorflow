@@ -132,52 +132,66 @@ class MultinomialOp : public OpKernel {
     const Tensor& logits_t = ctx->input(0);
     const Tensor& num_samples_t = ctx->input(1);
 
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_t.shape()),
+                errors::InvalidArgument("logits should be a matrix, got shape ",
+                                        logits_t.shape().DebugString()));
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(logits_t.shape()),
-        errors::InvalidArgument("Input logits should be a matrix, got shape: ",
-                                logits_t.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(num_samples_t.shape()),
-                errors::InvalidArgument(
-                    "Input num_samples should be a scalar, got shape: ",
-                    num_samples_t.shape().DebugString()));
+        ctx, TensorShapeUtils::IsScalar(num_samples_t.shape()),
+        errors::InvalidArgument("num_samples should be a scalar, got shape ",
+                                num_samples_t.shape().DebugString()));
 
     const int num_samples = num_samples_t.scalar<int>()();
-    OP_REQUIRES(ctx, num_samples > 0,
+    OP_REQUIRES(ctx, num_samples >= 0,
                 errors::InvalidArgument(
-                    "Input num_samples should be a positive integer, got: ",
-                    num_samples));
+                    "num_samples should be nonnegative, got ", num_samples));
 
+    for (int i = 0; i < 2; i++) {
+      const int64 dim = logits_t.dim_size(i);
+      OP_REQUIRES(ctx, static_cast<int>(dim) == dim,
+                  errors::InvalidArgument("logits.shape = ",
+                                          logits_t.shape().DebugString(),
+                                          " too large for int"));
+    }
     const int batch_size = static_cast<int>(logits_t.dim_size(0));
     const int num_classes = static_cast<int>(logits_t.dim_size(1));
+    OP_REQUIRES(ctx, num_classes > 0,
+                errors::InvalidArgument("num_classes should be positive, got ",
+                                        num_classes));
 
     Tensor* samples_t;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({batch_size, num_samples}),
                                   &samples_t));
-    Tensor noises, scores, scratch;  // Scratch space only used for GPU.
-    if (std::is_same<Device, GPUDevice>::value) {
-      OP_REQUIRES_OK(
-          ctx,
-          ctx->allocate_temp(
-              DT_FLOAT, TensorShape({batch_size, num_samples, num_classes}),
-              &noises));
-      OP_REQUIRES_OK(
-          ctx,
-          ctx->allocate_temp(
-              DT_FLOAT, TensorShape({batch_size, num_samples, num_classes}),
-              &scores));
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(
-                   DT_FLOAT, TensorShape({batch_size, num_samples}), &scratch));
-    }
 
-    const int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
-    auto rng =
-        generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
-    functor::MultinomialFunctor<Device, T>()(
-        ctx, ctx->eigen_device<Device>(), logits_t.matrix<T>(),
-        noises.flat<float>(), scores.flat<float>(), scratch.flat<float>(),
-        batch_size, num_classes, num_samples, rng, samples_t->matrix<int64>());
+    // Execute kernel only for nonempty output; otherwise Eigen crashes on GPU.
+    if (samples_t->NumElements() > 0) {
+      Tensor noises, scores, scratch;  // Scratch space only used for GPU.
+      if (std::is_same<Device, GPUDevice>::value) {
+        OP_REQUIRES_OK(
+            ctx,
+            ctx->allocate_temp(
+                DT_FLOAT, TensorShape({batch_size, num_samples, num_classes}),
+                &noises));
+        OP_REQUIRES_OK(
+            ctx,
+            ctx->allocate_temp(
+                DT_FLOAT, TensorShape({batch_size, num_samples, num_classes}),
+                &scores));
+        OP_REQUIRES_OK(
+            ctx,
+            ctx->allocate_temp(DT_FLOAT, TensorShape({batch_size, num_samples}),
+                               &scratch));
+      }
+
+      const int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+      auto rng =
+          generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
+      functor::MultinomialFunctor<Device, T>()(
+          ctx, ctx->eigen_device<Device>(), logits_t.matrix<T>(),
+          noises.flat<float>(), scores.flat<float>(), scratch.flat<float>(),
+          batch_size, num_classes, num_samples, rng,
+          samples_t->matrix<int64>());
+    }
   }
 
  private:
