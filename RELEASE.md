@@ -10,7 +10,7 @@
 
 
 ## Big Fixes and Other Changes
- * `tf.nn.per_image_whitening(images)` is now able to handel batches.
+ * `tf.nn.per_image_whitening(images)` is now able to handle batches.
     Parameter got renamed from `image` to `images`.
 
 # Release 0.9.0
