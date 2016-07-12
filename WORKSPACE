@@ -175,7 +175,7 @@ new_git_repository(
   name = "iron_menu_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-menu-behavior.git",
-  tag = "v1.1.7",
+  tag = "v1.1.8",
 )
 
 new_git_repository(
@@ -189,7 +189,7 @@ new_git_repository(
   name = "iron_overlay_behavior",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-overlay-behavior.git",
-  tag = "v1.8.2",
+  tag = "v1.8.3",
 )
 
 new_git_repository(
@@ -322,7 +322,7 @@ new_git_repository(
   name = "paper_menu_button",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-menu-button.git",
-  tag = "v1.1.1",
+  tag = "v1.3.0",
 )
 
 new_git_repository(
