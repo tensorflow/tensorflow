@@ -548,7 +548,7 @@ REGISTER_OP("Reverse")
     .Input("tensor: T")
     .Input("dims: bool")
     .Output("output: T")
-    .Attr("T: {uint8, int8, int32, bool, half, float, double}")
+    .Attr("T: {uint8, int8, int32, bool, half, float, double, complex64, complex128}")
     .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
       const Shape* input = c->input(0);
       const Shape* dims;
