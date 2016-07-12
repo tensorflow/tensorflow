@@ -623,6 +623,8 @@ Every time you change the Cuda library paths you need to run this step again bef
 you invoke the bazel build command. For the cuDNN libraries, use '6.5' for R2, '7.0'
 for R3, and '4.0.4' for R4-RC.
 
+#### Install
+[Create the pip package and install](#create-the-pip-package-and-install)
 
 ##### Build your target with GPU support
 From the root of your source tree, run:
