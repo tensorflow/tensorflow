@@ -1821,6 +1821,7 @@ tf_cc_tests(
     tests = [
         "ops/array_ops_test.cc",
         "ops/math_ops_test.cc",
+        "ops/nn_ops_test.cc",
     ],
     deps = [
         ":core",
