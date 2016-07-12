@@ -104,6 +104,12 @@ class PyOpTest(tf.test.TestCase):
       z, = tf.py_func(read_and_return_strings, [x, y], [tf.string])
       self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
 
+  def testStringPadding(self):
+    correct = [b"this", b"is", b"a", b"test"]
+    with self.test_session():
+      s, = tf.py_func(lambda: [correct], [], [tf.string])
+      self.assertAllEqual(s.eval(), correct)
+
   def testLarge(self):
     with self.test_session() as sess:
       x = tf.zeros([1000000], dtype=np.float32)
