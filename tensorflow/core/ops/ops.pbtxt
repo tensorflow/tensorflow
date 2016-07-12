@@ -8668,6 +8668,80 @@ op {
   is_stateful: true
 }
 op {
+  name: "ParameterizedTruncatedNormal"
+  input_arg {
+    name: "shape"
+    description: "The shape of the output tensor. Batches are indexed by the 0th dimension."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "means"
+    description: "The mean parameter of each batch."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "stdevs"
+    description: "The standard deviation parameter of each batch. Must be greater than 0."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "minvals"
+    description: "The minimum cutoff. May be -infinity."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "maxvals"
+    description: "The maximum cutoff. May be +infinity, and must be more than the minval\nfor each batch."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    description: "A matrix of shape num_batches x samples_per_batch, filled with random\ntruncated normal values using the parameters for each row."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the output."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Outputs random values from a normal distribution. The parameters may each be a"
+  description: "scalar which applies to the entire output, or a vector of length shape[0] which\nstores the parameters for each batch."
+  is_stateful: true
+}
+op {
   name: "ParseExample"
   input_arg {
     name: "serialized"
