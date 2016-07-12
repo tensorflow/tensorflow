@@ -44,6 +44,7 @@ py_tests(
         "matrix_solve_ls_op_test.py",
         "matrix_solve_op_test.py",
         "matrix_triangular_solve_op_test.py",
+        "parameterized_truncated_normal_op_test.py",
         "parsing_ops_test.py",
         "partitioned_variables_test.py",
         "priority_queue_test.py",

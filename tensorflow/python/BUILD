@@ -720,6 +720,7 @@ tf_gen_op_wrapper_py(
         "RandomUniformInt",
         "RandomShuffle",
         "RandomStandardNormal",
+        "ParameterizedTruncatedNormal",
         "TruncatedNormal",
     ],
     require_shape_functions = True,
