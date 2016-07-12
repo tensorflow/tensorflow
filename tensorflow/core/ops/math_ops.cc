@@ -1550,4 +1550,21 @@ b: Another tensor, of same type and shape as `a`.
 product: Pairwise cross product of the vectors in `a` and `b`.
 )doc");
 
+REGISTER_OP("Norm1D")
+	.Input("x: T")
+	.Input("mean: T")
+	.Input("std: T")
+	.Output("output: T")
+	.Attr("T: {float, double}")
+	.Doc(R"doc(
+Compute the probability of x in a normal distribution.
+
+`mean` is mean or expectation of the distribution. `std` is standard deviation.
+
+x: A tensor.
+mean: A tensor, of same type and shape of x.
+std: A tensor, of same type and shape of x.
+output: A tensor, of same type and shape of x.
+)doc");
+
 }  // namespace tensorflow
