@@ -401,5 +401,7 @@ module TF {
     public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }
 
     public redraw() { this.outer.redraw(); }
+
+    public destroy() { this.outer.destroy(); }
   }
 }
