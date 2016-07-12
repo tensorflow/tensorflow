@@ -34,13 +34,18 @@ module TF {
     private dzl: Plottable.DragZoomLayer;
 
     private linePlot: Plottable.Plots.Line<number|Date>;
+    private smoothLinePlot: Plottable.Plots.Line<number|Date>;
     private scatterPlot: Plottable.Plots.Scatter<number|Date, Number>;
     private nanDisplay: Plottable.Plots.Scatter<number|Date, Number>;
     private yAccessor: Plottable.Accessor<number>;
     private lastPointsDataset: Plottable.Dataset;
     private datasets: Plottable.Dataset[];
-    private updateSpecialDatasets;
+    private smoothDatasets: Plottable.Dataset[];
+    private run2smoothDatasets: {[run: string]: Plottable.Dataset};
+    private onDatasetChanged: (dataset: Plottable.Dataset) => void;
     private nanDataset: Plottable.Dataset;
+    private smoothingDecay: number;
+    private smoothingEnabled: Boolean;
 
     constructor(
         tag: string, dataFn: TF.ChartHelpers.DataFn, xType: string,
@@ -51,13 +56,15 @@ module TF {
       this.colorScale = colorScale;
       this.tooltip = tooltip;
       this.datasets = [];
+      this.smoothDatasets = [];
+      this.run2smoothDatasets = {};
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
       this.nanDataset = new Plottable.Dataset();
       // need to do a single bind, so we can deregister the callback from
       // old Plottable.Datasets. (Deregistration is done by identity checks.)
-      this.updateSpecialDatasets = this._updateSpecialDatasets.bind(this);
+      this.onDatasetChanged = this._onDatasetChanged.bind(this);
       this.buildChart(xType);
     }
 
@@ -103,6 +110,14 @@ module TF {
       this.linePlot = linePlot;
       let group = this.setupTooltips(linePlot);
 
+      let smoothLinePlot = new Plottable.Plots.Line<number|Date>();
+      smoothLinePlot.x(xAccessor, xScale);
+      smoothLinePlot.y(this.yAccessor, yScale);
+      smoothLinePlot.attr(
+          'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
+                        this.colorScale.scale(dataset.metadata().run));
+      this.smoothLinePlot = smoothLinePlot;
+
       // The scatterPlot will display the last point for each dataset.
       // This way, if there is only one datum for the series, it is still
       // visible. We hide it when tooltips are active to keep things clean.
@@ -124,17 +139,31 @@ module TF {
       nanDisplay.datasets([this.nanDataset]);
       nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
       this.nanDisplay = nanDisplay;
-      return new Plottable.Components.Group([nanDisplay, scatterPlot, group]);
+
+      return new Plottable.Components.Group(
+          [nanDisplay, scatterPlot, smoothLinePlot, group]);
+    }
+
+    /** Updates the chart when a dataset changes. Called every time the data of
+     * a dataset changes to update the charts.
+     */
+    private _onDatasetChanged(dataset: Plottable.Dataset) {
+      if (this.smoothingEnabled) {
+        this.smoothDataset(this.getSmoothDataset(dataset.metadata().run));
+        this.updateSpecialDatasets(this.smoothDatasets);
+      } else {
+        this.updateSpecialDatasets(this.datasets);
+      }
     }
 
     /** Constructs special datasets. Each special dataset contains exceptional
-     * values from all of the regular datasetes, e.g. last points in series, or
+     * values from all of the regular datasets, e.g. last points in series, or
      * NaN values. Those points will have a `run` and `relative` property added
      * (since usually those are context in the surrounding dataset).
      */
-    private _updateSpecialDatasets() {
+    private updateSpecialDatasets(datasets: Plottable.Dataset[]) {
       let lastPointsData =
-          this.datasets
+          datasets
               .map((d) => {
                 let datum = null;
                 // filter out NaNs to ensure last point is a clean one
@@ -180,7 +209,7 @@ module TF {
         }
         return nanData;
       };
-      let nanData = _.flatten(this.datasets.map(datasetToNaNData));
+      let nanData = _.flatten(datasets.map(datasetToNaNData));
       this.nanDataset.data(nanData);
     }
 
@@ -222,8 +251,10 @@ module TF {
 
         let centerBBox: SVGRect =
             (<any>this.gridlines.content().node()).getBBox();
-        let points = plot.datasets().map(
-            (dataset) => this.findClosestPoint(target, dataset));
+        let datasets =
+            this.smoothingEnabled ? this.smoothDatasets : plot.datasets();
+        let points =
+            datasets.map((dataset) => this.findClosestPoint(target, dataset));
         let pointsToCircle = points.filter(
             (p) => p != null &&
                 Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
@@ -362,6 +393,30 @@ module TF {
       }
     }
 
+    private getSmoothDataset(run: string) {
+      if (this.run2smoothDatasets[run] === undefined) {
+        this.run2smoothDatasets[run] =
+            new Plottable.Dataset([], {run: run, tag: this.tag});
+      }
+      return this.run2smoothDatasets[run];
+    }
+
+    private smoothDataset(dataset: Plottable.Dataset) {
+      let data = this.getDataset(dataset.metadata().run).data();
+
+      // EMA with first step initialized to first element.
+      let smoothedData = _.cloneDeep(data);
+      smoothedData.forEach((d, i) => {
+        if (i === 0) {
+          return;
+        }
+        d.scalar = (1.0 - this.smoothingDecay) * d.scalar +
+            this.smoothingDecay * smoothedData[i - 1].scalar;
+      });
+
+      dataset.data(smoothedData);
+    }
+
     private getDataset(run: string) {
       if (this.run2datasets[run] === undefined) {
         this.run2datasets[run] =
@@ -382,10 +437,38 @@ module TF {
       this.reload();
 
       runs.reverse();  // draw first run on top
-      this.datasets.forEach((d) => d.offUpdate(this.updateSpecialDatasets));
+      this.datasets.forEach((d) => d.offUpdate(this.onDatasetChanged));
       this.datasets = runs.map((r) => this.getDataset(r));
-      this.datasets.forEach((d) => d.onUpdate(this.updateSpecialDatasets));
+      this.datasets.forEach((d) => d.onUpdate(this.onDatasetChanged));
       this.linePlot.datasets(this.datasets);
+
+      if (this.smoothingEnabled) {
+        this.smoothDatasets = runs.map((r) => this.getSmoothDataset(r));
+        this.smoothLinePlot.datasets(this.smoothDatasets);
+      }
+    }
+
+    public smoothingUpdate(decay: number) {
+      if (!this.smoothingEnabled) {
+        this.linePlot.addClass('ghost');
+        this.smoothingEnabled = true;
+        this.smoothDatasets = this.runs.map((r) => this.getSmoothDataset(r));
+        this.smoothLinePlot.datasets(this.smoothDatasets);
+      }
+
+      this.smoothingDecay = decay;
+      this.smoothDatasets.forEach((d) => this.smoothDataset(d));
+      this.updateSpecialDatasets(this.smoothDatasets);
+    }
+
+    public smoothingDisable() {
+      if (this.smoothingEnabled) {
+        this.linePlot.removeClass('ghost');
+        this.smoothDatasets = [];
+        this.smoothLinePlot.datasets(this.smoothDatasets);
+        this.smoothingEnabled = false;
+        this.updateSpecialDatasets(this.datasets);
+      }
     }
 
     /**

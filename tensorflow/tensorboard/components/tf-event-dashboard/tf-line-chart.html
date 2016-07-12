@@ -95,6 +95,11 @@ The wall_time is serialized as seconds since epoch.
         opacity: 1;
       }
 
+      .ghost {
+        opacity: 0.2;
+        stroke-width: 1px;
+      }
+
     </style>
   </template>
   <script src="dragZoomInteraction.js"></script>
@@ -108,13 +113,16 @@ The wall_time is serialized as seconds since epoch.
         colorScale: Object,
         tag: String,
         selectedRuns: Array,
+        smoothingDecay: Number,
+        smoothingEnabled: Boolean,
         xType: String,
         dataProvider: Function,
         _initialized: Boolean,
       },
       observers: [
         "_makeChart(tag, dataProvider, xType, colorScale, _initialized)",
-        "_changeRuns(_chart, selectedRuns.*)"
+        "_changeRuns(_chart, selectedRuns.*)",
+        "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)"
       ],
       _changeRuns: function(chart) {
         if (chart.tag !== this.tag) {
@@ -140,8 +148,20 @@ The wall_time is serialized as seconds since epoch.
         var svg = d3.select(this.$.chartsvg);
         this.async(function() {
           chart.renderTo(svg);
+          this.scopeSubtree(this.$.chartsvg, true);
           this._chart = chart;
         }, 350);
+      },
+      _smoothingChanged: function() {
+        if(!this._chart) {
+          return;
+        }
+        if(this.smoothingEnabled) {
+          this._chart.smoothingUpdate(this.smoothingDecay);
+        }
+        else {
+          this._chart.smoothingDisable();
+        }
       },
       attached: function() {
         this._initialized = true;

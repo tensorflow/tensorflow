@@ -1,5 +1,6 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="tf-run-selector.html">
+<link rel="import" href="tf-smoothing-input.html">
 <link rel="import" href="tf-x-type-selector.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
@@ -48,6 +49,13 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
             id="download-option"
             checked="{{_showDownloadLinks}}"
           >Data download links</paper-checkbox>
+        <tf-smoothing-input
+          enabled="{{_smoothingEnabled}}"
+          decay="{{_smoothingDecay}}"
+          step="0.001"
+          min="0"
+          max="1"
+          ></tf-smoothing-input>
         </div>
         <div class="sidebar-section">
           <tf-x-type-selector
@@ -83,6 +91,8 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                       selected-runs="[[validRuns(tag, selectedRuns.*, run2tag.*)]]"
                       x-type="[[xType]]"
                       color-scale="[[colorScale]]"
+                      smoothing-decay="[[_smoothingDecay]]"
+                      smoothing-enabled="[[_smoothingEnabled]]"
                       on-keyup="toggleSelected"
                       tabindex="2"
                     ></tf-line-chart>
@@ -141,6 +151,8 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
               false),
           observer: '_showDownloadLinksObserver'
         },
+        _smoothingDecay: Number,
+        _smoothingEnabled: Boolean,
         colorScale: {
           type: Object,
           notify: true,
