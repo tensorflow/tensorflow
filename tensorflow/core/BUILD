@@ -249,6 +249,7 @@ tf_cuda_library(
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
+        "util/stream_executor_util.h",
         "util/tensor_format.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",

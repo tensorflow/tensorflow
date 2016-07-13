@@ -63,6 +63,7 @@ using dnn::BatchDescriptor;
 using dnn::FilterDescriptor;
 using dnn::ConvolutionDescriptor;
 using dnn::PoolingDescriptor;
+using dnn::NormalizeDescriptor;
 
 namespace cuda {
 
@@ -174,10 +175,13 @@ bool IsCudnnR2() {
   __macro(cudnnDestroyTensorDescriptor)                   \
   __macro(cudnnCreateFilterDescriptor)                    \
   __macro(cudnnSetPoolingNdDescriptor)                    \
+  __macro(cudnnSetLRNDescriptor)                          \
   __macro(cudnnDestroyFilterDescriptor)                   \
   __macro(cudnnCreateConvolutionDescriptor)               \
   __macro(cudnnCreatePoolingDescriptor)                   \
   __macro(cudnnDestroyPoolingDescriptor)                  \
+  __macro(cudnnCreateLRNDescriptor)                       \
+  __macro(cudnnDestroyLRNDescriptor)                      \
   __macro(cudnnDestroyConvolutionDescriptor)              \
   __macro(cudnnCreate)                                    \
   __macro(cudnnDestroy)                                   \
@@ -191,7 +195,9 @@ bool IsCudnnR2() {
   __macro(cudnnSetTensorNdDescriptor)                     \
   __macro(cudnnSetFilterNdDescriptor)                     \
   __macro(cudnnPoolingForward)                            \
-  __macro(cudnnPoolingBackward)
+  __macro(cudnnPoolingBackward)                           \
+  __macro(cudnnLRNCrossChannelForward)                    \
+  __macro(cudnnLRNCrossChannelBackward)
 // clang-format on
 
 CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
@@ -629,6 +635,62 @@ class ScopedPoolingDescriptor {
   cudnnPoolingDescriptor_t handle_;  // Owned.
 
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedPoolingDescriptor);
+};
+
+// Turns a NormalizeDescriptor structure into a cudnn LRN descriptor handle.
+class ScopedNormalizeDescriptor {
+ public:
+  ScopedNormalizeDescriptor(CUDAExecutor* parent,
+                            const NormalizeDescriptor& normalize_descriptor)
+      : parent_(parent), handle_(nullptr) {
+    cudnnStatus_t status = dynload::cudnnCreateLRNDescriptor(parent_, &handle_);
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(FATAL) << "could not create cudnn LRN descriptor: "
+                 << ToString(status);
+    }
+
+    // The range specifies that the indices in the closed range
+    // [i - range, i + range] should be included in the normalization for index
+    // i. The lrnN value is the total number of elements in the range, so
+    // lrnN = 2*range + 1.
+    unsigned lrnN = 2 * normalize_descriptor.range() + 1;
+
+    // Note that SE defines the normalization operation as
+    //
+    //  U_i = V_i / ((bias +  alpha      * (sum_j V_j^2)) ^ beta)
+    //
+    // but cuDNN defines it as
+    //
+    //  U_i = V_i / ((bias + (alpha / n) * (sum_j V_j^2)) ^ beta)
+    //
+    // i.e. there is a factor of n difference between the meaning of the alphas
+    // in the two contexts. The cuDNN alpha is n times the SE alpha.
+    double lrnAlpha = lrnN * normalize_descriptor.alpha();
+
+    double lrnBeta = normalize_descriptor.beta();
+    double lrnK = normalize_descriptor.bias();
+    status = dynload::cudnnSetLRNDescriptor(parent_, handle_, lrnN, lrnAlpha,
+                                            lrnBeta, lrnK);
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(FATAL) << "could not set cudnn LRN descriptor: " << ToString(status);
+    }
+  }
+
+  ~ScopedNormalizeDescriptor() {
+    cudnnStatus_t status = dynload::cudnnDestroyLRNDescriptor(parent_, handle_);
+    if (status != CUDNN_STATUS_SUCCESS) {
+      LOG(ERROR) << "could not destroy cudnn LRN descriptor: "
+                 << ToString(status);
+    }
+  }
+
+  cudnnLRNDescriptor_t handle() const { return handle_; }
+
+ private:
+  CUDAExecutor* parent_;         // Parent executor. Not owned.
+  cudnnLRNDescriptor_t handle_;  // Owned.
+
+  SE_DISALLOW_COPY_AND_ASSIGN(ScopedNormalizeDescriptor);
 };
 
 #if CUDNN_VERSION >= 5000
@@ -2014,7 +2076,91 @@ bool CudnnSupport::DoNormalize(
     Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
     const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
-  return false;
+}
+
+bool CudnnSupport::DoNormalizeWithDimensions(
+    Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
+    const dnn::BatchDescriptor& dimensions,
+    const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
+  // Check for unsupported modes.
+  if (normalize_descriptor.wrap_around()) {
+    LOG(ERROR) << "CUDA LRN does not support wrap-around mode";
+    return false;
+  }
+  if (normalize_descriptor.segment_size()) {
+    LOG(ERROR) << "CUDA LRN does not support segmentation";
+    return false;
+  }
+
+  // Launch the normalization.
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                        AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
+
+  ScopedTensorDescriptor dims{parent_, dimensions, CUDNN_DATA_FLOAT};
+  ScopedNormalizeDescriptor normalize{parent_, normalize_descriptor};
+
+  // Alpha is the scaling factor for input.
+  float alpha = 1.0f;
+  // Beta is the scaling factor for output.
+  float beta = 0.0f;
+
+  status = dynload::cudnnLRNCrossChannelForward(
+      parent_, ToHandle(dnn_handle_), normalize.handle(),
+      CUDNN_LRN_CROSS_CHANNEL_DIM1, &alpha, dims.handle(), input_data.opaque(),
+      &beta, dims.handle(), output_data->opaque());
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to run cudnnLRNCrossChannelForward";
+    return false;
+  }
+  return true;
+}
+
+bool CudnnSupport::DoNormalizeBackwardWithDimensions(
+    Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
+    const dnn::BatchDescriptor& dimensions, const DeviceMemory<float>& raw_data,
+    const DeviceMemory<float>& normalized_data,
+    const DeviceMemory<float>& normalized_variable_gradient,
+    DeviceMemory<float>* raw_variable_gradient) {
+  // Check for unsupported modes.
+  if (normalize_descriptor.wrap_around()) {
+    LOG(ERROR) << "CUDA LRN does not support wrap-around mode";
+    return false;
+  }
+  if (normalize_descriptor.segment_size()) {
+    LOG(ERROR) << "CUDA LRN does not support segmentation";
+    return false;
+  }
+
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = dynload::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                        AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
+
+  ScopedTensorDescriptor dims{parent_, dimensions, CUDNN_DATA_FLOAT};
+  ScopedNormalizeDescriptor normalize{parent_, normalize_descriptor};
+
+  float alpha = 1.0f;
+  float beta = 0.0f;
+
+  status = dynload::cudnnLRNCrossChannelBackward(
+      parent_, ToHandle(dnn_handle_), normalize.handle(),
+      CUDNN_LRN_CROSS_CHANNEL_DIM1, &alpha, dims.handle(),
+      normalized_data.opaque(), dims.handle(),
+      normalized_variable_gradient.opaque(), dims.handle(), raw_data.opaque(),
+      &beta, dims.handle(), raw_variable_gradient->opaque());
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to run cudnnLRNCrossChannelBackward";
+    return false;
+  }
+  return true;
 }
 
 bool CudnnSupport::DoDepthConcatenate(

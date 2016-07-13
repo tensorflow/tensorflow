@@ -1332,7 +1332,7 @@ tf_kernel_libraries(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "lrn_op_test",
     deps = [
         ":nn",
