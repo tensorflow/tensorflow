@@ -1802,4 +1802,56 @@ b: Another tensor, of same type and shape as `a`.
 product: Pairwise cross product of the vectors in `a` and `b`.
 )doc");
 
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Cumsum")
+    .Input("x: T")
+    .Input("axis: int32")
+    .Attr("reverse: bool")
+    .Output("out: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Compute the cumulative sum of the tensor `x` along `axis`.
+
+The output `out` at any given index i is equal to the sum of all
+elements `x_j` of `x` with j <= i.
+
+By setting the `reverse` operation to `True`, the sum is performed in the
+reverse order. In contrast to using `tf.reverse`, this avoids copying the
+tensor.
+
+For example:
+
+```prettyprint
+# tensor 'x' is [1, 2, 3, 4, 5]
+tf.cumsum(x)               ==> [1, 3, 6, 10, 15]
+tf.cumsum(x, reverse=True) ==> [15, 14, 12, 9, 5]
+```
+)doc");
+
+REGISTER_OP("Cumprod")
+    .Input("x: T")
+    .Input("axis: int32")
+    .Attr("reverse: bool")
+    .Output("out: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Compute the cumulative product of the tensor `x` along `axis`.
+
+The output `out` at any given index i is equal to the product of all
+elements `x_j` of `x` with j <= i.
+
+By setting the `reverse` operation to `True`, the product is performed in the
+reverse order. In contrast to using `tf.reverse`, this avoids copying the
+tensor.
+
+For example:
+
+```prettyprint
+# tensor 'x' is [1, 2, 3, 4, 5]
+tf.cumprod(x)               ==> [1, 2, 6, 24, 120]
+tf.cumprod(x, reverse=True) ==> [120, 120, 60, 20, 5]
+```
+)doc");
+
 }  // namespace tensorflow

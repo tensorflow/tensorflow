@@ -1060,6 +1060,7 @@ tf_kernel_libraries(
         "matmul_op",
         "reduction_ops",
         "segment_reduction_ops",
+        "scan_ops",
         "sequence_ops",
         "sparse_matmul_op",
     ],

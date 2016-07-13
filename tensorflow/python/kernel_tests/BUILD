@@ -128,6 +128,7 @@ cuda_py_tests(
         "reverse_sequence_op_test.py",
         "rnn_cell_test.py",
         "scalar_strict_test.py",
+        "scan_ops_test.py",
         "session_ops_test.py",
         "shape_ops_test.py",
         "softmax_op_test.py",
