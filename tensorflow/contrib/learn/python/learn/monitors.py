@@ -379,6 +379,45 @@ class PrintTensor(EveryN):
     logging.info("Step %d: %s", step, ", ".join(stats))
 
 
+class LoggingTrainable(EveryN):
+  """Writes trainable varialbe values into log every N steps.
+
+  Write the tensors in trainable variables `every_n` steps,
+  starting with the `first_n`th step.
+
+  """
+
+  def __init__(self, scope=None, every_n=100, first_n=1):
+    """Initializes LoggingTrainable monitor.
+
+    Args:
+      scope: An optional string to match variable names using re.match.
+      every_n: Print every N steps.
+      first_n: Print first N steps.
+    """
+    super(LoggingTrainable, self).__init__(every_n, first_n)
+    self._scope = scope
+
+  def every_n_step_begin(self, step):
+    super(LoggingTrainable, self).every_n_step_begin(step)
+    # Get a list of trainable variables at the begining of every N steps.
+    # We cannot get this in __init__ because train_op has not been generated.
+    trainables = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
+                                    scope=self._scope)
+    self._names = {}
+    for var in trainables:
+      self._names[var.name] = var.value().name
+    return list(self._names.values())
+
+  def every_n_step_end(self, step, outputs):
+    super(LoggingTrainable, self).every_n_step_end(step, outputs)
+    stats = []
+    for tag, tensor_name in six.iteritems(self._names):
+      if tensor_name in outputs:
+        stats.append("%s = %s" % (tag, str(outputs[tensor_name])))
+    logging.info("Logging Trainable: Step %d: %s", step, ", ".join(stats))
+
+
 class SummarySaver(EveryN):
   """Saves summaries every N steps."""
 
