@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	pb "github.com/tensorflow/tensorflow/tensorflow/contrib/go/proto"
+	pb "github.com/damienstanton/tensorflow/tensorflow/contrib/go/proto"
 )
 
 const (
