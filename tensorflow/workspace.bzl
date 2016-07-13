@@ -8,6 +8,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     name = "eigen_archive",
     url = "https://bitbucket.org/eigen/eigen/get/b4fa9622b809.tar.gz",
     sha256 = "2862840c2de9c0473a4ef20f8678949ae89ab25965352ee53329e63ba46cec62",
+    strip_prefix = "eigen-eigen-b4fa9622b809",
     build_file = path_prefix + "eigen.BUILD",
   )
 
