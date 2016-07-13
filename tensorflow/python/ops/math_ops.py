@@ -1631,7 +1631,8 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
     """
     with ops.op_scope([x], name, "Cumsum") as name:
       x = ops.convert_to_tensor(x, name="x")
-      return gen_math_ops.cumsum(x, axis, exclusive, reverse, name=name)
+      return gen_math_ops.cumsum(x, axis, exclusive=exclusive,
+                                 reverse=reverse, name=name)
 
 
 def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
@@ -1674,7 +1675,8 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
     """
     with ops.op_scope([x], name, "Cumprod") as name:
       x = ops.convert_to_tensor(x, name="x")
-      return gen_math_ops.cumprod(x, axis, exclusive, reverse, name=name)
+      return gen_math_ops.cumprod(x, axis, exclusive=exclusive,
+                                  reverse=reverse, name=name)
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)

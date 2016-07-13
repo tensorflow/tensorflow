@@ -844,7 +844,8 @@ def _CumsumGrad(op, grad):
   axis = op.inputs[1]
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
-  return [math_ops.cumsum(grad, axis, exclusive, (not reverse)), None]
+  return [math_ops.cumsum(grad, axis, exclusive=exclusive,
+                          reverse=not reverse), None]
 
 
 @ops.RegisterGradient("Cumprod")
@@ -855,6 +856,7 @@ def _CumprodGrad(op, grad):
   reverse = op.get_attr("reverse")
 
   # TODO This fails when x contains 0 and should be fixed
-  prod = math_ops.cumprod(x, axis, exclusive, reverse)
-  out = math_ops.cumsum(prod * grad, axis, exclusive, (not reverse))
+  prod = math_ops.cumprod(x, axis, exclusive=exclusive, reverse=reverse)
+  out = math_ops.cumsum(prod * grad, axis, exclusive=exclusive,
+                        reverse=not reverse)
   return [out / x, None]
