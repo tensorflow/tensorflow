@@ -36,7 +36,7 @@ will use below.
 
 ### Start TensorFlow InteractiveSession
 
-Tensorflow relies on a highly efficient C++ backend to do its computation. The
+TensorFlow relies on a highly efficient C++ backend to do its computation. The
 connection to this backend is called a session.  The common usage for TensorFlow
 programs is to first create a graph and then launch it in a session.
 

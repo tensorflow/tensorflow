@@ -684,6 +684,26 @@ py_test(
     ],
 )
 
+py_test(
+    name = "supervised_session_test",
+    size = "small",
+    srcs = ["python/learn/tests/supervised_session_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "summary_writer_cache_test",
+    size = "small",
+    srcs = ["python/learn/tests/summary_writer_cache_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_binary(
     name = "inspect_checkpoint",
     srcs = [

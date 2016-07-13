@@ -453,6 +453,21 @@ class Stream {
                         const DeviceMemory<float> &input_data,
                         DeviceMemory<float> *output_data);
 
+  // Similar to ThenNormalize, but normalizes across feature maps and allows for
+  // specifying the dimensions of the tensor.
+  Stream &ThenNormalizeWithDimensions(
+      const dnn::NormalizeDescriptor &normalize_descriptor,
+      const dnn::BatchDescriptor &dimensions,
+      const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data);
+
+  Stream &ThenNormalizeBackwardWithDimensions(
+      const dnn::NormalizeDescriptor &normalize_descriptor,
+      const dnn::BatchDescriptor &dimensions,
+      const DeviceMemory<float> &raw_data,
+      const DeviceMemory<float> &normalized_data,
+      const DeviceMemory<float> &normalized_variable_gradient,
+      DeviceMemory<float> *raw_variable_gradient);
+
   Stream &ThenActivate(dnn::ActivationMode activation_mode,
                        const dnn::BatchDescriptor &dimensions,
                        const DeviceMemory<float> &input_data,

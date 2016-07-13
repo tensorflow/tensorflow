@@ -65,7 +65,7 @@ tf_cc_test(
 #
 # NOTE: currently '-pthread' must be removed from the LINK_OPTS variable
 # in @protobuf//:BUILD to sucessfully build for Android. This is temporary
-# pending an update of the version of the protobuf library that Tensorflow
+# pending an update of the version of the protobuf library that TensorFlow
 # uses.
 cc_binary(
     name = "benchmark_model",

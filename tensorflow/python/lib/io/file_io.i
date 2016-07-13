@@ -78,6 +78,26 @@ void CreateDir(const string& dirname, TF_Status* out_status) {
     Set_TF_Status_from_Status(out_status, status);
   }
 }
+
+void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
+              TF_Status* out_status) {
+  // If overwrite is false and the newpath file exists then its an error.
+  if (!overwrite && FileExists(newpath)) {
+    TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
+    return;
+  }
+  string file_content;
+  tensorflow::Status status = ReadFileToString(tensorflow::Env::Default(),
+      oldpath, &file_content);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+    return;
+  }
+  status = WriteStringToFile(tensorflow::Env::Default(), newpath, file_content);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
 %}
 
 // Wrap the above functions.
@@ -89,56 +109,5 @@ void WriteStringToFile(const string& filename, const string& file_content,
 std::vector<string> GetMatchingFiles(const string& filename,
                                      TF_Status* out_status);
 void CreateDir(const string& dirname, TF_Status* out_status);
-
-%ignoreall
-
-%unignore tensorflow;
-
-%insert("python") %{
-  def file_exists(filename):
-    from tensorflow.python.util import compat
-    return FileExists(compat.as_bytes(filename))
-
-  def delete_file(filename):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      DeleteFile(compat.as_bytes(filename), status)
-
-  def read_file_to_string(filename):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      return ReadFileToString(compat.as_bytes(filename), status);
-
-  def write_string_to_file(filename, file_content):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      WriteStringToFile(compat.as_bytes(filename),
-          compat.as_bytes(file_content), status)
-
-  def get_matching_files(filename):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      return GetMatchingFiles(compat.as_bytes(filename), status)
-
-  def create_dir(dirname):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      CreateDir(compat.as_bytes(partial_dir), status)
-
-  def recursive_create_dir(dirname):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      dirs = dirname.split('/')
-      for i in range(len(dirs)):
-        partial_dir = '/'.join(dirs[0:i+1])
-        if partial_dir and not file_exists(partial_dir):
-          CreateDir(compat.as_bytes(partial_dir), status)
-%}
-
-%unignoreall
+void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
+              TF_Status* out_status);

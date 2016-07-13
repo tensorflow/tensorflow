@@ -1071,11 +1071,11 @@ tf_py_wrap_cc(
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
+        "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "platform/numpy.i",
-        "training/saver_io.i",
         "training/server_lib.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
@@ -1179,6 +1179,17 @@ py_test(
     deps = [
         ":framework",
         ":framework_test_lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "file_io_test",
+    size = "small",
+    srcs = ["lib/io/file_io_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":lib",
         "//tensorflow:tensorflow_py",
     ],
 )

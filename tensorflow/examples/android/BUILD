@@ -1,5 +1,5 @@
 # Description:
-#   Tensorflow camera demo app for Android.
+#   TensorFlow camera demo app for Android.
 
 package(default_visibility = ["//visibility:public"])
 

@@ -249,6 +249,7 @@ tf_cuda_library(
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
+        "util/stream_executor_util.h",
         "util/tensor_format.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",
@@ -626,7 +627,7 @@ cc_library(
     alwayslink = 1,
 )
 
-# Full Tensorflow library with operator support. Use this unless reducing
+# Full TensorFlow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
     name = "android_tensorflow_lib",
@@ -705,7 +706,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Portable library providing testing functionality for Tensorflow.
+# Portable library providing testing functionality for TensorFlow.
 cc_library(
     name = "android_tensorflow_test_lib",
     testonly = 1,
@@ -1353,7 +1354,6 @@ tf_cc_tests(
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = [
-        "client/tensor_c_api_test.cc",
         "common_runtime/device_set_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/session_test.cc",
@@ -1430,6 +1430,36 @@ tf_cc_tests(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    size = "small",
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tests = [
+        "client/tensor_c_api_test.cc",
+    ],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":proto_text",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],
 )

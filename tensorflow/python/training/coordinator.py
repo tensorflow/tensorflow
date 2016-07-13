@@ -139,7 +139,7 @@ class Coordinator(object):
     """
     if clean_stop_exception_types is None:
       clean_stop_exception_types = (errors.OutOfRangeError,)
-    self._clean_stop_exception_types = clean_stop_exception_types
+    self._clean_stop_exception_types = tuple(clean_stop_exception_types)
     # Protects all attributes.
     self._lock = threading.Lock()
     # Event set when threads must stop.

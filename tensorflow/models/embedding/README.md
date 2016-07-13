@@ -43,7 +43,7 @@ Here is a short overview of what is in this directory.
 
 File | What's in it?
 --- | ---
-`word2vec.py` | A version of word2vec implemented using Tensorflow ops and minibatching.
+`word2vec.py` | A version of word2vec implemented using TensorFlow ops and minibatching.
 `word2vec_test.py` | Integration test for word2vec.
 `word2vec_optimized.py` | A version of word2vec implemented using C ops that does no minibatching.
 `word2vec_optimized_test.py` | Integration test for word2vec_optimized.

@@ -150,6 +150,32 @@ class DistributionTensorTest(tf.test.TestCase):
         self.assertAllEqual(entropies[2], entropies[0])
         self.assertAllEqual(entropies[1], entropies[0])
 
+  def testSurrogateLoss(self):
+    with self.test_session():
+      mu = [[3.0, -4.0, 5.0], [6.0, -7.0, 8.0]]
+      sigma = tf.constant(1.0)
+
+      # With default
+      with sg.value_type(sg.MeanValue(stop_gradient=True)):
+        dt = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
+      surrogate_loss = dt.surrogate_loss([tf.constant(2.0)])
+      self.assertTrue(surrogate_loss is not None)
+      self.assertAllClose(
+          dt.distribution.log_prob(mu).eval() * 2.0, surrogate_loss.eval())
+
+      # With passed-in surrogate_loss_fn.
+      dt = sg.DistributionTensor(
+          distributions.Normal,
+          mu=mu,
+          sigma=sigma,
+          dist_value_type=sg.MeanValue(stop_gradient=True),
+          surrogate_loss_fn=sg.get_score_function_with_baseline(
+              baseline=tf.constant(8.0)))
+      surrogate_loss = dt.surrogate_loss([tf.constant(2.0)])
+      self.assertTrue(surrogate_loss is not None)
+      self.assertAllClose((dt.distribution.log_prob(mu) * (2.0 - 8.0)).eval(),
+                          surrogate_loss.eval())
+
 
 class ValueTypeTest(tf.test.TestCase):
 
@@ -298,6 +324,16 @@ class TestSurrogateLosses(tf.test.TestCase):
                 * loss_nodeps_nograd)]),
           xs=[mu, sigma])
 
+  def testNoSurrogateLoss(self):
+    with self.test_session():
+      mu = tf.constant([0.0, 0.1, 0.2])
+      sigma = tf.constant([1.1, 1.2, 1.3])
+      with sg.value_type(sg.SampleAndReshapeValue()):
+        dt = sg.DistributionTensor(NormalNotParam,
+                                   mu=mu,
+                                   sigma=sigma,
+                                   surrogate_loss_fn=None)
+        self.assertEqual(None, dt.surrogate_loss(tf.constant([2.0])))
 
 if __name__ == "__main__":
   tf.test.main()

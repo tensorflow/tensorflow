@@ -41,7 +41,7 @@ limitations under the License.
 
 using namespace tensorflow;
 
-// Global variables that holds the Tensorflow classifier.
+// Global variables that holds the TensorFlow classifier.
 static std::unique_ptr<tensorflow::Session> session;
 
 static std::vector<std::string> g_label_strings;
@@ -85,7 +85,7 @@ inline static int64 CurrentThreadTimeUs() {
   return tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
+JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model,
     jstring labels, jint num_classes, jint model_input_size, jint image_mean,
     jfloat image_std, jstring input_name, jstring output_name) {
@@ -112,7 +112,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
   g_output_name.reset(
       new std::string(env->GetStringUTFChars(output_name, NULL)));
 
-  LOG(INFO) << "Loading Tensorflow.";
+  LOG(INFO) << "Loading TensorFlow.";
 
   LOG(INFO) << "Making new SessionOptions.";
   tensorflow::SessionOptions options;
@@ -137,12 +137,12 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
   LOG(INFO) << "Creating session.";
   tensorflow::Status s = session->Create(tensorflow_graph);
   if (!s.ok()) {
-    LOG(FATAL) << "Could not create Tensorflow Graph: " << s;
+    LOG(FATAL) << "Could not create TensorFlow Graph: " << s;
   }
 
   // Clear the proto to save memory space.
   tensorflow_graph.Clear();
-  LOG(INFO) << "Tensorflow graph loaded from: " << model_cstr;
+  LOG(INFO) << "TensorFlow graph loaded from: " << model_cstr;
 
   // Read the label list
   ReadFileToVector(asset_manager, labels_cstr, &g_label_strings);
@@ -237,7 +237,7 @@ static std::string ClassifyImage(const RGBA* const bitmap_src) {
 
   auto input_tensor_mapped = input_tensor.tensor<float, 4>();
 
-  LOG(INFO) << "Tensorflow: Copying Data.";
+  LOG(INFO) << "TensorFlow: Copying Data.";
   for (int i = 0; i < g_tensorflow_input_size; ++i) {
     const RGBA* src = bitmap_src + i * g_tensorflow_input_size;
     for (int j = 0; j < g_tensorflow_input_size; ++j) {

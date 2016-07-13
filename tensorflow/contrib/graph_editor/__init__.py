@@ -19,12 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.graph_editor import edit as edit
-from tensorflow.contrib.graph_editor import select as select
-from tensorflow.contrib.graph_editor import subgraph as subgraph
-from tensorflow.contrib.graph_editor import transform as transform
-from tensorflow.contrib.graph_editor import util as util
+from tensorflow.contrib.graph_editor import edit
+from tensorflow.contrib.graph_editor import match
+from tensorflow.contrib.graph_editor import reroute
+from tensorflow.contrib.graph_editor import select
+from tensorflow.contrib.graph_editor import subgraph
+from tensorflow.contrib.graph_editor import transform
+from tensorflow.contrib.graph_editor import util
 
+from tensorflow.contrib.graph_editor.edit import bypass
 from tensorflow.contrib.graph_editor.edit import connect
 
 # edit: detach
@@ -32,21 +35,16 @@ from tensorflow.contrib.graph_editor.edit import detach
 from tensorflow.contrib.graph_editor.edit import detach_inputs
 from tensorflow.contrib.graph_editor.edit import detach_outputs
 
-from tensorflow.contrib.graph_editor.edit import remove
-
 # edit: reroute
-from tensorflow.contrib.graph_editor.edit import reroute
-from tensorflow.contrib.graph_editor.edit import reroute_a2b
-from tensorflow.contrib.graph_editor.edit import reroute_a2b_inputs
-from tensorflow.contrib.graph_editor.edit import reroute_a2b_outputs
-from tensorflow.contrib.graph_editor.edit import reroute_b2a
-from tensorflow.contrib.graph_editor.edit import reroute_b2a_inputs
-from tensorflow.contrib.graph_editor.edit import reroute_b2a_outputs
-from tensorflow.contrib.graph_editor.edit import reroute_inputs
-from tensorflow.contrib.graph_editor.edit import reroute_outputs
-from tensorflow.contrib.graph_editor.edit import swap
-from tensorflow.contrib.graph_editor.edit import swap_inputs
-from tensorflow.contrib.graph_editor.edit import swap_outputs
+from tensorflow.contrib.graph_editor.reroute import reroute_a2b
+from tensorflow.contrib.graph_editor.reroute import reroute_a2b_inputs
+from tensorflow.contrib.graph_editor.reroute import reroute_a2b_outputs
+from tensorflow.contrib.graph_editor.reroute import reroute_b2a
+from tensorflow.contrib.graph_editor.reroute import reroute_b2a_inputs
+from tensorflow.contrib.graph_editor.reroute import reroute_b2a_outputs
+from tensorflow.contrib.graph_editor.reroute import swap
+from tensorflow.contrib.graph_editor.reroute import swap_inputs
+from tensorflow.contrib.graph_editor.reroute import swap_outputs
 
 from tensorflow.contrib.graph_editor.select import select_ops
 from tensorflow.contrib.graph_editor.select import select_ts
@@ -56,10 +54,12 @@ from tensorflow.contrib.graph_editor.subgraph import SubGraphView
 from tensorflow.contrib.graph_editor.transform import copy
 from tensorflow.contrib.graph_editor.transform import Transformer
 
-# TODO(fkp): Add unit tests for all the files.
 
 # some useful aliases
 ph = util.make_placeholder_from_dtype_and_shape
 sgv = subgraph.make_view
+sgv_scope = subgraph.make_view_from_scope
 ts = select.select_ts
 ops = select.select_ops
+matcher = match.OpMatcher
+
