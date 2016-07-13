@@ -1059,7 +1059,7 @@ segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
 first dimension.  Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 )doc");
 
 REGISTER_OP("SegmentMean")
@@ -1089,7 +1089,7 @@ segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
 first dimension.  Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 )doc");
 
 REGISTER_OP("SegmentProd")
@@ -1118,7 +1118,7 @@ segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
 first dimension.  Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 )doc");
 
 REGISTER_OP("SegmentMin")
@@ -1147,7 +1147,7 @@ segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
 first dimension.  Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 )doc");
 
 REGISTER_OP("SegmentMax")
@@ -1175,7 +1175,7 @@ segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
 first dimension.  Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 )doc");
 
 REGISTER_OP("UnsortedSegmentSum")
@@ -1223,10 +1223,10 @@ Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
 of segments.
 
 Computes a tensor such that
-\\(output_i = \sum_j data_j\\) where sum is over `j` such
-that `segment_ids[j] == i`. Unlike `SegmentSum`, `segment_ids`
+`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
+that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
 need not be sorted and need not cover all values in the full
-  range of valid values.
+range of valid values.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
@@ -1236,11 +1236,11 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 <img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
 </div>
 
-segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-first dimension.
+segment_ids: A tensor whose shape is a prefix of `data.shape`.
 
-output: Has same shape as data, except for dimension 0 which
-has size `num_segments`.
+output: Has same shape as data, except for the first `segment_ids.rank`
+  dimensions, which are replaced with a single dimension which has size
+  `num_segments`.
 
 )doc");
 
@@ -1288,7 +1288,7 @@ indices: A 1-D tensor. Has same rank as `segment_ids`.
 segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 )doc");
 
 REGISTER_OP("SparseSegmentMean")
@@ -1312,7 +1312,7 @@ indices: A 1-D tensor. Has same rank as `segment_ids`.
 segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 
 )doc");
 
@@ -1355,7 +1355,7 @@ indices: A 1-D tensor. Has same rank as `segment_ids`.
 segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
 
 output: Has same shape as data, except for dimension 0 which
-has size `k`, the number of segments.
+  has size `k`, the number of segments.
 
 )doc");
 
