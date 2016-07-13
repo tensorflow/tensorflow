@@ -435,7 +435,7 @@ class ProdReductionTest(tf.test.TestCase):
   def testGradient(self):
     s = [2, 3, 4, 2]
     # NOTE(kearnes): divide by 20 so product is a reasonable size
-    x = np.arange(1.0, 49.0).reshape(s).astype(np.float32) / 20.
+    x = np.arange(0.0, 48.0).reshape(s).astype(np.float32) / 20.
     with self.test_session():
       t = tf.convert_to_tensor(x)
 
@@ -465,20 +465,6 @@ class ProdReductionTest(tf.test.TestCase):
                                                   x_init_value=x,
                                                   delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-
-    # NOTE(kearnes): the current gradient calculation gives NaNs for 0 inputs
-    x = np.arange(0.0, 48.0).reshape(s).astype(np.float32) / 20.
-    with self.test_session():
-      t = tf.convert_to_tensor(x)
-      su = tf.reduce_prod(t, [])
-      jacob_t, _ = tf.test.compute_gradient(t,
-                                            s,
-                                            su,
-                                            [2, 3, 4, 2],
-                                            x_init_value=x,
-                                            delta=1)
-      with self.assertRaisesOpError("Tensor had NaN values"):
-        tf.check_numerics(jacob_t, message="_ProdGrad NaN test").op.run()
 
   def testEmptyGradients(self):
     with self.test_session():

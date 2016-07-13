@@ -109,13 +109,33 @@ def _MeanGrad(op, grad):
 @ops.RegisterGradient("Prod")
 def _ProdGrad(op, grad):
   """Gradient for Prod."""
-  # TODO(kearnes): this gives NaNs for 0s in the input tensor
   input_shape = array_ops.shape(op.inputs[0])
+
+  # Expand grad to full input shape
   output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
   tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
-  grad = array_ops.reshape(grad * op.outputs[0], output_shape_kept_dims)
-  grad = math_ops.div(array_ops.tile(grad, tile_scaling), op.inputs[0])
-  return grad, None
+  grad = array_ops.reshape(grad, output_shape_kept_dims)
+  grad = array_ops.tile(grad, tile_scaling)
+
+  # If the list is empty, it defaults to float32
+  reduced = math_ops.cast(op.inputs[1], dtypes.int32)
+  idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
+  other, _ = array_ops.listdiff(idx, reduced)
+  perm = array_ops.concat(0, [reduced, other])
+  reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
+  other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
+  permuted = array_ops.transpose(op.inputs[0], perm)
+  permuted_shape = array_ops.shape(permuted)
+  reshaped = array_ops.reshape(permuted, (reduced_num, other_num))
+
+  # Calculate product, leaving out the current entry
+  left = math_ops.cumprod(reshaped, axis=0, exclusive=True)
+  right = math_ops.cumprod(reshaped, axis=0, exclusive=True, reverse=True)
+  y = array_ops.reshape(left * right, permuted_shape)
+
+  out = grad * array_ops.transpose(y, array_ops.invert_permutation(perm))
+  # Reset statically known shape information
+  return array_ops.reshape(out, input_shape), None
 
 
 @ops.RegisterGradient("SegmentSum")
