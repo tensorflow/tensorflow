@@ -287,7 +287,9 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
       output_range == 0.0 ? 0.0 : (255.0 / output_range);
   const float input_rezero = (min_input + max_input) / 2.0;
   const int64 range_scale_fp =
-      static_cast<int64>(255.0 * (1 << fp_shift) * input_range / output_range);
+      output_range == 0.0 ? 0.0
+                          : static_cast<int64>(255.0 * (1 << fp_shift) *
+                                               input_range / output_range);
   const int64 input_offset_fp =
       static_cast<int64>(input_rezero * recip_output_range * (1 << fp_shift));
   const int64 output_offset_fp =
