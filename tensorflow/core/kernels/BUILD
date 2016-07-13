@@ -1656,6 +1656,7 @@ tf_kernel_libraries(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:string_ops_op_lib",
     ],
 )
