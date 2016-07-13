@@ -1522,6 +1522,7 @@ tf_kernel_libraries(
         "random_shuffle_op",
     ],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -1534,6 +1535,7 @@ tf_cuda_cc_test(
     size = "small",
     deps = [
         ":random_ops",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1701,6 +1703,32 @@ tf_cuda_cc_test(
     deps = [
         ":multinomial_op",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "parameterized_truncated_normal_op",
+    prefix = "parameterized_truncated_normal_op",
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:random_ops_op_lib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "parameterized_truncated_normal_op_test",
+    size = "small",
+    deps = [
+        ":ops_util",
+        ":parameterized_truncated_normal_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",

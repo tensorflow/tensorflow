@@ -254,27 +254,52 @@ Status InferenceContext::Merge(const Shape* s0, const Shape* s1,
 
 Status InferenceContext::Subshape(const Shape* s, int64 start,
                                   const Shape** out) {
-  if (start < 0) {
-    *out = nullptr;
-    return errors::InvalidArgument("Negative start is not implemented; got ",
-                                   start);
-  }
-  if (start == 0) {
+  return Subshape(s, start, std::numeric_limits<int64>::max() /* end */, out);
+}
+
+Status InferenceContext::Subshape(const Shape* s, int64 start_in, int64 end_in,
+                                  const Shape** out) {
+  int64 start = start_in;
+  int64 end = end_in;
+  const int32 rank = Rank(s);
+  if (start == 0 && ((RankKnown(s) && end >= rank) ||
+                     end == std::numeric_limits<int64>::max())) {
     *out = s;
     return Status::OK();
   }
-  const int32 rank = Rank(s);
   if (!RankKnown(s)) {
     return ReturnUnknownShape(out);
   }
-  if (rank < start) {
+
+  if (start > rank) start = rank;
+  if (end > rank) end = rank;
+  if (start < 0) {
+    start = rank + start;
+    if (start < 0) {
+      *out = nullptr;
+      return errors::InvalidArgument("Subshape start out of bounds: ", start_in,
+                                     ", for shape with rank ", rank);
+    }
+  }
+
+  if (end < 0) {
+    end = rank + end;
+    if (end < 0) {
+      *out = nullptr;
+      return errors::InvalidArgument("Subshape end out of bounds: ", end_in,
+                                     ", for shape with rank ", rank);
+    }
+  }
+  if (start > end) {
     *out = nullptr;
-    return errors::InvalidArgument("Shape must have rank >= ", start,
-                                   ", but is ", rank);
+    return errors::InvalidArgument(
+        "Subshape must have computed start <= end, but is ", start, " and ",
+        end, " (computed from start ", start_in, " and end ", end_in,
+        " over shape with rank ", rank, ")");
   }
   std::vector<const Dimension*> dims;
-  dims.reserve(rank - start);
-  for (int i = start; i < rank; ++i) {
+  dims.reserve(end - start);
+  for (int i = start; i < end; ++i) {
     dims.push_back(Dim(s, i));
   }
   return ReturnCreatedShape(dims, out);
@@ -344,6 +369,32 @@ Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
 const Dimension* InferenceContext::CreateDim(int64 value) {
   all_dims_.push_back(new Dimension(value));
   return all_dims_.back();
+}
+
+// Returns a new dimension whose value is given by a scalar input tensor.
+Status InferenceContext::CreateDimForScalarInput(int idx,
+                                                 const Dimension** out) {
+  const Tensor* t = input_tensor(idx);
+  if (t == nullptr) {
+    *out = CreateUnknownDim();
+    return Status::OK();
+  }
+
+  int64 val;
+  if (t->dtype() == DT_INT32) {
+    val = t->scalar<int32>()();
+  } else if (t->dtype() == DT_INT64) {
+    val = t->scalar<int64>()();
+  } else {
+    return errors::InvalidArgument(
+        "Scalar input for dim size must be int32 or int64");
+  }
+  if (val < 0) {
+    return errors::InvalidArgument("Dimension size, given by scalar input ",
+                                   idx, ", must be non-negative but is ", val);
+  }
+  *out = CreateDim(val);
+  return Status::OK();
 }
 
 const Dimension* InferenceContext::CreateUnknownDim() {

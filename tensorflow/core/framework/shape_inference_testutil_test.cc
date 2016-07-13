@@ -86,40 +86,47 @@ TEST(ShapeInferenceTestutilTest, Failures) {
 
   // Wrong shape error messages.
   EXPECT_EQ(
-      "Output 0 matched input 0 and should have not matched an input shape",
+      "Output 0 matched input 0 and should have not matched an input shape; "
+      "output shape was [1]",
       RunInferShapes(op, "[1];[2];[1]", "?", fn_copy_input_0));
-  EXPECT_EQ("Output 0 matched input 0 and should have matched one of (in2)",
-            RunInferShapes(op, "[1];[2];[1]", "in2", fn_copy_input_0));
-  EXPECT_EQ("Output 0 matched input 0 and should have matched one of (in1|in2)",
-            RunInferShapes(op, "[1];[2];[1]", "in1|in2", fn_copy_input_0));
   EXPECT_EQ(
-      "Output 0 matched input 2 and should have not matched an input shape",
+      "Output 0 matched input 0 and should have matched one of (in2); output "
+      "shape was [1]",
+      RunInferShapes(op, "[1];[2];[1]", "in2", fn_copy_input_0));
+  EXPECT_EQ(
+      "Output 0 matched input 0 and should have matched one of (in1|in2); "
+      "output shape was [1]",
+      RunInferShapes(op, "[1];[2];[1]", "in1|in2", fn_copy_input_0));
+  EXPECT_EQ(
+      "Output 0 matched input 2 and should have not matched an input shape; "
+      "output shape was [1]",
       RunInferShapes(op, "[1];[2];[1]", "[1]", fn_copy_input_2));
-  EXPECT_EQ("Output 0 did not match any input shape",
+  EXPECT_EQ("Output 0 did not match any input shape; output shape was [1,2]",
             RunInferShapes(op, "[1];[2];[1]", "in0|in1", fn_output_1_2));
-  EXPECT_EQ("Output 0 expected to be unknown but was [1,2]",
+  EXPECT_EQ("Output 0 expected to be unknown; output shape was [1,2]",
             RunInferShapes(op, "[1];[2];[1]", "?", fn_output_1_2));
-  EXPECT_EQ("Output 0 expected rank 3 but was 2",
+  EXPECT_EQ("Output 0 expected rank 3 but was 2; output shape was [1,2]",
             RunInferShapes(op, "[1];[2];[1]", "[1,2,3]", fn_output_1_2));
   EXPECT_EQ(
-      "Output 0 expected rank 2 but was ?",
+      "Output 0 expected rank 2 but was ?; output shape was ?",
       RunInferShapes(op, "[1];[2];[1]", "[1,2]", fn_output_unknown_shapes));
 
   // Wrong shape error messages on the second output.
-  EXPECT_EQ("Output 1 expected rank 3 but was ?",
+  EXPECT_EQ("Output 1 expected rank 3 but was ?; output shape was ?",
             RunInferShapes("OpTwoOut", "[1];[2];[1]", "?;[1,2,3]",
                            fn_output_unknown_shapes));
 
   // Wrong dimension error messages.
-  EXPECT_EQ("Output dim 0,1 expected to be 3 but was 2",
+  EXPECT_EQ("Output dim 0,1 expected to be 3 but was 2; output shape was [1,2]",
             RunInferShapes(op, "[1];[2];[1]", "[1,3]", fn_output_1_2));
-  EXPECT_EQ("Output dim 0,0 expected to be 2 but was 1",
+  EXPECT_EQ("Output dim 0,0 expected to be 2 but was 1; output shape was [1,2]",
             RunInferShapes(op, "[1];[2];[1]", "[2,2]", fn_output_1_2));
-  EXPECT_EQ("Output dim 0,0 expected to be unknown but was 1",
-            RunInferShapes(op, "[1];[2];[1]", "[?,2]", fn_output_1_2));
-  EXPECT_EQ("Output dim 0,1 expected to be 1 but was 2",
+  EXPECT_EQ(
+      "Output dim 0,0 expected to be unknown but was 1; output shape was [1,2]",
+      RunInferShapes(op, "[1];[2];[1]", "[?,2]", fn_output_1_2));
+  EXPECT_EQ("Output dim 0,1 expected to be 1 but was 2; output shape was [?,2]",
             RunInferShapes(op, "[1];[2];[1]", "[?,1]", fn_output_u_2));
-  EXPECT_EQ("Output dim 0,0 expected to be 1 but was ?",
+  EXPECT_EQ("Output dim 0,0 expected to be 1 but was ?; output shape was [?,2]",
             RunInferShapes(op, "[0,1,?];[2];[1]", "[1,2]", fn_output_u_2));
   auto fn = [](InferenceContext* c) {
     c->set_output(
@@ -128,25 +135,36 @@ TEST(ShapeInferenceTestutilTest, Failures) {
     return Status::OK();
   };
   const string ins = "[0,1,?];[2];[1]";
-  EXPECT_EQ("Output dim 0,0 expected to be unknown but matched input d0_1",
-            RunInferShapes(op, ins, "[?,2,?,d2_0]", fn));
-  EXPECT_EQ("Output dim 0,0 expected to be 0 but matched input d0_1",
-            RunInferShapes(op, ins, "[0,2,?,d2_0]", fn));
   EXPECT_EQ(
-      "Output dim 0,0 matched input d0_1 and should have matched one of d0_0",
+      "Output dim 0,0 expected to be unknown but matched input d0_1; output "
+      "shape was [1,2,?,1]",
+      RunInferShapes(op, ins, "[?,2,?,d2_0]", fn));
+  EXPECT_EQ(
+      "Output dim 0,0 expected to be 0 but matched input d0_1; output shape "
+      "was [1,2,?,1]",
+      RunInferShapes(op, ins, "[0,2,?,d2_0]", fn));
+  EXPECT_EQ(
+      "Output dim 0,0 matched input d0_1 and should have matched one of d0_0; "
+      "output shape was [1,2,?,1]",
       RunInferShapes(op, ins, "[d0_0,2,?,d2_0]", fn));
-  EXPECT_EQ("Output dim 0,0 expected dim failed to parse as int64",
-            RunInferShapes(op, ins, "[x,2,?,d2_0]", fn));
+  EXPECT_EQ(
+      "Output dim 0,0 expected dim failed to parse as int64; output shape was "
+      "[1,2,?,1]",
+      RunInferShapes(op, ins, "[x,2,?,d2_0]", fn));
   EXPECT_EQ(
       "Output dim 0,0 matched input d0_1 and should have matched one of "
-      "d0_0|d0_2",
+      "d0_0|d0_2; output shape was [1,2,?,1]",
       RunInferShapes(op, ins, "[d0_0|d0_2,2,?,d2_0]", fn));
-  EXPECT_EQ("Output dim 0,1 expected to be unknown but was 2",
-            RunInferShapes(op, ins, "[d0_1,?,?,d0_0|d2_0]", fn));
-  EXPECT_EQ("Output dim 0,2 expected to be 8 but was ?",
-            RunInferShapes(op, ins, "[d0_1,2,8,d0_0|d2_0]", fn));
-  EXPECT_EQ("Output dim 0,2 did not match any input dim",
-            RunInferShapes(op, ins, "[d0_1,2,d0_1|d2_0,d0_0|d2_0]", fn));
+  EXPECT_EQ(
+      "Output dim 0,1 expected to be unknown but was 2; output shape was "
+      "[1,2,?,1]",
+      RunInferShapes(op, ins, "[d0_1,?,?,d0_0|d2_0]", fn));
+  EXPECT_EQ(
+      "Output dim 0,2 expected to be 8 but was ?; output shape was [1,2,?,1]",
+      RunInferShapes(op, ins, "[d0_1,2,8,d0_0|d2_0]", fn));
+  EXPECT_EQ(
+      "Output dim 0,2 did not match any input dim; output shape was [1,2,?,1]",
+      RunInferShapes(op, ins, "[d0_1,2,d0_1|d2_0,d0_0|d2_0]", fn));
   EXPECT_EQ("",  // OK, no error.
             RunInferShapes(op, ins, "[d0_1,2,?,d0_0|d2_0]", fn));
 }

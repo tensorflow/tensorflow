@@ -1,0 +1,78 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-imports/plottable.html">
+<link rel="import" href="../tf-imports/lodash.html">
+
+<dom-module id="tf-obsolete-histogram-chart">
+  <template>
+    <svg id="chartsvg"></svg>
+    <style>
+      :host {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        flex-shrink: 1;
+        position: relative;
+      }
+      svg {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        flex-grow: 1;
+        flex-shrink: 1;
+      }
+
+    </style>
+  </template>
+  <script src="tf-obsolete-histogram-chart.js"></script>
+  <script src="../tf-event-dashboard/tf-chart-helpers.js"></script>
+  <script>
+    Polymer({
+      is: "tf-obsolete-histogram-chart",
+      properties: {
+        _chart: Object,
+        colorScale: Object,
+        tag: String,
+        selectedRuns: Array,
+        xType: String,
+        dataProvider: Function,
+        _initialized: Boolean,
+      },
+      observers: [
+        "_makeChart(tag, dataProvider, xType, colorScale, _initialized)",
+        "_changeRuns(_chart, selectedRuns.*)"
+      ],
+      _changeRuns: function(chart) {
+        if (chart.tag !== this.tag) {
+          return; // hack around some weird polymer bug :(
+        }
+        this._chart.changeRuns(this.selectedRuns);
+        this.redraw();
+      },
+      redraw: function() {
+        this._chart.redraw();
+      },
+      reload: function() {
+        this._chart.reload();
+      },
+      _makeChart: function(tag, dataProvider, xType, colorScale, _initialized) {
+        if (!_initialized) {
+          return;
+        }
+        if (this._chart) this._chart.destroy();
+        var chart = new TF.HistogramChart(tag, dataProvider, xType, colorScale);
+        var svg = d3.select(this.$.chartsvg);
+        this.async(function() {
+          chart.renderTo(svg);
+          this._chart = chart;
+        }, 350);
+      },
+      attached: function() {
+        this._initialized = true;
+      },
+      detached: function() {
+        this._initialized = false;
+      }
+    });
+  </script>
+</dom-module>

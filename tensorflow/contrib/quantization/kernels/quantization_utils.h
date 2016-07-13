@@ -353,6 +353,21 @@ Tensor FloatTensorToQuantized(const Tensor& input, float min, float max) {
 
 // REQUIRES: 'result->NumElements() == input.NumElements()'
 template <class T>
+void QuantizedTensorToFloatInPlaceUsingEigen(
+    const Eigen::ThreadPoolDevice& device, const Tensor& input, float min,
+    float max, Tensor* result) {
+  DCHECK_EQ(DataTypeToEnum<T>::v(), input.dtype());
+  auto flat_input = input.flat<T>();
+  auto flat_result = result->flat<float>();
+  const int data_size = flat_input.size();
+  DCHECK(data_size == flat_result.size());
+
+  QuantizedToFloatStruct<T> q2f(min, max);
+  flat_result.device(device) = DEQUANTIZE_WITH_EIGEN(flat_input, q2f);
+}
+
+// REQUIRES: 'result->NumElements() == input.NumElements()'
+template <class T>
 void QuantizedTensorToFloatInPlace(const Tensor& input, float min, float max,
                                    Tensor* result) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), input.dtype());

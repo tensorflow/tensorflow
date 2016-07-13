@@ -32,6 +32,9 @@ TEST(ShapeInferenceTest, RankAndDimInspection) {
   EXPECT_EQ("?", c.DebugString(in0));
   EXPECT_FALSE(c.RankKnown(in0));
   EXPECT_EQ(InferenceContext::kUnknownRank, c.Rank(in0));
+  EXPECT_EQ("?", c.DebugString(c.Dim(in0, 0)));
+  EXPECT_EQ("?", c.DebugString(c.Dim(in0, -1)));
+  EXPECT_EQ("?", c.DebugString(c.Dim(in0, 1000)));
 
   auto in1 = c.input(1);
   EXPECT_EQ("[1,?,3]", c.DebugString(in1));
@@ -39,14 +42,17 @@ TEST(ShapeInferenceTest, RankAndDimInspection) {
   EXPECT_EQ(3, c.Rank(in1));
   auto d = c.Dim(in1, 0);
   EXPECT_EQ(1, c.Value(d));
+  EXPECT_TRUE(d == c.Dim(in1, -3));
   EXPECT_TRUE(c.ValueKnown(d));
   EXPECT_EQ("1", c.DebugString(d));
   d = c.Dim(in1, 1);
   EXPECT_EQ(InferenceContext::kUnknownDim, c.Value(d));
   EXPECT_FALSE(c.ValueKnown(d));
+  EXPECT_TRUE(d == c.Dim(in1, -2));
   EXPECT_EQ("?", c.DebugString(d));
   d = c.Dim(in1, 2);
   EXPECT_EQ(3, c.Value(d));
+  EXPECT_TRUE(d == c.Dim(in1, -1));
   EXPECT_TRUE(c.ValueKnown(d));
   EXPECT_EQ("3", c.DebugString(d));
 
@@ -365,25 +371,58 @@ TEST(ShapeInferenceTest, Subshape) {
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out != unknown);
 
+  const int kFullRank = 5;
+  const Shape* out_arr[4];
   auto in0 = c.input(0);
   EXPECT_TRUE(c.Subshape(in0, 0, &out).ok());
   EXPECT_EQ("[1,2,3,?,5]", c.DebugString(out));
   EXPECT_TRUE(out == in0);
-  for (int i = 1; i <= 5; ++i) {
-    EXPECT_TRUE(c.Subshape(in0, i, &out).ok());
-    EXPECT_EQ(5 - i, c.Rank(out));
-    for (int j = 0; j < c.Rank(out); ++j) {
-      EXPECT_TRUE(c.Dim(in0, i + j) == c.Dim(out, j));
+  EXPECT_EQ(kFullRank, c.Rank(out));
+  for (int start = 0; start <= kFullRank + 1; ++start) {
+    for (int end = start; end <= kFullRank + 1; ++end) {
+      // Get subshapes using different start and end values that give the same
+      // range.
+      const int neg_start =
+          start >= kFullRank ? kFullRank : (start - kFullRank);
+      const int neg_end = end >= kFullRank ? kFullRank : (end - kFullRank);
+      ASSERT_TRUE(c.Subshape(in0, start, end, &out_arr[0]).ok());
+      ASSERT_TRUE(c.Subshape(in0, neg_start, end, &out_arr[1]).ok());
+      ASSERT_TRUE(c.Subshape(in0, start, neg_end, &out_arr[2]).ok());
+      ASSERT_TRUE(c.Subshape(in0, neg_start, neg_end, &out_arr[3]).ok());
+
+      // Verify all computed subshapes.
+      for (int arr_idx = 0; arr_idx < 4; ++arr_idx) {
+        out = out_arr[arr_idx];
+        ASSERT_EQ(std::min(kFullRank, end) - std::min(kFullRank, start),
+                  c.Rank(out))
+            << "start: " << start << " end: " << end << " arr_idx: " << arr_idx
+            << " in0: " << c.DebugString(in0) << " out: " << c.DebugString(out);
+        for (int d = 0; d < c.Rank(out); ++d) {
+          EXPECT_TRUE(c.Dim(in0, start + d) == c.Dim(out, d)) << "arr_idx: "
+                                                              << arr_idx;
+        }
+      }
     }
   }
+
   // Errors.
   out = unknown;
-  EXPECT_EQ("Invalid argument: Negative start is not implemented; got -1",
-            c.Subshape(in0, -1, &out).ToString());
+  EXPECT_EQ(
+      "Invalid argument: Subshape must have computed start <= end, but is 5 "
+      "and 2 (computed from start 6 and end -3 over shape with rank 5)",
+      c.Subshape(in0, 6, -3, &out).ToString());
   EXPECT_TRUE(out == nullptr);
   out = unknown;
-  EXPECT_EQ("Invalid argument: Shape must have rank >= 6, but is 5",
-            c.Subshape(in0, 6, &out).ToString());
+  EXPECT_EQ(
+      "Invalid argument: Subshape start out of bounds: -50, for shape with "
+      "rank 5",
+      c.Subshape(in0, -50, 100, &out).ToString());
+  EXPECT_TRUE(out == nullptr);
+  out = unknown;
+  EXPECT_EQ(
+      "Invalid argument: Subshape end out of bounds: -50, for shape with rank "
+      "5",
+      c.Subshape(in0, 0, -50, &out).ToString());
   EXPECT_TRUE(out == nullptr);
 }
 
@@ -523,6 +562,31 @@ TEST(ShapeInferenceTest, InputTensors) {
   EXPECT_TRUE(c.input_tensor(0) == &t1);
   EXPECT_TRUE(c.input_tensor(1) == &t2);
   EXPECT_TRUE(c.input_tensor(2) == nullptr);
+}
+
+TEST(ShapeInferenceTest, CreateDimForScalarInput) {
+  Tensor t1 = tensorflow::test::AsScalar<int32>(20);
+  Tensor t2 = tensorflow::test::AsScalar<int32>(-1);
+  NodeDef def;
+  InferenceContext c(&def, {"[]", "[]"}, 2 /* num_outputs */, {&t1, &t2});
+
+  const Dimension* d;
+  EXPECT_TRUE(c.CreateDimForScalarInput(0, &d).ok());
+  EXPECT_EQ("20", c.DebugString(d));
+
+  EXPECT_EQ(
+      "Dimension size, given by scalar input 1, must be non-negative but is -1",
+      c.CreateDimForScalarInput(1, &d).error_message());
+
+  // Same tests, with int64 values.
+  t1 = tensorflow::test::AsScalar<int64>(20);
+  t2 = tensorflow::test::AsScalar<int64>(-1);
+  EXPECT_TRUE(c.CreateDimForScalarInput(0, &d).ok());
+  EXPECT_EQ("20", c.DebugString(d));
+
+  EXPECT_EQ(
+      "Dimension size, given by scalar input 1, must be non-negative but is -1",
+      c.CreateDimForScalarInput(1, &d).error_message());
 }
 
 TEST(ShapeInferenceTest, GetAttr) {

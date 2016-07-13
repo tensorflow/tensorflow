@@ -359,6 +359,7 @@
   * [`resize_nearest_neighbor`](../../api_docs/python/image.md#resize_nearest_neighbor)
   * [`rgb_to_grayscale`](../../api_docs/python/image.md#rgb_to_grayscale)
   * [`rgb_to_hsv`](../../api_docs/python/image.md#rgb_to_hsv)
+  * [`rot90`](../../api_docs/python/image.md#rot90)
   * [`sample_distorted_bounding_box`](../../api_docs/python/image.md#sample_distorted_bounding_box)
   * [`transpose_image`](../../api_docs/python/image.md#transpose_image)
 

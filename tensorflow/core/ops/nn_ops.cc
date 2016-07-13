@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+
 namespace tensorflow {
+
+typedef shape_inference::Dimension Dimension;
+typedef shape_inference::InferenceContext InferenceContext;
+typedef shape_inference::Shape Shape;
 
 // --------------------------------------------------------------------------
 
@@ -1114,6 +1120,44 @@ precision: Computed Precision at `k` as a `bool Tensor`.
 
 )doc");
 
+namespace {
+
+Status TopKShapeFn(InferenceContext* c) {
+  const Shape* input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+
+  // Get the k value, either from input tensor or attribute.
+  const Dimension* k_dim;
+  if (c->num_inputs() >= 2) {
+    TF_RETURN_IF_ERROR(c->CreateDimForScalarInput(1, &k_dim));
+  } else {
+    int32 k;
+    TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
+    if (k < 0) {
+      return errors::InvalidArgument("Need k >= 0, got ", k);
+    }
+    k_dim = c->CreateDim(k);
+  }
+
+  const Dimension* last_dim = c->Dim(input, -1);
+  if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
+      c->Value(last_dim) < c->Value(k_dim)) {
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
+  }
+
+  // Replace last_dim with k_dim.
+  const Shape* s;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
+  TF_RETURN_IF_ERROR(c->Concatenate(s, c->CreateShape({k_dim}), &s));
+  c->set_output(0, s);
+  c->set_output(1, s);
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("TopK")
     .Input("input: T")
     .Output("values: T")
@@ -1122,6 +1166,7 @@ REGISTER_OP("TopK")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
     .Deprecated(7, "Use TopKV2 instead")
+    .SetShapeFn(OpShapeInferenceFn(TopKShapeFn))
     .Doc(R"doc(
 Finds values and indices of the `k` largest elements for the last dimension.
 
@@ -1154,6 +1199,7 @@ REGISTER_OP("TopKV2")
     .Output("indices: int32")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
+    .SetShapeFn(OpShapeInferenceFn(TopKShapeFn))
     .Doc(R"doc(
 Finds values and indices of the `k` largest elements for the last dimension.
 

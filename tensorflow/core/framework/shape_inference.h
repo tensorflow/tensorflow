@@ -101,7 +101,16 @@ class InferenceContext {
   const Shape* output(int idx) { return outputs_[idx]; }
 
   // idx can be negative for an offset from end of dimensions.
-  const Dimension* Dim(const Shape* s, int32 idx) { return s->dims_[idx]; }
+  // idx must be in the range [-1 * s.rank, s.rank).
+  const Dimension* Dim(const Shape* s, int32 idx) {
+    if (s->rank_ == kUnknownRank) {
+      return CreateUnknownDim();
+    }
+    if (idx < 0) {
+      return s->dims_[s->dims_.size() + idx];
+    }
+    return s->dims_[idx];
+  }
   int32 Rank(const Shape* s) { return s->rank_; }
   bool RankKnown(const Shape* s) { return Rank(s) != kUnknownRank; }
   int64 Value(const Dimension* d) { return d->value_; }
@@ -150,10 +159,18 @@ class InferenceContext {
   Status Merge(const Dimension* d0, const Dimension* d1,
                const Dimension** out) TF_MUST_USE_RESULT;
 
-  // Returns in <*out> a sub-shape of <s>, with dimensions at index [s[start],
-  // ..).
+  // Returns in <*out> a sub-shape of <s> with dimensions [start:].
+  // <start> can be negative to index from the end of the shape. If <start> >
+  // rank of <s>, then an empty subshape is returned.
   // Returns an error if the rank of <s> is < <start>.
   Status Subshape(const Shape* s, int64 start,
+                  const Shape** out) TF_MUST_USE_RESULT;
+
+  // Returns in <*out> a sub-shape of <s>, with dimensions [start:end].
+  // <start> and <end> can be negative, to index from the end of the shape.
+  // <start> and <end> are set to the rank of <s> if > rank of <s>.
+  // Returns an error if the rank of <s> is insufficient.
+  Status Subshape(const Shape* s, int64 start, int64 end,
                   const Shape** out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those
@@ -175,6 +192,11 @@ class InferenceContext {
   // this context.
   const Dimension* CreateDim(int64 value);
   const Dimension* CreateUnknownDim();
+
+  // Returns a new dimension whose value is given by a scalar input tensor.
+  // The input tensor must be in host memory, since it is dereferenced to get
+  // the value.
+  Status CreateDimForScalarInput(int idx, const Dimension** out);
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or

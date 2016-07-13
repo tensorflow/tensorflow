@@ -13,7 +13,57 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Monitors to track training, report progress and request early stopping."""
+"""Monitors allow user instrumentaiton of the training process.
+
+Monitors are useful to track training, report progress, request early
+stopping and more. Monitors use the observer pattern and notify at the following
+points:
+ - when training begins
+ - before a training step
+ - after a training step
+ - when training ends
+
+Monitors are not intended to be reusable.
+
+There are a few pre-defined monitors:
+ - CaptureVariable: saves a variable's values
+ - GraphDump: intended for debug only - saves all tensor values
+ - PrintTensor: outputs one or more tensor values to log
+ - SummarySaver: saves summaries to a summary writer
+ - ValidationMonitor: runs model validation, by periodically calculating eval
+     metrics on a separate data set; supports optional early stopping
+
+For more specific needs, you can create custom monitors by extending one of the
+following classes:
+ - BaseMonitor: the base class for all monitors
+ - EveryN: triggers a callback every N training steps
+
+Example:
+
+  class ExampleMonitor(monitors.BaseMonitor):
+    def __init__(self):
+      print 'Init'
+
+    def begin(self, max_steps):
+      print 'Starting run. Will train until step %d.' % max_steps
+
+    def end(self):
+      print 'Completed run.'
+
+    def step_begin(self, step):
+      print 'About to run step %d...' % step
+      return ['loss_1:0']
+
+    def step_end(self, step, outputs):
+      print 'Done running step %d. The value of "loss" tensor: %s' % (
+        step, outputs['loss_1:0'])
+
+  linear_regressor = LinearRegressor()
+  example_monitor = ExampleMonitor()
+  linear_regressor.fit(
+    x, y, steps=2, batch_size=1, monitors=[example_monitor])
+
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -45,15 +95,24 @@ class BaseMonitor(object):
     self._estimator = None
 
   def set_estimator(self, estimator):
+    """A setter called automatically by the target estimator.
+
+    Args:
+      estimator: the estimator that this monitor monitors.
+
+    Raises:
+      ValueError: if the estimator is None.
+    """
     if estimator is None:
       raise ValueError("Missing estimator.")
+    # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
 
   def begin(self, max_steps=None):
-    """Callback at the beginning of training/evaluation.
+    """Called at the beginning of training.
 
     Args:
-      max_steps: Maximum steps this training will run until.
+      max_steps: `int`, the maximum global step this training will run until.
 
     Raises:
       ValueError: if we've already begun a run.
@@ -78,7 +137,7 @@ class BaseMonitor(object):
     """Begin epoch.
 
     Args:
-      epoch: Epoch number.
+      epoch: `int`, the epoch number.
 
     Raises:
       ValueError: if we've already begun an epoch, or `epoch` < 0.
@@ -93,7 +152,7 @@ class BaseMonitor(object):
     """End epoch.
 
     Args:
-      epoch: Epoch number.
+      epoch: `int`, the epoch number.
 
     Raises:
       ValueError: if we've not begun an epoch, or `epoch` number does not match.
@@ -106,11 +165,11 @@ class BaseMonitor(object):
   def step_begin(self, step):
     """Callback before training step begins.
 
-    Use this callback to:
-     - override which tensors to run.
+    You may use this callback to request evaluation of additional tensors
+    in the graph.
 
     Args:
-      step: int, global step of the model.
+      step: `int`, the current value of the global step.
 
     Returns:
       List of `Tensor` objects or string tensor names to be run.
@@ -130,18 +189,21 @@ class BaseMonitor(object):
   def step_end(self, step, output):  # pylint: disable=unused-argument
     """Callback after training step finished.
 
-    Use this callback to:
-     - log results.
-     - save checkpoints.
-     - compute validation score.
-     - perform early stopping.
+    This callback provides access to the tensors/ops evaluated at this step,
+    including the additional tensors for which evaluation was requested in
+    `step_begin`.
+
+    In addition, the callback has the opportunity to stop training by returning
+    `True`. This is useful for early stopping, for example.
 
     Args:
-      step: `int`, global step of the model.
-      output: `dict` of `np.array` results executed.
+      step: `int`, the current value of the global step.
+      output: `dict` mapping `string` values representing tensor names to
+        the value resulted from running these tensors. Values may be either
+        scalars, for scalar tensors, or Numpy `array`, for non-scalar tensors.
 
     Returns:
-      `bool`, `True` if model should stop, `False` or `None` if continue.
+      `bool`. True if training should stop.
 
     Raises:
       ValueError: if we've not begun a step, or `step` number does not match.
@@ -156,21 +218,33 @@ class BaseMonitor(object):
 class EveryN(BaseMonitor):
   """Base class for monitors that execute callbacks every n steps.
 
-  `every_n_step_{begin,end}` is called:
-  - For all steps up to and including `first_n_steps`.
-  - Every `every_n_steps` steps after `first_n_steps`.
-  - On the last step (based on `max_steps` passed to `begin`).
+  This class adds two new callbacks:
+    - every_n_step_begin
+    - every_n_step_end
 
-  TODO(ipolosukhin): Add also every n seconds.
+  The callbacks are executed every n steps, or optionally every step for the
+  first m steps, where m and n can both be user-specified.
+
+  When extending this class, note that if you wish to use any of the
+  `BaseMonitor` callbacks, you must call their respective super implementation:
+
+    def step_begin(self, step):
+      super(ExampleMonitor, self).step_begin(step)
+      return []
+
+  Failing to call the super implementation will cause unpredictible behavior.
+
   """
+  # TODO(ipolosukhin): Add also every n seconds.
 
   def __init__(self, every_n_steps=100, first_n_steps=1):
-    """Initializes an EveryN instance.
+    """Initialized an `EveryN` monitor.
 
     Args:
-      every_n_steps: int, calls `every_n_step_{begin,end}` every this many
-        steps.
-      first_n_steps: int, calls `every_n_step_{begin,end}` for first n steps.
+      every_n_steps: `int`, the number of steps to allow between callbacks.
+      first_n_steps: `int`, specifying the number of initial steps during
+        which the callbacks will always be executed, regardless of the value
+        of `every_n_steps`. Note that this value is relative to the global step
     """
     super(EveryN, self).__init__()
     self._every_n_steps = every_n_steps
@@ -179,15 +253,61 @@ class EveryN(BaseMonitor):
     self._active_step = None
 
   def begin(self, max_steps=None):
+    """Overrides `BaseMonitor.begin`.
+
+    When overriding this method, you must call the super implementation.
+
+    Args:
+      max_steps: `int`, the maximum global step value.
+    """
     super(EveryN, self).begin(max_steps)
 
   def every_n_step_begin(self, step):  # pylint: disable=unused-argument
+    """Callback before every n'th step begins.
+
+    Args:
+      step: `int`, the current value of the global step.
+
+    Returns:
+      A `list` of tensors that will be evaluated at this step.
+    """
     return []
 
   def every_n_step_end(self, step, outputs):  # pylint: disable=unused-argument
+    """Callback after every n'th step finished.
+
+    This callback provides access to the tensors/ops evaluated at this step,
+    including the additional tensors for which evaluation was requested in
+    `step_begin`.
+
+    In addition, the callback has the opportunity to stop training by returning
+    `True`. This is useful for early stopping, for example.
+
+    Args:
+      step: `int`, the current value of the global step.
+      outputs: `dict` mapping `string` values representing tensor names to
+        the value resulted from running these tensors. Values may be either
+        scalars, for scalar tensors, or Numpy `array`, for non-scalar tensors.
+
+    Returns:
+      `bool`. True if training should stop.
+    """
     return False
 
   def step_begin(self, step):
+    """Overrides `BaseMonitor.step_begin`.
+
+    When overriding this method, you must call the super implementation.
+
+    Args:
+      step: `int`, the current value of the global step.
+    Returns:
+      A `list`, the result of every_n_step_begin, if that was called this step,
+      or an empty list otherwise.
+
+    Raises:
+      ValueError: if called more than once during a step.
+    """
     super(EveryN, self).step_begin(step)
     if (step <= self._first_n_steps or
         step >= (self._every_n_steps + self._last_step) or
@@ -200,6 +320,19 @@ class EveryN(BaseMonitor):
     return []
 
   def step_end(self, step, output):
+    """Overrides `BaseMonitor.step_end`.
+
+    When overriding this method, you must call the super implementation.
+
+    Args:
+      step: `int`, the current value of the global step.
+      output: `dict` mapping `string` values representing tensor names to
+        the value resulted from running these tensors. Values may be either
+        scalars, for scalar tensors, or Numpy `array`, for non-scalar tensors.
+    Returns:
+      `bool`, the result of every_n_step_end, if that was called this step,
+      or `False` otherwise.
+    """
     super(EveryN, self).step_end(step, output)
     to_stop = False
     if (self._active_step is not None) and (self._active_step == step):
@@ -213,19 +346,20 @@ class EveryN(BaseMonitor):
 class PrintTensor(EveryN):
   """Prints given tensors every N steps.
 
-  Print the tensors provided in `tensor_names` `every_n`
-  steps, starting with the `first_n`th step.
+  This is an `EveryN` monitor and has consistent semantic for `every_n`
+  and `first_n`.
 
+  The tensors will be printed to the log, with `INFO` severity.
   """
 
   def __init__(self, tensor_names, every_n=100, first_n=1):
-    """Initializes PrintTensor monitor.
+    """Initializes a PrintTensor monitor.
 
     Args:
       tensor_names: `dict` of tag to tensor names or
           `iterable` of tensor names (strings).
-      every_n: Print every N steps.
-      first_n: Print first N steps.
+      every_n: `int`, print every N steps. See `PrintN.`
+      first_n: `int`, also print the first N steps. See `PrintN.`
     """
     super(PrintTensor, self).__init__(every_n, first_n)
     if not isinstance(tensor_names, dict):
@@ -246,19 +380,33 @@ class PrintTensor(EveryN):
 
 
 class SummarySaver(EveryN):
-  """Saves a summary every N steps."""
+  """Saves summaries every N steps."""
 
   def __init__(self, summary_op, save_steps=100, output_dir=None,
                summary_writer=None):
+    """Initializes a `SummarySaver` monitor.
+
+    Args:
+      summary_op: `Tensor` of type `string`. A serialized `Summary` protocol
+          buffer, as output by TF summary methods like `scalar_summary` or
+          `merge_all_summaries`.
+      save_steps: `int`, save summaries every N steps. See `EveryN`.
+      output_dir: `string`, the directory to save the summaries to. Only used
+          if no `summary_writer` is supplied.
+      summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
+          one will be created accordingly.
+    """
     # TODO(ipolosukhin): Implement every N seconds.
     super(SummarySaver, self).__init__(every_n_steps=save_steps)
     self._summary_op = summary_op
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
       self._summary_writer = summary_io.SummaryWriter(output_dir)
+    # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def set_estimator(self, estimator):
     super(SummarySaver, self).set_estimator(estimator)
+    # TODO(mdan): This line looks redundant.
     if self._summary_writer is None:
       self._summary_writer = summary_io.SummaryWriter(estimator.model_dir)
 
@@ -280,10 +428,13 @@ class SummarySaver(EveryN):
 
 
 class ValidationMonitor(EveryN):
-  """Runs evaluation of the Estimator every n steps.
+  """Runs evaluation of a given estimator, at most every N steps.
 
-  Can do early stopping on validation metrics if
-  `early_stopping_rounds` provided.
+  Note that the evaluation is done based on the saved checkpoint, which will
+  usually be older than the current step.
+
+  Can do early stopping on validation metrics if `early_stopping_rounds` is
+  provided.
   """
 
   def __init__(self, x=None, y=None, input_fn=None, batch_size=None,
@@ -291,39 +442,37 @@ class ValidationMonitor(EveryN):
                every_n_steps=100, metrics=None, early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True, name=None):
-    """Initializes ValidationMonitor.
+    """Initializes a ValidationMonitor.
 
     Args:
-      x: matrix or tensor of shape [n_samples, n_features...]. Can be
-         iterator that returns arrays of features. The training input
-         samples for fitting the model. If set, `input_fn` must be `None`.
-      y: vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-         iterator that returns array of targets. The training target values
-         (class labels in classification, real numbers in regression). If set,
-         `input_fn` must be `None`.
-      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
-          `None`.
-      batch_size: minibatch size to use on the input, defaults to first
-          dimension of `x`. Must be `None` if `input_fn` is provided.
-      eval_steps: Number of steps to run evaluation. `None` means to run
-          until records finish.
-      every_n_steps: Runs this monitor every N steps.
-      metrics: Dict of metric ops to run. If None, the default metric functions
-        are used; if {}, no metrics are used.
-      early_stopping_rounds: If validation metric didn't go down for this many
-          steps, then stop training.
-      early_stopping_metric: `str`, name of the metric to early stop.
-      early_stopping_metric_minimize: `bool`, True if minimize, False
-          if maximize. For example, minimize `loss` or `mean_squared_error` and
-          maximize `accuracy` or `f1`.
-      name: `str`, appended to output sub-folder. If None uses `eval`
-          sub-folder, else, `eval-%name%` is used to save sum.
+      x: See `BaseEstimator.evaluate`.
+      y: See `BaseEstimator.evaluate`.
+      input_fn: See `BaseEstimator.evaluate`.
+      batch_size: See `BaseEstimator.evaluate`.
+      eval_steps: See `BaseEstimator.evaluate`.
+      every_n_steps: Check for new checkpoints to evaluate every N steps. If a
+          new checkpoint is found, it is evaluated. See `EveryN`.
+      metrics: See `BaseEstimator.evaluate`.
+      early_stopping_rounds: `int`. If the metric indicated by
+          `early_stopping_metric` does not change according to
+          `early_stopping_metric_minimize` for this many steps, then training
+          will be stopped.
+      early_stopping_metric: `string`, name of the metric to check for early
+          stopping.
+      early_stopping_metric_minimize: `bool`, True if `early_stopping_metric` is
+          expected to decrease (thus early stopping occurs when this metric
+          stops decreasing), False if `early_stopping_metric` is expected to
+          increase. Typically, `early_stopping_metric_minimize` is True for
+          loss metrics like mean squared error, and False for performance
+          metrics like accuracy.
+      name: See `BaseEstimator.evaluate`.
 
     Raises:
       ValueError: If both x and input_fn are provided.
     """
     super(ValidationMonitor, self).__init__(every_n_steps=every_n_steps,
                                             first_n_steps=-1)
+    # TODO(mdan): Checks like this are already done by evaluate.
     if x is None and input_fn is None:
       raise ValueError("Either x or input_fn should be provided.")
     self.x = x
@@ -344,18 +493,24 @@ class ValidationMonitor(EveryN):
 
   @property
   def early_stopped(self):
+    """Returns True if this monitor caused an early stop."""
     return self._early_stopped
 
   @property
   def best_step(self):
+    """Returns the step at which the best early stopping metric was found."""
     return self._best_value_step
 
   @property
   def best_value(self):
+    """Returns the best early stopping metric value found so far."""
     return self._best_value
 
   def every_n_step_end(self, step, outputs):
     super(ValidationMonitor, self).every_n_step_end(step, outputs)
+    # TODO(mdan): The use of step below is probably misleading.
+    # The code should probably use the step from the checkpoint, because
+    # that's what is being evaluated.
     if self._estimator is None:
       raise ValueError("Missing call to set_estimator.")
     # Check that we are not running evaluation on the same checkpoint.
@@ -398,18 +553,35 @@ class ValidationMonitor(EveryN):
 # TODO(ptucker): This really reads any tensor, not just vars, and requires the
 # ':0' suffix on var_name.
 class CaptureVariable(EveryN):
-  """Capture a variable value into a `list`.
+  """Captures a variable's values into a collection.
 
-  This monitor is useful for unit testing.
+  This monitor is useful for unit testing. You should exercise caution when
+  using this monitor in production, since it never discards values.
+
+  This is an `EveryN` monitor and has consistent semantic for `every_n`
+  and `first_n`.
   """
 
   def __init__(self, var_name, every_n=100, first_n=1):
+    """Initializes a CaptureVariable monitor.
+
+    Args:
+      var_name: `string`. The variable name, including suffix (typically ":0").
+      every_n: `int`, print every N steps. See `PrintN.`
+      first_n: `int`, also print the first N steps. See `PrintN.`
+    """
     super(CaptureVariable, self).__init__(every_n, first_n)
     self._var_name = var_name
     self._var_values = {}
 
   @property
   def values(self):
+    """Returns the values captured so far.
+
+    Returns:
+      `dict` mapping `int` step numbers to that values of the variable at the
+          respective step.
+    """
     return self._var_values
 
   def every_n_step_begin(self, step):
@@ -423,6 +595,19 @@ class CaptureVariable(EveryN):
 
 def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
                          output_dir=None, summary_writer=None):
+  """Returns a default set of typically-used monitors.
+
+  Args:
+    loss_op: `Tensor`, the loss tensor. This will be printed using `PrintTensor`
+        at the default interval.
+    summary_op: See `SummarySaver`.
+    save_summary_steps: See `SummarySaver`.
+    output_dir:  See `SummarySaver`.
+    summary_writer:  See `SummarySaver`.
+  Returns:
+    `list` of monitors.
+  """
+
   monitors = []
   if loss_op is not None:
     monitors.append(PrintTensor(tensor_names={"loss": loss_op.name}))
@@ -436,8 +621,7 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
 class GraphDump(BaseMonitor):
   """Dumps almost all tensors in the graph at every step.
 
-  Note, this is very expensive, prefer `PrintTensor` or `CaptureVariable` if
-  you are not debugging.
+  Note, this is very expensive, prefer `PrintTensor` in production.
   """
 
   IGNORE_OPS = ["Const", "Assign", "Identity", "Placeholder",
@@ -447,8 +631,8 @@ class GraphDump(BaseMonitor):
     """Initializes GraphDump monitor.
 
     Args:
-      ignore_ops: `list` of string names of `Operation`s to ignore.
-          If `None` GraphDump.IGNORE_OPS list is used.
+      ignore_ops: `list` of `string`. Names of ops to ignore.
+          If None, `GraphDump.IGNORE_OPS` is used.
     """
     super(GraphDump, self).__init__()
     self._ignore_ops = ignore_ops or GraphDump.IGNORE_OPS

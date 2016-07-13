@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 
 const char kMetaGraphDefFilename[] = "export.meta";
 const char kAssetsDirectory[] = "assets";
@@ -53,7 +53,7 @@ tensorflow::Status LoadSessionBundleFromPath(
     const tensorflow::SessionOptions& options,
     const tensorflow::StringPiece export_dir, SessionBundle* bundle);
 
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_

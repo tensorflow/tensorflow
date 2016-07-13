@@ -119,7 +119,7 @@ TEST(MathOpsTest, Segment_ShapeFn) {
 
     // Error cases.
     INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,2]");
-    INFER_ERROR("Shape must have rank >= 1, but is 0", op, "[];[1]");
+    INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[1]");
   }
 }
 
@@ -278,9 +278,9 @@ TEST(MathOpsTest, UnsortedSegmentSum_ShapeFn) {
                         "[100,d0_3,d0_4]");
 
   num_segments_t = test::AsScalar(-1);
-  INFER_ERROR_WITH_TENSORS(
-      "num_segments value must be non-negative, but was -1", op, "[3];[3];?",
-      in_tensors);
+  INFER_ERROR_WITH_TENSORS(("Dimension size, given by scalar input 2, must be "
+                            "non-negative but is -1"),
+                           op, "[3];[3];?", in_tensors);
 }
 
 }  // end namespace tensorflow

@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 // Create a session using the given options and load the graph.
@@ -91,7 +91,7 @@ string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
   if (Env::Default()->FileExists(
-      tensorflow::io::JoinPath(export_dir, kVariablesFilename))) {
+          tensorflow::io::JoinPath(export_dir, kVariablesFilename))) {
     return tensorflow::io::JoinPath(export_dir, kVariablesFilename);
   } else {
     return tensorflow::io::JoinPath(export_dir, kVariablesFilenamePattern);
@@ -104,8 +104,8 @@ Status RunRestoreOp(const StringPiece export_dir,
                     const StringPiece variables_filename_const_op_name,
                     tensorflow::Session* session) {
   LOG(INFO) << "Running restore op for SessionBundle";
-  Tensor variables_tensor = CreateStringTensor(
-      GetVariablesFilename(export_dir));
+  Tensor variables_tensor =
+      CreateStringTensor(GetVariablesFilename(export_dir));
   std::vector<std::pair<string, Tensor>> inputs = {
       {variables_filename_const_op_name.ToString(), variables_tensor}};
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
@@ -137,11 +137,21 @@ tensorflow::Status LoadSessionBundleFromPath(
     // Use serving graph_def in MetaGraphDef collection_def.
     if (graph_collection_def.any_list().value_size() != 1) {
       return errors::FailedPrecondition(
-          strings::StrCat("Expected exactly one serving GraphDef in : ",
-                          bundle->meta_graph_def.DebugString()));
+          "Expected exactly one serving GraphDef in : ",
+          bundle->meta_graph_def.DebugString());
+    }
+    const auto& any = graph_collection_def.any_list().value(0);
+    if (!any.Is<GraphDef>()) {
+      return errors::FailedPrecondition(
+          "Expected Any type_url for: ",
+          tensorflow::GraphDef::default_instance().descriptor()->full_name(),
+          ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
     }
     tensorflow::GraphDef graph_def;
-    graph_collection_def.any_list().value(0).UnpackTo(&graph_def);
+    if (!any.UnpackTo(&graph_def)) {
+      return errors::FailedPrecondition("Failed to unpack: ",
+                                        any.DebugString());
+    }
     TF_RETURN_IF_ERROR(
         CreateSessionFromGraphDef(options, graph_def, &bundle->session));
   } else {
@@ -157,7 +167,17 @@ tensorflow::Status LoadSessionBundleFromPath(
     const auto& any_assets = assets_it->second.any_list().value();
     for (const auto& any_asset : any_assets) {
       AssetFile asset_file;
-      any_asset.UnpackTo(&asset_file);
+      if (!any_asset.Is<AssetFile>()) {
+        return errors::FailedPrecondition(
+            "Expected asset Any type_url for: ",
+            asset_file.descriptor()->full_name(), ". Got: ",
+            string(any_asset.type_url().data(), any_asset.type_url().size()),
+            ".");
+      }
+      if (!any_asset.UnpackTo(&asset_file)) {
+        return errors::FailedPrecondition("Failed to unpack: ",
+                                          any_asset.DebugString());
+      }
       asset_files.push_back(asset_file);
     }
   }
@@ -184,5 +204,5 @@ tensorflow::Status LoadSessionBundleFromPath(
   return Status::OK();
 }
 
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow
