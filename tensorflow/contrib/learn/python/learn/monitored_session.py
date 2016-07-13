@@ -23,7 +23,6 @@ import six
 
 from tensorflow.contrib.learn.python.learn.wrapped_session import WrappedSession
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import tf_logging as logging
 
 
 class MonitoredSession(WrappedSession):
@@ -73,7 +72,6 @@ class MonitoredSession(WrappedSession):
 
     if self._last_step is None:
       self._last_step = WrappedSession.run(self, self._global_step_tensor)
-    logging.info('Initialized step to: %d', self._last_step)
 
     monitors_step = self._last_step + 1
     monitor_fetches = []
@@ -104,12 +102,16 @@ class MonitoredSession(WrappedSession):
       induce_stop = monitor.step_end(monitors_step, monitor_outputs)
       self._should_stop = self._should_stop or induce_stop
 
+    # Call the post_step methods.
+    for monitor in self._monitors:
+      monitor.post_step(monitors_step, self._sess)
+
     return outputs['caller']
 
 
 # TODO(ispir): Remove following logic after forcing monitors returns tensors.
 def _as_graph_element(obj, graph):
-  """Retrieves Graph element from tensors or tensor names."""
+  """Retrieves Graph element."""
   graph = graph or ops.get_default_graph()
   if not isinstance(obj, six.string_types):
     if not hasattr(obj, 'graph') or obj.graph != graph:

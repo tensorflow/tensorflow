@@ -57,3 +57,8 @@ class CoordinatedSession(WrappedSession):
       self._coord.request_stop(e)
     if self._coord.should_stop():
       self._coord.join(self._coordinated_threads_to_join)
+
+  # TODO(touts): Add a close() method that also joins the coordinator
+  # but does not raise exceptions.  This can only be done reliably when the
+  # Coordinator keeps a pointer to the coordinated threads, otherwise we do not
+  # know which threads to join.
