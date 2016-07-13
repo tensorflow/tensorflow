@@ -24019,7 +24019,7 @@ op {
     type: "int"
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
   }
   attr {
@@ -24082,7 +24082,7 @@ op {
     }
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0
@@ -24158,7 +24158,7 @@ op {
     }
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0

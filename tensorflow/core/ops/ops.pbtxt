@@ -14420,7 +14420,7 @@ op {
     description: "analogous to `begin_mask`"
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0
@@ -14498,7 +14498,7 @@ op {
     }
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0

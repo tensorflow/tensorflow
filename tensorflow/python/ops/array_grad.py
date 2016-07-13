@@ -165,7 +165,7 @@ def _StridedSliceGrad(op, grad):
       grad,
       begin_mask=op.get_attr("begin_mask"),
       end_mask=op.get_attr("end_mask"),
-      ellipse_mask=op.get_attr("ellipse_mask"),
+      ellipsis_mask=op.get_attr("ellipsis_mask"),
       new_axis_mask=op.get_attr("new_axis_mask"),
       shrink_axis_mask=op.get_attr("shrink_axis_mask")), None, None, None
 

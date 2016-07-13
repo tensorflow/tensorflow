@@ -1224,7 +1224,7 @@ REGISTER_OP("StridedSlice")
     .Attr("Index: {int32, int64}")
     .Attr("begin_mask: int = 0")
     .Attr("end_mask: int = 0")
-    .Attr("ellipse_mask: int = 0")
+    .Attr("ellipsis_mask: int = 0")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
     .Doc(R"doc(
@@ -1255,6 +1255,17 @@ begin_mask: a bitmask where a bit i being 1 means to ignore the begin
   begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
   `[-1, n-1]` if `stride[i] < 0`
 end_mask: analogous to `begin_mask`
+ellipsis_mask: a bitmask where bit `i` being 1 means the `i`th 
+  position is actually an ellipsis. One bit at most can be 1.
+new_axis_mask: a bitmask where bit `i` being 1 means the `i`th
+  position creates a dimension in the tensor of length 1. Thus
+  the total number of elements remain unchanged but the shape
+  gets a 1 in the appropriate position.
+shrink_axis_mask: a bitmask where bit `i` implies that the `i`th
+  position should shrink the dimensionality. begin and end
+  must imply a slice of size 1 in the dimension. For example in
+  python one might do `foo[:,3,:]` which would result in 
+  `shrink_axis_mask` being 2.
 )doc");
 
 REGISTER_OP("StridedSliceGrad")
@@ -1268,7 +1279,7 @@ REGISTER_OP("StridedSliceGrad")
     .Attr("Index: {int32, int64}")
     .Attr("begin_mask: int = 0")
     .Attr("end_mask: int = 0")
-    .Attr("ellipse_mask: int = 0")
+    .Attr("ellipsis_mask: int = 0")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
     .Doc(R"doc(
