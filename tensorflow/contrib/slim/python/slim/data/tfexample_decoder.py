@@ -271,7 +271,7 @@ class Image(ItemHandler):
 
 
 class TFExampleDecoder(data_decoder.DataDecoder):
-  """A decoder for Tensorflow Examples.
+  """A decoder for TensorFlow Examples.
 
   Decoding Example proto buffers is comprised of two stages: (1) Example parsing
   and (2) tensor manipulation.

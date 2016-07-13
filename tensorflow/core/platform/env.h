@@ -150,6 +150,18 @@ class Env {
   /// Deletes the specified directory.
   Status DeleteDir(const string& dirname);
 
+  /// Obtains statistics for the given path.
+  Status Stat(const string& fname, FileStatistics* stat);
+
+  /// \brief Returns whether the given path is a directory or not.
+  /// Typical return codes (not guaranteed exhaustive):
+  ///  * OK - The path exists and is a directory.
+  ///  * FAILED_PRECONDITION - The path exists and is not a directory.
+  ///  * NOT_FOUND - The path entry does not exist.
+  ///  * PERMISSION_DENIED - Insufficient permissions.
+  ///  * UNIMPLEMENTED - The file factory doesn't support directories.
+  Status IsDirectory(const string& fname);
+
   /// Stores the size of `fname` in `*file_size`.
   Status GetFileSize(const string& fname, uint64* file_size);
 

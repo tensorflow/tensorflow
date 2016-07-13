@@ -23,6 +23,14 @@ from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops as tf_array_ops
 
 
+def concatenate_unique(la, lb):
+  """Add all the elements of lb in la if they are not there already."""
+  for l in lb:
+    if l not in la:
+      la.append(l)
+  return la
+
+
 # TODO(fkp): very generic code, it should be moved in a more generic place.
 class ListView(object):
   """Immutable list wrapper.
@@ -61,20 +69,40 @@ def is_iterable(obj):
   return True
 
 
-def get_unique_graph(tops, check_types=None):
+def check_graphs(*args):
+  """Check that all the element in args belong to the same graph.
+
+  Args:
+    *args: a list of object with a obj.graph property.
+  Raises:
+    ValueError: if all the elements do not belong to the same graph.
+  """
+  graph = None
+  for i, sgv in enumerate(args):
+    if graph is None and sgv.graph is not None:
+      graph = sgv.graph
+    elif sgv.graph is not None and sgv.graph is not graph:
+      raise ValueError("Argument[{}]: Wrong graph!".format(i))
+
+
+def get_unique_graph(tops, check_types=None, none_if_empty=False):
   """Return the unique graph used by the all the elements in tops.
 
   Args:
     tops: list of elements to check (usually a list of tf.Operation and/or
-      tf.Tensor).
+      tf.Tensor). Or a tf.Graph.
     check_types: check that the element in tops are of given type(s). If None,
       the types (tf.Operation, tf.Tensor) are used.
+    none_if_empty: don't raise an error if tops is an empty list, just return
+      None.
   Returns:
     The unique graph used by all the tops.
   Raises:
     TypeError: if tops is not a iterable of tf.Operation.
     ValueError: if the graph is not unique.
   """
+  if isinstance(tops, tf_ops.Graph):
+    return tops
   if not is_iterable(tops):
     raise TypeError("{} is not iterable".format(type(tops)))
   if check_types is None:
@@ -85,9 +113,9 @@ def get_unique_graph(tops, check_types=None):
       raise TypeError("Expected a tf.Operation, got: {}".format(type(op)))
     if g is None:
       g = op.graph
-    elif g != op.graph:
+    elif g is not op.graph:
       raise ValueError("Operation {} does not belong to given graph".format(op))
-  if g is None:
+  if g is None and not none_if_empty:
     raise ValueError("Can't find the unique graph of an empty list")
   return g
 
@@ -133,10 +161,10 @@ def get_tensors(graph):
   """
   if not isinstance(graph, tf_ops.Graph):
     raise TypeError("Expected a graph, got: {}".format(type(graph)))
-  ts = set()
+  ts = []
   for op in graph.get_operations():
-    ts.update(op.inputs)
-    ts.update(op.outputs)
+    concatenate_unique(ts, op.inputs)
+    concatenate_unique(ts, op.outputs)
   return ts
 
 
@@ -168,55 +196,92 @@ def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
     return [t for t in ts if isinstance(t, tf_ops.Tensor)]
 
 
-def create_control_outputs(ops):
-  """Create a dictionary of control-output dependencies.
+def get_generating_ops(ts):
+  """Return all the generating ops of the tensors in ts.
 
   Args:
-    ops: an object convertible to a list of tf.Operation.
+    ts: a list of tf.Tensor
   Returns:
-    A dictionary where a key is a tf.Operation instance and the corresponding
-    value is a list of all the ops which have the key as one of their
-    control-input dependencies.
+    A list of all the generating tf.Operation of the tensors in ts.
   Raises:
-    TypeError: if ops cannot be converted to a list of tf.Operation.
+    TypeError: if ts cannot be converted to a list of tf.Tensor.
   """
-  ops = make_list_of_op(ops)
-  res = {}
-  for op in ops:
-    for control_input in op.control_inputs:
-      if control_input not in ops:
-        continue
-      if control_input not in res:
-        res[control_input] = set()
-      res[control_input].add(op)
-  return res
+  ts = make_list_of_t(ts, allow_graph=False)
+  return [t.op for t in ts]
 
 
-def convert_to_control_outputs(ops, control_outputs):
-  """Create a control output dictionary if needed (and if not already created).
+def get_consuming_ops(ts):
+  """Return all the consuming ops of the tensors in ts.
 
   Args:
-    ops: an object convertible to a list of tf.Operation.
-    control_outputs: can be None, False, True or the dictionary returned by
-      the function create_control_outputs.
+    ts: a list of tf.Tensor
   Returns:
-    None if control_outputs is None or False and a control outputs dictionary
-      if control_outputs if True or an existing dictionary.
+    A list of all the consuming tf.Operation of the tensors in ts.
   Raises:
-    TypeError: if control_outputs cannot be converted to a control outputs
-      dictionary or None.
+    TypeError: if ts cannot be converted to a list of tf.Tensor.
   """
-  if control_outputs is None:
-    return None
-  elif isinstance(control_outputs, bool):
-    if control_outputs:
-      return create_control_outputs(ops)
+  ts = make_list_of_t(ts, allow_graph=False)
+  ops = []
+  for t in ts:
+    for op in t.consumers():
+      if op not in ops:
+        ops.append(op)
+  return ops
+
+
+class ControlOutputs(object):
+  """The control outputs topology."""
+
+  def __init__(self, graph):
+    """Create a dictionary of control-output dependencies.
+
+    Args:
+      graph: a tf.Graph.
+    Returns:
+      A dictionary where a key is a tf.Operation instance and the corresponding
+      value is a list of all the ops which have the key as one of their
+      control-input dependencies.
+    Raises:
+      TypeError: graph is not a tf.Graph.
+    """
+    if not isinstance(graph, tf_ops.Graph):
+      raise TypeError("Expected a tf.Graph, got: {}".format(type(graph)))
+    self._control_outputs = {}
+    self._graph = graph
+    self._version = None
+    self._build()
+
+  def update(self):
+    """Update the control outputs if the graph has changed."""
+    if self._version != self._graph.version:
+      self._build()
+    return self
+
+  def _build(self):
+    """Build the control outputs dictionary."""
+    self._control_outputs.clear()
+    ops = self._graph.get_operations()
+    for op in ops:
+      for control_input in op.control_inputs:
+        if control_input not in self._control_outputs:
+          self._control_outputs[control_input] = []
+        if op not in self._control_outputs[control_input]:
+          self._control_outputs[control_input].append(op)
+    self._version = self._graph.version
+
+  def get_all(self):
+    return self._control_outputs
+
+  def get(self, op):
+    """return the control outputs of op."""
+    if op in self._control_outputs:
+      return self._control_outputs[op]
     else:
-      return None
-  else:
-    if not isinstance(control_outputs, dict):
-      raise TypeError("Expected a dict, got: {}".format(type(control_outputs)))
-    return control_outputs
+      return ()
+
+  @property
+  def graph(self):
+    return self._graph
 
 
 def scope_finalize(scope):
@@ -290,7 +355,7 @@ def make_placeholder_from_tensor(t, scope=None):
     TypeError: if t is not None or a tf.Tensor.
   """
   return tf_array_ops.placeholder(dtype=t.dtype,
-                                  shape=t.shape,
+                                  shape=t.get_shape(),
                                   name=placeholder_name(t, scope=scope))
 
 
@@ -312,224 +377,3 @@ def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
   return tf_array_ops.placeholder(dtype=dtype,
                                   shape=shape,
                                   name=placeholder_name(scope=scope))
-
-
-def check_ts_compatibility(ts0, ts1):
-  """Make sure the shape and dtype of the two tensor's lists are compatible.
-
-  Args:
-    ts0: an object convertible to a list of tf.Tensor.
-    ts1: an object convertible to a list of tf.Tensor.
-  Raises:
-    ValueError: if any pair of tensors (same index in ts0 and ts1) have
-      a dtype or a shape which is not compatible.
-  """
-  ts0 = make_list_of_t(ts0)
-  ts1 = make_list_of_t(ts1)
-  if len(ts0) != len(ts1):
-    raise ValueError("ts0 and ts1 have different sizes: {} != {}".format(
-        len(ts0), len(ts1)))
-  for t0, t1 in zip(ts0, ts1):
-    # check dtype
-    dtype0, dtype1 = t0.dtype, t1.dtype
-    if not dtype0.is_compatible_with(dtype1):
-      raise ValueError("Dtypes {} and {} are not compatible.".format(dtype0,
-                                                                     dtype1))
-    # check shape
-    shape0, shape1 = t0.get_shape(), t1.get_shape()
-    if not shape0.is_compatible_with(shape1):
-      raise ValueError("Shapes {} and {} are not compatible.".format(shape0,
-                                                                     shape1))
-
-
-class RerouteMode(object):
-  """Enums for reroute's mode.
-
-  swap: the end of tensors a and b are swapped.
-  a2b:  the end of the tensor a are also rerouted to the end of the tensor b
-    (the end of b is left dangling).
-  b2a:  the end of the tensor b are also rerouted to the end of the tensor a
-    (the end of a is left dangling).
-  """
-  swap, a2b, b2a = range(3)
-
-  @classmethod
-  def check(cls, mode):
-    """Check swap mode.
-
-    Args:
-      mode: an integer representing one of the modes.
-    Returns:
-      True if a is rerouted to b (mode is swap or a2b).
-      True if b is rerouted to a (mode is swap or b2a).
-    Raises:
-      ValueError: if mode is outside the enum range.
-    """
-    if mode == cls.swap:
-      return True, True
-    elif mode == cls.b2a:
-      return False, True
-    elif mode == cls.a2b:
-      return True, False
-    else:
-      raise ValueError("Unknown RerouteMode: {}".format(mode))
-
-
-def reroute_ts(ts0, ts1, mode, can_modify=None, cannot_modify=None):
-  """Reroute the end of the tensors in each pair (t0,t1) in ts0 x ts1.
-
-  This function is the back-bone of the Graph-Editor. It is essentially a thin
-  wrapper on top of the tf.Operation._update_input.
-
-  Given a pair of tensor t0, t1 in ts0 x ts1, this function re-route the end
-  of t0 and t1 in three possible ways:
-  1) The reroute mode is "a<->b" or "b<->a": the tensors' end are swapped. After
-  this operation, the previous consumers of t0 are now consumers of t1 and
-  vice-versa.
-  2) The reroute mode is "a->b": the tensors' end of t0 are re-routed to the
-  tensors's end of t1 (which are left dangling). After this operation, the
-  previous consumers of t0 are still consuming t0 but the previous consumers of
-  t1 are not also consuming t0. The tensor t1 has no consumer.
-  3) The reroute mode is "b->a": this mode is the symmetric of the "a->b" mode.
-
-  Note that this function is re-routing the end of two tensors, not the start.
-  Re-routing the start of two tensors is not supported by this library. The
-  reason for that is the following: TensorFlow, by design, create a strong bond
-  between an op and its output tensor. This Graph editor follow this design and
-  treat a operation A and its generating tensors {t_i} as an entity which cannot
-  be broken. In other words, an op cannot be detached from any of its output
-  tensor, ever. What's possible however is to detach an op from its input
-  tensors, which is what this function concerns itself about.
-
-  Args:
-    ts0: an object convertible to a list of tf.Tensor.
-    ts1: an object convertible to a list of tf.Tensor.
-    mode: what to do with those tensors: "a->b" or "b<->a" for swaping and
-      "a->b" or "b->a" for one direction re-routing.
-    can_modify: iterable of operations which can be modified. Any operation
-      outside within_ops will be left untouched by this function.
-    cannot_modify: iterable of operations which cannot unmodified. Any operation
-      within cannot_modify will be left untouched by this function.
-  Returns:
-    the number of individual modifications made by the function.
-  Raises:
-    TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
-    TypeError: if can_modify or cannot_modify is not None and cannot be
-      converted to a list of tf.Operation.
-  """
-  a2b, b2a = RerouteMode.check(mode)
-  ts0 = make_list_of_t(ts0)
-  ts1 = make_list_of_t(ts1)
-  check_ts_compatibility(ts0, ts1)
-  if cannot_modify is not None:
-    cannot_modify = frozenset(make_list_of_op(cannot_modify))
-  if can_modify is not None:
-    can_modify = frozenset(make_list_of_op(can_modify))
-  nb_update_inputs = 0
-  for t0, t1 in zip(ts0, ts1):
-    if t0 == t1:
-      continue  # silently ignore identical tensors
-    consumers0 = set(t0.consumers())
-    consumers1 = set(t1.consumers())
-    if can_modify is not None:
-      consumers0 &= can_modify
-      consumers1 &= can_modify
-    if cannot_modify is not None:
-      consumers0 -= cannot_modify
-      consumers1 -= cannot_modify
-    consumers0_indices = {}
-    consumers1_indices = {}
-    for consumer0 in consumers0:
-      consumers0_indices[consumer0] = [i for i, t in enumerate(consumer0.inputs)
-                                       if t == t0]
-    for consumer1 in consumers1:
-      consumers1_indices[consumer1] = [i for i, t in enumerate(consumer1.inputs)
-                                       if t == t1]
-    if a2b:
-      for consumer1 in consumers1:
-        for i in consumers1_indices[consumer1]:
-          consumer1._update_input(i, t0)  # pylint: disable=protected-access
-          nb_update_inputs += 1
-    if b2a:
-      for consumer0 in consumers0:
-        for i in consumers0_indices[consumer0]:
-          consumer0._update_input(i, t1)  # pylint: disable=protected-access
-          nb_update_inputs += 1
-  return nb_update_inputs
-
-
-def swap_ts(ts0, ts1, can_modify=None, cannot_modify=None):
-  """For each tensor's pair, swap the end of (t0,t1).
-
-  B0 B1     B0 B1
-  |  |    =>  X
-  A0 A1     A0 A1
-
-  Args:
-    ts0: an object convertible to a list of tf.Tensor.
-    ts1: an object convertible to a list of tf.Tensor.
-    can_modify: iterable of operations which can be modified. Any operation
-      outside within_ops will be left untouched by this function.
-    cannot_modify: iterable of operations which cannot unmodified. Any operation
-      within cannot_modify will be left untouched by this function.
-  Returns:
-    the number of individual modifications made by the function.
-  Raises:
-    TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
-    TypeError: if can_modify or cannot_modify is not None and cannot be
-      converted to a list of tf.Operation.
-  """
-  return reroute_ts(ts0, ts1, RerouteMode.swap, can_modify, cannot_modify)
-
-
-def reroute_a2b_ts(ts0, ts1, can_modify=None, cannot_modify=None):
-  """For each tensor's pair, replace the end of t1 by the end of t0.
-
-  B0 B1     B0 B1
-  |  |    => |/
-  A0 A1     A0 A1
-
-  The end of the tensors in ts1 are left dangling.
-
-  Args:
-    ts0: an object convertible to a list of tf.Tensor.
-    ts1: an object convertible to a list of tf.Tensor.
-    can_modify: iterable of operations which can be modified. Any operation
-      outside within_ops will be left untouched by this function.
-    cannot_modify: iterable of operations which cannot unmodified. Any operation
-      within cannot_modify will be left untouched by this function.
-  Returns:
-    the number of individual modifications made by the function.
-  Raises:
-    TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
-    TypeError: if can_modify or cannot_modify is not None and cannot be
-      converted to a list of tf.Operation.
-  """
-  return reroute_ts(ts0, ts1, RerouteMode.a2b, can_modify, cannot_modify)
-
-
-def reroute_b2a_ts(ts0, ts1, can_modify=None, cannot_modify=None):
-  r"""For each tensor's pair, replace the end of t0 by the end of t1.
-
-  B0 B1     B0 B1
-  |  |    =>  \|
-  A0 A1     A0 A1
-
-  The end of the tensors in ts0 are left dangling.
-
-  Args:
-    ts0: an object convertible to a list of tf.Tensor.
-    ts1: an object convertible to a list of tf.Tensor.
-    can_modify: iterable of operations which can be modified. Any operation
-      outside within_ops will be left untouched by this function.
-    cannot_modify: iterable of operations which cannot unmodified. Any operation
-      within cannot_modify will be left untouched by this function.
-  Returns:
-    the number of individual modifications made by the function.
-  Raises:
-    TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
-    TypeError: if can_modify or cannot_modify is not None and cannot be
-      converted to a list of tf.Operation.
-  """
-  return reroute_ts(ts0, ts1, RerouteMode.b2a, can_modify, cannot_modify)
-

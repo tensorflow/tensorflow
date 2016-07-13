@@ -1,4 +1,4 @@
-# Tensorflow code for training random forests.
+# TensorFlow code for training random forests.
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])

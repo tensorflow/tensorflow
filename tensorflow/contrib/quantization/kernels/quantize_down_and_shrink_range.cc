@@ -71,10 +71,10 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 #if 0
     // This is the reference, non-eigen implementation:
     auto output_array = output->flat<T2>();
-    RequantizeManyInNewRange(input_array.data(), input_array.size(),
-                             input_min_float, input_max_float, actual_min_float,
-                             actual_max_float, output_array.data());
-
+    RequantizeManyInNewRange<T1, T2>(input_array.data(), input_array.size(),
+                                     input_min_float, input_max_float,
+                                     actual_min_float, actual_max_float,
+                                     output_array.data());
 #endif
 
     if (input_array.size() > 0) {

@@ -35,6 +35,9 @@ Input of `fit` and `evaluate` should have following features,
 * for column in `feature_columns`:
   - if isinstance(column, `SparseColumn`):
       key=column.name, value=a `SparseTensor`
+  - if isinstance(column, `WeightedSparseColumn`):
+      {key=id column name, value=a `SparseTensor`,
+       key=weight column name, value=a `SparseTensor`}
   - if isinstance(column, `RealValuedColumn`):
       key=column.name, value=a `Tensor`
   - if `feature_columns` is `None`:

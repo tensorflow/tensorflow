@@ -69,13 +69,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import time
+
 import numpy as np
 import six
 
+from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.contrib.learn.python.learn.utils import export
+from tensorflow.core.framework.summary_pb2 import Summary
+from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
 
 
@@ -92,6 +98,7 @@ class BaseMonitor(object):
     self._current_epoch = None
     self._current_step = None
     self._max_steps = None
+    self._init_step = None
     self._estimator = None
 
   def set_estimator(self, estimator):
@@ -108,11 +115,14 @@ class BaseMonitor(object):
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
 
-  def begin(self, max_steps=None):
+  def begin(self, max_steps=None, init_step=None):
     """Called at the beginning of training.
+
+    When called, the default graph is the one we are executing.
 
     Args:
       max_steps: `int`, the maximum global step this training will run until.
+      init_step: `int`, step at which this training will start.
 
     Raises:
       ValueError: if we've already begun a run.
@@ -120,14 +130,19 @@ class BaseMonitor(object):
     if self._begun:
       raise ValueError("begin called twice without end.")
     self._max_steps = max_steps
+    self._init_step = init_step
     self._begun = True
 
-  def end(self):
+  def end(self, session=None):
     """Callback at the end of training/evaluation.
+
+    Args:
+      session: A `tf.Session` object that can be used to run ops.
 
     Raises:
       ValueError: if we've not begun a run.
     """
+    _ = session
     if not self._begun:
       raise ValueError("end called without begin.")
     self._max_steps = None
@@ -178,8 +193,6 @@ class BaseMonitor(object):
       ValueError: if we've already begun a step, or `step` < 0, or
           `step` > `max_steps`.
     """
-    if self._current_step is not None:
-      raise ValueError("step_begin called twice without step_end.")
     if (step < 0) or (
         (self._max_steps is not None) and (step > self._max_steps)):
       raise ValueError("Invalid step %s." % step)
@@ -195,6 +208,9 @@ class BaseMonitor(object):
 
     In addition, the callback has the opportunity to stop training by returning
     `True`. This is useful for early stopping, for example.
+
+    Note that this method is not called if the call to `Session.run()` that
+    followed the last call to `step_begin()` failed.
 
     Args:
       step: `int`, the current value of the global step.
@@ -214,13 +230,26 @@ class BaseMonitor(object):
     self._current_step = None
     return False
 
+  def post_step(self, step, session):  # pylint: disable=unused-argument
+    """Callback after the step is finished.
+
+    Called after step_end and receives session to perform extra session.run
+    calls. If failure occurred in the process, will be called as well.
+
+    Args:
+      step: `int`, global step of the model.
+      session: `Session` object.
+    """
+    _ = step, session
+
 
 class EveryN(BaseMonitor):
-  """Base class for monitors that execute callbacks every n steps.
+  """Base class for monitors that execute callbacks every N steps.
 
-  This class adds two new callbacks:
+  This class adds three new callbacks:
     - every_n_step_begin
     - every_n_step_end
+    - every_n_pos_step
 
   The callbacks are executed every n steps, or optionally every step for the
   first m steps, where m and n can both be user-specified.
@@ -234,11 +263,16 @@ class EveryN(BaseMonitor):
 
   Failing to call the super implementation will cause unpredictible behavior.
 
+  The `every_n_post_step()` callback is also called after the last step if it
+  was not already called through the regular conditions.  Note that
+  `every_n_step_begin()` and `every_n_step_end()` do not receive that special
+  treatment.
+
   """
   # TODO(ipolosukhin): Add also every n seconds.
 
   def __init__(self, every_n_steps=100, first_n_steps=1):
-    """Initialized an `EveryN` monitor.
+    """Initializes an `EveryN` monitor.
 
     Args:
       every_n_steps: `int`, the number of steps to allow between callbacks.
@@ -249,18 +283,10 @@ class EveryN(BaseMonitor):
     super(EveryN, self).__init__()
     self._every_n_steps = every_n_steps
     self._first_n_steps = first_n_steps
-    self._last_step = 0
-    self._active_step = None
-
-  def begin(self, max_steps=None):
-    """Overrides `BaseMonitor.begin`.
-
-    When overriding this method, you must call the super implementation.
-
-    Args:
-      max_steps: `int`, the maximum global step value.
-    """
-    super(EveryN, self).begin(max_steps)
+    # Last step in the model.
+    self._last_step = None
+    # Last step at which we called one of the every_n methods
+    self._last_active_step = None
 
   def every_n_step_begin(self, step):  # pylint: disable=unused-argument
     """Callback before every n'th step begins.
@@ -294,6 +320,15 @@ class EveryN(BaseMonitor):
     """
     return False
 
+  def every_n_post_step(self, step, session):
+    """Callback after a step is finished or `end()` is called.
+
+    Args:
+      step: `int`, the current value of the global step.
+      session: `Session` object.
+    """
+    pass
+
   def step_begin(self, step):
     """Overrides `BaseMonitor.step_begin`.
 
@@ -309,13 +344,13 @@ class EveryN(BaseMonitor):
       ValueError: if called more than once during a step.
     """
     super(EveryN, self).step_begin(step)
+    self._last_step = step
+    if self._last_active_step is None:
+      self._last_active_step = step - 1
     if (step <= self._first_n_steps or
-        step >= (self._every_n_steps + self._last_step) or
-        step == self._max_steps):
-      if self._active_step is not None:
-        raise ValueError(
-            "Starting step %s, %s still active." % (step, self._active_step))
-      self._active_step = step
+        step >= (self._every_n_steps + self._last_active_step) or
+        step == self._max_steps):  # Note: max_steps can be None here.
+      self._last_active_step = step
       return self.every_n_step_begin(step)
     return []
 
@@ -334,12 +369,59 @@ class EveryN(BaseMonitor):
       or `False` otherwise.
     """
     super(EveryN, self).step_end(step, output)
-    to_stop = False
-    if (self._active_step is not None) and (self._active_step == step):
-      self._last_step = step
-      to_stop = self.every_n_step_end(step, output)
-      self._active_step = None
-    return to_stop
+    if self._last_active_step == step:
+      return self.every_n_step_end(step, output)
+    return False
+
+  def post_step(self, step, session):
+    super(EveryN, self).post_step(step, session)
+    if self._last_active_step == step:
+      self.every_n_post_step(step, session)
+
+  def end(self, session=None):
+    super(EveryN, self).end(session=session)
+    if self._last_step != self._last_active_step:
+      self.every_n_post_step(self._last_step, session)
+
+
+class StopAtStep(BaseMonitor):
+  """Monitor to request stop at a specified step."""
+
+  def __init__(self, num_steps=None, last_step=None):
+    """Create a StopAtStep monitor.
+
+    This monitor requests stop after either a number of steps have been
+    executed or a last step has been reached.  Only of the two options can be
+    specified.
+
+    if `num_steps` is specified, it indicates the number of steps to execute
+    after `begin()` is called.  If instead `last_step` is specified, it
+    indicates the last step we want to execute, as passed to the `step_begin()`
+    call.
+
+    Args:
+      num_steps: Number of steps to execute.
+      last_step: Step after which to stop.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
+    super(StopAtStep, self).__init__()
+    if num_steps is None and last_step is None:
+      raise ValueError("One of num_steps or last_step must be specified.")
+    if num_steps is not None and last_step is not None:
+      raise ValueError("Only one of num_steps or last_step can be specified.")
+    self._num_steps = num_steps
+    self._last_step = last_step
+
+  def begin(self, max_steps=None, init_step=None):
+    super(StopAtStep, self).begin(max_steps=max_steps, init_step=init_step)
+    if self._num_steps is not None:
+      self._last_step = init_step + self._num_steps
+
+  def step_end(self, step, output):
+    super(StopAtStep, self).step_end(step, output)
+    return step >= self._last_step
 
 
 # TODO(ptucker): Rename to LoggingTensor since it's not writing to stdout.
@@ -377,6 +459,45 @@ class PrintTensor(EveryN):
       if tensor_name in outputs:
         stats.append("%s = %s" % (tag, str(outputs[tensor_name])))
     logging.info("Step %d: %s", step, ", ".join(stats))
+
+
+class LoggingTrainable(EveryN):
+  """Writes trainable varialbe values into log every N steps.
+
+  Write the tensors in trainable variables `every_n` steps,
+  starting with the `first_n`th step.
+
+  """
+
+  def __init__(self, scope=None, every_n=100, first_n=1):
+    """Initializes LoggingTrainable monitor.
+
+    Args:
+      scope: An optional string to match variable names using re.match.
+      every_n: Print every N steps.
+      first_n: Print first N steps.
+    """
+    super(LoggingTrainable, self).__init__(every_n, first_n)
+    self._scope = scope
+
+  def every_n_step_begin(self, step):
+    super(LoggingTrainable, self).every_n_step_begin(step)
+    # Get a list of trainable variables at the begining of every N steps.
+    # We cannot get this in __init__ because train_op has not been generated.
+    trainables = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
+                                    scope=self._scope)
+    self._names = {}
+    for var in trainables:
+      self._names[var.name] = var.value().name
+    return list(self._names.values())
+
+  def every_n_step_end(self, step, outputs):
+    super(LoggingTrainable, self).every_n_step_end(step, outputs)
+    stats = []
+    for tag, tensor_name in six.iteritems(self._names):
+      if tensor_name in outputs:
+        stats.append("%s = %s" % (tag, str(outputs[tensor_name])))
+    logging.info("Logging Trainable: Step %d: %s", step, ", ".join(stats))
 
 
 class SummarySaver(EveryN):
@@ -421,8 +542,8 @@ class SummarySaver(EveryN):
       self._summary_writer.add_summary(summary_strs, step)
     return False
 
-  def end(self):
-    super(SummarySaver, self).end()
+  def end(self, session=None):
+    super(SummarySaver, self).end(session=session)
     if self._summary_writer:
       self._summary_writer.flush()
 
@@ -514,7 +635,7 @@ class ValidationMonitor(EveryN):
     if self._estimator is None:
       raise ValueError("Missing call to set_estimator.")
     # Check that we are not running evaluation on the same checkpoint.
-    latest_path = saver.latest_checkpoint(self._estimator.model_dir)
+    latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
     if latest_path == self._latest_path:
       logging.info("Skipping evaluation due to same checkpoint %s for step %d "
                    "as for step %d.", latest_path, step, self._latest_path_step)
@@ -638,8 +759,8 @@ class GraphDump(BaseMonitor):
     self._ignore_ops = ignore_ops or GraphDump.IGNORE_OPS
     self._data = {}
 
-  def begin(self, max_steps):
-    super(GraphDump, self).begin(max_steps)
+  def begin(self, max_steps=None, init_step=None):
+    super(GraphDump, self).begin(max_steps=max_steps, init_step=init_step)
     self._tensors = []
     graph = ops.get_default_graph()
     graph_def = graph.as_graph_def()
@@ -743,9 +864,121 @@ class ExportMonitor(EveryN):
       logging.info("Skipping exporting for the same step. "
                    "Consider exporting less frequently.")
 
-  def end(self):
-    super(ExportMonitor, self).end()
+  def end(self, session=None):
+    super(ExportMonitor, self).end(session=session)
     export.export_estimator(self._estimator,
                             self.export_dir,
                             exports_to_keep=self.exports_to_keep,
                             signature_fn=self.signature_fn)
+
+
+class CheckpointSaver(EveryN):
+  """Saves checkpoints every N steps."""
+
+  def __init__(self, every_n_steps, saver, checkpoint_dir,
+               checkpoint_basename="model.ckpt",
+               first_n_steps=-1):
+    """Initialize CheckpointSaver monitor.
+
+    Args:
+      every_n_steps: `int`, save every N steps.
+      saver: `Saver` object, used for saving.
+      checkpoint_dir: `str`, base directory for the checkpoint files.
+      checkpoint_basename: `str`, base name for the checkpoint files.
+      first_n_steps: `int`, if positive, save every step during the
+        first `first_n_steps` steps.
+    """
+    logging.info("Create CheckpointSaver")
+    super(CheckpointSaver, self).__init__(every_n_steps=every_n_steps,
+                                          first_n_steps=first_n_steps)
+    self._saver = saver
+    self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
+    self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
+
+  def every_n_post_step(self, step, session):
+    logging.info("Saving checkpoints for %d into %s." % (step, self._save_path))
+    self._saver.save(session, self._save_path, global_step=step)
+    if self._summary_writer:
+      self._summary_writer.add_session_log(
+          SessionLog(status=SessionLog.CHECKPOINT,
+                     checkpoint_path=self._save_path),
+          step)
+
+
+class StepCounter(EveryN):
+  """Steps per second monitor."""
+
+  def __init__(self, every_n_steps=100, output_dir=None,
+               summary_writer=None):
+    super(StepCounter, self).__init__(every_n_steps=every_n_steps)
+    self._summary_tag = "global_step/sec"
+    self._last_reported_step = None
+    self._last_reported_time = None
+    self._summary_writer = None
+    if summary_writer is None and output_dir:
+      self._summary_writer = SummaryWriterCache.get(output_dir)
+
+  def begin(self, init_step):
+    super(StepCounter, self).begin(init_step)
+    self._last_reported_step = self._init_step
+    self._last_reported_time = time.time()
+
+  def set_estimator(self, estimator):
+    super(StepCounter, self).set_estimator(estimator)
+    if self._summary_writer is None:
+      self._summary_writer = SummaryWriterCache.get(estimator.model_dir)
+
+  def every_n_step_end(self, current_step, outputs):
+    current_time = time.time()
+    if self._last_reported_time is not None and self._summary_writer:
+      added_steps = current_step - self._last_reported_step
+      elapsed_time = current_time - self._last_reported_time
+      steps_per_sec = added_steps / elapsed_time
+      summary = Summary(value=[Summary.Value(tag=self._summary_tag,
+                                             simple_value=steps_per_sec)])
+      self._summary_writer.add_summary(summary, current_step)
+    self._last_reported_step = current_step
+    self._last_reported_time = current_time
+
+
+class NanLossDuringTrainingError(RuntimeError):
+
+  def __str__(self):
+    return "NaN loss during training."
+
+
+class NanLoss(EveryN):
+  """NaN Loss monitor.
+
+  Monitors loss and stops training if loss is NaN.
+  Can either fail with exception or just stop training.
+  """
+
+  def __init__(self, loss_tensor, every_n_steps=100, fail_on_nan_loss=True):
+    """Initializes NanLoss monitor.
+
+    Args:
+      loss_tensor: `Tensor`, the loss tensor.
+      every_n_steps: `int`, run check every this many steps.
+      fail_on_nan_loss: `bool`, whether to raise exception when loss is NaN.
+    """
+    super(NanLoss, self).__init__(every_n_steps=every_n_steps)
+    self._loss_tensor = loss_tensor
+    self._fail_on_nan_loss = fail_on_nan_loss
+
+  def every_n_step_begin(self, step):
+    super(NanLoss, self).every_n_step_begin(step)
+    return self._loss_tensor
+
+  def every_n_step_end(self, step, outputs):
+    super(NanLoss, self).every_n_step_end(step, outputs)
+    if np.isnan(outputs):
+      failure_message = "Model diverged with loss = NaN."
+      if self._fail_on_nan_loss:
+        logging.error(failure_message)
+        raise NanLossDuringTrainingError
+      else:
+        logging.warning(failure_message)
+        # We don't raise an error but we return "should stop" so we stop, but
+        # without an exception.
+        return True

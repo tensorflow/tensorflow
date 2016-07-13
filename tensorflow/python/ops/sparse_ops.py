@@ -16,7 +16,7 @@
 # pylint: disable=g-short-docstring-punctuation
 """## Sparse Tensor Representation
 
-Tensorflow supports a `SparseTensor` representation for data that is sparse
+TensorFlow supports a `SparseTensor` representation for data that is sparse
 in multiple dimensions. Contrast this representation with `IndexedSlices`,
 which is efficient for representing tensors that are sparse in their first
 dimension, and dense along all other dimensions.

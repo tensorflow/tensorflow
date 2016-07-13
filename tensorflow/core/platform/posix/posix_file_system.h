@@ -44,6 +44,8 @@ class PosixFileSystem : public FileSystem {
 
   Status GetChildren(const string& dir, std::vector<string>* result) override;
 
+  Status Stat(const string& fname, FileStatistics* stats) override;
+
   Status DeleteFile(const string& fname) override;
 
   Status CreateDir(const string& name) override;

@@ -119,7 +119,7 @@ def export_estimator(estimator,
       features that are then passed to the model.
     signature_fn: Function that given `Tensor` of `Example` strings,
       `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
-      and returns default and named exporting signautres.
+      and returns default and named exporting signatures.
     default_batch_size: Default batch size of the `Example` placeholder.
     exports_to_keep: Number of exports to keep.
   """

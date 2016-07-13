@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import copy
 
+from six import iteritems
 from six import StringIO
 
 from tensorflow.contrib.graph_editor import select
@@ -64,7 +65,7 @@ class SubGraphView(object):
   - and the operations in between, accessible via the "ops" property.
 
   An subgraph can be seen as a function F(i0, i1, ...) -> o0, o1, ... It is a
-  function which takes as input some input ensors and returns as output some
+  function which takes as input some input tensors and returns as output some
   output tensors. The computation that the function performs is encoded in the
   operations of the subgraph.
 
@@ -173,10 +174,7 @@ class SubGraphView(object):
     self._ops = inside_ops
 
     # Compute inside and outside tensor
-    inputs, outputs, insides = select.compute_boundary_ts(
-        inside_ops,
-        keep_order=True,
-        ambiguous_are_outputs=True)
+    inputs, outputs, insides = select.compute_boundary_ts(inside_ops)
 
     # Compute passthrough tensors, silently ignoring the non-passthrough ones.
     all_tensors = frozenset(inputs + outputs + list(insides))
@@ -197,7 +195,7 @@ class SubGraphView(object):
     """
     cls = self.__class__
     result = cls.__new__(cls)
-    for k, v in self.__dict__.iteritems():
+    for k, v in iteritems(self.__dict__):
       if k == "_graph":
         setattr(result, k, v)
       else:
@@ -223,7 +221,6 @@ class SubGraphView(object):
     self._input_ts = list(other._input_ts)
     self._output_ts = list(other._output_ts)
     # pylint: enable=protected-access
-    return self
 
   def copy(self):
     """Return a copy of itself.
@@ -236,39 +233,74 @@ class SubGraphView(object):
     """
     return copy.copy(self)
 
-  def unmap(self, remove_input_map=True, remove_output_map=True):
-    """Unmap existing input and/or output mapping.
+  def _remap_default(self, remove_input_map=True, remove_output_map=True):
+    """Remap in the place the inputs and/or outputs to the default mapping.
 
     Args:
-      remove_input_map: if True the input map is reset to identity.
-      remove_output_map: if True the output map is reset to identity.
-    Returns:
-      A new modified instance of the original subgraph view with its
-        input and/or output mapping reset to identity.
+      remove_input_map: if True the input map is reset to the default one.
+      remove_output_map: if True the output map is reset to the default one.
     """
-    res = self.copy()
     if not remove_input_map and not remove_output_map:
-      return res
+      return
 
     # Compute inside and outside tensor
-    inputs, outputs, _ = select.compute_boundary_ts(self._ops, keep_order=True)
+    inputs, outputs, _ = select.compute_boundary_ts(self._ops)
     if remove_input_map:
       self._input_ts = list(inputs) + self._passthrough_ts
     if remove_output_map:
       self._output_ts = list(outputs) + self._passthrough_ts
+
+  def remap_default(self, remove_input_map=True, remove_output_map=True):
+    """Remap the inputs and/or outputs to the default mapping.
+
+    Args:
+      remove_input_map: if True the input map is reset to the default one.
+      remove_output_map: if True the output map is reset to the default one.
+    Returns:
+      A new modified instance of the original subgraph view with its
+        input and/or output mapping reset to the default one.
+    """
+    res = self.copy()
+    res._remap_default(remove_input_map, remove_output_map)  # pylint: disable=protected-access
     return res
 
-  def _remap_inputs(self, input_map):
+  def _remap_inputs(self, new_input_indices):
     """Remap the inputs of the subgraph in-place."""
-    _check_within_range(input_map, len(self._input_ts), repetition=False)
-    self._input_ts = [self._input_ts[i]
-                      for i in input_map]  # pylint: disable=protected-access
+    _check_within_range(new_input_indices, len(self._input_ts),
+                        repetition=False)
+    self._input_ts = [self._input_ts[i] for i in new_input_indices]
 
-  def _remap_outputs(self, output_map):
+  def _remap_outputs(self, new_output_indices):
     """Remap the outputs of the subgraph in-place."""
-    _check_within_range(output_map, len(self._output_ts), repetition=True)
-    self._output_ts = [self._output_ts[i]
-                       for i in output_map]  # pylint: disable=protected-access
+    _check_within_range(new_output_indices, len(self._output_ts),
+                        repetition=True)
+    self._output_ts = [self._output_ts[i] for i in new_output_indices]
+
+  def _remap_outputs_make_unique(self):
+    """Remap the outputs in place so that all the tensors appears only once."""
+    output_ts = list(self._output_ts)
+    self._output_ts = []
+    util.concatenate_unique(self._output_ts, output_ts)
+
+  def _remap_outputs_to_consumers(self):
+    """Remap the outputs in place to match the number of consumers."""
+    self._remap_outputs_make_unique()
+    output_ts = list(self._output_ts)
+    self._output_ts = []
+    for t in output_ts:
+      self._output_ts += [t]*len(t.consumers())
+
+  def remap_outputs_make_unique(self):
+    """Remap the outputs so that all the tensors appears only once."""
+    res = copy.copy(self)
+    res._remap_outputs_make_unique()  # pylint: disable=protected-access
+    return res
+
+  def remap_outputs_to_consumers(self):
+    """Remap the outputs to match the number of consumers."""
+    res = copy.copy(self)
+    res._remap_outputs_to_consumers()  # pylint: disable=protected-access
+    return res
 
   def _remove_unused_ops(self, control_inputs=True):
     """Remove unused ops in place.
@@ -278,11 +310,10 @@ class SubGraphView(object):
     Returns:
       A new subgraph view which only contains used operations.
     """
-    ops = select.get_forward_backward_walk_union_ops(
-        self.connected_inputs,
-        self.connected_outputs,
-        within_ops=self._ops,
-        control_inputs=control_inputs)
+    ops = select.get_walks_union_ops(self.connected_inputs,
+                                     self.connected_outputs,
+                                     within_ops=self._ops,
+                                     control_inputs=control_inputs)
     self._ops = [op for op in self._ops if op in ops]
 
   def remove_unused_ops(self, control_inputs=True):
@@ -294,7 +325,7 @@ class SubGraphView(object):
       A new subgraph view which only contains used operations.
     """
     res = copy.copy(self)
-    res._prune_ops(control_inputs)  # pylint: disable=protected-access
+    res._remove_unused_ops(control_inputs)  # pylint: disable=protected-access
     return res
 
   def remap_inputs(self, new_input_indices):
@@ -503,9 +534,9 @@ class SubGraphView(object):
 
   def consumers(self):
     """Return a Python set of all the consumers of this subgraph view."""
-    res = set()
+    res = []
     for output in self._output_ts:
-      res.update(output.consumers())
+      util.concatenate_unique(res, output.consumers())
     return res
 
 
@@ -529,7 +560,7 @@ def _check_graph(sgv, graph):
     return sgv
   if not isinstance(graph, tf_ops.Graph):
     raise TypeError("Expected a tf.Graph, got: {}".format(type(graph)))
-  if sgv.graph != graph:
+  if sgv.graph is not graph:
     raise ValueError("Graph mismatch.")
   return sgv
 
@@ -561,3 +592,16 @@ def make_view(*args, **kwargs):
   ops, ts = select.select_ops_and_ts(*args, **kwargs)
   sgv = SubGraphView(ops, ts)
   return _check_graph(sgv, graph)
+
+
+def make_view_from_scope(scope, graph):
+  """Make a subgraph from a name scope.
+
+  Args:
+    scope: the name of the scope.
+    graph: the tf.Graph.
+  Returns:
+    A subgraph view representing the given scope.
+  """
+  ops = select.get_name_scope_ops(graph, scope)
+  return SubGraphView(ops)

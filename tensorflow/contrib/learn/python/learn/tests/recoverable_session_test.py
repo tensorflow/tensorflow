@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import recoverable_session
+
 
 class AbortAtNSession(object):
   """A mock sessionthat aborts at the N-th run call."""
@@ -42,7 +44,7 @@ class RecoverableSessionTest(tf.test.TestCase):
   def test_properties(self):
     with self.test_session() as sess:
       tf.constant(0.0)
-      recoverable_sess = tf.contrib.learn.RecoverableSession(lambda: sess)
+      recoverable_sess = recoverable_session.RecoverableSession(lambda: sess)
       self.assertEquals(sess.graph, recoverable_sess.graph)
       self.assertEquals(sess.sess_str, recoverable_sess.sess_str)
 
@@ -50,7 +52,7 @@ class RecoverableSessionTest(tf.test.TestCase):
     with self.test_session() as sess:
       c = tf.constant(0)
       v = tf.identity(c)
-      recoverable_sess = tf.contrib.learn.RecoverableSession(lambda: sess)
+      recoverable_sess = recoverable_session.RecoverableSession(lambda: sess)
       self.assertEqual(51, recoverable_sess.run(v, feed_dict={c: 51}))
 
   def test_recovery(self):
@@ -65,7 +67,7 @@ class RecoverableSessionTest(tf.test.TestCase):
       self.assertEqual(3, len(sessions_to_use))
       # Make the recoverable session uses these 3 sessions in sequence by
       # passing a factory that pops from the session_to_use list.
-      recoverable_sess = tf.contrib.learn.RecoverableSession(
+      recoverable_sess = recoverable_session.RecoverableSession(
           lambda: sessions_to_use.pop(0))
       self.assertEqual(2, len(sessions_to_use))  # One session popped.
       # Using first session.

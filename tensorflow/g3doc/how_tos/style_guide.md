@@ -1,6 +1,6 @@
 # TensorFlow Style Guide
 
-This page contains style decisions that both developers and users of Tensorflow
+This page contains style decisions that both developers and users of TensorFlow
 should follow to increase the readability of their code, reduce the number of
 errors, and promote consistency.
 

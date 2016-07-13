@@ -416,7 +416,7 @@ void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
     }
 
     tensorflow::int64 nelems = 1;
-    gtl::InlinedVector<tensorflow::int64, 4> dims;
+    gtl::InlinedVector<int64_t, 4> dims;
     for (int i = 0; i < PyArray_NDIM(array); ++i) {
       dims.push_back(PyArray_SHAPE(array)[i]);
       nelems *= dims[i];

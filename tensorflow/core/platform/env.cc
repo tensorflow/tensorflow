@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <deque>
+#include <vector>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -142,6 +145,18 @@ Status Env::DeleteDir(const string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->DeleteDir(dirname);
+}
+
+Status Env::Stat(const string& fname, FileStatistics* stat) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->Stat(fname, stat);
+}
+
+Status Env::IsDirectory(const string& fname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
+  return fs->IsDirectory(fname);
 }
 
 Status Env::GetFileSize(const string& fname, uint64* file_size) {
