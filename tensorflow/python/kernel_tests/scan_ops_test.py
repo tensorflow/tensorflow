@@ -36,12 +36,19 @@ def handle_options(func, x, axis, exclusive, reverse):
     x = numpy_reverse(x, axis)
 
   if exclusive:
-    ix = [slice(0, 1) if i == axis else slice(None)
-            for i in range(len(x.shape))]
-    init = np.ones_like(x[ix])
-    x = np.concatenate([init, func(x[:-1], axis)], axis=axis)
+    ix_head = [slice(0, 1) if i == axis else slice(None)
+                 for i in range(len(x.shape))]
+    ix_init = [slice(0, -1) if i == axis else slice(None)
+                 for i in range(len(x.shape))]
+    if func == np.cumsum:
+      init = np.zeros_like(x[ix_head])
+    elif func == np.cumprod:
+      init = np.ones_like(x[ix_head])
+    else:
+      raise ValueError("Unknown scan function")
+    x = np.concatenate([init, func(x[ix_init], axis)], axis=axis)
   else:
-    x = func(x)
+    x = func(x, axis=axis)
 
   if reverse:
     x = numpy_reverse(x, axis)
@@ -52,7 +59,7 @@ class CumsumTest(tf.test.TestCase):
   valid_dtypes = [np.int32, np.int64, np.float16, np.float32,
                   np.float64, np.complex64, np.complex128]
 
-  def _compare(self, x, axis, reverse, use_gpu=False):
+  def _compare(self, x, axis, exclusive, reverse, use_gpu=False):
     np_out = handle_options(np.cumsum, x, axis, exclusive, reverse)
     with self.test_session(use_gpu=use_gpu):
       tf_out = tf.cumsum(x, axis, exclusive, reverse).eval()
@@ -60,8 +67,10 @@ class CumsumTest(tf.test.TestCase):
     self.assertAllClose(np_out, tf_out)
 
   def _compareAll(self, x, axis):
-    for exclusive, reverse, use_gpu in combinations([True, False], 3):
-      self._compare(x, axis, exclusive, reverse, use_gpu)
+    for exclusive in [True, False]:
+      for reverse in [True, False]:
+        for use_gpu in [True, False]:
+          self._compare(x, axis, exclusive, reverse, use_gpu)
 
   def test1D(self):
     for dtype in self.valid_dtypes:
@@ -80,12 +89,6 @@ class CumsumTest(tf.test.TestCase):
       self._compareAll(x, 0)
       self._compareAll(x, 1)
       self._compareAll(x, 2)
-
-  def test8D(self):
-    for dtype in self.__class__.valid_dtypes:
-      x = np.arange(0, 2**8).reshape([2] * 8).astype(dtype)
-      for n in range(8):
-        self._compareAll(x, n)
 
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
@@ -130,14 +133,10 @@ class CumsumTest(tf.test.TestCase):
     self._compareGradient([50], 0, True, True)
 
   def testGradient2D(self):
-    self._compareGradient([5, 10], 0, False, False)
-    self._compareGradient([5, 10], 1, False, False)
-    self._compareGradient([5, 10], 0, True, False)
-    self._compareGradient([5, 10], 1, True, False)
-    self._compareGradient([5, 10], 0, False, True)
-    self._compareGradient([5, 10], 1, False, True)
-    self._compareGradient([5, 10], 0, True, True)
-    self._compareGradient([5, 10], 1, True, True)
+    for axis in [0, 1]:
+      for exclusive in [True, False]:
+        for reverse in [True, False]:
+          self._compareGradient([5, 10], axis, exclusive, reverse)
 
 
 class CumprodTest(tf.test.TestCase):
@@ -153,8 +152,11 @@ class CumprodTest(tf.test.TestCase):
     self.assertAllClose(np_out, tf_out)
 
   def _compareAll(self, x, axis):
-    for exclusive, reverse, use_gpu in combinations([True, False], 3):
-      self._compare(x, axis, exclusive, reverse, use_gpu)
+    for exclusive in [True, False]:
+      for reverse in [True, False]:
+        for use_gpu in [True, False]:
+          self._compare(x, axis, exclusive, reverse, use_gpu)
+
 
   def test1D(self):
     for dtype in self.valid_dtypes:
@@ -173,12 +175,6 @@ class CumprodTest(tf.test.TestCase):
       self._compareAll(x, 0)
       self._compareAll(x, 1)
       self._compareAll(x, 2)
-
-  def test8D(self):
-    for dtype in self.__class__.valid_dtypes:
-      x = np.arange(1, 2**8+1).reshape([2] * 8).astype(dtype)
-      for n in range(8):
-        self._compareAll(x, n)
 
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
@@ -223,14 +219,10 @@ class CumprodTest(tf.test.TestCase):
     self._compareGradient([8], 0, True, True)
 
   def testGradient2D(self):
-    self._compareGradient([2, 4], 0, False, False)
-    self._compareGradient([2, 4], 1, False, False)
-    self._compareGradient([2, 4], 0, True, False)
-    self._compareGradient([2, 4], 1, True, False)
-    self._compareGradient([2, 4], 0, False, True)
-    self._compareGradient([2, 4], 1, False, True)
-    self._compareGradient([2, 4], 0, True, True)
-    self._compareGradient([2, 4], 1, True, True)
+    for axis in [0, 1]:
+      for exclusive in [True, False]:
+        for reverse in [True, False]:
+          self._compareGradient([2, 4], axis, exclusive, reverse)
 
 
 if __name__ == "__main__":
