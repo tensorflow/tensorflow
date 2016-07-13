@@ -23,3 +23,4 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
+from tensorflow.contrib.linear_optimizer.python.sdca_optimizer import SDCAOptimizer
