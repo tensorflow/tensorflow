@@ -756,7 +756,8 @@ Status MasterSession::Create(GraphDef* graph_def) {
   // OpRegistryInterface used by the SimpleGraphExecutionState to construct the
   // pre-partitioned graphs during DoRunWithLocalExecution().
   func_def_lib_.Swap(graph_def->mutable_library());
-  flib_def_ = new FunctionLibraryDefinition(func_def_lib_);
+  flib_def_ =
+      new FunctionLibraryDefinition(OpRegistry::Global(), func_def_lib_);
 
   SimpleGraphExecutionStateOptions options;
   options.device_set = &devices_;

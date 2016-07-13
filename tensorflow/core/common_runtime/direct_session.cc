@@ -213,7 +213,8 @@ void DirectSession::MaybeInitializeExecutionState(const GraphDef& graph) {
     return;
   }
   // Set up the per-session execution state.
-  flib_def_.reset(new FunctionLibraryDefinition(graph.library()));
+  flib_def_.reset(
+      new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
   SimpleGraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
