@@ -48,7 +48,7 @@ namespace benchmark_model {
 Status InitializeSession(int num_threads, const string& graph,
                          std::unique_ptr<Session>* session,
                          std::unique_ptr<StatSummarizer>* stats) {
-  LOG(INFO) << "Loading Tensorflow.";
+  LOG(INFO) << "Loading TensorFlow.";
 
   tensorflow::SessionOptions options;
   tensorflow::ConfigProto& config = options.config;
@@ -61,7 +61,7 @@ Status InitializeSession(int num_threads, const string& graph,
   tensorflow::GraphDef tensorflow_graph;
   Status s = ReadBinaryProto(Env::Default(), graph, &tensorflow_graph);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
+    LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return s;
   }
 
@@ -69,7 +69,7 @@ Status InitializeSession(int num_threads, const string& graph,
 
   s = (*session)->Create(tensorflow_graph);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Session: " << s;
+    LOG(ERROR) << "Could not create TensorFlow Session: " << s;
     return s;
   }
 

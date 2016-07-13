@@ -1,4 +1,4 @@
-# Description: Tensorflow Serving session bundle.
+# Description: TensorFlow Serving session bundle.
 
 package(
     default_visibility = ["//visibility:public"],

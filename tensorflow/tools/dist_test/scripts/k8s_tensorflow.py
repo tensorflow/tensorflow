@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Generates YAML configuration files for distributed Tensorflow workers.
+"""Generates YAML configuration files for distributed TensorFlow workers.
 
 The workers will be run in a Kubernetes (k8s) container cluster.
 """

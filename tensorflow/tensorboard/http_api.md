@@ -327,7 +327,7 @@ proto. For example:
 ## Notes
 
 All returned values, histograms, audio, and images are returned in the order
-they were written by Tensorflow (which should correspond to increasing
+they were written by TensorFlow (which should correspond to increasing
 `wall_time` order, but may not necessarily correspond to increasing step count
 if the process had to restart from a previous checkpoint).
 

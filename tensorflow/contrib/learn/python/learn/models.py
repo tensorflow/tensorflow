@@ -224,7 +224,7 @@ def get_autoencoder_model(hidden_units, target_predictor_fn,
   return dnn_autoencoder_estimator
 
 
-## This will be in Tensorflow 0.7.
+## This will be in TensorFlow 0.7.
 ## TODO(ilblackdragon): Clean this up when it's released
 
 
@@ -328,7 +328,7 @@ def bidirectional_rnn(cell_fw,
 
   return outputs, array_ops_.concat(1, [state_fw, state_bw])
 
-# End of Tensorflow 0.7
+# End of TensorFlow 0.7
 
 
 def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,

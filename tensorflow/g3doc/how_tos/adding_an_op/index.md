@@ -927,7 +927,7 @@ There are several ways to preserve backwards-compatibility.
 
 5. Namespace any new Ops you create, by prefixing the Op names with something
    unique to your project. This avoids having your Op colliding with any Ops
-   that might be included in future versions of Tensorflow.
+   that might be included in future versions of TensorFlow.
 
 6. Plan ahead! Try to anticipate future uses for the Op. Some signature changes
    can't be done in a compatible way (for example, making a list of the same

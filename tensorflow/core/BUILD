@@ -627,7 +627,7 @@ cc_library(
     alwayslink = 1,
 )
 
-# Full Tensorflow library with operator support. Use this unless reducing
+# Full TensorFlow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
     name = "android_tensorflow_lib",
@@ -706,7 +706,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Portable library providing testing functionality for Tensorflow.
+# Portable library providing testing functionality for TensorFlow.
 cc_library(
     name = "android_tensorflow_test_lib",
     testonly = 1,

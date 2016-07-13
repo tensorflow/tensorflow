@@ -40,7 +40,7 @@ These exports have the following properties,
 ## Python exporting code
 
 The [`Exporter`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/session_bundle/exporter.py)
-class can be used to export a model in the above format from a Tensorflow python
+class can be used to export a model in the above format from a TensorFlow python
 binary.
 
 ## C++ initialization code
