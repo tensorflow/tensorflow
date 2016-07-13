@@ -34,7 +34,6 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -42,6 +41,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
@@ -621,7 +621,7 @@ def update_checkpoint_state(save_dir,
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
-  pywrap_tensorflow.write_string_to_file(
+  file_io.write_string_to_file(
       coord_checkpoint_filename, text_format.MessageToString(ckpt))
 
 
@@ -650,8 +650,8 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   try:
     # Check that the file exists before opening it to avoid
     # many lines of errors from colossus in the logs.
-    if pywrap_tensorflow.file_exists(coord_checkpoint_filename):
-      file_content = pywrap_tensorflow.read_file_to_string(
+    if file_io.file_exists(coord_checkpoint_filename):
+      file_content = file_io.read_file_to_string(
           coord_checkpoint_filename).decode("utf-8")
       ckpt = CheckpointState()
       text_format.Merge(file_content, ckpt)
@@ -930,14 +930,14 @@ class Saver(object):
             self.saver_def.keep_checkpoint_every_n_hours * 3600)
         return
       # Otherwise delete the files.
-      for f in pywrap_tensorflow.get_matching_files(
+      for f in file_io.get_matching_files(
           self._CheckpointFilename(p)):
         try:
-          pywrap_tensorflow.delete_file(f)
+          file_io.delete_file(f)
           meta_graph_filename = self._MetaGraphFilename(
               f, meta_graph_suffix=meta_graph_suffix)
-          if pywrap_tensorflow.file_exists(meta_graph_filename):
-            pywrap_tensorflow.delete_file(meta_graph_filename)
+          if file_io.file_exists(meta_graph_filename):
+            file_io.delete_file(meta_graph_filename)
         except Exception as e:  # pylint: disable=broad-except
           logging.warning("Ignoring: %s", str(e))
 
@@ -1108,7 +1108,7 @@ class Saver(object):
     Raises:
       ValueError: If the given `save_path` does not point to a file.
     """
-    if not pywrap_tensorflow.get_matching_files(save_path):
+    if not file_io.get_matching_files(save_path):
       raise ValueError("Restore called with invalid save path %s" % save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
@@ -1139,7 +1139,7 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-    if pywrap_tensorflow.get_matching_files(ckpt.model_checkpoint_path):
+    if file_io.get_matching_files(ckpt.model_checkpoint_path):
       return ckpt.model_checkpoint_path
     else:
       logging.error("Couldn't match files for pattern %s",
@@ -1291,10 +1291,10 @@ def read_meta_graph_file(filename):
     IOError: If the file doesn't exist, or cannot be successfully parsed.
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  if not pywrap_tensorflow.file_exists(filename):
+  if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  file_content = pywrap_tensorflow.read_file_to_string(filename)
+  file_content = file_io.read_file_to_string(filename)
   try:
     meta_graph_def.ParseFromString(file_content)
     return meta_graph_def
