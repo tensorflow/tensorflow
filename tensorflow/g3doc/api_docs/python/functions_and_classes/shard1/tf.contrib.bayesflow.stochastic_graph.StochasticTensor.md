@@ -1,7 +1,7 @@
 Base Class for Tensor-like objects that emit stochastic values.
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.__init__(**kwargs)` {#StochasticTensor.__init__}
+#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.__init__()` {#StochasticTensor.__init__}
 
 
 
