@@ -54,6 +54,15 @@ NarrowT CheckedNarrowing(const WideT& wide) {
   return narrow;
 }
 
+// Returns the "Compatibility" version number from the CuDNN version number.
+// This is the number that tries to indicate ABI compatibility.
+//
+// For example, if cudnn_version is 5107, the compatibility version
+// number will be 5100.
+size_t cudnnCompatibilityVersion(size_t cudnn_version) {
+  return (cudnn_version / 100) * 100;
+}
+
 }  // namespace
 
 namespace perftools {
@@ -334,15 +343,21 @@ port::Status CudnnSupport::Init() {
     // Check whether loaded version of CuDNN matches what the source
     // was built with.
     size_t loaded_version = dynload::cudnnGetVersion();
-    bool library_loaded_matches_source = (loaded_version == CUDNN_VERSION);
+    size_t loaded_compat_version = cudnnCompatibilityVersion(loaded_version);
+    size_t compiled_compat_version = cudnnCompatibilityVersion(CUDNN_VERSION);
+    bool library_loaded_matches_source =
+        (loaded_compat_version == compiled_compat_version);
     if (!library_loaded_matches_source) {
       const string error =
-          port::StrCat("Loaded cudnn library: ", loaded_version,
-                       " but source was compiled against ", CUDNN_VERSION,
-                       ".  If using a binary install, upgrade your cudnn "
+          port::StrCat("Loaded runtime CuDNN library: ", loaded_version,
+                       " (compatibility version ", loaded_compat_version,
+                       ") but source was compiled with ", CUDNN_VERSION,
+                       " (compatibility version ", compiled_compat_version,
+                       ").  If using a binary install, upgrade your CuDNN "
                        "library to match.  If building from sources, "
-                       "make sure the library loaded matches the "
-                       "version you specified during compile configuration.");
+                       "make sure the library loaded at runtime matches a "
+                       "compatible version specified during compile "
+                       "configuration.");
       LOG(ERROR) << error;
       return port::Status{port::error::INTERNAL, error};
     }
