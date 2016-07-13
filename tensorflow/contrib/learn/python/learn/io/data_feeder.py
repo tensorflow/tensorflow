@@ -189,6 +189,23 @@ def check_array(array, dtype):
   return array
 
 
+def _access(data, iloc):
+  """Accesses an element from collection, using integer location based indexing.
+
+  Args:
+    data: array-like. The collection to access
+    iloc: `int` or `list` of `int`s. Location(s) to access in `collection`
+
+  Returns:
+    The element of `a` found at location(s) `iloc`.
+  """
+  if HAS_PANDAS:
+    import pandas as pd  # pylint: disable=g-import-not-at-top
+    if isinstance(data, pd.Series) or isinstance(data, pd.DataFrame):
+      return data.iloc[iloc]
+  return data[iloc]
+
+
 class DataFeeder(object):
   """Data feeder is an example class to sample data for TF trainer."""
 
@@ -333,8 +350,9 @@ class DataFeeder(object):
 
       # Assign input features from random indices.
       inp = (
-          np.array(self.x[batch_indices]).reshape((batch_indices.shape[0], 1))
-          if len(self.x.shape) == 1 else self.x[batch_indices])
+          np.array(_access(self.x, batch_indices)).reshape(
+              (batch_indices.shape[0], 1))
+          if len(self.x.shape) == 1 else _access(self.x, batch_indices))
       feed_dict[self._input_placeholder.name] = inp
 
       # move offset and reset it if necessary
@@ -355,16 +373,16 @@ class DataFeeder(object):
         sample = batch_indices[i]
         # self.n_classes is None means we're passing in raw target indices
         if self.n_classes is None:
-          out[i] = self.y[sample]
+          out[i] = _access(self.y, sample)
         else:
           if self.n_classes > 1:
             if len(self.output_shape) == 2:
-              out.itemset((i, int(self.y[sample])), 1.0)
+              out.itemset((i, int(_access(self.y, sample))), 1.0)
             else:
-              for idx, value in enumerate(self.y[sample]):
+              for idx, value in enumerate(_access(self.y, sample)):
                 out.itemset(tuple([i, idx, value]), 1.0)
           else:
-            out[i] = self.y[sample]
+            out[i] = _access(self.y, sample)
       feed_dict[self._output_placeholder.name] = out
 
       return feed_dict

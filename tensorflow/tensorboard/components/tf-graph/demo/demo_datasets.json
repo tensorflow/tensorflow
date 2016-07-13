@@ -111,6 +111,12 @@
     "path": "alexnet.pbtxt"
   },
   {
+    "id": "alexprivate",
+    "name": "AlexNet Private",
+    "path": "alexnet.pbtxt",
+    "private": true
+  },
+  {
     "name": "TestError404",
     "path": "nofile"
   }

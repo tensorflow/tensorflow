@@ -54,7 +54,7 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
         predictions.append(nn.softmax(pred))
     xent = math_ops.add_n(xent_list, name="sequence_loss/xent")
     loss = math_ops.reduce_sum(xent, name="sequence_loss")
-    return array_ops.expand_concat(1, predictions), loss
+    return array_ops_.pack(predictions, axis=1), loss
 
 
 def seq2seq_inputs(x, y, input_length, output_length, sentinel=None, name=None):
@@ -74,8 +74,8 @@ def seq2seq_inputs(x, y, input_length, output_length, sentinel=None, name=None):
     Encoder input from x, and decoder inputs and outputs from y.
   """
   with ops.op_scope([x, y], name, "seq2seq_inputs"):
-    in_x = array_ops.split_squeeze(1, input_length, x)
-    y = array_ops.split_squeeze(1, output_length, y)
+    in_x = array_ops_.unpack(x, axis=1)
+    y = array_ops_.unpack(y, axis=1)
     if not sentinel:
       # Set to zeros of shape of y[0], using x for batch size.
       sentinel_shape = array_ops_.pack(

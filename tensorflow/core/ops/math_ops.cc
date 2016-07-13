@@ -1017,10 +1017,10 @@ dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
 namespace {
 
 Status SegmentReductionShapeFn(InferenceContext* c) {
-  const Shape* segment_ids_shape = c->input(1);
-  TF_RETURN_IF_ERROR(c->WithRank(segment_ids_shape, 1, &segment_ids_shape));
-
-  auto data_shape = c->input(0);
+  const Shape* data_shape;
+  const Shape* segment_ids_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &segment_ids_shape));
 
   const Shape* subshape;
   TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
@@ -1200,18 +1200,8 @@ REGISTER_OP("UnsortedSegmentSum")
             c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
 
         // Get the value of the num_segments input tensor.
-        const auto* num_segments_t = c->input_tensor(2);
         const Dimension* num_segments_dim;
-        if (num_segments_t == nullptr) {
-          num_segments_dim = c->CreateUnknownDim();
-        } else {
-          auto t_val = num_segments_t->scalar<int32>()();
-          if (t_val < 0) {
-            return errors::InvalidArgument(
-                "num_segments value must be non-negative, but was ", t_val);
-          }
-          num_segments_dim = c->CreateDim(t_val);
-        }
+        TF_RETURN_IF_ERROR(c->CreateDimForScalarInput(2, &num_segments_dim));
 
         // Output is {segment_id_rank} + s_data[segment_id_rank:].
         const Shape* s_data_suffix;
@@ -1810,6 +1800,58 @@ of corresponding 3-element vectors is cross-multiplied independently.
 a: A tensor containing 3-element vectors.
 b: Another tensor, of same type and shape as `a`.
 product: Pairwise cross product of the vectors in `a` and `b`.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Cumsum")
+    .Input("x: T")
+    .Input("axis: int32")
+    .Attr("reverse: bool")
+    .Output("out: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Compute the cumulative sum of the tensor `x` along `axis`.
+
+The output `out` at any given index i is equal to the sum of all
+elements `x_j` of `x` with j <= i.
+
+By setting the `reverse` operation to `True`, the sum is performed in the
+reverse order. In contrast to using `tf.reverse`, this avoids copying the
+tensor.
+
+For example:
+
+```prettyprint
+# tensor 'x' is [1, 2, 3, 4, 5]
+tf.cumsum(x)               ==> [1, 3, 6, 10, 15]
+tf.cumsum(x, reverse=True) ==> [15, 14, 12, 9, 5]
+```
+)doc");
+
+REGISTER_OP("Cumprod")
+    .Input("x: T")
+    .Input("axis: int32")
+    .Attr("reverse: bool")
+    .Output("out: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Compute the cumulative product of the tensor `x` along `axis`.
+
+The output `out` at any given index i is equal to the product of all
+elements `x_j` of `x` with j <= i.
+
+By setting the `reverse` operation to `True`, the product is performed in the
+reverse order. In contrast to using `tf.reverse`, this avoids copying the
+tensor.
+
+For example:
+
+```prettyprint
+# tensor 'x' is [1, 2, 3, 4, 5]
+tf.cumprod(x)               ==> [1, 2, 6, 24, 120]
+tf.cumprod(x, reverse=True) ==> [120, 120, 60, 20, 5]
+```
 )doc");
 
 }  // namespace tensorflow

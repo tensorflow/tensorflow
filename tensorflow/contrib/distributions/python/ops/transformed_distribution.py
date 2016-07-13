@@ -35,7 +35,7 @@ class TransformedDistribution(distribution.Distribution):
   * `p(x)` - probability distribution for random variable X
   * `p(y)` - probability distribution for random variable Y
   * `f` - transform
-  * `g` - inverse transform, `f(g(x)) = x`
+  * `g` - inverse transform, `g(f(x)) = x`
   * `J(x)` - Jacobian of f(x)
 
   A Transformed Distribution exposes `sample` and `pdf`:

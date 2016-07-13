@@ -131,5 +131,12 @@ class UnpackOpTest(tf.test.TestCase):
     with self.assertRaisesRegexp(ValueError, r'axis = -3 not in \[-2, 2\)'):
       tf.unpack(a, axis=-3)
 
+  def testZeroLengthDim(self):
+    with self.test_session():
+      x = tf.zeros(shape=(0, 1, 2))
+      y = tf.unpack(x, axis=1)[0].eval()
+      self.assertEqual(y.shape, (0, 2))
+
+
 if __name__ == '__main__':
   tf.test.main()

@@ -8591,7 +8591,7 @@ op {
     description: "Dimension along which to pack.  Negative values wrap around, so the\nvalid range is `[-(R+1), R+1)`."
   }
   summary: "Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor."
-  description: "Packs the `N` tensors in `values` into a tensor with rank one higher than each\ntensor in `values`, by packing them along the `axis` dimension.\nGiven a list tensors of shape (A, B, C);\n\nif `axis` == 0 then the `output` tensor will have the shape (`N`, A, B, C).\nif `axis` == 1 then the `output` tensor will have the shape (A, `N`, B, C).\nEtc.\n\nFor example:\n\n```prettyprint\n# \'x\' is [1, 4]\n# \'y\' is [2, 5]\n# \'z\' is [3, 6]\npack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\npack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]\n```\n\nThis is the opposite of `unpack`."
+  description: "Packs the `N` tensors in `values` into a tensor with rank one higher than each\ntensor in `values`, by packing them along the `axis` dimension.\nGiven a list of tensors of shape `(A, B, C)`;\n\nif `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.\nif `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.\nEtc.\n\nFor example:\n\n```prettyprint\n# \'x\' is [1, 4]\n# \'y\' is [2, 5]\n# \'z\' is [3, 6]\npack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\npack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]\n```\n\nThis is the opposite of `unpack`."
 }
 op {
   name: "Pad"
@@ -8665,6 +8665,80 @@ op {
   }
   summary: "A queue that produces elements in first-in first-out order."
   description: "Variable-size shapes are allowed by setting the corresponding shape dimensions\nto 0 in the shape attr.  In this case DequeueMany will pad up to the maximum\nsize of any given element in the minibatch.  See below for details."
+  is_stateful: true
+}
+op {
+  name: "ParameterizedTruncatedNormal"
+  input_arg {
+    name: "shape"
+    description: "The shape of the output tensor. Batches are indexed by the 0th dimension."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "means"
+    description: "The mean parameter of each batch."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "stdevs"
+    description: "The standard deviation parameter of each batch. Must be greater than 0."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "minvals"
+    description: "The minimum cutoff. May be -infinity."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "maxvals"
+    description: "The maximum cutoff. May be +infinity, and must be more than the minval\nfor each batch."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    description: "A matrix of shape num_batches x samples_per_batch, filled with random\ntruncated normal values using the parameters for each row."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the output."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Outputs random values from a normal distribution. The parameters may each be a"
+  description: "scalar which applies to the entire output, or a vector of length shape[0] which\nstores the parameters for each batch."
   is_stateful: true
 }
 op {
@@ -15652,7 +15726,7 @@ op {
     description: "Dimension along which to unpack.  Negative values wrap around, so the\nvalid range is `[-R, R)`."
   }
   summary: "Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors."
-  description: "Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.\nFor example, given a tensor of shape (A, B, C ,D);\n\nIf `axis` == 0 then the i\'th tensor in `output` is the slice `value[i, :, :, :]`\n  and each tensor in `output` will have shape `(B, C, D)`. (Note that the\n  dimension unpacked along is gone, unlike `split`).\n\nIf `axis` == 1 then the i\'th tensor in `output` is the slice `value[:, i, :, :]`\n  and each tensor in `output` will have shape `(A, C, D)`.\nEtc.\n\nThis is the opposite of `pack`."
+  description: "Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.\nFor example, given a tensor of shape `(A, B, C, D)`;\n\nIf `axis == 0` then the i\'th tensor in `output` is the slice `value[i, :, :, :]`\n  and each tensor in `output` will have shape `(B, C, D)`. (Note that the\n  dimension unpacked along is gone, unlike `split`).\n\nIf `axis == 1` then the i\'th tensor in `output` is the slice `value[:, i, :, :]`\n  and each tensor in `output` will have shape `(A, C, D)`.\nEtc.\n\nThis is the opposite of `pack`."
 }
 op {
   name: "UnsortedSegmentSum"

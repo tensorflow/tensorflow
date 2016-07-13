@@ -37,6 +37,15 @@ namespace port {
 void* aligned_malloc(size_t size, int minimum_alignment);
 void aligned_free(void* aligned_memory);
 
+// Tries to release num_bytes of free memory back to the operating
+// system for reuse.  Use this routine with caution -- to get this
+// memory back may require faulting pages back in by the OS, and
+// that may be slow.
+//
+// Currently, if a malloc implementation does not support this
+// routine, this routine is a no-op.
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes);
+
 // Returns the actual number N of bytes reserved by the malloc for the
 // pointer p.  This number may be equal to or greater than the number
 // of bytes requested when p was allocated.

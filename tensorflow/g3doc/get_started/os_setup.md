@@ -377,12 +377,22 @@ The option `-p 8888:8888` is used to publish the Docker container᾿s internal p
 
 The format of the port mapping is `hostPort:containerPort`. You can specify any valid port number for the host port but have to use `8888` for the container port portion.
 
+If you're using a container with GPU support, some additional flags must be passed to expose the GPU device to the container.
+
 For NVidia GPU support install latest NVidia drivers and
 [nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
 Run with
 
 ```bash
 $ nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu
+```
+
+If you have a problem running `nvidia-docker`, then using the default config, we include a
+[script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/docker_run_gpu.sh)
+in the repo with these flags, so the command-line would look like
+
+```bash
+$ path/to/repo/tensorflow/tools/docker/docker_run_gpu.sh -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu
 ```
 
 For more details see (TensorFlow docker readme)[https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/docker].

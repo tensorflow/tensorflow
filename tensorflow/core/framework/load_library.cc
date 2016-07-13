@@ -51,7 +51,10 @@ Status LoadLibrary(const char* library_filename, void** result,
   std::unordered_set<string> seen_op_names;
   {
     mutex_lock lock(mu);
-    OpRegistry::Global()->ProcessRegistrations();
+    Status s = OpRegistry::Global()->ProcessRegistrations();
+    if (!s.ok()) {
+      return s;
+    }
     TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(
         [&op_list, &seen_op_names](const Status& s,
                                    const OpDef& opdef) -> Status {
@@ -62,18 +65,22 @@ Status LoadLibrary(const char* library_filename, void** result,
               return Status::OK();
             }
           }
-          *op_list.add_op() = opdef;
-          seen_op_names.insert(opdef.name());
+          if (s.ok()) {
+            *op_list.add_op() = opdef;
+            seen_op_names.insert(opdef.name());
+          }
           return s;
         }));
     OpRegistry::Global()->DeferRegistrations();
-    Status s = env->LoadLibrary(library_filename, &lib);
+    s = env->LoadLibrary(library_filename, &lib);
+    if (s.ok()) {
+      s = OpRegistry::Global()->ProcessRegistrations();
+    }
     if (!s.ok()) {
       OpRegistry::Global()->ClearDeferredRegistrations();
       TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(nullptr));
       return s;
     }
-    OpRegistry::Global()->ProcessRegistrations();
     TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(nullptr));
   }
   string str;

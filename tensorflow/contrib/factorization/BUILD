@@ -88,7 +88,10 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["notsan"],
+    tags = [
+        "manual,",  # Flaky: b/29994267
+        "notsan",
+    ],
 )
 
 tf_py_test(

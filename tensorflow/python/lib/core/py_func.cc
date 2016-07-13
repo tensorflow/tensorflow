@@ -37,15 +37,6 @@ PyObject* GetPyTrampoline() {
   return py_trampoline;
 }
 
-// Returns a single-thread threadpool used to execute python
-// trampoline and the python function. It is single threaded because
-// GIL is needed running the trampoline.
-thread::ThreadPool* py_thread() {
-  static thread::ThreadPool* w =
-      new thread::ThreadPool(Env::Default(), "PyTrampoline", 1);
-  return w;
-}
-
 // Returns the corresponding numpy dtype in 'np' for tf data type
 // 'tf'.  Returns an error if the type is not supported by this
 // module.
@@ -267,18 +258,6 @@ Status DoCallPyFunc(PyCall* call) {
   return s;
 }
 
-// Calls the python function in a separate thread. Arranges to call
-// done() when the python function returns.
-void CallPyFunc(PyCall* call, std::function<void(Status)> done) {
-  py_thread()->Schedule([call, done]() {
-    PyGILState_STATE py_threadstate;
-    py_threadstate = PyGILState_Ensure();
-    Status s = DoCallPyFunc(call);
-    PyGILState_Release(py_threadstate);
-    done(s);
-  });
-}
-
 }  // end namespace
 
 // Creates a numpy array in 'ret' and copies the content of tensor 't'
@@ -332,39 +311,40 @@ void InitializePyTrampoline(PyObject* trampoline) {
   }
 }
 
-class PyFuncOp : public AsyncOpKernel {
+class PyFuncOp : public OpKernel {
  public:
-  explicit PyFuncOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+  explicit PyFuncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("token", &token_));
   }
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    PyCall* call = new PyCall;
-    call->token = token_;
+  void Compute(OpKernelContext* ctx) override {
+    PyCall call;
+    call.token = token_;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      call->ins.push_back(ctx->input(i));
+      call.ins.push_back(ctx->input(i));
     }
-    CallPyFunc(call, [this, ctx, call, done](Status s) {
-      std::unique_ptr<PyCall> delete_me(call);
-      OP_REQUIRES_OK_ASYNC(ctx, s, done);
-      OP_REQUIRES_ASYNC(
-          ctx, static_cast<int32>(call->out.size()) == ctx->num_outputs(),
-          errors::InvalidArgument(token_, " returns ", call->out.size(),
-                                  " values, but expects to see ",
-                                  ctx->num_outputs(), " values."),
-          done);
-      for (size_t i = 0; i < call->out.size(); ++i) {
-        const auto& t = call->out[i];
-        OP_REQUIRES_ASYNC(
-            ctx, t.dtype() == output_type(i),
-            errors::InvalidArgument(i, "-th value returned by ", token_, " is ",
-                                    DataTypeString(t.dtype()), ", but expects ",
-                                    DataTypeString(output_type(i))),
-            done);
-        ctx->set_output(i, t);
-      }
-      done();
-    });
+
+    PyGILState_STATE py_threadstate;
+    py_threadstate = PyGILState_Ensure();
+    Status s = DoCallPyFunc(&call);
+    PyGILState_Release(py_threadstate);
+
+    // Ensures that GIL is released even when !s.ok().
+    OP_REQUIRES_OK(ctx, s);
+
+    OP_REQUIRES(ctx, static_cast<int32>(call.out.size()) == ctx->num_outputs(),
+                errors::InvalidArgument(token_, " returns ", call.out.size(),
+                                        " values, but expects to see ",
+                                        ctx->num_outputs(), " values."));
+    for (size_t i = 0; i < call.out.size(); ++i) {
+      const auto& t = call.out[i];
+      OP_REQUIRES(
+          ctx, t.dtype() == output_type(i),
+          errors::InvalidArgument(i, "-th value returned by ", token_, " is ",
+                                  DataTypeString(t.dtype()), ", but expects ",
+                                  DataTypeString(output_type(i))));
+      ctx->set_output(i, t);
+    }
   }
 
  private:

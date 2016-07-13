@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,6 +47,10 @@ class FakeSummaryWriter(object):
     self._summaries = {}
     self._added_graphs = []
     self._added_session_logs = []
+
+  @property
+  def summaries(self):
+    return self._summaries
 
   def assert_summaries(
       self, test_case, expected_logdir=None, expected_graph=None,

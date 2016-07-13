@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import control_flow_ops
@@ -40,7 +41,7 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
                           decay_rate ^ (global_step / decay_steps)
   ```
 
-  If the argument `staircase` is `True`, then `global_step /decay_steps` is an
+  If the argument `staircase` is `True`, then `global_step / decay_steps` is an
   integer division and the decayed learning rate follows a staircase function.
 
   Example: decay every 100000 steps with a base of 0.96:
@@ -67,15 +68,16 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
       Must be positive.  See the decay computation above.
     decay_rate: A scalar `float32` or `float64` `Tensor` or a
       Python number.  The decay rate.
-    staircase: Boolean.  It `True` decay the learning rate at discrete intervals.
-    name: String.  Optional name of the operation.  Defaults to 'ExponentialDecay'
+    staircase: Boolean.  It `True` decay the learning rate at discrete intervals
+    name: String.  Optional name of the operation.  Defaults to 
+      'ExponentialDecay'
 
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   """
   with ops.op_scope([learning_rate, global_step, decay_steps, decay_rate],
-                   name, "ExponentialDecay") as name:
+                    name, "ExponentialDecay") as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
     global_step = math_ops.cast(global_step, dtype)
@@ -89,19 +91,19 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
 
 def piecewise_constant(x, boundaries, values, name=None):
   """ Piecewise constant from boundaries and interval values.
-  
+
   Example: use a learning rate that's 1.0 for the first 100000 steps, 0.5
     for steps 100001 to 110000, and 0.1 for any additional steps.
-  
+
   ```python
   global_step = tf.Variable(0, trainable=False)
   boundaries = [100000, 110000]
   values = [1.0, 0.5, 0.1]
   learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
-  
+
   # Later, whenever we perform an optimization step, we increment global_step.
   ```
-  
+
   Args:
     x: A 0-D scalar `Tensor`. Must be one of the following types: `float32`,
       `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`.
@@ -112,13 +114,13 @@ def piecewise_constant(x, boundaries, values, name=None):
       than `boundaries`, and all elements should have the same type.
     name: A string. Optional name of the operation. Defaults to
       'PiecewiseConstant'.
-  
+
   Returns:
     A 0-D Tensor. Its value is `values[0]` when `x <= boundaries[0]`,
     `values[1]` when `x > boundaries[0]` and `x <= boundaries[1]`, ...,
     and values[-1] when `x > boundaries[-1]`.
   """
-  
+
   with ops.op_scope([x, boundaries, values, name],
                     name, 'PiecewiseConstant') as name:
     x = ops.convert_to_tensor(x)
@@ -131,7 +133,7 @@ def piecewise_constant(x, boundaries, values, name=None):
     values = ops.convert_n_to_tensor(values)
     if not all(v.dtype == values[0].dtype for v in values):
       raise ValueError('values must have elements all with the same dtype.')
-    
+
     pred_fn_pairs = {}
     pred_fn_pairs[x <= boundaries[0]] = lambda: values[0]
     pred_fn_pairs[x > boundaries[-1]] = lambda: values[-1]
@@ -139,7 +141,7 @@ def piecewise_constant(x, boundaries, values, name=None):
       # Need to bind v here; can do this with lambda v=v: ...
       pred = (x > low) & (x <= high)
       pred_fn_pairs[pred] = lambda v=v: v
-      
+
     # The default isn't needed here because our conditions are mutually
     # exclusive and exhaustive, but tf.case requires it.
     default = lambda: values[0]
@@ -237,3 +239,125 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
     return math_ops.add(math_ops.mul(learning_rate - end_learning_rate,
                                      math_ops.pow(1 - p, power)),
                         end_learning_rate, name=name)
+
+
+def natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate,
+                      staircase=False, name=None):
+  """Applies natural exponential decay to the initial learning rate.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses.  This function applies an exponential decay function
+  to a provided initial learning rate.  It requires an `global_step` value to
+  compute the decayed learning rate.  You can just pass a TensorFlow variable
+  that you increment at each training step.
+
+  The function returns the decayed learning rate.  It is computed as:
+
+  ```python
+  decayed_learning_rate = learning_rate * exp(-decay_rate * global_step)
+  ```
+
+  Example: decay exponetially with a base of 0.96:
+
+  ```python
+  ...
+  global_step = tf.Variable(0, trainable=False)
+  learning_rate = 0.1
+  k = 0.5
+  learning_rate = tf.train.exponential_time_decay(learning_rate, global_step, k)
+
+  # Passing global_step to minimize() will increment it at each step.
+  learning_step = (
+      tf.GradientDescentOptimizer(learning_rate)
+      .minimize(...my loss..., global_step=global_step)
+  )
+  ```
+
+  Args:
+    learning_rate: A scalar `float32` or `float64` `Tensor` or a
+      Python number.  The initial learning rate.
+    global_step: A Python number.
+      Global step to use for the decay computation.  Must not be negative.
+    decay_rate: A Python number.  The decay rate.
+    name: String.  Optional name of the operation.  Defaults to
+      'ExponentialTimeDecay'
+
+  Returns:
+    A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+    learning rate.
+  """
+  with ops.op_scope([learning_rate, global_step, decay_rate],
+                    name, "NaturalExpDecay") as name:
+    learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
+    dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
+    decay_steps = math_ops.cast(decay_steps, dtype)
+    decay_rate = math_ops.cast(decay_rate, dtype)
+    p = global_step / decay_steps
+    if staircase:
+      p = math_ops.floor(p)
+    exponent = math_ops.exp(math_ops.mul(math_ops.neg(decay_rate), p))
+    return math_ops.mul(learning_rate, exponent, name=name)
+
+
+def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
+                       staircase=False, name=None):
+  """Applies inverse time decay to the initial learning rate.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses.  This function applies an inverse decay function
+  to a provided initial learning rate.  It requires an `global_step` value to
+  compute the decayed learning rate.  You can just pass a TensorFlow variable
+  that you increment at each training step.
+
+  The function returns the decayed learning rate.  It is computed as:
+
+  ```python
+  decayed_learning_rate = learning_rate / (1 + decay_rate * t)
+  ```
+
+  Example: decay 1/t with a rate of 0.5:
+
+  ```python
+  ...
+  global_step = tf.Variable(0, trainable=False)
+  learning_rate = 0.1
+  k = 0.5
+  learning_rate = tf.train.inverse_time_decay(learning_rate, global_step, k)
+
+  # Passing global_step to minimize() will increment it at each step.
+  learning_step = (
+      tf.GradientDescentOptimizer(learning_rate)
+      .minimize(...my loss..., global_step=global_step)
+  )
+  ```
+
+  Args:
+    learning_rate: A scalar `float32` or `float64` `Tensor` or a
+      Python number.  The initial learning rate.
+    global_step: A Python number.
+      Global step to use for the decay computation.  Must not be negative.
+    decay_rate: A Python number.  The decay rate.
+    name: String.  Optional name of the operation.  Defaults to
+      'InverseTimeDecay'
+
+  with ops.op_scope([learning_rate, global_step, decay_rate],
+                    name, "InverseTimeDecay") as name:
+  Returns:
+    A scalar `Tensor` of the same type as `learning_rate`.  The decayed
+    learning rate.
+  """
+
+  with ops.op_scope([learning_rate, global_step, decay_rate],
+                    name, "InverseTimeDecay") as name:
+    learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
+    dtype = learning_rate.dtype
+    global_step = math_ops.cast(global_step, dtype)
+    decay_steps = math_ops.cast(decay_steps, dtype)
+    decay_rate = math_ops.cast(decay_rate, dtype)
+    p = global_step / decay_steps
+    if staircase:
+      p = math_ops.floor(p)
+    const = math_ops.cast(constant_op.constant(1), learning_rate.dtype)
+    denom = math_ops.add(const, math_ops.mul(decay_rate, p))
+    return math_ops.div(learning_rate, denom, name=name)

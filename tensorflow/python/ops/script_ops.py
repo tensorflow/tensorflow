@@ -53,6 +53,26 @@ class FuncRegistry(object):
     """Removes the registered function corresponding to `token`."""
     self._funcs.pop(token, None)
 
+  @staticmethod
+  def _convert(value):
+    """Converts an arg to numpy, avoiding dangerous string and unicode dtypes.
+
+    Numpy pads with zeros when using string and unicode dtypes if different
+    components of a tensor have different lengths.  This is bad: ignoring the
+    padding is wrong for text data, and removing the padding is wrong for binary
+    data.  To avoid this bug, we redo the conversion using an object dtype.
+
+    Args:
+      value: Value to convert to a numpy array.
+
+    Returns:
+      A numpy array.
+    """
+    result = np.asarray(value, order="C")
+    if result.dtype.char in "SU" and result is not value:
+      return np.asarray(value, order="C", dtype=object)
+    return result
+
   def __call__(self, token, args):
     """Calls the registered function for `token` with args."""
     func = self._funcs[token]
@@ -62,10 +82,9 @@ class FuncRegistry(object):
     # Ensures that we return either a single numpy array or a list of numpy
     # arrays.
     if isinstance(ret, (tuple, list)):
-      ret = [np.array(x, order="C") for x in ret]
+      return [self._convert(x) for x in ret]
     else:
-      ret = np.array(ret, order="C")
-    return ret
+      return self._convert(ret)
 
   def size(self):
     """Returns how many functions are currently registered."""

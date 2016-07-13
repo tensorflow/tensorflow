@@ -6,8 +6,8 @@
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/334b1d428283.tar.gz",
-    sha256 = "6d5efd02c7c11fbb9d02df4f0b64f22ecbd348e7549f8a83c13fb4d8d9e19d4b",
+    url = "https://bitbucket.org/eigen/eigen/get/bbffe8ed5f26.tar.gz",
+    sha256 = "5a9e2b6eb683d3665298d65b323dbb891b114f7d7654f2681342aa8794a2edc6",
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -140,16 +140,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  native.new_git_repository(
-    name = "boringssl_git",
-    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
-    remote = "https://github.com/google/boringssl.git",
-    build_file = path_prefix + "boringssl.BUILD",
-  )
-
-  native.bind(
-    name = "boringssl_err_data_c",
-    actual = tf_repo_name + "//third_party/boringssl:err_data_c",
+  native.git_repository(
+      name = "boringssl_git",
+      remote = "https://github.com/google/boringssl.git",
+      commit = "bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",  # 2016-07-11
   )
 
   native.new_git_repository(

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import math
 import os
 
@@ -225,7 +226,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(y_tf, y_np)
 
 
-class FlipTest(test_util.TensorFlowTestCase):
+class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testIdempotentLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
@@ -302,7 +303,8 @@ class FlipTest(test_util.TensorFlowTestCase):
                image_ops.flip_up_down,
                image_ops.random_flip_left_right,
                image_ops.random_flip_up_down,
-               image_ops.transpose_image]:
+               image_ops.transpose_image,
+               image_ops.rot90]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
       transformed_unknown_dims = op(p_unknown_dims)
@@ -314,6 +316,23 @@ class FlipTest(test_util.TensorFlowTestCase):
         op(p_wrong_rank)
       with self.assertRaisesRegexp(ValueError, 'must be > 0'):
         op(p_zero_dim)
+
+  def testRot90GroupOrder(self):
+    image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        rotated = image
+        for _ in xrange(4):
+          rotated = image_ops.rot90(rotated)
+        self.assertAllEqual(image, rotated.eval())
+
+  def testRot90NumpyEquivalence(self):
+    image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
+    for use_gpu, k in itertools.product([False, True], range(4)):
+      with self.test_session(use_gpu=use_gpu):
+        y_np = np.rot90(image, k=k)
+        y_tf = image_ops.rot90(image, k=k)
+        self.assertAllEqual(y_np, y_tf.eval())
 
 
 class RandomFlipTest(test_util.TensorFlowTestCase):
