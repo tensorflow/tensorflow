@@ -64,3 +64,9 @@ def recursive_create_dir(dirname):
       partial_dir = '/'.join(dirs[0:i+1])
       if partial_dir and not file_exists(partial_dir):
         pywrap_tensorflow.CreateDir(compat.as_bytes(partial_dir), status)
+
+
+def copy(oldpath, newpath, overwrite=False):
+  with errors.raise_exception_on_not_ok_status() as status:
+    pywrap_tensorflow.CopyFile(compat.as_bytes(oldpath),
+                               compat.as_bytes(newpath), overwrite, status)

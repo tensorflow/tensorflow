@@ -22,6 +22,7 @@ import os.path
 
 import tensorflow as tf
 
+from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 
 
@@ -66,6 +67,37 @@ class FileIoTest(tf.test.TestCase):
     file_path = os.path.join(dir_path, "temp_file")
     file_io.write_string_to_file(file_path, "testing")
     self.assertTrue(file_io.file_exists(file_path))
+
+  def testCopy(self):
+    file_path = os.path.join(self.get_temp_dir(), "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    copy_path = os.path.join(self.get_temp_dir(), "copy_file")
+    file_io.copy(file_path, copy_path)
+    self.assertTrue(file_io.file_exists(copy_path))
+    self.assertEqual(b"testing", file_io.read_file_to_string(file_path))
+    file_io.delete_file(file_path)
+    file_io.delete_file(copy_path)
+
+  def testCopyOverwrite(self):
+    file_path = os.path.join(self.get_temp_dir(), "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    copy_path = os.path.join(self.get_temp_dir(), "copy_file")
+    file_io.write_string_to_file(copy_path, "copy")
+    file_io.copy(file_path, copy_path, overwrite=True)
+    self.assertTrue(file_io.file_exists(copy_path))
+    self.assertEqual(b"testing", file_io.read_file_to_string(file_path))
+    file_io.delete_file(file_path)
+    file_io.delete_file(copy_path)
+
+  def testCopyOverwriteFalse(self):
+    file_path = os.path.join(self.get_temp_dir(), "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    copy_path = os.path.join(self.get_temp_dir(), "copy_file")
+    file_io.write_string_to_file(copy_path, "copy")
+    with self.assertRaises(errors.AlreadyExistsError):
+      file_io.copy(file_path, copy_path, overwrite=False)
+    file_io.delete_file(file_path)
+    file_io.delete_file(copy_path)
 
 
 if __name__ == "__main__":

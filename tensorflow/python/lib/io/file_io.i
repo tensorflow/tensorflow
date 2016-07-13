@@ -78,6 +78,26 @@ void CreateDir(const string& dirname, TF_Status* out_status) {
     Set_TF_Status_from_Status(out_status, status);
   }
 }
+
+void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
+              TF_Status* out_status) {
+  // If overwrite is false and the newpath file exists then its an error.
+  if (!overwrite && FileExists(newpath)) {
+    TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
+    return;
+  }
+  string file_content;
+  tensorflow::Status status = ReadFileToString(tensorflow::Env::Default(),
+      oldpath, &file_content);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+    return;
+  }
+  status = WriteStringToFile(tensorflow::Env::Default(), newpath, file_content);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
 %}
 
 // Wrap the above functions.
@@ -89,3 +109,5 @@ void WriteStringToFile(const string& filename, const string& file_content,
 std::vector<string> GetMatchingFiles(const string& filename,
                                      TF_Status* out_status);
 void CreateDir(const string& dirname, TF_Status* out_status);
+void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
+              TF_Status* out_status);
