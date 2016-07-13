@@ -476,9 +476,11 @@ extern void TF_NodeToNodeDef(TF_Node* node, TF_Buffer* output_node_def,
 
 // TODO(josh11b): Query attrs for a Node.
 
+// TODO(cwhipkey): Query shape for node outputs.
+
 // TODO(josh11b,mrry): Import GraphDef into TF_Graph.
 
-// TODO(andydavis): Add gradients to a graph.
+// TODO(andydavis): Function to add gradients to a graph.
 
 // TODO(josh11b): Register OpDef, available to all nodes added
 // to this graph.
