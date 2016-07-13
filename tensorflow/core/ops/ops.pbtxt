@@ -14425,6 +14425,7 @@ op {
     default_value {
       i: 0
     }
+    description: "a bitmask where bit `i` being 1 means the `i`th\nposition is actually an ellipsis. One bit at most can be 1."
   }
   attr {
     name: "new_axis_mask"
@@ -14432,6 +14433,7 @@ op {
     default_value {
       i: 0
     }
+    description: "a bitmask where bit `i` being 1 means the `i`th\nposition creates a dimension in the tensor of length 1. Thus\nthe total number of elements remain unchanged but the shape\ngets a 1 in the appropriate position."
   }
   attr {
     name: "shrink_axis_mask"
@@ -14439,6 +14441,7 @@ op {
     default_value {
       i: 0
     }
+    description: "a bitmask where bit `i` implies that the `i`th\nposition should shrink the dimensionality. begin and end\nmust imply a slice of size 1 in the dimension. For example in\npython one might do `foo[:,3,:]` which would result in\n`shrink_axis_mask` being 2."
   }
   summary: "Return a strided slice from `input`."
   description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
