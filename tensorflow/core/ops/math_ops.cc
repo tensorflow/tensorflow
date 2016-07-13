@@ -1807,50 +1807,70 @@ product: Pairwise cross product of the vectors in `a` and `b`.
 REGISTER_OP("Cumsum")
     .Input("x: T")
     .Input("axis: int32")
-    .Attr("reverse: bool")
+    .Attr("exclusive: bool = false")
+    .Attr("reverse: bool = false")
     .Output("out: T")
     .Attr("T: numbertype")
     .Doc(R"doc(
 Compute the cumulative sum of the tensor `x` along `axis`.
 
-The output `out` at any given index i is equal to the sum of all
-elements `x_j` of `x` with j <= i.
-
-By setting the `reverse` operation to `True`, the sum is performed in the
-reverse order. In contrast to using `tf.reverse`, this avoids copying the
-tensor.
-
-For example:
-
+By default, this op performs an inclusive cumsum, which means that the first
+element of the input is identical to the first element of the output:
 ```prettyprint
-# tensor 'x' is [1, 2, 3, 4, 5]
-tf.cumsum(x)               ==> [1, 3, 6, 10, 15]
-tf.cumsum(x, reverse=True) ==> [15, 14, 12, 9, 5]
+tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumsum is
+performed instead:
+```prettyprint
+tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+```
+
+By setting the `reverse` kwarg to `True`, the cumsum is performed in the
+opposite direction:
+```prettyprint
+tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+```
+This is more efficient than using separate `tf.reverse` ops.
+
+The `reverse` and `exclusive` kwargs can also be combined:
+```prettyprint
+tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
 ```
 )doc");
 
 REGISTER_OP("Cumprod")
     .Input("x: T")
     .Input("axis: int32")
-    .Attr("reverse: bool")
+    .Attr("exclusive: bool = false")
+    .Attr("reverse: bool = false")
     .Output("out: T")
     .Attr("T: numbertype")
     .Doc(R"doc(
 Compute the cumulative product of the tensor `x` along `axis`.
 
-The output `out` at any given index i is equal to the product of all
-elements `x_j` of `x` with j <= i.
-
-By setting the `reverse` operation to `True`, the product is performed in the
-reverse order. In contrast to using `tf.reverse`, this avoids copying the
-tensor.
-
-For example:
-
+By default, this op performs an inclusive cumprod, which means that the first
+element of the input is identical to the first element of the output:
 ```prettyprint
-# tensor 'x' is [1, 2, 3, 4, 5]
-tf.cumprod(x)               ==> [1, 2, 6, 24, 120]
-tf.cumprod(x, reverse=True) ==> [120, 120, 60, 20, 5]
+tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
+performed instead:
+```prettyprint
+tf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]
+```
+
+By setting the `reverse` kwarg to `True`, the cumprod is performed in the
+opposite direction:
+```prettyprint
+tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+```
+This is more efficient than using separate `tf.reverse` ops.
+
+The `reverse` and `exclusive` kwargs can also be combined:
+```prettyprint
+tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]
 ```
 )doc");
 

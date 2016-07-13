@@ -40,6 +40,7 @@ class ScanOp : public OpKernel {
 public:
   explicit ScanOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reverse", &reverse_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("exclusive", &exclusive_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -64,11 +65,11 @@ public:
     const Device& d = ctx->eigen_device<Device>();
     Reducer reducer;
 
-#define HANDLE_SCAN(NDIMS)                                                  \
-  case NDIMS:                                                               \
-    functor::Scan<Device, Reducer, T, NDIMS>()(d, input.tensor<T, NDIMS>(), \
-                                               output->tensor<T, NDIMS>(),  \
-                                               reducer, axis, reverse_);    \
+#define HANDLE_SCAN(NDIMS)                                                \
+  case NDIMS:                                                             \
+    functor::Scan<Device, Reducer, T, NDIMS>()(                           \
+        d, input.tensor<T, NDIMS>(), output->tensor<T, NDIMS>(), reducer, \
+        axis, reverse_, exclusive_);                                      \
     return;
 
     switch (input.dims()) {
@@ -93,18 +94,19 @@ public:
 
 private:
   bool reverse_;
+  bool exclusive_;
 };
 
 #ifdef GOOGLE_CUDA
 namespace functor {
 
 // Forward declarations of GPU functors
-#define DECLARE(REDUCER, T, D)                          \
-  template <>                                           \
-  void Scan<GPUDevice, REDUCER, T, D>::operator()(      \
-      const GPUDevice& d, TTypes<T, D>::ConstTensor in, \
-      TTypes<T, D>::Tensor out, const REDUCER& reducer, \
-      const Eigen::Index& axis, bool reverse);          \
+#define DECLARE(REDUCER, T, D)                                             \
+  template <>                                                              \
+  void Scan<GPUDevice, REDUCER, T, D>::operator()(                         \
+      const GPUDevice& d, TTypes<T, D>::ConstTensor in,                    \
+      TTypes<T, D>::Tensor out, const REDUCER& reducer,                    \
+      const Eigen::Index& axis, const bool reverse, const bool exclusive); \
   extern template struct Scan<GPUDevice, REDUCER, T, D>;
 
 #define DECLARE_FOR_ALL_DIMS(REDUCER, T) \
