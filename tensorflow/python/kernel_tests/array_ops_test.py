@@ -145,13 +145,18 @@ class ReverseTest(test_util.TensorFlowTestCase):
         x_tf = array_ops.reverse(x_np, []).eval()
         self.assertAllEqual(x_tf, x_np)
 
-  def testReverse1DimAuto(self):
-    x_np = [1, 4, 9]
+  def _reverse1DimAuto(self, np_dtype):
+    x_np = np.array([1, 2, 3, 4, 5], dtype=np_dtype)
 
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu):
         x_tf = array_ops.reverse(x_np, [True]).eval()
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
+
+  def testReverse1DimAuto(self):
+    for dtype in [np.uint8, np.int8, np.int32, np.bool, np.float16,
+                  np.float32, np.float64, np.complex64, np.complex128]:
+      self._reverse1DimAuto(dtype)
 
   def testUnknownDims(self):
     data_t = tf.placeholder(tf.float32)
