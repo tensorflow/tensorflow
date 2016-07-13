@@ -145,6 +145,8 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                           ReverseOp<GPUDevice, T>)
 TF_CALL_uint8(REGISTER_GPU_KERNEL);
 TF_CALL_int8(REGISTER_GPU_KERNEL);
+// TODO Find out why the int32 GPU kernel doesn't work
+// and decide whether we want to enable the bool kernel.
 //TF_CALL_int32(REGISTER_GPU_KERNEL);
 //TF_CALL_bool(REGISTER_GPU_KERNEL);
 TF_CALL_half(REGISTER_GPU_KERNEL);
