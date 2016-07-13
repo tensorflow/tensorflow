@@ -1058,6 +1058,7 @@ tf_kernel_libraries(
         "cwise_op",
         "fft_ops",
         "matmul_op",
+        "norm_ops",
         "reduction_ops",
         "segment_reduction_ops",
         "sequence_ops",

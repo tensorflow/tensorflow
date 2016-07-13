@@ -64,6 +64,7 @@ mathematical functions to your graph.
 @@igammac
 @@zeta
 @@polygamma
+@@norm1d
 
 ## Matrix Math Functions
 
@@ -1264,6 +1265,16 @@ def trace(x, name=None):
     return reduce_sum(array_ops.diag_part(x), name=name)
 
 
+def norm1d(x, mean, std, name = None):
+  """
+  """
+  with ops.op_scope([x, mean, std], name, "Norm1D") as name:
+    x = ops.convert_to_tensor(x, name = "x")
+    mean = ops.convert_to_tensor(mean, name = "mean")
+    std = ops.convert_to_tensor(std, name = "std")
+    return gen_math_ops.norm1d(x, mean, std, name = name)
+
+
 def matmul(a, b,
            transpose_a=False, transpose_b=False,
            a_is_sparse=False, b_is_sparse=False,
@@ -1873,6 +1884,14 @@ def _UnsortedSegmentSumShape(op):
 def _LinspaceShape(op):
   num = tensor_util.constant_value(op.inputs[2])
   return [tensor_shape.vector(num)]
+
+
+@ops.RegisterShape("Norm1D")
+def _Norm1dShape(op):
+  merged_shape = tensor_shape.unknown_shape()
+  for input_ in op.inputs:
+    merged_shape = merged_shape.merge_with(input_.get_shape())
+  return [merged_shape]
 
 
 def reduced_shape(input_shape, axes):
