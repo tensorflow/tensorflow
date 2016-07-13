@@ -83,16 +83,18 @@ def is_sequence(seq):
 def flatten(nest):
   """Returns a flat sequence from a given nested structure.
 
-  If `nest` is not a sequence, this returns a single-element list: `[nest]`.
-
   Args:
-    nest: an arbitrarily nested structure or a scalar object.
-      Note, numpy arrays are considered scalars.
+    nest: an arbitrarily nested structure.
 
   Returns:
     A Python list, the flattened version of the input.
+
+  Raises:
+    TypeError: If the input is not a sequence.
   """
-  return list(_yield_flat_nest(nest)) if is_sequence(nest) else [nest]
+  if not is_sequence(nest):
+    raise TypeError("input must be a sequence, but received %s" % nest)
+  return list(_yield_flat_nest(nest))
 
 
 def _recursive_assert_same_structure(nest1, nest2):
@@ -227,12 +229,8 @@ def _packed_nest_with_indices(structure, flat, index):
 def pack_sequence_as(structure, flat_sequence):
   """Returns a given flattened sequence packed into a nest.
 
-  If `structure` is a scalar, `flat_sequence` must be a single-element list;
-  in this case the return value is `flat_sequence[0]`.
-
   Args:
-    structure: tuple or list constructed of scalars and/or other tuples/lists,
-      or a scalar.  Note: numpy arrays are considered scalars.
+    structure: tuple or list constructed of scalars and/or other tuples/lists.
     flat_sequence: flat sequence to pack.
 
   Returns:
@@ -240,16 +238,13 @@ def pack_sequence_as(structure, flat_sequence):
       `structure`.
 
   Raises:
+    TypeError: If structure or flat_sequence is not a tuple or list.
     ValueError: If nest and structure have different element counts.
   """
+  if not is_sequence(structure):
+    raise TypeError("structure must be a sequence")
   if not is_sequence(flat_sequence):
     raise TypeError("flat_sequence must be a sequence")
-
-  if not is_sequence(structure):
-    if len(flat_sequence) != 1:
-      raise ValueError("Structure is a scalar but len(flat_sequence) == %d > 1"
-                       % len(flat_sequence))
-    return flat_sequence[0]
 
   flat_structure = flatten(structure)
   if len(flat_structure) != len(flat_sequence):

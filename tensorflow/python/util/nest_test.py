@@ -46,15 +46,11 @@ class NestTest(tf.test.TestCase):
     self.assertEqual(restructured_from_flat[1][0][0].x, 1)
     self.assertEqual(restructured_from_flat[1][0][0].y, 0)
 
-    self.assertEqual([5], nest.flatten(5))
-    self.assertEqual([np.array([5])], nest.flatten(np.array([5])))
+    with self.assertRaises(TypeError):
+      nest.flatten(5)
 
-    self.assertEqual("a", nest.pack_sequence_as(5, ["a"]))
-    self.assertEqual(
-        np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
-
-    with self.assertRaisesRegexp(ValueError, "Structure is a scalar"):
-      nest.pack_sequence_as("scalar", [4, 5])
+    with self.assertRaisesRegexp(TypeError, "structure"):
+      nest.pack_sequence_as("bad_sequence", [4, 5])
 
     with self.assertRaisesRegexp(TypeError, "flat_sequence"):
       nest.pack_sequence_as([4, 5], "bad_sequence")
