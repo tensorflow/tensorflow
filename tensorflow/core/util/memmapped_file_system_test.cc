@@ -90,6 +90,11 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
   TF_ASSERT_OK(memmapped_env.GetFileSize(kTensor2FileName, &file_size));
   EXPECT_EQ(test_tensor.TotalBytes(), file_size);
 
+  // Check that Stat works.
+  FileStatistics stat;
+  TF_ASSERT_OK(memmapped_env.Stat(kTensor2FileName, &stat));
+  EXPECT_EQ(test_tensor.TotalBytes(), stat.length);
+
   // Check that if file not found correct error message returned.
   EXPECT_EQ(
       error::NOT_FOUND,
@@ -139,6 +144,9 @@ TEST(MemmappedFileSystemTest, ProxyToDefault) {
   uint64 file_length = 0;
   TF_EXPECT_OK(memmapped_env.GetFileSize(filename, &file_length));
   EXPECT_EQ(test_string.length(), file_length);
+  FileStatistics stat;
+  TF_EXPECT_OK(memmapped_env.Stat(filename, &stat));
+  EXPECT_EQ(test_string.length(), stat.length);
   std::unique_ptr<RandomAccessFile> random_access_file;
   TF_ASSERT_OK(
       memmapped_env.NewRandomAccessFile(filename, &random_access_file));

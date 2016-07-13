@@ -129,6 +129,15 @@ Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
   return Status::OK();
 }
 
+Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
+  uint64 size;
+  auto status = GetFileSize(fname, &size);
+  if (status.ok()) {
+    stat->length = size;
+  }
+  return status;
+}
+
 Status MemmappedFileSystem::NewWritableFile(const string& filename,
                                             std::unique_ptr<WritableFile>* wf) {
   return errors::Unimplemented("memmapped format doesn't support writing");
