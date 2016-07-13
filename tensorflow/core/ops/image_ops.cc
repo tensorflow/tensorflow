@@ -351,8 +351,9 @@ contents: 0-D. PNG-encoded image.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("RGBToHSV")
-    .Input("images: float")
-    .Output("output: float")
+    .Input("images: T")
+    .Output("output: T")
+    .Attr("T: {float, double} = DT_FLOAT")
     .Doc(R"doc(
 Converts one or more images from RGB to HSV.
 
@@ -370,8 +371,9 @@ output: `images` converted to HSV.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("HSVToRGB")
-    .Input("images: float")
-    .Output("output: float")
+    .Input("images: T")
+    .Output("output: T")
+    .Attr("T: {float, double} = DT_FLOAT")
     .Doc(R"doc(
 Convert one or more images from HSV to RGB.
 
