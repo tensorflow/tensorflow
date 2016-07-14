@@ -344,10 +344,15 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string(""), string(TF_NodeDevice(feed)));
   EXPECT_EQ(1, TF_NodeNumOutputs(feed));
   EXPECT_EQ(TF_INT32, TF_NodeOutputType(TF_Port{feed, 0}));
+  EXPECT_EQ(1, TF_NodeOutputListLength(feed, "output", s));
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(0, TF_NodeNumInputs(feed));
   EXPECT_EQ(0, TF_NodeOutputNumConsumers(TF_Port{feed, 0}));
   EXPECT_EQ(0, TF_NodeNumControlInputs(feed));
   EXPECT_EQ(0, TF_NodeNumControlOutputs(feed));
+
+  EXPECT_EQ(-1, TF_NodeOutputListLength(feed, "bogus", s));
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
 
   // Make a constant node with the scalar "3".
   TF_Node* three = ScalarConst(3, graph, s);
@@ -363,7 +368,11 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string(""), string(TF_NodeDevice(add)));
   EXPECT_EQ(1, TF_NodeNumOutputs(add));
   EXPECT_EQ(TF_INT32, TF_NodeOutputType(TF_Port{add, 0}));
+  EXPECT_EQ(1, TF_NodeOutputListLength(add, "sum", s));
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(2, TF_NodeNumInputs(add));
+  EXPECT_EQ(2, TF_NodeInputListLength(add, "inputs", s));
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(TF_INT32, TF_NodeInputType(TF_Port{add, 0}));
   EXPECT_EQ(TF_INT32, TF_NodeInputType(TF_Port{add, 1}));
   TF_Port add_in_0 = TF_NodeInput(TF_Port{add, 0});

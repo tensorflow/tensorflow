@@ -38,9 +38,6 @@ limitations under the License.
 //
 // Questions left to address:
 // * Might at some point need a way for callers to provide their own Env.
-// * Should we remove the TF_Status arg from TF_AddProto calls and only
-//   report errors later (e.g., on Run call).
-// * Should dimensions be unsigned instead of signed?
 // * Maybe add TF_TensorShape that encapsulates dimension info.
 //
 // Design decisions made:
@@ -400,9 +397,13 @@ extern const char* TF_NodeDevice(TF_Node* node);
 
 extern int TF_NodeNumOutputs(TF_Node* node);
 extern TF_DataType TF_NodeOutputType(TF_Port node_out);
+extern int TF_NodeOutputListLength(TF_Node* node, const char* arg_name,
+                                   TF_Status* status);
 
 extern int TF_NodeNumInputs(TF_Node* node);
 extern TF_DataType TF_NodeInputType(TF_Port node_in);
+extern int TF_NodeInputListLength(TF_Node* node, const char* arg_name,
+                                  TF_Status* status);
 
 // In this code:
 //   TF_Port producer = TF_NodeInput(consumer);
@@ -468,11 +469,6 @@ extern void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
 
 extern void TF_NodeToNodeDef(TF_Node* node, TF_Buffer* output_node_def,
                              TF_Status* status);
-
-// TODO(josh11b): Support querying/listing the lengths of input/output
-// lists.
-// int TF_NodeOutputListLength(TF_Port);
-// int TF_NodeInputListLength(TF_Port);
 
 // TODO(josh11b): Query attrs for a Node.
 
