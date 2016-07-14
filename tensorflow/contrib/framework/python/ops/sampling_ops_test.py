@@ -25,7 +25,7 @@ import tensorflow as tf
 class SamplingOpsTest(tf.test.TestCase):
 
   def testGraphBuildAssertionFailures(self):
-    val = tf.zeros([1, 3])
+    val = [tf.zeros([1, 3]), tf.ones([1, 5])]
     label = tf.constant([1], shape=[1])  # must have batch dimension
     probs = [.2] * 5
     initial_p = [.1, .3, .1, .3, .2]  # only used for stratified_sample
@@ -52,13 +52,17 @@ class SamplingOpsTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         sampler(val, tf.constant([0, 1, 0, 0, 0]), probs, batch_size)
 
+      # Data must be list, not singleton tensor.
+      with self.assertRaises(TypeError):
+        sampler(tf.zeros([1, 3]), label, probs, batch_size)
+
       # Data must have batch dimension if enqueue_many is True.
       with self.assertRaises(ValueError):
         sampler(val, tf.constant(1), probs, batch_size, enqueue_many=True)
 
       # Batch dimensions on data and labels should be equal.
       with self.assertRaises(ValueError):
-        sampler(tf.zeros([2, 1]), label, probs, batch_size, enqueue_many=True)
+        sampler([tf.zeros([2, 1])], label, probs, batch_size, enqueue_many=True)
 
       # Probabilities must be numpy array, python list, or tensor.
       with self.assertRaises(ValueError):
@@ -89,7 +93,7 @@ class SamplingOpsTest(tf.test.TestCase):
   def testRuntimeAssertionFailures(self):
     valid_probs = [.2] * 5
     valid_labels = [1, 2, 3]
-    vals = tf.zeros([3, 1])
+    vals = [tf.zeros([3, 1])]
 
     illegal_labels = [
         [0, -1, 1],  # classes must be nonnegative
@@ -125,7 +129,7 @@ class SamplingOpsTest(tf.test.TestCase):
   def batchingBehaviorHelper(self, sampler):
     batch_size = 20
     input_batch_size = 11
-    val_input_batch = tf.zeros([input_batch_size, 2, 3, 4])
+    val_input_batch = [tf.zeros([input_batch_size, 2, 3, 4])]
     lbl_input_batch = tf.cond(
         tf.greater(.5, tf.random_uniform([])),
         lambda: tf.ones([input_batch_size], dtype=tf.int32) * 1,
@@ -144,7 +148,7 @@ class SamplingOpsTest(tf.test.TestCase):
 
   def testCanBeCalledMultipleTimes(self):
     batch_size = 20
-    val_input_batch = tf.zeros([2, 3, 4])
+    val_input_batch = [tf.zeros([2, 3, 4])]
     lbl_input_batch = tf.ones([], dtype=tf.int32)
     probs = np.array([0, 1, 0, 0, 0])
     batches = tf.contrib.framework.sampling_ops.stratified_sample(
@@ -162,7 +166,7 @@ class SamplingOpsTest(tf.test.TestCase):
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(coord=coord)
 
-      sess.run(batches + [summary_op])
+      sess.run(batches + (summary_op,))
 
       coord.request_stop()
       coord.join(threads)
@@ -189,7 +193,7 @@ class SamplingOpsTest(tf.test.TestCase):
         tf.greater(.5, tf.random_uniform([])),
         lambda: tf.constant(lbl1),
         lambda: tf.constant(lbl2))
-    val = np.array([1, 4]) * label
+    val = [np.array([1, 4]) * label]
     probs = tf.placeholder(tf.float32, shape=[5])
     batch_size = 2
 
@@ -201,16 +205,16 @@ class SamplingOpsTest(tf.test.TestCase):
       threads = tf.train.start_queue_runners(coord=coord)
 
       for _ in range(5):
-        data, lbls = sess.run([data_batch, labels],
-                              feed_dict={probs: [1, 0, 0, 0, 0]})
+        [data], lbls = sess.run([data_batch, labels],
+                                feed_dict={probs: [1, 0, 0, 0, 0]})
         for data_example in data:
           self.assertListEqual([0, 0], list(data_example))
         self.assertListEqual([0, 0], list(lbls))
 
       # Now change distribution and expect different output.
       for _ in range(5):
-        data, lbls = sess.run([data_batch, labels],
-                              feed_dict={probs: [0, 0, 0, 1, 0]})
+        [data], lbls = sess.run([data_batch, labels],
+                                feed_dict={probs: [0, 0, 0, 1, 0]})
         for data_example in data:
           self.assertListEqual([3, 12], list(data_example))
         self.assertListEqual([3, 3], list(lbls))
@@ -234,13 +238,49 @@ class SamplingOpsTest(tf.test.TestCase):
     vals_ph = tf.placeholder(tf.float32)  # completely undefined shape
     labels_ph = tf.placeholder(tf.int32)  # completely undefined shape
     val_tf, labels_tf, _ = tf.contrib.framework.sampling_ops._verify_input(
-        vals_ph, labels_ph, [probs])
+        [vals_ph], labels_ph, [probs])
 
     # Run graph to make sure there are no shape-related runtime errors.
     for vals, labels in legal_input_pairs:
       with self.test_session() as sess:
         sess.run([val_tf, labels_tf], feed_dict={vals_ph: vals,
                                                  labels_ph: labels})
+
+  def dataListHelper(self, sampler):
+    batch_size = 20
+    val_input_batch = [tf.zeros([2, 3, 4]), tf.ones([2, 4]), tf.ones(2) * 3]
+    lbl_input_batch = tf.ones([], dtype=tf.int32)
+    probs = np.array([0, 1, 0, 0, 0])
+    val_list, lbls = sampler(
+        val_input_batch, lbl_input_batch, probs, batch_size)
+
+    # Check output shapes.
+    self.assertTrue(isinstance(val_list, list))
+    self.assertEqual(len(val_list), len(val_input_batch))
+    self.assertTrue(isinstance(lbls, tf.Tensor))
+
+    with self.test_session() as sess:
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(coord=coord)
+
+      out = sess.run(val_list + [lbls])
+
+      coord.request_stop()
+      coord.join(threads)
+
+    # Check output shapes.
+    self.assertEqual(len(out), len(val_input_batch) + 1)
+
+  def testDataListInput(self):
+    self.dataListHelper(
+        tf.contrib.framework.sampling_ops.stratified_sample_unknown_dist)
+
+  def testRejectionDataListInput(self):
+    initial_p = [0, 1, 0, 0, 0]
+    def curried_sampler(val, lbls, probs, batch, enqueue_many=False):
+      return tf.contrib.framework.sampling_ops.stratified_sample(
+          val, lbls, initial_p, probs, batch, enqueue_many=enqueue_many)
+    self.dataListHelper(curried_sampler)
 
   def normalBehaviorHelper(self, sampler):
     # Set up graph.
@@ -252,7 +292,7 @@ class SamplingOpsTest(tf.test.TestCase):
         tf.greater(.5, tf.random_uniform([])),
         lambda: tf.constant(lbl1),
         lambda: tf.constant(lbl2))
-    val = np.array([1, 4]) * label
+    val = [np.array([1, 4]) * label]
     probs = np.array([.8, 0, 0, .2, 0])
     batch_size = 16
 
@@ -266,7 +306,7 @@ class SamplingOpsTest(tf.test.TestCase):
       threads = tf.train.start_queue_runners(coord=coord)
 
       for _ in range(20):
-        data, lbls = sess.run([data_batch, labels])
+        [data], lbls = sess.run([data_batch, labels])
         data_l.append(data)
         label_l.append(lbls)
 
