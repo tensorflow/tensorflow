@@ -325,23 +325,24 @@ class StridedSliceOp : public OpKernel {
     if (processing_shape.num_elements() > 0) {
       // Optimization #3, slice has stride 1 in all dimensions
       // Optimization #3A, slice has only two dimensions
-      // TODO(aselle): Here we are restricting to processing_shape being
-      // 2D. this isn't strictly necessary, but I don't want to blow up
-      // the code gen size, because to shape<> you need static NDIM and T
+      // TODO(aselle): Here we are restricting to processing_shape and
+      // final_shape being 2D. This isn't strictly necessary, but I don't
+      // want to blow up code gen size, because to shape<> you need static
+      // NDIM and T
       if (is_simple_slice && std::is_same<Device, CPUDevice>::value &&
-          input_dims == 2 && processing_shape.num_elements() == 2 &&
+          input_dims == 2 && processing_shape.dims() == 2 &&
+          final_shape.dims() == 2 &&
           DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-        auto input = context->input(0).tensor<T, 2>();
+        auto in = input.tensor<T, 2>();
         auto output = result->tensor<T, 2>();
         // TODO(agarwal): Consider multi-threading if size[0] is large
         for (int row_in = begin[0], row_out = 0; row_in < end[0];
              ++row_in, ++row_out) {
           if (row_in + 1 < end[0]) {
             port::prefetch<port::PREFETCH_HINT_T0>(&output(row_in + 1, 0));
-            port::prefetch<port::PREFETCH_HINT_T0>(
-                &input(row_in + 1, begin[1]));
+            port::prefetch<port::PREFETCH_HINT_T0>(&in(row_in + 1, begin[1]));
           }
-          memcpy(&output(row_out, 0), &input(row_in, begin[1]),
+          memcpy(&output(row_out, 0), &in(row_in, begin[1]),
                  (end[1] - begin[1]) * sizeof(T));
         }
         return;
