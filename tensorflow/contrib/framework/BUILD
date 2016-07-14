@@ -32,12 +32,7 @@ py_test(
     size = "small",
     srcs = ["python/ops/arg_scope_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
@@ -45,12 +40,7 @@ py_test(
     size = "small",
     srcs = glob(["python/ops/ops_test.py"]),
     srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
@@ -58,24 +48,14 @@ py_test(
     size = "small",
     srcs = ["python/ops/prettyprint_ops_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
     name = "tensor_util_test",
     srcs = glob(["python/framework/tensor_util_test.py"]),
     srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
@@ -83,12 +63,7 @@ py_test(
     size = "small",
     srcs = glob(["python/ops/variables_test.py"]),
     srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
@@ -96,12 +71,7 @@ py_test(
     size = "small",
     srcs = ["python/ops/sampling_ops_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 filegroup(
