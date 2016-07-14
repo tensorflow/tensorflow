@@ -106,6 +106,10 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("GetChildren");
   }
 
+  Status Stat(const string& fname, FileStatistics* stat) override {
+    return calls_.ConsumeNextCall("Stat");
+  }
+
   Status DeleteFile(const string& fname) override {
     return calls_.ConsumeNextCall("DeleteFile");
   }
@@ -538,6 +542,33 @@ TEST(RetryingFileSystemTest, RenameFile_AllRetriesFailed) {
 
   EXPECT_EQ("Last error",
             fs.RenameFile("old_name", "new_name").error_message());
+}
+
+TEST(RetryingFileSystemTest, Stat_SuccessWith2ndTry) {
+  ExpectedCalls expected_fs_calls(
+      {std::make_tuple("Stat", errors::Unavailable("Something is wrong")),
+       std::make_tuple("Stat", Status::OK())});
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs));
+
+  FileStatistics stat;
+  TF_EXPECT_OK(fs.Stat("file_name", &stat));
+}
+
+TEST(RetryingFileSystemTest, Stat_AllRetriesFailed) {
+  ExpectedCalls expected_fs_calls({
+      std::make_tuple("Stat", errors::Unavailable("Something is wrong")),
+      std::make_tuple("Stat", errors::Unavailable("Something is wrong again")),
+      std::make_tuple("Stat", errors::Unavailable("And again")),
+      std::make_tuple("Stat", errors::Unavailable("Last error")),
+  });
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs));
+
+  FileStatistics stat;
+  EXPECT_EQ("Last error", fs.Stat("file_name", &stat).error_message());
 }
 
 }  // namespace

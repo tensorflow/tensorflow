@@ -645,6 +645,9 @@ class GradLoopState(object):
 
     Returns:
       The stack that contains the accumulated history of the tensor.
+
+    Raises:
+      TypeError: For internal errors involving the value condition context.
     """
     curr_ctxt = ops.get_default_graph()._get_control_flow_context()
     with ops.control_dependencies(None):
@@ -673,7 +676,9 @@ class GradLoopState(object):
         self.forward_index.op._add_control_input(push.op)
       else:
         # value is in a cond context within the forward context.
-        assert isinstance(value_ctxt, CondContext)
+        if not isinstance(value_ctxt, CondContext):
+          raise TypeError(
+              "value_ctxt is not a CondContext: %s" % value_ctxt)
         if dead_branch:
           # The special case for creating a zero tensor for a dead
           # branch of a switch. See ControlFlowState.ZerosLike().
@@ -732,7 +737,8 @@ class GradLoopState(object):
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
       pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
       self.grad_context.Exit()
-    if self.grad_context.parallel_iterations > 1:
+    parallel_iterations = self.grad_context.parallel_iterations
+    if parallel_iterations is not None and parallel_iterations > 1:
       # All pops are ordered after pivot_for_body and before grad_sync.
       self.grad_sync._add_control_input(pop.op)
     return pop

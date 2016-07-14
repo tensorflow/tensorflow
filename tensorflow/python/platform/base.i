@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Helper macros and typemaps for use in Tensorflow swig files.
+// Helper macros and typemaps for use in TensorFlow swig files.
 //
 %{
   #include <memory>

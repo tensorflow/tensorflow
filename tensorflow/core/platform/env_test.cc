@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 
+#include <sys/stat.h>
+
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
@@ -44,9 +47,15 @@ TEST(EnvTest, ReadFileToString) {
 
     // Read the file back and check equality
     string output;
-    TF_CHECK_OK(ReadFileToString(env, filename, &output));
-    CHECK_EQ(length, output.size());
-    CHECK_EQ(input, output);
+    TF_EXPECT_OK(ReadFileToString(env, filename, &output));
+    EXPECT_EQ(length, output.size());
+    EXPECT_EQ(input, output);
+
+    // Obtain stats.
+    FileStatistics stat;
+    TF_EXPECT_OK(env->Stat(filename, &stat));
+    EXPECT_EQ(length, stat.length);
+    EXPECT_TRUE(S_ISREG(stat.mode));
   }
 }
 
@@ -62,11 +71,15 @@ TEST(EnvTest, FileToReadonlyMemoryRegion) {
 
     // Create the region.
     std::unique_ptr<ReadOnlyMemoryRegion> region;
-    TF_CHECK_OK(env->NewReadOnlyMemoryRegionFromFile(filename, &region));
+    TF_EXPECT_OK(env->NewReadOnlyMemoryRegionFromFile(filename, &region));
     ASSERT_NE(region, nullptr);
     EXPECT_EQ(length, region->length());
     EXPECT_EQ(input, string(reinterpret_cast<const char*>(region->data()),
                             region->length()));
+    FileStatistics stat;
+    TF_EXPECT_OK(env->Stat(filename, &stat));
+    EXPECT_EQ(length, stat.length);
+    EXPECT_TRUE(S_ISREG(stat.mode));
   }
 }
 
@@ -85,9 +98,14 @@ TEST(EnvTest, LocalFileSystem) {
 
     // Read the file back and check equality
     string output;
-    TF_CHECK_OK(ReadFileToString(env, filename, &output));
-    CHECK_EQ(length, output.size());
-    CHECK_EQ(input, output);
+    TF_EXPECT_OK(ReadFileToString(env, filename, &output));
+    EXPECT_EQ(length, output.size());
+    EXPECT_EQ(input, output);
+
+    FileStatistics stat;
+    TF_EXPECT_OK(env->Stat(filename, &stat));
+    EXPECT_EQ(length, stat.length);
+    EXPECT_TRUE(S_ISREG(stat.mode));
   }
 }
 
@@ -106,7 +124,7 @@ REGISTER_FILE_SYSTEM("ipfs", InterPlanetaryFileSystem);
 TEST(EnvTest, IPFS) {
   Env* env = Env::Default();
   std::vector<string> planets;
-  TF_CHECK_OK(env->GetChildren("ipfs://solarsystem", &planets));
+  TF_EXPECT_OK(env->GetChildren("ipfs://solarsystem", &planets));
   int c = 0;
   std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
                                  "Jupiter", "Saturn", "Uranus", "Neptune"};

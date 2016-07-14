@@ -154,7 +154,7 @@ class _SparseColumn(_FeatureColumn,
                                            ["column_name", "is_integerized",
                                             "bucket_size", "lookup_config",
                                             "combiner", "dtype"])):
-  """"Represents a sparse feature column also known as categorical features.
+  """Represents a sparse feature column also known as categorical features.
 
   Instances of this class are immutable. A sparse column means features are
   sparse and dictionary returned by InputBuilder contains a
@@ -1088,7 +1088,7 @@ def bucketized_column(source_column, boundaries):
 
 class _CrossedColumn(_FeatureColumn, collections.namedtuple(
     "_CrossedColumn", ["columns", "hash_bucket_size", "combiner"])):
-  """"Represents a cross transformation also known as composition or union.
+  """Represents a cross transformation also known as composition or union.
 
   Instances of this class are immutable. It crosses given `columns`. Crossed
   column output will be hashed to hash_bucket_size.

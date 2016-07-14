@@ -18,6 +18,7 @@ limitations under the License.
 #define TENSORFLOW_PUBLIC_TENSOR_C_API_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 // --------------------------------------------------------------------------
 // C API for TensorFlow.
@@ -51,11 +52,6 @@ limitations under the License.
 //   are not optimizing for convenience.
 // * We make assumption that one session has one graph.  This should be
 //   fine since we have the ability to run sub-graphs.
-// * We are not providing TF_AddNode/TF_AddNodes to better support
-//   languages/platforms where proto is not available.  This is because
-//   we can just point authors of bindings at the .proto file and the
-//   proto serialization spec and they can do the right thing for
-//   their language.
 // * We could allow NULL for some arguments (e.g., NULL options arg).
 //   However since convenience is not a primary goal, we don't do this.
 // * Devices are not in this API.  Instead, they are created/used internally
@@ -133,9 +129,10 @@ extern void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg);
 // Return the code record in *s.
 extern TF_Code TF_GetCode(const TF_Status* s);
 
-// Return a pointer to the error message in *s.  The return value
-// points to memory that is only usable until the next mutation to *s.
-// Always returns an empty string if TF_GetCode(s) is TF_OK.
+// Return a pointer to the (null-terminated) error message in *s.  The
+// return value points to memory that is only usable until the next
+// mutation to *s.  Always returns an empty string if TF_GetCode(s) is
+// TF_OK.
 extern const char* TF_Message(const TF_Status* s);
 
 // --------------------------------------------------------------------------
@@ -187,7 +184,7 @@ typedef struct TF_Tensor TF_Tensor;
 //      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
-extern TF_Tensor* TF_NewTensor(TF_DataType, const long long* dims, int num_dims,
+extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
                                void* data, size_t len,
                                void (*deallocator)(void* data, size_t len,
                                                    void* arg),
@@ -204,7 +201,7 @@ extern int TF_NumDims(const TF_Tensor*);
 
 // Return the length of the tensor in the "dim_index" dimension.
 // REQUIRES: 0 <= dim_index < TF_NumDims(tensor)
-extern long long TF_Dim(const TF_Tensor* tensor, int dim_index);
+extern int64_t TF_Dim(const TF_Tensor* tensor, int dim_index);
 
 // Return the size of the underlying data in bytes.
 extern size_t TF_TensorByteSize(const TF_Tensor*);
@@ -228,7 +225,7 @@ extern TF_SessionOptions* TF_NewSessionOptions();
 extern void TF_SetTarget(TF_SessionOptions* options, const char* target);
 
 // Set the config in TF_SessionOptions.options.
-// config should be a serialized brain.ConfigProto proto.
+// config should be a serialized tensorflow.ConfigProto proto.
 // If config was not parsed successfully as a ConfigProto, record the
 // error information in *status.
 extern void TF_SetConfig(TF_SessionOptions* options, const void* proto,
@@ -241,7 +238,307 @@ extern void TF_DeleteSessionOptions(TF_SessionOptions*);
 // - export functions to set Config fields
 
 // --------------------------------------------------------------------------
-// TF_Session manages a single graph and execution.
+// The new graph construction API, still under development.
+
+// Represents a computation graph.  Graphs may be shared between sessions.
+// Graphs are thread-safe when used as directed below.
+typedef struct TF_Graph TF_Graph;
+
+// Return a new graph object.
+extern TF_Graph* TF_NewGraph();
+
+// Destroy an options object.  Graph will be deleted once no more
+// TFSessionWithGraph's are referencing it.
+extern void TF_DeleteGraph(TF_Graph*);
+
+// Node being built. The underlying graph must outlive this.
+typedef struct TF_NodeDescription TF_NodeDescription;
+
+// Node that has been added to the graph. Valid until the graph is
+// deleted -- in particular adding a new node to the graph does not
+// invalidate old TF_Node* pointers.
+typedef struct TF_Node TF_Node;
+
+// Represents a specific input or output of a node, e.g. to specify the
+// specific output to pass as an input to an op.
+typedef struct TF_Port {
+  TF_Node* node;
+  int index;  // Specifies the index of the input or output within node.
+} TF_Port;
+
+// Node will only be added to *graph when TF_FinishNode() is called
+// (assuming TF_FinishNode() does not return an error).  *graph must
+// not be deleted until after TF_FinishNode() is called.
+extern TF_NodeDescription* TF_NewNode(TF_Graph* graph, const char* op_type,
+                                      const char* node_name);
+
+// Specify the device for `desc`.  Defaults to empty, meaning unconstrained.
+extern void TF_SetDevice(TF_NodeDescription* desc, const char* device);
+
+// The calls to TF_AddInput and TF_AddInputList must match (in number,
+// order, and type) the op declaration.  For example, the "Concat" op
+// has registration:
+//   REGISTER_OP("Concat")
+//       .Input("concat_dim: int32")
+//       .Input("values: N * T")
+//       .Output("output: T")
+//       .Attr("N: int >= 2")
+//       .Attr("T: type");
+// that defines two inputs, "concat_dim" and "values" (in that order).
+// You must use TF_AddInput() for the first input (since it takes a
+// single tensor), and TF_AddInputList() for the second input (since
+// it takes a list, even if you were to pass a list with a single
+// tensor), as in:
+//   TF_NodeDescription* desc = TF_NewNode(graph, "Concat", "c");
+//   TF_Port concat_dim_input = {...};
+//   TF_AddInput(desc, concat_dim_input);
+//   TF_Port values_inputs[5] = {{...}, ..., {...}};
+//   TF_AddInputList(desc, 5, values_inputs);
+
+// For inputs that take a single tensor.
+extern void TF_AddInput(TF_NodeDescription* desc, TF_Port input);
+
+// For inputs that take a list of tensors.
+// inputs must point to TF_Port[num_inputs].
+extern void TF_AddInputList(TF_NodeDescription* desc, const TF_Port* inputs,
+                            int num_inputs);
+
+// Call once per control input to `desc`.
+extern void TF_AddControlInput(TF_NodeDescription* desc, TF_Node* input);
+
+// Call some TF_SetAttr*() function for every attr that is not
+// inferred from an input.
+
+// `value` must point to a string of length `length` bytes.
+extern void TF_SetAttrString(TF_NodeDescription* desc, const char* attr_name,
+                             const void* value, int length);
+// `values` and `lengths` both must have lengths `num_values`.
+// `values[i]` must point to a string of length `lengths[i]` bytes.
+extern void TF_SetAttrStringList(TF_NodeDescription* desc,
+                                 const char* attr_name,
+                                 const void* const* values, const int* lengths,
+                                 int num_values);
+extern void TF_SetAttrInt(TF_NodeDescription* desc, const char* attr_name,
+                          int64_t value);
+extern void TF_SetAttrIntList(TF_NodeDescription* desc, const char* attr_name,
+                              const int64_t* values, int num_values);
+extern void TF_SetAttrFloat(TF_NodeDescription* desc, const char* attr_name,
+                            float value);
+extern void TF_SetAttrFloatList(TF_NodeDescription* desc, const char* attr_name,
+                                const float* values, int num_values);
+extern void TF_SetAttrBool(TF_NodeDescription* desc, const char* attr_name,
+                           unsigned char value);
+extern void TF_SetAttrBoolList(TF_NodeDescription* desc, const char* attr_name,
+                               const unsigned char* values, int num_values);
+extern void TF_SetAttrType(TF_NodeDescription* desc, const char* attr_name,
+                           TF_DataType value);
+extern void TF_SetAttrTypeList(TF_NodeDescription* desc, const char* attr_name,
+                               const TF_DataType* values, int num_values);
+
+// Set `num_dims` to -1 to represent "unknown rank".  Otherwise,
+// `dims` points to an array of length `num_dims`.  `dims[i]` must be
+// >= -1, with -1 meaning "unknown dimension".
+extern void TF_SetAttrShape(TF_NodeDescription* desc, const char* attr_name,
+                            const int64_t* dims, int num_dims);
+// `dims` and `num_dims` must point to arrays of length `num_shapes`.
+// Set `num_dims[i]` to -1 to represent "unknown rank".  Otherwise,
+// `dims[i]` points to an array of length `num_dims[i]`.  `dims[i][j]`
+// must be >= -1, with -1 meaning "unknown dimension".
+extern void TF_SetAttrShapeList(TF_NodeDescription* desc, const char* attr_name,
+                                const int64_t* const* dims, const int* num_dims,
+                                int num_shapes);
+// `proto` must point to an array of `proto_len` bytes representing a
+// binary-serialized TensorShapeProto.
+extern void TF_SetAttrTensorShapeProto(TF_NodeDescription* desc,
+                                       const char* attr_name, void* proto,
+                                       int proto_len, TF_Status* status);
+// `protos` and `proto_lens` must point to arrays of length `num_shapes`.
+// `protos[i]` must point to an array of `proto_lens[i]` bytes
+// representing a binary-serialized TensorShapeProto.
+extern void TF_SetAttrTensorShapeProtoList(TF_NodeDescription* desc,
+                                           const char* attr_name,
+                                           const void* const* protos,
+                                           const int* proto_lens,
+                                           int num_shapes, TF_Status* status);
+
+// This functions takes ownership of *value (the
+// implementation will eventually call TF_DeleteTensor).
+extern void TF_SetAttrTensor(TF_NodeDescription* desc, const char* attr_name,
+                             TF_Tensor* value, TF_Status* status);
+// This functions takes ownership of values[0]..values[num_values-1] (the
+// implementation will eventually call TF_DeleteTensor on each).
+extern void TF_SetAttrTensorList(TF_NodeDescription* desc,
+                                 const char* attr_name,
+                                 TF_Tensor* const* values, int num_values,
+                                 TF_Status* status);
+
+// `proto` should point to a sequence of bytes of length `proto_len`
+// representing a binary serialization of an AttrValue protocol
+// buffer.
+extern void TF_SetAttrToAttrValueProto(TF_NodeDescription* desc,
+                                       const char* attr_name, const void* proto,
+                                       size_t proto_len, TF_Status* status);
+
+// If this function succeeds:
+//   * *status is set to an OK value,
+//   * a TF_Node is added to the graph,
+//   * a non-null value pointing to the added node is returned --
+//     this value is valid until the underlying graph is deleted.
+// Otherwise:
+//   * *status is set to a non-OK value,
+//   * the graph is not modified,
+//   * a null value is returned.
+// In either case, it deletes `desc`.
+extern TF_Node* TF_FinishNode(TF_NodeDescription* desc, TF_Status* status);
+
+// TF_Node functions.  Nodes are immutable once created, so these are all
+// query functions.
+
+extern const char* TF_NodeName(TF_Node* node);
+extern const char* TF_NodeOpType(TF_Node* node);
+extern const char* TF_NodeDevice(TF_Node* node);
+
+extern int TF_NodeNumOutputs(TF_Node* node);
+extern TF_DataType TF_NodeOutputType(TF_Port node_out);
+
+extern int TF_NodeNumInputs(TF_Node* node);
+extern TF_DataType TF_NodeInputType(TF_Port node_in);
+
+// In this code:
+//   TF_Port producer = TF_NodeInput(consumer);
+// There is an edge from producer.node's output (given by
+// producer.index) to consumer.node's input (given by consumer.index).
+extern TF_Port TF_NodeInput(TF_Port node_in);
+
+// Get the number of current consumers of a node's output.  Note that
+// this number can change when new nodes are added to the graph.
+extern int TF_NodeOutputNumConsumers(TF_Port node_out);
+
+// Get list of all current consumers of a node's output.  consumers
+// must point to an array of length at least max_consumers (ideally
+// set to TF_NodeOutputNumConsumer(node_out)).  Beware that a
+// concurrent modification of the graph can increase the number of
+// consumers of a node.  Returns the number of output consumers
+// (should match TF_NodeOutputNumConsumers(node_out)).
+extern int TF_NodeOutputConsumers(TF_Port node_out, TF_Port* consumers,
+                                  int max_consumers);
+
+// Get the number of control inputs to a node.
+extern int TF_NodeNumControlInputs(TF_Node* node);
+
+// Get list of all control inputs to a node.  control_inputs must
+// point to an array of length max_control_inputs (ideally set to
+// TF_NodeNumControlInputs(node)).  Returns the number of control
+// inputs (should match TF_NodeNumControlInputs(node)).
+extern int TF_NodeGetControlInputs(TF_Node* node, TF_Node** control_inputs,
+                                   int max_control_inputs);
+
+// Get the number of nodes that have *node as a control inputs.
+// Note that this number can change when new nodes are added to the
+// graph.
+extern int TF_NodeNumControlOutputs(TF_Node* node);
+
+// Get the list of nodes that have *node as a control input.
+// control_outputs must point to an array of length at least
+// max_control_outputs (ideally set to
+// TF_NodeNumControlOutputs(node)). Beware that a concurrent
+// modification of the graph can increase the number of control
+// outputs.  Returns the number of control outputs (should match
+// TF_NodeNumControlOutputs(node)).
+extern int TF_NodeGetControlOutputs(TF_Node* node, TF_Node** control_outputs,
+                                    int max_control_outputs);
+
+// Returns the node in the graph with `node_name`. Returns nullptr if
+// no node found.
+extern TF_Node* TF_GraphNodeByName(TF_Graph* graph, const char* node_name);
+
+// Iterate through the nodes of a graph.  To use:
+// size_t pos = 0;
+// TF_Node* node;
+// while ((node = TF_GraphNextNode(graph, &pos)) != nullptr) {
+//   DoSomethingWithNode(node);
+// }
+extern TF_Node* TF_GraphNextNode(TF_Graph* graph, size_t* pos);
+
+// Note: The following two functions may fail on very large protos in the
+// future.
+
+extern void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
+                               TF_Status* status);
+
+extern void TF_NodeToNodeDef(TF_Node* node, TF_Buffer* output_node_def,
+                             TF_Status* status);
+
+// TODO(josh11b): Support querying/listing the lengths of input/output
+// lists.
+// int TF_NodeOutputListLength(TF_Port);
+// int TF_NodeInputListLength(TF_Port);
+
+// TODO(josh11b): Query attrs for a Node.
+
+// TODO(josh11b,mrry): Import GraphDef into TF_Graph.
+
+// TODO(andydavis): Add gradients to a graph.
+
+// TODO(josh11b): Register OpDef, available to all nodes added
+// to this graph.
+
+// The following two may both benefit from a subgraph-definition API
+// that re-uses most of the graph-definition API.
+// TODO(andydavis): Add functions to a graph.
+// TODO(yuanbyu): Add while loop to graph.
+
+// --------------------------------------------------------------------------
+// The new session API that uses TF_Graph*.  The intent is this will
+// replace the TF_ExtendGraph() API.
+
+// TODO(josh11b): Rename this TF_Session once we delete the old API.
+typedef struct TF_SessionWithGraph TF_SessionWithGraph;
+
+// Return a new execution session with the associated graph, or NULL
+// on error.  *graph must be a valid graph (not deleted or nullptr).
+// This function will prevent the graph from being deleted until
+// TF_DeleteSessionWithGraph() is called.  Does not take ownership of opts.
+// TODO(josh11b): Rename this TF_NewSession() once we delete the old API.
+extern TF_SessionWithGraph* TF_NewSessionWithGraph(
+    TF_Graph* graph, const TF_SessionOptions* opts, TF_Status* status);
+
+// Close a session. This contacts any other processes associated with this
+// session, if applicable. This may not be called after
+// TF_DeleteSessionWithGraph().
+// TODO(josh11b): Rename this TF_CloseSession() once we delete the old API.
+extern void TF_CloseSessionWithGraph(TF_SessionWithGraph*, TF_Status* status);
+
+// Destroy a session object.  Even if error information is recorded in
+// *status, this call discards all local resources associated with the
+// session.  The session may not be used during or after this call
+// (and the session drops its reference to the corresponding graph).
+// TODO(josh11b): Rename this TF_DeleteSession() once we delete the old API.
+extern void TF_DeleteSessionWithGraph(TF_SessionWithGraph*, TF_Status* status);
+
+// See TF_Run() below.
+extern void TF_SessionRun(TF_SessionWithGraph* session,
+                          // RunOptions
+                          const TF_Buffer* run_options,
+                          // Input tensors
+                          const TF_Port* inputs, TF_Tensor* const* input_values,
+                          int ninputs,
+                          // Output tensors
+                          const TF_Port* outputs, TF_Tensor** output_values,
+                          int noutputs,
+                          // Target nodes
+                          const TF_Node* const* target_nodes, int ntargets,
+                          // RunMetadata
+                          TF_Buffer* run_metadata,
+                          // Output status
+                          TF_Status*);
+
+// TODO(josh11b): TF_SessionPRunSetup() and TF_SessionPRun().
+
+// --------------------------------------------------------------------------
+// The deprecated session API.  Please switch to the above instead of
+// TF_ExtendGraph().  TF_Session manages a single graph and execution.
+
 typedef struct TF_Session TF_Session;
 
 // Return a new execution session, or NULL on error.

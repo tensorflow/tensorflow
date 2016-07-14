@@ -42,34 +42,37 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
     np.random.seed(7)
     batch_size = 5
     shape = (batch_size, 2, 7, 3)
-    inp = np.random.rand(*shape).astype(np.float32)
 
-    # Convert to HSV and back, as a batch and individually
-    with self.test_session() as sess:
-      batch0 = constant_op.constant(inp)
-      batch1 = image_ops.rgb_to_hsv(batch0)
-      batch2 = image_ops.hsv_to_rgb(batch1)
-      split0 = array_ops.unpack(batch0)
-      split1 = list(map(image_ops.rgb_to_hsv, split0))
-      split2 = list(map(image_ops.hsv_to_rgb, split1))
-      join1 = array_ops.pack(split1)
-      join2 = array_ops.pack(split2)
-      batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
+    for nptype in [np.float32, np.float64]:
+      inp = np.random.rand(*shape).astype(nptype)
 
-    # Verify that processing batch elements together is the same as separate
-    self.assertAllClose(batch1, join1)
-    self.assertAllClose(batch2, join2)
-    self.assertAllClose(batch2, inp)
+      # Convert to HSV and back, as a batch and individually
+      with self.test_session() as sess:
+        batch0 = constant_op.constant(inp)
+        batch1 = image_ops.rgb_to_hsv(batch0)
+        batch2 = image_ops.hsv_to_rgb(batch1)
+        split0 = array_ops.unpack(batch0)
+        split1 = list(map(image_ops.rgb_to_hsv, split0))
+        split2 = list(map(image_ops.hsv_to_rgb, split1))
+        join1 = array_ops.pack(split1)
+        join2 = array_ops.pack(split2)
+        batch1, batch2, join1, join2 = sess.run([batch1, batch2, join1, join2])
+
+      # Verify that processing batch elements together is the same as separate
+      self.assertAllClose(batch1, join1)
+      self.assertAllClose(batch2, join2)
+      self.assertAllClose(batch2, inp)
 
   def testRGBToHSVRoundTrip(self):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
-    rgb_np = np.array(data, dtype=np.float32).reshape([2, 2, 3]) / 255.
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        hsv = image_ops.rgb_to_hsv(rgb_np)
-        rgb = image_ops.hsv_to_rgb(hsv)
-        rgb_tf = rgb.eval()
-    self.assertAllClose(rgb_tf, rgb_np)
+    for nptype in [np.float32, np.float64]:
+      rgb_np = np.array(data, dtype=nptype).reshape([2, 2, 3]) / 255.
+      for use_gpu in [True, False]:
+        with self.test_session(use_gpu=use_gpu):
+          hsv = image_ops.rgb_to_hsv(rgb_np)
+          rgb = image_ops.hsv_to_rgb(hsv)
+          rgb_tf = rgb.eval()
+      self.assertAllClose(rgb_tf, rgb_np)
 
 
 class GrayscaleToRGBTest(test_util.TensorFlowTestCase):

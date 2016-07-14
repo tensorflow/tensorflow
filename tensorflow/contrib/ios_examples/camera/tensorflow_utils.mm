@@ -123,7 +123,7 @@ tensorflow::Status LoadModel(NSString* file_name, NSString* file_type,
   tensorflow::Session* session_pointer = nullptr;
   tensorflow::Status session_status = tensorflow::NewSession(options, &session_pointer);
   if (!session_status.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Session: " << session_status;
+    LOG(ERROR) << "Could not create TensorFlow Session: " << session_status;
     return session_status;
   }
   session->reset(session_pointer);
@@ -149,7 +149,7 @@ tensorflow::Status LoadModel(NSString* file_name, NSString* file_type,
   LOG(INFO) << "Creating session.";
   tensorflow::Status create_status = (*session)->Create(tensorflow_graph);
   if (!create_status.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << create_status;
+    LOG(ERROR) << "Could not create TensorFlow Graph: " << create_status;
     return create_status;
   }
   

@@ -124,7 +124,7 @@ void BasicTest(const string& export_path) {
       outputs[0], test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
 }
 
-TEST(LoadSessionBundleFromPath, BasicTensorflowContrib) {
+TEST(LoadSessionBundleFromPath, BasicTensorFlowContrib) {
   const string export_path = test_util::TestSrcDirPath(
       "session_bundle/example/half_plus_two/00000123");
   BasicTest(export_path);

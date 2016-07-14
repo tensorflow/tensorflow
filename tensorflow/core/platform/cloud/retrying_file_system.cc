@@ -131,6 +131,11 @@ bool RetryingFileSystem::FileExists(const string& fname) {
   return base_file_system_->FileExists(fname);
 }
 
+Status RetryingFileSystem::Stat(const string& fname, FileStatistics* stat) {
+  return CallWithRetries(
+      std::bind(&FileSystem::Stat, base_file_system_.get(), fname, stat));
+}
+
 Status RetryingFileSystem::GetChildren(const string& dir,
                                        std::vector<string>* result) {
   return CallWithRetries(std::bind(&FileSystem::GetChildren,

@@ -24,6 +24,8 @@ import time
 
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import coordinated_session
+
 
 def BusyWaitForCoordStop(coord):
   while not coord.should_stop():
@@ -37,7 +39,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
     with self.test_session() as sess:
       tf.constant(0.0)
       coord = tf.train.Coordinator()
-      coord_sess = tf.contrib.learn.CoordinatedSession(sess, coord, [])
+      coord_sess = coordinated_session.CoordinatedSession(sess, coord, [])
       self.assertEquals(sess.graph, coord_sess.graph)
       self.assertEquals(sess.sess_str, coord_sess.sess_str)
 
@@ -46,13 +48,13 @@ class CoordinatedSessionTest(tf.test.TestCase):
       c = tf.constant(0)
       v = tf.identity(c)
       coord = tf.train.Coordinator()
-      coord_sess = tf.contrib.learn.CoordinatedSession(sess, coord, [])
+      coord_sess = coordinated_session.CoordinatedSession(sess, coord, [])
       self.assertEqual(42, coord_sess.run(v, feed_dict={c: 42}))
 
   def test_should_stop_on_close(self):
     with self.test_session() as sess:
       coord = tf.train.Coordinator()
-      coord_sess = tf.contrib.learn.CoordinatedSession(sess, coord, [])
+      coord_sess = coordinated_session.CoordinatedSession(sess, coord, [])
       self.assertFalse(coord_sess.should_stop())
       coord_sess.close()
       self.assertTrue(coord_sess.should_stop())
@@ -60,7 +62,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
   def test_should_stop_on_coord_stop(self):
     with self.test_session() as sess:
       coord = tf.train.Coordinator()
-      coord_sess = tf.contrib.learn.CoordinatedSession(sess, coord, [])
+      coord_sess = coordinated_session.CoordinatedSession(sess, coord, [])
       self.assertFalse(coord_sess.should_stop())
       coord.request_stop()
       self.assertTrue(coord_sess.should_stop())
@@ -70,7 +72,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
       c = tf.constant(0)
       v = tf.identity(c)
       coord = tf.train.Coordinator()
-      coord_sess = tf.contrib.learn.CoordinatedSession(sess, coord, [])
+      coord_sess = coordinated_session.CoordinatedSession(sess, coord, [])
       self.assertFalse(coord_sess.should_stop())
       self.assertEqual(0, coord_sess.run(c))
       self.assertEqual(1, coord_sess.run(v, feed_dict={c: 1}))
@@ -89,7 +91,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
                  for _ in range(3)]
       for t in threads:
         t.start()
-      coord_sess = tf.contrib.learn.CoordinatedSession(sess, coord, threads)
+      coord_sess = coordinated_session.CoordinatedSession(sess, coord, threads)
       self.assertFalse(coord_sess.should_stop())
       for t in threads:
         self.assertTrue(t.is_alive())

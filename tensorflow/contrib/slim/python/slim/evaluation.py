@@ -181,7 +181,7 @@ def evaluation(sess,
   written out using a summary writer.
 
   Args:
-    sess: The current Tensorflow `Session`.
+    sess: The current TensorFlow `Session`.
     num_evals: The number of times to execute `eval_op`.
     init_op: An operation run at the beginning of evaluation.
     init_op_feed_dict: A feed dictionary to use when executing `init_op`.

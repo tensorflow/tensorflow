@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // The methods are exposed to Java to allow for interaction with the native
-// Tensorflow code. See
-// tensorflow/examples/android/src/org/tensorflow/TensorflowClassifier.java
+// TensorFlow code. See
+// tensorflow/examples/android/src/org/tensorflow/TensorFlowClassifier.java
 // for the Java counterparts.
 
 #ifndef ORG_TENSORFLOW_JNI_TENSORFLOW_JNI_H_  // NOLINT
@@ -28,9 +28,9 @@ extern "C" {
 #endif  // __cplusplus
 
 #define TENSORFLOW_METHOD(METHOD_NAME) \
-  Java_org_tensorflow_demo_TensorflowClassifier_##METHOD_NAME  // NOLINT
+  Java_org_tensorflow_demo_TensorFlowClassifier_##METHOD_NAME  // NOLINT
 
-JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
+JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model,
     jstring labels, jint num_classes, jint model_input_size, jint image_mean,
     jfloat image_std, jstring input_name, jstring output_name);

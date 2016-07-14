@@ -24,6 +24,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
 template <class T1, class T2, class T3>
 class QuantizedBiasAddOp : public OpKernel {
  public:
@@ -56,12 +58,8 @@ class QuantizedBiasAddOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     const auto& input_flat = input.flat<T1>();
-    const int64 input_element_count = input.NumElements();
     const auto& bias_flat = bias.flat<T2>();
-    const int64 bias_element_count = bias.NumElements();
     auto output_flat = output->flat<T3>();
-    const size_t how_many_iterations =
-        (input_element_count / bias_element_count);
 
     // We need to have a good range to add our two arguments together in. This
     // is surprisingly tricky, since it has to satisfy a few different needs:
@@ -87,6 +85,28 @@ class QuantizedBiasAddOp : public OpKernel {
     const T3 zero_in_total_space =
         FloatToQuantized<T3>(0.0f, total_min, total_max);
 
+    const int64 input_element_count = input.NumElements();
+    const int64 bias_element_count = bias.NumElements();
+
+    QuantizedToFloatStruct<T1> bias_q2f(bias_min, bias_max);
+    QuantizedToFloatStruct<T2> input_q2f(input_min, input_max);
+    FloatToQuantizedStruct<T3> f2q(total_min, total_max);
+
+    auto bias_float = DEQUANTIZE_WITH_EIGEN(bias_flat, bias_q2f);
+    auto bias_in_total_space = QUANTIZE_WITH_EIGEN(bias_float, f2q, T3);
+
+    auto input_float = DEQUANTIZE_WITH_EIGEN(input_flat, input_q2f);
+    auto input_in_total_space = QUANTIZE_WITH_EIGEN(input_float, f2q, T3);
+
+    Eigen::array<Eigen::DenseIndex, 1> bcast;
+    bcast[0] = input_element_count / bias_element_count;
+    output_flat.device(context->template eigen_device<CPUDevice>()) =
+        input_in_total_space +
+        (bias_in_total_space.broadcast(bcast) + zero_in_total_space);
+
+#if 0
+    const size_t how_many_iterations =
+        (input_element_count / bias_element_count);
     // This is a reference implementation of the bias addition for quantized
     // buffers, designed to provide a clear specification for the result we
     // want. We'll want to specialize this for particular hardware, and
@@ -113,6 +133,7 @@ class QuantizedBiasAddOp : public OpKernel {
         output_flat(index) = total;
       }
     }
+#endif
 
     Tensor* output_min = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, {}, &output_min));

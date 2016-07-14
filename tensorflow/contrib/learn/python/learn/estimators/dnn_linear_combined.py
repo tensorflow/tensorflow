@@ -53,6 +53,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
         - if `column` is a `SparseColumn`, a feature with `key=column.name`
           whose `value` is a `SparseTensor`.
+        - if `column` is a `WeightedSparseColumn`, two features: the first with
+          `key` the id column name, the second with `key` the weight column
+          name. Both features' `value` must be a `SparseTensor`.
         - if `column` is a `RealValuedColumn, a feature with `key=column.name`
           whose `value` is a `Tensor`.
   """
@@ -343,6 +346,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
       for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
       - if `column` is a `SparseColumn`, a feature with `key=column.name`
         whose `value` is a `SparseTensor`.
+      - if `column` is a `WeightedSparseColumn`, two features: the first with
+        `key` the id column name, the second with `key` the weight column name.
+        Both features' `value` must be a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
         whose `value` is a `Tensor`.
   """
@@ -566,6 +572,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
       - if `column` is a `SparseColumn`, a feature with `key=column.name`
         whose `value` is a `SparseTensor`.
+      - if `column` is a `WeightedSparseColumn`, two features: the first with
+        `key` the id column name, the second with `key` the weight column name.
+        Both features' `value` must be a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
         whose `value` is a `Tensor`.
   """

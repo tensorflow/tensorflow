@@ -24,6 +24,7 @@ import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
+from tensorflow.python.platform import tf_logging as logging
 
 
 class _MyEveryN(learn.monitors.EveryN):
@@ -33,6 +34,7 @@ class _MyEveryN(learn.monitors.EveryN):
         every_n_steps=every_n_steps, first_n_steps=first_n_steps)
     self._steps_begun = []
     self._steps_ended = []
+    self._post_steps = []
 
   @property
   def steps_begun(self):
@@ -41,6 +43,10 @@ class _MyEveryN(learn.monitors.EveryN):
   @property
   def steps_ended(self):
     return self._steps_ended
+
+  @property
+  def post_steps(self):
+    return self._post_steps
 
   def every_n_step_begin(self, step):
     super(_MyEveryN, self).every_n_step_begin(step)
@@ -52,12 +58,36 @@ class _MyEveryN(learn.monitors.EveryN):
     self._steps_ended.append(step)
     return False
 
+  def every_n_post_step(self, step, session):
+    super(_MyEveryN, self).every_n_post_step(step, session)
+    self._post_steps.append(step)
+    return False
+
 
 class MonitorsTest(tf.test.TestCase):
   """Monitors tests."""
 
-  def _run_monitor(self, monitor, num_epochs=3, num_steps_per_epoch=10):
-    monitor.begin(max_steps=(num_epochs * num_steps_per_epoch) - 1)
+  def setUp(self):
+    # Mock out logging calls so we can verify whether correct tensors are being
+    # monitored.
+    self._actual_log = logging.info
+
+    def mockLog(*args, **kwargs):
+      self.logged_message = args
+      self._actual_log(*args, **kwargs)
+
+    logging.info = mockLog
+
+  def tearDown(self):
+    logging.info = self._actual_log
+
+  def _run_monitor(self, monitor, num_epochs=3, num_steps_per_epoch=10,
+                   pass_max_steps=True):
+    if pass_max_steps:
+      max_steps = num_epochs * num_steps_per_epoch - 1
+    else:
+      max_steps = None
+    monitor.begin(max_steps=max_steps, init_step=0)
     for epoch in xrange(num_epochs):
       monitor.epoch_begin(epoch)
       should_stop = False
@@ -70,6 +100,7 @@ class MonitorsTest(tf.test.TestCase):
             [t.name if isinstance(t, tf.Tensor) else t for t in tensors],
             output))
         should_stop = monitor.step_end(step=step, output=output)
+        monitor.post_step(step=step, session=None)
         step += 1
       monitor.epoch_end(epoch)
     monitor.end()
@@ -85,13 +116,35 @@ class MonitorsTest(tf.test.TestCase):
       expected_steps = [0, 1, 2, 10, 18, 26, 29]
       self.assertEqual(expected_steps, monitor.steps_begun)
       self.assertEqual(expected_steps, monitor.steps_ended)
+      self.assertEqual(expected_steps, monitor.post_steps)
 
-  # TODO(b/29293803): This is just a sanity check for now, add better tests with
-  # a mocked logger.
+  def test_every_n_no_max_steps(self):
+    monitor = _MyEveryN(every_n_steps=8, first_n_steps=2)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10,
+                        pass_max_steps=False)
+      begin_end_steps = [0, 1, 2, 10, 18, 26]
+      post_steps = [0, 1, 2, 10, 18, 26, 29]
+      self.assertEqual(begin_end_steps, monitor.steps_begun)
+      self.assertEqual(begin_end_steps, monitor.steps_ended)
+      self.assertEqual(post_steps, monitor.post_steps)
+
   def test_print(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       t = tf.constant(42.0, name='foo')
       self._run_monitor(learn.monitors.PrintTensor(tensor_names=[t.name]))
+      self.assertRegexpMatches(str(self.logged_message), t.name)
+
+  def test_logging_trainable(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      var = tf.Variable(tf.constant(42.0), name='foo')
+      var.initializer.run()
+      cof = tf.constant(1.0)
+      loss = tf.sub(tf.mul(var, cof), tf.constant(1.0))
+      train_step = tf.train.GradientDescentOptimizer(0.5).minimize(loss)
+      tf.get_default_session().run(train_step)
+      self._run_monitor(learn.monitors.LoggingTrainable('foo'))
+      self.assertRegexpMatches(str(self.logged_message), var.name)
 
   def test_summary_saver(self):
     with tf.Graph().as_default() as g, self.test_session(g):

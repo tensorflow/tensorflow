@@ -14,7 +14,7 @@ Classes and helper functions for Stochastic Computation Graphs.
 Base Class for Tensor-like objects that emit stochastic values.
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.__init__(**kwargs)` {#StochasticTensor.__init__}
+#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.__init__()` {#StochasticTensor.__init__}
 
 
 
@@ -84,12 +84,37 @@ for purposes of the gradient.
 
 ### `class tf.contrib.bayesflow.stochastic_graph.DistributionTensor` {#DistributionTensor}
 
-The DistributionTensor is a StochasticTensor backed by a distribution.
+DistributionTensor is a StochasticTensor backed by a distribution.
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.DistributionTensor.__init__(dist_cls, name=None, dist_value_type=None, **dist_args)` {#DistributionTensor.__init__}
+#### `tf.contrib.bayesflow.stochastic_graph.DistributionTensor.__init__(dist_cls, name=None, dist_value_type=None, surrogate_loss_fn=score_function, **dist_args)` {#DistributionTensor.__init__}
+
+Construct a `DistributionTensor`.
+
+`surrogate_loss_fn` controls what `surrogate_loss` returns, which is used
+in conjunction with the `surrogate_losses` function in this module.
+`surrogate_loss_fn` is a callable that takes this `DistributionTensor`, a
+`Tensor` with this `DistributionTensor`'s value, and a list of `Tensor`
+losses influenced by this `DistributionTensor`; it should return a `Tensor`
+surrogate loss. If not provided, it defaults to the score function
+surrogate loss: `log_prob(value) * sum(losses)`. If `surrogate_loss_fn` is
+None, no surrogate loss will be returned. Currently, a surrogate loss will
+only be used if `dist_value_type.stop_gradient=True` or if the value is a
+sample from a non-reparameterized distribution.
+
+##### Args:
 
 
+*  <b>`dist_cls`</b>: a class deriving from `BaseDistribution`.
+*  <b>`name`</b>: a name for this `DistributionTensor` and its ops.
+*  <b>`dist_value_type`</b>: a `_StochasticValueType`, which will determine what the
+      `value` of this `DistributionTensor` will be. If not provided, the
+      value type set with the `value_type` context manager will be used.
+*  <b>`surrogate_loss_fn`</b>: callable that takes
+      `(dt, dt.value(), influenced_losses)`, where `dt` is this
+      `DistributionTensor`, and returns a `Tensor` surrogate loss.
+*  <b>`**dist_args`</b>: keyword arguments to be passed through to `dist_cls` on
+      construction.
 
 
 - - -
@@ -150,7 +175,7 @@ The DistributionTensor is a StochasticTensor backed by a distribution.
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.DistributionTensor.surrogate_loss(losses, name=None)` {#DistributionTensor.surrogate_loss}
+#### `tf.contrib.bayesflow.stochastic_graph.DistributionTensor.surrogate_loss(losses, name='DistributionSurrogateLoss')` {#DistributionTensor.surrogate_loss}
 
 
 
@@ -399,6 +424,23 @@ in a `stop_gradients` call to disable any possible backpropagation.
 - - -
 
 ### `tf.contrib.bayesflow.stochastic_graph.get_current_value_type()` {#get_current_value_type}
+
+
+
+
+
+## Stochastic Computation Surrogate Loss Functions
+
+- - -
+
+### `tf.contrib.bayesflow.stochastic_graph.score_function(dist_tensor, value, losses)` {#score_function}
+
+
+
+
+- - -
+
+### `tf.contrib.bayesflow.stochastic_graph.get_score_function_with_baseline(baseline)` {#get_score_function_with_baseline}
 
 
 

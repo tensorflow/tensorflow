@@ -115,6 +115,10 @@ class NodeBuilder {
   // *created_node will be set to the new node (or nullptr on error).
   Status Finalize(Graph* graph, Node** created_node) const;
 
+  // Accessors for the values set in the constructor.
+  const string& node_name() const { return def_builder_.node_name(); }
+  const OpDef& op_def() const { return def_builder_.op_def(); }
+
  private:
   static DataType SafeGetOutput(Node* node, int i, bool* error) {
     if (node != nullptr && i >= 0 && i < node->num_outputs()) {

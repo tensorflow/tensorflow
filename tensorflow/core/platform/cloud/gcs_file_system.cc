@@ -463,6 +463,10 @@ Status GcsFileSystem::GetChildren(const string& dirname,
   }
 }
 
+Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
+  return errors::Unimplemented("Stat unimplemented");
+}
+
 Status GcsFileSystem::DeleteFile(const string& fname) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));

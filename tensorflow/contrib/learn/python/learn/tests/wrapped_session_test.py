@@ -21,8 +21,10 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import wrapped_session
 
-class StopAtNSession(tf.contrib.learn.WrappedSession):
+
+class StopAtNSession(wrapped_session.WrappedSession):
   """A wrapped session that stops at the N-th call to _check_stop."""
 
   def __init__(self, sess, n):
@@ -42,13 +44,13 @@ class WrappedSessionTest(tf.test.TestCase):
   def test_properties(self):
     with self.test_session() as sess:
       tf.constant(0.0)
-      wrapped_sess = tf.contrib.learn.WrappedSession(sess)
+      wrapped_sess = wrapped_session.WrappedSession(sess)
       self.assertEquals(sess.graph, wrapped_sess.graph)
       self.assertEquals(sess.sess_str, wrapped_sess.sess_str)
 
   def test_should_stop_on_close(self):
     with self.test_session() as sess:
-      wrapped_sess = tf.contrib.learn.WrappedSession(sess)
+      wrapped_sess = wrapped_session.WrappedSession(sess)
       self.assertFalse(wrapped_sess.should_stop())
       wrapped_sess.close()
       self.assertTrue(wrapped_sess.should_stop())
@@ -64,7 +66,7 @@ class WrappedSessionTest(tf.test.TestCase):
   def test_should_stop_delegates_to_wrapped_session(self):
     with self.test_session() as sess:
       wrapped_sess0 = StopAtNSession(sess, 4)
-      wrapped_sess1 = tf.contrib.learn.WrappedSession(wrapped_sess0)
+      wrapped_sess1 = wrapped_session.WrappedSession(wrapped_sess0)
       self.assertFalse(wrapped_sess1.should_stop())
       self.assertFalse(wrapped_sess1.should_stop())
       self.assertFalse(wrapped_sess1.should_stop())
@@ -73,7 +75,7 @@ class WrappedSessionTest(tf.test.TestCase):
 
   def test_close_twice(self):
     with self.test_session() as sess:
-      wrapped_sess = tf.contrib.learn.WrappedSession(sess)
+      wrapped_sess = wrapped_session.WrappedSession(sess)
       wrapped_sess.close()
       self.assertTrue(wrapped_sess.should_stop())
       wrapped_sess.close()
@@ -84,7 +86,7 @@ class WrappedSessionTest(tf.test.TestCase):
       c = tf.constant(0)
       v = tf.identity(c)
       self.assertEqual(42, sess.run(v, feed_dict={c: 42}))
-      wrapped_sess = tf.contrib.learn.WrappedSession(sess)
+      wrapped_sess = wrapped_session.WrappedSession(sess)
       self.assertEqual(51, wrapped_sess.run(v, feed_dict={c: 51}))
 
 
