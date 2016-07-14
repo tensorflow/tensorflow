@@ -679,7 +679,7 @@ Every time you change the Cuda library paths you need to run this step again bef
 you invoke the bazel build command. For the cuDNN libraries, use '6.5' for R2, '7.0'
 for R3, and '4.0.4' for R4-RC.
 
-##### Build your target with GPU support
+#### Build your target with GPU support
 From the root of your source tree, run:
 
 ```bash
@@ -695,7 +695,7 @@ $ bazel-bin/tensorflow/cc/tutorials_example_trainer --use_gpu
 
 Note that "--config=cuda" is needed to enable the GPU support.
 
-##### Known issues
+#### Known issues
 
 * Although it is possible to build both Cuda and non-Cuda configs under the same
 source tree, we recommend to run `bazel clean` when switching between these two
