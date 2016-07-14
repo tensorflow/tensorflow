@@ -91,15 +91,16 @@ py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "sampling_ops_test",
     size = "small",
     srcs = ["python/ops/sampling_ops_test.py"],
-    additional_deps = [
+    srcs_version = "PY2AND3",
+    deps = [
         ":framework_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:training",
     ],
 )
 
