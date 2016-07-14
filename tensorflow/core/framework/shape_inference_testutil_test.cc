@@ -22,6 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
+static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 namespace {
 
@@ -63,16 +64,16 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   };
   auto fn_output_unknown_shapes = [](InferenceContext* c) {
     for (int i = 0; i < c->num_outputs(); ++i) {
-      c->set_output(i, c->CreateUnknownShape());
+      c->set_output(i, c->UnknownShape());
     }
     return Status::OK();
   };
   auto fn_output_1_2 = [](InferenceContext* c) {
-    c->set_output(0, c->MakeShape({c->MakeDim(1), c->MakeDim(2)}));
+    c->set_output(0, c->Matrix(1, 2));
     return Status::OK();
   };
   auto fn_output_u_2 = [](InferenceContext* c) {
-    c->set_output(0, c->MakeShape({c->UnknownDim(), c->MakeDim(2)}));
+    c->set_output(0, c->Matrix(kUnknownDim, 2));
     return Status::OK();
   };
   const string& op = "OpOneOut";

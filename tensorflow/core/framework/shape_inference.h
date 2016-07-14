@@ -56,6 +56,20 @@ class Shape {
   TF_DISALLOW_COPY_AND_ASSIGN(Shape);
 };
 
+// Struct used to allow functions to take const Dimension* or a dimension value.
+// Not meant to be constructed directly.
+struct DimensionOrConstant {
+ public:
+  // Intentionally not explicit.
+  DimensionOrConstant(const Dimension* dim) : dim(dim) {}
+
+  // val must be non-negative or InferenceContext::kUnknownDim.
+  DimensionOrConstant(int64 val) : val(val) {}
+
+  const Dimension* dim = nullptr;
+  int64 val = 0;
+};
+
 // Note: This is experimental support for op shape inference in C++.  Shape
 // inference functions are not ready to be implemented yet.
 //
@@ -181,7 +195,18 @@ class InferenceContext {
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
   const Shape* MakeShape(const std::vector<const Dimension*>& dims);
-  const Shape* CreateUnknownShape();
+
+  // Returns a new unknown shape.
+  const Shape* UnknownShape();
+
+  // Returns a new shape of zero dimensions.
+  const Shape* Scalar();
+
+  // Returns a new shape of one dimension.
+  const Shape* Vector(DimensionOrConstant dim);
+
+  // Returns a new shape of two dimensions.
+  const Shape* Matrix(DimensionOrConstant dim1, DimensionOrConstant dim2);
 
   // Returns in <out> a new shape whose dimension sizes come from input tensor
   // <input_idx>. The tensor must be a 1-dimensional int32 or int64 tensor.  If
@@ -208,9 +233,19 @@ class InferenceContext {
   template <class T>
   Status GetAttr(StringPiece attr_name, T* value) const;
 
+  // Returns in <out> the result of dividing <dividend> by <divisor>.
+  // Returns an error if <divisor> does not evenly divide <dividend>.
+  Status Divide(const Dimension* dividend, int64 divisor,
+                const Dimension** out);
+
+  // Returns in <out> the sum of <first> and <second>.
+  Status Add(const Dimension* first, int64 second, const Dimension** out);
+
  private:
+  const Dimension* GetDimension(const DimensionOrConstant& d);
+
   Status ReturnUnknownShape(const Shape** out) {
-    *out = CreateUnknownShape();
+    *out = UnknownShape();
     return Status::OK();
   }
   Status ReturnCreatedShape(const std::vector<const Dimension*>& dims,

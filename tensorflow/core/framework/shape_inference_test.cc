@@ -472,15 +472,61 @@ TEST(ShapeInferenceTest, MakeShape) {
   EXPECT_TRUE(c.Dim(s2, 0) == c.Dim(in0, rank - 1));
 }
 
-TEST(ShapeInferenceTest, CreateUnknownShape) {
+TEST(ShapeInferenceTest, UnknownShape) {
   NodeDef def;
   InferenceContext c(&def, {}, 2 /* num_outputs */, {});
 
-  auto u0 = c.CreateUnknownShape();
-  auto u1 = c.CreateUnknownShape();
+  auto u0 = c.UnknownShape();
+  auto u1 = c.UnknownShape();
   EXPECT_EQ("?", c.DebugString(u0));
   EXPECT_EQ("?", c.DebugString(u1));
   EXPECT_TRUE(u0 != u1);  // different pointers
+}
+
+TEST(ShapeInferenceTest, Scalar) {
+  NodeDef def;
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
+
+  auto s0 = c.Scalar();
+  EXPECT_EQ("[]", c.DebugString(s0));
+  auto s1 = c.Scalar();
+  EXPECT_EQ("[]", c.DebugString(s1));
+}
+
+TEST(ShapeInferenceTest, Vector) {
+  NodeDef def;
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
+
+  auto s0 = c.Vector(1);
+  EXPECT_EQ("[1]", c.DebugString(s0));
+  auto s1 = c.Vector(InferenceContext::kUnknownDim);
+  EXPECT_EQ("[?]", c.DebugString(s1));
+
+  auto d1 = c.UnknownDim();
+  auto s2 = c.Vector(d1);
+  EXPECT_EQ("[?]", c.DebugString(s2));
+  EXPECT_TRUE(d1 == c.Dim(s2, 0));
+}
+
+TEST(ShapeInferenceTest, Matrix) {
+  NodeDef def;
+  InferenceContext c(&def, {}, 2 /* num_outputs */, {});
+
+  auto s0 = c.Matrix(1, 2);
+  EXPECT_EQ("[1,2]", c.DebugString(s0));
+  auto s1 = c.Matrix(static_cast<int64>(0), InferenceContext::kUnknownDim);
+  EXPECT_EQ("[0,?]", c.DebugString(s1));
+
+  auto d1 = c.UnknownDim();
+  auto d2 = c.UnknownDim();
+  auto s2 = c.Matrix(d1, d2);
+  EXPECT_EQ("[?,?]", c.DebugString(s2));
+  EXPECT_TRUE(d1 == c.Dim(s2, 0));
+  EXPECT_TRUE(d2 == c.Dim(s2, 1));
+
+  auto s3 = c.Matrix(d1, 100);
+  EXPECT_EQ("[?,100]", c.DebugString(s3));
+  EXPECT_TRUE(d1 == c.Dim(s2, 0));
 }
 
 TEST(ShapeInferenceTest, MakeShapeFromShapeTensor) {
@@ -634,6 +680,67 @@ TEST(ShapeInferenceTest, GetAttr) {
   string value;
   EXPECT_TRUE(c.GetAttr("foo", &value).ok());
   EXPECT_EQ("bar", value);
+}
+
+TEST(ShapeInferenceTest, Divide) {
+  NodeDef def;
+  InferenceContext c(&def, {"[6,?]"}, 2 /* num_outputs */, {});
+
+  auto s = c.input(0);
+  auto d_6 = c.Dim(s, 0);
+  auto d_unknown = c.Dim(s, 1);
+
+  // Dividing unknown by non-1 gives new unknown.
+  const Dimension* out;
+  EXPECT_TRUE(c.Divide(d_unknown, 2, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != d_unknown);
+
+  // Dividing anything by 1 returns the input.
+  EXPECT_TRUE(c.Divide(d_unknown, 1, &out).ok());
+  EXPECT_TRUE(out == d_unknown);
+  EXPECT_TRUE(c.Divide(d_6, 1, &out).ok());
+  EXPECT_TRUE(out == d_6);
+
+  EXPECT_TRUE(c.Divide(d_6, 2, &out).ok());
+  EXPECT_EQ("3", c.DebugString(out));
+
+  EXPECT_EQ("Dimension size must be divisible by 5 but is 6",
+            c.Divide(d_6, 5, &out).error_message());
+}
+
+TEST(ShapeInferenceTest, Add) {
+  NodeDef def;
+  InferenceContext c(&def, {"[6,?]"}, 2 /* num_outputs */, {});
+
+  auto s = c.input(0);
+  auto d_6 = c.Dim(s, 0);
+  auto d_unknown = c.Dim(s, 1);
+
+  // Adding non-zero to known gives new unknown.
+  const Dimension* out;
+  EXPECT_TRUE(c.Add(d_unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != d_unknown);
+
+  // Adding 0 to anything gives input.
+  EXPECT_TRUE(c.Add(d_unknown, 0, &out).ok());
+  EXPECT_TRUE(out == d_unknown);
+  EXPECT_TRUE(c.Add(d_6, 0, &out).ok());
+  EXPECT_TRUE(out == d_6);
+
+  EXPECT_TRUE(c.Add(d_6, 2, &out).ok());
+  EXPECT_EQ("8", c.DebugString(out));
+  EXPECT_TRUE(c.Add(d_6, -6, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+  EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64>::max() - 6, &out).ok());
+  EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+
+  EXPECT_EQ("Negative dimension size from adding 6 and -7",
+            c.Add(d_6, -7, &out).error_message());
+  EXPECT_EQ(
+      "Dimension size overflow from adding 6 and 9223372036854775802",
+      c.Add(d_6, std::numeric_limits<int64>::max() - 5, &out).error_message());
 }
 
 }  // namespace shape_inference

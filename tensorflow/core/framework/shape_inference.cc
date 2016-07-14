@@ -31,7 +31,7 @@ InferenceContext::InferenceContext(
     : input_tensors_(input_tensors), node_def_(*CHECK_NOTNULL(node_def)) {
   for (const string& spec : input_shapes) {
     if (spec == "?") {
-      inputs_.push_back(CreateUnknownShape());
+      inputs_.push_back(UnknownShape());
     } else {
       std::vector<const Dimension*> dims;
       strings::Scanner scanner(spec);
@@ -65,7 +65,7 @@ InferenceContext::InferenceContext(
   input_tensors_.resize(input_shapes.size());
 
   for (int i = 0; i < num_outputs; ++i) {
-    outputs_.push_back(CreateUnknownShape());
+    outputs_.push_back(UnknownShape());
   }
 }
 
@@ -327,9 +327,26 @@ const Shape* InferenceContext::MakeShape(
   return all_shapes_.back();
 }
 
-const Shape* InferenceContext::CreateUnknownShape() {
+const Shape* InferenceContext::UnknownShape() {
   all_shapes_.push_back(new Shape());
   return all_shapes_.back();
+}
+
+const Dimension* InferenceContext::GetDimension(const DimensionOrConstant& d) {
+  if (d.dim != nullptr) return d.dim;
+  DCHECK(d.val >= 0 || d.val == kUnknownDim);
+  return MakeDim(d.val);
+}
+
+const Shape* InferenceContext::Scalar() { return MakeShape({}); }
+
+const Shape* InferenceContext::Vector(DimensionOrConstant dim) {
+  return MakeShape({GetDimension(dim)});
+}
+
+const Shape* InferenceContext::Matrix(DimensionOrConstant dim1,
+                                      DimensionOrConstant dim2) {
+  return MakeShape({GetDimension(dim1), GetDimension(dim2)});
 }
 
 Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
@@ -419,6 +436,44 @@ Status InferenceContext::MakeDimForScalarInput(int idx, const Dimension** out) {
 const Dimension* InferenceContext::UnknownDim() {
   all_dims_.push_back(new Dimension());
   return all_dims_.back();
+}
+
+Status InferenceContext::Divide(const Dimension* dividend, int64 divisor,
+                                const Dimension** out) {
+  if (divisor == 1) {
+    *out = dividend;
+  } else if (!ValueKnown(dividend)) {
+    *out = UnknownDim();
+  } else {
+    const int64 v = Value(dividend);
+    if ((v % divisor) != 0) {
+      return errors::InvalidArgument("Dimension size must be divisible by ",
+                                     divisor, " but is ", v);
+    }
+    *out = MakeDim(v / divisor);
+  }
+  return Status::OK();
+}
+
+Status InferenceContext::Add(const Dimension* first, int64 second,
+                             const Dimension** out) {
+  if (second == 0) {
+    *out = first;
+  } else if (!ValueKnown(first)) {
+    *out = UnknownDim();
+  } else {
+    const int64 v = Value(first);
+    const int64 sum = v + second;
+    if (second > 0 && sum < 0) {
+      return errors::InvalidArgument("Dimension size overflow from adding ", v,
+                                     " and ", second);
+    } else if (second < 0 && sum < 0) {
+      return errors::InvalidArgument("Negative dimension size from adding ", v,
+                                     " and ", second);
+    }
+    *out = MakeDim(sum);
+  }
+  return Status::OK();
 }
 
 }  // namespace shape_inference

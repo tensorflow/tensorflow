@@ -56,7 +56,7 @@ REGISTER_OP("Pack")
                                         " with other shapes.");
       }
       if (!c->RankKnown(cur)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       // Determine the axis that will be added, converting from negative
@@ -130,7 +130,7 @@ REGISTER_OP("Unpack")
         out = c->MakeShape(dims);
       } else {
         // All outputs are the same shape, but it's not known.
-        out = c->CreateUnknownShape();
+        out = c->UnknownShape();
       }
       for (int i = 0; i < c->num_outputs(); ++i) c->set_output(i, out);
       return Status::OK();
@@ -335,7 +335,7 @@ REGISTER_OP("DiagPart")
     .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
       const Shape* in = c->input(0);
       if (!c->RankKnown(in)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       // Rank must be even, and result will have rank <rank/2>.
@@ -391,7 +391,7 @@ REGISTER_OP("BatchMatrixDiag")
       const Shape* in;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &in));
       if (!c->RankKnown(in)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       const int32 rank = c->Rank(in);
@@ -472,7 +472,7 @@ REGISTER_OP("BatchMatrixDiagPart")
       const Shape* in;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &in));
       if (!c->RankKnown(in)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       const int32 rank = c->Rank(in);

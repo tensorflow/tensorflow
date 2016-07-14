@@ -23,6 +23,7 @@ namespace tensorflow {
 typedef shape_inference::Dimension Dimension;
 typedef shape_inference::InferenceContext InferenceContext;
 typedef shape_inference::Shape Shape;
+static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 REGISTER_OP("AddN")
     .Input("inputs: N * T")
@@ -54,7 +55,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   const Shape* shape_x = c->input(0);
   const Shape* shape_y = c->input(1);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
-    c->set_output(0, c->CreateUnknownShape());
+    c->set_output(0, c->UnknownShape());
     return Status::OK();
   }
   const int32 rank_x = c->Rank(shape_x);
@@ -1026,8 +1027,7 @@ Status SegmentReductionShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
 
   const Shape* out;
-  TF_RETURN_IF_ERROR(
-      c->Concatenate(c->MakeShape({c->UnknownDim()}), subshape, &out));
+  TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(kUnknownDim), subshape, &out));
   c->set_output(0, out);
   return Status::OK();
 }
@@ -1207,10 +1207,10 @@ REGISTER_OP("UnsortedSegmentSum")
         const Shape* s_data_suffix;
         TF_RETURN_IF_ERROR(
             c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
-        TF_RETURN_IF_ERROR(c->Concatenate(c->MakeShape({num_segments_dim}),
-                                          s_data_suffix, &out));
+        TF_RETURN_IF_ERROR(
+            c->Concatenate(c->Vector(num_segments_dim), s_data_suffix, &out));
       } else {
-        out = c->CreateUnknownShape();
+        out = c->UnknownShape();
       }
       c->set_output(0, out);
       return Status::OK();
@@ -1435,7 +1435,7 @@ REGISTER_OP("Range")
       const Tensor* limit_t = c->input_tensor(1);
       const Tensor* delta_t = c->input_tensor(2);
       if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
-        c->set_output(0, c->MakeShape({c->UnknownDim()}));
+        c->set_output(0, c->Vector(kUnknownDim));
         return Status::OK();
       }
       const int32 start = start_t->scalar<int32>()();
@@ -1449,7 +1449,7 @@ REGISTER_OP("Range")
         return errors::InvalidArgument("Requires delta > 0: ", delta);
       }
       const int32 size = (limit - start + delta - 1) / delta;
-      c->set_output(0, c->MakeShape({c->MakeDim(size)}));
+      c->set_output(0, c->Vector(size));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -1489,12 +1489,12 @@ REGISTER_OP("LinSpace")
                                       " for 'num'");
       const Tensor* num_t = c->input_tensor(2);
       if (num_t == nullptr) {
-        c->set_output(0, c->MakeShape({c->UnknownDim()}));
+        c->set_output(0, c->Vector(kUnknownDim));
         return Status::OK();
       }
       const int64 num = num_t->scalar<int32>()();
       if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
-      c->set_output(0, c->MakeShape({c->MakeDim(num)}));
+      c->set_output(0, c->Vector(num));
       return Status::OK();
     }))
     .Doc(R"doc(
