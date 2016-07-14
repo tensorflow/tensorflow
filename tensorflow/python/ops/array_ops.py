@@ -977,6 +977,50 @@ def transpose(a, perm=None, name="transpose"):
     return ret
 
 
+# pylint: disable=invalid-name
+def batch_matrix_transpose(a, name="batch_matrix_transpose"):
+  """Transposes last two dimensions of batch matrix `a`.
+
+  For example:
+
+  ```python
+  # Matrix with no batch dimension.
+  # 'x' is [[1 2 3]
+  #         [4 5 6]]
+  tf.batch_matrixtranspose(x) ==> [[1 4]
+                                   [2 5]
+                                   [3 6]]
+
+  # Matrix with two batch dimensions.
+  # x.shape is [1, 2, 3, 4]
+  # tf.batch_matrix_transpose(x) is shape [1, 2, 4, 3]
+  ```
+
+  Args:
+    a: A `Tensor` with `rank >= 2`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A transposed batch matrix `Tensor`.
+
+  Raises:
+    ValueError:  If `a` is determined statically to have `rank < 2`.
+  """
+  with ops.op_scope([a], name):
+    a = ops.convert_to_tensor(a, name="a")
+    ndims = a.get_shape().ndims
+    if ndims is not None:
+      if ndims < 2:
+        raise ValueError(
+            "Argument 'a' should be a (batch) matrix, with rank >= 2.  Found: "
+            "%s" % a.get_shape())
+    a_rank = rank(a)
+    perm = concat(
+        0, (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]))
+    return transpose(a, perm=perm)
+# pylint: enable=invalid-name
+
+
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
 
