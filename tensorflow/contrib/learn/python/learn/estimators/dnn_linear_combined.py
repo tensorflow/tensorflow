@@ -144,7 +144,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     # for example using feature info / columns.
     values = {}
     for name in all_variables:
-      if (name.startswith("linear/") and name.rfind("/") == 6 and
+      if (name.startswith("linear/") and
           name != "linear/bias_weight"):
         values[name] = self.get_variable_value(name)
     if len(values) == 1:
