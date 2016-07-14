@@ -25,7 +25,7 @@ import numpy as np
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn import estimators
 from tensorflow.contrib.learn.python.learn import graph_actions
-from tensorflow.contrib.learn.python.learn import io
+from tensorflow.contrib.learn.python.learn import learn_io as io
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import ops
@@ -40,5 +40,5 @@ from tensorflow.contrib.learn.python.learn.graph_actions import NanLossDuringTra
 from tensorflow.contrib.learn.python.learn.graph_actions import run_feeds
 from tensorflow.contrib.learn.python.learn.graph_actions import run_n
 from tensorflow.contrib.learn.python.learn.graph_actions import train
-from tensorflow.contrib.learn.python.learn.io import *
+from tensorflow.contrib.learn.python.learn.learn_io import *
 # pylint: enable=wildcard-import

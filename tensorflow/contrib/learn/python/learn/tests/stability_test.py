@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 import random
 import tensorflow as tf
-from tensorflow.contrib.learn.python.learn.io import data_feeder
+from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 
 
 def _get_input_fn(x, y, batch_size=None):
