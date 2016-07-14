@@ -187,9 +187,10 @@ class MasterSession : public MasterSessionInterface {
 class MasterSession::ReffedClientGraph : public core::RefCounted {
  public:
   ReffedClientGraph(const string& handle, const BuildGraphOptions& bopts,
-                    SimpleClientGraph* cg, const GraphOptions& graph_opts)
+                    std::unique_ptr<SimpleClientGraph> cg,
+                    const GraphOptions& graph_opts)
       : session_handle_(handle),
-        client_graph_(cg),
+        client_graph_(std::move(cg)),
         bopts_(bopts),
         graph_opts_(graph_opts) {
     VLOG(1) << "Created ReffedClientGraph for node with "
@@ -204,11 +205,10 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   }
 
   ~ReffedClientGraph() override {
-    delete client_graph_;
     DeregisterPartitions();
   }
 
-  const SimpleClientGraph* client_graph() { return client_graph_; }
+  const SimpleClientGraph* client_graph() { return client_graph_.get(); }
 
   // Local execution methods.
 
@@ -233,7 +233,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
  private:
   const string session_handle_;
-  SimpleClientGraph* const client_graph_ = nullptr;
+  const std::unique_ptr<SimpleClientGraph> client_graph_;
   std::unordered_set<const Node*> nodes_needing_input_mapping_;
   BuildGraphOptions bopts_;
   const GraphOptions graph_opts_;
@@ -771,7 +771,7 @@ Status MasterSession::Create(GraphDef* graph_def) {
 Status MasterSession::Extend(const ExtendSessionRequest* req,
                              ExtendSessionResponse* resp) {
   UpdateLastAccessTime();
-  std::unique_ptr<SimpleGraphExecutionState> old_execution_state;
+  std::unique_ptr<SimpleGraphExecutionState> extended_execution_state;
   {
     mutex_lock l(mu_);
     // TODO(mrry): Redesign the locking with reader/writer locks to prevent
@@ -790,20 +790,16 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
     }
 
     CHECK(execution_state_);
-    SimpleGraphExecutionState* extended_execution_state = nullptr;
-    Status s =
-        execution_state_->Extend(req->graph_def(), &extended_execution_state);
-    if (s.ok()) {
-      CHECK(extended_execution_state);
-      old_execution_state =
-          std::move(execution_state_);  // Will be released outside the lock
-      execution_state_.reset(extended_execution_state);
-      ++graph_version_;
-      resp->set_new_graph_version(graph_version_);
-    }
+    TF_RETURN_IF_ERROR(
+        execution_state_->Extend(req->graph_def(), &extended_execution_state));
 
-    return s;
+    CHECK(extended_execution_state);
+    // The old execution state will be released outside the lock.
+    execution_state_.swap(extended_execution_state);
+    ++graph_version_;
+    resp->set_new_graph_version(graph_version_);
   }
+  return Status::OK();
 }
 
 Status MasterSession::StartStep(const RunStepRequest& req,
@@ -824,10 +820,11 @@ Status MasterSession::StartStep(const RunStepRequest& req,
       // cache it.
       VLOG(1) << "Unseen hash " << hash << " for "
               << BuildGraphOptionsString(*opts);
-      SimpleClientGraph* client_graph = nullptr;
+      std::unique_ptr<SimpleClientGraph> client_graph;
       TF_RETURN_IF_ERROR(execution_state_->BuildGraph(*opts, &client_graph));
-      auto entry = new ReffedClientGraph(handle_, *opts, client_graph,
-                                         session_opts_.config.graph_options());
+      auto entry =
+          new ReffedClientGraph(handle_, *opts, std::move(client_graph),
+                                session_opts_.config.graph_options());
       iter = runs_.insert({hash, entry}).first;
       auto obs_iter = obsolete_.find(hash);
       if (obs_iter != obsolete_.end()) {
