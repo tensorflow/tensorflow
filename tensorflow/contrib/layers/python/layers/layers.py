@@ -31,7 +31,6 @@ from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
@@ -206,29 +205,48 @@ def batch_norm(inputs,
         initializer=init_ops.ones_initializer,
         trainable=False,
         collections=moving_variance_collections)
-    if is_training:
-      # Calculate the moments based on the individual batch.
+
+    is_training_value = utils.constant_value(is_training)
+    # Calculate the moments based on the individual batch.
+    need_moments = is_training_value is None or is_training_value
+    if need_moments:
       mean, variance = nn.moments(inputs, axis, shift=moving_mean)
-      # Update the moving_mean and moving_variance moments.
-      update_moving_mean = moving_averages.assign_moving_average(
-          moving_mean, mean, decay)
-      update_moving_variance = moving_averages.assign_moving_average(
-          moving_variance, variance, decay)
+      moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
-        # Make sure the updates are computed here.
-        with ops.control_dependencies([update_moving_mean,
-                                       update_moving_variance]):
-          outputs = nn.batch_normalization(
-              inputs, mean, variance, beta, gamma, epsilon)
+        def _force_updates():
+          """Internal function forces updates moving_vars if is_training."""
+          update_moving_mean = moving_averages.assign_moving_average(
+              moving_mean, mean, decay)
+          update_moving_variance = moving_averages.assign_moving_average(
+              moving_variance, variance, decay)
+          with ops.control_dependencies([update_moving_mean,
+                                         update_moving_variance]):
+            return array_ops.identity(mean), array_ops.identity(variance)
+        mean, variance = utils.smart_cond(is_training,
+                                          _force_updates,
+                                          moving_vars_fn)
       else:
-        # Collect the updates to be computed later.
-        ops.add_to_collections(updates_collections, update_moving_mean)
-        ops.add_to_collections(updates_collections, update_moving_variance)
-        outputs = nn.batch_normalization(
-            inputs, mean, variance, beta, gamma, epsilon)
+        def _delay_updates():
+          """Internal function that delay updates moving_vars if is_training."""
+          update_moving_mean = moving_averages.assign_moving_average(
+              moving_mean, mean, decay)
+          update_moving_variance = moving_averages.assign_moving_average(
+              moving_variance, variance, decay)
+          return update_moving_mean, update_moving_variance
+
+        update_mean, update_variance = utils.smart_cond(is_training,
+                                                        _delay_updates,
+                                                        moving_vars_fn)
+        ops.add_to_collections(updates_collections, update_mean)
+        ops.add_to_collections(updates_collections, update_variance)
+        # Use computed moments during training and moving_vars otherwise.
+        vars_fn = lambda: (mean, variance)
+        mean, variance = utils.smart_cond(is_training, vars_fn, moving_vars_fn)
     else:
-      outputs = nn.batch_normalization(
-          inputs, moving_mean, moving_variance, beta, gamma, epsilon)
+      mean, variance = moving_mean, moving_variance
+    # Compute batch_normalization.
+    outputs = nn.batch_normalization(
+        inputs, mean, variance, beta, gamma, epsilon)
     outputs.set_shape(inputs_shape)
     if activation_fn:
       outputs = activation_fn(outputs)
@@ -430,18 +448,9 @@ def dropout(inputs,
   """
   with ops.op_scope([inputs], scope, 'Dropout') as sc:
     inputs = ops.convert_to_tensor(inputs)
-    is_training_value = utils.constant_value(is_training, dtypes.bool)
-    if is_training_value is not None:
-      if is_training_value:
-        outputs = nn.dropout(inputs, keep_prob, noise_shape)
-      else:
-        outputs = inputs
-    else:
-      def _dropout():
-        return nn.dropout(inputs, keep_prob, noise_shape)
-      outputs = control_flow_ops.cond(is_training,
-                                      _dropout,
-                                      lambda: inputs)
+    dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
+    id_fn = lambda: inputs
+    outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 

@@ -429,13 +429,22 @@ class DropoutTest(tf.test.TestCase):
       output.get_shape().assert_is_compatible_with(
           tf.convert_to_tensor(images).get_shape())
 
-  def testCreateDropoutWithConstant(self):
+  def testCreateDropoutWithConstantTrue(self):
+    height, width = 3, 3
+    with self.test_session():
+      is_training = tf.constant(True)
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      output = tf.contrib.layers.dropout(images, is_training=is_training)
+      self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
+      output.get_shape().assert_is_compatible_with(images.get_shape())
+
+  def testCreateDropoutWithConstantFalse(self):
     height, width = 3, 3
     with self.test_session():
       is_training = tf.constant(False)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
+      self.assertEquals(output, images)
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithPlaceholder(self):
@@ -796,7 +805,7 @@ class BatchNormTest(tf.test.TestCase):
       self.assertEquals(len(moving_variance), 1)
       self.assertEquals(moving_variance[0].op.name, 'BatchNorm/moving_variance')
 
-  def testForceUpdateMovingVars(self):
+  def testNoneUpdatesCollections(self):
     height, width = 3, 3
     with self.test_session() as sess:
       image_shape = (10, height, width, 3)
@@ -806,6 +815,8 @@ class BatchNormTest(tf.test.TestCase):
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       output = tf.contrib.layers.batch_norm(images, decay=0.1,
                                             updates_collections=None)
+      # updates_ops are not added to UPDATE_OPS collection.
+      self.assertEquals(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
@@ -835,6 +846,8 @@ class BatchNormTest(tf.test.TestCase):
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       output = tf.contrib.layers.batch_norm(images, decay=0.1)
       update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      # updates_ops are added to UPDATE_OPS collection.
+      self.assertEquals(len(update_ops), 2)
       with tf.control_dependencies(update_ops):
         barrier = tf.no_op(name='barrier')
       output = control_flow_ops.with_dependencies([barrier], output)
@@ -868,8 +881,7 @@ class BatchNormTest(tf.test.TestCase):
       output = tf.contrib.layers.batch_norm(images,
                                             decay=0.1,
                                             is_training=False)
-      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-      self.assertEquals(update_ops, [])
+      self.assertEquals(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
@@ -901,11 +913,55 @@ class BatchNormTest(tf.test.TestCase):
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output_train = tf.contrib.layers.batch_norm(images,
+                                                  decay=0.1,
+                                                  is_training=True,
+                                                  scope='BN')
+      output_eval = tf.contrib.layers.batch_norm(images,
+                                                 decay=0.1,
+                                                 is_training=False,
+                                                 scope='BN',
+                                                 reuse=True)
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BN/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BN/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      with tf.control_dependencies(update_ops):
+        barrier = tf.no_op(name='barrier')
+      train_op = control_flow_ops.with_dependencies([barrier], output_train)
+      # Before updates the outputs are different for train and eval.
+      self.assertFalse(np.allclose(sess.run([output_train]),
+                                   sess.run([output_eval])))
+      for _ in range(10):
+        sess.run([train_op])
+      mean = moving_mean.eval()
+      variance = moving_variance.eval()
+      # After 10 updates with decay 0.1 moving_mean == expected_mean and
+      # moving_variance == expected_var.
+      self.assertAllClose(mean, expected_mean)
+      self.assertAllClose(variance, expected_var)
+      # After convergence output_train and output_eval should be the same.
+      self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
+
+  def testIsTrainingVariable(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      expected_mean = np.mean(image_values, axis=(0, 1, 2))
+      expected_var = np.var(image_values, axis=(0, 1, 2))
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      is_training = tf.Variable(True)
       output = tf.contrib.layers.batch_norm(images,
                                             decay=0.1,
-                                            is_training=False)
-      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-      self.assertEquals(update_ops, [])
+                                            is_training=is_training)
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
@@ -916,18 +972,128 @@ class BatchNormTest(tf.test.TestCase):
       # After initialization moving_mean == 0 and moving_variance == 1.
       self.assertAllClose(mean, [0] * 3)
       self.assertAllClose(variance, [1] * 3)
-      # Simulate assigment from saver restore.
-      init_assigns = [tf.assign(moving_mean, expected_mean),
-                      tf.assign(moving_variance, expected_var)]
-      sess.run(init_assigns)
+      # Before updates the outputs are different depending of is_training.
+      output_true = sess.run([output], {is_training: True})
+      output_false = sess.run([output], {is_training: False})
+      self.assertFalse(np.allclose(output_true, output_false))
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      with tf.control_dependencies(update_ops):
+        barrier = tf.no_op(name='barrier')
+      train_op = control_flow_ops.with_dependencies([barrier], output)
       for _ in range(10):
-        sess.run([output], {images: np.random.rand(*image_shape)})
+        sess.run([train_op])
       mean = moving_mean.eval()
       variance = moving_variance.eval()
-      # Although we feed different images, the moving_mean and moving_variance
-      # shouldn't change.
+      # After 10 updates with decay 0.1 moving_mean == expected_mean and
+      # moving_variance == expected_var.
       self.assertAllClose(mean, expected_mean)
       self.assertAllClose(variance, expected_var)
+      # After updates to convergence the outputs don't depend on is_training.
+      output_true = sess.run([output], {is_training: True})
+      output_false = sess.run([output], {is_training: False})
+      self.assertAllClose(output_true, output_false)
+
+  def testNoUpdatesWhenIsTrainingFalse(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output = tf.contrib.layers.batch_norm(images,
+                                            decay=0.1,
+                                            is_training=False)
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      # updates_ops are not added to UPDATE_OPS collection.
+      self.assertEquals(len(update_ops), 0)
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      # When is_training is False batch_norm doesn't update moving_vars.
+      for _ in range(10):
+        sess.run([output])
+      self.assertAllClose(moving_mean.eval(), [0] * 3)
+      self.assertAllClose(moving_variance.eval(), [1] * 3)
+
+  def testNoneUpdatesCollectionNoTraining(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output = tf.contrib.layers.batch_norm(images,
+                                            decay=0.1,
+                                            updates_collections=None,
+                                            is_training=False)
+      # updates_ops are not added to UPDATE_OPS collection.
+      self.assertEquals(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      # When is_training is False batch_norm doesn't update moving_vars.
+      for _ in range(10):
+        sess.run([output])
+      self.assertAllClose(moving_mean.eval(), [0] * 3)
+      self.assertAllClose(moving_variance.eval(), [1] * 3)
+
+  def testNoneUpdatesCollectionIsTrainingVariable(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      expected_mean = np.mean(image_values, axis=(0, 1, 2))
+      expected_var = np.var(image_values, axis=(0, 1, 2))
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      is_training = tf.Variable(True)
+      output = tf.contrib.layers.batch_norm(images,
+                                            decay=0.1,
+                                            updates_collections=None,
+                                            is_training=is_training)
+      # updates_ops are not added to UPDATE_OPS collection.
+      self.assertEquals(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * 3)
+      self.assertAllClose(variance, [1] * 3)
+      # When is_training is False batch_norm doesn't update moving_vars.
+      for _ in range(10):
+        sess.run([output], {is_training: False})
+      self.assertAllClose(moving_mean.eval(), [0] * 3)
+      self.assertAllClose(moving_variance.eval(), [1] * 3)
+      # Before updates the outputs are different depending of is_training.
+      output_true = sess.run([output], {is_training: True})
+      output_false = sess.run([output], {is_training: False})
+      self.assertFalse(np.allclose(output_true, output_false))
+      # When is_training is True update moving_vars.
+      for _ in range(10):
+        sess.run([output], {is_training: True})
+      # After 10 updates with decay 0.1 moving_mean == expected_mean and
+      # moving_variance == expected_var.
+      self.assertAllClose(moving_mean.eval(), expected_mean)
+      self.assertAllClose(moving_variance.eval(), expected_var)
+      # After updates to convergence the outputs don't depend on is_training.
+      output_true = sess.run([output], {is_training: True})
+      output_false = sess.run([output], {is_training: False})
+      self.assertTrue(np.allclose(output_true, output_false))
 
 
 class MaxPool2DTest(tf.test.TestCase):
