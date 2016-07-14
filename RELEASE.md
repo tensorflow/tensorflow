@@ -3,6 +3,7 @@
 ## Features and Improvements
 * Connectionist Temporal Classification ops are now "official" (see, e.g.,
   `tf.nn.ctc_loss`)
+* Preliminary graph-construction C API, for use by language bindings.
 
 ## Breaking Changes to the API
 * `env.h` replaces use of `New*File()` functions to use `std::unique_ptr`
