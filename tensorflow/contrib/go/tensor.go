@@ -10,7 +10,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	pb "github.com/damienstanton/tensorflow/tensorflow/contrib/go/proto"
+	pb "github.com/tensorflow/tensorflow/tensorflow/contrib/go/proto"
 )
 
 import "C"
@@ -130,7 +130,6 @@ var (
 	// DTUint16 corresponds to TF_UINT16.
 	DTUint16 = DataType(TF_UINT16)
 
-	// The next data types are still not supported
 	// DTBfloat corresponds to TF_BFLOAT16.
 	DTBfloat = DataType(TF_BFLOAT16)
 	// DTComplex corresponds to TF_COMPLEX.
