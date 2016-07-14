@@ -48,6 +48,16 @@ struct is_quantized<qint16> : true_type {};
 template <>
 struct is_quantized<quint16> : true_type {};
 
+// Default is_complex is false.
+template <typename T>
+struct is_complex : false_type {};
+
+// Specialize std::complex<float> and std::complex<double> types.
+template <>
+struct is_complex<std::complex<float>> : true_type {};
+template <>
+struct is_complex<std::complex<double>> : true_type {};
+
 // All types not specialized are marked invalid.
 template <class T>
 struct IsValidDataType {
