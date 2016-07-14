@@ -254,6 +254,17 @@ REGISTER_OP("ImmutableConst")
     .Attr("shape: shape")
     .Attr("memory_region_name: string")
     .Output("tensor: dtype")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      TensorShape shape_from_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_from_attr));
+      TensorShapeProto shape_proto;
+      shape_from_attr.AsProto(&shape_proto);
+      const Shape* output_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+      c->set_output(0, output_shape);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns immutable tensor from memory region.
 
