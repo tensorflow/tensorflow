@@ -73,7 +73,7 @@ class KMeansClustering(estimator.Estimator,
         additional points to draw from the current distribution before selecting
         the best. If a negative value is specified, a heuristic is used to
         sample O(log(num_to_sample)) additional points.
-      config: See TensorFlowEstimator
+      config: See Estimator
     """
     super(KMeansClustering, self).__init__(
         model_dir=model_dir,
@@ -90,7 +90,7 @@ class KMeansClustering(estimator.Estimator,
   def fit(self, x, y=None, monitors=None, logdir=None, steps=None, batch_size=128):
     """Trains a k-means clustering on x.
 
-    Note: See TensorFlowEstimator for logic for continuous training and graph
+    Note: See Estimator for logic for continuous training and graph
       construction across multiple calls to fit.
 
     Args:
