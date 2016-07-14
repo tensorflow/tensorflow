@@ -3894,10 +3894,19 @@ Log of the probability mass function.
 
 Log prob of observations `x` given these Multivariate Normals.
 
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu`.
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
@@ -3961,10 +3970,19 @@ The probability mass function.
 
 The PDF of observations `x` under these Multivariate Normals.
 
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
@@ -4215,10 +4233,19 @@ Log of the probability mass function.
 
 Log prob of observations `x` given these Multivariate Normals.
 
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu`.
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
@@ -4282,10 +4309,19 @@ The probability mass function.
 
 The PDF of observations `x` under these Multivariate Normals.
 
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
@@ -5107,13 +5143,15 @@ This class provides access to functions of a (batch) symmetric positive
 definite (PD) matrix, without the need to materialize them.  In other words,
 this provides means to do "matrix free" computations.
 
+### Basics
+
 For example, `my_operator.matmul(x)` computes the result of matrix
 multiplication, and this class is free to do this computation with or without
 ever materializing a matrix.
 
 In practice, this operator represents a (batch) matrix `A` with shape
-`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices index a
-batch member.  For every batch index `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+`[N1,...,Nn, k, k]` for some `n >= 0`.  The first `n` indices index a
+batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,in, : :]` is
 a `k x k` matrix.  Again, this matrix `A` may not be materialized, but for
 purposes of broadcasting this shape will be relevant.
 
@@ -5127,18 +5165,47 @@ operator = MyOperator(...)  # Initialize with some tensors.
 operator.log_det()
 
 # Compute the quadratic form x^T A^{-1} x for vector x.
-x = ... # some shape [..., k] tensor
-operator.inv_quadratic_form(x)
+x = ... # some shape [M1,...,Mm, N1,...,Nn, k] tensor
+operator.inv_quadratic_form_on_vectors(x)
 
 # Matrix multiplication by the square root, S w.
 # If w is iid normal, S w has covariance A.
-w = ... # some shape [..., k, L] tensor, L >= 1
+w = ... # some shape [N1,...,Nn, k, r] tensor, r >= 1
 operator.sqrt_matmul(w)
 ```
 
-The above three methods, `log_det`, `inv_quadratic_form`, and
+The above three methods, `log_det`, `inv_quadratic_form_on_vectors`, and
 `sqrt_matmul` provide "all" that is necessary to use a covariance matrix
 in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+
+### Details about shape requirements
+
+The `Operator` classes operate on batch vectors and batch matrices with
+compatible shapes.  `matrix` is a batch matrix with compatible shape if
+
+```
+operator.shape = [N1,...,Nn] + [j, k]
+matrix.shape =   [N1,...,Nn] + [k, r]
+```
+
+This is the same requirement as `tf.matmul`.  `vec` is a batch vector with
+compatible shape if
+
+```
+operator.shape = [N1,...,Nn] + [j, k]
+vec.shape =   [N1,...,Nn] + [k]
+OR
+vec.shape = [M1,...,Mm] + [N1,...,Nn] + [k]
+```
+
+We are strict with the matrix shape requirements since we do not want to
+require `Operator` broadcasting.  The `Operator` may be defined by large
+tensors (thus broadcasting is expensive), or the `Operator` may be matrix
+free, in which case there is no guarantee that the underlying implementation
+will broadcast.
+
+We are more flexible with vector shapes since extra leading dimensions can
+be "flipped" to the end to change the vector to a compatible matrix.
 - - -
 
 #### `tf.contrib.distributions.OperatorPDBase.batch_shape(name='batch_shape')` {#OperatorPDBase.batch_shape}
@@ -5146,7 +5213,7 @@ in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
 Shape of batches associated with this operator.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+`A.shape = [N1,...,Nn, k, k]`, the `batch_shape` is `[N1,...,Nn]`.
 
 ##### Args:
 
@@ -5185,14 +5252,29 @@ Data type of matrix elements of `A`.
 
 #### `tf.contrib.distributions.OperatorPDBase.get_batch_shape()` {#OperatorPDBase.get_batch_shape}
 
-`TensorShape` with batch shape.
+`TensorShape` with batch shape.  Statically determined if possible.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nn, k, k]`, then this returns `TensorShape([N1,...,Nn])`
+
+##### Returns:
+
+  `TensorShape`, statically determined, may be undefined.
 
 
 - - -
 
 #### `tf.contrib.distributions.OperatorPDBase.get_shape()` {#OperatorPDBase.get_shape}
 
-`TensorShape` giving static shape.
+Static `TensorShape` of entire operator.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nn, k, k]`, then this returns
+`TensorShape([N1,...,Nn, k, k])`
+
+##### Returns:
+
+  `TensorShape`, statically determined, may be undefined.
 
 
 - - -
@@ -5200,6 +5282,14 @@ Data type of matrix elements of `A`.
 #### `tf.contrib.distributions.OperatorPDBase.get_vector_shape()` {#OperatorPDBase.get_vector_shape}
 
 `TensorShape` of vectors this operator will work with.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nn, k, k]`, then this returns
+`TensorShape([N1,...,Nn, k])`
+
+##### Returns:
+
+  `TensorShape`, statically determined, may be undefined.
 
 
 - - -
@@ -5211,21 +5301,27 @@ List of tensors that were provided as initialization inputs.
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDBase.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDBase.inv_quadratic_form}
+#### `tf.contrib.distributions.OperatorPDBase.inv_quadratic_form_on_vectors(x, name='inv_quadratic_form_on_vectors')` {#OperatorPDBase.inv_quadratic_form_on_vectors}
 
-Compute the quadratic form: x^T A^{-1} x.
+Compute the quadratic form: `x^T A^{-1} x` where `x` is a batch vector.
+
+`x` is a batch vector with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [M1,...,Mm] + [N1,...,Nn] + [k]
+```
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
-    as self.
+*  <b>`x`</b>: `Tensor` with compatible batch vector shape and same `dtype` as self.
 *  <b>`name`</b>: A name scope to use for ops added by this method.
 
 ##### Returns:
 
-  `Tensor` holding the square of the norm induced by inverse of `A`.  For
-  every broadcast batch member.
+  `Tensor` with shape `[M1,...,Mm] + [N1,...,Nn]` and same `dtype`
+    as `self`.
 
 
 - - -
@@ -5246,14 +5342,23 @@ Log of the determinant for every batch member.
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDBase.matmul(x, name='matmul')` {#OperatorPDBase.matmul}
+#### `tf.contrib.distributions.OperatorPDBase.matmul(x, transpose_x=False, name='matmul')` {#OperatorPDBase.matmul}
 
-Left multiply `x` by this operator.
+Left (batch) matmul `x` by this matrix:  `Ax`.
+
+`x` is a batch matrix with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [N1,...,Nn] + [k, r]
+```
 
 ##### Args:
 
 
-*  <b>`x`</b>: Shape `[N1,...,Nb, k, L]` `Tensor` with same `dtype` as this operator
+*  <b>`x`</b>: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
+    this `Operator`.
+*  <b>`transpose_x`</b>: If `True`, `x` is transposed before multiplication.
 *  <b>`name`</b>: A name to give this `Op`.
 
 ##### Returns:
@@ -5272,10 +5377,10 @@ String name identifying this `Operator`.
 
 #### `tf.contrib.distributions.OperatorPDBase.rank(name='rank')` {#OperatorPDBase.rank}
 
-Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `n + 2`.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+`A.shape = [N1,...,Nn, k, k]`, the `rank` is `n + 2`.
 
 ##### Args:
 
@@ -5291,7 +5396,7 @@ If this operator represents the batch matrix `A` with
 
 #### `tf.contrib.distributions.OperatorPDBase.shape(name='shape')` {#OperatorPDBase.shape}
 
-Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nb, k, k]`, `b >= 0`.
+Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nn, k, k]`, `n >= 0`.
 
 ##### Args:
 
@@ -5305,20 +5410,123 @@ Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nb, k, k]`, `b >= 0`.
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDBase.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDBase.sqrt_matmul}
+#### `tf.contrib.distributions.OperatorPDBase.solve(rhs, name='solve')` {#OperatorPDBase.solve}
 
-Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+Solve `r` batch systems: `A X = rhs`.
+
+`rhs` is a batch matrix with compatible shape if
+
+```python
+self.shape = [N1,...,Nn] + [k, k]
+rhs.shape = [N1,...,Nn] + [k, r]
+```
+
+For every batch member, this is done in `O(r*k^2)` complexity using back
+substitution.
+
+```python
+# Solve one linear system (r = 1) for every member of the length 10 batch.
+A = ... # shape 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 1
+operator.shape # = 10 x 2 x 2
+X = operator.squrt_solve(RHS)  # shape 10 x 2 x 1
+# operator.squrt_matmul(X) ~ RHS
+X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
+
+# Solve five linear systems (r = 5) for every member of the length 10 batch.
+operator.shape # = 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 5
+...
+X[3, :, 2]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 2]
+```
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
-    as self.
+*  <b>`rhs`</b>: `Tensor` with same `dtype` as this operator and compatible shape,
+    `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
 *  <b>`name`</b>: A name scope to use for ops added by this method.
 
 ##### Returns:
 
-  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+  `Tensor` with same `dtype` and shape as `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.sqrt_matmul(x, transpose_x=False, name='sqrt_matmul')` {#OperatorPDBase.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix: `Sx` where `A = S S^T`.
+
+`x` is a batch matrix with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [N1,...,Nn] + [k, r]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
+    this `Operator`.
+*  <b>`transpose_x`</b>: If `True`, `x` is transposed before multiplication.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  A result equivalent to `tf.batch_matmul(self.sqrt_to_dense(), x)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.sqrt_solve(rhs, name='sqrt_solve')` {#OperatorPDBase.sqrt_solve}
+
+Solve `r` batch systems involving sqrt: `S X = rhs` where `A = SS^T`.
+
+`rhs` is a batch matrix with compatible shape if
+
+```python
+self.shape = [N1,...,Nn] + [k, k]
+rhs.shape = [N1,...,Nn] + [k, r]
+```
+
+For every batch member, this is done in `O(r*k^2)` complexity using back
+substitution.
+
+```python
+# Solve one linear system (r = 1) for every member of the length 10 batch.
+A = ... # shape 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 1
+operator.shape # = 10 x 2 x 2
+X = operator.squrt_solve(RHS)  # shape 10 x 2 x 1
+# operator.squrt_matmul(X) ~ RHS
+X[3, :, 0]  # Solution to the linear system S[3, :, :] x = RHS[3, :, 0]
+
+# Solve five linear systems (r = 5) for every member of the length 10 batch.
+operator.shape # = 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 5
+...
+X[3, :, 2]  # Solution to the linear system S[3, :, :] x = RHS[3, :, 2]
+```
+
+##### Args:
+
+
+*  <b>`rhs`</b>: `Tensor` with same `dtype` as this operator and compatible shape,
+    `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` with same `dtype` and shape as `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDBase.sqrt_to_dense(name='sqrt_to_dense')` {#OperatorPDBase.sqrt_to_dense}
+
+Return a dense (batch) matrix representing sqrt of this operator.
 
 
 - - -
@@ -5330,19 +5538,12 @@ Return a dense (batch) matrix representing this operator.
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDBase.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDBase.to_dense_sqrt}
-
-Return a dense (batch) matrix representing sqrt of this operator.
-
-
-- - -
-
 #### `tf.contrib.distributions.OperatorPDBase.vector_shape(name='vector_shape')` {#OperatorPDBase.vector_shape}
 
 Shape of (batch) vectors that this (batch) matrix will multiply.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+`A.shape = [N1,...,Nn, k, k]`, the `vector_shape` is `[N1,...,Nn, k]`.
 
 ##### Args:
 
@@ -5361,7 +5562,7 @@ If this operator represents the batch matrix `A` with
 Dimension of vector space on which this acts.  The `k` in `R^k`.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+`A.shape = [N1,...,Nn, k, k]`, the `vector_space_dimension` is `k`.
 
 ##### Args:
 
@@ -5444,7 +5645,7 @@ Initialize an OperatorPDFull.
 Shape of batches associated with this operator.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+`A.shape = [N1,...,Nn, k, k]`, the `batch_shape` is `[N1,...,Nn]`.
 
 ##### Args:
 
@@ -5483,7 +5684,14 @@ Determinant for every batch member.
 
 #### `tf.contrib.distributions.OperatorPDFull.get_batch_shape()` {#OperatorPDFull.get_batch_shape}
 
-`TensorShape` with batch shape.
+`TensorShape` with batch shape.  Statically determined if possible.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nn, k, k]`, then this returns `TensorShape([N1,...,Nn])`
+
+##### Returns:
+
+  `TensorShape`, statically determined, may be undefined.
 
 
 - - -
@@ -5499,6 +5707,14 @@ Determinant for every batch member.
 
 `TensorShape` of vectors this operator will work with.
 
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nn, k, k]`, then this returns
+`TensorShape([N1,...,Nn, k])`
+
+##### Returns:
+
+  `TensorShape`, statically determined, may be undefined.
+
 
 - - -
 
@@ -5509,45 +5725,69 @@ List of tensors that were provided as initialization inputs.
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDFull.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDFull.inv_quadratic_form}
+#### `tf.contrib.distributions.OperatorPDFull.inv_quadratic_form_on_vectors(x, name='inv_quadratic_form_on_vectors')` {#OperatorPDFull.inv_quadratic_form_on_vectors}
 
-Compute the induced vector norm (squared): ||x||^2 := x^T A^{-1} x.
+Compute the quadratic form: `x^T A^{-1} x` where `x` is a batch vector.
 
-For every batch member, this is done in `O(k^2)` complexity.  The efficiency
-depends on the shape of `x`.
-* If `x.shape = [M1,...,Mm, N1,...,Nb, k]`, `m >= 0`, and
-  `self.shape = [N1,...,Nb, k, k]`, `x` will be reshaped and the
-  initialization matrix `chol` does not need to be copied.
-* Otherwise, data will be broadcast and copied.
+`x` is a batch vector with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [M1,...,Mm] + [N1,...,Nn] + [k]
+```
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
-    as self.  If the batch dimensions of `x` do not match exactly with those
-    of self, `x` and/or self's Cholesky factor will broadcast to match, and
-    the resultant set of linear systems are solved independently.  This may
-    result in inefficient operation.
+*  <b>`x`</b>: `Tensor` with compatible batch vector shape and same `dtype` as self.
 *  <b>`name`</b>: A name scope to use for ops added by this method.
 
 ##### Returns:
 
-  `Tensor` holding the square of the norm induced by inverse of `A`.  For
-  every broadcast batch member.
+  `Tensor` with shape `[M1,...,Mm] + [N1,...,Nn]` and same `dtype`
+    as `self`.
 
 
 - - -
 
 #### `tf.contrib.distributions.OperatorPDFull.log_det(name='log_det')` {#OperatorPDFull.log_det}
 
-Log determinant of every batch member.
+Log of the determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Logarithm of determinant for every batch member.
 
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDFull.matmul(x, name='matmul')` {#OperatorPDFull.matmul}
+#### `tf.contrib.distributions.OperatorPDFull.matmul(x, transpose_x=False, name='matmul')` {#OperatorPDFull.matmul}
 
-Left (batch) matrix multiplication of `x` by this operator.
+Left (batch) matmul `x` by this matrix:  `Ax`.
+
+`x` is a batch matrix with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [N1,...,Nn] + [k, r]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
+    this `Operator`.
+*  <b>`transpose_x`</b>: If `True`, `x` is transposed before multiplication.
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  A result equivalent to `tf.batch_matmul(self.to_dense(), x)`.
 
 
 - - -
@@ -5561,10 +5801,10 @@ Left (batch) matrix multiplication of `x` by this operator.
 
 #### `tf.contrib.distributions.OperatorPDFull.rank(name='rank')` {#OperatorPDFull.rank}
 
-Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `n + 2`.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+`A.shape = [N1,...,Nn, k, k]`, the `rank` is `n + 2`.
 
 ##### Args:
 
@@ -5580,39 +5820,144 @@ If this operator represents the batch matrix `A` with
 
 #### `tf.contrib.distributions.OperatorPDFull.shape(name='shape')` {#OperatorPDFull.shape}
 
-
-
-
-- - -
-
-#### `tf.contrib.distributions.OperatorPDFull.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDFull.sqrt_matmul}
-
-Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nn, k, k]`, `n >= 0`.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
-    as self.
 *  <b>`name`</b>: A name scope to use for ops added by this method.
 
 ##### Returns:
 
-  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.solve(rhs, name='solve')` {#OperatorPDFull.solve}
+
+Solve `r` batch systems: `A X = rhs`.
+
+`rhs` is a batch matrix with compatible shape if
+
+```python
+self.shape = [N1,...,Nn] + [k, k]
+rhs.shape = [N1,...,Nn] + [k, r]
+```
+
+For every batch member, this is done in `O(r*k^2)` complexity using back
+substitution.
+
+```python
+# Solve one linear system (r = 1) for every member of the length 10 batch.
+A = ... # shape 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 1
+operator.shape # = 10 x 2 x 2
+X = operator.squrt_solve(RHS)  # shape 10 x 2 x 1
+# operator.squrt_matmul(X) ~ RHS
+X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
+
+# Solve five linear systems (r = 5) for every member of the length 10 batch.
+operator.shape # = 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 5
+...
+X[3, :, 2]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 2]
+```
+
+##### Args:
+
+
+*  <b>`rhs`</b>: `Tensor` with same `dtype` as this operator and compatible shape,
+    `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` with same `dtype` and shape as `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.sqrt_matmul(x, transpose_x=False, name='sqrt_matmul')` {#OperatorPDFull.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix: `Sx` where `A = S S^T`.
+
+`x` is a batch matrix with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [N1,...,Nn] + [k, r]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
+    this `Operator`.
+*  <b>`transpose_x`</b>: If `True`, `x` is transposed before multiplication.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  A result equivalent to `tf.batch_matmul(self.sqrt_to_dense(), x)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.sqrt_solve(rhs, name='sqrt_solve')` {#OperatorPDFull.sqrt_solve}
+
+Solve `r` batch systems involving sqrt: `S X = rhs` where `A = SS^T`.
+
+`rhs` is a batch matrix with compatible shape if
+
+```python
+self.shape = [N1,...,Nn] + [k, k]
+rhs.shape = [N1,...,Nn] + [k, r]
+```
+
+For every batch member, this is done in `O(r*k^2)` complexity using back
+substitution.
+
+```python
+# Solve one linear system (r = 1) for every member of the length 10 batch.
+A = ... # shape 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 1
+operator.shape # = 10 x 2 x 2
+X = operator.squrt_solve(RHS)  # shape 10 x 2 x 1
+# operator.squrt_matmul(X) ~ RHS
+X[3, :, 0]  # Solution to the linear system S[3, :, :] x = RHS[3, :, 0]
+
+# Solve five linear systems (r = 5) for every member of the length 10 batch.
+operator.shape # = 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 5
+...
+X[3, :, 2]  # Solution to the linear system S[3, :, :] x = RHS[3, :, 2]
+```
+
+##### Args:
+
+
+*  <b>`rhs`</b>: `Tensor` with same `dtype` as this operator and compatible shape,
+    `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` with same `dtype` and shape as `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDFull.sqrt_to_dense(name='sqrt_to_dense')` {#OperatorPDFull.sqrt_to_dense}
+
+Return a dense (batch) matrix representing sqrt of this operator.
 
 
 - - -
 
 #### `tf.contrib.distributions.OperatorPDFull.to_dense(name='to_dense')` {#OperatorPDFull.to_dense}
 
-Return a dense (batch) matrix representing this covariance.
-
-
-- - -
-
-#### `tf.contrib.distributions.OperatorPDFull.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDFull.to_dense_sqrt}
-
-Return a dense (batch) matrix representing sqrt of this covariance.
+Return a dense (batch) matrix representing this operator.
 
 
 - - -
@@ -5622,7 +5967,7 @@ Return a dense (batch) matrix representing sqrt of this covariance.
 Shape of (batch) vectors that this (batch) matrix will multiply.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+`A.shape = [N1,...,Nn, k, k]`, the `vector_shape` is `[N1,...,Nn, k]`.
 
 ##### Args:
 
@@ -5641,7 +5986,7 @@ If this operator represents the batch matrix `A` with
 Dimension of vector space on which this acts.  The `k` in `R^k`.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+`A.shape = [N1,...,Nn, k, k]`, the `vector_space_dimension` is `k`.
 
 ##### Args:
 
@@ -5672,8 +6017,8 @@ definite (PD) matrices `A` in `R^{k x k}` defined by Cholesky factor(s).
 Determinants and solves are `O(k^2)`.
 
 In practice, this operator represents a (batch) matrix `A` with shape
-`[N1,...,Nb, k, k]` for some `b >= 0`.  The first `b` indices designate a
-batch member.  For every batch member `(n1,...,nb)`, `A[n1,...,nb, : :]` is
+`[N1,...,Nn, k, k]` for some `n >= 0`.  The first `n` indices designate a
+batch member.  For every batch member `(i1,...,in)`, `A[i1,...,ib, : :]` is
 a `k x k` matrix.
 
 Since `A` is (batch) positive definite, it has a (or several) square roots `S`
@@ -5689,7 +6034,7 @@ operator.log_det()
 
 # Compute the quadratic form x^T A^{-1} x for vector x.
 x = [1.0, 2.0]
-operator.inv_quadratic_form(x)
+operator.inv_quadratic_form_on_vectors(x)
 
 # Matrix multiplication by the square root, S w.
 # If w is iid normal, S w has covariance A.
@@ -5697,9 +6042,10 @@ w = [[1.0], [2.0]]
 operator.sqrt_matmul(w)
 ```
 
-The above three methods, `log_det`, `inv_quadratic_form`, and
+The above three methods, `log_det`, `inv_quadratic_form_on_vectors`, and
 `sqrt_matmul` provide "all" that is necessary to use a covariance matrix
-in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
+in a multi-variate normal distribution.  See the class
+`MultivariateNormalCholesky`.
 - - -
 
 #### `tf.contrib.distributions.OperatorPDCholesky.__init__(chol, verify_pd=True, name='OperatorPDCholesky')` {#OperatorPDCholesky.__init__}
@@ -5709,7 +6055,7 @@ Initialize an OperatorPDCholesky.
 ##### Args:
 
 
-*  <b>`chol`</b>: Shape `[N1,...,Nb, k, k]` tensor with `b >= 0`, `k >= 1`, and
+*  <b>`chol`</b>: Shape `[N1,...,Nn, k, k]` tensor with `n >= 0`, `k >= 1`, and
     positive diagonal elements.  The strict upper triangle of `chol` is
     never used, and the user may set these elements to zero, or ignore them.
 *  <b>`verify_pd`</b>: Whether to check that `chol` has positive diagonal (this is
@@ -5726,7 +6072,7 @@ Initialize an OperatorPDCholesky.
 Shape of batches associated with this operator.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `batch_shape` is `[N1,...,Nb]`.
+`A.shape = [N1,...,Nn, k, k]`, the `batch_shape` is `[N1,...,Nn]`.
 
 ##### Args:
 
@@ -5765,7 +6111,14 @@ Determinant for every batch member.
 
 #### `tf.contrib.distributions.OperatorPDCholesky.get_batch_shape()` {#OperatorPDCholesky.get_batch_shape}
 
-`TensorShape` with batch shape.
+`TensorShape` with batch shape.  Statically determined if possible.
+
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nn, k, k]`, then this returns `TensorShape([N1,...,Nn])`
+
+##### Returns:
+
+  `TensorShape`, statically determined, may be undefined.
 
 
 - - -
@@ -5781,6 +6134,14 @@ Determinant for every batch member.
 
 `TensorShape` of vectors this operator will work with.
 
+If this operator represents the batch matrix `A` with
+`A.shape = [N1,...,Nn, k, k]`, then this returns
+`TensorShape([N1,...,Nn, k])`
+
+##### Returns:
+
+  `TensorShape`, statically determined, may be undefined.
+
 
 - - -
 
@@ -5791,45 +6152,69 @@ List of tensors that were provided as initialization inputs.
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDCholesky.inv_quadratic_form(x, name='inv_quadratic_form')` {#OperatorPDCholesky.inv_quadratic_form}
+#### `tf.contrib.distributions.OperatorPDCholesky.inv_quadratic_form_on_vectors(x, name='inv_quadratic_form_on_vectors')` {#OperatorPDCholesky.inv_quadratic_form_on_vectors}
 
-Compute the induced vector norm (squared): ||x||^2 := x^T A^{-1} x.
+Compute the quadratic form: `x^T A^{-1} x` where `x` is a batch vector.
 
-For every batch member, this is done in `O(k^2)` complexity.  The efficiency
-depends on the shape of `x`.
-* If `x.shape = [M1,...,Mm, N1,...,Nb, k]`, `m >= 0`, and
-  `self.shape = [N1,...,Nb, k, k]`, `x` will be reshaped and the
-  initialization matrix `chol` does not need to be copied.
-* Otherwise, data will be broadcast and copied.
+`x` is a batch vector with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [M1,...,Mm] + [N1,...,Nn] + [k]
+```
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
-    as self.  If the batch dimensions of `x` do not match exactly with those
-    of self, `x` and/or self's Cholesky factor will broadcast to match, and
-    the resultant set of linear systems are solved independently.  This may
-    result in inefficient operation.
+*  <b>`x`</b>: `Tensor` with compatible batch vector shape and same `dtype` as self.
 *  <b>`name`</b>: A name scope to use for ops added by this method.
 
 ##### Returns:
 
-  `Tensor` holding the square of the norm induced by inverse of `A`.  For
-  every broadcast batch member.
+  `Tensor` with shape `[M1,...,Mm] + [N1,...,Nn]` and same `dtype`
+    as `self`.
 
 
 - - -
 
 #### `tf.contrib.distributions.OperatorPDCholesky.log_det(name='log_det')` {#OperatorPDCholesky.log_det}
 
-Log determinant of every batch member.
+Log of the determinant for every batch member.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  Logarithm of determinant for every batch member.
 
 
 - - -
 
-#### `tf.contrib.distributions.OperatorPDCholesky.matmul(x, name='matmul')` {#OperatorPDCholesky.matmul}
+#### `tf.contrib.distributions.OperatorPDCholesky.matmul(x, transpose_x=False, name='matmul')` {#OperatorPDCholesky.matmul}
 
-Left (batch) matrix multiplication of `x` by this operator.
+Left (batch) matmul `x` by this matrix:  `Ax`.
+
+`x` is a batch matrix with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [N1,...,Nn] + [k, r]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
+    this `Operator`.
+*  <b>`transpose_x`</b>: If `True`, `x` is transposed before multiplication.
+*  <b>`name`</b>: A name to give this `Op`.
+
+##### Returns:
+
+  A result equivalent to `tf.batch_matmul(self.to_dense(), x)`.
 
 
 - - -
@@ -5843,10 +6228,10 @@ Left (batch) matrix multiplication of `x` by this operator.
 
 #### `tf.contrib.distributions.OperatorPDCholesky.rank(name='rank')` {#OperatorPDCholesky.rank}
 
-Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `b + 2`.
+Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `n + 2`.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `rank` is `b + 2`.
+`A.shape = [N1,...,Nn, k, k]`, the `rank` is `n + 2`.
 
 ##### Args:
 
@@ -5862,39 +6247,144 @@ If this operator represents the batch matrix `A` with
 
 #### `tf.contrib.distributions.OperatorPDCholesky.shape(name='shape')` {#OperatorPDCholesky.shape}
 
-
-
-
-- - -
-
-#### `tf.contrib.distributions.OperatorPDCholesky.sqrt_matmul(x, name='sqrt_matmul')` {#OperatorPDCholesky.sqrt_matmul}
-
-Left (batch) matmul `x` by a sqrt of this matrix:  `Sx` where `A = S S^T.
+Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nn, k, k]`, `n >= 0`.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `Tensor` with shape broadcastable to `[N1,...,Nb, k]` and same `dtype`
-    as self.
 *  <b>`name`</b>: A name scope to use for ops added by this method.
 
 ##### Returns:
 
-  Shape `[N1,...,Nb, k]` `Tensor` holding the product `S x`.
+  `int32` `Tensor`
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.solve(rhs, name='solve')` {#OperatorPDCholesky.solve}
+
+Solve `r` batch systems: `A X = rhs`.
+
+`rhs` is a batch matrix with compatible shape if
+
+```python
+self.shape = [N1,...,Nn] + [k, k]
+rhs.shape = [N1,...,Nn] + [k, r]
+```
+
+For every batch member, this is done in `O(r*k^2)` complexity using back
+substitution.
+
+```python
+# Solve one linear system (r = 1) for every member of the length 10 batch.
+A = ... # shape 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 1
+operator.shape # = 10 x 2 x 2
+X = operator.squrt_solve(RHS)  # shape 10 x 2 x 1
+# operator.squrt_matmul(X) ~ RHS
+X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
+
+# Solve five linear systems (r = 5) for every member of the length 10 batch.
+operator.shape # = 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 5
+...
+X[3, :, 2]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 2]
+```
+
+##### Args:
+
+
+*  <b>`rhs`</b>: `Tensor` with same `dtype` as this operator and compatible shape,
+    `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` with same `dtype` and shape as `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.sqrt_matmul(x, transpose_x=False, name='sqrt_matmul')` {#OperatorPDCholesky.sqrt_matmul}
+
+Left (batch) matmul `x` by a sqrt of this matrix: `Sx` where `A = S S^T`.
+
+`x` is a batch matrix with compatible shape if
+
+```
+self.shape = [N1,...,Nn] + [k, k]
+x.shape = [N1,...,Nn] + [k, r]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: `Tensor` with shape `self.batch_shape + [k, r]` and same `dtype` as
+    this `Operator`.
+*  <b>`transpose_x`</b>: If `True`, `x` is transposed before multiplication.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  A result equivalent to `tf.batch_matmul(self.sqrt_to_dense(), x)`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.sqrt_solve(rhs, name='sqrt_solve')` {#OperatorPDCholesky.sqrt_solve}
+
+Solve `r` batch systems involving sqrt: `S X = rhs` where `A = SS^T`.
+
+`rhs` is a batch matrix with compatible shape if
+
+```python
+self.shape = [N1,...,Nn] + [k, k]
+rhs.shape = [N1,...,Nn] + [k, r]
+```
+
+For every batch member, this is done in `O(r*k^2)` complexity using back
+substitution.
+
+```python
+# Solve one linear system (r = 1) for every member of the length 10 batch.
+A = ... # shape 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 1
+operator.shape # = 10 x 2 x 2
+X = operator.squrt_solve(RHS)  # shape 10 x 2 x 1
+# operator.squrt_matmul(X) ~ RHS
+X[3, :, 0]  # Solution to the linear system S[3, :, :] x = RHS[3, :, 0]
+
+# Solve five linear systems (r = 5) for every member of the length 10 batch.
+operator.shape # = 10 x 2 x 2
+RHS = ... # shape 10 x 2 x 5
+...
+X[3, :, 2]  # Solution to the linear system S[3, :, :] x = RHS[3, :, 2]
+```
+
+##### Args:
+
+
+*  <b>`rhs`</b>: `Tensor` with same `dtype` as this operator and compatible shape,
+    `rhs.shape = self.shape[:-1] + [r]` for `r >= 1`.
+*  <b>`name`</b>: A name scope to use for ops added by this method.
+
+##### Returns:
+
+  `Tensor` with same `dtype` and shape as `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.OperatorPDCholesky.sqrt_to_dense(name='sqrt_to_dense')` {#OperatorPDCholesky.sqrt_to_dense}
+
+Return a dense (batch) matrix representing sqrt of this operator.
 
 
 - - -
 
 #### `tf.contrib.distributions.OperatorPDCholesky.to_dense(name='to_dense')` {#OperatorPDCholesky.to_dense}
 
-Return a dense (batch) matrix representing this covariance.
-
-
-- - -
-
-#### `tf.contrib.distributions.OperatorPDCholesky.to_dense_sqrt(name='to_dense_sqrt')` {#OperatorPDCholesky.to_dense_sqrt}
-
-Return a dense (batch) matrix representing sqrt of this covariance.
+Return a dense (batch) matrix representing this operator.
 
 
 - - -
@@ -5904,7 +6394,7 @@ Return a dense (batch) matrix representing sqrt of this covariance.
 Shape of (batch) vectors that this (batch) matrix will multiply.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `vector_shape` is `[N1,...,Nb, k]`.
+`A.shape = [N1,...,Nn, k, k]`, the `vector_shape` is `[N1,...,Nn, k]`.
 
 ##### Args:
 
@@ -5923,7 +6413,7 @@ If this operator represents the batch matrix `A` with
 Dimension of vector space on which this acts.  The `k` in `R^k`.
 
 If this operator represents the batch matrix `A` with
-`A.shape = [N1,...,Nb, k, k]`, the `vector_space_dimension` is `k`.
+`A.shape = [N1,...,Nn, k, k]`, the `vector_space_dimension` is `k`.
 
 ##### Args:
 
