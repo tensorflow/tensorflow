@@ -104,7 +104,7 @@ class InferenceContext {
   // idx must be in the range [-1 * s.rank, s.rank).
   const Dimension* Dim(const Shape* s, int32 idx) {
     if (s->rank_ == kUnknownRank) {
-      return CreateUnknownDim();
+      return UnknownDim();
     }
     if (idx < 0) {
       return s->dims_[s->dims_.size() + idx];
@@ -180,23 +180,27 @@ class InferenceContext {
 
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
-  const Shape* CreateShape(const std::vector<const Dimension*>& dims);
+  const Shape* MakeShape(const std::vector<const Dimension*>& dims);
   const Shape* CreateUnknownShape();
 
   // Returns in <out> a new shape whose dimension sizes come from input tensor
   // <input_idx>. The tensor must be a 1-dimensional int32 or int64 tensor.  If
   // the input tensor is NULL, then an unknown shape is returned.
-  Status CreateShapeFromShapeTensor(int input_idx, const Shape** out);
+  Status MakeShapeFromShapeTensor(int input_idx, const Shape** out);
+
+  // Returns in <out> a new shape corresponding to <proto>.
+  Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
+                                 const Shape** out);
 
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
-  const Dimension* CreateDim(int64 value);
-  const Dimension* CreateUnknownDim();
+  const Dimension* MakeDim(int64 value);
+  const Dimension* UnknownDim();
 
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get
   // the value.
-  Status CreateDimForScalarInput(int idx, const Dimension** out);
+  Status MakeDimForScalarInput(int idx, const Dimension** out);
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or
@@ -211,7 +215,7 @@ class InferenceContext {
   }
   Status ReturnCreatedShape(const std::vector<const Dimension*>& dims,
                             const Shape** out) {
-    *out = CreateShape(dims);
+    *out = MakeShape(dims);
     return Status::OK();
   }
 

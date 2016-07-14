@@ -65,7 +65,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   // and
   // pad with 1 to make them the same length.
   std::vector<const Dimension*> dims;
-  const Dimension* dim_one = rank_x == rank_y ? nullptr : c->CreateDim(1);
+  const Dimension* dim_one = rank_x == rank_y ? nullptr : c->MakeDim(1);
   for (int i = 0; i < rank_out; ++i) {
     const auto* dim_x = i < (rank_out - rank_x)
                             ? dim_one
@@ -91,7 +91,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
       } else if (c->Value(dim_y) == 1) {
         dims.push_back(dim_x);
       } else {
-        dims.push_back(c->CreateUnknownDim());
+        dims.push_back(c->UnknownDim());
       }
     } else if (c->Value(dim_x) == 1 || c->Value(dim_y) == 1) {
       if (c->Value(dim_x) == 1 && dim_y != dim_one) {
@@ -109,7 +109,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
     }
   }
 
-  c->set_output(0, c->CreateShape(dims));
+  c->set_output(0, c->MakeShape(dims));
   return Status::OK();
 }
 
@@ -764,7 +764,7 @@ REGISTER_OP("Select")
                 for (int i = 1; i < data_rank; ++i) {
                   dims.push_back(c->Dim(data, i));
                 }
-                data = c->CreateShape(dims);
+                data = c->MakeShape(dims);
               }
             } else {
               // Must be the same as the data vectors.
@@ -1027,7 +1027,7 @@ Status SegmentReductionShapeFn(InferenceContext* c) {
 
   const Shape* out;
   TF_RETURN_IF_ERROR(
-      c->Concatenate(c->CreateShape({c->CreateUnknownDim()}), subshape, &out));
+      c->Concatenate(c->MakeShape({c->UnknownDim()}), subshape, &out));
   c->set_output(0, out);
   return Status::OK();
 }
@@ -1201,13 +1201,13 @@ REGISTER_OP("UnsortedSegmentSum")
 
         // Get the value of the num_segments input tensor.
         const Dimension* num_segments_dim;
-        TF_RETURN_IF_ERROR(c->CreateDimForScalarInput(2, &num_segments_dim));
+        TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &num_segments_dim));
 
         // Output is {segment_id_rank} + s_data[segment_id_rank:].
         const Shape* s_data_suffix;
         TF_RETURN_IF_ERROR(
             c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
-        TF_RETURN_IF_ERROR(c->Concatenate(c->CreateShape({num_segments_dim}),
+        TF_RETURN_IF_ERROR(c->Concatenate(c->MakeShape({num_segments_dim}),
                                           s_data_suffix, &out));
       } else {
         out = c->CreateUnknownShape();
@@ -1435,7 +1435,7 @@ REGISTER_OP("Range")
       const Tensor* limit_t = c->input_tensor(1);
       const Tensor* delta_t = c->input_tensor(2);
       if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
-        c->set_output(0, c->CreateShape({c->CreateUnknownDim()}));
+        c->set_output(0, c->MakeShape({c->UnknownDim()}));
         return Status::OK();
       }
       const int32 start = start_t->scalar<int32>()();
@@ -1449,7 +1449,7 @@ REGISTER_OP("Range")
         return errors::InvalidArgument("Requires delta > 0: ", delta);
       }
       const int32 size = (limit - start + delta - 1) / delta;
-      c->set_output(0, c->CreateShape({c->CreateDim(size)}));
+      c->set_output(0, c->MakeShape({c->MakeDim(size)}));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -1489,12 +1489,12 @@ REGISTER_OP("LinSpace")
                                       " for 'num'");
       const Tensor* num_t = c->input_tensor(2);
       if (num_t == nullptr) {
-        c->set_output(0, c->CreateShape({c->CreateUnknownDim()}));
+        c->set_output(0, c->MakeShape({c->UnknownDim()}));
         return Status::OK();
       }
       const int64 num = num_t->scalar<int32>()();
       if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
-      c->set_output(0, c->CreateShape({c->CreateDim(num)}));
+      c->set_output(0, c->MakeShape({c->MakeDim(num)}));
       return Status::OK();
     }))
     .Doc(R"doc(

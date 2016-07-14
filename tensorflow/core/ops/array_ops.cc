@@ -70,10 +70,10 @@ REGISTER_OP("Pack")
       std::vector<const Dimension*> dims;
       int index = 0;
       while (index < axis) dims.push_back(c->Dim(cur, index++));
-      dims.push_back(c->CreateDim(c->num_inputs()));
+      dims.push_back(c->MakeDim(c->num_inputs()));
       while (index < rank) dims.push_back(c->Dim(cur, index++));
 
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -127,7 +127,7 @@ REGISTER_OP("Unpack")
         for (int i = 0; i < rank; ++i) {
           if (i != axis) dims.push_back(c->Dim(s, i));
         }
-        out = c->CreateShape(dims);
+        out = c->MakeShape(dims);
       } else {
         // All outputs are the same shape, but it's not known.
         out = c->CreateUnknownShape();
@@ -235,9 +235,9 @@ REGISTER_OP("Const")
       TensorShape shape(proto->tensor_shape());
       std::vector<const Dimension*> dims;
       for (int i = 0; i < shape.dims(); ++i) {
-        dims.push_back(c->CreateDim(shape.dim_size(i)));
+        dims.push_back(c->MakeDim(shape.dim_size(i)));
       }
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -341,7 +341,7 @@ REGISTER_OP("DiagPart")
         TF_RETURN_IF_ERROR(
             c->Merge(c->Dim(in, i), c->Dim(in, i + mid), &dims[i]));
       }
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -386,7 +386,7 @@ REGISTER_OP("BatchMatrixDiag")
       const int32 rank = c->Rank(in);
       const Shape* out;
       TF_RETURN_IF_ERROR(
-          c->Concatenate(in, c->CreateShape({c->Dim(in, rank - 1)}), &out));
+          c->Concatenate(in, c->MakeShape({c->Dim(in, rank - 1)}), &out));
       c->set_output(0, out);
       return Status::OK();
     }))
@@ -473,7 +473,7 @@ REGISTER_OP("BatchMatrixDiagPart")
       // Output shape has all dims but last of input.
       std::vector<const Dimension*> dims;
       for (int i = 0; i < rank - 1; ++i) dims.push_back(c->Dim(in, i));
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -723,7 +723,7 @@ REGISTER_OP("Fill")
     .Attr("T: type")
     .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
       const Shape* out;
-      TF_RETURN_IF_ERROR(c->CreateShapeFromShapeTensor(0, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
       return Status::OK();
     }))
@@ -1057,11 +1057,11 @@ Status ShapeShapeFn(InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     const Dimension* dim;
     if (c->RankKnown(c->input(i))) {
-      dim = c->CreateDim(c->Rank(c->input(0)));
+      dim = c->MakeDim(c->Rank(c->input(0)));
     } else {
-      dim = c->CreateUnknownDim();
+      dim = c->UnknownDim();
     }
-    c->set_output(i, c->CreateShape({dim}));
+    c->set_output(i, c->MakeShape({dim}));
   }
   return Status::OK();
 }

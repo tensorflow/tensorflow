@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
+#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -38,7 +39,7 @@ InferenceContext::InferenceContext(
       while (scanner.Peek() != ']') {
         if (scanner.Peek() == '?') {
           scanner.OneLiteral("?");
-          dims.push_back(CreateUnknownDim());
+          dims.push_back(UnknownDim());
         } else {
           scanner.RestartCapture().Many(strings::Scanner::DIGIT);
           StringPiece match;
@@ -46,7 +47,7 @@ InferenceContext::InferenceContext(
           CHECK(scanner.GetResult(nullptr, &match) &&
                 strings::safe_strto64(match, &dim_size))
               << spec;
-          dims.push_back(CreateDim(dim_size));
+          dims.push_back(MakeDim(dim_size));
         }
 
         if (scanner.Peek() == ',') {
@@ -56,7 +57,7 @@ InferenceContext::InferenceContext(
         }
       }
       CHECK(scanner.OneLiteral("]").Eos().GetResult()) << spec;
-      inputs_.push_back(CreateShape(dims));
+      inputs_.push_back(MakeShape(dims));
     }
   }
 
@@ -193,9 +194,9 @@ Status InferenceContext::MergePrefix(const Shape* s, const Shape* prefix,
   for (int i = 0; i < rank; ++i) {
     TF_RETURN_IF_ERROR(Merge(Dim(s, i), Dim(prefix, i), &dims[i]));
   }
-  *prefix_out = CreateShape(dims);
+  *prefix_out = MakeShape(dims);
   for (int i = rank; i < Rank(s); ++i) dims.push_back(Dim(s, i));
-  *s_out = CreateShape(dims);
+  *s_out = MakeShape(dims);
   return Status::OK();
 }
 
@@ -320,7 +321,7 @@ Status InferenceContext::Concatenate(const Shape* s1, const Shape* s2,
   return ReturnCreatedShape(dims, out);
 }
 
-const Shape* InferenceContext::CreateShape(
+const Shape* InferenceContext::MakeShape(
     const std::vector<const Dimension*>& dims) {
   all_shapes_.push_back(new Shape(dims));
   return all_shapes_.back();
@@ -331,8 +332,8 @@ const Shape* InferenceContext::CreateUnknownShape() {
   return all_shapes_.back();
 }
 
-Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
-                                                    const Shape** out) {
+Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
+                                                  const Shape** out) {
   const Shape* input_shape;
   TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
 
@@ -349,12 +350,12 @@ Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
   if (t->dtype() == DataType::DT_INT32) {
     auto flat_t = t->flat<int32>();
     for (int i = 0; i < flat_t.size(); ++i) {
-      dims.push_back(CreateDim(flat_t(i)));
+      dims.push_back(MakeDim(flat_t(i)));
     }
   } else if (t->dtype() == DataType::DT_INT64) {
     auto flat_t = t->flat<int64>();
     for (int i = 0; i < flat_t.size(); ++i) {
-      dims.push_back(CreateDim(flat_t(i)));
+      dims.push_back(MakeDim(flat_t(i)));
     }
   } else {
     *out = nullptr;
@@ -366,17 +367,35 @@ Status InferenceContext::CreateShapeFromShapeTensor(int input_idx,
   return ReturnCreatedShape(dims, out);
 }
 
-const Dimension* InferenceContext::CreateDim(int64 value) {
+Status InferenceContext::MakeShapeFromShapeProto(const TensorShapeProto& proto,
+                                                 const Shape** out) {
+  *out = nullptr;
+  TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(proto));
+  PartialTensorShape partial_shape(proto);
+  if (partial_shape.dims() == -1) {
+    return ReturnUnknownShape(out);
+  }
+  const int num_dims = partial_shape.dims();
+  std::vector<const Dimension*> dims;
+  dims.reserve(partial_shape.dims());
+  for (int i = 0; i < num_dims; ++i) {
+    // -1 is unknown in proto and in InferenceContext, so this size can be
+    // passed directly to MakeDim.
+    dims.push_back(MakeDim(partial_shape.dim_size(i)));
+  }
+  return ReturnCreatedShape(dims, out);
+}
+
+const Dimension* InferenceContext::MakeDim(int64 value) {
   all_dims_.push_back(new Dimension(value));
   return all_dims_.back();
 }
 
 // Returns a new dimension whose value is given by a scalar input tensor.
-Status InferenceContext::CreateDimForScalarInput(int idx,
-                                                 const Dimension** out) {
+Status InferenceContext::MakeDimForScalarInput(int idx, const Dimension** out) {
   const Tensor* t = input_tensor(idx);
   if (t == nullptr) {
-    *out = CreateUnknownDim();
+    *out = UnknownDim();
     return Status::OK();
   }
 
@@ -393,11 +412,11 @@ Status InferenceContext::CreateDimForScalarInput(int idx,
     return errors::InvalidArgument("Dimension size, given by scalar input ",
                                    idx, ", must be non-negative but is ", val);
   }
-  *out = CreateDim(val);
+  *out = MakeDim(val);
   return Status::OK();
 }
 
-const Dimension* InferenceContext::CreateUnknownDim() {
+const Dimension* InferenceContext::UnknownDim() {
   all_dims_.push_back(new Dimension());
   return all_dims_.back();
 }

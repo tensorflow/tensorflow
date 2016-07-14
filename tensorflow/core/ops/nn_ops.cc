@@ -1129,14 +1129,14 @@ Status TopKShapeFn(InferenceContext* c) {
   // Get the k value, either from input tensor or attribute.
   const Dimension* k_dim;
   if (c->num_inputs() >= 2) {
-    TF_RETURN_IF_ERROR(c->CreateDimForScalarInput(1, &k_dim));
+    TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &k_dim));
   } else {
     int32 k;
     TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
     if (k < 0) {
       return errors::InvalidArgument("Need k >= 0, got ", k);
     }
-    k_dim = c->CreateDim(k);
+    k_dim = c->MakeDim(k);
   }
 
   const Dimension* last_dim = c->Dim(input, -1);
@@ -1150,7 +1150,7 @@ Status TopKShapeFn(InferenceContext* c) {
   // Replace last_dim with k_dim.
   const Shape* s;
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
-  TF_RETURN_IF_ERROR(c->Concatenate(s, c->CreateShape({k_dim}), &s));
+  TF_RETURN_IF_ERROR(c->Concatenate(s, c->MakeShape({k_dim}), &s));
   c->set_output(0, s);
   c->set_output(1, s);
   return Status::OK();
