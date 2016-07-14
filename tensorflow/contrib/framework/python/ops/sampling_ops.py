@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -29,7 +27,6 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner
 
@@ -55,8 +52,10 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
         enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
         depending on enqueue_many. It is not a one-hot vector.
-    init_probs: 1D numpy or python array of class proportions in the data.
-    target_probs: 1D numpy or python array of target class proportions in batch.
+    init_probs: Class proportions in the data. An object whose type has a
+        registered Tensor conversion function.
+    target_probs: Target class proportions in batch. An object whose type has a
+        registered Tensor conversion function.
     batch_size: Size of batch to be returned.
     enqueue_many: Bool. If true, interpret input tensors as having a batch
         dimension.
@@ -92,6 +91,8 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
   with ops.op_scope([data, labels], name, 'stratified_sample'):
     data = ops.convert_to_tensor(data)
     labels = ops.convert_to_tensor(labels)
+    init_probs = ops.convert_to_tensor(init_probs, dtype=dtypes.float32)
+    target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
     # Reduce the case of a single example to that of a batch of size 1.
     if not enqueue_many:
       data = array_ops.expand_dims(data, 0)
@@ -103,17 +104,21 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
 
     # Check that all zero initial probabilities also have zero target
     # probabilities.
-    if np.any(np.logical_and(np.array(init_probs) == 0,
-                             np.array(target_probs) != 0)):
-      raise ValueError('Some initial probability class has nonzero target '
-                       'probability.')
+    assert_op = logging_ops.Assert(math_ops.reduce_all(math_ops.logical_or(
+        math_ops.not_equal(init_probs, 0),
+        math_ops.equal(target_probs, 0))), [init_probs, target_probs])
+    init_probs = control_flow_ops.with_dependencies([assert_op], init_probs)
 
-    # Calculate rejection sampling probabilities.
-    reject_probs = _calculate_rejection_probabilities(init_probs, target_probs)
-    proportion_rejected = np.sum(np.array(reject_probs) * np.array(init_probs))
-    if proportion_rejected > .5:
-      logging.warning('Proportion of examples rejected by sampler is high: ',
-                      proportion_rejected)
+    # Calculate acceptance sampling probabilities.
+    accept_probs = _calculate_acceptance_probabilities(init_probs, target_probs)
+    proportion_rejected = math_ops.reduce_sum((1 - accept_probs) * init_probs)
+    accept_probs = control_flow_ops.cond(
+        math_ops.less(proportion_rejected, .5),
+        lambda: accept_probs,
+        lambda: logging_ops.Print(  # pylint: disable=g-long-lambda
+            accept_probs, [accept_probs],
+            message='Proportion of examples rejected by sampler is high.',
+            first_n=10))
 
     # Make a single queue to hold input examples.
     val, label = input_ops.batch([data, labels],
@@ -128,7 +133,7 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
     # Set up second queue containing batches that have the desired class
     # proportions.
     return _get_stratified_batch_from_tensors(
-        val, label, reject_probs, batch_size, threads_per_queue)
+        val, label, accept_probs, batch_size, threads_per_queue)
 
 
 def stratified_sample_unknown_dist(data, labels, probs, batch_size,
@@ -139,18 +144,19 @@ def stratified_sample_unknown_dist(data, labels, probs, batch_size,
   **NOTICE** This sampler can be significantly slower than `stratified_sample`
   due to each thread discarding all examples not in its assigned class.
 
-  This uses a number of threads proportional
-  to the number of classes. See `stratified_sample` for an implementation that
-  discards fewer examples and uses a fixed number of threads. This function's
-  only advantage to `stratified_sample` is that the class data-distribution
-  doesn't need to be known ahead of time.
+  This uses a number of threads proportional to the number of classes. See
+  `stratified_sample` for an implementation that discards fewer examples and
+  uses a fixed number of threads. This function's only advantage over
+  `stratified_sample` is that the class data-distribution doesn't need to be
+  known ahead of time.
 
   Args:
     data: Tensor for data. Either one item or a batch, according to
         enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
         depending on enqueue_many. It is not a one-hot vector.
-    probs: 1D numpy or python array of probabilities.
+    probs: Target class probabilities. An object whose type has a registered
+        Tensor conversion function.
     batch_size: Size of batch to be returned.
     enqueue_many: Bool. If true, interpret input tensors as having a batch
         dimension.
@@ -183,6 +189,7 @@ def stratified_sample_unknown_dist(data, labels, probs, batch_size,
   with ops.op_scope([data, labels], name, 'stratified_sample_unknown_dist'):
     data = ops.convert_to_tensor(data)
     labels = ops.convert_to_tensor(labels)
+    probs = ops.convert_to_tensor(probs, dtype=dtypes.float32)
     # Reduce the case of a single example to that of a batch of size 1.
     if not enqueue_many:
       data = array_ops.expand_dims(data, 0)
@@ -193,7 +200,8 @@ def stratified_sample_unknown_dist(data, labels, probs, batch_size,
 
     # Make per-class queues.
     per_class_queues = _make_per_class_queues(
-        data, labels, probs.size, queue_capacity, threads_per_queue)
+        data, labels, probs.get_shape().num_elements(), queue_capacity,
+        threads_per_queue)
 
     # Use the per-class queues to generate stratified batches.
     return _get_batch_from_per_class_queues(per_class_queues, probs, batch_size)
@@ -203,23 +211,28 @@ def _verify_input(data, labels, probs_list):
   """Verify that batched inputs are well-formed."""
   checked_probs_list = []
   for probs in probs_list:
-    # Probabilities must be able to be converted to non-object numpy array.
-    np_probs = np.asarray(probs)
-    if np_probs.dtype == np.dtype('object'):
-      raise ValueError('Probabilities must be able to be converted to a numpy '
-                       'array.')
-    checked_probs_list.append(np_probs)
+    # Since number of classes shouldn't change at runtime, probalities shape
+    # should be fully defined.
+    probs.get_shape().assert_is_fully_defined()
 
-    # Probabilities must sum to one.
-    # TODO(joelshor): Investigate whether logits should be passed instead of
-    # probs.
-    if not np.isclose(np.sum(probs), 1.0):
-      raise ValueError('Probabilities must sum to one.')
+    # Probabilities must be 1D.
+    probs.get_shape().assert_has_rank(1)
+
+    # Probabilities must be nonnegative and sum to one.
+    tol = 1e-6
+    prob_sum = math_ops.reduce_sum(probs)
+    checked_probs = control_flow_ops.with_dependencies(
+        [check_ops.assert_non_negative(probs),
+         check_ops.assert_less(prob_sum, 1.0 + tol),
+         check_ops.assert_less(1.0 - tol, prob_sum)],
+        probs)
+    checked_probs_list.append(checked_probs)
 
   # All probabilities should be the same length.
-  if not np.array_equiv([probs.shape for probs in checked_probs_list],
-                        checked_probs_list[0].shape):
-    raise ValueError('Probability parameters must have the same length.')
+  prob_length = checked_probs_list[0].get_shape().num_elements()
+  for checked_prob in checked_probs_list:
+    if checked_prob.get_shape().num_elements() != prob_length:
+      raise ValueError('Probability parameters must have the same length.')
 
   # Labels tensor should only have batch dimension.
   labels.get_shape().assert_has_rank(1)
@@ -244,25 +257,25 @@ def _verify_input(data, labels, probs_list):
   labels = control_flow_ops.with_dependencies(
       [check_ops.assert_integer(labels),
        check_ops.assert_non_negative(labels),
-       check_ops.assert_less(labels, math_ops.cast(len(probs), labels.dtype))],
+       check_ops.assert_less(labels, math_ops.cast(prob_length, labels.dtype))],
       labels)
 
   return data, labels, checked_probs_list
 
 
-def _calculate_rejection_probabilities(init_probs, target_probs):
-  """Calculate the per-class rejection rates.
+def _calculate_acceptance_probabilities(init_probs, target_probs):
+  """Calculate the per-class acceptance rates.
 
   Args:
     init_probs: The class probabilities of the data.
     target_probs: The desired class proportion in minibatches.
   Returns:
-    A list of the per-class rejection probabilities.
+    A list of the per-class acceptance probabilities.
 
   This method is based on solving the following analysis:
 
   Let F be the probability of a rejection (on any example).
-  Let p_i is the proportion of examples in the data in class i (init_probs)
+  Let p_i be the proportion of examples in the data in class i (init_probs)
   Let a_i is the rate the rejection sampler should *accept* class i
   Let t_i is the target proportion in the minibatches for class i (target_probs)
 
@@ -293,22 +306,21 @@ def _calculate_rejection_probabilities(init_probs, target_probs):
     ```a_i = (t_i / p_i) / max_i[t_i / p_i]```
   """
   # Make list of t_i / p_i.
-  ratio_l = [0 if x[0] == 0 else x[1] / x[0] for x in
-             zip(init_probs, target_probs)]
+  ratio_l = target_probs / init_probs
 
-  # Calculate list of rejection probabilities.
-  max_ratio = max(ratio_l)
-  return [1 - ratio / max_ratio for ratio in ratio_l]
+  # Replace NaNs with 0s.
+  ratio_l = math_ops.select(math_ops.is_nan(ratio_l),
+                            array_ops.zeros_like(ratio_l),
+                            ratio_l)
+
+  # Calculate list of acceptance probabilities.
+  max_ratio = math_ops.reduce_max(ratio_l)
+  return ratio_l / max_ratio
 
 
-def _get_stratified_batch_from_tensors(val, label, reject_probs, batch_size,
+def _get_stratified_batch_from_tensors(val, label, accept_probs, batch_size,
                                        queue_threads=3):
-  """Reject examples one-at-a-time based on class."""
-  # Make rejection probabilities into a tensor so they can be dynamically
-  # accessed by tensors.
-  reject_probs = constant_op.constant(
-      reject_probs, dtype=dtypes.float32, name='rejection_probabilities')
-
+  """Accepts examples one-at-a-time based on class."""
   # Make queue that will have proper class proportions. Contains exactly one
   # batch at a time.
   val_shape = val.get_shape()
@@ -319,9 +331,9 @@ def _get_stratified_batch_from_tensors(val, label, reject_probs, batch_size,
                                     name='batched_queue')
 
   # Conditionally enqueue.
-  eq_tf = array_ops.reshape(math_ops.greater(
+  eq_tf = array_ops.reshape(math_ops.less(
       random_ops.random_uniform([1]),
-      array_ops.slice(reject_probs, [label], [1])),
+      array_ops.slice(accept_probs, [label], [1])),
                             [])
   conditional_enqueue = control_flow_ops.cond(
       eq_tf,
@@ -363,12 +375,12 @@ def _make_per_class_queues(data, labels, num_classes, queue_capacity,
 
 def _get_batch_from_per_class_queues(per_class_queues, probs, batch_size):
   """Generates batches according to per-class-probabilities."""
-  num_classes = probs.size
+  num_classes = probs.get_shape().num_elements()
   # Number of examples per class is governed by a multinomial distribution.
   # Note: multinomial takes unnormalized log probabilities for its first
   # argument, of dimension [batch_size, num_classes].
   examples = random_ops.multinomial(
-      np.expand_dims(np.log(probs), 0), batch_size)
+      array_ops.expand_dims(math_ops.log(probs), 0), batch_size)
 
   # Prepare the data and label batches.
   val_list = []

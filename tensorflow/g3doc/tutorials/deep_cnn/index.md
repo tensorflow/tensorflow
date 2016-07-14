@@ -264,8 +264,8 @@ obtained on a Tesla K40c. If you are running on a CPU, expect slower performance
 
 > **EXERCISE:** When experimenting, it is sometimes annoying that the first
 training step can take so long. Try decreasing the number of images that
-initially fill up the queue.  Search for `NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN`
-in `cifar10.py`.
+initially fill up the queue.  Search for `min_fraction_of_examples_in_queue`
+in `cifar10_input.py`.
 
 `cifar10_train.py` periodically [saves](../../api_docs/python/state_ops.md#Saver)
 all model parameters in

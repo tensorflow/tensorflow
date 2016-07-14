@@ -65,6 +65,7 @@ REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
+REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support string constants on GPU
 #undef REGISTER_KERNEL

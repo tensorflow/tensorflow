@@ -72,6 +72,11 @@ from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import
 
+import sys
+if sys.version_info.major == 2:
+  import mock                # pylint: disable=g-import-not-at-top,unused-import
+else:
+  from unittest import mock  # pylint: disable=g-import-not-at-top
 
 # Import Benchmark class
 Benchmark = googletest.Benchmark  # pylint: disable=invalid-name

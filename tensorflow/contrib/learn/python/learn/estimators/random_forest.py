@@ -146,7 +146,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
             **self.training_args),
         state_ops.assign_add(contrib_framework.get_global_step(), 1))
 
-    self.training_loss = graph_builder.training_loss()
+    self.training_loss = graph_builder.training_loss(features, targets)
 
     return train, self.training_loss
 

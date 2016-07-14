@@ -23,7 +23,7 @@ import six
 
 import tensorflow as tf
 # pylint: disable=wildcard-import
-from tensorflow.contrib.learn.python.learn.io import *
+from tensorflow.contrib.learn.python.learn.learn_io import *
 # pylint: enable=wildcard-import
 
 

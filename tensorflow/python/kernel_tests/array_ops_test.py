@@ -269,14 +269,14 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         # empty interval in every dimension
         _ = checker[-1:0, 2:2, 2:3:-1]
 
-  def testEllipse(self):
+  def testEllipsis(self):
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu):
         raw = [[[[[1, 2], [3, 4], [5, 6]]], [[[7, 8], [9, 10], [11, 12]]]]]
         checker = StridedSliceChecker(self, raw)
 
         _ = checker[0:]
-        # implicit ellipse
+        # implicit ellipsis
         _ = checker[0:, ...]
         # ellipsis alone
         _ = checker[...]
@@ -286,7 +286,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker[..., 0:1]
         # ellipsis at middle
         _ = checker[0:1, ..., 0:1]
-        # multiple ellipsis not allowed
+        # multiple ellipses not allowed
         with self.assertRaisesRegexp(ValueError,
                                      "Multiple ellipses not allowed"):
           _ = checker[..., :, ...].eval()
@@ -310,14 +310,14 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         checker = StridedSliceChecker(self, raw)
         # new axis (followed by implicit ellipsis)
         _ = checker[np.newaxis]
-        # newaxis after ellipse
+        # newaxis after ellipsis
         _ = checker[..., np.newaxis]
-        # newaxis in between ellipse and explicit range
+        # newaxis in between ellipsis and explicit range
         _ = checker[..., np.newaxis, :]
         _ = checker[:, ..., np.newaxis, :, :]
         # Reverse final dimension with new axis
         _ = checker[:, :, np.newaxis, :, 2::-1]
-        # Ellipse in middle of two newaxis
+        # Ellipsis in middle of two newaxis
         _ = checker[np.newaxis, ..., np.newaxis]
 
   def testOptimizedCases(self):

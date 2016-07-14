@@ -84,3 +84,5 @@ pip3 install pylint
 pip install pep8
 pip3 install pep8
 
+# tf.mock require the following for python2:
+pip install mock

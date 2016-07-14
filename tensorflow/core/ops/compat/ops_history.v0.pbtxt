@@ -4226,6 +4226,25 @@ op {
   }
 }
 op {
+  name: "BatchMatrixSetDiag"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "BatchMatrixSolve"
   input_arg {
     name: "matrix"
@@ -24019,7 +24038,7 @@ op {
     type: "int"
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
   }
   attr {
@@ -24082,7 +24101,7 @@ op {
     }
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0
@@ -24158,7 +24177,7 @@ op {
     }
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0

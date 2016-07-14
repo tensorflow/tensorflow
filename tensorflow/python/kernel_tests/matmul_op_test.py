@@ -115,11 +115,13 @@ class MatMulTest(tf.test.TestCase):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex64)
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex64)
     self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
   def testComplex128Basic(self):
     x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex128)
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex128)
     self._testCpuMatmul(x, y)
+    self._testGpuMatmul(x, y)
 
   # Tests testing random sized matrices.
   def testFloatRandom(self):
@@ -162,6 +164,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(n, k, np.complex64)
       y = self._randMatrix(k, m, np.complex64)
       self._testCpuMatmul(x, y)
+      self._testGpuMatmul(x, y)
 
   def testComplex128Random(self):
     for _ in range(10):
@@ -169,6 +172,7 @@ class MatMulTest(tf.test.TestCase):
       x = self._randMatrix(n, k, np.complex128)
       y = self._randMatrix(k, m, np.complex128)
       self._testCpuMatmul(x, y)
+      self._testGpuMatmul(x, y)
 
   # Test the cases that transpose the matrices before multiplying.
   # NOTE(keveman): The cases where only one of the inputs is

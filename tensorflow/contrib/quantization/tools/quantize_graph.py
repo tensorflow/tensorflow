@@ -243,8 +243,10 @@ def quantize_weight_eightbit(input_node, quantization_mode):
   if min_value == max_value:
     if abs(min_value) < 0.000001:
       max_value = min_value + 1.0
-    else:
+    elif min_value > 0:
       max_value = 2 * min_value
+    else:
+      max_value = min_value / 2.0
 
   sess = tf.Session()
   with sess.as_default():

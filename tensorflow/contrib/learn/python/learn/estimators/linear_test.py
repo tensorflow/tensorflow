@@ -119,7 +119,7 @@ class LinearClassifierTest(tf.test.TestCase):
       }, tf.constant([[1.0], [0.0]])
 
     sq_footage = tf.contrib.layers.real_valued_column('sq_footage', dimension=2)
-    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
         example_id_column='example_id')
     classifier = tf.contrib.learn.LinearClassifier(feature_columns=[sq_footage],
                                                    optimizer=sdca_optimizer)
@@ -139,7 +139,7 @@ class LinearClassifierTest(tf.test.TestCase):
 
     maintenance_cost = tf.contrib.layers.real_valued_column('maintenance_cost')
     sq_footage = tf.contrib.layers.real_valued_column('sq_footage')
-    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
         example_id_column='example_id')
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[maintenance_cost, sq_footage],
@@ -166,7 +166,7 @@ class LinearClassifierTest(tf.test.TestCase):
     sq_footage_bucket = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column('sq_footage'),
         boundaries=[650.0])
-    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
         example_id_column='example_id',
         symmetric_l2_regularization=1.0)
     classifier = tf.contrib.learn.LinearClassifier(
@@ -193,7 +193,7 @@ class LinearClassifierTest(tf.test.TestCase):
     price = tf.contrib.layers.real_valued_column('price')
     country = tf.contrib.layers.sparse_column_with_hash_bucket(
         'country', hash_bucket_size=5)
-    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
         example_id_column='example_id')
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[price, country],
@@ -221,7 +221,7 @@ class LinearClassifierTest(tf.test.TestCase):
         'country', hash_bucket_size=5)
     country_weighted_by_price = tf.contrib.layers.weighted_sparse_column(
         country, 'price')
-    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
         example_id_column='example_id')
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[country_weighted_by_price],
@@ -250,7 +250,7 @@ class LinearClassifierTest(tf.test.TestCase):
         'country', hash_bucket_size=5)
     country_language = tf.contrib.layers.crossed_column(
         [language, country], hash_bucket_size=10)
-    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
         example_id_column='example_id')
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[country_language],
@@ -282,7 +282,7 @@ class LinearClassifierTest(tf.test.TestCase):
     sq_footage_country = tf.contrib.layers.crossed_column(
         [sq_footage_bucket, country],
         hash_bucket_size=10)
-    sdca_optimizer = tf.contrib.learn.SDCAOptimizer(
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
         example_id_column='example_id')
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[price, sq_footage_bucket, country, sq_footage_country],

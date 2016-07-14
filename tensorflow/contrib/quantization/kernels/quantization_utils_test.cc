@@ -260,18 +260,20 @@ class QuantizationUtilsTest : public ::testing::Test {
                                                 FPair(-31.0f, 13.0f)}) {
       const float f_min = min_and_max.first;
       const float f_max = min_and_max.second;
-      const int values_count = sizeof(T) == 256 ? 256 : 50000;
+      const int values_count = sizeof(T) == 1 ? 256 : 50000;
       Tensor input(DataTypeToEnum<T>::v(), TensorShape{values_count});
       auto input_array = input.flat<T>();
       const double q_range =
           static_cast<double>(Eigen::NumTraits<T>::highest()) -
           Eigen::NumTraits<T>::lowest();
       for (int i = 0; i < values_count; ++i) {
-        if (sizeof(T) == 256) {
+        if (sizeof(T) == 1) {
           input_array(i) = Eigen::NumTraits<T>::lowest() + i;
         } else {
-          input_array(i) = Eigen::NumTraits<T>::lowest() +
-                           static_cast<int32>(q_range / values_count * i);
+          int64 offset = static_cast<int64>(q_range / values_count * i);
+          input_array(i) = static_cast<int32>(
+              Eigen::NumTraits<T>::lowest() +
+              std::min<int64>(Eigen::NumTraits<T>::highest(), offset));
         }
       }
 

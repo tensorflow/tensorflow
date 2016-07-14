@@ -93,7 +93,8 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options, Item* item) {
   item->session = session;
-  item->lib_def = new FunctionLibraryDefinition(gdef.library());
+  item->lib_def =
+      new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library());
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 

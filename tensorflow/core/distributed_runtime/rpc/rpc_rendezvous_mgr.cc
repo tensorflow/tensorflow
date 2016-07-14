@@ -37,8 +37,9 @@ namespace {
 
 class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  RpcRemoteRendezvous(const WorkerEnv* env, int64 step_id)
-      : BaseRemoteRendezvous(env, step_id, false) {}
+  RpcRemoteRendezvous(const WorkerEnv* env, WorkerCacheInterface* cache,
+                      int64 step_id)
+      : BaseRemoteRendezvous(env, step_id, false), cache_(cache) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -48,6 +49,7 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  private:
   ~RpcRemoteRendezvous() override {}
 
+  WorkerCacheInterface* cache_;  // Not owned.
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRemoteRendezvous);
 };
 
@@ -55,13 +57,12 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
 class RpcRecvTensorCall : public BaseRecvTensorCall {
  public:
   RpcRecvTensorCall()
-      : wi_(nullptr), wc_(nullptr), allocator_(nullptr), dst_device_(nullptr) {}
+      : wi_(nullptr), allocator_(nullptr), dst_device_(nullptr) {}
 
-  void Init(WorkerCacheInterface* wc, WorkerInterface* wi, int64 step_id,
-            StringPiece key, Allocator* allocator, Device* dst_device,
+  void Init(WorkerInterface* wi, int64 step_id, StringPiece key,
+            Allocator* allocator, Device* dst_device,
             const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
     wi_ = wi;
-    wc_ = wc;
     allocator_ = allocator;
     dst_device_ = dst_device;
     recv_args_ = recv_args;
@@ -73,7 +74,6 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   void Reset() {
     delete wi_;
     wi_ = nullptr;
-    wc_ = nullptr;
     allocator_ = nullptr;
     dst_device_ = nullptr;
     // We don't clear opts_ and assume that Init will set up the state for
@@ -123,6 +123,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   const Rendezvous::DoneCallback& done() const { return done_; }
 
  private:
+  friend class RpcRemoteRendezvous;
+
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
     wi_->RecvTensorAsync(&opts_, &req_, &resp_,
@@ -137,8 +139,9 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
                          });
   }
 
-  WorkerInterface* wi_;       // Owned.
-  WorkerCacheInterface* wc_;  // Not owned.
+  string src_worker_;
+  string src_rel_device_;
+  WorkerInterface* wi_;
   Allocator* allocator_;
   Device* dst_device_;
   CallOptions opts_;
@@ -153,7 +156,6 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRecvTensorCall);
 };
 
-namespace {
 class RpcRecvTensorFreeList {
  public:
   RpcRecvTensorFreeList() {}
@@ -195,32 +197,99 @@ class RpcRecvTensorFreeList {
 };
 
 static RpcRecvTensorFreeList call_freelist_;
-}
+
+// A private cache that wraps env->worker_cache and allows reuse of
+// WorkerInterface objects.
+class WorkerFreeListCache : public WorkerCacheInterface {
+ public:
+  explicit WorkerFreeListCache(WorkerCacheInterface* w) : wrapped_(w) {}
+
+  ~WorkerFreeListCache() {
+    for (auto p : workers_) {
+      delete p.second.worker;
+    }
+  }
+
+  void ListWorkers(std::vector<string>* workers) override {
+    wrapped_->ListWorkers(workers);
+  }
+
+  WorkerInterface* CreateWorker(const string& target) override {
+    mutex_lock l(mu_);
+    auto p = workers_.find(target);
+    if (p != workers_.end()) {
+      return p->second.worker;
+    }
+    WorkerState state;
+    state.worker = wrapped_->CreateWorker(target);
+    if (state.worker != nullptr) {
+      workers_.insert(make_pair(target, state));
+    }
+    return state.worker;
+  }
+
+  void ReleaseWorker(const string& target, WorkerInterface* worker) override {
+    // TODO(jeff,sanjay): Should decrement ref-count when we implement eviction.
+  }
+
+  bool GetDeviceBusNonBlocking(const string& device,
+                               BusAdjacency* ba) override {
+    return wrapped_->GetDeviceBusNonBlocking(device, ba);
+  }
+
+  void GetDeviceBusAsync(const string& device, BusAdjacency* ba,
+                         StatusCallback done) override {
+    wrapped_->GetDeviceBusAsync(device, ba, done);
+  }
+
+  void SetLogging(bool active) override { wrapped_->SetLogging(active); }
+
+  void ClearLogs() override { wrapped_->ClearLogs(); }
+
+  bool RetrieveLogs(int64 step_id, StepStats* ss) override {
+    return wrapped_->RetrieveLogs(step_id, ss);
+  }
+
+ private:
+  WorkerCacheInterface* wrapped_;
+
+  // Information kept per created WorkerInterface.
+  struct WorkerState {
+    WorkerInterface* worker;
+    // TODO(jeff,sanjay): Add reference count if we support eviction.
+  };
+
+  // TODO(jeff,sanjay): Eviction when the map becomes too big.
+  mutex mu_;
+  std::unordered_map<string, WorkerState> workers_ GUARDED_BY(mu_);
+};
 
 void RpcRemoteRendezvous::RecvFromRemoteAsync(
     const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& recv_args,
     DoneCallback done) {
   Status s;
 
-  // key.src_device identifies a remote device.
-  string src_worker;
-  string src_rel_device;
-  if (!DeviceNameUtils::SplitDeviceName(parsed.src_device, &src_worker,
-                                        &src_rel_device)) {
-    s = errors::Internal(parsed.src_device,
-                         " is invalid remote source device.");
-  }
   // TODO(jeff): Consider checking for a valid worker_cache during the
   // constructor of RpcRemoteRendezvous, rather than here, to simplify
   // the twisty logic below.
-  WorkerCacheInterface* worker_cache = env_->worker_cache;
-  if (s.ok() && worker_cache == nullptr) {
+  if (env_->worker_cache == nullptr) {
     s = errors::Internal("No remote worker cache available.");
+    done(s, Args(), recv_args, Tensor{}, false);
+    return;
   }
-  WorkerInterface* rwi =
-      (worker_cache ? worker_cache->CreateWorker(src_worker) : nullptr);
+
+  // Prepare a RecvTensor call that can handle being aborted.
+  RpcRecvTensorCall* call = call_freelist_.New();
+
+  // key.src_device identifies a remote device.
+  if (!DeviceNameUtils::SplitDeviceName(parsed.src_device, &call->src_worker_,
+                                        &call->src_rel_device_)) {
+    s = errors::Internal(parsed.src_device,
+                         " is invalid remote source device.");
+  }
+  WorkerInterface* rwi = cache_->CreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
-    s = errors::Internal("No worker known as ", src_worker);
+    s = errors::Internal("No worker known as ", call->src_worker_);
   }
 
   Device* dst_device;
@@ -228,16 +297,14 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
   }
   if (!s.ok()) {
+    call_freelist_.Release(call);
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
   Allocator* allocator = dst_device->GetAllocator(recv_args.alloc_attrs);
 
-  // Prepare a RecvTensor call that can handle being aborted.
-  RpcRecvTensorCall* call = call_freelist_.New();
-
-  call->Init(worker_cache, rwi, step_id_, parsed.FullKey(), allocator,
-             dst_device, recv_args, std::move(done));
+  call->Init(rwi, step_id_, parsed.FullKey(), allocator, dst_device, recv_args,
+             std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
   RegisterCall(call);
@@ -255,15 +322,21 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
           call->tensor_proto(), call->recv_args().alloc_attrs, &val);
     }
     call->done()(s, Args(), call->recv_args(), val, call->is_dead());
+    cache_->ReleaseWorker(call->src_worker_, call->wi_);
+    call->wi_ = nullptr;
     call_freelist_.Release(call);
   });
 }
 
 }  // namespace
 
+RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env)
+    : BaseRendezvousMgr(env),
+      cache_(new WorkerFreeListCache(env->worker_cache)) {}
+
 BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64 step_id,
                                                const WorkerEnv* worker_env) {
-  return new RpcRemoteRendezvous(worker_env, step_id);
+  return new RpcRemoteRendezvous(worker_env, cache_.get(), step_id);
 }
 
 }  // end namespace tensorflow
