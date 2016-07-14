@@ -73,6 +73,7 @@ functions on matrices to your graph.
 @@batch_matrix_diag
 @@batch_matrix_diag_part
 @@batch_matrix_band_part
+@@batch_matrix_set_diag
 
 @@diag
 @@diag_part

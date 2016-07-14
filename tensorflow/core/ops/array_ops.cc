@@ -425,6 +425,34 @@ output: Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("BatchMatrixSetDiag")
+    .Input("input: T")
+    .Input("diagonal: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Doc(R"doc(
+Returns a batched matrix tensor with new batched diagonal values.
+
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the diagonals of the innermost
+matrices.  These will be overwritten by the values in `diagonal`.
+The batched matrices must be square.
+
+The output is computed as follows:
+
+Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+
+input: Rank `k+1`, where `k >= 1`.
+diagonal: Rank `k`, where `k >= 1`.
+output: Rank `k+1`, with `output.shape = input.shape`.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("BatchMatrixDiagPart")
     .Input("input: T")
     .Output("diagonal: T")

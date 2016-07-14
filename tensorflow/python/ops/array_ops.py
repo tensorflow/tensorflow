@@ -1651,6 +1651,16 @@ def _BatchMatrixDiagShape(op):
   return [diag_shape.concatenate(diag_shape[-1])]
 
 
+@ops.RegisterShape("BatchMatrixSetDiag")
+def _BatchMatrixSetDiagShape(op):
+  """Shape function for array_ops.batch_matrix_set_diag."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  diag_shape = op.inputs[1].get_shape().with_rank_at_least(1)
+  output_shape = diag_shape.concatenate(diag_shape[-1])
+  output_shape = output_shape.merge_with(input_shape)
+  return [output_shape]
+
+
 @ops.RegisterShape("BatchMatrixDiagPart")
 def _BatchMatrixDiagPartShape(op):
   """Shape function for array_ops.batch_matrix_diag_part."""
