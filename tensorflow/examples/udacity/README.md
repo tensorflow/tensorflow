@@ -19,21 +19,6 @@ On mac, find the virtual machine's IP using:
 
 Then go to: http://IP:8888 (likely http://192.168.99.100:8888)
 
-Saving Your Progress
---------------------
-
-Because of the `--rm` flag above, stopping the docker container removes it, so any changes you've made will disappear. One way around this is to remove the `--rm` flag, and name the container for easy restarting:
-```sh
-# you only need to "run" the container the first time:
-docker run -p 8888:8888 -it --name tensorflow-udacity b.gcr.io/tensorflow-udacity/assignments:0.5.0
-# …do various things…
-# when you're done, control-C to kill jupyter and stop the container
-# when you're ready to do more things, you can now just "start" the container:
-docker start -ai tensorflow-udacity
-# …do more things…
-# …repeat…
-```
-
 FAQ
 ---
 
