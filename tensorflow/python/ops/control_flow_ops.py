@@ -1012,7 +1012,8 @@ class ControlFlowState(object):
           # pylint: enable=protected-access
 
 
-def MaybeCreateControlFlowState(between_op_list, between_ops):
+def MaybeCreateControlFlowState(between_op_list, between_ops,
+                                colocate_gradients_with_ops):
   """Create the state for all the while loops involved in one gradients().
 
   We create a ControlFlowState when there are while loops involved in
@@ -1026,7 +1027,11 @@ def MaybeCreateControlFlowState(between_op_list, between_ops):
     if _IsLoopExit(op):
       if loop_state is None:
         loop_state = ControlFlowState()
-      loop_state.AddWhileContext(op, between_op_list, between_ops)
+      if colocate_gradients_with_ops:
+        with ops.colocate_with(op):
+          loop_state.AddWhileContext(op, between_op_list, between_ops)
+      else:
+        loop_state.AddWhileContext(op, between_op_list, between_ops)
   return loop_state
 
 

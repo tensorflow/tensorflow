@@ -954,6 +954,35 @@ class ControlFlowTest(tf.test.TestCase):
       _, rx = tf.while_loop(c1, b1, [r, x], parallel_iterations=1)
       self.assertEqual(45, rx.eval())
 
+  def _testWhileGrad_ColocateGradients(self, colocate):
+    with self.test_session(graph=tf.Graph()) as sess:
+      v = tf.constant(2.0, name="v")
+      c = lambda v: tf.less(v, 100.0)
+      def b(x):
+        with tf.device("/gpu:0"):
+          return tf.square(x)
+      loop = tf.while_loop(c, b, [v], parallel_iterations=1)
+      r = tf.gradients(loop, v, colocate_gradients_with_ops=colocate)[0]
+    r_ops = r.graph.get_operations()
+    r_devices = [(op.name, op.device.lower()) for op in r_ops]
+
+    self.assertTrue(any("Square" in op.name for op in r_ops))
+
+    for (name, dev) in r_devices:
+      if not colocate and name.endswith("Square"):
+        # Only forward graph contain gpu in Square device
+        self.assertTrue("gpu:0" in dev)
+      elif colocate and "Square" in name:
+        # Forward and backward graphs contain gpu in Square/Square_grad devices
+        self.assertTrue("gpu:0" in dev)
+      else:
+        self.assertFalse("gpu:0" in dev)
+    self.assertAllClose(1024.0, sess.run(r))
+
+  def testWhileGrad_ColocateGradients(self):
+    self._testWhileGrad_ColocateGradients(colocate=False)
+    self._testWhileGrad_ColocateGradients(colocate=True)
+
   def testWhileGrad_Square(self):
     with self.test_session():
       v = tf.constant(2.0, name="v")
