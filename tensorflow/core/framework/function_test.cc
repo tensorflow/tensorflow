@@ -620,7 +620,7 @@ TEST(Canonicalize, Basic) {
 TEST(FunctionLibraryDefinitionTest, Find) {
   FunctionDefLibrary proto;
   *proto.add_function() = test::function::XTimesTwo();
-  FunctionLibraryDefinition lib_def(proto);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
 
   EXPECT_EQ(lib_def.Find("XTimes16"), nullptr);
 
@@ -639,7 +639,7 @@ XTimesTwo[T:{float, double, int32, int64}](x:T) -> (y:T) {
 TEST(FunctionLibraryDefinitionTest, LookUp) {
   FunctionDefLibrary proto;
   *proto.add_function() = test::function::XTimesTwo();
-  FunctionLibraryDefinition lib_def(proto);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
 
   const OpDef* op_def;
   EXPECT_TRUE(!lib_def.LookUpOpDef("XTimes16", &op_def).ok());
@@ -654,7 +654,7 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
   // Add one function to the proto lib before constructing 'lib_def'.
   FunctionDefLibrary proto;
   *proto.add_function() = test::function::XTimesTwo();
-  FunctionLibraryDefinition lib_def(proto);
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
 
   // Add a new function def to the library.
   TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
@@ -678,14 +678,14 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
   FunctionDefLibrary proto1;
   *proto1.add_function() = test::function::XTimesTwo();
   *proto1.add_function() = test::function::WXPlusB();
-  FunctionLibraryDefinition lib_def1(proto1);
+  FunctionLibraryDefinition lib_def1(OpRegistry::Global(), proto1);
 
   // Call 'ToProto' and make sure both protos have the same function lib size.
   FunctionDefLibrary proto2 = lib_def1.ToProto();
   EXPECT_EQ(proto1.function_size(), proto2.function_size());
 
   // Initialize 'lib_def2' with proto returned by 'ToProto' call.
-  FunctionLibraryDefinition lib_def2(proto2);
+  FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto2);
 
   // Test that the first function exists in both libraries.
   const OpDef *f1, *f2, *f3, *f4;

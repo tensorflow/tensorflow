@@ -23,8 +23,8 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
-from tensorflow.contrib.learn.python.learn.estimators import sdca_optimizer
 from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixin
+from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -75,7 +75,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   # Or estimator using the SDCAOptimizer.
   estimator = LinearClassifier(
      feature_columns=[occupation, education_x_occupation],
-     optimizer=tf.contrib.learn.SDCAOptimizer(
+     optimizer=tf.contrib.linear_optimizer.SDCAOptimizer(
        example_id_column='example_id',
        symmetric_l2_regularization=2.0
      ))

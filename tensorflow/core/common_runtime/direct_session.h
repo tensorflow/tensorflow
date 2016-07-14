@@ -95,14 +95,13 @@ class DirectSession : public Session {
   // every partition.
   struct PerPartitionExecutorsAndLib {
     Graph* graph = nullptr;
-    Executor* executor = nullptr;
-    FunctionLibraryRuntime* flib = nullptr;
+    std::unique_ptr<FunctionLibraryRuntime> flib;
+    std::unique_ptr<Executor> executor;
   };
 
   // An ExecutorsAndKeys is created for a given set of feeds/fetches.
   // 'step_count' is the number of times this graph is executed.
-  // 'func_defs' are the function definition used by all the underlying
-  // executors. 'graph' is the entire graph being executed. 'name_to_node'
+  // 'graph' is the entire graph being executed. 'name_to_node'
   // maps node name to node. We keep 'graph' and 'name_to_node' only in
   // the case of partial runs. Each item in 'items' is the executor for
   // a partition of the graph bundled with its dependent library runtime.
@@ -110,21 +109,11 @@ class DirectSession : public Session {
   // are rendezvous keys for the fetches.
   struct ExecutorsAndKeys {
     int64 step_count = 0;
-    FunctionLibraryDefinition* func_defs = nullptr;
-    Graph* graph = nullptr;
-    NameNodeMap* name_to_node = nullptr;
+    std::unique_ptr<Graph> graph;
+    NameNodeMap name_to_node;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, string> input_keys;
     std::unordered_map<string, string> output_keys;
-
-    ~ExecutorsAndKeys() {
-      for (auto item : items) {
-        delete item.executor;
-        delete item.flib;
-      }
-      delete graph;
-      delete name_to_node;
-    }
   };
 
   // For each live partial execution, the session maintains a RunState.
@@ -135,22 +124,14 @@ class DirectSession : public Session {
     mutex mu_;
     Status status GUARDED_BY(mu_);
     IntraProcessRendezvous* rendez = nullptr;
-    StepStatsCollector* collector = nullptr;
+    std::unique_ptr<StepStatsCollector> collector;
     Notification executors_done;
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
     TensorStore tensor_store;
 
     RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names) {
-      // Initially all the feeds and fetches are pending.
-      for (auto& name : input_names) {
-        pending_inputs.emplace(name);
-      }
-      for (auto& name : output_names) {
-        pending_outputs.emplace(name);
-      }
-    }
+             const std::vector<string>& output_names);
 
     ~RunState();
   };
@@ -158,7 +139,7 @@ class DirectSession : public Session {
   struct RunStateArgs {
     bool is_partial_run = false;
     string handle;
-    Graph* graph = nullptr;
+    std::unique_ptr<Graph> graph;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -175,9 +156,10 @@ class DirectSession : public Session {
 
   // Creates several graphs given the existing graph_def_ and the
   // input feeds and fetches, given 'devices'.
-  ::tensorflow::Status CreateGraphs(const BuildGraphOptions& options,
-                                    std::unordered_map<string, Graph*>* outputs,
-                                    RunStateArgs* run_state_args);
+  ::tensorflow::Status CreateGraphs(
+      const BuildGraphOptions& options,
+      std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
+      RunStateArgs* run_state_args);
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
@@ -230,11 +212,11 @@ class DirectSession : public Session {
   // Holds mappings from signature to the executors that process
   // it. The reason for a level of indirection around mapped_type is
   // to guarantee address stability.
-  std::unordered_map<string, ExecutorsAndKeys*> executors_
+  std::unordered_map<string, std::unique_ptr<ExecutorsAndKeys>> executors_
       GUARDED_BY(executor_lock_);
 
   // Holds mappings from handle to partial run state.
-  std::unordered_map<string, RunState*> partial_runs_
+  std::unordered_map<string, std::unique_ptr<RunState>> partial_runs_
       GUARDED_BY(executor_lock_);
 
   // This holds all the tensors that are currently alive in the session.

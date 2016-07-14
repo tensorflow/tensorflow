@@ -1529,8 +1529,8 @@ class RawRNNTest(tf.test.TestCase):
            [outputs, outputs_dynamic_rnn, final_state, final_state_dynamic_rnn],
            feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
 
-      self.assertAllEqual(outputs_dynamic_rnn_val, outputs_val)
-      self.assertAllEqual(final_state_dynamic_rnn_val, final_state_val)
+      self.assertAllClose(outputs_dynamic_rnn_val, outputs_val)
+      self.assertAllClose(final_state_dynamic_rnn_val, final_state_val)
 
       # NOTE: Because with 0 time steps, raw_rnn does not have shape
       # information about the input, it is impossible to perform
@@ -1546,7 +1546,7 @@ class RawRNNTest(tf.test.TestCase):
             feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
         self.assertEqual(len(gradients_val), len(gradients_dynamic_rnn_val))
         for i in range(len(gradients_val)):
-          self.assertAllEqual(gradients_dynamic_rnn_val[i], gradients_val[i])
+          self.assertAllClose(gradients_dynamic_rnn_val[i], gradients_val[i])
 
   def testRawRNNZeroLength(self):
     # NOTE: Because with 0 time steps, raw_rnn does not have shape

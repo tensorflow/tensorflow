@@ -26,8 +26,7 @@ from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
 # pylint: disable=wildcard-import
-from tensorflow.contrib.learn.python.learn.io import *
-
+from tensorflow.contrib.learn.python.learn.learn_io import *
 # pylint: enable=wildcard-import
 
 

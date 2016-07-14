@@ -33,7 +33,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
+from tensorflow.contrib.learn.python.learn.learn_io.data_feeder import setup_train_data_feeder
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops

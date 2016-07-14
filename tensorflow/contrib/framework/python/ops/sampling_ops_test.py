@@ -60,13 +60,14 @@ class SamplingOpsTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         sampler(tf.zeros([2, 1]), label, probs, batch_size, enqueue_many=True)
 
-      # Probabilities must be numpy array or python list.
+      # Probabilities must be numpy array, python list, or tensor.
       with self.assertRaises(ValueError):
-        sampler(val, label, tf.constant([.5, .5]), batch_size)
+        sampler(val, label, 1, batch_size)
 
-      # Probabilities should sum to one.
+      # Probabilities shape must be fully defined.
       with self.assertRaises(ValueError):
-        sampler(val, label, [.1] * 5, batch_size)
+        sampler(val, label, tf.placeholder(tf.float32, shape=[None]),
+                batch_size)
 
     # In the rejection sampling case, make sure that probability lengths are
     # the same.
@@ -86,7 +87,8 @@ class SamplingOpsTest(tf.test.TestCase):
           val, label, np.array([[.25, .25], [.25, .25]]), batch_size)
 
   def testRuntimeAssertionFailures(self):
-    probs = [.2] * 5
+    valid_probs = [.2] * 5
+    valid_labels = [1, 2, 3]
     vals = tf.zeros([3, 1])
 
     illegal_labels = [
@@ -95,16 +97,30 @@ class SamplingOpsTest(tf.test.TestCase):
         [2, 3],  # data and label batch size must be the same
     ]
 
+    illegal_probs = [
+        [.1] * 5,  # probabilities must sum to one
+        [-.5, .5, .5, .4, .1],  # probabilities must be non-negative
+    ]
+
     # Set up graph with illegal label vector.
     label_ph = tf.placeholder(tf.int32, shape=[None])
-    val_tf, label_tf, _ = tf.contrib.framework.sampling_ops._verify_input(
-        vals, label_ph, [probs])
+    probs_ph = tf.placeholder(tf.float32, shape=[5])  # shape must be defined
+    val_tf, lbl_tf, prob_tf = tf.contrib.framework.sampling_ops._verify_input(
+        vals, label_ph, [probs_ph])
 
     for illegal_label in illegal_labels:
       # Run session that should fail.
       with self.test_session() as sess:
         with self.assertRaises(tf.errors.InvalidArgumentError):
-          sess.run([val_tf, label_tf], feed_dict={label_ph: illegal_label})
+          sess.run([val_tf, lbl_tf], feed_dict={label_ph: illegal_label,
+                                                probs_ph: valid_probs})
+
+    for illegal_prob in illegal_probs:
+      # Run session that should fail.
+      with self.test_session() as sess:
+        with self.assertRaises(tf.errors.InvalidArgumentError):
+          sess.run([prob_tf], feed_dict={label_ph: valid_labels,
+                                         probs_ph: illegal_prob})
 
   def batchingBehaviorHelper(self, sampler):
     batch_size = 20
@@ -121,8 +137,7 @@ class SamplingOpsTest(tf.test.TestCase):
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(coord=coord)
 
-      for _ in range(20):
-        sess.run([data_batch, labels])
+      sess.run([data_batch, labels])
 
       coord.request_stop()
       coord.join(threads)
@@ -164,9 +179,49 @@ class SamplingOpsTest(tf.test.TestCase):
 
     self.batchingBehaviorHelper(curried_sampler)
 
+  def testProbabilitiesCanBeChanged(self):
+    # Set up graph.
+    tf.set_random_seed(1234)
+    lbl1 = 0
+    lbl2 = 3
+    # This cond allows the necessary class queues to be populated.
+    label = tf.cond(
+        tf.greater(.5, tf.random_uniform([])),
+        lambda: tf.constant(lbl1),
+        lambda: tf.constant(lbl2))
+    val = np.array([1, 4]) * label
+    probs = tf.placeholder(tf.float32, shape=[5])
+    batch_size = 2
+
+    data_batch, labels = tf.contrib.framework.sampling_ops.stratified_sample_unknown_dist(  # pylint: disable=line-too-long
+        val, label, probs, batch_size)
+
+    with self.test_session() as sess:
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(coord=coord)
+
+      for _ in range(5):
+        data, lbls = sess.run([data_batch, labels],
+                              feed_dict={probs: [1, 0, 0, 0, 0]})
+        for data_example in data:
+          self.assertListEqual([0, 0], list(data_example))
+        self.assertListEqual([0, 0], list(lbls))
+
+      # Now change distribution and expect different output.
+      for _ in range(5):
+        data, lbls = sess.run([data_batch, labels],
+                              feed_dict={probs: [0, 0, 0, 1, 0]})
+        for data_example in data:
+          self.assertListEqual([3, 12], list(data_example))
+        self.assertListEqual([3, 3], list(lbls))
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testBatchDimensionNotRequired(self):
     classes = 5
-    probs = [1.0/classes] * classes
+    # Probs must be a tensor, since we pass it directly to _verify_input.
+    probs = tf.constant([1.0/classes] * classes)
 
     # Make sure that these vals/labels pairs don't throw any runtime exceptions.
     legal_input_pairs = [

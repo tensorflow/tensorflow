@@ -26,7 +26,7 @@ import tensorflow as tf
 from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
-from tensorflow.contrib.learn.python.learn.io import data_feeder
+from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 

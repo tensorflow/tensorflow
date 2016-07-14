@@ -287,7 +287,9 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
       output_range == 0.0 ? 0.0 : (255.0 / output_range);
   const float input_rezero = (min_input + max_input) / 2.0;
   const int64 range_scale_fp =
-      static_cast<int64>(255.0 * (1 << fp_shift) * input_range / output_range);
+      output_range == 0.0 ? 0.0
+                          : static_cast<int64>(255.0 * (1 << fp_shift) *
+                                               input_range / output_range);
   const int64 input_offset_fp =
       static_cast<int64>(input_rezero * recip_output_range * (1 << fp_shift));
   const int64 output_offset_fp =
@@ -379,6 +381,110 @@ Tensor QuantizedTensorToFloat(const Tensor& input, float min, float max) {
   Tensor result(DT_FLOAT, input.shape());
   QuantizedTensorToFloatInPlace<T>(input, min, max, &result);
   return result;
+}
+
+void GetOutputMinAndMaxForQuantizedAdd(float input_min, float input_max,
+                                       float smaller_input_min,
+                                       float smaller_input_max,
+                                       float* output_min, float* output_max);
+
+// Add <input> and <smaller_input>.  If <smaller_input> has fewer elements than
+// <input>, then it is broadcast onto <input>.
+template <typename T1, typename T2, typename T3>
+void QuantizedAddUsingEigen(const Eigen::ThreadPoolDevice& device,
+                            const Tensor& input, float input_min,
+                            float input_max, const Tensor& smaller_input,
+                            float smaller_input_min, float smaller_input_max,
+                            Tensor* output, float* output_min,
+                            float* output_max) {
+  const auto& input_flat = input.flat<T1>();
+  const auto& smaller_input_flat = smaller_input.flat<T2>();
+  auto output_flat = output->flat<T3>();
+
+  GetOutputMinAndMaxForQuantizedAdd(input_min, input_max, smaller_input_min,
+                                    smaller_input_max, output_min, output_max);
+  // To do addition properly, we need to compensate for a possibly unbalanced
+  // zero point in the total representation. The quantized value that
+  // represents the real number zero needs to be subtracted before addition to
+  // make sure that the identity of zero + zero = zero holds.
+  const T3 zero_in_total_space =
+      FloatToQuantized<T3>(0.0f, *output_min, *output_max);
+
+  const int64 input_element_count = input.NumElements();
+  const int64 smaller_input_element_count = smaller_input.NumElements();
+
+  QuantizedToFloatStruct<T1> smaller_input_q2f(smaller_input_min,
+                                               smaller_input_max);
+  QuantizedToFloatStruct<T2> input_q2f(input_min, input_max);
+  FloatToQuantizedStruct<T3> f2q(*output_min, *output_max);
+
+  auto smaller_input_float =
+      DEQUANTIZE_WITH_EIGEN(smaller_input_flat, smaller_input_q2f);
+  auto smaller_input_in_total_space =
+      QUANTIZE_WITH_EIGEN(smaller_input_float, f2q, T3);
+
+  auto input_float = DEQUANTIZE_WITH_EIGEN(input_flat, input_q2f);
+  auto input_in_total_space = QUANTIZE_WITH_EIGEN(input_float, f2q, T3);
+
+  Eigen::array<Eigen::DenseIndex, 1> bcast;
+  bcast[0] = input_element_count / smaller_input_element_count;
+  output_flat.device(device) =
+      input_in_total_space +
+      (smaller_input_in_total_space.broadcast(bcast) + zero_in_total_space);
+}
+
+// This is a reference implementation of the bias addition for quantized
+// buffers, designed to provide a clear specification for the result we
+// want. We'll want to specialize this for particular hardware, and
+// probably even fuse it with matrix multiplications in a lot of cases. It's
+// important to show the clamping behavior we want in particular.
+template <typename T1, typename T2, typename T3>
+void QuantizedAdd(const Eigen::ThreadPoolDevice& device, const Tensor& input,
+                  float input_min, float input_max, const Tensor& smaller_input,
+                  float smaller_input_min, float smaller_input_max,
+                  Tensor* output, float* output_min, float* output_max) {
+  const auto& input_flat = input.flat<T1>();
+  const auto& smaller_input_flat = smaller_input.flat<T2>();
+  auto output_flat = output->flat<T3>();
+
+  GetOutputMinAndMaxForQuantizedAdd(input_min, input_max, smaller_input_min,
+                                    smaller_input_max, output_min, output_max);
+  // To do addition properly, we need to compensate for a possibly unbalanced
+  // zero point in the total representation. The quantized value that
+  // represents the real number zero needs to be subtracted before addition to
+  // make sure that the identity of zero + zero = zero holds.
+  const T3 zero_in_total_space =
+      FloatToQuantized<T3>(0.0f, *output_min, *output_max);
+
+  const int64 input_element_count = input.NumElements();
+  const int64 smaller_input_element_count = smaller_input.NumElements();
+
+  float total_min = *output_min;
+  float total_max = *output_max;
+  const size_t how_many_iterations =
+      (input_element_count / smaller_input_element_count);
+  for (size_t iteration = 0; iteration < how_many_iterations; ++iteration) {
+    const size_t offset = iteration * smaller_input_element_count;
+    for (int c = 0; c < smaller_input_element_count; ++c) {
+      const int index = (offset + c);
+      // The two numbers we're going to add can each be in very different
+      // ranges (e.g. the quantized value '127' may represent very different
+      // real numbers in both) so we need to convert them to a common range
+      // before we sum them.
+      const T1 input_value = input_flat(index);
+      const T3 input_in_total_space = RequantizeInNewRange<T1, T3>(
+          input_value, input_min, input_max, total_min, total_max);
+      const T2 smaller_input_value = smaller_input_flat(c);
+      const T3 smaller_input_in_total_space =
+          RequantizeInNewRange<T2, T3>(smaller_input_value, smaller_input_min,
+                                       smaller_input_max, total_min, total_max);
+      const T3 total_pre = input_in_total_space + smaller_input_in_total_space;
+      // As noted above, we need to compensate for the offset of the actual
+      // zero point in the space we're operating in.
+      const T3 total = total_pre + zero_in_total_space;
+      output_flat(index) = total;
+    }
+  }
 }
 
 }  // namespace tensorflow

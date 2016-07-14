@@ -36,7 +36,7 @@ from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.io import data_feeder
+from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
 from tensorflow.python.framework import ops

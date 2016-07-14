@@ -19,6 +19,7 @@ filegroup(
     name = "android_ops",
     srcs = [
         "dequantize_op.cc",
+        "quantization_utils.cc",
         "quantization_utils.h",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
@@ -50,6 +51,7 @@ tf_kernel_library(
     name = "quantized_ops",
     srcs = [
         "dequantize_op.cc",
+        "quantization_utils.cc",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
         "quantized_activation_ops.cc",
@@ -85,6 +87,7 @@ tf_custom_op_library(
     name = "_quantized_kernels.so",
     srcs = [
         "dequantize_op.cc",
+        "quantization_utils.cc",
         "quantization_utils.h",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",

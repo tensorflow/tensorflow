@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import os
 
 import tensorflow as tf
@@ -106,8 +107,10 @@ class SupervisedSessionTest(tf.test.TestCase):
     """
     test_dir = os.path.join(self.get_temp_dir(), test_name)
     if os.path.isdir(test_dir):
-      os.removedirs(test_dir)
-    os.makedirs(test_dir)
+      for f in glob.glob('%s/*' % test_dir):
+        os.remove(f)
+    else:
+      os.makedirs(test_dir)
     return test_dir
 
   def test_defaults(self):
