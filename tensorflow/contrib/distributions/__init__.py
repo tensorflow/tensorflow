@@ -42,6 +42,7 @@ initialized with parameters that define the distributions.
 
 @@MultivariateNormalFull
 @@MultivariateNormalCholesky
+@@batch_matrix_diag_transform
 
 #### Other multivariate distributions
 
@@ -50,17 +51,6 @@ initialized with parameters that define the distributions.
 ### Transformed distributions
 
 @@TransformedDistribution
-
-## Operators allowing for matrix-free methods
-
-### Positive definite operators
-
-A matrix is positive definite if it is symmetric with all positive eigenvalues.
-
-@@OperatorPDBase
-@@OperatorPDFull
-@@OperatorPDCholesky
-@@batch_matrix_diag_transform
 
 ## Posterior inference with conjugate priors.
 
@@ -97,9 +87,7 @@ from tensorflow.contrib.distributions.python.ops.laplace import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
-from tensorflow.contrib.distributions.python.ops.operator_pd import *
-from tensorflow.contrib.distributions.python.ops.operator_pd_cholesky import *
-from tensorflow.contrib.distributions.python.ops.operator_pd_full import *
+from tensorflow.contrib.distributions.python.ops.operator_pd_cholesky import batch_matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *

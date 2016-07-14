@@ -248,6 +248,6 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
     # Replace the diag with transformed diag.
     diag = array_ops.batch_matrix_diag_part(matrix)
     transformed_diag = transform(diag)
-    matrix += array_ops.batch_matrix_diag(transformed_diag - diag)
+    transformed_mat = array_ops.batch_matrix_set_diag(matrix, transformed_diag)
 
-  return matrix
+  return transformed_mat
