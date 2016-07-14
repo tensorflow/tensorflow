@@ -1469,6 +1469,205 @@ class NestedLSTMTest(tf.test.TestCase):
           np.hstack(state_static_v), np.hstack(state_bid_bw_v))
 
 
+class RawRNNTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._seed = 23489
+    np.random.seed(self._seed)
+
+  def _testRawRNN(self, max_time):
+    with self.test_session(graph=tf.Graph()) as sess:
+      batch_size = 16
+      input_depth = 4
+      num_units = 3
+
+      inputs = tf.placeholder(shape=(max_time, batch_size, input_depth),
+                              dtype=tf.float32)
+      sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
+      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs_ta = inputs_ta.unpack(inputs)
+
+      def loop_fn(time_, cell_output, unused_loop_state):
+        emit_output = cell_output  # == None for time == 0
+        elements_finished = (time_ >= sequence_length)
+        finished = tf.reduce_all(elements_finished)
+        # For the very final iteration, we must emit a dummy input
+        next_input = tf.cond(
+            finished,
+            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: inputs_ta.read(time_))
+        return (elements_finished, next_input, emit_output, None)
+
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      initial_state = cell.zero_state(batch_size, tf.float32)
+      outputs_ta, final_state, _ = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      outputs = outputs_ta.pack()
+
+      tf.get_variable_scope().reuse_variables()
+      outputs_dynamic_rnn, final_state_dynamic_rnn = tf.nn.dynamic_rnn(
+          cell, inputs, time_major=True, initial_state=initial_state,
+          sequence_length=sequence_length)
+
+      variables = tf.trainable_variables()
+      gradients = tf.gradients([outputs, final_state], [inputs] + variables)
+      gradients_dynamic_rnn = tf.gradients(
+          [outputs_dynamic_rnn, final_state_dynamic_rnn], [inputs] + variables)
+
+      tf.initialize_all_variables().run()
+
+      rand_input = np.random.randn(max_time, batch_size, input_depth)
+      if max_time == 0:
+        rand_seq_len = np.zeros(batch_size)
+      else:
+        rand_seq_len = np.random.randint(max_time, size=batch_size)
+
+      # To ensure same output lengths for dynamic_rnn and raw_rnn
+      rand_seq_len[0] = max_time
+
+      (outputs_val, outputs_dynamic_rnn_val,
+       final_state_val, final_state_dynamic_rnn_val) = sess.run(
+           [outputs, outputs_dynamic_rnn, final_state, final_state_dynamic_rnn],
+           feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
+
+      self.assertAllClose(outputs_dynamic_rnn_val, outputs_val)
+      self.assertAllClose(final_state_dynamic_rnn_val, final_state_val)
+
+      # NOTE: Because with 0 time steps, raw_rnn does not have shape
+      # information about the input, it is impossible to perform
+      # gradients comparisons as the gradients eval will fail.  So
+      # this case skips the gradients test.
+      if max_time > 0:
+        self.assertEqual(len(gradients), len(gradients_dynamic_rnn))
+        gradients_val = sess.run(
+            gradients,
+            feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
+        gradients_dynamic_rnn_val = sess.run(
+            gradients_dynamic_rnn,
+            feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
+        self.assertEqual(len(gradients_val), len(gradients_dynamic_rnn_val))
+        for i in range(len(gradients_val)):
+          self.assertAllClose(gradients_dynamic_rnn_val[i], gradients_val[i])
+
+  def testRawRNNZeroLength(self):
+    # NOTE: Because with 0 time steps, raw_rnn does not have shape
+    # information about the input, it is impossible to perform
+    # gradients comparisons as the gradients eval will fail.  So this
+    # case skips the gradients test.
+    self._testRawRNN(max_time=0)
+
+  def testRawRNN(self):
+    self._testRawRNN(max_time=10)
+
+  def testLoopState(self):
+    with self.test_session(graph=tf.Graph()):
+      max_time = 10
+      batch_size = 16
+      input_depth = 4
+      num_units = 3
+
+      inputs = np.random.randn(max_time, batch_size, input_depth)
+      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs_ta = inputs_ta.unpack(inputs)
+
+      def loop_fn(time_, cell_output, loop_state):
+        if cell_output is None:
+          loop_state = tf.constant([0])
+        else:
+          loop_state = tf.pack([tf.squeeze(loop_state) + 1])
+        emit_output = cell_output  # == None for time == 0
+        elements_finished = tf.tile([time_ >= max_time], [batch_size])
+        finished = tf.reduce_all(elements_finished)
+        # For the very final iteration, we must emit a dummy input
+        next_input = tf.cond(
+            finished,
+            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: inputs_ta.read(time_))
+        return (elements_finished, next_input, emit_output, loop_state)
+
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      initial_state = cell.zero_state(batch_size, tf.float32)
+      r = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      loop_state = r[-1]
+      self.assertEqual([10], loop_state.eval())
+
+  def testLoopStateWithTensorArray(self):
+    with self.test_session(graph=tf.Graph()):
+      max_time = 4
+      batch_size = 16
+      input_depth = 4
+      num_units = 3
+
+      inputs = np.random.randn(max_time, batch_size, input_depth)
+      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs_ta = inputs_ta.unpack(inputs)
+
+      def loop_fn(time_, cell_output, loop_state):
+        if cell_output is None:
+          loop_state = tf.TensorArray(
+              dynamic_size=True, size=0, dtype=tf.int32, clear_after_read=False)
+          loop_state = loop_state.write(0, 1)
+        else:
+          loop_state = loop_state.write(
+              time_, loop_state.read(time_ - 1) + time_)
+        emit_output = cell_output  # == None for time == 0
+        elements_finished = tf.tile([time_ >= max_time], [batch_size])
+        finished = tf.reduce_all(elements_finished)
+        # For the very final iteration, we must emit a dummy input
+        next_input = tf.cond(
+            finished,
+            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: inputs_ta.read(time_))
+        return (elements_finished, next_input, emit_output, loop_state)
+
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      initial_state = cell.zero_state(batch_size, tf.float32)
+      r = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      loop_state = r[-1]
+      loop_state = loop_state.pack()
+      self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
+
+  def testEmitDifferentStructureThanCellOutput(self):
+    with self.test_session(graph=tf.Graph()) as sess:
+      max_time = 10
+      batch_size = 16
+      input_depth = 4
+      num_units = 3
+
+      inputs = np.random.randn(max_time, batch_size, input_depth)
+      inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
+      inputs_ta = inputs_ta.unpack(inputs)
+
+      def loop_fn(time_, cell_output, _):
+        if cell_output is None:
+          emit_output = (tf.zeros([2, 3], dtype=tf.int32),
+                         tf.zeros([1], dtype=tf.int64))
+        else:
+          emit_output = (tf.ones([batch_size, 2, 3], dtype=tf.int32),
+                         tf.ones([batch_size, 1], dtype=tf.int64))
+
+        elements_finished = tf.tile([time_ >= max_time], [batch_size])
+        finished = tf.reduce_all(elements_finished)
+        # For the very final iteration, we must emit a dummy input
+        next_input = tf.cond(
+            finished,
+            lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+            lambda: inputs_ta.read(time_))
+        return (elements_finished, next_input, emit_output, None)
+
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      initial_state = cell.zero_state(batch_size, tf.float32)
+      r = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      output_ta = r[0]
+      self.assertEqual(2, len(output_ta))
+      self.assertEqual([tf.int32, tf.int64], [ta.dtype for ta in output_ta])
+      output = [ta.pack() for ta in output_ta]
+      output_vals = sess.run(output)
+      self.assertAllEqual(
+          np.ones((max_time, batch_size, 2, 3), np.int32), output_vals[0])
+      self.assertAllEqual(
+          np.ones((max_time, batch_size, 1), np.int64), output_vals[1])
+
+
 ######### Benchmarking RNN code
 
 def _static_vs_dynamic_rnn_benchmark_static(inputs_list_t, sequence_length):
