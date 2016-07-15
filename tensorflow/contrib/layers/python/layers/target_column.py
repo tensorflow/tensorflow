@@ -18,6 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+
+import six
+
+from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -116,9 +121,9 @@ class _TargetColumn(object):
     # Abstrat, Subclasses must implement.
     raise NotImplementedError()
 
-  def eval_metrics(self, logits):
-    # Do nothing by defalut, subclasses can override.
-    pass
+  def get_eval_ops(self, features, logits, targets, metrics=None):
+    """Returns eval op."""
+    raise NotImplementedError
 
   @property
   def label_name(self):
@@ -187,6 +192,15 @@ class _RegressionTargetColumn(_TargetColumn):
       return array_ops.squeeze(logits, squeeze_dims=[1])
     return logits
 
+  def get_eval_ops(self, features, logits, targets, metrics=None):
+    loss = self.loss(logits, targets, features)
+    result = {"loss": metrics_lib.streaming_mean(loss)}
+    if metrics:
+      predictions = self.logits_to_predictions(logits, proba=False)
+      result.update(_run_metrics(predictions, targets, metrics,
+                                 self.get_weight_tensor(features)))
+    return result
+
 
 class _MultiClassTargetColumn(_TargetColumn):
   """_TargetColumn for classification."""
@@ -214,9 +228,59 @@ class _MultiClassTargetColumn(_TargetColumn):
     else:
       return math_ops.argmax(logits, 1)
 
-  def eval_metrics(self, logits, targets):
-    # TODO(zakaria): Handle eval metric in target column.
-    raise NotImplementedError
+  def _default_eval_metrics(self):
+    if self._num_label_columns == 1:
+      return _get_default_binary_metrics_for_eval(thresholds=[.5])
+    return {}
+
+  def get_eval_ops(self, features, logits, targets, metrics=None):
+    loss = self.loss(logits, targets, features)
+    result = {"loss": metrics_lib.streaming_mean(loss)}
+
+    # Adds default metrics.
+    if metrics is None:
+      # TODO(b/29366811): This currently results in both an "accuracy" and an
+      # "accuracy/threshold_0.500000_mean" metric for binary classification.
+      metrics = {("accuracy", "classes"): metrics_lib.streaming_accuracy}
+
+    predictions = math_ops.sigmoid(logits)
+    targets_float = math_ops.to_float(targets)
+
+    default_metrics = self._default_eval_metrics()
+    for metric_name, metric_op in default_metrics.items():
+      result[metric_name] = metric_op(predictions, targets_float)
+
+    class_metrics = {}
+    proba_metrics = {}
+    for name, metric_op in six.iteritems(metrics):
+      if isinstance(name, tuple):
+        if len(name) != 2:
+          raise ValueError("Ignoring metric {}. It returned a tuple with "
+                           "len {}, expected 2.".format(name, len(name)))
+        else:
+          if name[1] not in ["classes", "probabilities"]:
+            raise ValueError("Ignoring metric {}. The 2nd element of its "
+                             "name should be either 'classes' or "
+                             "'probabilities'.".format(name))
+          elif name[1] == "classes":
+            class_metrics[name[0]] = metric_op
+          else:
+            proba_metrics[name[0]] = metric_op
+      elif isinstance(name, str):
+        class_metrics[name] = metric_op
+      else:
+        raise ValueError("Ignoring metric {}. Its name is not in the correct "
+                         "form.".format(name))
+    if class_metrics:
+      class_predictions = self.logits_to_predictions(logits, proba=False)
+      result.update(_run_metrics(class_predictions, targets,
+                                 class_metrics,
+                                 self.get_weight_tensor(features)))
+    if proba_metrics:
+      predictions = self.logits_to_predictions(logits, proba=True)
+      result.update(_run_metrics(predictions, targets, proba_metrics,
+                                 self.get_weight_tensor(features)))
+    return result
 
 
 # TODO(zakaria): use contrib losses.
@@ -250,3 +314,76 @@ def _softmax_cross_entropy_loss(logits, target):
     target = array_ops.squeeze(target, squeeze_dims=[1])
   loss_vec = nn.sparse_softmax_cross_entropy_with_logits(logits, target)
   return loss_vec
+
+
+def _run_metrics(predictions, targets, metrics, weights):
+  result = {}
+  targets = math_ops.cast(targets, predictions.dtype)
+  for name, metric in six.iteritems(metrics or {}):
+    if "weights" in inspect.getargspec(metric)[0]:
+      result[name] = metric(predictions, targets, weights=weights)
+    else:
+      result[name] = metric(predictions, targets)
+
+  return result
+
+
+def _get_default_binary_metrics_for_eval(thresholds):
+  """Returns a dictionary of basic metrics for logistic regression.
+
+  Args:
+    thresholds: List of floating point thresholds to use for accuracy,
+      precision, and recall metrics. If None, defaults to [0.5].
+
+  Returns:
+    Dictionary mapping metrics string names to metrics functions.
+  """
+  metrics = {}
+  metrics[_MetricKeys.PREDICTION_MEAN] = _predictions_streaming_mean
+  metrics[_MetricKeys.TARGET_MEAN] = _targets_streaming_mean
+  # Also include the streaming mean of the label as an accuracy baseline, as
+  # a reminder to users.
+  metrics[_MetricKeys.ACCURACY_BASELINE] = _targets_streaming_mean
+
+  metrics[_MetricKeys.AUC] = metrics_lib.streaming_auc
+
+  for threshold in thresholds:
+    metrics[_MetricKeys.ACCURACY_MEAN % threshold] = _streaming_with_threshold(
+        metrics_lib.streaming_accuracy, threshold)
+    # Precision for positive examples.
+    metrics[_MetricKeys.PRECISION_MEAN % threshold] = _streaming_with_threshold(
+        metrics_lib.streaming_precision, threshold)
+    # Recall for positive examples.
+    metrics[_MetricKeys.RECALL_MEAN % threshold] = _streaming_with_threshold(
+        metrics_lib.streaming_recall, threshold)
+
+  return metrics
+
+
+# TODO(zakaria): support weights.
+def _targets_streaming_mean(unused_predictions, targets):
+  return metrics_lib.streaming_mean(targets)
+
+
+def _predictions_streaming_mean(predictions, unused_targets):
+  return metrics_lib.streaming_mean(predictions)
+
+
+def _streaming_with_threshold(streaming_metrics_fn, threshold):
+
+  def _streaming_metrics(predictions, targets):
+    return streaming_metrics_fn(predictions=math_ops.to_float(
+        math_ops.greater_equal(predictions, threshold)),
+                                labels=targets)
+
+  return _streaming_metrics
+
+
+class _MetricKeys(object):
+  AUC = "auc"
+  PREDICTION_MEAN = "labels/prediction_mean"
+  TARGET_MEAN = "labels/actual_target_mean"
+  ACCURACY_BASELINE = "accuracy/baseline_target_mean"
+  ACCURACY_MEAN = "accuracy/threshold_%f_mean"
+  PRECISION_MEAN = "precision/positive_threshold_%f_mean"
+  RECALL_MEAN = "recall/positive_threshold_%f_mean"

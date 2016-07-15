@@ -19,22 +19,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import numpy as np
 import six
 
 from tensorflow.contrib import layers
-from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
 from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.estimators import logistic_regressor
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
@@ -199,17 +194,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     with ops.control_dependencies(linear_train_step + dnn_train_step):
       with ops.get_default_graph().colocate_with(global_step):
         return state_ops.assign_add(global_step, 1).op, loss
-
-  def _run_metrics(self, predictions, targets, metrics, weights):
-    result = {}
-    targets = math_ops.cast(targets, predictions.dtype)
-    for name, metric in six.iteritems(metrics or {}):
-      if "weights" in inspect.getargspec(metric)[0]:
-        result[name] = metric(predictions, targets, weights=weights)
-      else:
-        result[name] = metric(predictions, targets)
-
-    return result
 
   def _get_eval_ops(self, features, targets, metrics=None):
     raise NotImplementedError
@@ -459,63 +443,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     """See base class."""
     features = self._get_feature_dict(features)
     logits = self._logits(features)
-    loss = self._target_column.loss(logits, targets, features)
-    result = {"loss": metrics_lib.streaming_mean(loss)}
-
-    # Adds default metrics.
-    if metrics is None:
-      # TODO(b/29366811): This currently results in both an "accuracy" and an
-      # "accuracy/threshold_0.500000_mean" metric for binary classification.
-      metrics = {("accuracy", "classes"): metrics_lib.streaming_accuracy}
-
-    # Adds additional useful metrics for the special case of binary
-    # classification.
-    # TODO(zakaria): Move LogisticRegressor.get_default_metrics to metrics
-    #   and handle eval metric from targetcolumn.
-    if self._target_column.num_label_columns == 1:
-      predictions = math_ops.sigmoid(logits)
-      targets_float = math_ops.to_float(targets)
-      default_metrics = (
-          logistic_regressor.LogisticRegressor.get_default_metrics())
-      for metric_name, metric_op in default_metrics.items():
-        result[metric_name] = metric_op(predictions, targets_float)
-
-    if metrics:
-      class_metrics = {}
-      proba_metrics = {}
-      for name, metric_op in six.iteritems(metrics):
-        if isinstance(name, tuple):
-          if len(name) != 2:
-            raise ValueError("Ignoring metric {}. It returned a tuple with "
-                             "len {}, expected 2.".format(name, len(name)))
-          else:
-            if name[1] not in ["classes", "probabilities"]:
-              raise ValueError("Ignoring metric {}. The 2nd element of its "
-                               "name should be either 'classes' or "
-                               "'probabilities'.".format(name))
-            elif name[1] == "classes":
-              class_metrics[name[0]] = metric_op
-            else:
-              proba_metrics[name[0]] = metric_op
-        elif isinstance(name, str):
-          class_metrics[name] = metric_op
-        else:
-          raise ValueError("Ignoring metric {}. Its name is not in the correct "
-                           "form.".format(name))
-      if class_metrics:
-        predictions = self._target_column.logits_to_predictions(logits,
-                                                                proba=False)
-        result.update(self._run_metrics(predictions, targets, class_metrics,
-                                        self._target_column.get_weight_tensor(
-                                            features)))
-      if proba_metrics:
-        predictions = self._target_column.logits_to_predictions(logits,
-                                                                proba=True)
-        result.update(self._run_metrics(predictions, targets, proba_metrics,
-                                        self._target_column.get_weight_tensor(
-                                            features)))
-
-    return result
+    return self._target_column.get_eval_ops(features, logits, targets, metrics)
 
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
@@ -650,14 +578,6 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
     """See base class."""
     features = self._get_feature_dict(features)
     logits = self._logits(features)
-    loss = self._target_column.loss(logits, targets, features)
-    result = {"loss": metrics_lib.streaming_mean(loss)}
+    return self._target_column.get_eval_ops(features, logits, targets, metrics)
 
-    if metrics:
-      predictions = self._target_column.logits_to_predictions(logits,
-                                                              proba=False)
-      result.update(self._run_metrics(predictions, targets, metrics,
-                                      self._target_column.get_weight_tensor(
-                                          features)))
 
-    return result
