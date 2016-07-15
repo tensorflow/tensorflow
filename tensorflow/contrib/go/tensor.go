@@ -55,14 +55,14 @@ func (e *ErrInvalidTensorType) Error() string {
 	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.TensorType, e.ExpectedType)
 }
 
-// ErrTensorTypeNotSupported is returned when the tensor type is still not
+// ErrTensorTypeNotSupported is returned when the tensor type is not
 // supported.
 type ErrTensorTypeNotSupported struct {
 	TensotType DataType
 }
 
 func (e *ErrTensorTypeNotSupported) Error() string {
-	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.TensotType)
+	return fmt.Sprintf("The tensor data type '%s' is not supported", e.TensotType)
 }
 
 // ErrDimsOutOfTensorRange is returned when the specified number of dimensions
@@ -130,7 +130,8 @@ var (
 	// DTUint16 corresponds to TF_UINT16.
 	DTUint16 = DataType(TF_UINT16)
 
-	// The next data types are still not supported
+	//NOTE: The next data types are still not supported
+
 	// DTBfloat corresponds to TF_BFLOAT16.
 	DTBfloat = DataType(TF_BFLOAT16)
 	// DTComplex corresponds to TF_COMPLEX.
