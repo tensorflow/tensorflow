@@ -54,7 +54,7 @@ def ListDirectoryAbsolute(directory):
             for path in gfile.ListDirectory(directory))
 
 
-def ListRecursively(top, followlinks=False):
+def ListRecursively(top):
   """Walks a directory tree, yielding (dir_path, file_paths) tuples.
 
   For each of `top` and its subdirectories, yields a tuple containing the path
@@ -73,7 +73,7 @@ def ListRecursively(top, followlinks=False):
     for x in gcs.ListRecursively(top):
       yield x
   else:
-    for dir_path, _, filenames in gfile.Walk(top, followlinks=followlinks):
+    for dir_path, _, filenames in gfile.Walk(top):
       yield (dir_path, (os.path.join(dir_path, filename)
                         for filename in filenames))
 

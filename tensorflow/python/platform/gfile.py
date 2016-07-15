@@ -382,15 +382,13 @@ def ListDirectory(directory, return_dotfiles=False):  # pylint: disable=invalid-
   return files
 
 
-def Walk(top, topdown=1, onerror=None, followlinks=False):
+def Walk(top, topdown=1, onerror=None):
   """Recursive directory tree generator.
 
   Args:
     top: string, a pathname.
     topdown: bool, should traversal be pre-order (True) or post-order (False)
     onerror: function, optional callback for errors.
-    followlinks: bool, should walk into symbolic links that resolve into
-      directories (true)
 
   By default, errors that occur when listing a directory are ignored.
   (This is the same semantics as Python's os.walk() generator.)  If the
@@ -403,7 +401,7 @@ def Walk(top, topdown=1, onerror=None, followlinks=False):
     # by lists of all its subdirectories and leaf files.
     (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
   """
-  return os.walk(top, topdown=topdown, onerror=onerror, followlinks=followlinks)
+  return os.walk(top, topdown=topdown, onerror=onerror, followlinks=True)
 
 
 def Stat(path):   # pylint: disable=invalid-name
