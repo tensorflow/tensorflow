@@ -16,11 +16,14 @@ tf.shape(split0) ==> [5, 10]
 
 Note: If you are splitting along an axis by the length of that axis, consider
 using unpack, e.g.
+
 ```python
 num_items = t.get_shape()[axis].value
 [tf.squeeze(s, [axis]) for s in tf.split(axis, num_items, t)]
 ```
+
 can be rewritten as
+
 ```python
 tf.unpack(t, axis=axis)
 ```
