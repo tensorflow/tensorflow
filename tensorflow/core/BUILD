@@ -1383,6 +1383,7 @@ tf_cc_tests(
         "framework/attr_value_util_test.cc",
         "framework/bfloat16_test.cc",
         "framework/cancellation_test.cc",
+        "framework/common_shape_fns_test.cc",
         "framework/function_test.cc",
         "framework/graph_def_util_test.cc",
         "framework/kernel_def_builder_test.cc",
