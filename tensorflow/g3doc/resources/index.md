@@ -37,10 +37,7 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [TensorFlow tutorials](https://github.com/pkmital/tensorflow_tutorials)
 * [Scikit Flow - Simplified Interface for TensorFlow](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/learn/python/learn)
 * [Caffe to TensorFlow model converter](https://github.com/ethereon/caffe-tensorflow)
-* Bitfusion's GPU Enabled AWS EC2 Tensorflow AMI
- * Comes with: Tensorflow 9, CuDNN 5, Cuda 7.5, Keras, Jupyter and Udacity deep learning courseware
- * [Launch the AMI](https://aws.amazon.com/marketplace/pp/B01EYKBEQ0) 
- * [README - Good information on getting started with AWS and Tensorflow](https://github.com/bitfusionio/amis/tree/master/awsmrkt-bfboost-ubuntu14-cuda75-tensorflow)
+* [Bitfusion's` GPU-enabled AWS EC2 TensorFlow AMI](https://github.com/bitfusionio/amis/tree/master/awsmrkt-bfboost-ubuntu14-cuda75-tensorflow) ([Launch AMI](https://aws.amazon.com/marketplace/pp/B01EYKBEQ0))
 
 ### Development
 
