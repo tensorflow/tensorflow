@@ -394,7 +394,7 @@ out: Same as "var".
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the var pass to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be 
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
