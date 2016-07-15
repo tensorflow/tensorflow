@@ -15,7 +15,7 @@ also to build, load and run Graphs.
 ## Installation
 
 This package depends on the TensorFlow shared libraries, in order to compile
-this libraries follow the [Installing fromsources](https://www.tensorflow.org/versions/r0.9/get_started/os_setup.html#installing-from-sources)
+this libraries follow the [Installing fromsources](https://www.tensorflow.org/get_started/os_setup.html#installing-from-sources)
 guide to clone and configure the repository.
 
 After you have cloned the repository, run the next commands at the root of the
