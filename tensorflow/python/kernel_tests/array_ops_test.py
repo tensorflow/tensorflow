@@ -247,10 +247,12 @@ class StridedSliceChecker(object):
     self.x_np = np.array(x)
 
   def __getitem__(self, spec):
-    op = self.x.__getitem__(spec)
+    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
+    # op = self.x[spec]
+    op = array_ops._NewSliceHelper(self.x, spec)
 
     tensor = op.eval()
-    self.test.assertAllEqual(self.x_np.__getitem__(spec), tensor)
+    self.test.assertAllEqual(self.x_np[spec], tensor)
     self.test.assertAllEqual(tensor.shape, op.get_shape())
     return tensor
 
@@ -363,7 +365,9 @@ class StridedSliceShapeChecker(object):
     self.x = x
 
   def __getitem__(self, spec):
-    op = self.x.__getitem__(spec)
+    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
+    # op = self.x[spec]
+    op = array_ops._NewSliceHelper(self.x, spec)
     return op.get_shape()
 
 
@@ -418,9 +422,10 @@ class GradSliceChecker(object):
 
   def __getitem__(self, spec):
     val_grad_op = tf.gradients(self.val, self.var)
-    sliceval_grad_op = tf.gradients(self.val.__getitem__(spec), self.var)
-    slice1_op = val_grad_op[0][spec]
-    slice2_op = sliceval_grad_op[0][spec]
+    sliceval_grad_op = tf.gradients(
+        array_ops._NewSliceHelper(self.val, spec), self.var)
+    slice1_op = array_ops._NewSliceHelper(val_grad_op, spec)
+    slice2_op = array_ops._NewSliceHelper(sliceval_grad_op, spec)
     val_grad, sliceval_grad, slice1, slice2 = self.sess.run(
         [val_grad_op, sliceval_grad_op, slice1_op, slice2_op])
     np_val_grad = (2 * self.varnp)
@@ -458,7 +463,7 @@ class BenchmarkSlice(object):
     self.tensor = tensor
 
   def __getitem__(self, x):
-    return self.tensor[x]
+    return array_ops._NewSliceHelper(self.tensor, x)
 
 
 class StridedSliceBenchmark(tf.test.Benchmark):
