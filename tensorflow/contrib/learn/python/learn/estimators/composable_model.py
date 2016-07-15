@@ -88,12 +88,11 @@ class _ComposableModel(object):
     """
     raise NotImplementedError
 
-  def get_train_step(self, loss, scope=None):
+  def get_train_step(self, loss):
     """Returns the ops to run to perform a training step on this estimator.
 
     Args:
       loss: The loss to use when calculating gradients.
-      scope: Optional scope for variable_op_scope.
 
     Returns:
       The ops to run to perform a training step.
@@ -102,11 +101,10 @@ class _ComposableModel(object):
     if not (self._get_feature_columns() or my_vars):
       return []
 
-    with variable_scope.variable_op_scope([loss], scope, "train_step"):
-      grads = gradients.gradients(loss, my_vars)
-      if self._gradient_clip_norm:
-        grads, _ = clip_ops.clip_by_global_norm(grads, self._gradient_clip_norm)
-      return [self._get_optimizer().apply_gradients(zip(grads, my_vars))]
+    grads = gradients.gradients(loss, my_vars)
+    if self._gradient_clip_norm:
+      grads, _ = clip_ops.clip_by_global_norm(grads, self._gradient_clip_norm)
+    return [self._get_optimizer().apply_gradients(zip(grads, my_vars))]
 
   def _get_feature_columns(self):
     if not self._feature_columns:

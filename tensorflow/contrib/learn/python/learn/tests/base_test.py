@@ -73,11 +73,11 @@ class InferredfeatureColumnTest(tf.test.TestCase):
          "centered_bias_weight/Adagrad",
          "global_step",
          "linear/_weight",
+         "linear/_weight/Ftrl",
+         "linear/_weight/Ftrl_1",
          "linear/bias_weight",
-         "train_step/linear/_weight/Ftrl",
-         "train_step/linear/_weight/Ftrl_1",
-         "train_step/linear/bias_weight/Ftrl",
-         "train_step/linear/bias_weight/Ftrl_1"])
+         "linear/bias_weight/Ftrl",
+         "linear/bias_weight/Ftrl_1"])
 
   def testIrisSummaries(self):
     iris = datasets.load_iris()
@@ -196,11 +196,11 @@ class BaseTest(tf.test.TestCase):
          "centered_bias_weight/Adagrad",
          "global_step",
          "linear/_weight",
+         "linear/_weight/Ftrl",
+         "linear/_weight/Ftrl_1",
          "linear/bias_weight",
-         "train_step/linear/_weight/Ftrl",
-         "train_step/linear/_weight/Ftrl_1",
-         "train_step/linear/bias_weight/Ftrl",
-         "train_step/linear/bias_weight/Ftrl_1"])
+         "linear/bias_weight/Ftrl",
+         "linear/bias_weight/Ftrl_1"])
 
   def testIrisSummaries(self):
     iris = datasets.load_iris()
