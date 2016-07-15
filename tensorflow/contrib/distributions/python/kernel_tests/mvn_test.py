@@ -25,6 +25,46 @@ import tensorflow as tf
 distributions = tf.contrib.distributions
 
 
+class MultivariateNormalShapeTest(tf.test.TestCase):
+
+  def _testPDFShapes(self, mvn_dist, mu, sigma):
+    with self.test_session() as sess:
+      mvn = mvn_dist(mu, sigma)
+      x = 2 * tf.ones_like(mu)
+
+      log_pdf = mvn.log_pdf(x)
+      pdf = mvn.pdf(x)
+
+      mu_value = np.ones([3, 3, 2])
+      sigma_value = np.zeros([3, 3, 2, 2])
+      sigma_value[:] = np.identity(2)
+      x_value = 2. * np.ones([3, 3, 2])
+      feed_dict = {mu: mu_value, sigma: sigma_value}
+
+      scipy_mvn = stats.multivariate_normal(mean=mu_value[(0, 0)],
+                                            cov=sigma_value[(0, 0)])
+      expected_log_pdf = scipy_mvn.logpdf(x_value[(0, 0)])
+      expected_pdf = scipy_mvn.pdf(x_value[(0, 0)])
+
+      log_pdf_evaled, pdf_evaled = sess.run([log_pdf, pdf], feed_dict=feed_dict)
+      self.assertAllEqual([3, 3], log_pdf_evaled.shape)
+      self.assertAllEqual([3, 3], pdf_evaled.shape)
+      self.assertAllClose(expected_log_pdf, log_pdf_evaled[0, 0])
+      self.assertAllClose(expected_pdf, pdf_evaled[0, 0])
+
+  def testPDFUnknownSize(self):
+    mu = tf.placeholder(tf.float32, shape=(3 * [None]))
+    sigma = tf.placeholder(tf.float32, shape=(4 * [None]))
+    self._testPDFShapes(distributions.MultivariateNormalFull, mu, sigma)
+    self._testPDFShapes(distributions.MultivariateNormalCholesky, mu, sigma)
+
+  def testPDFUnknownShape(self):
+    mu = tf.placeholder(tf.float32)
+    sigma = tf.placeholder(tf.float32)
+    self._testPDFShapes(distributions.MultivariateNormalFull, mu, sigma)
+    self._testPDFShapes(distributions.MultivariateNormalCholesky, mu, sigma)
+
+
 class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
   def setUp(self):

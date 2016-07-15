@@ -27,11 +27,11 @@ import java.util.StringTokenizer;
 /**
  * JNI wrapper class for the Tensorflow native code.
  */
-public class TensorflowClassifier implements Classifier {
+public class TensorFlowClassifier implements Classifier {
   private static final String TAG = "TensorflowClassifier";
 
   // jni native methods.
-  public native int initializeTensorflow(
+  public native int initializeTensorFlow(
       AssetManager assetManager,
       String model,
       String labels,
