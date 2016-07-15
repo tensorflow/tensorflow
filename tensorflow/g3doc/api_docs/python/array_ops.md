@@ -580,11 +580,14 @@ tf.shape(split0) ==> [5, 10]
 
 Note: If you are splitting along an axis by the length of that axis, consider
 using unpack, e.g.
+
 ```python
 num_items = t.get_shape()[axis].value
 [tf.squeeze(s, [axis]) for s in tf.split(axis, num_items, t)]
 ```
+
 can be rewritten as
+
 ```python
 tf.unpack(t, axis=axis)
 ```
@@ -726,11 +729,14 @@ tf.shape(tf.concat(1, [t3, t4])) ==> [2, 6]
 
 Note: If you are concatenating along a new axis consider using pack.
 E.g.
+
 ```python
-tf.concat(axis, [tf.expand_dims(t, axis) for t in ts])
+tf.concat(axis, [tf.expand_dims(t, axis) for t in tensors])
 ```
+
 can be rewritten as
-```
+
+```python
 tf.pack(tensors, axis=axis)
 ```
 

@@ -20,21 +20,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.layers import dropout as contrib_dropout
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.platform import tf_logging as logging
 
-from tensorflow.contrib.layers import dropout as contrib_dropout
 
 # Key to collect dropout probabilities.
 DROPOUTS = "dropouts"
 
 
+@deprecated(date="2016-08-15",
+            instructions="Please use tf.contrib.layers.dropout instead.")
 def dropout(tensor_in, prob, name=None):
   """Adds dropout node and stores probability tensor into graph collection.
-  This is deprecated. Please use contrib.layers.dropout instead. 
-  
+
+  This is deprecated. Please use contrib.layers.dropout instead.
+
   Args:
     tensor_in: Input tensor.
     prob: Float or Tensor.
@@ -46,8 +50,6 @@ def dropout(tensor_in, prob, name=None):
   Raises:
     ValueError: If `keep_prob` is not in `(0, 1]`.
   """
-  logging.warning("learn.ops.dropout is deprecated, \
-    please use contrib.layers.dropout.")
   with ops.op_scope([tensor_in], name, "dropout") as name:
     if isinstance(prob, float):
       prob = vs.get_variable("prob", [],

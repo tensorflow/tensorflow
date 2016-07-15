@@ -636,7 +636,7 @@ class ValidationMonitor(EveryN):
       raise ValueError("Missing call to set_estimator.")
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
-    if latest_path == self._latest_path:
+    if latest_path is not None and latest_path == self._latest_path:
       logging.info("Skipping evaluation due to same checkpoint %s for step %d "
                    "as for step %d.", latest_path, step, self._latest_path_step)
       return False

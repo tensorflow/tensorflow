@@ -174,12 +174,13 @@ class BernoulliTest(tf.test.TestCase):
       self.assertAllClose(dist.entropy().eval(), [[entropy(0.1), entropy(0.7)],
                                                   [entropy(0.2), entropy(0.6)]])
 
-  def testSample(self):
+  def _testSample(self):
+    # DISABLED: Please enable this test once b/issues/30149644 is resolved.
     with self.test_session():
       p = [0.2, 0.6]
       dist = tf.contrib.distributions.Bernoulli(p=p)
       n = 1000
-      samples = dist.sample(n, seed=123)
+      samples = dist.sample(n)
       samples.set_shape([n, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()

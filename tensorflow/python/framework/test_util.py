@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import contextlib
 import math
+import random
 import re
 import sys
 import threading
@@ -119,7 +120,9 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def setUp(self):
     self._ClearCachedSession()
+    random.seed(1)
     ops.reset_default_graph()
+    ops.get_default_graph().seed = 1
 
   def tearDown(self):
     for thread in self._threads:

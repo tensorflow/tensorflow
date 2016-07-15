@@ -173,10 +173,19 @@ Log of the probability mass function.
 
 Log prob of observations `x` given these Multivariate Normals.
 
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu`.
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
@@ -240,10 +249,19 @@ The probability mass function.
 
 The PDF of observations `x` under these Multivariate Normals.
 
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:

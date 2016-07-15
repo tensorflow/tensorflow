@@ -36,7 +36,7 @@ __all__ = ['stratified_sample',
 
 # TODO(joelshor): Use an exponential-moving-average to estimate the initial
 # class distribution and remove the requirement that it be provided.
-def stratified_sample(data, labels, init_probs, target_probs, batch_size,
+def stratified_sample(tensors, labels, init_probs, target_probs, batch_size,
                       enqueue_many=False, queue_capacity=16,
                       threads_per_queue=1, name=None):
   """Stochastically creates batches based on per-class probabilities.
@@ -48,8 +48,8 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
   class data-distribution ahead of time.
 
   Args:
-    data: Tensor for data. Either one item or a batch, according to
-        enqueue_many.
+    tensors: List of tensors for data. All tensors are either one item or a
+        batch, according to enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
         depending on enqueue_many. It is not a one-hot vector.
     init_probs: Class proportions in the data. An object whose type has a
@@ -73,7 +73,8 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
         probability.
     TFAssertion: if labels aren't integers in [0, num classes).
   Returns:
-    (data_batch, label_batch)
+    (data_batch, label_batch), where data_batch is a list of tensors of the same
+        length as `tensors`
 
   Example:
     # Get tensor for a single data and label example.
@@ -82,25 +83,25 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
     # Get stratified batch according to per-class probabilities.
     init_probs = [1.0/NUM_CLASSES for _ in range(NUM_CLASSES)]
     target_probs = [...distribution you want...]
-    data_batch, labels = tf.contrib.framework.sampling_ops.stratified_sample(
-        data, label, init_probs, target_probs)
+    [data_batch], labels = tf.contrib.framework.sampling_ops.stratified_sample(
+        [data], label, init_probs, target_probs)
 
     # Run batch through network.
     ...
   """
-  with ops.op_scope([data, labels], name, 'stratified_sample'):
-    data = ops.convert_to_tensor(data)
+  with ops.op_scope(tensors + [labels], name, 'stratified_sample'):
+    tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     init_probs = ops.convert_to_tensor(init_probs, dtype=dtypes.float32)
     target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
     # Reduce the case of a single example to that of a batch of size 1.
     if not enqueue_many:
-      data = array_ops.expand_dims(data, 0)
+      tensor_list = [array_ops.expand_dims(tensor, 0) for tensor in tensor_list]
       labels = array_ops.expand_dims(labels, 0)
 
     # Validate that input is consistent.
-    data, labels, [init_probs, target_probs] = _verify_input(
-        data, labels, [init_probs, target_probs])
+    tensor_list, labels, [init_probs, target_probs] = _verify_input(
+        tensor_list, labels, [init_probs, target_probs])
 
     # Check that all zero initial probabilities also have zero target
     # probabilities.
@@ -120,23 +121,26 @@ def stratified_sample(data, labels, init_probs, target_probs, batch_size,
             message='Proportion of examples rejected by sampler is high.',
             first_n=10))
 
-    # Make a single queue to hold input examples.
-    val, label = input_ops.batch([data, labels],
-                                 batch_size=1,
-                                 num_threads=threads_per_queue,
-                                 capacity=queue_capacity,
-                                 enqueue_many=True)
-    val = array_ops.reshape(val, data.get_shape().with_rank_at_least(1)[1:])
+    # Make a single queue to hold input examples. Reshape output so examples
+    # don't have singleton batch dimension.
+    batched = input_ops.batch(tensor_list + [labels],
+                              batch_size=1,
+                              num_threads=threads_per_queue,
+                              capacity=queue_capacity,
+                              enqueue_many=True)
+    val_list = [array_ops.reshape(x, y.get_shape().with_rank_at_least(1)[1:])
+                for x, y in zip(batched[:-1], tensor_list)]
     label = array_ops.reshape(
-        label, labels.get_shape().with_rank_at_least(1)[1:])
+        batched[-1], labels.get_shape().with_rank_at_least(1)[1:])
 
     # Set up second queue containing batches that have the desired class
     # proportions.
-    return _get_stratified_batch_from_tensors(
-        val, label, accept_probs, batch_size, threads_per_queue)
+    batched = _get_stratified_batch_from_tensors(
+        val_list, label, accept_probs, batch_size, threads_per_queue)
+    return batched[:-1], batched[-1]
 
 
-def stratified_sample_unknown_dist(data, labels, probs, batch_size,
+def stratified_sample_unknown_dist(tensors, labels, probs, batch_size,
                                    enqueue_many=False, queue_capacity=16,
                                    threads_per_queue=1, name=None):
   """Stochastically creates batches based on per-class probabilities.
@@ -151,8 +155,8 @@ def stratified_sample_unknown_dist(data, labels, probs, batch_size,
   known ahead of time.
 
   Args:
-    data: Tensor for data. Either one item or a batch, according to
-        enqueue_many.
+    tensors: List of tensors for data. All tensors are either one item or a
+        batch, according to enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
         depending on enqueue_many. It is not a one-hot vector.
     probs: Target class probabilities. An object whose type has a registered
@@ -171,7 +175,8 @@ def stratified_sample_unknown_dist(data, labels, probs, batch_size,
     ValueError: if probs don't sum to one.
     TFAssertion: if labels aren't integers in [0, num classes).
   Returns:
-    (data_batch, label_batch)
+    (data_batch, label_batch), where data_batch is a list of tensors of the same
+        length as `tensors`
 
   Example:
     # Get tensor for a single data and label example.
@@ -179,35 +184,37 @@ def stratified_sample_unknown_dist(data, labels, probs, batch_size,
 
     # Get stratified batch according to per-class probabilities.
     init_probs = [1.0/NUM_CLASSES for _ in range(NUM_CLASSES)]
-    data_batch, labels = (
+    [data_batch], labels = (
         tf.contrib.framework.sampling_ops.stratified_sample_unknown_dist(
-            data, label, init_probs, 16))
+            [data], label, init_probs, 16))
 
     # Run batch through network.
     ...
   """
-  with ops.op_scope([data, labels], name, 'stratified_sample_unknown_dist'):
-    data = ops.convert_to_tensor(data)
+  with ops.op_scope(tensors + [labels], name,
+                    'stratified_sample_unknown_dist'):
+    tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     probs = ops.convert_to_tensor(probs, dtype=dtypes.float32)
     # Reduce the case of a single example to that of a batch of size 1.
     if not enqueue_many:
-      data = array_ops.expand_dims(data, 0)
+      tensor_list = [array_ops.expand_dims(tensor, 0) for tensor in tensor_list]
       labels = array_ops.expand_dims(labels, 0)
 
     # Validate that input is consistent.
-    data, labels, [probs] = _verify_input(data, labels, [probs])
+    tensor_list, labels, [probs] = _verify_input(tensor_list, labels, [probs])
 
     # Make per-class queues.
     per_class_queues = _make_per_class_queues(
-        data, labels, probs.get_shape().num_elements(), queue_capacity,
+        tensor_list, labels, probs.get_shape().num_elements(), queue_capacity,
         threads_per_queue)
 
     # Use the per-class queues to generate stratified batches.
-    return _get_batch_from_per_class_queues(per_class_queues, probs, batch_size)
+    return _get_batch_from_per_class_queues(
+        per_class_queues, probs, batch_size)
 
 
-def _verify_input(data, labels, probs_list):
+def _verify_input(tensor_list, labels, probs_list):
   """Verify that batched inputs are well-formed."""
   checked_probs_list = []
   for probs in probs_list:
@@ -237,21 +244,24 @@ def _verify_input(data, labels, probs_list):
   # Labels tensor should only have batch dimension.
   labels.get_shape().assert_has_rank(1)
 
-  # Data tensor should have a batch dimension.
-  data_shape = data.get_shape().with_rank_at_least(1)
+  for tensor in tensor_list:
+    # Data tensor should have a batch dimension.
+    tensor_shape = tensor.get_shape().with_rank_at_least(1)
 
-  # Data and label batch dimensions must be compatible.
-  data_shape[0].assert_is_compatible_with(labels.get_shape()[0])
+    # Data and label batch dimensions must be compatible.
+    tensor_shape[0].assert_is_compatible_with(labels.get_shape()[0])
 
   # Data and labels must have the same, strictly positive batch size. Since we
   # can't assume we know the batch size at graph creation, add runtime checks.
-  data_batch_size = array_ops.shape(data)[0]
   labels_batch_size = array_ops.shape(labels)[0]
+  lbl_assert = check_ops.assert_positive(labels_batch_size)
 
-  data = control_flow_ops.with_dependencies(
-      [check_ops.assert_positive(data_batch_size),
-       check_ops.assert_equal(data_batch_size, labels_batch_size)],
-      data)
+  # Make each tensor depend on its own checks.
+  labels = control_flow_ops.with_dependencies([lbl_assert], labels)
+  tensor_list = [control_flow_ops.with_dependencies(
+      [lbl_assert,
+       check_ops.assert_equal(array_ops.shape(x)[0], labels_batch_size)],
+      x) for x in tensor_list]
 
   # Label's classes must be integers 0 <= x < num_classes.
   labels = control_flow_ops.with_dependencies(
@@ -260,7 +270,7 @@ def _verify_input(data, labels, probs_list):
        check_ops.assert_less(labels, math_ops.cast(prob_length, labels.dtype))],
       labels)
 
-  return data, labels, checked_probs_list
+  return tensor_list, labels, checked_probs_list
 
 
 def _calculate_acceptance_probabilities(init_probs, target_probs):
@@ -318,26 +328,28 @@ def _calculate_acceptance_probabilities(init_probs, target_probs):
   return ratio_l / max_ratio
 
 
-def _get_stratified_batch_from_tensors(val, label, accept_probs, batch_size,
-                                       queue_threads=3):
+def _get_stratified_batch_from_tensors(val_list, label, accept_probs,
+                                       batch_size, queue_threads=3):
   """Accepts examples one-at-a-time based on class."""
   # Make queue that will have proper class proportions. Contains exactly one
   # batch at a time.
-  val_shape = val.get_shape()
+  vals_shapes = [val.get_shape() for val in val_list]
+  vals_dtypes = [val.dtype for val in val_list]
   label_shape = label.get_shape()
   final_q = data_flow_ops.FIFOQueue(capacity=batch_size,
-                                    shapes=[val_shape, label_shape],
-                                    dtypes=[val.dtype, label.dtype],
+                                    shapes=vals_shapes + [label_shape],
+                                    dtypes=vals_dtypes + [label.dtype],
                                     name='batched_queue')
 
   # Conditionally enqueue.
+  tensors_to_enqueue = val_list + [label]
   eq_tf = array_ops.reshape(math_ops.less(
       random_ops.random_uniform([1]),
       array_ops.slice(accept_probs, [label], [1])),
                             [])
   conditional_enqueue = control_flow_ops.cond(
       eq_tf,
-      lambda: final_q.enqueue([val, label]),
+      lambda: final_q.enqueue(tensors_to_enqueue),
       control_flow_ops.no_op)
   queue_runner.add_queue_runner(queue_runner.QueueRunner(
       final_q, [conditional_enqueue] * queue_threads))
@@ -345,24 +357,34 @@ def _get_stratified_batch_from_tensors(val, label, accept_probs, batch_size,
   return final_q.dequeue_many(batch_size)
 
 
-def _make_per_class_queues(data, labels, num_classes, queue_capacity,
+def _make_per_class_queues(tensor_list, labels, num_classes, queue_capacity,
                            threads_per_queue):
   """Creates per-class-queues based on data and labels."""
   # Create one queue per class.
   queues = []
-  per_data_shape = data.get_shape().with_rank_at_least(1)[1:]
-  per_data_shape.assert_is_fully_defined()
+  data_shapes = []
+  data_dtypes = []
+  for data_tensor in tensor_list:
+    per_data_shape = data_tensor.get_shape().with_rank_at_least(1)[1:]
+    per_data_shape.assert_is_fully_defined()
+    data_shapes.append(per_data_shape)
+    data_dtypes.append(data_tensor.dtype)
 
   for i in range(num_classes):
     q = data_flow_ops.FIFOQueue(capacity=queue_capacity,
-                                shapes=per_data_shape, dtypes=[data.dtype],
+                                shapes=data_shapes, dtypes=data_dtypes,
                                 name='stratified_sample_class%d_queue' % i)
     logging_ops.scalar_summary(
         'queue/%s/stratified_sample_class%d' % (q.name, i), q.size())
     queues.append(q)
 
-  # Partition tensors according to labels.
-  partitions = data_flow_ops.dynamic_partition(data, labels, num_classes)
+  # Partition tensors according to labels. `partitions` is a list of lists, of
+  # size num_classes X len(tensor_list). The number of tensors in partition `i`
+  # should be the same for all tensors.
+  all_partitions = [data_flow_ops.dynamic_partition(data, labels, num_classes)
+                    for data in tensor_list]
+  partitions = [[cur_partition[i] for cur_partition in all_partitions] for i in
+                range(num_classes)]
 
   # Enqueue each tensor on the per-class-queue.
   for i in range(num_classes):
@@ -388,8 +410,24 @@ def _get_batch_from_per_class_queues(per_class_queues, probs, batch_size):
   for i in range(num_classes):
     num_examples = math_ops.reduce_sum(
         math_ops.cast(math_ops.equal(examples, i), dtypes.int32))
-    val_list.append(per_class_queues[i].dequeue_many(num_examples))
+    tensors = per_class_queues[i].dequeue_many(num_examples)
+
+    # If you enqueue a list with a single tensor, only a single tensor is
+    # returned. If you enqueue a list with multiple tensors, then a list is
+    # returned. We want to handle both cases, so reduce the case of the single
+    # tensor to the case of multiple tensors.
+    if not isinstance(tensors, list):
+      tensors = [tensors]
+
+    val_list.append(tensors)
     label_list.append(array_ops.ones([num_examples], dtype=dtypes.int32) * i)
+
+  # Create a list of tensor of values. val_list is of dimension
+  # [num_classes x len(tensors)]. We want list_batch_vals to be of dimension
+  # [len(tensors)].
+  num_data = len(val_list[0])
+  list_batch_vals = [array_ops.concat(
+      0, [val_list[i][j] for i in range(num_classes)]) for j in range(num_data)]
 
   # Create a tensor of labels.
   batch_labels = array_ops.concat(0, label_list)
@@ -401,4 +439,4 @@ def _get_batch_from_per_class_queues(per_class_queues, probs, batch_size):
   logging_ops.scalar_summary(sample_tags, math_ops.reduce_sum(
       array_ops.one_hot(batch_labels, num_classes), 0))
 
-  return array_ops.concat(0, val_list), batch_labels
+  return list_batch_vals, batch_labels

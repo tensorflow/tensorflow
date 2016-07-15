@@ -79,7 +79,7 @@ void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
 void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
                           const NameVector& output_names,
                           const NameVector& target_nodes, TF_Status* out_status,
-                          char** out_handle);
+                          const char** out_handle);
 
 // Continue to run the graph with additional feeds and fetches. The
 // execution state is uniquely identified by the handle.

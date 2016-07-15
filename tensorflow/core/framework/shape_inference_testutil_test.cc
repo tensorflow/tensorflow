@@ -22,6 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
+static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 namespace {
 
@@ -63,16 +64,16 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   };
   auto fn_output_unknown_shapes = [](InferenceContext* c) {
     for (int i = 0; i < c->num_outputs(); ++i) {
-      c->set_output(i, c->CreateUnknownShape());
+      c->set_output(i, c->UnknownShape());
     }
     return Status::OK();
   };
   auto fn_output_1_2 = [](InferenceContext* c) {
-    c->set_output(0, c->CreateShape({c->CreateDim(1), c->CreateDim(2)}));
+    c->set_output(0, c->Matrix(1, 2));
     return Status::OK();
   };
   auto fn_output_u_2 = [](InferenceContext* c) {
-    c->set_output(0, c->CreateShape({c->CreateUnknownDim(), c->CreateDim(2)}));
+    c->set_output(0, c->Matrix(kUnknownDim, 2));
     return Status::OK();
   };
   const string& op = "OpOneOut";
@@ -129,9 +130,8 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   EXPECT_EQ("Output dim 0,0 expected to be 1 but was ?; output shape was [?,2]",
             RunInferShapes(op, "[0,1,?];[2];[1]", "[1,2]", fn_output_u_2));
   auto fn = [](InferenceContext* c) {
-    c->set_output(
-        0, c->CreateShape({c->Dim(c->input(0), 1), c->CreateDim(2),
-                           c->CreateUnknownDim(), c->Dim(c->input(2), 0)}));
+    c->set_output(0, c->MakeShape({c->Dim(c->input(0), 1), c->MakeDim(2),
+                                   c->UnknownDim(), c->Dim(c->input(2), 0)}));
     return Status::OK();
   };
   const string ins = "[0,1,?];[2];[1]";

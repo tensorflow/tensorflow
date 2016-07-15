@@ -219,4 +219,33 @@ TEST(ArrayOpsTest, Shape_ShapeFn) {
   INFER_OK(op, "[?,2,3,4,5]", "[5]");
 }
 
+TEST(ArrayOpsTest, ImmutableConst_ShapeFn) {
+  std::unique_ptr<NodeDef> def_storage(new NodeDef);
+  NodeDef* def = def_storage.get();
+  const char op[] = "ImmutableConst";
+
+  TF_CHECK_OK(NodeDefBuilder("test", "ImmutableConst")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", TensorShape({1, 2, 3}))
+                  .Attr("memory_region_name", "test_region")
+                  .Finalize(def));
+  INFER_OK_WITH_DEF(op, def, "", "[1,2,3]");
+
+  TF_CHECK_OK(NodeDefBuilder("test", "ImmutableConst")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", TensorShape({}))
+                  .Attr("memory_region_name", "test_region")
+                  .Finalize(def));
+  INFER_OK_WITH_DEF(op, def, "", "[]");
+
+  TF_CHECK_OK(NodeDefBuilder("test", "ImmutableConst")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", "invalid")
+                  .Attr("memory_region_name", "test_region")
+                  .Finalize(def));
+  INFER_ERROR_WITH_DEF(
+      "AttrValue had value with type 'string' when 'shape' expected", op, def,
+      "");
+}
+
 }  // end namespace tensorflow

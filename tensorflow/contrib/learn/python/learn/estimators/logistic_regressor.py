@@ -67,6 +67,8 @@ class LogisticRegressor(estimator.Estimator):
                                             model_dir=model_dir,
                                             config=config)
 
+  # TODO(zakaria): use target column.
+
   # Metrics string keys.
   AUC = "auc"
   PREDICTION_MEAN = "labels/prediction_mean"
