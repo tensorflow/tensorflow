@@ -357,6 +357,6 @@ def GetLogdirSubdirectories(path):
   # ListRecursively just yields nothing if the path doesn't exist.
   return (
       subdir
-      for (subdir, files) in io_wrapper.ListRecursively(path)
+      for (subdir, files) in io_wrapper.ListRecursively(path, followlinks=True)
       if list(filter(event_accumulator.IsTensorFlowEventsFile, files))
   )
