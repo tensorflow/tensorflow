@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CC_OPS_CC_OP_GEN_H_
-#define TENSORFLOW_CC_OPS_CC_OP_GEN_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
+#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
 
 #include "tensorflow/core/framework/op_def.pb.h"
 
@@ -26,4 +26,4 @@ void WriteCCOps(const OpList& ops, const std::string& dot_h_fname,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CC_OPS_CC_OP_GEN_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
