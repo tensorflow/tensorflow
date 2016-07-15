@@ -98,12 +98,12 @@ func main() {
 
 	// Load the graph from the file that we had generated from Python on
 	// the previous step
-	reader, err := os.Open("/tmp/graph/test_graph.pb")
+	b, err := ioutil.ReadFile("/tmp/graph/test_graph.pb")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	graph, err := tensorflow.NewGraphFromReader(reader, true)
+	graph, err := tensorflow.NewGraphFromBuffer(b)
 	if err != nil {
 		log.Fatal("Error reading Graph from the text file:", err)
 	}

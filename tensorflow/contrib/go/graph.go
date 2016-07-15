@@ -2,8 +2,6 @@ package tensorflow
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
@@ -114,23 +112,22 @@ func NewGraph() *Graph {
 	}
 }
 
-// NewGraphFromReader reads from reader until an error or EOF and loads the
+// NewGraphFromBuffer reads from reader until an error or EOF and loads the
 // content into a new graph. Use the asText parameter to specify if the graph
 // from the reader is provided in Text format.
-func NewGraphFromReader(reader io.Reader, asText bool) (*Graph, error) {
-	b, err := ioutil.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
+func NewGraphFromBuffer(b []byte) (*Graph, error) {
+	graph := NewGraph()
+	err := proto.Unmarshal(b, graph.def)
+	return graph, err
+}
 
-	gr := NewGraph()
-	if asText {
-		err = proto.UnmarshalText(string(b), gr.def)
-	} else {
-		err = proto.Unmarshal(b, gr.def)
-	}
-
-	return gr, err
+// NewGraphFromString reads from reader until an error or EOF and loads the
+// content into a new graph. Use the asText parameter to specify if the graph
+// from the reader is provided in Text format.
+func NewGraphFromString(s string) (*Graph, error) {
+	graph := NewGraph()
+	err := proto.UnmarshalText(s, graph.def)
+	return graph, err
 }
 
 // Op adds a new Node to the Graph with the specified operation. This function

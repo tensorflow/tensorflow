@@ -15,13 +15,14 @@ type Session struct {
 	graph   *Graph
 }
 
-// ErrStatusTf is an error message coming out from the TensorFlow C++ libraries.
-type ErrStatusTf struct {
+// ErrStatusCore represents an error message occurred in the TensorFlow C++ libraries.
+type ErrStatusCore struct {
 	Code    TF_Code
 	Message string
 }
 
-func (e *ErrStatusTf) Error() string {
+// Error implements the error interface.
+func (e *ErrStatusCore) Error() string {
 	return fmt.Sprintf("tensorflow: %d: %v", e.Code, e.Message)
 }
 
@@ -38,7 +39,7 @@ func NewSession() (*Session, error) {
 		),
 	}
 
-	if err := s.statusToError(status); err != nil {
+	if err := statusToError(status); err != nil {
 		return nil, err
 	}
 
@@ -49,10 +50,10 @@ func NewSession() (*Session, error) {
 }
 
 // Run runs the operations on the target nodes, or all the operations if not
-// targets are specified. the Parameter Input is a dictionary where the key is
-// the Tensor name on the Graph, and the value, the Tensor. The parameter
+// targets are specified. The first parameter is a dictionary where the key is
+// the name of a Tensor in the Graph and the value is a Tensor. The parameter
 // outputs is used to specify the tensors from the graph to be returned in the
-// same order as they occur on the slice.
+// same order as they occur on the slice. Targets .. ?
 func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []string) ([]*Tensor, error) {
 	inputNames := NewStringVector()
 	inputValues := NewTensorVector()
@@ -91,7 +92,7 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 		})
 	}
 
-	return result, s.statusToError(status)
+	return result, statusToError(status)
 }
 
 // ExtendGraph loads the Graph definition into the Session.
@@ -104,9 +105,13 @@ func (s *Session) ExtendGraph(graph *Graph) error {
 	}
 
 	TF_ExtendGraph(s.session, buf, status)
+	if statusToError(status); err != nil {
+		return err
+	}
+
 	s.graph = graph
 
-	return s.statusToError(status)
+	return nil
 }
 
 // ExtendAndInitializeAllVariables adds the "init" op to the Graph in order to
@@ -133,14 +138,11 @@ func (s *Session) FreeAllocMem() {
 }
 
 // statusToError converts a TF_Status returned by a C execution into a Go Error.
-func (s *Session) statusToError(status TF_Status) error {
-	code := TF_GetCode(status)
-	message := TF_Message(status)
-
-	if code != 0 {
-		return &ErrStatusTf{
+func statusToError(status TF_Status) error {
+	if code := TF_GetCode(status); code != 0 {
+		return &ErrStatusCore{
 			Code:    code,
-			Message: message,
+			Message: TF_Message(status),
 		}
 	}
 

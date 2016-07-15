@@ -1,7 +1,7 @@
 package tensorflow_test
 
 import (
-	"os"
+	"io/ioutil"
 	"testing"
 
 	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
@@ -133,11 +133,11 @@ func loadAndExtendGraphFromFile(t *testing.T, filePath string) (s *tf.Session) {
 		t.Fatal("Error creating Session:", err)
 	}
 
-	reader, err := os.Open(filePath)
+	b, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		t.Fatal("Error reading Graph definition file:", err)
 	}
-	graph, err := tf.NewGraphFromReader(reader, true)
+	graph, err := tf.NewGraphFromBuffer(b)
 	if err != nil {
 		t.Fatal(err)
 	}
