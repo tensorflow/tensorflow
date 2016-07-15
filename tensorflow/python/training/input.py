@@ -562,7 +562,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
       The given dimensions are padded upon dequeue so that tensors within a
       batch have the same shapes.
     allow_smaller_final_batch: (Optional) Boolean. If `True`, allow the final
-    batch to be smaller if there are insufficient items left in the queue.
+      batch to be smaller if there are insufficient items left in the queue.
     shared_name: (Optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -674,7 +674,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
       The given dimensions are padded upon dequeue so that tensors within a
       batch have the same shapes.
     allow_smaller_final_batch: (Optional) Boolean. If `True`, allow the final
-    batch to be smaller if there are insufficient items left in the queue.
+      batch to be smaller if there are insufficient items left in the queue.
     shared_name: (Optional) If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -713,7 +713,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
 
 def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                   num_threads=1, seed=None, enqueue_many=False, shapes=None,
-                  shared_name=None, name=None):
+                  allow_smaller_final_batch=False, shared_name=None, name=None):
   """Creates batches by randomly shuffling tensors.
 
   This function adds the following to the current `Graph`:
@@ -759,6 +759,13 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   fully-defined shapes. `ValueError` will be raised if neither of
   these conditions holds.
 
+  If `allow_smaller_final_batch` is `True`, a smaller batch value than
+  `batch_size` is returned when the queue is closed and there are not enough
+  elements to fill the batch, otherwise the pending elements are discarded.
+  In addition, all output tensors' static shapes, as accessed via the
+  `get_shape` method will have a first `Dimension` value of `None`, and
+  operations that depend on fixed batch_size would fail.
+
   Args:
     tensors: The list or dictionary of tensors to enqueue.
     batch_size: The new batch size pulled from the queue.
@@ -770,6 +777,8 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
     enqueue_many: Whether each tensor in `tensor_list` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
       inferred shapes for `tensor_list`.
+    allow_smaller_final_batch: (Optional) Boolean. If `True`, allow the final
+      batch to be smaller if there are insufficient items left in the queue.
     shared_name: (Optional) If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -802,14 +811,18 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
         (name, min_after_dequeue, capacity - min_after_dequeue))
     logging_ops.scalar_summary(summary_name, full)
 
-    dequeued = queue.dequeue_many(batch_size, name=name)
+    if allow_smaller_final_batch:
+      dequeued = queue.dequeue_up_to(batch_size, name=name)
+    else:
+      dequeued = queue.dequeue_many(batch_size, name=name)
     dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
     return _as_original_type(tensors, dequeued)
 
 
 def shuffle_batch_join(tensors_list, batch_size, capacity,
                        min_after_dequeue, seed=None, enqueue_many=False,
-                       shapes=None, shared_name=None, name=None):
+                       shapes=None, allow_smaller_final_batch=False,
+                       shared_name=None, name=None):
   """Create batches by randomly shuffling tensors.
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
@@ -848,6 +861,13 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
   this exception, however, if this operation is used in your main thread
   you are responsible for catching this yourself.
 
+  If `allow_smaller_final_batch` is `True`, a smaller batch value than
+  `batch_size` is returned when the queue is closed and there are not enough
+  elements to fill the batch, otherwise the pending elements are discarded.
+  In addition, all output tensors' static shapes, as accessed via the
+  `get_shape` method will have a first `Dimension` value of `None`, and
+  operations that depend on fixed batch_size would fail.
+
   Args:
     tensors_list: A list of tuples or dictionaries of tensors to enqueue.
     batch_size: An integer. The new batch size pulled from the queue.
@@ -859,6 +879,8 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
       example.
     shapes: (Optional) The shapes for each example.  Defaults to the
       inferred shapes for `tensors_list[i]`.
+    allow_smaller_final_batch: (Optional) Boolean. If `True`, allow the final
+      batch to be smaller if there are insufficient items left in the queue.
     shared_name: (optional). If set, this queue will be shared under the given
       name across multiple sessions.
     name: (Optional) A name for the operations.
@@ -893,7 +915,10 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
         (name, min_after_dequeue, capacity - min_after_dequeue))
     logging_ops.scalar_summary(summary_name, full)
 
-    dequeued = queue.dequeue_many(batch_size, name=name)
+    if allow_smaller_final_batch:
+      dequeued = queue.dequeue_up_to(batch_size, name=name)
+    else:
+      dequeued = queue.dequeue_many(batch_size, name=name)
     dequeued = _deserialize_sparse_tensors(dequeued, sparse_info)
     # tensors_list was validated to not be empty.
     return _as_original_type(tensors_list[0], dequeued)

@@ -19,17 +19,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.layers import convolution2d
 
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.ops import init_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
+@deprecated(date="2016-08-15",
+            instructions="Please use tf.contrib.layers.conv2d instead.")
 def conv2d(tensor_in,
            n_filters,
            filter_shape,
            strides=None,
-           padding='SAME',
+           padding="SAME",
            bias=True,
            activation=None,
            batch_norm=False):
@@ -59,20 +62,23 @@ def conv2d(tensor_in,
   Returns:
     A Tensor with resulting convolution.
   """
-  logging.warn("learn.ops.conv2d is deprecated. Please use contrib.layers.convolution2d.")
+  if batch_norm:
+    logging.warn("batch_norm will not work with learn.ops.conv2d, "
+                 "use tf.contrib.layers.conv2d.")
+
   if bias:
     bias_init = init_ops.zeros_initializer
   if strides is None:
     strides = [1, 1]
   else:
-    strides = strides[1:3] # only take height and width
-    logging.warn("strides may not be passed correctly. Please instead \
-      use and see documentation for contrib.layers.convolution2d.")
+    strides = strides[1:3]  # only take height and width
+    logging.warn("strides may not be passed correctly. Please instead "
+                 "use and see documentation for contrib.layers.convolution2d.")
   return convolution2d(
-    tensor_in,
-    num_outputs=n_filters,
-    kernel_size=list(filter_shape),
-    stride=strides,
-    padding=padding,
-    biases_initializer=bias_init,
-    activation_fn=activation)
+      tensor_in,
+      num_outputs=n_filters,
+      kernel_size=list(filter_shape),
+      stride=strides,
+      padding=padding,
+      biases_initializer=bias_init,
+      activation_fn=activation)

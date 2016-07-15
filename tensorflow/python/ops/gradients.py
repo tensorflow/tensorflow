@@ -142,7 +142,7 @@ def _GatherInputs(to_ops, reached_ops):
   return inputs
 
 
-def _PendingCount(graph, to_ops, from_ops):
+def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
   """Initialize the pending count for ops between two lists of Operations.
 
   'pending_count[op._id]' indicates the number of backprop inputs
@@ -152,6 +152,7 @@ def _PendingCount(graph, to_ops, from_ops):
     graph: a Graph.
     to_ops: list of Operations.
     from_ops: list of Operations.
+    colocate_gradients_with_ops: Python bool.  See docstring of gradients().
 
   Returns:
     A tuple containing: (1) a list of integers indexed by operation id,
@@ -182,8 +183,8 @@ def _PendingCount(graph, to_ops, from_ops):
         queue.append(inp.op)
 
   # 'loop_state' is None if there are no while loops.
-  loop_state = control_flow_ops.MaybeCreateControlFlowState(between_op_list,
-                                                            between_ops)
+  loop_state = control_flow_ops.MaybeCreateControlFlowState(
+      between_op_list, between_ops, colocate_gradients_with_ops)
 
   # Initialize pending count for between ops.
   pending_count = [0] * (graph._last_id + 1)
@@ -377,7 +378,8 @@ def gradients(ys,
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     pending_count, loop_state = _PendingCount(ops.get_default_graph(),
-                                              to_ops, from_ops)
+                                              to_ops, from_ops,
+                                              colocate_gradients_with_ops)
 
     # Iterate over the collected ops.
     #

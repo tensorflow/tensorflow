@@ -581,6 +581,10 @@ class RandomShuffleQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
+    # If shared_name is provided and an op seed was not provided, we must ensure
+    # that we use the same seed for all queues with the same shared_name.
+    if shared_name is not None and seed is None:
+      seed = hash(shared_name)
     seed1, seed2 = random_seed.get_seed(seed)
     queue_ref = gen_data_flow_ops._random_shuffle_queue(
         component_types=dtypes, shapes=shapes, capacity=capacity,

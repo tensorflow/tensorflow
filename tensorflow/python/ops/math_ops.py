@@ -82,6 +82,7 @@ functions on matrices to your graph.
 @@diag_part
 @@trace
 @@transpose
+@@batch_matrix_transpose
 
 @@matmul
 @@batch_matmul

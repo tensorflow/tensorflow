@@ -33,7 +33,8 @@ sequences and large batches.
 
 *  <b>`cond`</b>: A callable that represents the termination condition of the loop.
 *  <b>`body`</b>: A callable that represents the loop body.
-*  <b>`loop_vars`</b>: A (possibly nested) tuple or list of variable input tensors.
+*  <b>`loop_vars`</b>: A (possibly nested) tuple or list of numpy array, `Tensor`,
+    and `TensorArray` objects.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
 *  <b>`back_prop`</b>: Whether backprop is enabled for this while loop.
 *  <b>`swap_memory`</b>: Whether GPU-CPU memory swap is enabled for this loop.

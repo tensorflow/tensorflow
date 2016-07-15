@@ -31,8 +31,8 @@ from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
@@ -44,7 +44,11 @@ __all__ = ['avg_pool2d',
            'batch_norm',
            'bias_add',
            'conv2d',
+           'conv2d_in_plane',
+           'conv2d_transpose',
            'convolution2d',
+           'convolution2d_in_plane',
+           'convolution2d_transpose',
            'dropout',
            'flatten',
            'fully_connected',
@@ -54,7 +58,11 @@ __all__ = ['avg_pool2d',
            'relu',
            'relu6',
            'repeat',
+           'separable_conv2d',
+           'separable_convolution2d',
+           'softmax',
            'stack',
+           'unit_norm',
            'legacy_fully_connected',
            'legacy_linear',
            'legacy_relu']
@@ -206,29 +214,48 @@ def batch_norm(inputs,
         initializer=init_ops.ones_initializer,
         trainable=False,
         collections=moving_variance_collections)
-    if is_training:
-      # Calculate the moments based on the individual batch.
+
+    is_training_value = utils.constant_value(is_training)
+    # Calculate the moments based on the individual batch.
+    need_moments = is_training_value is None or is_training_value
+    if need_moments:
       mean, variance = nn.moments(inputs, axis, shift=moving_mean)
-      # Update the moving_mean and moving_variance moments.
-      update_moving_mean = moving_averages.assign_moving_average(
-          moving_mean, mean, decay)
-      update_moving_variance = moving_averages.assign_moving_average(
-          moving_variance, variance, decay)
+      moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
-        # Make sure the updates are computed here.
-        with ops.control_dependencies([update_moving_mean,
-                                       update_moving_variance]):
-          outputs = nn.batch_normalization(
-              inputs, mean, variance, beta, gamma, epsilon)
+        def _force_updates():
+          """Internal function forces updates moving_vars if is_training."""
+          update_moving_mean = moving_averages.assign_moving_average(
+              moving_mean, mean, decay)
+          update_moving_variance = moving_averages.assign_moving_average(
+              moving_variance, variance, decay)
+          with ops.control_dependencies([update_moving_mean,
+                                         update_moving_variance]):
+            return array_ops.identity(mean), array_ops.identity(variance)
+        mean, variance = utils.smart_cond(is_training,
+                                          _force_updates,
+                                          moving_vars_fn)
       else:
-        # Collect the updates to be computed later.
-        ops.add_to_collections(updates_collections, update_moving_mean)
-        ops.add_to_collections(updates_collections, update_moving_variance)
-        outputs = nn.batch_normalization(
-            inputs, mean, variance, beta, gamma, epsilon)
+        def _delay_updates():
+          """Internal function that delay updates moving_vars if is_training."""
+          update_moving_mean = moving_averages.assign_moving_average(
+              moving_mean, mean, decay)
+          update_moving_variance = moving_averages.assign_moving_average(
+              moving_variance, variance, decay)
+          return update_moving_mean, update_moving_variance
+
+        update_mean, update_variance = utils.smart_cond(is_training,
+                                                        _delay_updates,
+                                                        moving_vars_fn)
+        ops.add_to_collections(updates_collections, update_mean)
+        ops.add_to_collections(updates_collections, update_variance)
+        # Use computed moments during training and moving_vars otherwise.
+        vars_fn = lambda: (mean, variance)
+        mean, variance = utils.smart_cond(is_training, vars_fn, moving_vars_fn)
     else:
-      outputs = nn.batch_normalization(
-          inputs, moving_mean, moving_variance, beta, gamma, epsilon)
+      mean, variance = moving_mean, moving_variance
+    # Compute batch_normalization.
+    outputs = nn.batch_normalization(
+        inputs, mean, variance, beta, gamma, epsilon)
     outputs.set_shape(inputs_shape)
     if activation_fn:
       outputs = activation_fn(outputs)
@@ -401,6 +428,233 @@ def convolution2d(inputs,
 
 
 @add_arg_scope
+def convolution2d_in_plane(
+    inputs,
+    kernel_size,
+    stride=1,
+    padding='SAME',
+    activation_fn=nn.relu,
+    normalizer_fn=None,
+    normalizer_params=None,
+    weights_initializer=initializers.xavier_initializer(),
+    weights_regularizer=None,
+    biases_initializer=init_ops.zeros_initializer,
+    biases_regularizer=None,
+    reuse=None,
+    variables_collections=None,
+    outputs_collections=None,
+    trainable=True,
+    scope=None):
+  """Performs the same in-plane convolution to each channel independently.
+
+  This is useful for performing various simple channel-independent convolution
+  operations such as image gradients:
+
+    image = tf.constant(..., shape=(16, 240, 320, 3))
+    vert_gradients = layers.conv2d_in_plane(image,
+                                            kernel=[1, -1],
+                                            kernel_size=[2, 1])
+    horz_gradients = layers.conv2d_in_plane(image,
+                                            kernel=[1, -1],
+                                            kernel_size=[1, 2])
+
+  Args:
+    inputs: a 4-D tensor with dimensions [batch_size, height, width, channels].
+    kernel_size: a list of length 2 holding the [kernel_height, kernel_width] of
+      of the pooling. Can be an int if both values are the same.
+    stride: a list of length 2 `[stride_height, stride_width]`.
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: the padding type to use, either 'SAME' or 'VALID'.
+    activation_fn: activation function.
+    normalizer_fn: normalization function to use instead of `biases`. If
+      `normalize_fn` is provided then `biases_initializer` and
+      `biases_regularizer` are ignored and `biases` are not created nor added.
+    normalizer_params: normalization function parameters.
+    weights_initializer: An initializer for the weights.
+    weights_regularizer: Optional regularizer for the weights.
+    biases_initializer: An initializer for the biases. If None skip biases.
+    biases_regularizer: Optional regularizer for the biases.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional list of collections for all the variables or
+      a dictionay containing a different list of collection per variable.
+    outputs_collections: collection to add the outputs.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    scope: Optional scope for `variable_op_scope`.
+
+  Returns:
+    A `Tensor` representing the output of the operation.
+  """
+  with variable_scope.variable_op_scope(
+      [inputs], scope, 'ConvInPlane', reuse=reuse) as sc:
+    dtype = inputs.dtype.base_dtype
+    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
+    stride_h, stride_w = utils.two_element_tuple(stride)
+    num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+    weights_shape = [kernel_h, kernel_w, 1, 1]
+    weights_collections = utils.get_variable_collections(
+        variables_collections, 'weights')
+    weights = variables.model_variable('weights',
+                                       shape=weights_shape,
+                                       dtype=dtype,
+                                       initializer=weights_initializer,
+                                       regularizer=weights_regularizer,
+                                       collections=weights_collections,
+                                       trainable=trainable)
+    depthwise_weights = array_ops.tile(weights, [1, 1, num_filters_in, 1])
+    outputs = nn.depthwise_conv2d(inputs, depthwise_weights,
+                                  [1, stride_h, stride_w, 1], padding)
+    if normalizer_fn:
+      normalizer_params = normalizer_params or {}
+      outputs = normalizer_fn(outputs, **normalizer_params)
+    else:
+      if biases_initializer is not None:
+        biases_collections = utils.get_variable_collections(
+            variables_collections, 'biases')
+        biases = variables.model_variable('biases',
+                                          shape=[num_filters_in,],
+                                          dtype=dtype,
+                                          initializer=biases_initializer,
+                                          regularizer=biases_regularizer,
+                                          collections=biases_collections,
+                                          trainable=trainable)
+        outputs = nn.bias_add(outputs, biases)
+
+    if activation_fn:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
+def convolution2d_transpose(
+    inputs,
+    num_outputs,
+    kernel_size,
+    stride=1,
+    padding='SAME',
+    activation_fn=nn.relu,
+    normalizer_fn=None,
+    normalizer_params=None,
+    weights_initializer=initializers.xavier_initializer(),
+    weights_regularizer=None,
+    biases_initializer=init_ops.zeros_initializer,
+    biases_regularizer=None,
+    reuse=None,
+    variables_collections=None,
+    outputs_collections=None,
+    trainable=True,
+    scope=None):
+  """Adds a convolution2d_transpose with an optional batch normalization layer.
+
+  The function creates a variable called `weights`, representing the
+  kernel, that is convolved with the input. If `batch_norm_params` is `None`, a
+  second variable called 'biases' is added to the result of the operation.
+
+  Args:
+    inputs: a tensor of size [batch_size, height, width, channels].
+    num_outputs: integer, the number of output filters.
+    kernel_size: a list of length 2 holding the [kernel_height, kernel_width] of
+      of the filters. Can be an int if both values are the same.
+    stride: a list of length 2: [stride_height, stride_width].
+      Can be an int if both strides are the same.  Note that presently
+      both strides must have the same value.
+    padding: one of 'VALID' or 'SAME'.
+    activation_fn: activation function.
+    normalizer_fn: normalization function to use instead of `biases`. If
+      `normalize_fn` is provided then `biases_initializer` and
+      `biases_regularizer` are ignored and `biases` are not created nor added.
+    normalizer_params: normalization function parameters.
+    weights_initializer: An initializer for the weights.
+    weights_regularizer: Optional regularizer for the weights.
+    biases_initializer: An initializer for the biases. If None skip biases.
+    biases_regularizer: Optional regularizer for the biases.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional list of collections for all the variables or
+      a dictionay containing a different list of collection per variable.
+    outputs_collections: collection to add the outputs.
+    trainable: whether or not the variables should be trainable or not.
+    scope: Optional scope for variable_op_scope.
+
+  Returns:
+    a tensor representing the output of the operation.
+
+  Raises:
+    ValueError: if 'kernel_size' is not a list of length 2.
+  """
+  with variable_scope.variable_op_scope(
+      [inputs], scope, 'Conv2d_transpose', reuse=reuse) as sc:
+    dtype = inputs.dtype.base_dtype
+    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
+    stride_h, stride_w = utils.two_element_tuple(stride)
+    num_filters_in = utils.last_dimension(
+        inputs.get_shape(), min_rank=4)
+    weights_shape = [kernel_h, kernel_w, num_outputs, num_filters_in]
+    weights_collections = utils.get_variable_collections(
+        variables_collections, 'weights')
+    weights = variables.model_variable(
+        'weights',
+        shape=weights_shape,
+        dtype=dtype,
+        initializer=weights_initializer,
+        regularizer=weights_regularizer,
+        trainable=trainable,
+        collections=weights_collections)
+
+    inputs_shape = array_ops.shape(inputs)
+    batch_size = inputs_shape[0]
+    height, width = inputs_shape[1], inputs_shape[2]
+
+    def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
+      if isinstance(dim_size, ops.Tensor):
+        dim_size = math_ops.mul(dim_size, stride_size)
+      elif dim_size is not None:
+        dim_size *= stride_size
+
+      if padding == 'VALID' and dim_size is not None:
+        dim_size += max(kernel_size - stride_size, 0)
+      return dim_size
+
+    # Infer the dynamic output shape:
+    out_height = get_deconv_dim(height, stride_h, kernel_h, padding)
+    out_width = get_deconv_dim(width, stride_w, kernel_w, padding)
+
+    output_shape = array_ops.pack(
+        [batch_size, out_height, out_width, num_outputs])
+    outputs = nn.conv2d_transpose(inputs, weights, output_shape,
+                                  [1, stride_h, stride_w, 1],
+                                  padding=padding)
+
+    # Infer the static output shape:
+    out_shape = inputs.get_shape().as_list()
+    out_shape[-1] = num_outputs
+    out_shape[1] = get_deconv_dim(out_shape[1], stride_h, kernel_h, padding)
+    out_shape[2] = get_deconv_dim(out_shape[2], stride_w, kernel_w, padding)
+    outputs.set_shape(out_shape)
+
+    if normalizer_fn:
+      normalizer_params = normalizer_params or {}
+      outputs = normalizer_fn(outputs, **normalizer_params)
+    else:
+      if biases_initializer is not None:
+        biases_collections = utils.get_variable_collections(
+            variables_collections, 'biases')
+        biases = variables.model_variable('biases',
+                                          shape=[num_outputs,],
+                                          dtype=dtype,
+                                          initializer=biases_initializer,
+                                          regularizer=biases_regularizer,
+                                          collections=biases_collections)
+        outputs = nn.bias_add(outputs, biases)
+
+    if activation_fn:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
 def dropout(inputs,
             keep_prob=0.5,
             noise_shape=None,
@@ -430,18 +684,9 @@ def dropout(inputs,
   """
   with ops.op_scope([inputs], scope, 'Dropout') as sc:
     inputs = ops.convert_to_tensor(inputs)
-    is_training_value = utils.constant_value(is_training, dtypes.bool)
-    if is_training_value is not None:
-      if is_training_value:
-        outputs = nn.dropout(inputs, keep_prob, noise_shape)
-      else:
-        outputs = inputs
-    else:
-      def _dropout():
-        return nn.dropout(inputs, keep_prob, noise_shape)
-      outputs = control_flow_ops.cond(is_training,
-                                      _dropout,
-                                      lambda: inputs)
+    dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
+    id_fn = lambda: inputs
+    outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
@@ -713,6 +958,152 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
     return outputs
 
 
+@add_arg_scope
+def separable_convolution2d(
+    inputs,
+    num_outputs,
+    kernel_size,
+    depth_multiplier,
+    stride=1,
+    padding='SAME',
+    activation_fn=nn.relu,
+    normalizer_fn=None,
+    normalizer_params=None,
+    weights_initializer=initializers.xavier_initializer(),
+    weights_regularizer=None,
+    biases_initializer=init_ops.zeros_initializer,
+    biases_regularizer=None,
+    reuse=None,
+    variables_collections=None,
+    outputs_collections=None,
+    trainable=True,
+    scope=None):
+  """Adds a depth-separable 2D convolution with optional batch_norm layer.
+
+  This op first performs a depthwise convolution that acts separately on
+  channels, creating a variable called `depthwise_weights`. If `num_outputs`
+  is not None, it adds a pointwise convolution that mixes channels, creating a
+  variable called `pointwise_weights`. Then, if `batch_norm_params` is None,
+  it adds bias to the result, creating a variable called 'biases', otherwise
+  it adds a batch normalization layer. It finally applies an activation function
+  to produce the end result.
+
+  Args:
+    inputs: a tensor of size [batch_size, height, width, channels].
+    num_outputs: the number of pointwise convolution output filters. If is
+      None, then we skip the pointwise convolution stage.
+    kernel_size: a list of length 2: [kernel_height, kernel_width] of
+      of the filters. Can be an int if both values are the same.
+    depth_multiplier: the number of depthwise convolution output channels for
+      each input channel. The total number of depthwise convolution output
+      channels will be equal to `num_filters_in * depth_multiplier`.
+    stride: a list of length 2: [stride_height, stride_width], specifying the
+      depthwise convolution stride. Can be an int if both strides are the same.
+    padding: one of 'VALID' or 'SAME'.
+    activation_fn: activation function.
+    normalizer_fn: normalization function to use instead of `biases`. If
+      `normalize_fn` is provided then `biases_initializer` and
+      `biases_regularizer` are ignored and `biases` are not created nor added.
+    normalizer_params: normalization function parameters.
+    weights_initializer: An initializer for the weights.
+    weights_regularizer: Optional regularizer for the weights.
+    biases_initializer: An initializer for the biases. If None skip biases.
+    biases_regularizer: Optional regularizer for the biases.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional list of collections for all the variables or
+      a dictionay containing a different list of collection per variable.
+    outputs_collections: collection to add the outputs.
+    trainable: whether or not the variables should be trainable or not.
+    scope: Optional scope for variable_op_scope.
+
+  Returns:
+    A `Tensor` representing the output of the operation.
+  """
+  with variable_scope.variable_op_scope(
+      [inputs], scope, 'SeparableConv2d', reuse=reuse) as sc:
+    dtype = inputs.dtype.base_dtype
+    kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
+    stride_h, stride_w = utils.two_element_tuple(stride)
+    num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+    weights_collections = utils.get_variable_collections(
+        variables_collections, 'weights')
+
+    depthwise_shape = [kernel_h, kernel_w,
+                       num_filters_in, depth_multiplier]
+    depthwise_weights = variables.model_variable(
+        'depthwise_weights',
+        shape=depthwise_shape,
+        initializer=weights_initializer,
+        regularizer=weights_regularizer,
+        trainable=trainable,
+        collections=weights_collections)
+    strides = [1, stride_h, stride_w, 1]
+    if num_outputs is not None:
+      # Full separable convolution: Depthwise followed by pointwise convolution.
+      pointwise_shape = [1, 1, depth_multiplier * num_filters_in,
+                         num_outputs]
+      pointwise_weights = variables.model_variable(
+          'pointwise_weights',
+          shape=pointwise_shape,
+          initializer=weights_initializer,
+          regularizer=weights_regularizer,
+          trainable=trainable,
+          collections=weights_collections)
+      outputs = nn.separable_conv2d(inputs,
+                                    depthwise_weights,
+                                    pointwise_weights,
+                                    strides,
+                                    padding)
+    else:
+      # Depthwise convolution only.
+      outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding)
+      num_outputs = depth_multiplier * num_filters_in
+
+    if normalizer_fn:
+      normalizer_params = normalizer_params or {}
+      outputs = normalizer_fn(outputs, **normalizer_params)
+    else:
+      if biases_initializer is not None:
+        biases_collections = utils.get_variable_collections(
+            variables_collections, 'biases')
+        biases = variables.model_variable('biases',
+                                          shape=[num_outputs,],
+                                          dtype=dtype,
+                                          initializer=biases_initializer,
+                                          regularizer=biases_regularizer,
+                                          collections=biases_collections)
+        outputs = nn.bias_add(outputs, biases)
+
+    if activation_fn:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
+def softmax(logits, scope=None):
+  """Performs softmax on Nth dimension of N-dimensional logit tensor.
+
+  For two-dimensional logits this reduces to tf.nn.softmax. The N-th dimension
+  needs to have a specified number of elements (number of classes).
+
+  Args:
+    logits: N-dimensional `Tensor` with logits, where N > 1.
+    scope: Optional scope for variable_op_scope.
+
+  Returns:
+    a `Tensor` with same shape and type as logits.
+  """
+  # TODO(jrru): Add axis argument which defaults to last dimension.
+  with variable_scope.variable_op_scope([logits], scope, 'softmax'):
+    num_logits = utils.last_dimension(logits.get_shape(), min_rank=2)
+    logits_2d = array_ops.reshape(logits, [-1, num_logits])
+    predictions = nn.softmax(logits_2d)
+    predictions = array_ops.reshape(predictions, array_ops.shape(logits))
+    predictions.set_shape(logits.get_shape())
+    return predictions
+
+
 def stack(inputs, layer, stack_args, **kwargs):
   """Builds a stack of layers by applying layer repeatedly using stack_args.
 
@@ -766,6 +1157,44 @@ def stack(inputs, layer, stack_args, **kwargs):
         layer_args = [layer_args]
       outputs = layer(outputs, *layer_args, **kwargs)
     return outputs
+
+
+@add_arg_scope
+def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
+  """Normalizes the given input across the specified dimension to unit length.
+
+  Note that the rank of `input` must be known.
+
+  Args:
+    inputs: A `Tensor` of arbitrary size.
+    dim: The dimension along which the input is normalized.
+    epsilon: A small value to add to the inputs to avoid dividing by zero.
+    scope: Optional scope for variable_op_scope.
+
+  Returns:
+    The normalized `Tensor`.
+
+  Raises:
+    ValueError: If dim is smaller than the number of dimensions in 'inputs'.
+  """
+  with variable_scope.variable_op_scope([inputs], scope, 'UnitNorm'):
+    if not inputs.get_shape():
+      raise ValueError('The input rank must be known.')
+    input_rank = len(inputs.get_shape().as_list())
+    if dim < 0 or dim >= input_rank:
+      raise ValueError(
+          'dim must be positive but smaller than the input rank.')
+
+    lengths = math_ops.sqrt(epsilon + math_ops.reduce_sum(
+        math_ops.square(inputs), dim, True))
+    multiples = []
+    if dim > 0:
+      multiples.append(array_ops.ones([dim], dtypes.int32))
+    multiples.append(array_ops.slice(array_ops.shape(inputs), [dim], [1]))
+    if dim < (input_rank - 1):
+      multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
+    multiples = array_ops.concat(0, multiples)
+    return math_ops.div(inputs, array_ops.tile(lengths, multiples))
 
 
 def legacy_fully_connected(x,
@@ -906,5 +1335,8 @@ relu = functools.partial(fully_connected, activation_fn=nn.relu)
 relu6 = functools.partial(fully_connected, activation_fn=nn.relu6)
 linear = functools.partial(fully_connected, activation_fn=None)
 
-# Simple alias for convolution2d.
+# Simple alias.
 conv2d = convolution2d
+conv2d_transpose = convolution2d_transpose
+conv2d_in_plane = convolution2d_in_plane
+separable_conv2d = separable_convolution2d

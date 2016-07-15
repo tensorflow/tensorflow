@@ -24,6 +24,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 
 
@@ -191,6 +192,20 @@ class SparseXentTest(tf.test.TestCase):
     labels = [[3, 2], [0, 3]]
     self._testHighDim(True, features, labels)
     self._testHighDim(False, features, labels)
+
+  def testScalarHandling(self):
+    with self.test_session(use_gpu=False) as sess:
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   ".*labels must be 1-D.*"):
+        labels = tf.placeholder(tf.int32, shape=[None, 1])
+        logits = tf.placeholder(tf.float32, shape=[None, 3])
+        ce = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits,
+            tf.squeeze(labels))
+        labels_v2 = np.zeros((1, 1), dtype=np.int32)
+        logits_v2 = np.random.randn(1, 3)
+        sess.run([ce], feed_dict={labels: labels_v2,
+                                  logits: logits_v2})
 
 
 def _sparse_vs_dense_xent_benchmark_dense(labels, logits):

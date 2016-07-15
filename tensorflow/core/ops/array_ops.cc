@@ -56,7 +56,7 @@ REGISTER_OP("Pack")
                                         " with other shapes.");
       }
       if (!c->RankKnown(cur)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       // Determine the axis that will be added, converting from negative
@@ -70,10 +70,10 @@ REGISTER_OP("Pack")
       std::vector<const Dimension*> dims;
       int index = 0;
       while (index < axis) dims.push_back(c->Dim(cur, index++));
-      dims.push_back(c->CreateDim(c->num_inputs()));
+      dims.push_back(c->MakeDim(c->num_inputs()));
       while (index < rank) dims.push_back(c->Dim(cur, index++));
 
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -127,10 +127,10 @@ REGISTER_OP("Unpack")
         for (int i = 0; i < rank; ++i) {
           if (i != axis) dims.push_back(c->Dim(s, i));
         }
-        out = c->CreateShape(dims);
+        out = c->MakeShape(dims);
       } else {
         // All outputs are the same shape, but it's not known.
-        out = c->CreateUnknownShape();
+        out = c->UnknownShape();
       }
       for (int i = 0; i < c->num_outputs(); ++i) c->set_output(i, out);
       return Status::OK();
@@ -235,9 +235,9 @@ REGISTER_OP("Const")
       TensorShape shape(proto->tensor_shape());
       std::vector<const Dimension*> dims;
       for (int i = 0; i < shape.dims(); ++i) {
-        dims.push_back(c->CreateDim(shape.dim_size(i)));
+        dims.push_back(c->MakeDim(shape.dim_size(i)));
       }
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -254,6 +254,17 @@ REGISTER_OP("ImmutableConst")
     .Attr("shape: shape")
     .Attr("memory_region_name: string")
     .Output("tensor: dtype")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      TensorShape shape_from_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_from_attr));
+      TensorShapeProto shape_proto;
+      shape_from_attr.AsProto(&shape_proto);
+      const Shape* output_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+      c->set_output(0, output_shape);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Returns immutable tensor from memory region.
 
@@ -324,7 +335,7 @@ REGISTER_OP("DiagPart")
     .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
       const Shape* in = c->input(0);
       if (!c->RankKnown(in)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       // Rank must be even, and result will have rank <rank/2>.
@@ -341,7 +352,7 @@ REGISTER_OP("DiagPart")
         TF_RETURN_IF_ERROR(
             c->Merge(c->Dim(in, i), c->Dim(in, i + mid), &dims[i]));
       }
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -380,13 +391,13 @@ REGISTER_OP("BatchMatrixDiag")
       const Shape* in;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &in));
       if (!c->RankKnown(in)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       const int32 rank = c->Rank(in);
       const Shape* out;
       TF_RETURN_IF_ERROR(
-          c->Concatenate(in, c->CreateShape({c->Dim(in, rank - 1)}), &out));
+          c->Concatenate(in, c->MakeShape({c->Dim(in, rank - 1)}), &out));
       c->set_output(0, out);
       return Status::OK();
     }))
@@ -461,7 +472,7 @@ REGISTER_OP("BatchMatrixDiagPart")
       const Shape* in;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &in));
       if (!c->RankKnown(in)) {
-        c->set_output(0, c->CreateUnknownShape());
+        c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       const int32 rank = c->Rank(in);
@@ -473,7 +484,7 @@ REGISTER_OP("BatchMatrixDiagPart")
       // Output shape has all dims but last of input.
       std::vector<const Dimension*> dims;
       for (int i = 0; i < rank - 1; ++i) dims.push_back(c->Dim(in, i));
-      c->set_output(0, c->CreateShape(dims));
+      c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     }))
     .Doc(R"doc(
@@ -723,7 +734,7 @@ REGISTER_OP("Fill")
     .Attr("T: type")
     .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
       const Shape* out;
-      TF_RETURN_IF_ERROR(c->CreateShapeFromShapeTensor(0, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
       return Status::OK();
     }))
@@ -1057,11 +1068,11 @@ Status ShapeShapeFn(InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     const Dimension* dim;
     if (c->RankKnown(c->input(i))) {
-      dim = c->CreateDim(c->Rank(c->input(0)));
+      dim = c->MakeDim(c->Rank(c->input(0)));
     } else {
-      dim = c->CreateUnknownDim();
+      dim = c->UnknownDim();
     }
-    c->set_output(i, c->CreateShape({dim}));
+    c->set_output(i, c->MakeShape({dim}));
   }
   return Status::OK();
 }
@@ -2289,6 +2300,73 @@ num_bits: The bitwidth of the quantization.
 range_given: If the range is given or should be computed from the tensor.
 input_min: If range is given, this is the min of the range.
 input_max: If range is given, this is the max of the range.
+)doc");
+
+// EXPERIMENTAL: tfdb debugger-inserted ops.
+REGISTER_OP("Copy")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Doc(R"doc(
+Copy Op.
+
+Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the
+device on which the tensor is allocated.
+
+Unlike the CopyHost Op, this op does not have HostMemory constraint on its
+input or output.
+
+input: Input tensor.
+output: Output tensor, deep-copied from input.
+tensor_name: The name of the input tensor.
+)doc");
+
+REGISTER_OP("CopyHost")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Doc(R"doc(
+Copy Host Op.
+
+Performs CPU-to-CPU deep-copying of tensor.
+
+Unlike the Copy Op, this op has HostMemory constraint on its input or output.
+
+input: Input tensor.
+output: Output tensor, deep-copied from input.
+tensor_name: The name of the input tensor.
+)doc");
+
+REGISTER_OP("DebugIdentity")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Doc(R"doc(
+Debug Identity Op.
+
+Provides an identity mapping of the non-Ref type input tensor for debugging.
+
+input: Input tensor, non-Reference type.
+output: Output tensor that equals the input tensor.
+tensor_name: Name of the input tensor.
+)doc");
+
+REGISTER_OP("DebugNanCount")
+    .Input("input: T")
+    .Output("output: int64")  // The debug signal (nan count) is int64
+    .Attr("T: type")
+    .Attr("tensor_name: string = ''")
+    .Doc(R"doc(
+Debug NaN Value Counter Op
+
+Counts number of NaNs in the input tensor, for debugging.
+
+input: Input tensor, non-Reference type.
+output: An integer output tensor that is the number of NaNs in the input.
+tensor_name: Name of the input tensor.
 )doc");
 
 }  // namespace tensorflow

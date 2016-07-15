@@ -330,6 +330,16 @@ bool GetNodeDef(TF_Node* node, NodeDef* node_def) {
   return ret;
 }
 
+bool GetAttrValue(TF_Node* node, const char* attr_name,
+                  tensorflow::AttrValue* attr_value, TF_Status* s) {
+  TF_Buffer* buffer = TF_NewBuffer();
+  TF_NodeGetAttrValueProto(node, attr_name, buffer, s);
+  bool ret = TF_GetCode(s) == TF_OK;
+  if (ret) ret = attr_value->ParseFromArray(buffer->data, buffer->length);
+  TF_DeleteBuffer(buffer);
+  return ret;
+}
+
 TEST(CAPI, Graph) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -351,8 +361,16 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(0, TF_NodeNumControlInputs(feed));
   EXPECT_EQ(0, TF_NodeNumControlOutputs(feed));
 
+  tensorflow::AttrValue attr_value;
+  ASSERT_TRUE(GetAttrValue(feed, "dtype", &attr_value, s)) << TF_Message(s);
+  EXPECT_EQ(attr_value.type(), tensorflow::DT_INT32);
+
+  // Test not found errors in TF_Node*() query functions.
   EXPECT_EQ(-1, TF_NodeOutputListLength(feed, "bogus", s));
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
+
+  ASSERT_FALSE(GetAttrValue(feed, "missing", &attr_value, s));
+  EXPECT_EQ(string("Node has no attr named 'missing'."), string(TF_Message(s)));
 
   // Make a constant node with the scalar "3".
   TF_Node* three = ScalarConst(3, graph, s);
@@ -384,6 +402,11 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(0, TF_NodeOutputNumConsumers(TF_Port{add, 0}));
   EXPECT_EQ(0, TF_NodeNumControlInputs(add));
   EXPECT_EQ(0, TF_NodeNumControlOutputs(add));
+
+  ASSERT_TRUE(GetAttrValue(add, "T", &attr_value, s)) << TF_Message(s);
+  EXPECT_EQ(attr_value.type(), tensorflow::DT_INT32);
+  ASSERT_TRUE(GetAttrValue(add, "N", &attr_value, s)) << TF_Message(s);
+  EXPECT_EQ(attr_value.i(), 2);
 
   // Placeholder node now has a consumer.
   ASSERT_EQ(1, TF_NodeOutputNumConsumers(TF_Port{feed, 0}));

@@ -5,10 +5,14 @@ Creates a recurrent neural network specified by RNNCell `cell`.
 This function is functionally identical to the function `rnn` above, but
 performs fully dynamic unrolling of `inputs`.
 
-Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`.  Instead,
-it is a single `Tensor` where the maximum time is either the first or second
-dimension (see the parameter `time_major`).  The corresponding output is
-a single `Tensor` having the same number of time steps and batch size.
+Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`, one for
+each frame.  Instead, `inputs` may be a single `Tensor` where
+the maximum time is either the first or second dimension (see the parameter
+`time_major`).  Alternatively, it may be a (possibly nested) tuple of
+Tensors, each of them having matching batch and time dimensions.
+The corresponding output is either a single `Tensor` having the same number
+of time steps and batch size, or a (possibly nested) tuple of such tensors,
+matching the nested structure of `cell.output_size`.
 
 The parameter `sequence_length` is required and dynamic calculation is
 automatically performed.
@@ -18,16 +22,29 @@ automatically performed.
 
 *  <b>`cell`</b>: An instance of RNNCell.
 *  <b>`inputs`</b>: The RNN inputs.
-    If time_major == False (default), this must be a tensor of shape:
-      `[batch_size, max_time, input_size]`, or a nested tuple of such
+
+    If `time_major == False` (default), this must be a `Tensor` of shape:
+      `[batch_size, max_time, ...]`, or a nested tuple of such
       elements.
-    If time_major == True, this must be a tensor of shape:
-      `[max_time, batch_size, input_size]`, or a nested tuple of such
+
+    If `time_major == True`, this must be a `Tensor` of shape:
+      `[max_time, batch_size, ...]`, or a nested tuple of such
       elements.
+
+    This may also be a (possibly nested) tuple of Tensors satisfying
+    this property.  The first two dimensions must match across all the inputs,
+    but otherwise the ranks and other shape components may differ.
+    In this case, input to `cell` at each time-step will replicate the
+    structure of these tuples, except for the time dimension (from which the
+    time is taken).
+
+    The input to `cell` at each time step will be a `Tensor` or (possibly
+    nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
+
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    a tensor of appropriate type and shape `[batch_size x cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size x cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
@@ -55,14 +72,26 @@ automatically performed.
 
   A pair (outputs, state) where:
 
+
 *  <b>`outputs`</b>: The RNN output `Tensor`.
+
       If time_major == False (default), this will be a `Tensor` shaped:
         `[batch_size, max_time, cell.output_size]`.
+
       If time_major == True, this will be a `Tensor` shaped:
         `[max_time, batch_size, cell.output_size]`.
-*  <b>`state`</b>: The final state.  If `cell.state_size` is a `Tensor`, this
-      will be shaped `[batch_size, cell.state_size]`.  If it is a tuple,
-      this be a tuple with shapes `[batch_size, s] for s in cell.state_size`.
+
+      Note, if `cell.output_size` is a (possibly nested) tuple of integers
+      or `TensorShape` objects, then `outputs` will be a tuple having the
+      same structure as `cell.output_size`, containing Tensors having shapes
+      corresponding to the shape data in `cell.output_size`.
+
+
+*  <b>`state`</b>: The final state.  If `cell.state_size` is an int, this
+      will be shaped `[batch_size, cell.state_size]`.  If it is a
+      `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
+      If it is a (possibly nested) tuple of ints or `TensorShape`, this will
+      be a tuple having the corresponding shapes.
 
 ##### Raises:
 

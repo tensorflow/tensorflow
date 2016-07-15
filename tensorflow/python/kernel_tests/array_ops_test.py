@@ -31,6 +31,33 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 
 
+class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
+
+  def testNonBatchMatrix(self):
+    matrix = [[1, 2, 3], [4, 5, 6]]
+    expected_transposed = [[1, 4], [2, 5], [3, 6]]
+    with self.test_session():
+      transposed = tf.batch_matrix_transpose(matrix)
+      self.assertAllEqual(expected_transposed, transposed.eval())
+
+  def testBatchMatrix(self):
+    matrix_0 = [[1, 2, 3], [4, 5, 6]]
+    matrix_0_t = [[1, 4], [2, 5], [3, 6]]
+    matrix_1 = [[11, 22, 33], [44, 55, 66]]
+    matrix_1_t = [[11, 44], [22, 55], [33, 66]]
+    batch_matrix = [matrix_0, matrix_1]
+    expected_transposed = [matrix_0_t, matrix_1_t]
+    with self.test_session():
+      transposed = tf.batch_matrix_transpose(batch_matrix)
+      self.assertAllEqual(expected_transposed, transposed.eval())
+
+  def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
+    vector = [1, 2, 3]
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "should be a "):
+        tf.batch_matrix_transpose(vector)
+
+
 class BooleanMaskTest(test_util.TensorFlowTestCase):
 
   def CheckVersusNumpy(self, ndims_mask, arr_shape, make_mask=None):
@@ -216,12 +243,12 @@ class MeshgridTest(test_util.TensorFlowTestCase):
 class StridedSliceChecker(object):
   """Check a given tensor against the numpy result."""
 
-  REF_TENSOR = np.arange(1, 19, dtype=np.int32).reshape(3, 2, 3)
-  REF_TENSOR_ALIGNED = np.arange(1, 97, dtype=np.int32).reshape(3, 4, 8)
+  REF_TENSOR = np.arange(1, 19, dtype=np.float32).reshape(3, 2, 3)
+  REF_TENSOR_ALIGNED = np.arange(1, 97, dtype=np.float32).reshape(3, 4, 8)
 
-  def __init__(self, test, x):
+  def __init__(self, test, x, tensor_type=tf.int32):
     self.test = test
-    self.x = tf.constant(x)
+    self.x = tf.cast(tf.constant(x, dtype=tf.float32), dtype=tensor_type)
     self.x_np = np.array(x)
 
   def __getitem__(self, spec):
@@ -238,25 +265,29 @@ class StridedSliceChecker(object):
 class StridedSliceTest(test_util.TensorFlowTestCase):
   """Test the strided slice operation with variants of slices."""
 
-  def testBasicSlice(self):
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
-        _ = checker[:, :, :]
-        # Various ways of representing identity slice
-        _ = checker[:, :, :]
-        _ = checker[::, ::, ::]
-        _ = checker[::1, ::1, ::1]
-        # Not zero slice
-        _ = checker[::1, ::5, ::2]
-        # Reverse in each dimension independently
-        _ = checker[::-1, :, :]
-        _ = checker[:, ::-1, :]
-        _ = checker[:, :, ::-1]
-        ## negative index tests i.e. n-2 in first component
-        _ = checker[-2::-1, :, ::1]
-        # negative index tests i.e. n-2 in first component, and non unit stride
-        _ = checker[-2::-1, :, ::2]
+  def test_basic_slice(self):
+    for tensor_type in [tf.int32, tf.int64, tf.int16, tf.int8, tf.float32,
+                        tf.float64]:
+      for use_gpu in [False, True]:
+        with self.test_session(use_gpu=use_gpu):
+          checker = StridedSliceChecker(self,
+                                        StridedSliceChecker.REF_TENSOR,
+                                        tensor_type=tensor_type)
+          _ = checker[:, :, :]
+          # Various ways of representing identity slice
+          _ = checker[:, :, :]
+          _ = checker[::, ::, ::]
+          _ = checker[::1, ::1, ::1]
+          # Not zero slice
+          _ = checker[::1, ::5, ::2]
+          # Reverse in each dimension independently
+          _ = checker[::-1, :, :]
+          _ = checker[:, ::-1, :]
+          _ = checker[:, :, ::-1]
+          ## negative index tests i.e. n-2 in first component
+          _ = checker[-2::-1, :, ::1]
+          # negative index tests i.e. n-2 in first component, non-unit stride
+          _ = checker[-2::-1, :, ::2]
 
   def testDegenerateSlices(self):
     for use_gpu in [False, True]:

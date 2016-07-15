@@ -20,6 +20,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
+
 distributions = tf.contrib.distributions
 
 
@@ -40,113 +42,13 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
     # in our tests.
     return tf.batch_matrix_band_part(chol, -1, 0).eval()
 
-  def _numpy_inv_quadratic_form(self, chol, x):
-    # Numpy works with batches now (calls them "stacks").
-    x_expanded = np.expand_dims(x, -1)
-    whitened = np.linalg.solve(chol, x_expanded)
-    return (whitened**2).sum(axis=-1).sum(axis=-1)
-
-  def test_inv_quadratic_form_x_rank_same_as_broadcast_rank(self):
-    with self.test_session():
-      for batch_shape in [(), (2,)]:
-        for k in [1, 3]:
-
-          x_shape = batch_shape + (k,)
-          x = self._rng.randn(*x_shape)
-
-          chol_shape = batch_shape + (k, k)
-          chol = self._random_cholesky_array(chol_shape)
-          operator = distributions.OperatorPDCholesky(chol)
-          qf = operator.inv_quadratic_form(x)
-
-          self.assertEqual(batch_shape, qf.get_shape())
-
-          numpy_qf = self._numpy_inv_quadratic_form(chol, x)
-          self.assertAllClose(numpy_qf, qf.eval())
-
-  def test_inv_quadratic_form_x_and_chol_batch_shape_dont_match(self):
-    # In this case, chol will have to be stretched to match x.
-    with self.test_session():
-      k = 3
-      x_shape = (2, k)
-      chol_shape = (1, k, k)
-      broadcast_batch_shape = (2,)
-
-      x = self._rng.randn(*x_shape)
-      chol = self._random_cholesky_array(chol_shape)
-
-      operator = distributions.OperatorPDCholesky(chol)
-      qf = operator.inv_quadratic_form(x)
-
-      self.assertEqual(broadcast_batch_shape, qf.get_shape())
-
-      numpy_qf = self._numpy_inv_quadratic_form(chol, x)
-      self.assertAllClose(numpy_qf, qf.eval())
-
-  def test_inv_quadratic_form_x_rank_less_than_broadcast_rank(self):
-    with self.test_session():
-      for batch_shape in [(2,), (2, 3)]:
-        for k in [1, 4]:
-
-          # x will not have the leading dimension.
-          x_shape = batch_shape[1:] + (k,)
-          x = self._rng.randn(*x_shape)
-
-          chol_shape = batch_shape + (k, k)
-          chol = self._random_cholesky_array(chol_shape)
-          operator = distributions.OperatorPDCholesky(chol)
-          qf = operator.inv_quadratic_form(x)
-
-          self.assertEqual(batch_shape, qf.get_shape())
-
-          x_upshaped = x + np.zeros(chol.shape[:-1])
-          numpy_qf = self._numpy_inv_quadratic_form(chol, x_upshaped)
-          numpy_qf = numpy_qf.reshape(batch_shape)
-          self.assertAllClose(numpy_qf, qf.eval())
-
-  def test_inv_quadratic_form_x_rank_greater_than_broadcast_rank(self):
-    with self.test_session():
-      for batch_shape in [(2,), (2, 3)]:
-        for k in [1, 4]:
-
-          x_shape = batch_shape + (k,)
-          x = self._rng.randn(*x_shape)
-
-          # chol will not have the leading dimension.
-          chol_shape = batch_shape[1:] + (k, k)
-          chol = self._random_cholesky_array(chol_shape)
-          operator = distributions.OperatorPDCholesky(chol)
-          qf = operator.inv_quadratic_form(x)
-          numpy_qf = self._numpy_inv_quadratic_form(chol, x)
-
-          self.assertEqual(batch_shape, qf.get_shape())
-          self.assertAllClose(numpy_qf, qf.eval())
-
-  def test_inv_quadratic_form_x_rank_two_greater_than_broadcast_rank(self):
-    with self.test_session():
-      for batch_shape in [(2, 3), (2, 3, 4), (2, 3, 4, 5)]:
-        for k in [1, 4]:
-
-          x_shape = batch_shape + (k,)
-          x = self._rng.randn(*x_shape)
-
-          # chol will not have the leading two dimensions.
-          chol_shape = batch_shape[2:] + (k, k)
-          chol = self._random_cholesky_array(chol_shape)
-          operator = distributions.OperatorPDCholesky(chol)
-          qf = operator.inv_quadratic_form(x)
-          numpy_qf = self._numpy_inv_quadratic_form(chol, x)
-
-          self.assertEqual(batch_shape, qf.get_shape())
-          self.assertAllClose(numpy_qf, qf.eval())
-
   def test_log_det(self):
     with self.test_session():
       batch_shape = ()
       for k in [1, 4]:
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
-        operator = distributions.OperatorPDCholesky(chol)
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
         log_det = operator.log_det()
         expected_log_det = np.log(np.prod(np.diag(chol))**2)
 
@@ -159,7 +61,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
       for k in [1, 4]:
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
-        operator = distributions.OperatorPDCholesky(chol)
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
         log_det = operator.log_det()
 
         self.assertEqual(batch_shape, log_det.get_shape())
@@ -178,7 +80,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
 
-        operator = distributions.OperatorPDCholesky(chol)
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
 
         sqrt_operator_times_x = operator.sqrt_matmul(x)
         expected = tf.batch_matmul(chol, x)
@@ -196,7 +98,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
 
-        operator = distributions.OperatorPDCholesky(chol)
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
 
         sqrt_operator_times_x = operator.sqrt_matmul(x)
         expected = tf.batch_matmul(chol, x)
@@ -204,6 +106,42 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         self.assertEqual(expected.get_shape(),
                          sqrt_operator_times_x.get_shape())
         self.assertAllClose(expected.eval(), sqrt_operator_times_x.eval())
+
+  def test_sqrt_matmul_batch_matrix_with_transpose(self):
+    with self.test_session():
+      batch_shape = (2, 3)
+      for k in [1, 4]:
+        x_shape = batch_shape + (5, k)
+        x = self._rng.rand(*x_shape)
+        chol_shape = batch_shape + (k, k)
+        chol = self._random_cholesky_array(chol_shape)
+
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
+
+        sqrt_operator_times_x = operator.sqrt_matmul(x, transpose_x=True)
+        # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
+        expected = tf.batch_matmul(chol, x, adj_y=True)
+
+        self.assertEqual(expected.get_shape(),
+                         sqrt_operator_times_x.get_shape())
+        self.assertAllClose(expected.eval(), sqrt_operator_times_x.eval())
+
+  def test_matmul_single_matrix(self):
+    with self.test_session():
+      batch_shape = ()
+      for k in [1, 4]:
+        x_shape = batch_shape + (k, 5)
+        x = self._rng.rand(*x_shape)
+        chol_shape = batch_shape + (k, k)
+        chol = self._random_cholesky_array(chol_shape)
+        matrix = tf.batch_matmul(chol, chol, adj_y=True)
+
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
+
+        expected = tf.batch_matmul(matrix, x)
+
+        self.assertEqual(expected.get_shape(), operator.matmul(x).get_shape())
+        self.assertAllClose(expected.eval(), operator.matmul(x).eval())
 
   def test_matmul_batch_matrix(self):
     with self.test_session():
@@ -213,14 +151,33 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
         x = self._rng.rand(*x_shape)
         chol_shape = batch_shape + (k, k)
         chol = self._random_cholesky_array(chol_shape)
+        matrix = tf.batch_matmul(chol, chol, adj_y=True)
 
-        operator = distributions.OperatorPDCholesky(chol)
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
 
-        chol_times_x = tf.batch_matmul(chol, x, adj_x=True)
-        expected = tf.batch_matmul(chol, chol_times_x)
+        expected = tf.batch_matmul(matrix, x)
 
         self.assertEqual(expected.get_shape(), operator.matmul(x).get_shape())
         self.assertAllClose(expected.eval(), operator.matmul(x).eval())
+
+  def test_matmul_batch_matrix_with_transpose(self):
+    with self.test_session():
+      batch_shape = (2, 3)
+      for k in [1, 4]:
+        x_shape = batch_shape + (5, k)
+        x = self._rng.rand(*x_shape)
+        chol_shape = batch_shape + (k, k)
+        chol = self._random_cholesky_array(chol_shape)
+        matrix = tf.batch_matmul(chol, chol, adj_y=True)
+
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
+        operator_times_x = operator.matmul(x, transpose_x=True)
+
+        # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
+        expected = tf.batch_matmul(matrix, x, adj_y=True)
+
+        self.assertEqual(expected.get_shape(), operator_times_x.get_shape())
+        self.assertAllClose(expected.eval(), operator_times_x.eval())
 
   def test_shape(self):
     # All other shapes are defined by the abstractmethod shape, so we only need
@@ -228,26 +185,30 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
     with self.test_session():
       for shape in [(3, 3), (2, 3, 3), (1, 2, 3, 3)]:
         chol = self._random_cholesky_array(shape)
-        operator = distributions.OperatorPDCholesky(chol)
+        operator = operator_pd_cholesky.OperatorPDCholesky(chol)
         self.assertAllEqual(shape, operator.shape().eval())
 
   def test_to_dense(self):
     with self.test_session():
       chol = self._random_cholesky_array((3, 3))
-      operator = distributions.OperatorPDCholesky(chol)
+      chol_2 = chol.copy()
+      chol_2[0, 2] = 1000  # Make sure upper triangular part makes no diff.
+      operator = operator_pd_cholesky.OperatorPDCholesky(chol_2)
       self.assertAllClose(chol.dot(chol.T), operator.to_dense().eval())
 
-  def test_to_dense_sqrt(self):
+  def test_sqrt_to_dense(self):
     with self.test_session():
       chol = self._random_cholesky_array((2, 3, 3))
-      operator = distributions.OperatorPDCholesky(chol)
-      self.assertAllClose(chol, operator.to_dense_sqrt().eval())
+      chol_2 = chol.copy()
+      chol_2[0, 0, 2] = 1000  # Make sure upper triangular part makes no diff.
+      operator = operator_pd_cholesky.OperatorPDCholesky(chol_2)
+      self.assertAllClose(chol, operator.sqrt_to_dense().eval())
 
   def test_non_positive_definite_matrix_raises(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():
       lower_mat = [[1.0, 0.0], [2.0, 0.0]]
-      operator = distributions.OperatorPDCholesky(lower_mat)
+      operator = operator_pd_cholesky.OperatorPDCholesky(lower_mat)
       with self.assertRaisesOpError('x > 0 did not hold'):
         operator.to_dense().eval()
 
@@ -255,7 +216,8 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():
       lower_mat = [[1.0, 0.0], [2.0, 0.0]]
-      operator = distributions.OperatorPDCholesky(lower_mat, verify_pd=False)
+      operator = operator_pd_cholesky.OperatorPDCholesky(
+          lower_mat, verify_pd=False)
       operator.to_dense().eval()  # Should not raise.
 
   def test_not_having_two_identical_last_dims_raises(self):
@@ -264,7 +226,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
     with self.test_session():
       batch_vec = [[1.0], [2.0]]  # shape 2 x 1
       with self.assertRaisesRegexp(ValueError, '.*Dimensions.*'):
-        operator = distributions.OperatorPDCholesky(batch_vec)
+        operator = operator_pd_cholesky.OperatorPDCholesky(batch_vec)
         operator.to_dense().eval()
 
 

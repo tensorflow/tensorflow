@@ -22,7 +22,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import framework
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+
 from tensorflow.contrib.metrics.python.ops import confusion_matrix_ops
 from tensorflow.contrib.metrics.python.ops import metric_ops_util
 from tensorflow.contrib.metrics.python.ops import set_ops
@@ -1217,7 +1218,7 @@ def _streaming_sparse_true_positive_at_k(predictions_idx,
     batch_total_tp = math_ops.cast(
         math_ops.reduce_sum(tp), dtype=dtypes.float64)
 
-    var = framework.local_variable(
+    var = contrib_variables.local_variable(
         array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_tp, name='update')
 
@@ -1268,7 +1269,7 @@ def _streaming_sparse_false_positive_at_k(predictions_idx,
     batch_total_fp = math_ops.cast(
         math_ops.reduce_sum(fp), dtype=dtypes.float64)
 
-    var = framework.local_variable(
+    var = contrib_variables.local_variable(
         array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_fp, name='update')
 
@@ -1319,7 +1320,7 @@ def _streaming_sparse_false_negative_at_k(predictions_idx,
     batch_total_fn = math_ops.cast(
         math_ops.reduce_sum(fn), dtype=dtypes.float64)
 
-    var = framework.local_variable(
+    var = contrib_variables.local_variable(
         array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_fn, name='update')
 
