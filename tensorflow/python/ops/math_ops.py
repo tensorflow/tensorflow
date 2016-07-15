@@ -15,22 +15,6 @@
 
 """Note: Elementwise binary operations in TensorFlow follow [numpy-style
 broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
-Let us take an example of `tf.mul()` which falls in the above mentioned
-category, to clarify broadcasting and also give example usage of
-`tf.expand_dims()` when broadcasting is desired.
-
-Ex: Let us say that we have a batch of images in the tensor `image_batch` which
-is of size `b x h x w x c`, and a mask tensor `image_mask` of size `h x w` that
-we need to apply to all the images in the batch across all the channels. We thus
-need to match the dimensions of `image_mask` with `h` and `w` of `image_batch`.
-We can do this by adding a dimension to `image_mask` at the end, and using
-implicit broadcasting of `tf.mul()`.
-
-```python
-# Add a third dimension to `image_mask` to correspond to `c` and do elementwise
-# multiplication with the batch of images.
-masked_batch = tf.mul(image_batch, tf.expand_dims(image_mask, 2))
-```
 
 ## Arithmetic Operators
 
