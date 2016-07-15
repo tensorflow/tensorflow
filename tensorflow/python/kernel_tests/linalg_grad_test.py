@@ -22,6 +22,21 @@ import numpy as np
 import tensorflow as tf
 
 
+class ShapeTest(tf.test.TestCase):
+
+  def testBatchGradientUnknownSize(self):
+    with self.test_session():
+      batch_size = tf.constant(3)
+      matrix_size = tf.constant(4)
+      batch_identity = tf.tile(
+          tf.expand_dims(
+              tf.diag(tf.ones([matrix_size])), 0), [batch_size, 1, 1])
+      determinants = tf.batch_matrix_determinant(batch_identity)
+      reduced = tf.reduce_sum(determinants)
+      sum_grad = tf.gradients(reduced, batch_identity)[0]
+      self.assertAllClose(batch_identity.eval(), sum_grad.eval())
+
+
 class MatrixUnaryFunctorGradientTest(tf.test.TestCase):
   pass  # Filled in below
 
