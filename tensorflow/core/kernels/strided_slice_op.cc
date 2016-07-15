@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
 #include "tensorflow/core/kernels/slice_op.h"
+#include "tensorflow/core/kernels/strided_slice_op_impl.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -348,11 +349,12 @@ class StridedSliceOp : public OpKernel {
         return;
       }
 
-#define HANDLE_DIM(NDIM)                                             \
-  if (processing_dims == NDIM) {                                     \
-    HandleCase<NDIM>(context, begin, end, strides, processing_shape, \
-                     is_simple_slice, result);                       \
-    return;                                                          \
+#define HANDLE_DIM(NDIM)                                                       \
+  if (processing_dims == NDIM) {                                               \
+    HandleStridedSliceCase<Device, T, NDIM>(context, begin, end, strides,      \
+                                            processing_shape, is_simple_slice, \
+                                            result);                           \
+    return;                                                                    \
   }
 
       HANDLE_DIM(1);
@@ -371,40 +373,6 @@ class StridedSliceOp : public OpKernel {
   }
 
  private:
-  template <int NDIM>
-  void HandleCase(OpKernelContext* context, const gtl::ArraySlice<int64>& begin,
-                  const gtl::ArraySlice<int64>& end,
-                  const gtl::ArraySlice<int64>& strides,
-                  const TensorShape& processing_shape, bool is_simple_slice,
-                  Tensor* result) {
-    gtl::InlinedVector<int64, 4> processing_dims = processing_shape.dim_sizes();
-    if (is_simple_slice) {
-      Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
-      Eigen::DSizes<Eigen::DenseIndex, NDIM> sizes_di;
-      for (int i = 0; i < NDIM; ++i) {
-        begin_di[i] = begin[i];
-        sizes_di[i] = end[i] - begin[i];
-      }
-      functor::Slice<Device, T, NDIM>()(
-          context->eigen_device<Device>(),
-          result->shaped<T, NDIM>(processing_dims),
-          context->input(0).tensor<T, NDIM>(), begin_di, sizes_di);
-    } else {
-      Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
-      Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
-      Eigen::DSizes<Eigen::DenseIndex, NDIM> strides_di;
-      for (int i = 0; i < NDIM; ++i) {
-        begin_di[i] = begin[i];
-        end_di[i] = end[i];
-        strides_di[i] = strides[i];
-      }
-      functor::StridedSlice<Device, T, NDIM>()(
-          context->eigen_device<Device>(),
-          result->shaped<T, NDIM>(processing_dims),
-          context->input(0).tensor<T, NDIM>(), begin_di, end_di, strides_di);
-    }
-  }
-
   int32 begin_mask, end_mask;
   int32 ellipsis_mask, new_axis_mask, shrink_axis_mask;
 };
@@ -452,11 +420,12 @@ class StridedSliceGradOp : public OpKernel {
     Tensor* result = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_shape, &result));
 
-#define HANDLE_DIM(NDIM)                                                 \
-  if (processing_dims == NDIM) {                                         \
-    HandleGradCase<NDIM>(context, begin, end, strides, processing_shape, \
-                         is_simple_slice, result);                       \
-    return;                                                              \
+#define HANDLE_DIM(NDIM)                                                      \
+  if (processing_dims == NDIM) {                                              \
+    HandleStridedSliceGradCase<Device, T, NDIM>(context, begin, end, strides, \
+                                                processing_shape,             \
+                                                is_simple_slice, result);     \
+    return;                                                                   \
   }
 
     HANDLE_DIM(1);
@@ -470,29 +439,6 @@ class StridedSliceGradOp : public OpKernel {
   }
 
  private:
-  template <int NDIM>
-  void HandleGradCase(OpKernelContext* context,
-                      const gtl::ArraySlice<int64>& begin,
-                      const gtl::ArraySlice<int64>& end,
-                      const gtl::ArraySlice<int64>& strides,
-                      const TensorShape& processing_shape, bool is_simple_slice,
-                      Tensor* result) {
-    gtl::InlinedVector<int64, 4> processing_dims = processing_shape.dim_sizes();
-
-    Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
-    Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
-    Eigen::DSizes<Eigen::DenseIndex, NDIM> strides_di;
-    for (int i = 0; i < NDIM; ++i) {
-      begin_di[i] = begin[i];
-      end_di[i] = end[i];
-      strides_di[i] = strides[i];
-    }
-    functor::StridedSliceGrad<Device, T, NDIM>()(
-        context->eigen_device<Device>(), result->tensor<T, NDIM>(),
-        context->input(4).shaped<T, NDIM>(processing_dims), begin_di, end_di,
-        strides_di);
-  }
-
   int32 begin_mask, end_mask;
   int32 ellipsis_mask, new_axis_mask, shrink_axis_mask;
 };
@@ -519,49 +465,6 @@ REGISTER_STRIDED_SLICE(bfloat16);
 #undef REGISTER_STRIDED_SLICE
 
 #if GOOGLE_CUDA
-// Forward declarations of the functor specializations for GPU.
-// NOTE: This prevents errant implicit instantiations of incorrect
-// type. See the _gpu.cu.cc
-namespace functor {
-#define DECLARE_GPU_SPEC(T, NDIM)                                  \
-  template <>                                                      \
-  void StridedSlice<GPUDevice, T, NDIM>::operator()(               \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \
-      typename TTypes<T, NDIM>::ConstTensor input,                 \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& start,         \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& stop,          \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
-  extern template struct StridedSlice<GPUDevice, T, NDIM>;         \
-  template <>                                                      \
-  void Slice<GPUDevice, T, NDIM>::operator()(                      \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \
-      typename TTypes<T, NDIM>::ConstTensor input,                 \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,       \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);        \
-  extern template struct Slice<GPUDevice, T, NDIM>;                \
-  template <>                                                      \
-  void StridedSliceGrad<GPUDevice, T, NDIM>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \
-      typename TTypes<T, NDIM>::ConstTensor input,                 \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& start,         \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& stop,          \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
-  extern template struct StridedSliceGrad<GPUDevice, T, NDIM>;
-
-#define DECLARE_FOR_N(T)  \
-  DECLARE_GPU_SPEC(T, 1); \
-  DECLARE_GPU_SPEC(T, 2); \
-  DECLARE_GPU_SPEC(T, 3); \
-  DECLARE_GPU_SPEC(T, 4); \
-  DECLARE_GPU_SPEC(T, 5); \
-  DECLARE_GPU_SPEC(T, 6);
-
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
-DECLARE_FOR_N(int32);
-
-#undef DECLARE_FOR_N
-#undef DECLARE_GPU_SPEC
-}  // namespace functor
 
 #define REGISTER_GPU(type)                                     \
   REGISTER_KERNEL_BUILDER(Name("StridedSlice")                 \
