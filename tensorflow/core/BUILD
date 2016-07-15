@@ -124,7 +124,6 @@ cc_library(
         "lib/gtl/priority_queue_util.h",
         "lib/gtl/stl_util.h",  # TODO(josh11b): make internal
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
-        "lib/hash/hash.h",  # TODO(josh11b): make internal
         "lib/histogram/histogram.h",
         "lib/io/inputbuffer.h",  # TODO(josh11b): make internal
         "lib/io/path.h",
@@ -828,6 +827,7 @@ cc_library(
         "lib/gtl/iterator_range.h",
         "lib/gtl/manual_constructor.h",
         "lib/gtl/top_n.h",
+        "lib/hash/hash.h",
         "lib/io/iterator.h",
         "lib/io/match.h",
         "lib/io/zlib_compression_options.h",

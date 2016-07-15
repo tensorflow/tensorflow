@@ -2176,6 +2176,30 @@ op {
   description: "(conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
+  name: "BatchMatrixSetDiag"
+  input_arg {
+    name: "input"
+    description: "Rank `k+1`, where `k >= 1`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "diagonal"
+    description: "Rank `k`, where `k >= 1`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Rank `k+1`, with `output.shape = input.shape`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns a batched matrix tensor with new batched diagonal values."
+  description: "Given `input` and `diagonal`, this operation returns a tensor with the\nsame shape and values as `input`, except for the diagonals of the innermost\nmatrices.  These will be overwritten by the values in `diagonal`.\nThe batched matrices must be square.\n\nThe output is computed as follows:\n\nAssume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has\n`k` dimensions `[I, J, K, ..., N]`.  Then the output is a\ntensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:\n\n  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.\n  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`."
+}
+op {
   name: "BatchMatrixSolve"
   input_arg {
     name: "matrix"
@@ -14456,11 +14480,12 @@ op {
     description: "analogous to `begin_mask`"
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0
     }
+    description: "a bitmask where bit `i` being 1 means the `i`th\nposition is actually an ellipsis. One bit at most can be 1."
   }
   attr {
     name: "new_axis_mask"
@@ -14468,6 +14493,7 @@ op {
     default_value {
       i: 0
     }
+    description: "a bitmask where bit `i` being 1 means the `i`th\nposition creates a dimension in the tensor of length 1. Thus\nthe total number of elements remain unchanged but the shape\ngets a 1 in the appropriate position."
   }
   attr {
     name: "shrink_axis_mask"
@@ -14475,6 +14501,7 @@ op {
     default_value {
       i: 0
     }
+    description: "a bitmask where bit `i` implies that the `i`th\nposition should shrink the dimensionality. begin and end\nmust imply a slice of size 1 in the dimension. For example in\npython one might do `foo[:,3,:]` which would result in\n`shrink_axis_mask` being 2."
   }
   summary: "Return a strided slice from `input`."
   description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
@@ -14534,7 +14561,7 @@ op {
     }
   }
   attr {
-    name: "ellipse_mask"
+    name: "ellipsis_mask"
     type: "int"
     default_value {
       i: 0
@@ -15772,7 +15799,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    description: "A 1-D tensor whose rank is equal to the rank of `data`\'s\nfirst dimension."
+    description: "A tensor whose shape is a prefix of `data.shape`."
     type_attr: "Tindices"
   }
   input_arg {
@@ -15781,7 +15808,7 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Has same shape as data, except for dimension 0 which\nhas size `num_segments`."
+    description: "Has same shape as data, except for the first `segment_ids.rank`\ndimensions, which are replaced with a single dimension which has size\n`num_segments`."
     type_attr: "T"
   }
   attr {
@@ -15817,7 +15844,7 @@ op {
     }
   }
   summary: "Computes the sum along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`. Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\n  range of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/UnsortedSegmentSum.png\" alt>\n</div>"
+  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such\nthat `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\nrange of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/UnsortedSegmentSum.png\" alt>\n</div>"
 }
 op {
   name: "Variable"

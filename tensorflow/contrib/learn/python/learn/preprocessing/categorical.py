@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Implements preprocesing transformers for categorical variables."""
+"""Implements preprocessing transformers for categorical variables."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +24,7 @@ import numpy as np
 
 # pylint: disable=g-bad-import-order
 from . import categorical_vocabulary
-from ..io.data_feeder import setup_processor_data_feeder
+from ..learn_io.data_feeder import setup_processor_data_feeder
 # pylint: enable=g-bad-import-order
 
 

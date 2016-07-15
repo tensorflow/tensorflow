@@ -100,13 +100,14 @@ class SimpleGraphExecutionState {
   // in *this, but currently does not transfer any other placement
   // or cost model information to the new graph.
   Status Extend(const GraphDef& extension_def,
-                SimpleGraphExecutionState** out) const;
+                std::unique_ptr<SimpleGraphExecutionState>* out) const;
 
   // Builds a SimpleClientGraph (a sub-graph of the full graph as induced by
   // the Node set specified in "options").  If successful, returns OK
   // and the caller takes the ownership of "*out". Otherwise, returns
   // an error.
-  Status BuildGraph(const BuildGraphOptions& options, SimpleClientGraph** out);
+  Status BuildGraph(const BuildGraphOptions& options,
+                    std::unique_ptr<SimpleClientGraph>* out);
 
   // Returns OK if the named node is found in the placed full graph owned
   // by this execution_state, and sets *out to the NodeDef for that node.

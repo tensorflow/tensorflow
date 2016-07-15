@@ -179,6 +179,7 @@
   * [`batch_matrix_diag`](../../api_docs/python/math_ops.md#batch_matrix_diag)
   * [`batch_matrix_diag_part`](../../api_docs/python/math_ops.md#batch_matrix_diag_part)
   * [`batch_matrix_inverse`](../../api_docs/python/math_ops.md#batch_matrix_inverse)
+  * [`batch_matrix_set_diag`](../../api_docs/python/math_ops.md#batch_matrix_set_diag)
   * [`batch_matrix_solve`](../../api_docs/python/math_ops.md#batch_matrix_solve)
   * [`batch_matrix_solve_ls`](../../api_docs/python/math_ops.md#batch_matrix_solve_ls)
   * [`batch_matrix_triangular_solve`](../../api_docs/python/math_ops.md#batch_matrix_triangular_solve)

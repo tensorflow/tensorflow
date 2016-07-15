@@ -29,7 +29,7 @@ estimator = LinearClassifier(
 # Or estimator using the SDCAOptimizer.
 estimator = LinearClassifier(
    feature_columns=[occupation, education_x_occupation],
-   optimizer=tf.contrib.learn.SDCAOptimizer(
+   optimizer=tf.contrib.linear_optimizer.SDCAOptimizer(
      example_id_column='example_id',
      symmetric_l2_regularization=2.0
    ))

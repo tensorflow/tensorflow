@@ -53,12 +53,13 @@ class KMeansTest(tf.test.TestCase):
 
     self.kmeans = KMeans(self.num_centers,
                          initial_clusters=kmeans_ops.RANDOM_INIT,
-                         batch_size=self.batch_size,
                          use_mini_batch=self.use_mini_batch,
-                         steps=30,
-                         continue_training=True,
-                         config=run_config.RunConfig(tf_random_seed=14),
+                         config=self.config(14),
                          random_seed=12)
+
+  @staticmethod
+  def config(tf_random_seed):
+    return run_config.RunConfig(tf_random_seed=tf_random_seed)
 
   @property
   def batch_size(self):
@@ -86,7 +87,7 @@ class KMeansTest(tf.test.TestCase):
 
   def test_clusters(self):
     kmeans = self.kmeans
-    kmeans.fit(x=self.points, steps=0)
+    kmeans.fit(x=self.points, steps=1, batch_size=8)
     clusters = kmeans.clusters()
     self.assertAllEqual(list(clusters.shape),
                         [self.num_centers, self.num_dims])
@@ -97,32 +98,33 @@ class KMeansTest(tf.test.TestCase):
       return
     kmeans = self.kmeans
     kmeans.fit(x=self.points,
-               steps=1)
+               steps=1, batch_size=self.batch_size)
     score1 = kmeans.score(x=self.points)
     kmeans.fit(x=self.points,
-               steps=15 * self.num_points // self.batch_size)
+               steps=15 * self.num_points // self.batch_size,
+               batch_size=self.batch_size)
     score2 = kmeans.score(x=self.points)
     self.assertTrue(score1 > score2)
     self.assertNear(self.true_score, score2, self.true_score * 0.05)
 
   def test_infer(self):
     kmeans = self.kmeans
-    kmeans.fit(x=self.points)
+    kmeans.fit(x=self.points, steps=10, batch_size=128)
     clusters = kmeans.clusters()
 
     # Make a small test set
     points, true_assignments, true_offsets = self.make_random_points(clusters,
                                                                      10)
     # Test predict
-    assignments = kmeans.predict(points)
+    assignments = kmeans.predict(points, batch_size=self.batch_size)
     self.assertAllEqual(assignments, true_assignments)
 
     # Test score
-    score = kmeans.score(points)
+    score = kmeans.score(points, batch_size=128)
     self.assertNear(score, np.sum(true_offsets), 0.01 * score)
 
     # Test transform
-    transform = kmeans.transform(points)
+    transform = kmeans.transform(points, batch_size=128)
     true_transform = np.maximum(
         0,
         np.sum(np.square(points), axis=1, keepdims=True) -
@@ -140,12 +142,9 @@ class KMeansTest(tf.test.TestCase):
                     initial_clusters=kmeans_ops.RANDOM_INIT,
                     distance_metric=kmeans_ops.COSINE_DISTANCE,
                     use_mini_batch=self.use_mini_batch,
-                    batch_size=4,
-                    steps=30,
-                    continue_training=True,
-                    config=run_config.RunConfig(tf_random_seed=2),
+                    config=self.config(2),
                     random_seed=12)
-    kmeans.fit(x=points)
+    kmeans.fit(x=points, steps=10, batch_size=4)
     centers = normalize(kmeans.clusters())
     self.assertAllClose(np.sort(centers, axis=0),
                         np.sort(true_centers, axis=0))
@@ -163,10 +162,8 @@ class KMeansTest(tf.test.TestCase):
                     initial_clusters=kmeans_ops.RANDOM_INIT,
                     distance_metric=kmeans_ops.COSINE_DISTANCE,
                     use_mini_batch=self.use_mini_batch,
-                    batch_size=8,
-                    continue_training=True,
-                    config=run_config.RunConfig(tf_random_seed=3))
-    kmeans.fit(x=points, steps=30)
+                    config=self.config(3))
+    kmeans.fit(x=points, steps=30, batch_size=8)
 
     centers = normalize(kmeans.clusters())
     self.assertAllClose(np.sort(centers, axis=0),
@@ -174,7 +171,7 @@ class KMeansTest(tf.test.TestCase):
                         atol=1e-2)
 
     true_transform = 1 - cosine_similarity(points, centers)
-    transform = kmeans.transform(points)
+    transform = kmeans.transform(points, batch_size=8)
     self.assertAllClose(transform, true_transform, atol=1e-3)
 
   def test_predict_with_cosine_distance(self):
@@ -196,20 +193,18 @@ class KMeansTest(tf.test.TestCase):
                     initial_clusters=kmeans_ops.RANDOM_INIT,
                     distance_metric=kmeans_ops.COSINE_DISTANCE,
                     use_mini_batch=self.use_mini_batch,
-                    batch_size=8,
-                    continue_training=True,
-                    config=run_config.RunConfig(tf_random_seed=3))
-    kmeans.fit(x=points, steps=30)
+                    config=self.config(3))
+    kmeans.fit(x=points, steps=30, batch_size=8)
 
     centers = normalize(kmeans.clusters())
     self.assertAllClose(np.sort(centers, axis=0),
                         np.sort(true_centers, axis=0), atol=1e-2)
 
-    assignments = kmeans.predict(points)
+    assignments = kmeans.predict(points, batch_size=8)
     self.assertAllClose(centers[assignments],
                         true_centers[true_assignments], atol=1e-2)
 
-    score = kmeans.score(points)
+    score = kmeans.score(points, batch_size=8)
     self.assertAllClose(score, true_score, atol=1e-2)
 
   def test_predict_with_cosine_distance_and_kmeans_plus_plus(self):
@@ -233,21 +228,19 @@ class KMeansTest(tf.test.TestCase):
                     initial_clusters=kmeans_ops.KMEANS_PLUS_PLUS_INIT,
                     distance_metric=kmeans_ops.COSINE_DISTANCE,
                     use_mini_batch=self.use_mini_batch,
-                    batch_size=12,
-                    continue_training=True,
-                    config=run_config.RunConfig(tf_random_seed=3))
-    kmeans.fit(x=points, steps=30)
+                    config=self.config(3))
+    kmeans.fit(x=points, steps=30, batch_size=12)
 
     centers = normalize(kmeans.clusters())
     self.assertAllClose(sorted(centers.tolist()),
                         sorted(true_centers.tolist()),
                         atol=1e-2)
 
-    assignments = kmeans.predict(points)
+    assignments = kmeans.predict(points, batch_size=12)
     self.assertAllClose(centers[assignments],
                         true_centers[true_assignments], atol=1e-2)
 
-    score = kmeans.score(points)
+    score = kmeans.score(points, batch_size=12)
     self.assertAllClose(score, true_score, atol=1e-2)
 
   def test_fit_raise_if_num_clusters_larger_than_num_points_random_init(self):
@@ -255,7 +248,7 @@ class KMeansTest(tf.test.TestCase):
 
     with self.assertRaisesOpError('less'):
       kmeans = KMeans(num_clusters=3, initial_clusters=kmeans_ops.RANDOM_INIT)
-      kmeans.fit(x=points)
+      kmeans.fit(x=points, steps=10, batch_size=8)
 
   def test_fit_raise_if_num_clusters_larger_than_num_points_kmeans_plus_plus(
       self):
@@ -264,7 +257,7 @@ class KMeansTest(tf.test.TestCase):
     with self.assertRaisesOpError(AssertionError):
       kmeans = KMeans(num_clusters=3,
                       initial_clusters=kmeans_ops.KMEANS_PLUS_PLUS_INIT)
-      kmeans.fit(x=points)
+      kmeans.fit(x=points, steps=10, batch_size=8)
 
 
 class MiniBatchKMeansTest(KMeansTest):

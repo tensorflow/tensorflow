@@ -26,7 +26,7 @@ import tensorflow as tf
 from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
-from tensorflow.contrib.learn.python.learn.io import data_feeder
+from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 
@@ -54,12 +54,8 @@ class KMeansClustering(estimator.Estimator,
                distance_metric=clustering_ops.SQUARED_EUCLIDEAN_DISTANCE,
                random_seed=0,
                use_mini_batch=True,
-               batch_size=128,
-               steps=10,
                kmeans_plus_plus_num_retries=2,
-               continue_training=False,
-               config=None,
-               verbose=1):
+               config=None):
     """Creates a model for running KMeans training and inference.
 
     Args:
@@ -72,25 +68,17 @@ class KMeansClustering(estimator.Estimator,
       random_seed: Python integer. Seed for PRNG used to initialize centers.
       use_mini_batch: If true, use the mini-batch k-means algorithm. Else assume
         full batch.
-      batch_size: See TensorFlowEstimator
-      steps: See TensorFlowEstimator
       kmeans_plus_plus_num_retries: For each point that is sampled during
         kmeans++ initialization, this parameter specifies the number of
         additional points to draw from the current distribution before selecting
         the best. If a negative value is specified, a heuristic is used to
         sample O(log(num_to_sample)) additional points.
-      continue_training: See TensorFlowEstimator
-      config: See TensorFlowEstimator
-      verbose: See TensorFlowEstimator
+      config: See Estimator
     """
     super(KMeansClustering, self).__init__(
         model_dir=model_dir,
         config=config)
-    self.batch_size = batch_size
-    self.steps = steps
     self.kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
-    self.continue_training = continue_training
-    self.verbose = verbose
     self._num_clusters = num_clusters
     self._training_initial_clusters = initial_clusters
     self._training_graph = None
@@ -99,10 +87,10 @@ class KMeansClustering(estimator.Estimator,
     self._random_seed = random_seed
     self._initialized = False
 
-  def fit(self, x, y=None, monitors=None, logdir=None, steps=None):
+  def fit(self, x, y=None, monitors=None, logdir=None, steps=None, batch_size=128):
     """Trains a k-means clustering on x.
 
-    Note: See TensorFlowEstimator for logic for continuous training and graph
+    Note: See Estimator for logic for continuous training and graph
       construction across multiple calls to fit.
 
     Args:
@@ -122,10 +110,10 @@ class KMeansClustering(estimator.Estimator,
     if logdir is not None:
       self._model_dir = logdir
     self._data_feeder = data_feeder.setup_train_data_feeder(
-        x, None, self._num_clusters, self.batch_size)
+        x, None, self._num_clusters, batch_size)
     self._train_model(input_fn=self._data_feeder.input_builder,
                       feed_fn=self._data_feeder.get_feed_dict_fn(),
-                      steps=steps or self.steps,
+                      steps=steps,
                       monitors=monitors,
                       init_feed_fn=self._data_feeder.get_feed_dict_fn())
     return self

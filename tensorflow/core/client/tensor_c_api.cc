@@ -48,10 +48,13 @@ using tensorflow::Graph;
 using tensorflow::GraphDef;
 using tensorflow::mutex;
 using tensorflow::mutex_lock;
+using tensorflow::NameRangeMap;
+using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
 using tensorflow::Node;
 using tensorflow::NodeDef;
 using tensorflow::NodeBuilder;
+using tensorflow::OpDef;
 using tensorflow::OpRegistry;
 using tensorflow::PartialTensorShape;
 using tensorflow::Reset;
@@ -913,10 +916,40 @@ TF_DataType TF_NodeOutputType(TF_Port node_out) {
       node_out.node->node.output_type(node_out.index));
 }
 
+int TF_NodeOutputListLength(TF_Node* node, const char* arg_name,
+                            TF_Status* status) {
+  NameRangeMap name_ranges;
+  status->status = NameRangesForNode(node->node.def(), node->node.op_def(),
+                                     nullptr, &name_ranges);
+  if (!status->status.ok()) return -1;
+  auto iter = name_ranges.find(arg_name);
+  if (iter == name_ranges.end()) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Input arg '", arg_name, "' not found");
+    return -1;
+  }
+  return iter->second.second - iter->second.first;
+}
+
 int TF_NodeNumInputs(TF_Node* node) { return node->node.num_inputs(); }
 
 TF_DataType TF_NodeInputType(TF_Port node_in) {
   return static_cast<TF_DataType>(node_in.node->node.input_type(node_in.index));
+}
+
+int TF_NodeInputListLength(TF_Node* node, const char* arg_name,
+                           TF_Status* status) {
+  NameRangeMap name_ranges;
+  status->status = NameRangesForNode(node->node.def(), node->node.op_def(),
+                                     &name_ranges, nullptr);
+  if (!status->status.ok()) return -1;
+  auto iter = name_ranges.find(arg_name);
+  if (iter == name_ranges.end()) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Input arg '", arg_name, "' not found");
+    return -1;
+  }
+  return iter->second.second - iter->second.first;
 }
 
 TF_Port TF_NodeInput(TF_Port node_in) {

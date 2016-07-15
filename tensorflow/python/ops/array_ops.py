@@ -224,7 +224,7 @@ def _NewSliceHelper(tensor, slice_spec):
 
   new_axis_mask, shrink_axis_mask = 0, 0
   begin_mask, end_mask = 0, 0
-  ellipse_mask = 0
+  ellipsis_mask = 0
   for s in slice_spec:
     if isinstance(s, _baseslice):
       strides.append(s.step if s.step is not None else 1)
@@ -245,7 +245,7 @@ def _NewSliceHelper(tensor, slice_spec):
       begin.append(0)
       end.append(0)
       strides.append(1)
-      ellipse_mask |= (1 << index)
+      ellipsis_mask |= (1 << index)
     elif s is newaxis:
       begin.append(0)
       end.append(0)
@@ -271,7 +271,7 @@ def _NewSliceHelper(tensor, slice_spec):
                        end_mask=end_mask,
                        shrink_axis_mask=shrink_axis_mask,
                        new_axis_mask=new_axis_mask,
-                       ellipse_mask=ellipse_mask)
+                       ellipsis_mask=ellipsis_mask)
 
 
 # pylint: disable=undefined-variable,protected-access
@@ -395,7 +395,7 @@ def strided_slice(input_,
                   strides,
                   begin_mask=0,
                   end_mask=0,
-                  ellipse_mask=0,
+                  ellipsis_mask=0,
                   new_axis_mask=0,
                   shrink_axis_mask=0,
                   name=None):
@@ -416,7 +416,7 @@ def strided_slice(input_,
   not the same dimensionality as `input`.
 
   For the ith spec,
-  `begin_mask`, `end_mask`, `ellipse_mask`, `new_axis_mask`,
+  `begin_mask`, `end_mask`, `ellipsis_mask`, `new_axis_mask`,
   and `shrink_axis_mask` will have the ith bit corrsponding to
   the ith spec.
 
@@ -428,9 +428,9 @@ def strided_slice(input_,
   `foo[::-1]` reverses a tensor with shape 8.
 
 
-  If the ith bit of `ellipse_mask`, as many unspecified dimensions
+  If the ith bit of `ellipsis_mask`, as many unspecified dimensions
   as needed will be inserted between other dimensions. Only one
-  non-zero bit is allowed in `ellipse_mask`.
+  non-zero bit is allowed in `ellipsis_mask`.
 
   For example `foo[3:5,...,4:5]` on a shape 10x3x3x10 tensor is
   equivalent to `foo[3:5,:,:,4:5]` and
@@ -471,7 +471,7 @@ def strided_slice(input_,
     strides: An `int32` or `int64` `Tensor`.
     begin_mask: An `int32` mask.
     end_mask: An `int32` mask.
-    ellipse_mask: An `int32` mask.
+    ellipsis_mask: An `int32` mask.
     new_axis_mask: An `int32` mask.
     shrink_axis_mask: An `int32` mask.
     name: A name for the operation (optional).
@@ -486,7 +486,7 @@ def strided_slice(input_,
                                      name=name,
                                      begin_mask=begin_mask,
                                      end_mask=end_mask,
-                                     ellipse_mask=ellipse_mask,
+                                     ellipsis_mask=ellipsis_mask,
                                      new_axis_mask=new_axis_mask,
                                      shrink_axis_mask=shrink_axis_mask)
 
@@ -1541,24 +1541,24 @@ def _StridedSliceShape(op):
 
   begin_mask = op.get_attr("begin_mask")
   end_mask = op.get_attr("end_mask")
-  ellipse_mask = op.get_attr("ellipse_mask")
+  ellipsis_mask = op.get_attr("ellipsis_mask")
   new_axis_mask = op.get_attr("new_axis_mask")
   shrink_axis_mask = op.get_attr("shrink_axis_mask")
   # find the ellipsis
-  ellipse_index = -1
+  ellipsis_index = -1
 
   # look for ellipses
-  num_add_axis_after_ellipse = 0
+  num_add_axis_after_ellipsis = 0
   for i in range(sparse_dims):
-    if ellipse_index != -1 and ((1 << i) & new_axis_mask) != 0:
-      num_add_axis_after_ellipse += 1
-    if (1 << i) & ellipse_mask:
-      if ellipse_index != -1:
+    if ellipsis_index != -1 and ((1 << i) & new_axis_mask) != 0:
+      num_add_axis_after_ellipsis += 1
+    if (1 << i) & ellipsis_mask:
+      if ellipsis_index != -1:
         raise ValueError("Multiple ellipses not allowed")
-      ellipse_index = i
-  # insert a virtual ellipse if not seen
-  if ellipse_index == -1:
-    ellipse_mask |= (1 << sparse_dims)
+      ellipsis_index = i
+  # insert a virtual ellipsis if not seen
+  if ellipsis_index == -1:
+    ellipsis_mask |= (1 << sparse_dims)
     sparse_dims += 1
 
   # build the dense specification
@@ -1568,9 +1568,9 @@ def _StridedSliceShape(op):
   dense_specs = []
   for dim in range(sparse_dims):
     bit = 1 << dim
-    if bit & ellipse_mask:
+    if bit & ellipsis_mask:
       next_index = min(dense_dims -
-                       (sparse_dims - dim) + 1 + num_add_axis_after_ellipse,
+                       (sparse_dims - dim) + 1 + num_add_axis_after_ellipsis,
                        dense_dims)
       while full_index < next_index:
         dense_specs.append(_baseslice(None, None, 1))
@@ -1649,6 +1649,16 @@ def _BatchMatrixDiagShape(op):
   """Shape function for array_ops.batch_matrix_diag."""
   diag_shape = op.inputs[0].get_shape().with_rank_at_least(1)
   return [diag_shape.concatenate(diag_shape[-1])]
+
+
+@ops.RegisterShape("BatchMatrixSetDiag")
+def _BatchMatrixSetDiagShape(op):
+  """Shape function for array_ops.batch_matrix_set_diag."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  diag_shape = op.inputs[1].get_shape().with_rank_at_least(1)
+  output_shape = diag_shape.concatenate(diag_shape[-1])
+  output_shape = output_shape.merge_with(input_shape)
+  return [output_shape]
 
 
 @ops.RegisterShape("BatchMatrixDiagPart")

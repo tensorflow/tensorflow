@@ -43,12 +43,12 @@ constexpr int32 kShrinkAxis = -1, kNewAxis = -2;
 
 struct StridedSliceSparseSpec {
   int64 dims;
-  int32 num_add_axis_after_ellipse;
+  int32 num_add_axis_after_ellipsis;
   const Tensor& begin_tensor;
   const Tensor& end_tensor;
   const Tensor& strides_tensor;
   const int32 begin_mask, end_mask;
-  int32 ellipse_mask;
+  int32 ellipsis_mask;
   const int32 new_axis_mask, shrink_axis_mask;
 };
 
@@ -86,11 +86,11 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
     const auto& strides_flat = sparse.strides_tensor.flat<T>();
 
     for (int i = 0; i < sparse.dims; i++) {
-      if ((1 << i) & sparse.ellipse_mask) {
+      if ((1 << i) & sparse.ellipsis_mask) {
         // Expand the ellipsis into the appropriate indices
         // NOTE: this only works because we guaranteed one ellipsis
         int32 next_index = std::min(dense->dims - (sparse.dims - i) + 1 +
-                                        sparse.num_add_axis_after_ellipse,
+                                        sparse.num_add_axis_after_ellipsis,
                                     dense->dims);
         for (; full_index < next_index; full_index++) {
           // new_axis' aren't real axis so you have to skip
@@ -127,7 +127,7 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
 // code size by not duplicating all this for all T (float, double, int32, etc.)
 static void SharedValidation(
     OpKernelContext* context, const TensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipse_mask,
+    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
     int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
     TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
     bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
@@ -150,19 +150,19 @@ static void SharedValidation(
           "but got shapes ", begin_tensor.shape().DebugString(), ", ",
           end_tensor.shape().DebugString(), ", and ",
           strides_tensor.shape().DebugString(), " instead."));
-  // Use bit compares to ensure ellipse_mask is 0 or a power of 2
+  // Use bit compares to ensure ellipsis_mask is 0 or a power of 2
   // i.e. there exists only no more than one ellipsis
   OP_REQUIRES(context,
-              !ellipse_mask || (ellipse_mask & (ellipse_mask - 1)) == 0,
+              !ellipsis_mask || (ellipsis_mask & (ellipsis_mask - 1)) == 0,
               errors::InvalidArgument("Multiple ellipsis' in slice "
                                       "spec not allowed"));
 
-  // Step 1: Account for ellipses and new axis
+  // Step 1: Account for ellipsis and new axis
   //
   // Check for ellipses and count how many non-newaxis' there are after
   // TODO(aselle): Convert this to do a fast log2 followed by iteration
   //               counting ones in next guys
-  bool ellipse_seen = false;
+  bool ellipsis_seen = false;
 
   StridedSliceSparseSpec sparse_spec = {begin_tensor.NumElements(),
                                         0,
@@ -171,21 +171,21 @@ static void SharedValidation(
                                         strides_tensor,
                                         begin_mask_spec,
                                         end_mask_spec,
-                                        ellipse_mask,
+                                        ellipsis_mask,
                                         new_axis_mask,
                                         shrink_axis_mask};
 
   for (int32 i = 0; i < sparse_spec.dims; i++) {
-    if (ellipse_seen && ((1 << i) & new_axis_mask) != 0) {
-      sparse_spec.num_add_axis_after_ellipse++;
+    if (ellipsis_seen && ((1 << i) & new_axis_mask) != 0) {
+      sparse_spec.num_add_axis_after_ellipsis++;
     }
-    if ((1 << i) & ellipse_mask) {
-      ellipse_seen = true;
+    if ((1 << i) & ellipsis_mask) {
+      ellipsis_seen = true;
     }
   }
   // If no ellipsis insert one at the end
-  if (!ellipse_seen) {
-    sparse_spec.ellipse_mask |= (1 << sparse_spec.dims);
+  if (!ellipsis_seen) {
+    sparse_spec.ellipsis_mask |= (1 << sparse_spec.dims);
     sparse_spec.dims++;  // this effects loop iteration below
   }
 
@@ -277,7 +277,7 @@ class StridedSliceOp : public OpKernel {
   explicit StridedSliceOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("begin_mask", &begin_mask));
     OP_REQUIRES_OK(context, context->GetAttr("end_mask", &end_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("ellipse_mask", &ellipse_mask));
+    OP_REQUIRES_OK(context, context->GetAttr("ellipsis_mask", &ellipsis_mask));
     OP_REQUIRES_OK(context, context->GetAttr("new_axis_mask", &new_axis_mask));
     OP_REQUIRES_OK(context,
                    context->GetAttr("shrink_axis_mask", &shrink_axis_mask));
@@ -293,7 +293,7 @@ class StridedSliceOp : public OpKernel {
     gtl::InlinedVector<int64, 4> strides;
 
     SharedValidation(context, context->input(0).shape(), begin_mask, end_mask,
-                     ellipse_mask, new_axis_mask, shrink_axis_mask,
+                     ellipsis_mask, new_axis_mask, shrink_axis_mask,
                      &processing_shape, &final_shape, &is_identity,
                      &is_simple_slice, &slice_dim0, &begin, &end, &strides);
     if (!context->status().ok()) return;
@@ -405,7 +405,7 @@ class StridedSliceOp : public OpKernel {
   }
 
   int32 begin_mask, end_mask;
-  int32 ellipse_mask, new_axis_mask, shrink_axis_mask;
+  int32 ellipsis_mask, new_axis_mask, shrink_axis_mask;
 };
 
 template <typename Device, typename T>
@@ -415,7 +415,7 @@ class StridedSliceGradOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("begin_mask", &begin_mask));
     OP_REQUIRES_OK(context, context->GetAttr("end_mask", &end_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("ellipse_mask", &ellipse_mask));
+    OP_REQUIRES_OK(context, context->GetAttr("ellipsis_mask", &ellipsis_mask));
     OP_REQUIRES_OK(context, context->GetAttr("new_axis_mask", &new_axis_mask));
     OP_REQUIRES_OK(context,
                    context->GetAttr("shrink_axis_mask", &shrink_axis_mask));
@@ -439,7 +439,7 @@ class StridedSliceGradOp : public OpKernel {
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 input_shape_tensor.vec<int32>(), &input_shape));
 
-    SharedValidation(context, input_shape, begin_mask, end_mask, ellipse_mask,
+    SharedValidation(context, input_shape, begin_mask, end_mask, ellipsis_mask,
                      new_axis_mask, shrink_axis_mask, &processing_shape,
                      &final_shape, &is_identity, &is_simple_slice, &slice_dim0,
                      &begin, &end, &strides);
@@ -493,7 +493,7 @@ class StridedSliceGradOp : public OpKernel {
   }
 
   int32 begin_mask, end_mask;
-  int32 ellipse_mask, new_axis_mask, shrink_axis_mask;
+  int32 ellipsis_mask, new_axis_mask, shrink_axis_mask;
 };
 
 #define REGISTER_STRIDED_SLICE(type)                       \

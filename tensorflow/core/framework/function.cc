@@ -708,15 +708,17 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
-    : func_grad_(other.func_grad_) {
+    : default_registry_(other.default_registry_), func_grad_(other.func_grad_) {
   for (const auto& it : other.function_defs_) {
     TF_CHECK_OK(AddFunctionDef(it.second->fdef));
   }
 }
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
+    const OpRegistryInterface* default_registry,
     const FunctionDefLibrary& def_lib)
-    : function_defs_(def_lib.function_size()) {
+    : default_registry_(default_registry),
+      function_defs_(def_lib.function_size()) {
   for (const auto& fdef : def_lib.function()) {
     // The latter function definition wins.
     auto& ptr = function_defs_[fdef.signature().name()];
@@ -760,7 +762,7 @@ Status FunctionLibraryDefinition::LookUp(
     *op_reg_data = &iter->second->op_registration_data;
     return Status::OK();
   }
-  return OpRegistry::Global()->LookUp(op, op_reg_data);
+  return default_registry_->LookUp(op, op_reg_data);
 }
 
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
