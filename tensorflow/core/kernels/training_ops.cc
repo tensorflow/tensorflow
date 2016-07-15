@@ -177,7 +177,7 @@ struct ApplyMomentum<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat grad,
                   typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
     accum.device(d) = accum * momentum() + grad;
-    if (use_nesterov == true) {
+    if (use_nesterov) {
       var.device(d) -= grad * lr() + accum * momentum() * lr();
     } else {
       var.device(d) -= accum * lr();
@@ -1678,7 +1678,7 @@ class SparseApplyMomentumOp : public OpKernel {
         auto g = grad_flat.template chip<0>(i);
         auto v = var_flat.template chip<0>(index);
         a = a * a.constant(momentum_scalar) + g;
-        if (use_nesterov_ == true) {
+        if (use_nesterov_) {
           v -= g.constant(lr_scalar) * g +
                a.constant(lr_scalar) * a.constant(momentum_scalar) * a;
         } else {
