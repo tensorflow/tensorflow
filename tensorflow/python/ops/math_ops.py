@@ -13,7 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Arithmetic Operators
+"""Note: Elementwise binary operations in TensorFlow follow [numpy-style
+broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+
+## Arithmetic Operators
 
 TensorFlow provides several operations that you can use to add basic arithmetic
 operators to your graph.
