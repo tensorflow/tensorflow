@@ -277,6 +277,14 @@ TEST_F(SessionBundleTest, InitOp_TooManyValues) {
       << status_.error_message();
 }
 
+TEST_F(SessionBundleTest, PossibleExportDirectory) {
+  const string export_path = SetupExport([](MetaGraphDef*) {});
+  EXPECT_TRUE(IsPossibleExportDirectory(export_path));
+
+  EXPECT_FALSE(
+      IsPossibleExportDirectory(io::JoinPath(export_path, kAssetsDirectory)));
+}
+
 }  // namespace
 }  // namespace serving
 }  // namespace tensorflow

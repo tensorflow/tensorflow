@@ -219,7 +219,7 @@ void DirectSession::MaybeInitializeExecutionState(const GraphDef& graph) {
   options.device_set = &device_set_;
   options.session_options = &options_;
   execution_state_.reset(
-      new SimpleGraphExecutionState(flib_def_.get(), options));
+      new SimpleGraphExecutionState(graph.library(), options));
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
@@ -862,8 +862,8 @@ Status DirectSession::CreateGraphs(
     SimpleGraphExecutionStateOptions prune_options;
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
-    temp_exec_state_holder.reset(
-        new SimpleGraphExecutionState(flib_def_.get(), prune_options));
+    temp_exec_state_holder.reset(new SimpleGraphExecutionState(
+        execution_state_->original_graph_def().library(), prune_options));
     {
       mutex_lock l(mu_);
       temp_exec_state_holder->SetStatefulPlacements(stateful_placements_);
@@ -961,7 +961,7 @@ Status DirectSession::CreateGraphs(
     // may be possible use cases where a device may want to modify
     // function definitions - in which case the library would need to be
     // replicated per device.
-    s = d->MaybeRewriteGraph(flib_def_->ToProto(), graph_def);
+    s = d->MaybeRewriteGraph(client_graph->flib_def->ToProto(), graph_def);
     if (!s.ok()) {
       break;
     }

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import random
 import threading
 
 import numpy as np
@@ -189,18 +188,6 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         x = [True]
         y = [15]
         logging_ops.Assert(x, y).run()
-
-  def testRandomSeed(self):
-    a = random.randint(1, 1000)
-    with self.test_session():
-      a_rand = tf.random_normal([1]).eval()
-    # ensure that randomness in multiple testCases is deterministic.
-    self.setUp()
-    b = random.randint(1, 1000)
-    with self.test_session():
-      b_rand = tf.random_normal([1]).eval()
-    self.assertEqual(a, b)
-    self.assertEqual(a_rand, b_rand)
 
 if __name__ == "__main__":
   googletest.main()

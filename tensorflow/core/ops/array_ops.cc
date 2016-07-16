@@ -122,6 +122,11 @@ REGISTER_OP("Unpack")
         int32 axis;
         TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank, &axis));
 
+        // The axis dim matches the number of outputs.
+        const Dimension* unused;
+        TF_RETURN_IF_ERROR(
+            c->WithValue(c->Dim(s, axis), c->num_outputs(), &unused));
+
         // Copy all dimensions, removing the <axis> dimension.
         std::vector<const Dimension*> dims;
         for (int i = 0; i < rank; ++i) {

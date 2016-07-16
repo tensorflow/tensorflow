@@ -120,8 +120,7 @@ class StudentTTest(tf.test.TestCase):
                           atol=.25)
       self._checkKLApprox(df_v, mu_v, sigma_v, sample_values)
 
-  def _testStudentSampleMultiDimensional(self):
-    # DISABLED: Please enable this test once b/issues/30149644 is resolved.
+  def testStudentSampleMultiDimensional(self):
     with tf.Session():
       batch_size = 7
       df = tf.constant([[3.0, 7.0]] * batch_size)
@@ -132,7 +131,7 @@ class StudentTTest(tf.test.TestCase):
       sigma_v = [np.sqrt(10.0), np.sqrt(15.0)]
       n = tf.constant(100000)
       student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
-      samples = student.sample(n)
+      samples = student.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (100000, batch_size, 2))
       self.assertAllClose(sample_values[:, 0, 0].mean(), mu_v[0], atol=.15)
@@ -336,12 +335,11 @@ class StudentTTest(tf.test.TestCase):
       mode = student.mode().eval()
       self.assertAllClose([-1., 0, 1], mode)
 
-  def _testPdfOfSample(self):
-    # DISABLED: Please enable this test once b/issues/30149644 is resolved.
+  def testPdfOfSample(self):
     with tf.Session() as sess:
       student = tf.contrib.distributions.StudentT(df=3., mu=np.pi, sigma=1.)
       num = 20000
-      samples = student.sample(num)
+      samples = student.sample(num, seed=137)
       pdfs = student.pdf(samples)
       mean = student.mean()
       mean_pdf = student.pdf(student.mean())
@@ -356,14 +354,13 @@ class StudentTTest(tf.test.TestCase):
       # Verify integral over sample*pdf ~= 1.
       self._assertIntegral(sample_vals, pdf_vals)
 
-  def _testPdfOfSampleMultiDims(self):
-    # DISABLED: Please enable this test once b/issues/30149644 is resolved.
+  def testPdfOfSampleMultiDims(self):
     with tf.Session() as sess:
       student = tf.contrib.distributions.StudentT(df=[7., 11.],
                                                   mu=[[5.], [6.]],
                                                   sigma=3.)
       num = 50000
-      samples = student.sample(num)
+      samples = student.sample(num, seed=137)
       pdfs = student.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
@@ -372,10 +369,10 @@ class StudentTTest(tf.test.TestCase):
       self.assertNear(6., np.mean(sample_vals[:, 1, :]), err=.03)
       self.assertNear(stats.t.var(7., loc=0., scale=3.),  # loc d.n. effect var
                       np.var(sample_vals[:, :, 0]),
-                      err=.3)
+                      err=.25)
       self.assertNear(stats.t.var(11., loc=0., scale=3.),  # loc d.n. effect var
                       np.var(sample_vals[:, :, 1]),
-                      err=.3)
+                      err=.25)
       self._assertIntegral(sample_vals[:, 0, 0], pdf_vals[:, 0, 0], err=0.02)
       self._assertIntegral(sample_vals[:, 0, 1], pdf_vals[:, 0, 1], err=0.02)
       self._assertIntegral(sample_vals[:, 1, 0], pdf_vals[:, 1, 0], err=0.02)

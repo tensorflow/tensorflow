@@ -1378,6 +1378,7 @@ tf_cc_tests(
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = [
         "common_runtime/device_set_test.cc",
+        "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/simple_placer_test.cc",

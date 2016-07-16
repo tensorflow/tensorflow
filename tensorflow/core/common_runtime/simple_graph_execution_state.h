@@ -47,8 +47,12 @@ struct SimpleGraphExecutionStateOptions {
 // A SimpleClientGraph is simply a sub-graph of the full graph as induced by
 // BuildGraphOptions.
 struct SimpleClientGraph {
+  explicit SimpleClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib)
+      : flib_def(std::move(flib)), graph(flib_def.get()) {}
+  // Each client-graph gets its own function library since optimization passes
+  // post rewrite for execution might want to introduce new functions.
+  std::unique_ptr<FunctionLibraryDefinition> flib_def;
   Graph graph;
-  explicit SimpleClientGraph(const OpRegistryInterface* ops) : graph(ops) {}
   int32 placement_version;
 };
 
@@ -78,7 +82,7 @@ struct SimpleClientGraph {
 
 class SimpleGraphExecutionState {
  public:
-  SimpleGraphExecutionState(const OpRegistryInterface* ops,
+  SimpleGraphExecutionState(const FunctionDefLibrary& func_def_lib,
                             const SimpleGraphExecutionStateOptions& options);
 
   virtual ~SimpleGraphExecutionState();
@@ -154,10 +158,13 @@ class SimpleGraphExecutionState {
   void SaveStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void RestoreStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  const OpRegistryInterface* const ops_;   // Not owned
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
+
+  // 'flib_def_' is initialized from the initial graph def's library,
+  // and may be updated by a graph optimization pass.
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
   // The dataflow graph owned by this object.
   Graph* graph_ GUARDED_BY(mu_);
