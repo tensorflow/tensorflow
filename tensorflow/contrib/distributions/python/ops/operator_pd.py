@@ -125,8 +125,8 @@ class OperatorPDBase(object):
 
   def _dispatch_based_on_batch(self, batch_method, singleton_method, **args):
     """Helper to automatically call batch or singleton operation."""
-    if self.get_shape().is_fully_defined():
-      is_batch = len(self.get_shape()) > 2
+    if self.get_shape().ndims is not None:
+      is_batch = self.get_shape().ndims > 2
       if is_batch:
         return batch_method(**args)
       else:
