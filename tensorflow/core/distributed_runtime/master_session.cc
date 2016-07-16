@@ -762,7 +762,7 @@ Status MasterSession::Create(GraphDef* graph_def) {
   SimpleGraphExecutionStateOptions options;
   options.device_set = &devices_;
   options.session_options = &session_opts_;
-  execution_state_.reset(new SimpleGraphExecutionState(flib_def_, options));
+  execution_state_.reset(new SimpleGraphExecutionState(func_def_lib_, options));
   TF_RETURN_IF_ERROR(execution_state_->Create(graph_def));
 
   return Status::OK();
