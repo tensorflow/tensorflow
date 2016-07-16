@@ -7,6 +7,12 @@ tensorflow/core/kernels/transpose_functor_cpu.cc
 tensorflow/core/kernels/training_ops.cc
 tensorflow/core/kernels/topk_op.cc
 tensorflow/core/kernels/tile_ops.cc
+tensorflow/core/kernels/strided_slice_op_inst_6.cc
+tensorflow/core/kernels/strided_slice_op_inst_5.cc
+tensorflow/core/kernels/strided_slice_op_inst_4.cc
+tensorflow/core/kernels/strided_slice_op_inst_3.cc
+tensorflow/core/kernels/strided_slice_op_inst_2.cc
+tensorflow/core/kernels/strided_slice_op_inst_1.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/stack_ops.cc
 tensorflow/core/kernels/split_op.cc
@@ -233,6 +239,7 @@ tensorflow/core/framework/cancellation.cc
 tensorflow/core/framework/bfloat16.cc
 tensorflow/core/framework/attr_value_util.cc
 tensorflow/core/framework/allocator.cc
+tensorflow/core/debug/debug_graph_utils.cc
 tensorflow/core/common_runtime/threadpool_device_factory.cc
 tensorflow/core/common_runtime/threadpool_device.cc
 tensorflow/core/common_runtime/step_stats_collector.cc

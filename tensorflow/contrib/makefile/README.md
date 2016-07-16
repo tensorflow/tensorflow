@@ -176,15 +176,16 @@ curl -o ~/graphs/inception.zip \
 
 ### Building all at once
 
-If you just want to get the libraries compiled in a hurry, you can run:
+If you just want to get the libraries compiled in a hurry, you can run this
+from the root of your TensorFlow source folder:
 
 ```bash
-build_all_ios.sh
+tensorflow/contrib/makefile/build_all_ios.sh
 ```
 
-and wait a long time.
+This process will take around twenty minutes on a modern MacBook Pro.
 
-When this completes, you will have a library for a single architecture and the
+When it completes, you will have a library for a single architecture and the
 benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
 
