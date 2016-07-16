@@ -37,7 +37,7 @@ import java.util.List;
 /**
  * Class that takes in preview frames and converts the image to Bitmaps to process with Tensorflow.
  */
-public class TensorflowImageListener implements OnImageAvailableListener {
+public class TensorFlowImageListener implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
 
   private static final boolean SAVE_PREVIEW_BITMAP = false;
@@ -61,7 +61,7 @@ public class TensorflowImageListener implements OnImageAvailableListener {
 
   private Integer sensorOrientation;
 
-  private final TensorflowClassifier tensorflow = new TensorflowClassifier();
+  private final TensorFlowClassifier tensorflow = new TensorFlowClassifier();
 
   private int previewWidth = 0;
   private int previewHeight = 0;
@@ -69,10 +69,10 @@ public class TensorflowImageListener implements OnImageAvailableListener {
   private int[] rgbBytes = null;
   private Bitmap rgbFrameBitmap = null;
   private Bitmap croppedBitmap = null;
-  
+
   private boolean computing = false;
   private Handler handler;
-  
+
   private RecognitionScoreView scoreView;
 
   public void initialize(
@@ -81,7 +81,7 @@ public class TensorflowImageListener implements OnImageAvailableListener {
       final Handler handler,
       final Integer sensorOrientation) {
     Assert.assertNotNull(sensorOrientation);
-    tensorflow.initializeTensorflow(
+    tensorflow.initializeTensorFlow(
         assetManager, MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD,
         INPUT_NAME, OUTPUT_NAME);
     this.scoreView = scoreView;
@@ -123,7 +123,7 @@ public class TensorflowImageListener implements OnImageAvailableListener {
       if (image == null) {
         return;
       }
-      
+
       // No mutex needed as this method is not reentrant.
       if (computing) {
         image.close();

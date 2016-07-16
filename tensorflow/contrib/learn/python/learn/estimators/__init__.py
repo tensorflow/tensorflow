@@ -46,3 +46,4 @@ from tensorflow.contrib.learn.python.learn.estimators.random_forest import Tenso
 from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.rnn import TensorFlowRNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
+from tensorflow.contrib.learn.python.learn.estimators.svm import SVM

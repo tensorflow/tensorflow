@@ -4,6 +4,9 @@
 * Connectionist Temporal Classification ops are now "official" (see, e.g.,
   `tf.nn.ctc_loss`)
 * Preliminary graph-construction C API, for use by language bindings.
+* Major revision to the graph-construction C++ API. Scoping mechanism to make op
+  naming, specifying control dependencies etc. more consistent. C++ values can
+  be used directly as operands, making op construction more concise.
 
 ## Breaking Changes to the API
 * `env.h` replaces use of `New*File()` functions to use `std::unique_ptr`
