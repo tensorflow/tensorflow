@@ -204,5 +204,11 @@ tensorflow::Status LoadSessionBundleFromPath(
   return Status::OK();
 }
 
+bool IsPossibleExportDirectory(const StringPiece directory) {
+  const string meta_graph_def_path =
+      io::JoinPath(directory, kMetaGraphDefFilename);
+  return Env::Default()->FileExists(meta_graph_def_path);
+}
+
 }  // namespace serving
 }  // namespace tensorflow
