@@ -8597,6 +8597,39 @@ op {
   summary: "Does nothing. Only useful as a placeholder for control edges."
 }
 op {
+  name: "NonMaxSuppression"
+  input_arg {
+    name: "boxes"
+    description: "A 2-D float tensor of shape `[num_boxes, 4]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    description: "A 1-D float tensor of shape `[num_boxes]` representing a single\nscore corresponding to each box (each row of boxes)."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    description: "A scalar integer tensor representing the maximum number of\nboxes to be selected by non max suppression."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "selected_indices"
+    description: "A 1-D integer tensor of shape `[M]` representing the selected\nindices from the boxes tensor, where `M <= max_output_size`."
+    type: DT_INT32
+  }
+  attr {
+    name: "iou_threshold"
+    type: "float"
+    default_value {
+      f: 0.5
+    }
+    description: "A float representing the threshold for deciding whether boxes\noverlap too much with respect to IOU."
+  }
+  summary: "Greedily selects a subset of bounding boxes in descending order of score,"
+  description: "pruning away boxes that have high intersection-over-union (IOU) overlap\nwith previously selected boxes.  Bounding boxes are supplied as\n[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any\ndiagonal pair of box corners and the coordinates can be provided as normalized\n(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm\nis agnostic to where the origin is in the coordinate system.  Note that this\nalgorithm is invariant to orthogonal transformations and translations\nof the coordinate system; thus translating or reflections of the coordinate\nsystem result in the same boxes being selected by the algorithm.\n\nThe output of this operation is a set of integers indexing into the input\ncollection of bounding boxes representing the selected boxes.  The bounding\nbox coordinates corresponding to the selected indices can then be obtained\nusing the tf.gather operation.  For example:\n\n  selected_indices = tf.image.non_max_suppression(\n      boxes, scores, max_output_size, iou_threshold)\n  selected_boxes = tf.gather(boxes, selected_indices)"
+}
+op {
   name: "NotEqual"
   input_arg {
     name: "x"
