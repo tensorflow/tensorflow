@@ -280,16 +280,19 @@ def _train_internal(graph,
     summary_writer = (get_summary_writer(output_dir)
                       if supervisor_is_chief else None)
 
-    # TODO(ipolosukhin): Replace all functionality of Supervisor with Monitors.
-    if not supervisor_is_chief:
-      # monitors should run only on the chief.
-      monitors = []
-    elif not monitors:
+    # Add default chief monitors if none were provided.
+    if not monitors:
       monitors = monitors_lib.get_default_monitors(
           loss_op=loss_op,
           summary_op=logging_ops.get_summary_op(),
           save_summary_steps=supervisor_save_summaries_steps,
-          summary_writer=summary_writer)
+          summary_writer=summary_writer) if supervisor_is_chief else []
+
+    # TODO(ipolosukhin): Replace all functionality of Supervisor
+    # with Chief-Exclusive Monitors.
+    if not supervisor_is_chief:
+      # Prune list of monitor to the ones runnable on all workers.
+      monitors = [monitor for monitor in monitors if monitor.run_on_all_workers]
 
     if max_steps is None:
       max_steps = (start_step + steps) if steps else None
