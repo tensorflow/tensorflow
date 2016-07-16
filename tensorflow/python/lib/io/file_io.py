@@ -70,3 +70,10 @@ def copy(oldpath, newpath, overwrite=False):
   with errors.raise_exception_on_not_ok_status() as status:
     pywrap_tensorflow.CopyFile(compat.as_bytes(oldpath),
                                compat.as_bytes(newpath), overwrite, status)
+
+
+def rename(oldname, newname, overwrite=False):
+  with errors.raise_exception_on_not_ok_status() as status:
+    return pywrap_tensorflow.RenameFile(compat.as_bytes(oldname),
+                                        compat.as_bytes(newname), overwrite,
+                                        status)

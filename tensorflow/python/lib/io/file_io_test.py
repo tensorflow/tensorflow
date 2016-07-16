@@ -99,6 +99,36 @@ class FileIoTest(tf.test.TestCase):
     file_io.delete_file(file_path)
     file_io.delete_file(copy_path)
 
+  def testRename(self):
+    file_path = os.path.join(self.get_temp_dir(), "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    rename_path = os.path.join(self.get_temp_dir(), "rename_file")
+    file_io.rename(file_path, rename_path)
+    self.assertTrue(file_io.file_exists(rename_path))
+    self.assertFalse(file_io.file_exists(file_path))
+    file_io.delete_file(rename_path)
+
+  def testRenameOverwrite(self):
+    file_path = os.path.join(self.get_temp_dir(), "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    rename_path = os.path.join(self.get_temp_dir(), "rename_file")
+    file_io.write_string_to_file(rename_path, "rename")
+    file_io.rename(file_path, rename_path, overwrite=True)
+    self.assertTrue(file_io.file_exists(rename_path))
+    self.assertFalse(file_io.file_exists(file_path))
+    file_io.delete_file(rename_path)
+
+  def testRenameOverwriteFalse(self):
+    file_path = os.path.join(self.get_temp_dir(), "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    rename_path = os.path.join(self.get_temp_dir(), "rename_file")
+    file_io.write_string_to_file(rename_path, "rename")
+    with self.assertRaises(errors.AlreadyExistsError):
+      file_io.rename(file_path, rename_path, overwrite=False)
+    self.assertTrue(file_io.file_exists(rename_path))
+    self.assertTrue(file_io.file_exists(file_path))
+    file_io.delete_file(rename_path)
+    file_io.delete_file(file_path)
 
 if __name__ == "__main__":
   tf.test.main()

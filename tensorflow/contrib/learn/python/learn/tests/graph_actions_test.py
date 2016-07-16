@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Graph actions tests."""
 
 from __future__ import absolute_import
@@ -26,7 +25,10 @@ import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn.monitors import BaseMonitor
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variables
 
 
 class _Feeder(object):
@@ -47,6 +49,39 @@ class _Feeder(object):
     value = self._step * 10.0
     self._step += 1
     return {self._tensor: value}
+
+
+class _BaseMonitorWrapper(BaseMonitor):
+  """Base monitor wrapper to facilitate testing.
+
+  This monitor can act as either chief-exclusive or non-exclusive.
+  """
+
+  def __init__(self, run_on_all_workers):
+    super(_BaseMonitorWrapper, self).__init__()
+    self._run_on_all_workers = run_on_all_workers
+    self._is_active = False
+    self._has_step = False
+
+  @property
+  def run_on_all_workers(self):
+    return self._run_on_all_workers
+
+  @property
+  def is_active(self):
+    return self._is_active
+
+  @property
+  def has_step(self):
+    return self._has_step
+
+  def begin(self, max_steps=None):
+    self._is_active = True
+    return super(_BaseMonitorWrapper, self).begin(max_steps)
+
+  def step_begin(self, step):
+    self._has_step = True
+    return super(_BaseMonitorWrapper, self).step_begin(step)
 
 
 class GraphActionsTest(tf.test.TestCase):
@@ -350,6 +385,56 @@ class GraphActionsTest(tf.test.TestCase):
           expected_summaries={1: {'loss': 2.0}})
       self._assert_ckpt(self._output_dir, True)
 
+  def test_train_chief_monitor(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      loss_op = tf.constant(2.0)
+      tf.scalar_summary('loss', loss_op)
+      chief_exclusive_monitor = _BaseMonitorWrapper(False)
+      all_workers_monitor = _BaseMonitorWrapper(True)
+      loss = learn.graph_actions.train(
+          g, output_dir=self._output_dir, train_op=train_op, loss_op=loss_op,
+          supervisor_is_chief=True, steps=1,
+          monitors=[chief_exclusive_monitor, all_workers_monitor])
+      self.assertEqual(2.0, loss)
+      self.assertTrue(chief_exclusive_monitor.is_active and
+                      all_workers_monitor.is_active,
+                      'All monitors must have been active.')
+      self.assertTrue(chief_exclusive_monitor.has_step and
+                      all_workers_monitor.has_step,
+                      'All monitors must have a step.')
+
+  def test_train_worker_monitor(self):
+    # We need to explicitly set device due to check on non-chief workers
+    # requiring all variables to have a device assigned.
+    with tf.Graph().as_default() as g, g.device('/cpu:0'):
+      global_step = tf.contrib.framework.create_global_step(g)
+      train_op = tf.assign_add(global_step, 1)
+      loss_op = tf.constant(2.0)
+      tf.scalar_summary('loss', loss_op)
+      # Add explicit "local" init op to initialize all variables
+      # as there's no chief to init here.
+      init_op = variables.initialize_all_variables()
+      ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, init_op)
+      # Create worker monitors where one should be active on the worker
+      # and the other chief exclusive.
+      chief_exclusive_monitor = _BaseMonitorWrapper(False)
+      all_workers_monitor = _BaseMonitorWrapper(True)
+      with self.test_session(g):
+        loss = learn.graph_actions.train(
+            g, output_dir=self._output_dir,
+            global_step_tensor=global_step,
+            train_op=train_op, loss_op=loss_op,
+            supervisor_is_chief=False, steps=1,
+            monitors=[chief_exclusive_monitor, all_workers_monitor])
+      self.assertEqual(2.0, loss)
+      self.assertTrue(not chief_exclusive_monitor.is_active and
+                      all_workers_monitor.is_active,
+                      'Only non-chief runnable monitor must have been active.')
+      self.assertTrue(not chief_exclusive_monitor.has_step and
+                      all_workers_monitor.has_step,
+                      'Only non-chief runnable monitor must have a step.')
 
 if __name__ == '__main__':
   tf.test.main()

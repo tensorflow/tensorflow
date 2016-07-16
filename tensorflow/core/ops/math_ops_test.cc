@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,24 +24,49 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(MathOpsTest, AddN_ShapeFn) {
-  INFER_OK("AddN", "?;?", "in0|in1");
-  INFER_OK("AddN", "[1,?]", "in0");
-  INFER_OK("AddN", "[1,2];[?,2]", "in0");
-  INFER_OK("AddN", "[1,2];[1,2]", "in0|in1");
-  INFER_OK("AddN", "[?,2];[1,2]", "in1");
-  INFER_OK("AddN", "[1,?];[?,2];[1,2]", "in2");
-  INFER_OK("AddN", "[1,2];[?,2];[1,?]", "in0");
-  INFER_OK("AddN", "?;?;[1,2]", "in2");
-  INFER_OK("AddN", "[1,?];[?,2]", "[d0_0,d1_1]");
-  INFER_OK("AddN", "[?,2,?];[?,?,3]", "[d0_0|d1_0,d0_1,d1_2]");
-  INFER_OK("AddN", "[?,2];[1,?]", "[d1_0,d0_1]");
+  std::unique_ptr<NodeDef> def_storage(new NodeDef);
+  NodeDef* def = def_storage.get();
+  auto set_n = [def](int n) {
+    std::vector<NodeDefBuilder::NodeOut> src_list;
+    for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
+    TF_CHECK_OK(NodeDefBuilder("test", "AddN")
+                    .Input(src_list)
+                    .Attr("N", n)
+                    .Finalize(def));
+  };
+  const char op[] = "AddN";
 
-  INFER_ERROR(("Dimension 1 in both shapes must be equal, but are 2 and "
-               "4\n\tFrom merging shape 0 with other shapes."),
-              "AddN", "[1,2];?;[1,4]");
-  INFER_ERROR(("Shapes must be equal rank, but are 2 and 3\n\tFrom merging "
-               "shape 1 with other shapes."),
-              "AddN", "?;[1,2];?;[1,2,3]");
+  set_n(1);
+  // Adding two unknowns returns either input.
+  INFER_OK_WITH_DEF(op, def, "?;?", "in0|in1");
+  // known+unknown returns the known input.
+  INFER_OK_WITH_DEF(op, def, "[1,?]", "in0");
+
+  set_n(2);
+  INFER_OK_WITH_DEF(op, def, "[1,2];[?,2]", "in0");
+  INFER_OK_WITH_DEF(op, def, "[1,2];[1,2]", "in0|in1");
+  INFER_OK_WITH_DEF(op, def, "[?,2];[1,2]", "in1");
+
+  set_n(3);
+  INFER_OK_WITH_DEF(op, def, "[1,?];[?,2];[1,2]", "in2");
+  INFER_OK_WITH_DEF(op, def, "[1,2];[?,2];[1,?]", "in0");
+
+  set_n(2);
+  INFER_OK_WITH_DEF(op, def, "?;?;[1,2]", "in2");
+  INFER_OK_WITH_DEF(op, def, "[1,?];[?,2]", "[d0_0,d1_1]");
+  INFER_OK_WITH_DEF(op, def, "[?,2,?];[?,?,3]", "[d0_0|d1_0,d0_1,d1_2]");
+  INFER_OK_WITH_DEF(op, def, "[?,2];[1,?]", "[d1_0,d0_1]");
+
+  set_n(3);
+  INFER_ERROR_WITH_DEF(
+      ("Dimension 1 in both shapes must be equal, but are 2 and "
+       "4\n\tFrom merging shape 0 with other shapes."),
+      op, def, "[1,2];?;[1,4]");
+  set_n(3);
+  INFER_ERROR_WITH_DEF(
+      ("Shapes must be equal rank, but are 2 and 3\n\tFrom merging "
+       "shape 1 with other shapes."),
+      op, def, "?;[1,2];?;[1,2,3]");
 }
 
 TEST(MathOpsTest, UnchangedShape_ShapeFn) {

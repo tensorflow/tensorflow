@@ -407,20 +407,6 @@ py_test(
 )
 
 py_test(
-    name = "framework_random_seed_test",
-    size = "small",
-    srcs = ["framework/random_seed_test.py"],
-    main = "framework/random_seed_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_test_lib",
-        ":ops",
-        ":platform_test",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
     name = "framework_tensor_shape_div_test",
     size = "small",
     srcs = ["framework/tensor_shape_div_test.py"],

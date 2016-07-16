@@ -26,9 +26,17 @@ constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
 InferenceContext::InferenceContext(
-    const NodeDef* node_def, const std::vector<string>& input_shapes,
-    int num_outputs, const std::vector<const Tensor*>& input_tensors)
+    const NodeDef* node_def, const OpDef& op_def,
+    const std::vector<string>& input_shapes,
+    const std::vector<const Tensor*>& input_tensors)
     : input_tensors_(input_tensors), node_def_(*CHECK_NOTNULL(node_def)) {
+  TF_CHECK_OK(NameRangesForNode(*node_def, op_def, &input_name_map_,
+                                &output_name_map_));
+  int num_outputs = 0;
+  for (const auto& e : output_name_map_) {
+    num_outputs = std::max(num_outputs, e.second.second);
+  }
+
   for (const string& spec : input_shapes) {
     if (spec == "?") {
       inputs_.push_back(UnknownShape());

@@ -91,6 +91,8 @@ class BaseMonitor(object):
   """Base class for Monitors.
 
   Defines basic interfaces of Monitors.
+  Monitors can either be run on all workers or, more commonly, restricted
+  to run exclusively on the elected chief worker.
   """
 
   def __init__(self):
@@ -100,6 +102,10 @@ class BaseMonitor(object):
     self._max_steps = None
     self._init_step = None
     self._estimator = None
+
+  @property
+  def run_on_all_workers(self):
+    return False
 
   def set_estimator(self, estimator):
     """A setter called automatically by the target estimator.

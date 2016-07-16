@@ -74,38 +74,42 @@ TEST(ArrayOpsTest, Pack_ShapeFn) {
 TEST(ArrayOpsTest, UnPack_ShapeFn) {
   std::unique_ptr<NodeDef> def_storage(new NodeDef);
   NodeDef* def = def_storage.get();
-  auto set_axis = [def](int axis) {
+  auto set_axis_and_num = [def](int axis, int num) {
     TF_CHECK_OK(NodeDefBuilder("test", "Unpack")
                     .Input("a", 0, DT_FLOAT)
                     .Attr("axis", axis)
+                    .Attr("num", num)
                     .Finalize(def));
   };
   const char op[] = "Unpack";
 
-  set_axis(0);
+  set_axis_and_num(0, 1);
   INFER_OK_WITH_DEF(op, def, "?;?;?", "?");
 
   for (int axis : {0, -3}) {
-    set_axis(axis);
+    set_axis_and_num(axis, 1);
     INFER_OK_WITH_DEF(op, def, "?", "?");
     INFER_OK_WITH_DEF(op, def, "[1,2,3]", "[d0_1,d0_2]");
     INFER_OK_WITH_DEF(op, def, "[?,?,?]", "[d0_1,d0_2]");
   }
   for (int axis : {1, -2}) {
-    set_axis(axis);
+    set_axis_and_num(axis, 2);
     INFER_OK_WITH_DEF(op, def, "[1,2,3]", "[d0_0,d0_2]");
     INFER_OK_WITH_DEF(op, def, "[?,?,?]", "[d0_0,d0_2]");
   }
   for (int axis : {2, -1}) {
-    set_axis(axis);
+    set_axis_and_num(axis, 3);
     INFER_OK_WITH_DEF(op, def, "[1,2,3]", "[d0_0,d0_1]");
     INFER_OK_WITH_DEF(op, def, "[?,?,?]", "[d0_0,d0_1]");
   }
 
-  set_axis(-4);
+  set_axis_and_num(2, 2);
+  INFER_ERROR_WITH_DEF("Dimension must be 2 but is 3", op, def, "[1,2,3]");
+
+  set_axis_and_num(-4, 3);
   INFER_ERROR_WITH_DEF("Invalid axis: -4; must be in [-3,3)", op, def,
                        "[1,2,3]");
-  set_axis(3);
+  set_axis_and_num(3, 3);
   INFER_ERROR_WITH_DEF("Invalid axis: 3; must be in [-3,3)", op, def,
                        "[1,2,3]");
 }

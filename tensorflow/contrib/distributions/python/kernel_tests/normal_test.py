@@ -190,8 +190,7 @@ class NormalTest(tf.test.TestCase):
       self.assertAllEqual(expected_samples_shape, samples.get_shape())
       self.assertAllEqual(expected_samples_shape, sample_values.shape)
 
-  def _testNormalSampleMultiDimensional(self):
-    # DISABLED: Please enable this test once b/issues/30149644 is resolved.
+  def testNormalSampleMultiDimensional(self):
     with self.test_session():
       batch_size = 2
       mu = tf.constant([[3.0, -3.0]] * batch_size)
@@ -200,7 +199,7 @@ class NormalTest(tf.test.TestCase):
       sigma_v = [np.sqrt(10.0), np.sqrt(15.0)]
       n = tf.constant(100000)
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      samples = normal.sample(n)
+      samples = normal.sample(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (100000, batch_size, 2))
       self.assertAllClose(sample_values[:, 0, 0].mean(), mu_v[0], atol=1e-2)
