@@ -98,8 +98,8 @@ class InferenceContext {
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def,
-                   const std::vector<string>& input_shapes, int num_outputs,
+  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+                   const std::vector<string>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors);
   ~InferenceContext();
 
@@ -263,6 +263,8 @@ class InferenceContext {
   std::vector<const Shape*> outputs_;
 
   const NodeDef& node_def_;
+  NameRangeMap input_name_map_;
+  NameRangeMap output_name_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
 };
