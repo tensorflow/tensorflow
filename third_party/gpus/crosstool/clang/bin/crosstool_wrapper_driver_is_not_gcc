@@ -113,23 +113,22 @@ def GetHostCompilerOptions(argv):
   iquote_args = (args.iquote +
                  [x for x in args.isystem
                   if 'third_party/gpus/cuda/include' in x])
-  # This hack is needed so that we can compile eigen3. We need to include
-  # third_party/eigen3 with -I. Some eigen file include using the
-  # include <Eigen/Core> syntax, and -iquote doesn't work for that.
-  has_eigen = ['third_party/eigen3'] in isystem_args
-  if has_eigen:
-    isystem_args.remove(['third_party/eigen3'])
+  # To make the above hack work, we need to include eigen with -I here,
+  # because it imports curand_kernel.h using a system include statement.
+  # If we include it with -isystem, bazel will complain about missing
+  # dependency declarations for the curand headers.
+  if ['external/eigen_archive'] in isystem_args:
+    isystem_args.remove(['external/eigen_archive'])
+    opts += ' -I external/eigen_archive'
 
   if isystem_args:
-    opts += '-isystem ' + ' -isystem '.join(sum(isystem_args, []))
+    opts += ' -isystem ' + ' -isystem '.join(sum(isystem_args, []))
   if iquote_args:
     opts += ' -iquote ' + ' -iquote '.join(sum(iquote_args, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
-  if has_eigen:
-    opts += ' -I third_party/eigen3'
 
   return opts
 
