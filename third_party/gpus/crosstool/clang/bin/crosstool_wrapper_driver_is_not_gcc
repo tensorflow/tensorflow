@@ -100,31 +100,11 @@ def GetHostCompilerOptions(argv):
   args, _ = parser.parse_known_args(argv)
 
   opts = ''
-  # This is a temporary workaround for b/12960069.
-  # NVIDIA is going to fix this in CUDA 6.5, but until then this workaround
-  # will let us compile Thrust with the cuda crosstool.
-  # bazel passes all include directories as '-isystem dir' to the crosstool.
-  # This causes nvcc to think that there are kernel launches from system
-  # directories (which apparently is not supported by the compiler). This
-  # workaround changes '-isystem third_party/gpus/cuda/include' to
-  # '-iquote third_party/gpus/cuda/include'.
-  isystem_args = [x for x in args.isystem
-                  if 'third_party/gpus/cuda/include' not in x]
-  iquote_args = (args.iquote +
-                 [x for x in args.isystem
-                  if 'third_party/gpus/cuda/include' in x])
-  # To make the above hack work, we need to include eigen with -I here,
-  # because it imports curand_kernel.h using a system include statement.
-  # If we include it with -isystem, bazel will complain about missing
-  # dependency declarations for the curand headers.
-  if ['external/eigen_archive'] in isystem_args:
-    isystem_args.remove(['external/eigen_archive'])
-    opts += ' -I external/eigen_archive'
 
-  if isystem_args:
-    opts += ' -isystem ' + ' -isystem '.join(sum(isystem_args, []))
-  if iquote_args:
-    opts += ' -iquote ' + ' -iquote '.join(sum(iquote_args, []))
+  if args.isystem:
+    opts += ' -isystem ' + ' -isystem '.join(sum(args.isystem, []))
+  if args.iquote:
+    opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
   if args.sysroot:
