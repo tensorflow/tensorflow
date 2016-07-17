@@ -38,8 +38,9 @@ HOST_OBJDIR := $(MAKEFILE_DIR)/gen/host_obj/
 HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
 HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
-# Find the current Eigen version name from the Bazel build file
-EIGEN_HASH := $(shell cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
+# Find the current Eigen version name from the cmake configuration
+EIGEN_HASH := $(shell cat tensorflow/contrib/cmake/external/eigen.cmake | \
+	                  grep eigen_archive_hash | head -1 | sed -e 's/.*"\(.*\)".*/\1/')
 
 # Settings for the host compiler.
 HOST_CXX := $(CC_PREFIX) gcc
