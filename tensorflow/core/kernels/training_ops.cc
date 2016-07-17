@@ -1589,7 +1589,7 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T>::Flat var,                   \
       typename TTypes<T>::Flat accum, typename TTypes<T>::ConstScalar lr, \
       typename TTypes<T>::ConstFlat grad,                                 \
-      typename TTypes<T>::ConstScalar momentum);                          \
+      typename TTypes<T>::ConstScalar momentum, bool use_nesterov);       \
   extern template struct ApplyMomentum<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);

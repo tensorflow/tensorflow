@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_TRAINING_OPS_H_
 #define TENSORFLOW_KERNELS_TRAINING_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -98,7 +98,7 @@ struct ApplyMomentum {
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
-                  typename TTypes<T>::ConstScalar momentum);
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov);
 };
 
 template <typename Device, typename T>
