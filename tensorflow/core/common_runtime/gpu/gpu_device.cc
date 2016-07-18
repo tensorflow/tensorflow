@@ -326,6 +326,7 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
 
   // Fill in the context map.  It is OK for this map to contain
   // duplicate DeviceContexts so long as we increment the refcount.
+  device_context_map->resize(graph->num_node_ids());
   for (Node* n : graph->nodes()) {
     auto mapped_stream = node_to_stream_id[n->id()];
     CHECK_LE(mapped_stream, num_streams);
@@ -334,7 +335,7 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
             << " ==> stream[" << ctx->stream_id() << "] for node id " << n->id()
             << " " << n->type_string() << " " << n->name();
     ctx->Ref();
-    device_context_map->insert(std::make_pair(n->id(), ctx));
+    (*device_context_map)[n->id()] = ctx;
   }
 
   return Status::OK();
