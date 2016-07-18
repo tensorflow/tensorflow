@@ -34,10 +34,11 @@ from tensorflow.python.ops import array_ops
 class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 
   def testNonBatchMatrix(self):
-    matrix = [[1, 2, 3], [4, 5, 6]]
-    expected_transposed = [[1, 4], [2, 5], [3, 6]]
+    matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
+    expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
     with self.test_session():
       transposed = tf.batch_matrix_transpose(matrix)
+      self.assertEqual((3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
 
   def testBatchMatrix(self):
@@ -45,11 +46,36 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     matrix_0_t = [[1, 4], [2, 5], [3, 6]]
     matrix_1 = [[11, 22, 33], [44, 55, 66]]
     matrix_1_t = [[11, 44], [22, 55], [33, 66]]
-    batch_matrix = [matrix_0, matrix_1]
-    expected_transposed = [matrix_0_t, matrix_1_t]
+    batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
+    expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
     with self.test_session():
       transposed = tf.batch_matrix_transpose(batch_matrix)
+      self.assertEqual((2, 3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
+
+  def testNonBatchMatrixDynamicallyDefined(self):
+    matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
+    expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
+    with self.test_session():
+      matrix_ph = tf.placeholder(tf.int32)
+      transposed = tf.batch_matrix_transpose(matrix_ph)
+      self.assertAllEqual(
+          expected_transposed,
+          transposed.eval(feed_dict={matrix_ph: matrix}))
+
+  def testBatchMatrixDynamicallyDefined(self):
+    matrix_0 = [[1, 2, 3], [4, 5, 6]]
+    matrix_0_t = [[1, 4], [2, 5], [3, 6]]
+    matrix_1 = [[11, 22, 33], [44, 55, 66]]
+    matrix_1_t = [[11, 44], [22, 55], [33, 66]]
+    batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
+    expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
+    with self.test_session():
+      batch_matrix_ph = tf.placeholder(tf.int32)
+      transposed = tf.batch_matrix_transpose(batch_matrix_ph)
+      self.assertAllEqual(
+          expected_transposed,
+          transposed.eval(feed_dict={batch_matrix_ph: batch_matrix}))
 
   def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
     vector = [1, 2, 3]
