@@ -1854,8 +1854,10 @@ tf_cc_tests(
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = [
         "ops/array_ops_test.cc",
+        "ops/io_ops_test.cc",
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
+        "ops/training_ops_test.cc",
     ],
     deps = [
         ":core",

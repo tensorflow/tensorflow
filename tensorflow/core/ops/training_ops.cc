@@ -14,8 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+typedef shape_inference::Dimension Dimension;
+typedef shape_inference::InferenceContext InferenceContext;
+typedef shape_inference::Shape Shape;
+static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
+
+static Status ApplyGradientDescentShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));  // alpha
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // delta
+  c->set_output(0, s);
+  return Status::OK();
+}
 
 REGISTER_OP("ApplyGradientDescent")
     .Input("var: Ref(T)")
@@ -24,6 +39,7 @@ REGISTER_OP("ApplyGradientDescent")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyGradientDescentShapeFn))
     .Doc(R"doc(
 Update '*var' by subtracting 'alpha' * 'delta' from it.
 
@@ -35,6 +51,17 @@ use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
+static Status ApplyProxiimalGradientDescentShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));  // alpha
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // l1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l2
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(4), &s));          // delta
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 REGISTER_OP("ApplyProximalGradientDescent")
     .Input("var: Ref(T)")
     .Input("alpha: T")
@@ -44,6 +71,7 @@ REGISTER_OP("ApplyProximalGradientDescent")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyProxiimalGradientDescentShapeFn))
     .Doc(R"doc(
 Update '*var' as FOBOS algorithm with fixed learning rate.
 prox_v = var - alpha * delta
@@ -87,6 +115,18 @@ out: Same as "var".
 use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
+static Status ApplyAdadeltaShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // accum update
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(6), &s));          // grad
+  c->set_output(0, s);
+  return Status::OK();
+}
 
 REGISTER_OP("ApplyAdadelta")
     .Input("var: Ref(T)")
@@ -99,6 +139,7 @@ REGISTER_OP("ApplyAdadelta")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyAdadeltaShapeFn))
     .Doc(R"doc(
 Update '*var' according to the adadelta scheme.
 
@@ -145,6 +186,15 @@ out: Same as "var".
 use_locking: If True, updating of the var and accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
+static Status ApplyAdagradShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(3), &s));          // grad
+  c->set_output(0, s);
+  return Status::OK();
+}
 
 REGISTER_OP("ApplyAdagrad")
     .Input("var: Ref(T)")
@@ -154,6 +204,8 @@ REGISTER_OP("ApplyAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyAdagradShapeFn))
+
     .Doc(R"doc(
 Update '*var' according to the adagrad scheme.
 
@@ -169,6 +221,17 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
 )doc");
+static Status ApplyProximalAdagradShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // l2
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(5), &s));          // grad
+  c->set_output(0, s);
+  return Status::OK();
+}
 
 REGISTER_OP("ApplyProximalAdagrad")
     .Input("var: Ref(T)")
@@ -180,6 +243,8 @@ REGISTER_OP("ApplyProximalAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyProximalAdagradShapeFn))
+
     .Doc(R"doc(
 Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
 accum += grad * grad
@@ -258,6 +323,20 @@ use_locking: If True, updating of the var and accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
+static Status ApplyFtrlShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // linear
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(3), &s));          // grad
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // l1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // l2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // lr_power
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 REGISTER_OP("ApplyFtrl")
     .Input("var: Ref(T)")
     .Input("accum: Ref(T)")
@@ -270,6 +349,8 @@ REGISTER_OP("ApplyFtrl")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyFtrlShapeFn))
+
     .Doc(R"doc(
 Update '*var' according to the Ftrl-proximal scheme.
 
@@ -332,6 +413,17 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
   contention.
 )doc");
 
+static Status ApplyMomentumShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(3), &s));          // grad
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // momentum
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 REGISTER_OP("ApplyMomentum")
     .Input("var: Ref(T)")
     .Input("accum: Ref(T)")
@@ -341,6 +433,7 @@ REGISTER_OP("ApplyMomentum")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyMomentumShapeFn))
     .Doc(R"doc(
 Update '*var' according to the momentum scheme.
 
@@ -389,6 +482,22 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
   contention.
 )doc");
 
+static Status ApplyAdamShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // m
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // v
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // beta1_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // beta2_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // beta1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // beta2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(9), &s));          // grad
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 REGISTER_OP("ApplyAdam")
     .Input("var: Ref(T)")
     .Input("m: Ref(T)")
@@ -403,6 +512,7 @@ REGISTER_OP("ApplyAdam")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyAdamShapeFn))
     .Doc(R"doc(
 Update '*var' according to the Adam algorithm.
 
@@ -427,6 +537,20 @@ use_locking: If `True`, updating of the var, m, and v tensors will be protected
   contention.
 )doc");
 
+static Status ApplyRMSPropShapeFn(InferenceContext* c) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                              // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // ms
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // mom
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(7), &s));          // grad
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 REGISTER_OP("ApplyRMSProp")
     .Input("var: Ref(T)")
     .Input("ms: Ref(T)")
@@ -439,6 +563,7 @@ REGISTER_OP("ApplyRMSProp")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .SetShapeFn(OpShapeInferenceFn(ApplyRMSPropShapeFn))
     .Doc(R"doc(
 Update '*var' according to the RMSProp algorithm.
 Note that in dense implement of this algorithm, ms and mom will 
@@ -464,7 +589,7 @@ use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
 )doc");
-  
+
 REGISTER_OP("SparseApplyRMSProp")
     .Input("var: Ref(T)")
     .Input("ms: Ref(T)")
