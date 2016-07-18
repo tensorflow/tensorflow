@@ -229,7 +229,7 @@ class Word2Vec(object):
     self._labels = labels
     self._lr = lr
     self._train = train
-    self.step = global_step
+    self.global_step = global_step
     self._epoch = current_epoch
     self._words = total_words_processed
 
@@ -238,7 +238,8 @@ class Word2Vec(object):
     opts = self._options
     with open(os.path.join(opts.save_path, "vocab.txt"), "w") as f:
       for i in xrange(opts.vocab_size):
-        f.write("%s %d\n" % (tf.compat.as_text(opts.vocab_words[i]),
+        vocab_word = tf.compat.as_text(opts.vocab_words[i]).encode("utf-8")
+        f.write("%s %d\n" % (vocab_word,
                              opts.vocab_counts[i]))
 
   def build_eval_graph(self):
@@ -322,8 +323,8 @@ class Word2Vec(object):
     last_words, last_time = initial_words, time.time()
     while True:
       time.sleep(5)  # Reports our progress once a while.
-      (epoch, step, words,
-       lr) = self._session.run([self._epoch, self.step, self._words, self._lr])
+      (epoch, step, words, lr) = self._session.run(
+          [self._epoch, self.global_step, self._words, self._lr])
       now = time.time()
       last_words, last_time, rate = words, now, (words - last_words) / (
           now - last_time)
@@ -419,7 +420,7 @@ def main(_):
       model.eval()  # Eval analogies.
     # Perform a final save.
     model.saver.save(session, os.path.join(opts.save_path, "model.ckpt"),
-                     global_step=model.step)
+                     global_step=model.global_step)
     if FLAGS.interactive:
       # E.g.,
       # [0]: model.analogy(b'france', b'paris', b'russia')
