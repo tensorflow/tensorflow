@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
+
 #include "tensorflow/core/debug/debug_gateway.h"
 
 #include <algorithm>
@@ -32,11 +34,14 @@ DirectSession* CreateSession() {
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
 
-  (*options.config.mutable_device_count())["CPU"] = 2;
+  (*options.config.mutable_device_count())["CPU"] = 1;
+  (*options.config.mutable_device_count())["GPU"] = 1;
+  options.config.set_allow_soft_placement(true);
+
   return dynamic_cast<DirectSession*>(NewSession(options));
 }
 
-class SessionDebugMinusAXTest : public ::testing::Test {
+class SessionDebugGPUMinusAXTest : public ::testing::Test {
  public:
   void Initialize(std::initializer_list<float> a_values) {
     Graph graph(OpRegistry::Global());
@@ -50,17 +55,17 @@ class SessionDebugMinusAXTest : public ::testing::Test {
     Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
     test::FillValues<float>(&x_tensor, {1, 1});
     Node* x = test::graph::Constant(&graph, x_tensor);
-    x->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+    x->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
     x_ = x->name();
 
     // y = A * x
     Node* y = test::graph::Matmul(&graph, a, x, false, false);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
     y_ = y->name();
 
     Node* y_neg = test::graph::Unary(&graph, "Neg", y);
     y_neg_ = y_neg->name();
-    y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+    y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
 
     test::graph::ToGraphDef(&graph, &def_);
   }
@@ -72,7 +77,7 @@ class SessionDebugMinusAXTest : public ::testing::Test {
   GraphDef def_;
 };
 
-TEST_F(SessionDebugMinusAXTest, RunSimpleNetwork) {
+TEST_F(SessionDebugGPUMinusAXTest, RunSimpleNetwork) {
   Initialize({3, 2, -1, 0});
   std::unique_ptr<DirectSession> session(CreateSession());
   ASSERT_TRUE(session != nullptr);
@@ -202,3 +207,5 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetwork) {
 
 }  // end namespace
 }  // end namespace tensorflow
+
+#endif  // GOOGLE_CUDA
