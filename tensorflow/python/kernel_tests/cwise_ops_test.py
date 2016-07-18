@@ -990,6 +990,15 @@ class BinaryOpTest(tf.test.TestCase):
         func(tf.convert_to_tensor([10.0, 20.0, 30.0]),
              tf.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
+  def testZeroPowGrad(self):
+    with self.test_session():
+      for dtype in np.float16, np.float32, np.float64:
+        x = tf.constant(0.0, dtype=dtype)
+        y = tf.constant(2.0, dtype=dtype)
+        z = tf.pow(x, y)
+        error = tf.test.compute_gradient_error(y, [], z, [])
+        self.assertEqual(error, 0)
+
 
 class ComparisonOpTest(tf.test.TestCase):
 
