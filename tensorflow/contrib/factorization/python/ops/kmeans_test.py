@@ -105,6 +105,27 @@ class KMeansTest(tf.test.TestCase):
     self.assertTrue(score1 > score2)
     self.assertNear(self.true_score, score2, self.true_score * 0.05)
 
+  def test_monitor(self):
+    if self.batch_size != self.num_points:
+      # TODO(agarwal): Doesn't work with mini-batch.
+      return
+    kmeans = KMeans(self.num_centers,
+                    initial_clusters=kmeans_ops.RANDOM_INIT,
+                    batch_size=self.batch_size,
+                    use_mini_batch=self.use_mini_batch,
+                    # Force it to train forever until the monitor stops it.
+                    steps=None,
+                    continue_training=True,
+                    config=run_config.RunConfig(tf_random_seed=14),
+                    random_seed=12)
+
+    kmeans.fit(x=self.points,
+               # Force it to train forever until the monitor stops it.
+               steps=None,
+               relative_tolerance=1e-4)
+    score = kmeans.score(x=self.points)
+    self.assertNear(self.true_score, score, self.true_score * 0.005)
+
   def test_infer(self):
     kmeans = self.kmeans
     kmeans.fit(x=self.points)
