@@ -178,14 +178,17 @@ class BernoulliTest(tf.test.TestCase):
     with self.test_session():
       p = [0.2, 0.6]
       dist = tf.contrib.distributions.Bernoulli(p=p)
-      n = 1000
-      samples = dist.sample(n, seed=123)
+      n = 100000
+      samples = dist.sample(n)
       samples.set_shape([n, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()
-      self.assertFalse(np.any(sample_values < 0))
-      self.assertFalse(np.any(sample_values > 1))
-      self.assertAllClose(p, np.mean(sample_values == 1, axis=0), atol=1e-2)
+      self.assertTrue(np.all(sample_values > 0))
+      self.asserTrue(np.all(sample_values < 1))
+      # Note that the standard error for the sample mean is ~ sqrt(p * (1 - p) /
+      # n). This means that the tolerance is very sensitive to the value of p
+      # as well as n.
+      self.assertAllClose(p, np.mean(sample_values, axis=0), atol=1e-2)
       self.assertEqual(set([0, 1]), set(sample_values.flatten()))
 
   def testMean(self):
