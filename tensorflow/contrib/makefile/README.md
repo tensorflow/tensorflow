@@ -16,15 +16,15 @@ This static library will not contain:
  - Python or other language bindings
  - GPU support
  
- You can target:
- - iOS
- - OS X (macOS)
- - Android
- - Raspberry-PI
+You can target:
+- iOS
+- OS X (macOS)
+- Android
+- Raspberry-PI
  
- You will compile tensorflow and protobuf libraries that you can link into other
- applications.  You will also compile the [benchmark](../../tools/benchmark/)
- application that will let you check your application.
+You will compile tensorflow and protobuf libraries that you can link into other
+applications.  You will also compile the [benchmark](../../tools/benchmark/)
+application that will let you check your application.
  
 ## Before you start (all platforms)
 
