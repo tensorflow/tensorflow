@@ -57,9 +57,8 @@ class FileIoTest(tf.test.TestCase):
     self.assertItemsEqual(file_io.get_matching_files(os.path.join(dir_path,
                                                                   "file*.txt")),
                           expected_match)
-    for name in files:
-      file_path = os.path.join(dir_path, name)
-      file_io.delete_file(file_path)
+    file_io.delete_recursively(dir_path)
+    self.assertFalse(file_io.file_exists(os.path.join(dir_path, "file3.txt")))
 
   def testCreateRecursiveDir(self):
     dir_path = os.path.join(self.get_temp_dir(), "temp_dir/temp_dir1/temp_dir2")
@@ -67,6 +66,8 @@ class FileIoTest(tf.test.TestCase):
     file_path = os.path.join(dir_path, "temp_file")
     file_io.write_string_to_file(file_path, "testing")
     self.assertTrue(file_io.file_exists(file_path))
+    file_io.delete_recursively(os.path.join(self.get_temp_dir(), "temp_dir"))
+    self.assertFalse(file_io.file_exists(file_path))
 
   def testCopy(self):
     file_path = os.path.join(self.get_temp_dir(), "temp_file")
@@ -129,6 +130,11 @@ class FileIoTest(tf.test.TestCase):
     self.assertTrue(file_io.file_exists(file_path))
     file_io.delete_file(rename_path)
     file_io.delete_file(file_path)
+
+  def testDeleteRecursivelyFail(self):
+    fake_dir_path = os.path.join(self.get_temp_dir(), "temp_dir")
+    with self.assertRaises(errors.NotFoundError):
+      file_io.delete_recursively(fake_dir_path)
 
 if __name__ == "__main__":
   tf.test.main()

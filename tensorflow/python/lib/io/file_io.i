@@ -17,6 +17,7 @@ limitations under the License.
 %include "tensorflow/python/platform/base.i"
 
 %{
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/match.h"
@@ -112,6 +113,23 @@ void RenameFile(const string& src, const string& target, bool overwrite,
     Set_TF_Status_from_Status(out_status, status);
   }
 }
+
+using tensorflow::int64;
+
+void DeleteRecursively(const string& dirname, TF_Status* out_status) {
+  int64 undeleted_files, undeleted_dirs;
+  tensorflow::Status status = tensorflow::Env::Default()->DeleteRecursively(
+      dirname, &undeleted_files, &undeleted_dirs);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+    return;
+  }
+  if (undeleted_files > 0 || undeleted_dirs > 0) {
+    TF_SetStatus(out_status, TF_PERMISSION_DENIED,
+                 "could not fully delete dir");
+    return;
+  }
+}
 %}
 
 // Wrap the above functions.
@@ -127,3 +145,4 @@ void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
               TF_Status* out_status);
 void RenameFile(const string& oldname, const string& newname, bool overwrite,
                 TF_Status* out_status);
+void DeleteRecursively(const string& dirname, TF_Status* out_status);

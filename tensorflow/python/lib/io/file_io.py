@@ -77,3 +77,8 @@ def rename(oldname, newname, overwrite=False):
     return pywrap_tensorflow.RenameFile(compat.as_bytes(oldname),
                                         compat.as_bytes(newname), overwrite,
                                         status)
+
+
+def delete_recursively(dirname):
+  with errors.raise_exception_on_not_ok_status() as status:
+    return pywrap_tensorflow.DeleteRecursively(compat.as_bytes(dirname), status)

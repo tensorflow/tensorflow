@@ -16,10 +16,12 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -157,6 +159,70 @@ Status Env::IsDirectory(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->IsDirectory(fname);
+}
+
+Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
+                              int64* undeleted_dirs) {
+  CHECK_NOTNULL(undeleted_files);
+  CHECK_NOTNULL(undeleted_dirs);
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+
+  *undeleted_files = 0;
+  *undeleted_dirs = 0;
+  // Make sure that dirname exists;
+  if (!FileExists(dirname)) {
+    (*undeleted_dirs)++;
+    return Status(error::NOT_FOUND, "Directory doesn't exist");
+  }
+  std::deque<string> dir_q;      // Queue for the BFS
+  std::vector<string> dir_list;  // List of all dirs discovered
+  dir_q.push_back(dirname);
+  Status ret;  // Status to be returned.
+  // Do a BFS on the directory to discover all the sub-directories. Remove all
+  // children that are files along the way. Then cleanup and remove the
+  // directories in reverse order.;
+  while (!dir_q.empty()) {
+    string dir = dir_q.front();
+    dir_q.pop_front();
+    dir_list.push_back(dir);
+    std::vector<string> children;
+    // GetChildren might fail if we don't have appropriate permissions.
+    Status s = fs->GetChildren(dir, &children);
+    ret.Update(s);
+    if (!s.ok()) {
+      (*undeleted_dirs)++;
+      continue;
+    }
+    for (const string& child : children) {
+      const string child_path = io::JoinPath(dir, child);
+      // If the child is a directory add it to the queue, otherwise delete it.
+      if (fs->IsDirectory(child_path).ok()) {
+        dir_q.push_back(child_path);
+      } else {
+        // Delete file might fail because of permissions issues or might be
+        // unimplemented.
+        Status del_status = fs->DeleteFile(child_path);
+        ret.Update(del_status);
+        if (!del_status.ok()) {
+          (*undeleted_files)++;
+        }
+      }
+    }
+  }
+  // Now reverse the list of directories and delete them. The BFS ensures that
+  // we can delete the directories in this order.
+  std::reverse(dir_list.begin(), dir_list.end());
+  for (const string& dir : dir_list) {
+    // Delete dir might fail because of permissions issues or might be
+    // unimplemented.
+    Status s = fs->DeleteDir(dir);
+    ret.Update(s);
+    if (!s.ok()) {
+      (*undeleted_dirs)++;
+    }
+  }
+  return Status::OK();
 }
 
 Status Env::GetFileSize(const string& fname, uint64* file_size) {
