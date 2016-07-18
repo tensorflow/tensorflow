@@ -432,16 +432,13 @@ class ProdReductionTest(tf.test.TestCase):
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
 
-  def testGradient(self):
-    s = [2, 3, 4, 2]
-    # NOTE(kearnes): divide by 20 so product is a reasonable size
-    x = np.arange(0.0, 48.0).reshape(s).astype(np.float32) / 20.
+  def _compareGradient(self, x):
     with self.test_session():
       t = tf.convert_to_tensor(x)
 
       su = tf.reduce_prod(t, [])
       jacob_t, jacob_n = tf.test.compute_gradient(t,
-                                                  s,
+                                                  x.shape,
                                                   su,
                                                   [2, 3, 4, 2],
                                                   x_init_value=x,
@@ -450,7 +447,7 @@ class ProdReductionTest(tf.test.TestCase):
 
       su = tf.reduce_prod(t, [1, 2])
       jacob_t, jacob_n = tf.test.compute_gradient(t,
-                                                  s,
+                                                  x.shape,
                                                   su,
                                                   [2, 2],
                                                   x_init_value=x,
@@ -459,12 +456,34 @@ class ProdReductionTest(tf.test.TestCase):
 
       su = tf.reduce_prod(t, [0, 1, 2, 3])
       jacob_t, jacob_n = tf.test.compute_gradient(t,
-                                                  s,
+                                                  x.shape,
                                                   su,
                                                   [1],
                                                   x_init_value=x,
                                                   delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+
+  def testGradientWithZeros(self):
+    s = [2, 3, 4, 2]
+    x = np.arange(1.0, 49.0).reshape(s).astype(np.float32) / 20.
+    # No zeros in input
+    self._compareGradient(x)
+    # Zero at beginning
+    x1 = x.copy()
+    x1[:,:,0,:] = 0
+    self._compareGradient(x1)
+    # Zero at end
+    x2 = x.copy()
+    x2[:,:,-1,:] = 0
+    self._compareGradient(x2)
+    # Zero in middle
+    x3 = x.copy()
+    x3[:,:,2,:] = 0
+    self._compareGradient(x3)
+    # All zeros
+    x4 = x.copy()
+    x4[:,:,:,:] = 0
+    self._compareGradient(x4)
 
   def testEmptyGradients(self):
     with self.test_session():

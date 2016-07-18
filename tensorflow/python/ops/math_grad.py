@@ -109,6 +109,11 @@ def _MeanGrad(op, grad):
 @ops.RegisterGradient("Prod")
 def _ProdGrad(op, grad):
   """Gradient for Prod."""
+  # The gradient can be expressed by dividing the product by each entry of the
+  # input tensor, but this approach can't deal with zeros in the input.
+  # Here, we avoid this problem by composing the output as a product of two
+  # cumprod operations.
+
   input_shape = array_ops.shape(op.inputs[0])
 
   # Expand grad to full input shape
@@ -117,7 +122,9 @@ def _ProdGrad(op, grad):
   grad = array_ops.reshape(grad, output_shape_kept_dims)
   grad = array_ops.tile(grad, tile_scaling)
 
-  # If the list is empty, it defaults to float32
+  # Pack all reduced dimensions into a single one, so we can perform the
+  # cumprod ops. If the reduction dims list is empty, it defaults to float32,
+  # so we need to cast here.
   reduced = math_ops.cast(op.inputs[1], dtypes.int32)
   idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
   other, _ = array_ops.listdiff(idx, reduced)
@@ -133,8 +140,9 @@ def _ProdGrad(op, grad):
   right = math_ops.cumprod(reshaped, axis=0, exclusive=True, reverse=True)
   y = array_ops.reshape(left * right, permuted_shape)
 
+  # Invert the transpose and reshape operations.
+  # Make sure to set the statically known shape information through a reshape.
   out = grad * array_ops.transpose(y, array_ops.invert_permutation(perm))
-  # Reset statically known shape information
   return array_ops.reshape(out, input_shape), None
 
 
