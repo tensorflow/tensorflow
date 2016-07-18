@@ -837,11 +837,15 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
+  # TODO(philstahlfeld): Investigate switching export.export_estimator
+  # configuration values to **kwargs so that updates to the export_estimator
+  # function don't have to be reflected here.
   def __init__(self,
                every_n_steps,
                export_dir,
                exports_to_keep=5,
-               signature_fn=None):
+               signature_fn=None,
+               default_batch_size=1):
     """Initializes ExportMonitor.
 
     Args:
@@ -851,11 +855,13 @@ class ExportMonitor(EveryN):
       signature_fn: Function that given `Tensor` of `Example` strings,
         `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
         and returns default and named exporting signautres.
+      default_batch_size: Default batch size of the `Example` placeholder.
     """
     super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
     self.export_dir = export_dir
     self.exports_to_keep = exports_to_keep
     self.signature_fn = signature_fn
+    self._default_batch_size = default_batch_size
 
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
@@ -863,7 +869,8 @@ class ExportMonitor(EveryN):
       export.export_estimator(self._estimator,
                               self.export_dir,
                               exports_to_keep=self.exports_to_keep,
-                              signature_fn=self.signature_fn)
+                              signature_fn=self.signature_fn,
+                              default_batch_size=self._default_batch_size)
     except (RuntimeError, TypeError):
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
@@ -875,7 +882,8 @@ class ExportMonitor(EveryN):
     export.export_estimator(self._estimator,
                             self.export_dir,
                             exports_to_keep=self.exports_to_keep,
-                            signature_fn=self.signature_fn)
+                            signature_fn=self.signature_fn,
+                            default_batch_size=self._default_batch_size)
 
 
 class CheckpointSaver(EveryN):
