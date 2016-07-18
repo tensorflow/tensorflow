@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -183,8 +183,8 @@ class BernoulliTest(tf.test.TestCase):
       samples.set_shape([n, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()
-      self.assertTrue(np.all(sample_values > 0))
-      self.asserTrue(np.all(sample_values < 1))
+      self.assertTrue(np.all(sample_values >= 0))
+      self.assertTrue(np.all(sample_values <= 1))
       # Note that the standard error for the sample mean is ~ sqrt(p * (1 - p) /
       # n). This means that the tolerance is very sensitive to the value of p
       # as well as n.
@@ -228,6 +228,7 @@ class BernoulliTest(tf.test.TestCase):
 
       self.assertEqual(kl.get_shape(), (batch_size,))
       self.assertAllClose(kl_val, kl_expected)
+
 
 if __name__ == "__main__":
   tf.test.main()
