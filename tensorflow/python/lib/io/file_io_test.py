@@ -136,5 +136,17 @@ class FileIoTest(tf.test.TestCase):
     with self.assertRaises(errors.NotFoundError):
       file_io.delete_recursively(fake_dir_path)
 
+  def testIsDirectory(self):
+    dir_path = os.path.join(self.get_temp_dir(), "test_dir")
+    # Failure for a non-existing dir.
+    with self.assertRaises(errors.NotFoundError):
+      file_io.is_directory(dir_path)
+    file_io.create_dir(dir_path)
+    self.assertTrue(file_io.is_directory(dir_path))
+    file_path = os.path.join(dir_path, "test_file")
+    file_io.write_string_to_file(file_path, "test")
+    # False for a file.
+    self.assertFalse(file_io.is_directory(file_path))
+
 if __name__ == "__main__":
   tf.test.main()

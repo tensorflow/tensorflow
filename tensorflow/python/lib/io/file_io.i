@@ -130,6 +130,18 @@ void DeleteRecursively(const string& dirname, TF_Status* out_status) {
     return;
   }
 }
+
+bool IsDirectory(const string& dirname, TF_Status* out_status) {
+  tensorflow::Status status = tensorflow::Env::Default()->IsDirectory(dirname);
+  if (status.ok()) {
+    return true;
+  }
+  // FAILED_PRECONDITION Status response means path exists but isn't a dir.
+  if (status.code() != tensorflow::error::FAILED_PRECONDITION) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+  return false;
+}
 %}
 
 // Wrap the above functions.
@@ -146,3 +158,4 @@ void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
 void RenameFile(const string& oldname, const string& newname, bool overwrite,
                 TF_Status* out_status);
 void DeleteRecursively(const string& dirname, TF_Status* out_status);
+bool IsDirectory(const string& dirname, TF_Status* out_status);
