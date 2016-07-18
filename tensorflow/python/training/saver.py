@@ -1037,7 +1037,8 @@ class Saver(object):
 
     Raises:
       TypeError: If `sess` is not a `Session`.
-      ValueError: If `latest_filename` contains path components.
+      ValueError: If `latest_filename` contains path components, or if it
+        collides with `save_path`.
     """
     if latest_filename is None:
       latest_filename = "checkpoint"
@@ -1051,6 +1052,13 @@ class Saver(object):
       checkpoint_file = "%s-%d" % (save_path, global_step)
     else:
       checkpoint_file = save_path
+      if os.path.basename(
+          save_path) == latest_filename and not self.saver_def.sharded:
+        # Guard against collision between data file and checkpoint state file.
+        raise ValueError(
+            "'latest_filename' collides with 'save_path': '%s' and '%s'" %
+            (latest_filename, save_path))
+
     save_path = os.path.dirname(save_path)
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
