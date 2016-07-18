@@ -23,127 +23,117 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(ArrayOpsTest, Pack_ShapeFn) {
-  std::unique_ptr<NodeDef> def_storage(new NodeDef);
-  NodeDef* def = def_storage.get();
-  auto set_axis = [def](int axis) {
+  ShapeInferenceTestOp op("Pack");
+  auto set_axis = [&op](int axis) {
     TF_CHECK_OK(NodeDefBuilder("test", "Pack")
                     .Input({{"a", 0, DT_FLOAT}})
                     .Attr("axis", axis)
-                    .Finalize(def));
+                    .Finalize(&op.node_def));
   };
-  const char op[] = "Pack";
 
   set_axis(0);
-  INFER_OK_WITH_DEF(op, def, "?;?;?", "?");
+  INFER_OK(op, "?;?;?", "?");
 
   for (int axis : {0, -3}) {
     set_axis(axis);
-    INFER_OK_WITH_DEF(op, def, "?;?", "?");
-    INFER_OK_WITH_DEF(op, def, "[1,3];[1,3];?", "[3,d0_0|d1_0,d0_1|d1_1]");
-    INFER_OK_WITH_DEF(op, def, "[?,3];[1,3];?", "[3,d1_0,d0_1|d1_1]");
-    INFER_OK_WITH_DEF(op, def, "[?,?];[1,3];?", "[3,d1_0,d1_1]");
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[1,3];[1,3];?", "[3,d0_0|d1_0,d0_1|d1_1]");
+    INFER_OK(op, "[?,3];[1,3];?", "[3,d1_0,d0_1|d1_1]");
+    INFER_OK(op, "[?,?];[1,3];?", "[3,d1_0,d1_1]");
   }
   for (int axis : {1, -2}) {
     set_axis(axis);
-    INFER_OK_WITH_DEF(op, def, "?;?", "?");
-    INFER_OK_WITH_DEF(op, def, "[1,3];[1,3];?", "[d0_0|d1_0,3,d0_1|d1_1]");
-    INFER_OK_WITH_DEF(op, def, "[?,3];[1,3];?", "[d1_0,3,d0_1|d1_1]");
-    INFER_OK_WITH_DEF(op, def, "[?,?];[1,3];?", "[d1_0,3,d1_1]");
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[1,3];[1,3];?", "[d0_0|d1_0,3,d0_1|d1_1]");
+    INFER_OK(op, "[?,3];[1,3];?", "[d1_0,3,d0_1|d1_1]");
+    INFER_OK(op, "[?,?];[1,3];?", "[d1_0,3,d1_1]");
   }
   for (int axis : {2, -1}) {
     set_axis(axis);
-    INFER_OK_WITH_DEF(op, def, "?;?", "?");
-    INFER_OK_WITH_DEF(op, def, "[1,3];[1,3];?", "[d0_0|d1_0,d0_1|d1_1,3]");
-    INFER_OK_WITH_DEF(op, def, "[?,3];[1,3];?", "[d1_0,d0_1|d1_1,3]");
-    INFER_OK_WITH_DEF(op, def, "[?,?];[1,3];?", "[d1_0,d1_1,3]");
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[1,3];[1,3];?", "[d0_0|d1_0,d0_1|d1_1,3]");
+    INFER_OK(op, "[?,3];[1,3];?", "[d1_0,d0_1|d1_1,3]");
+    INFER_OK(op, "[?,?];[1,3];?", "[d1_0,d1_1,3]");
   }
 
   set_axis(-4);
-  INFER_ERROR_WITH_DEF("Invalid axis: -4; must be in [-3,3)", op, def,
-                       "[1,3];[1,3];?");
+  INFER_ERROR("Invalid axis: -4; must be in [-3,3)", op, "[1,3];[1,3];?");
   set_axis(3);
-  INFER_ERROR_WITH_DEF("Invalid axis: 3; must be in [-3,3)", op, def,
-                       "[1,3];[1,3];?");
+  INFER_ERROR("Invalid axis: 3; must be in [-3,3)", op, "[1,3];[1,3];?");
 
   set_axis(0);
-  INFER_ERROR_WITH_DEF(("Shapes must be equal rank, but are 3 and 2"
-                        "\n\tFrom merging shape 0 with other shapes."),
-                       op, def, "[1,2,3];?;[1,4]");
+  INFER_ERROR(("Shapes must be equal rank, but are 3 and 2"
+               "\n\tFrom merging shape 0 with other shapes."),
+              op, "[1,2,3];?;[1,4]");
 }
 
 TEST(ArrayOpsTest, UnPack_ShapeFn) {
-  std::unique_ptr<NodeDef> def_storage(new NodeDef);
-  NodeDef* def = def_storage.get();
-  auto set_axis_and_num = [def](int axis, int num) {
+  ShapeInferenceTestOp op("Unpack");
+  auto set_axis_and_num = [&op](int axis, int num) {
     TF_CHECK_OK(NodeDefBuilder("test", "Unpack")
                     .Input("a", 0, DT_FLOAT)
                     .Attr("axis", axis)
                     .Attr("num", num)
-                    .Finalize(def));
+                    .Finalize(&op.node_def));
   };
-  const char op[] = "Unpack";
 
   set_axis_and_num(0, 1);
-  INFER_OK_WITH_DEF(op, def, "?;?;?", "?");
+  INFER_OK(op, "?;?;?", "?");
 
   for (int axis : {0, -3}) {
     set_axis_and_num(axis, 1);
-    INFER_OK_WITH_DEF(op, def, "?", "?");
-    INFER_OK_WITH_DEF(op, def, "[1,2,3]", "[d0_1,d0_2]");
-    INFER_OK_WITH_DEF(op, def, "[?,?,?]", "[d0_1,d0_2]");
+    INFER_OK(op, "?", "?");
+    INFER_OK(op, "[1,2,3]", "[d0_1,d0_2]");
+    INFER_OK(op, "[?,?,?]", "[d0_1,d0_2]");
   }
   for (int axis : {1, -2}) {
     set_axis_and_num(axis, 2);
-    INFER_OK_WITH_DEF(op, def, "[1,2,3]", "[d0_0,d0_2]");
-    INFER_OK_WITH_DEF(op, def, "[?,?,?]", "[d0_0,d0_2]");
+    INFER_OK(op, "[1,2,3]", "[d0_0,d0_2]");
+    INFER_OK(op, "[?,?,?]", "[d0_0,d0_2]");
   }
   for (int axis : {2, -1}) {
     set_axis_and_num(axis, 3);
-    INFER_OK_WITH_DEF(op, def, "[1,2,3]", "[d0_0,d0_1]");
-    INFER_OK_WITH_DEF(op, def, "[?,?,?]", "[d0_0,d0_1]");
+    INFER_OK(op, "[1,2,3]", "[d0_0,d0_1]");
+    INFER_OK(op, "[?,?,?]", "[d0_0,d0_1]");
   }
 
   set_axis_and_num(2, 2);
-  INFER_ERROR_WITH_DEF("Dimension must be 2 but is 3", op, def, "[1,2,3]");
+  INFER_ERROR("Dimension must be 2 but is 3", op, "[1,2,3]");
 
   set_axis_and_num(-4, 3);
-  INFER_ERROR_WITH_DEF("Invalid axis: -4; must be in [-3,3)", op, def,
-                       "[1,2,3]");
+  INFER_ERROR("Invalid axis: -4; must be in [-3,3)", op, "[1,2,3]");
   set_axis_and_num(3, 3);
-  INFER_ERROR_WITH_DEF("Invalid axis: 3; must be in [-3,3)", op, def,
-                       "[1,2,3]");
+  INFER_ERROR("Invalid axis: 3; must be in [-3,3)", op, "[1,2,3]");
 }
 
 TEST(ArrayOpsTest, Const_ShapeFn) {
-  std::unique_ptr<NodeDef> def_storage(new NodeDef);
-  NodeDef* def = def_storage.get();
+  ShapeInferenceTestOp op("Const");
   TensorProto tensor_proto;
   auto* shape_proto = tensor_proto.mutable_tensor_shape();
-  auto rebuild_node_def = [def, &tensor_proto]() {
+  auto rebuild_node_def = [&op, &tensor_proto]() {
     TF_CHECK_OK(NodeDefBuilder("test", "Const")
                     .Attr("value", tensor_proto)
-                    .Finalize(def));
+                    .Finalize(&op.node_def));
   };
-  const char op[] = "Const";
 
   TensorShape{}.AsProto(shape_proto);
   rebuild_node_def();
-  INFER_OK_WITH_DEF(op, def, "", "[]");
+  INFER_OK(op, "", "[]");
   TensorShape{1, 2, 3, 4}.AsProto(shape_proto);
   rebuild_node_def();
-  INFER_OK_WITH_DEF(op, def, "", "[1,2,3,4]");
+  INFER_OK(op, "", "[1,2,3,4]");
 
   shape_proto->add_dim()->set_size(-1);
   rebuild_node_def();
-  INFER_ERROR_WITH_DEF("Shape [1,2,3,4,-1] has negative dimensions", op, def,
-                       "");
+  INFER_ERROR("Shape [1,2,3,4,-1] has negative dimensions", op, "");
 }
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
-  for (const char* op : {
+  for (const char* op_name : {
            "BatchMatrixBandPart", "CheckNumerics", "Identity",
            "QuantizeAndDequantize", "RefIdentity", "StopGradient", "ZerosLike",
        }) {
+    ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");
     INFER_OK(op, "[]", "in0");
     INFER_OK(op, "[1,2,?,4,5]", "in0");
@@ -151,7 +141,7 @@ TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
 }
 
 TEST(ArrayOpsTest, Diag_ShapeFn) {
-  const char op[] = "Diag";
+  ShapeInferenceTestOp op("Diag");
   INFER_OK(op, "?", "?");
   INFER_OK(op, "[]", "[]");
   INFER_OK(op, "[1,?,3]", "[d0_0,d0_1,d0_2,d0_0,d0_1,d0_2]");
@@ -159,7 +149,7 @@ TEST(ArrayOpsTest, Diag_ShapeFn) {
 }
 
 TEST(ArrayOpsTest, DiagPart_ShapeFn) {
-  const char op[] = "DiagPart";
+  ShapeInferenceTestOp op("DiagPart");
   INFER_OK(op, "?", "?");
   INFER_OK(op, "[]", "[]");
   INFER_OK(op, "[1,?,?,4]", "[d0_0,d0_3]");
@@ -172,7 +162,7 @@ TEST(ArrayOpsTest, DiagPart_ShapeFn) {
 }
 
 TEST(ArrayOpsTest, BatchMatrixDiag_ShapeFn) {
-  const char op[] = "BatchMatrixDiag";
+  ShapeInferenceTestOp op("BatchMatrixDiag");
   INFER_OK(op, "?", "?");
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
   INFER_OK(op, "[?]", "[d0_0,d0_0]");
@@ -180,7 +170,7 @@ TEST(ArrayOpsTest, BatchMatrixDiag_ShapeFn) {
 }
 
 TEST(ArrayOpsTest, BatchMatrixDiagPart_ShapeFn) {
-  const char op[] = "BatchMatrixDiagPart";
+  ShapeInferenceTestOp op("BatchMatrixDiagPart");
   INFER_OK(op, "?", "?");
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[?]");
   INFER_OK(op, "[?,1,2,2]", "[d0_0,d0_1,d0_2|d0_3]");
@@ -188,7 +178,7 @@ TEST(ArrayOpsTest, BatchMatrixDiagPart_ShapeFn) {
 }
 
 TEST(ArrayOpsTest, Reverse_ShapeFn) {
-  const char op[] = "Reverse";
+  ShapeInferenceTestOp op("Reverse");
   INFER_OK(op, "?;?", "in0");
   INFER_ERROR("Shape must be rank 1 but is rank 0", op, "?;[]");
   INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[?,2]");
@@ -200,56 +190,53 @@ TEST(ArrayOpsTest, Reverse_ShapeFn) {
 }
 
 TEST(ArrayOpsTest, Fill_ShapeFn) {
-  const char op[] = "Fill";
-  std::vector<const Tensor*> in_tensors{nullptr, nullptr};
-  INFER_OK_WITH_TENSORS(op, "?;?", in_tensors, "?");
+  ShapeInferenceTestOp op("Fill");
+  op.input_tensors = {nullptr, nullptr};
+  INFER_OK(op, "?;?", "?");
 
   Tensor in_t = test::AsTensor<int32>({1, 2, 3, 4});
-  in_tensors[0] = &in_t;
-  INFER_OK_WITH_TENSORS(op, "[4];?", in_tensors, "[1,2,3,4]");
+  op.input_tensors[0] = &in_t;
+  INFER_OK(op, "[4];?", "[1,2,3,4]");
 }
 
 TEST(ArrayOpsTest, Gather_ShapeFn) {
-  const char op[] = "Gather";
+  ShapeInferenceTestOp op("Gather");
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[1,?,2];[3]", "[d1_0,d0_1,d0_2]");
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[1,2,3]");
 }
 
 TEST(ArrayOpsTest, Shape_ShapeFn) {
-  const char op[] = "Shape";
+  ShapeInferenceTestOp op("Shape");
   INFER_OK(op, "?", "[?]");
   INFER_OK(op, "[?]", "[1]");
   INFER_OK(op, "[?,2,3,4,5]", "[5]");
 }
 
 TEST(ArrayOpsTest, ImmutableConst_ShapeFn) {
-  std::unique_ptr<NodeDef> def_storage(new NodeDef);
-  NodeDef* def = def_storage.get();
-  const char op[] = "ImmutableConst";
+  ShapeInferenceTestOp op("ImmutableConst");
 
   TF_CHECK_OK(NodeDefBuilder("test", "ImmutableConst")
                   .Attr("dtype", DT_FLOAT)
                   .Attr("shape", TensorShape({1, 2, 3}))
                   .Attr("memory_region_name", "test_region")
-                  .Finalize(def));
-  INFER_OK_WITH_DEF(op, def, "", "[1,2,3]");
+                  .Finalize(&op.node_def));
+  INFER_OK(op, "", "[1,2,3]");
 
   TF_CHECK_OK(NodeDefBuilder("test", "ImmutableConst")
                   .Attr("dtype", DT_FLOAT)
                   .Attr("shape", TensorShape({}))
                   .Attr("memory_region_name", "test_region")
-                  .Finalize(def));
-  INFER_OK_WITH_DEF(op, def, "", "[]");
+                  .Finalize(&op.node_def));
+  INFER_OK(op, "", "[]");
 
   TF_CHECK_OK(NodeDefBuilder("test", "ImmutableConst")
                   .Attr("dtype", DT_FLOAT)
                   .Attr("shape", "invalid")
                   .Attr("memory_region_name", "test_region")
-                  .Finalize(def));
-  INFER_ERROR_WITH_DEF(
-      "AttrValue had value with type 'string' when 'shape' expected", op, def,
-      "");
+                  .Finalize(&op.node_def));
+  INFER_ERROR("AttrValue had value with type 'string' when 'shape' expected",
+              op, "");
 }
 
 }  // end namespace tensorflow
