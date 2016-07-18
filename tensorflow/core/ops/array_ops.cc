@@ -171,6 +171,77 @@ REGISTER_OP("Concat")
     .Output("output: T")
     .Attr("N: int >= 2")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+
+      const Tensor* concat_dim_t = c->input_tensor(0);
+      if (concat_dim_t == nullptr) {
+        // Return an unknown shape with same rank as inputs, or an unknown rank
+        // if no input's rank is known.
+
+        // Find rank.
+        int32 rank = InferenceContext::kUnknownRank;
+        for (int i = 1; i < c->num_inputs(); ++i) {
+          if (rank == InferenceContext::kUnknownRank)
+            rank = c->Rank(c->input(i));
+          if (rank != InferenceContext::kUnknownRank) {
+            TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+          }
+        }
+        if (rank == InferenceContext::kUnknownRank) {
+          c->set_output(0, c->UnknownShape());
+          return Status::OK();
+        }
+        if (rank == 0) {
+          return errors::InvalidArgument(
+              "Can't concatenate scalars (use tf.pack instead)");
+        }
+        // Build result of <rank> different unknown dims.
+        std::vector<const Dimension*> dims;
+        for (int i = 0; i < rank; ++i) dims.push_back(c->UnknownDim());
+        c->set_output(0, c->MakeShape(dims));
+        return Status::OK();
+      }
+
+      // Merge all the non-concat dims, and sum the concat dim to make an output
+      // shape.
+      const int32 concat_dim = concat_dim_t->scalar<int32>()();
+      if (concat_dim < 0) {
+        return errors::InvalidArgument("Expected concat_dim >= 0, but got ",
+                                       concat_dim);
+      }
+
+      const Shape* output_before;
+      const Shape* output_after;
+
+      const Shape* input = c->input(c->num_inputs() - 1);
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &output_before));
+      const Dimension* output_middle = c->Dim(input, concat_dim);
+      TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
+
+      for (int i = c->num_inputs() - 2; i > 0; --i) {
+        const Shape* before;
+        const Shape* after;
+        input = c->input(i);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+        TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &before));
+        const Dimension* middle = c->Dim(input, concat_dim);
+        TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
+
+        TF_RETURN_IF_ERROR(c->Merge(before, output_before, &output_before));
+        TF_RETURN_IF_ERROR(c->Add(output_middle, middle, &output_middle));
+        TF_RETURN_IF_ERROR(c->Merge(after, output_after, &output_after));
+      }
+
+      const Shape* s;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(output_before, c->Vector(output_middle), &s));
+      TF_RETURN_IF_ERROR(c->Concatenate(s, output_after, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Concatenates tensors along one dimension.
 
