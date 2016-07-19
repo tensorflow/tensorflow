@@ -432,7 +432,7 @@ class _VariableStore(object):
 
     # Set to true if initializer is a constant.
     initializing_from_value = False
-    if initializer is not None and isinstance(initializer, ops.Tensor):
+    if initializer is not None and not callable(initializer):
       initializing_from_value = True
     if shape is not None and initializing_from_value:
       raise ValueError("If initializer is a constant, do not specify shape.")
