@@ -98,6 +98,19 @@ def get_temp_dir():
   return googletest.GetTempDir()
 
 
+def test_src_dir_path(relative_path):
+  """Creates an absolute test srcdir path given a relative path.
+
+  Args:
+    relative_path: a path relative to tensorflow root.
+      e.g. "core/platform".
+
+  Returns:
+    An absolute path to the linked in runfiles.
+  """
+  return googletest.test_src_dir_path(relative_path)
+
+
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return test_util.IsGoogleCudaEnabled()

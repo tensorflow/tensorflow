@@ -97,6 +97,7 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
 "tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
 "tensorflow/contrib/session_bundle/exporter_test.py:"\
+"tensorflow/contrib/session_bundle/session_bundle_test.py:"\
 "tensorflow/python/platform/default/_resource_loader_test.py:"\
 "tensorflow/python/platform/default/flags_test.py:"\
 "tensorflow/python/platform/default/logging_test.py:"\
