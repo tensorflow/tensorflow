@@ -73,6 +73,7 @@ load(
     "tf_proto_library",
     "tf_proto_library_cc",
     "tf_additional_lib_srcs",
+    "tf_additional_proto_srcs",
     "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
     "tf_additional_cupti_wrapper_deps",
@@ -103,6 +104,24 @@ tf_proto_library(
     go_api_version = 2,
     java_api_version = 2,
     visibility = ["//visibility:public"],
+)
+
+# Minimal lib so that tools used for mobile compilation
+# don't have to depend on lib/platformlib.
+cc_library(
+    name = "lib_proto_parsing",
+    srcs = glob(tf_additional_proto_srcs()),
+    hdrs = [
+        "platform/init_main.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/protobuf.h",
+        "platform/types.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:proto_parsing",
+    ],
 )
 
 cc_library(
