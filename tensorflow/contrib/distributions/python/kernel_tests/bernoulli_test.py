@@ -82,7 +82,7 @@ class BernoulliTest(tf.test.TestCase):
   def testDtype(self):
     dist = make_bernoulli([])
     self.assertEqual(dist.dtype, tf.int32)
-    self.assertEqual(dist.dtype, dist.sample(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     self.assertEqual(dist.p.dtype, dist.mean().dtype)
     self.assertEqual(dist.p.dtype, dist.variance().dtype)
@@ -93,7 +93,7 @@ class BernoulliTest(tf.test.TestCase):
 
     dist64 = make_bernoulli([], tf.int64)
     self.assertEqual(dist64.dtype, tf.int64)
-    self.assertEqual(dist64.dtype, dist64.sample(5).dtype)
+    self.assertEqual(dist64.dtype, dist64.sample_n(5).dtype)
     self.assertEqual(dist64.dtype, dist64.mode().dtype)
 
   def _testPmf(self, **kwargs):
@@ -174,12 +174,12 @@ class BernoulliTest(tf.test.TestCase):
       self.assertAllClose(dist.entropy().eval(), [[entropy(0.1), entropy(0.7)],
                                                   [entropy(0.2), entropy(0.6)]])
 
-  def testSample(self):
+  def testSampleN(self):
     with self.test_session():
       p = [0.2, 0.6]
       dist = tf.contrib.distributions.Bernoulli(p=p)
       n = 100000
-      samples = dist.sample(n)
+      samples = dist.sample_n(n)
       samples.set_shape([n, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()

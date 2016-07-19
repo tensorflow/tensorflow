@@ -170,7 +170,7 @@ class NormalTest(tf.test.TestCase):
       sigma_v = np.sqrt(3.0)
       n = tf.constant(100000)
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      samples = normal.sample(n)
+      samples = normal.sample_n(n)
       sample_values = samples.eval()
       # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
       # The sample variance similarly is dependent on sigma and n.
@@ -203,7 +203,7 @@ class NormalTest(tf.test.TestCase):
       sigma_v = [np.sqrt(2.0), np.sqrt(3.0)]
       n = tf.constant(100000)
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      samples = normal.sample(n, seed=137)
+      samples = normal.sample_n(n)
       sample_values = samples.eval()
       # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
       # The sample variance similarly is dependent on sigma and n.

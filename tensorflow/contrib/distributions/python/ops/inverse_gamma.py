@@ -355,7 +355,7 @@ class InverseGamma(distribution.Distribution):
         return (alpha + math_ops.log(beta) + math_ops.lgamma(alpha) -
                 (1 + alpha) * math_ops.digamma(alpha))
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Draws `n` samples from these InverseGamma distribution(s).
 
     See the doc for tf.random_gamma for further details on sampling strategy.

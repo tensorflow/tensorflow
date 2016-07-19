@@ -21,7 +21,10 @@ from __future__ import print_function
 import abc
 import six
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -50,15 +53,16 @@ class Distribution(object):
   The batch shape is determined by broadcasting together the parameters.
 
   The shape of arguments to `__init__`, `cdf`, `log_cdf`, `prob`, and
-  `log_prob` reflect this broadcasting, as does the return value of `sample`.
+  `log_prob` reflect this broadcasting, as does the return value of `sample` and
+  `sample_n`.
 
-  `sample_shape = (n,) + batch_shape + event_shape`, where `sample_shape` is the
-  shape of the `Tensor` returned from `sample`, `n` is the number of samples,
-  `batch_shape` defines how many independent distributions there are, and
-  `event_shape` defines the shape of samples from each of those independent
-  distributions. Samples are independent along the `batch_shape` dimensions,
-  but not necessarily so along the `event_shape` dimensions (dependending on
-  the particulars of the underlying distribution).
+  `sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
+  the shape of the `Tensor` returned from `sample_n`, `n` is the number of
+  samples, `batch_shape` defines how many independent distributions there are,
+  and `event_shape` defines the shape of samples from each of those independent
+  distributions. Samples are independent along the `batch_shape` dimensions, but
+  not necessarily so along the `event_shape` dimensions (dependending on the
+  particulars of the underlying distribution).
 
   Using the `Uniform` distribution as an example:
 
@@ -80,7 +84,7 @@ class Distribution(object):
   # Sampling returns a sample per distribution.  `samples` has shape
   # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
   # batch_shape=(2, 2), and event_shape=().
-  samples = u.sample(5)
+  samples = u.sample_n(5)
 
   # The broadcasting holds across methods. Here we use `cdf` as an example. The
   # same holds for `log_cdf` and the likelihood functions.
@@ -224,7 +228,7 @@ class Distribution(object):
     """
     pass
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Generate `n` samples.
 
     Args:
@@ -236,7 +240,41 @@ class Distribution(object):
       samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
           with values of type `self.dtype`.
     """
-    raise NotImplementedError("sample not implemented")
+    raise NotImplementedError("sample_n not implemented")
+
+  def sample(self, sample_shape=(), seed=None, name="sample"):
+    """Generate samples of the specified shape for each batched distribution.
+
+    Note that a call to `sample()` without arguments will generate a single
+    sample per batched distribution.
+
+    Args:
+      sample_shape: `int32` `Tensor` or tuple or list. Shape of the generated
+        samples.
+      seed: Python integer seed for RNG
+      name: name to give to the op.
+
+    Returns:
+      samples: a `Tensor` of dtype `self.dtype` and shape
+          `sample_shape + self.batch_shape + self.event_shape`.
+    """
+    with ops.name_scope(self.name):
+      with ops.op_scope([sample_shape], name):
+        sample_shape = ops.convert_to_tensor(sample_shape,
+                                             dtype=dtypes.int32,
+                                             name="sample_shape")
+        sample_shape_val = tensor_util.constant_value(sample_shape)
+        if sample_shape_val is None:
+          total = math_ops.reduce_prod(sample_shape)
+        else:
+          total = math_ops.cast(sample_shape_val.prod(), dtypes.int32)
+        samples = self.sample_n(total, seed)
+        output_shape = array_ops.concat(
+            0, [sample_shape, self.batch_shape(), self.event_shape()])
+        output = array_ops.reshape(samples, output_shape, name=name)
+        output.set_shape(tensor_util.constant_value_as_shape(
+            sample_shape).concatenate(samples.get_shape()[1:]))
+    return output
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function."""

@@ -333,7 +333,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
         entropy_value.set_shape(log_sigma_det.get_shape())
         return entropy_value
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Multivariate Normal Distributions.
 
     Args:

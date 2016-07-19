@@ -183,20 +183,44 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
       n = tf.constant(100000)
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
-      samples = mvn.sample(n, seed=137)
+      samples = mvn.sample_n(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (100000, 2))
       self.assertAllClose(sample_values.mean(axis=0), mu, atol=1e-2)
       self.assertAllClose(np.cov(sample_values, rowvar=0), sigma, atol=1e-1)
+
+  def testSampleWithSampleShape(self):
+    with self.test_session():
+      mu = self._rng.rand(3, 5, 2)
+      chol, sigma = self._random_chol(3, 5, 2, 2)
+
+      mvn = distributions.MultivariateNormalCholesky(mu, chol)
+      samples_val = mvn.sample((10, 11, 12), seed=137).eval()
+
+      # Check sample shape
+      self.assertEqual((10, 11, 12, 3, 5, 2), samples_val.shape)
+
+      # Check sample means
+      x = samples_val[:, :, :, 1, 1, :]
+      self.assertAllClose(
+          x.reshape(10 * 11 * 12, 2).mean(axis=0),
+          mu[1, 1], atol=1e-2)
+
+      # Check that log_prob(samples) works
+      log_prob_val = mvn.log_prob(samples_val).eval()
+      x_log_pdf = log_prob_val[:, :, :, 1, 1]
+      expected_log_pdf = stats.multivariate_normal(
+          mean=mu[1, 1, :], cov=sigma[1, 1, :, :]).logpdf(x)
+      self.assertAllClose(expected_log_pdf, x_log_pdf)
 
   def testSampleMultiDimensional(self):
     with self.test_session():
       mu = self._rng.rand(3, 5, 2)
       chol, sigma = self._random_chol(3, 5, 2, 2)
 
-      n = tf.constant(100000)
       mvn = distributions.MultivariateNormalCholesky(mu, chol)
-      samples = mvn.sample(n, seed=137)
+      n = tf.constant(100000)
+      samples = mvn.sample_n(n, seed=137)
       sample_values = samples.eval()
 
       self.assertEqual(samples.get_shape(), (100000, 3, 5, 2))
@@ -206,6 +230,21 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
       self.assertAllClose(
           np.cov(sample_values[:, 1, 1, :], rowvar=0),
           sigma[1, 1, :, :], atol=1e-1)
+
+  def testShapes(self):
+    with self.test_session():
+      mu = self._rng.rand(3, 5, 2)
+      chol, _ = self._random_chol(3, 5, 2, 2)
+
+      mvn = distributions.MultivariateNormalCholesky(mu, chol)
+
+      # Shapes known at graph construction time.
+      self.assertEqual((2,), tuple(mvn.get_event_shape().as_list()))
+      self.assertEqual((3, 5), tuple(mvn.get_batch_shape().as_list()))
+
+      # Shapes known at runtime.
+      self.assertEqual((2,), tuple(mvn.event_shape().eval()))
+      self.assertEqual((3, 5), tuple(mvn.batch_shape().eval()))
 
 
 if __name__ == "__main__":

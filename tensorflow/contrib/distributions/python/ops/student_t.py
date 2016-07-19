@@ -325,7 +325,7 @@ class StudentT(distribution.Distribution):
                 special_math_ops.lbeta(beta_arg) +
                 math_ops.log(self._sigma))
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Student t Distributions.
 
     Args:

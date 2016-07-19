@@ -301,7 +301,7 @@ class Normal(distribution.Distribution):
         sigma = self._sigma * array_ops.ones_like(self._mu)
         return 0.5 * math_ops.log(two_pi_e1 * math_ops.square(sigma))
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Normal Distributions.
 
     Args:

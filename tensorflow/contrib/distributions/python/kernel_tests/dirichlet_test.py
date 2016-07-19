@@ -181,7 +181,7 @@ class DirichletTest(tf.test.TestCase):
       alpha = [1., 2]
       dirichlet = tf.contrib.distributions.Dirichlet(alpha)
       n = tf.constant(100000)
-      samples = dirichlet.sample(n)
+      samples = dirichlet.sample_n(n)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertTrue(np.all(sample_values > 0.0))

@@ -365,8 +365,8 @@ class Dirichlet(distribution.Distribution):
     """
     return super(Dirichlet, self).prob(x, name=name)
 
-  def sample(self, n, seed=None, name="sample"):
-    """Sample `n` observations from the Normal Distributions.
+  def sample_n(self, n, seed=None, name="sample_n"):
+    """Sample `n` observations from the distributions.
 
     Args:
       n: `Scalar`, type int32, the number of observations to sample.
@@ -377,7 +377,6 @@ class Dirichlet(distribution.Distribution):
       samples: `[n, ...]`, a `Tensor` of `n` samples for each
         of the distributions determined by broadcasting the hyperparameters.
     """
-
     with ops.name_scope(self.name):
       with ops.op_scope([self.alpha, n], name):
         gamma_sample = random_ops.random_gamma([n,], self.alpha)

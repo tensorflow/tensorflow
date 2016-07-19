@@ -207,7 +207,7 @@ class Uniform(distribution.Distribution):
       with ops.op_scope([self.a, self.b, self.range()], name):
         return math_ops.log(self.range())
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Uniform Distributions.
 
     Args:

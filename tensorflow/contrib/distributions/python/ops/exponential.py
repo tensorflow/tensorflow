@@ -77,7 +77,7 @@ class Exponential(gamma.Gamma):
     # exponential distribution is.
     return True
 
-  def sample(self, n, seed=None, name=None):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Exponential Distributions.
 
     Args:

@@ -400,12 +400,12 @@ class DistributionTensor(StochasticTensor):
     if isinstance(self._value_type, MeanValue):
       value_tensor = self._dist.mean()
     elif isinstance(self._value_type, SampleValue):
-      value_tensor = self._dist.sample(self._value_type.n)
+      value_tensor = self._dist.sample_n(self._value_type.n)
     elif isinstance(self._value_type, SampleAndReshapeValue):
       if self._value_type.n == 1:
-        value_tensor = array_ops.squeeze(self._dist.sample(1), [0])
+        value_tensor = self._dist.sample()
       else:
-        samples = self._dist.sample(self._value_type.n)
+        samples = self._dist.sample_n(self._value_type.n)
         samples_shape = array_ops.shape(samples)
         samples_static_shape = samples.get_shape()
         new_batch_size = samples_shape[0] * samples_shape[1]

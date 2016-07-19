@@ -110,7 +110,7 @@ class StudentTTest(tf.test.TestCase):
       sigma_v = np.sqrt(10.0)
       n = tf.constant(100000)
       student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
-      samples = student.sample(n, seed=137)
+      samples = student.sample_n(n, seed=137)
       sample_values = samples.eval()
       n = 100000
       self.assertEqual(sample_values.shape, (n,))
@@ -132,7 +132,7 @@ class StudentTTest(tf.test.TestCase):
       sigma_v = [np.sqrt(10.0), np.sqrt(15.0)]
       n = tf.constant(100000)
       student = tf.contrib.distributions.StudentT(df=df, mu=mu, sigma=sigma)
-      samples = student.sample(n)
+      samples = student.sample_n(n)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (100000, batch_size, 2))
       self.assertAllClose(sample_values[:, 0, 0].mean(), mu_v[0], atol=.15)
@@ -172,7 +172,7 @@ class StudentTTest(tf.test.TestCase):
       self.assertEqual(student.entropy().get_shape(), (3,))
       self.assertEqual(student.log_pdf(2.).get_shape(), (3,))
       self.assertEqual(student.pdf(2.).get_shape(), (3,))
-      self.assertEqual(student.sample(37).get_shape(), (37, 3,))
+      self.assertEqual(student.sample_n(37).get_shape(), (37, 3,))
 
     _check(tf.contrib.distributions.StudentT(df=[2., 3., 4.,], mu=2., sigma=1.))
     _check(tf.contrib.distributions.StudentT(df=7., mu=[2., 3., 4.,], sigma=1.))
@@ -341,7 +341,7 @@ class StudentTTest(tf.test.TestCase):
     with tf.Session() as sess:
       student = tf.contrib.distributions.StudentT(df=3., mu=np.pi, sigma=1.)
       num = 20000
-      samples = student.sample(num)
+      samples = student.sample_n(num)
       pdfs = student.pdf(samples)
       mean = student.mean()
       mean_pdf = student.pdf(student.mean())
@@ -363,7 +363,7 @@ class StudentTTest(tf.test.TestCase):
                                                   mu=[[5.], [6.]],
                                                   sigma=3.)
       num = 50000
-      samples = student.sample(num)
+      samples = student.sample_n(num)
       pdfs = student.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))

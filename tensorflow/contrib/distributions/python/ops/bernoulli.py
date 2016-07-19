@@ -182,7 +182,7 @@ class Bernoulli(distribution.Distribution):
           event = array_ops.ones_like(logits) * event
         return -nn.sigmoid_cross_entropy_with_logits(logits, event)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Generate `n` samples.
 
     Args:

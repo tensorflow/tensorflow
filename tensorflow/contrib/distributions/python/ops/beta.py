@@ -278,7 +278,6 @@ class Beta(distribution.Distribution):
               (constant_op.constant(float("NaN"), dtype=self.dtype) *
                array_ops.ones_like(a_b_sum, dtype=self.dtype)))
 
-
   def entropy(self, name="entropy"):
     """Entropy of the distribution in nats."""
     with ops.name_scope(self.name):
@@ -346,7 +345,7 @@ class Beta(distribution.Distribution):
     """
     return super(Beta, self).prob(x, name=name)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Beta Distributions.
 
     Args:

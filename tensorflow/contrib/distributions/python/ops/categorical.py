@@ -123,33 +123,40 @@ class Categorical(distribution.Distribution):
     """Log-probability of class `k`.
 
     Args:
-      k: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+      k: `int32` or `int64` Tensor. Must be broadcastable with a `batch_shape`
+        `Tensor`.
       name: A name for this operation (optional).
 
     Returns:
       The log-probabilities of the classes indexed by `k`
     """
     with ops.name_scope(self.name):
-      k = ops.convert_to_tensor(k, name="k")
-      k.set_shape(self.get_batch_shape())
-      return -nn_ops.sparse_softmax_cross_entropy_with_logits(
-          self.logits, k, name=name)
+      with ops.op_scope([k, self.logits], name):
+        k = ops.convert_to_tensor(k, name="k")
+
+        logits = self.logits * array_ops.ones_like(
+            array_ops.expand_dims(k, -1),
+            dtype=self.logits.dtype)
+        k *= array_ops.ones(
+            array_ops.slice(
+                array_ops.shape(logits), [0], [array_ops.rank(logits) - 1]),
+            dtype=k.dtype)
+
+        return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
 
   def prob(self, k, name="prob"):
     """Probability of class `k`.
 
     Args:
-      k: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+      k: `int32` or `int64` Tensor. Must be broadcastable with logits.
       name: A name for this operation (optional).
 
     Returns:
       The probabilities of the classes indexed by `k`
     """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.logits, k], name):
-        return math_ops.exp(self.log_prob(k))
+    return super(Categorical, self).prob(k, name)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Categorical distribution.
 
     Args:

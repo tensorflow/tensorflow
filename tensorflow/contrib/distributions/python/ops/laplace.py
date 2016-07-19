@@ -278,7 +278,7 @@ class Laplace(distribution.Distribution):
         scale = self._scale + array_ops.zeros_like(self._loc)
         return log_2_e + math_ops.log(scale)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Laplace Distributions.
 
     Args:
