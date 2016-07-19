@@ -698,6 +698,23 @@
   * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
   * [`train`](../../api_docs/python/contrib.learn.md#train)
 
+* **[Monitors (contrib)](../../api_docs/python/contrib.learn.monitors.md)**:
+  * [`BaseMonitor`](../../api_docs/python/contrib.learn.monitors.md#BaseMonitor)
+  * [`CaptureVariable`](../../api_docs/python/contrib.learn.monitors.md#CaptureVariable)
+  * [`CheckpointSaver`](../../api_docs/python/contrib.learn.monitors.md#CheckpointSaver)
+  * [`EveryN`](../../api_docs/python/contrib.learn.monitors.md#EveryN)
+  * [`ExportMonitor`](../../api_docs/python/contrib.learn.monitors.md#ExportMonitor)
+  * [`get_default_monitors`](../../api_docs/python/contrib.learn.monitors.md#get_default_monitors)
+  * [`GraphDump`](../../api_docs/python/contrib.learn.monitors.md#GraphDump)
+  * [`LoggingTrainable`](../../api_docs/python/contrib.learn.monitors.md#LoggingTrainable)
+  * [`NanLoss`](../../api_docs/python/contrib.learn.monitors.md#NanLoss)
+  * [`PrintTensor`](../../api_docs/python/contrib.learn.monitors.md#PrintTensor)
+  * [`StepCounter`](../../api_docs/python/contrib.learn.monitors.md#StepCounter)
+  * [`StopAtStep`](../../api_docs/python/contrib.learn.monitors.md#StopAtStep)
+  * [`SummarySaver`](../../api_docs/python/contrib.learn.monitors.md#SummarySaver)
+  * [`SummaryWriterCache`](../../api_docs/python/contrib.learn.monitors.md#SummaryWriterCache)
+  * [`ValidationMonitor`](../../api_docs/python/contrib.learn.monitors.md#ValidationMonitor)
+
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)
   * [`add_loss`](../../api_docs/python/contrib.losses.md#add_loss)

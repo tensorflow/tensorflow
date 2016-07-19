@@ -61,6 +61,8 @@ def get_module_to_name():
       tf.contrib.framework: "tf.contrib.framework",
       tf.contrib.layers: "tf.contrib.layers",
       tf.contrib.learn: "tf.contrib.learn",
+      tf.contrib.learn.monitors: (
+          "tf.contrib.learn.monitors"),
       tf.contrib.losses: "tf.contrib.losses",
       tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
@@ -164,6 +166,8 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.framework", "Framework (contrib)", tf.contrib.framework),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
+      library("contrib.learn.monitors", "Monitors (contrib)",
+              tf.contrib.learn.monitors),
       library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
@@ -180,6 +184,12 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
                    "ClusterDef", "JobDef", "ServerDef"]
 
+# TODO(skleinfeld, deannarubin) Address shortname
+# conflict between tf.contrib.learn.NanLossDuringTrainingError and
+# tf.contrib.learn.monitors.NanLossDuringTrainingError, arising due
+# to imports in learn/python/learn/__init__.py
+EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError"])
+
 
 def main(unused_argv):
   if not FLAGS.out_dir:
@@ -189,7 +199,7 @@ def main(unused_argv):
   # Document libraries
   documented = set()
   module_to_name = get_module_to_name()
-  members = docs.collect_members(module_to_name)
+  members = docs.collect_members(module_to_name, exclude=EXCLUDE)
   libraries = all_libraries(module_to_name, members, documented)
 
   # Define catch_all library before calling write_libraries to avoid complaining

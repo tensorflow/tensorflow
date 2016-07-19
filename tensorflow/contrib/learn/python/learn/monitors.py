@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Monitors allow user instrumentaiton of the training process.
+"""Monitors allow user instrumentation of the training process.
 
 Monitors are useful to track training, report progress, request early
 stopping and more. Monitors use the observer pattern and notify at the following
@@ -63,6 +63,20 @@ Example:
   linear_regressor.fit(
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
 
+@@get_default_monitors
+@@BaseMonitor
+@@CaptureVariable
+@@CheckpointSaver
+@@EveryN
+@@ExportMonitor
+@@GraphDump
+@@LoggingTrainable
+@@NanLoss
+@@PrintTensor
+@@StepCounter
+@@StopAtStep
+@@SummarySaver
+@@ValidationMonitor
 """
 
 from __future__ import absolute_import
@@ -468,7 +482,7 @@ class PrintTensor(EveryN):
 
 
 class LoggingTrainable(EveryN):
-  """Writes trainable varialbe values into log every N steps.
+  """Writes trainable variable values into log every N steps.
 
   Write the tensors in trainable variables `every_n` steps,
   starting with the `first_n`th step.
