@@ -361,7 +361,52 @@ BENCHMARK_NAME := $(BINDIR)benchmark
 
 # What sources we want to compile, derived from the main Bazel build using the
 # gen_file_lists.sh script.
-TF_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_cc_files.txt)
+
+CORE_CC_ALL_SRCS := \
+$(wildcard tensorflow/core/*.cc) \
+$(wildcard tensorflow/core/common_runtime/*.cc) \
+$(wildcard tensorflow/core/debug/*.cc) \
+$(wildcard tensorflow/core/framework/*.cc) \
+$(wildcard tensorflow/core/graph/*.cc) \
+$(wildcard tensorflow/core/lib/*/*.cc) \
+$(wildcard tensorflow/core/platform/*.cc) \
+$(wildcard tensorflow/core/platform/*/*.cc) \
+$(wildcard tensorflow/core/util/*.cc) \
+$(wildcard tensorflow/core/util/*/*.cc)
+CORE_CC_EXCLUDE_SRCS := \
+$(wildcard tensorflow/core/*/*test.cc) \
+$(wildcard tensorflow/core/*/*testutil*) \
+$(wildcard tensorflow/core/*/*testlib*) \
+$(wildcard tensorflow/core/*/*main.cc) \
+$(wildcard tensorflow/core/*/*/*test.cc) \
+$(wildcard tensorflow/core/*/*/*testutil*) \
+$(wildcard tensorflow/core/*/*/*testlib*) \
+$(wildcard tensorflow/core/*/*/*main.cc) \
+$(wildcard tensorflow/core/graph/dot.*) \
+$(wildcard tensorflow/core/lib/gif/*) \
+$(wildcard tensorflow/core/lib/jpeg/*) \
+$(wildcard tensorflow/core/lib/png/*) \
+$(wildcard tensorflow/core/util/checkpoint_reader.*) \
+$(wildcard tensorflow/core/util/events_writer.*) \
+$(wildcard tensorflow/core/util/reporter.*) \
+$(wildcard tensorflow/core/util/tf_status_helper.*) \
+$(wildcard tensorflow/core/platform/default/stream_executor.*) \
+$(wildcard tensorflow/core/platform/default/test_benchmark.*) \
+$(wildcard tensorflow/core/platform/cuda.h) \
+$(wildcard tensorflow/core/platform/cloud/*) \
+$(wildcard tensorflow/core/platform/google/*) \
+$(wildcard tensorflow/core/platform/jpeg.*) \
+$(wildcard tensorflow/core/platform/png.*) \
+$(wildcard tensorflow/core/platform/stream_executor.*) \
+$(wildcard tensorflow/core/user_ops/*.cu.cc) \
+$(wildcard tensorflow/core/common_runtime/gpu/*) \
+$(wildcard tensorflow/core/common_runtime/gpu_device_factory.*)
+# Filter out all the excluded files.
+TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
+# Add in any extra files that don't fit the patterns easily
+TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_tracer.cc
+# Also include the op and kernel definitions.
+TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
 PROTO_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_proto_files.txt)
 BENCHMARK_SRCS := \
