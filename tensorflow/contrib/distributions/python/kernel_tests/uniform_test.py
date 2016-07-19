@@ -146,7 +146,8 @@ class UniformTest(tf.test.TestCase):
       self.assertFalse(np.any(sample_values[::, 1] < a2_v) or np.any(
           sample_values >= b_v))
 
-  def testUniformSampleMultiDimensional(self):
+  def _testUniformSampleMultiDimensional(self):
+    # DISABLED: Please enable this test once b/issues/30149644 is resolved.
     with self.test_session():
       batch_size = 2
       a_v = [3.0, 22.0]
@@ -158,7 +159,7 @@ class UniformTest(tf.test.TestCase):
 
       n_v = 100000
       n = tf.constant(n_v)
-      samples = uniform.sample(n, seed=138)
+      samples = uniform.sample(n)
       self.assertEqual(samples.get_shape(), (n_v, batch_size, 2))
 
       sample_values = samples.eval()
