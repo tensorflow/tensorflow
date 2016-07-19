@@ -1996,7 +1996,6 @@ filegroup(
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
-            "strided_slice_op*",
             "tf_record_reader_op.*",
             "string_to_hash_bucket_op.*",
             "text_line_reader_op.*",
