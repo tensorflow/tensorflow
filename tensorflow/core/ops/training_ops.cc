@@ -344,7 +344,7 @@ REGISTER_OP("ApplyMomentum")
     .Attr("use_nesterov: bool = false")
     .Doc(R"doc(
 Update '*var' according to the momentum scheme. Set use_nesterov = True if you 
-want to use nesterov momentum.
+want to use Nesterov momentum.
 
 accum = accum * momentum + grad
 var -= lr * accum
@@ -377,7 +377,7 @@ REGISTER_OP("SparseApplyMomentum")
     .Attr("use_nesterov: bool = false")
     .Doc(R"doc(
 Update relevant entries in '*var' and '*accum' according to the momentum scheme.
-Set use_nesterov = True if you want to use nesterov momentum.
+Set use_nesterov = True if you want to use Nesterov momentum.
 
 That is for rows we have grad for, we update var and accum as follows:
 
