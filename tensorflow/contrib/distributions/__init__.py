@@ -49,7 +49,6 @@ initialized with parameters that define the distributions.
 
 @@Dirichlet
 @@DirichletMultinomial
-@@MultivariateNormal
 
 ### Transformed distributions
 
