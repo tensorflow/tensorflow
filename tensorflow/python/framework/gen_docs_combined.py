@@ -52,6 +52,7 @@ def get_module_to_name():
       tf.nn.rnn_cell: "tf.nn.rnn_cell",
       tf.train: "tf.train",
       tf.python_io: "tf.python_io",
+      tf.summary: "tf.summary",
       tf.test: "tf.test",
       tf.contrib.bayesflow.stochastic_graph: (
           "tf.contrib.bayesflow.stochastic_graph"),
@@ -156,6 +157,7 @@ def all_libraries(module_to_name, members, documented):
       library("script_ops",
               "Wraps python functions",
               prefix=PREFIX_TEXT),
+      library("summary", "Summary Operations", tf.summary),
       library("test", "Testing", tf.test),
       library("contrib.bayesflow.stochastic_graph",
               "BayesFlow Stochastic Graph (contrib)",

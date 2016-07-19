@@ -565,6 +565,9 @@
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
+* **[Summary Operations](../../api_docs/python/summary.md)**:
+  * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
+
 * **[Testing](../../api_docs/python/test.md)**:
   * [`assert_equal_graph_def`](../../api_docs/python/test.md#assert_equal_graph_def)
   * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
@@ -589,8 +592,10 @@
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`batch_matrix_diag_transform`](../../api_docs/python/contrib.distributions.md#batch_matrix_diag_transform)
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
+  * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
+  * [`Dirichlet`](../../api_docs/python/contrib.distributions.md#Dirichlet)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
   * [`Distribution`](../../api_docs/python/contrib.distributions.md#Distribution)
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)

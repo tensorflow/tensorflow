@@ -1026,6 +1026,7 @@ tf_kernel_libraries(
         "summary_audio_op",
         "summary_image_op",
         "summary_op",
+        "summary_tensor_op",
     ],
     deps = [
         "//tensorflow/core:framework",

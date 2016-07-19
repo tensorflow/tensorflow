@@ -60,6 +60,7 @@ py_tests(
         "sparsemask_op_test.py",
         "string_join_op_test.py",
         "summary_ops_test.py",
+        "summary_tensor_op_test.py",
         "template_test.py",
         "topk_op_test.py",
         "unique_op_test.py",

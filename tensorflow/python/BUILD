@@ -660,6 +660,7 @@ tf_gen_op_wrapper_py(
         "MergeSummary",
         "Print",
         "ScalarSummary",
+        "TensorSummary",
     ],
     require_shape_functions = True,
 )
@@ -854,6 +855,7 @@ py_library(
         "ops/state_grad.py",
         "ops/state_ops.py",
         "ops/string_ops.py",
+        "ops/summary_ops.py",
         "ops/template.py",
         "ops/tensor_array_grad.py",
         "ops/tensor_array_ops.py",
@@ -1304,6 +1306,7 @@ py_library(
     deps = [
         ":client",
         ":framework",
+        ":ops",
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":util",
