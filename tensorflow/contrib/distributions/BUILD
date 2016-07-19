@@ -50,9 +50,71 @@ py_library(
 )
 
 cuda_py_tests(
+    name = "bernoulli_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bernoulli_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "beta_test",
+    size = "small",
+    srcs = ["python/kernel_tests/beta_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "categorical_test",
+    size = "small",
+    srcs = ["python/kernel_tests/categorical_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "chi2_test",
+    srcs = ["python/kernel_tests/chi2_test.py"],
+    additional_deps = [
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "dirichlet_test",
+    size = "small",
+    srcs = ["python/kernel_tests/dirichlet_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "dirichlet_multinomial_test",
     size = "small",
     srcs = ["python/kernel_tests/dirichlet_multinomial_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "exponential_test",
+    srcs = ["python/kernel_tests/exponential_test.py"],
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:framework_test_lib",
@@ -73,43 +135,6 @@ cuda_py_tests(
     name = "inverse_gamma_test",
     srcs = ["python/kernel_tests/inverse_gamma_test.py"],
     additional_deps = [
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "chi2_test",
-    srcs = ["python/kernel_tests/chi2_test.py"],
-    additional_deps = [
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "exponential_test",
-    srcs = ["python/kernel_tests/exponential_test.py"],
-    additional_deps = [
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "laplace_test",
-    srcs = ["python/kernel_tests/laplace_test.py"],
-    additional_deps = [
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "normal_test",
-    size = "small",
-    srcs = ["python/kernel_tests/normal_test.py"],
-    additional_deps = [
         ":distributions_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -120,6 +145,38 @@ cuda_py_tests(
     name = "kullback_leibler_test",
     size = "small",
     srcs = ["python/kernel_tests/kullback_leibler_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "laplace_test",
+    srcs = ["python/kernel_tests/laplace_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "mvn_test",
+    size = "small",
+    srcs = ["python/kernel_tests/mvn_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "normal_test",
+    size = "small",
+    srcs = ["python/kernel_tests/normal_test.py"],
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:framework_test_lib",
@@ -144,37 +201,6 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/uniform_test.py"],
     additional_deps = [
         ":distributions_py",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "categorical_test",
-    size = "small",
-    srcs = ["python/kernel_tests/categorical_test.py"],
-    additional_deps = [
-        ":distributions_py",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "bernoulli_test",
-    size = "small",
-    srcs = ["python/kernel_tests/bernoulli_test.py"],
-    additional_deps = [
-        ":distributions_py",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_tests(
-    name = "mvn_test",
-    size = "small",
-    srcs = ["python/kernel_tests/mvn_test.py"],
-    additional_deps = [
-        ":distributions_py",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
 )
