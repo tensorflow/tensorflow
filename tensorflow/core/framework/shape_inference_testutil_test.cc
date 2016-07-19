@@ -33,18 +33,14 @@ REGISTER_OP("OpOneOut")
     .Output("o1: T")
     .Attr("N: int >= 1")
     .Attr("T: numbertype")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
-      return (*global_fn_ptr)(c);
-    }));
+    .SetShapeFn([](InferenceContext* c) { return (*global_fn_ptr)(c); });
 REGISTER_OP("OpTwoOut")
     .Input("inputs: N * T")
     .Output("o1: T")
     .Output("o2: T")
     .Attr("N: int >= 1")
     .Attr("T: numbertype")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
-      return (*global_fn_ptr)(c);
-    }));
+    .SetShapeFn([](InferenceContext* c) { return (*global_fn_ptr)(c); });
 
 string RunInferShapes(const string& op_name, const string& ins,
                       const string& expected_outs, OpShapeInferenceFn fn) {

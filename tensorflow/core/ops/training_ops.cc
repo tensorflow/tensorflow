@@ -63,7 +63,7 @@ REGISTER_OP("ApplyGradientDescent")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn(ApplyGradientDescentShapeFn))
+    .SetShapeFn(ApplyGradientDescentShapeFn)
     .Doc(R"doc(
 Update '*var' by subtracting 'alpha' * 'delta' from it.
 
@@ -97,9 +97,9 @@ REGISTER_OP("ApplyProximalGradientDescent")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyProximalGradientDescentShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' as FOBOS algorithm with fixed learning rate.
 prox_v = var - alpha * delta
@@ -126,9 +126,9 @@ REGISTER_OP("SparseApplyProximalGradientDescent")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyProximalGradientDescentShapeFn(c, true /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Sparse update '*var' as FOBOS algorithm with fixed learning rate.
 
@@ -171,9 +171,9 @@ REGISTER_OP("ApplyAdadelta")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyAdadeltaShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' according to the adadelta scheme.
 
@@ -207,9 +207,9 @@ REGISTER_OP("SparseApplyAdadelta")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyAdadeltaShapeFn(c, true /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 var: Should be from a Variable().
 accum: Should be from a Variable().
@@ -243,9 +243,9 @@ REGISTER_OP("ApplyAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' according to the adagrad scheme.
 
@@ -284,9 +284,9 @@ REGISTER_OP("ApplyProximalAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyProximalAdagradShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
 accum += grad * grad
@@ -314,9 +314,9 @@ REGISTER_OP("SparseApplyAdagrad")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, true /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update relevant entries in '*var' and '*accum' according to the adagrad scheme.
 
@@ -347,9 +347,9 @@ REGISTER_OP("SparseApplyProximalAdagrad")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyProximalAdagradShapeFn(c, true /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Sparse update entries in '*var' and '*accum' according to FOBOS algorithm.
 
@@ -399,9 +399,9 @@ REGISTER_OP("ApplyFtrl")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyFtrlShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' according to the Ftrl-proximal scheme.
 
@@ -439,9 +439,9 @@ REGISTER_OP("SparseApplyFtrl")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyFtrlShapeFn(c, true /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update relevant entries in '*var' according to the Ftrl-proximal scheme.
 
@@ -489,9 +489,9 @@ REGISTER_OP("ApplyMomentum")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyMomentumShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' according to the momentum scheme.
 
@@ -520,9 +520,9 @@ REGISTER_OP("SparseApplyMomentum")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyMomentumShapeFn(c, true /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update relevant entries in '*var' and '*accum' according to the momentum scheme.
 
@@ -574,9 +574,9 @@ REGISTER_OP("ApplyAdam")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' according to the Adam algorithm.
 
@@ -628,9 +628,9 @@ REGISTER_OP("ApplyRMSProp")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyRMSPropShapeFn(c, false /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' according to the RMSProp algorithm.
 Note that in dense implement of this algorithm, ms and mom will 
@@ -671,9 +671,9 @@ REGISTER_OP("SparseApplyRMSProp")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return ApplyRMSPropShapeFn(c, true /* sparse */);
-    }))
+    })
     .Doc(R"doc(
 Update '*var' according to the RMSProp algorithm.
 Note that in dense implement of this algorithm, ms and mom will 

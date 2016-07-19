@@ -127,7 +127,7 @@ class OpDefBuilder {
   OpDefBuilder& Doc(StringPiece text) { return *this; }
 #endif
 
-  OpDefBuilder& SetShapeFn(const OpShapeInferenceFn& fn);
+  OpDefBuilder& SetShapeFn(Status (*fn)(shape_inference::InferenceContext*));
 
   // Sets op_reg_data->op_def to the requested OpDef and
   // op_reg_data->shape_inference_fn to the requested shape inference function,

@@ -43,7 +43,7 @@ REGISTER_OP("Save")
     .Input("tensor_names: string")
     .Input("data: T")
     .Attr("T: list(type)")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* unused;
       const Shape* s;
       const Dimension* unused_dim;
@@ -57,7 +57,7 @@ REGISTER_OP("Save")
           c->WithValue(c->Dim(s, 0), c->num_inputs() - 2, &unused_dim));
 
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Saves the input tensors to disk.
 
@@ -78,7 +78,7 @@ REGISTER_OP("SaveSlices")
     .Input("shapes_and_slices: string")
     .Input("data: T")
     .Attr("T: list(type)")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* unused;
       const Shape* s;
       const Dimension* unused_dim;
@@ -95,7 +95,7 @@ REGISTER_OP("SaveSlices")
       // TODO(mrry): Attempt to parse the shapes_and_slices values and use
       // them to constrain the shape of the remaining inputs.
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Saves input tensors slices to disk.
 
@@ -135,13 +135,13 @@ REGISTER_OP("Restore")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       c->set_output(0, c->UnknownShape());
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Restores a tensor from checkpoint files.
 
@@ -179,7 +179,7 @@ REGISTER_OP("RestoreSlice")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -188,7 +188,7 @@ REGISTER_OP("RestoreSlice")
       // them to constrain the shape of the remaining inputs.
       c->set_output(0, c->UnknownShape());
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Restores a tensor from checkpoint files.
 
@@ -216,7 +216,7 @@ REGISTER_OP("ShardedFilename")
     .Input("shard: int32")
     .Input("num_shards: int32")
     .Output("filename: string")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Generate a sharded filename. The filename is printf formatted as
    %s-%05d-of-%05d, basename, shard, num_shards.
@@ -226,7 +226,7 @@ REGISTER_OP("ShardedFilespec")
     .Input("basename: string")
     .Input("num_shards: int32")
     .Output("filename: string")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Generate a glob pattern matching all sharded file names.
 )doc");
@@ -327,7 +327,7 @@ REGISTER_OP("ReaderRead")
     .Input("queue_handle: Ref(string)")
     .Output("key: string")
     .Output("value: string")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Returns the next record (key, value pair) produced by a Reader.
 
@@ -347,7 +347,7 @@ REGISTER_OP("ReaderReadUpTo")
     .Input("num_records: int64")
     .Output("keys: string")
     .Output("values: string")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -356,7 +356,7 @@ REGISTER_OP("ReaderReadUpTo")
       c->set_output(0, out);
       c->set_output(1, out);
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Returns up to `num_records` (key, value) pairs produced by a Reader.
 
@@ -375,7 +375,7 @@ values: A 1-D tensor.
 REGISTER_OP("ReaderNumRecordsProduced")
     .Input("reader_handle: Ref(string)")
     .Output("records_produced: int64")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Returns the number of records this Reader has produced.
 
@@ -388,7 +388,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderNumWorkUnitsCompleted")
     .Input("reader_handle: Ref(string)")
     .Output("units_completed: int64")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Returns the number of work units this Reader has finished processing.
 
@@ -398,7 +398,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderSerializeState")
     .Input("reader_handle: Ref(string)")
     .Output("state: string")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Produce a string tensor that encodes the state of a Reader.
 
@@ -411,7 +411,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderRestoreState")
     .Input("reader_handle: Ref(string)")
     .Input("state: string")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Restore a reader to a previously saved state.
 
@@ -425,7 +425,7 @@ state: Result of a ReaderSerializeState of a Reader with type
 
 REGISTER_OP("ReaderReset")
     .Input("reader_handle: Ref(string)")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Restore a Reader to its initial clean state.
 
@@ -437,7 +437,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReadFile")
     .Input("filename: string")
     .Output("contents: string")
-    .SetShapeFn(OpShapeInferenceFn(ScalarInputsAndOutputs))
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Reads and outputs the entire contents of the input filename.
 )doc");
@@ -445,12 +445,12 @@ Reads and outputs the entire contents of the input filename.
 REGISTER_OP("MatchingFiles")
     .Input("pattern: string")
     .Output("filenames: string")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(kUnknownDim));
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Returns the set of files matching a pattern.
 

@@ -1166,7 +1166,7 @@ REGISTER_OP("TopK")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
     .Deprecated(7, "Use TopKV2 instead")
-    .SetShapeFn(OpShapeInferenceFn(TopKShapeFn))
+    .SetShapeFn(TopKShapeFn)
     .Doc(R"doc(
 Finds values and indices of the `k` largest elements for the last dimension.
 
@@ -1199,7 +1199,7 @@ REGISTER_OP("TopKV2")
     .Output("indices: int32")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
-    .SetShapeFn(OpShapeInferenceFn(TopKShapeFn))
+    .SetShapeFn(TopKShapeFn)
     .Doc(R"doc(
 Finds values and indices of the `k` largest elements for the last dimension.
 

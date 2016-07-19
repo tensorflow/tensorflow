@@ -123,12 +123,12 @@ REGISTER_OP("MatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* input;
       TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
       c->set_output(0, c->Scalar());
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Calculates the determinant of a square matrix.
 
@@ -140,7 +140,7 @@ REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* input;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
 
@@ -152,7 +152,7 @@ REGISTER_OP("BatchMatrixDeterminant")
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &out));
       c->set_output(0, out);
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Calculates the determinants for a batch of square matrices.
 
@@ -169,7 +169,7 @@ REGISTER_OP("MatrixInverse")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn(UnchangedSquareShapeFn))
+    .SetShapeFn(UnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the inverse of a square invertible matrix or its adjoint (conjugate
 transpose).
@@ -191,7 +191,7 @@ REGISTER_OP("BatchMatrixInverse")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn(BatchUnchangedSquareShapeFn))
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the inverse of square invertible matrices or their adjoints
 (conjugate transposes).
@@ -214,7 +214,7 @@ REGISTER_OP("Cholesky")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn(UnchangedSquareShapeFn))
+    .SetShapeFn(UnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the Cholesky decomposition of a square matrix.
 
@@ -233,7 +233,7 @@ REGISTER_OP("BatchCholesky")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn(BatchUnchangedSquareShapeFn))
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the Cholesky decomposition of a batch of square matrices.
 
@@ -251,7 +251,7 @@ REGISTER_OP("CholeskyGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(OpShapeInferenceFn(UnchangedSquareShapeFn))
+    .SetShapeFn(UnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the reverse mode backpropagated gradient of the Cholesky algorithm.
 
@@ -270,7 +270,7 @@ REGISTER_OP("BatchCholeskyGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(OpShapeInferenceFn(BatchUnchangedSquareShapeFn))
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the reverse mode backpropagated gradient of the Cholesky algorithm.
 
@@ -290,7 +290,7 @@ REGISTER_OP("SelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* input;
       TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
 
@@ -299,7 +299,7 @@ REGISTER_OP("SelfAdjointEig")
       TF_RETURN_IF_ERROR(c->Add(d, 1, &d_plus_1));
       c->set_output(0, c->Matrix(d_plus_1, d));
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Calculates the Eigen Decomposition of a square Self-Adjoint matrix.
 
@@ -317,7 +317,7 @@ REGISTER_OP("BatchSelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* input;
       TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
 
@@ -330,7 +330,7 @@ REGISTER_OP("BatchSelfAdjointEig")
       TF_RETURN_IF_ERROR(c->Concatenate(s, c->Matrix(d_plus_1, d), &s));
       c->set_output(0, s);
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Calculates the Eigen Decomposition of a batch of square self-adjoint matrices.
 
@@ -351,7 +351,7 @@ REGISTER_OP("MatrixSolve")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn(SquareMatrixSolveShapeFn))
+    .SetShapeFn(SquareMatrixSolveShapeFn)
     .Doc(R"doc(
 Solves a system of linear equations. Checks for invertibility.
 
@@ -369,9 +369,9 @@ REGISTER_OP("BatchMatrixSolve")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return BatchMatrixSolveShapeFn(c, true /* square (*/);
-    }))
+    })
     .Doc(R"doc(
 Solves systems of linear equations. Checks for invertibility.
 
@@ -396,7 +396,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn(SquareMatrixSolveShapeFn))
+    .SetShapeFn(SquareMatrixSolveShapeFn)
     .Doc(R"doc(
 Solves a system of linear equations with an upper or lower triangular matrix by
 backsubstitution.
@@ -428,9 +428,9 @@ REGISTER_OP("BatchMatrixTriangularSolve")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return BatchMatrixSolveShapeFn(c, true /* square (*/);
-    }))
+    })
     .Doc(R"doc(
 Solves systems of linear equations with upper or lower triangular matrices by
 backsubstitution.
@@ -465,7 +465,7 @@ REGISTER_OP("MatrixSolveLs")
     .Output("output: T")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       const Shape* lhs;
       const Shape* rhs;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &lhs));
@@ -477,7 +477,7 @@ REGISTER_OP("MatrixSolveLs")
 
       c->set_output(0, c->Matrix(c->Dim(lhs, 1), c->Dim(rhs, 1)));
       return Status::OK();
-    }))
+    })
     .Doc(R"doc(
 Solves a linear least-squares problem.
 
@@ -521,9 +521,9 @@ REGISTER_OP("BatchMatrixSolveLs")
     .Output("output: T")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+    .SetShapeFn([](InferenceContext* c) {
       return BatchMatrixSolveShapeFn(c, false /* square */);
-    }))
+    })
     .Doc(R"doc(
 Solves multiple linear least-squares problems.
 
