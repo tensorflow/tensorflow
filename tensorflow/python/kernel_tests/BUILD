@@ -192,6 +192,7 @@ cuda_py_tests(
         "linalg_grad_test.py",
     ],
     shard_count = 50,
+    tags = ["notap"],  # b/30226163
 )
 
 filegroup(
