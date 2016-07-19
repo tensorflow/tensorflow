@@ -2103,7 +2103,7 @@ op {
     }
   }
   summary: "Calculates the determinants for a batch of square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a 1-D tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
   name: "BatchMatrixDiag"
