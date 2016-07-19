@@ -2103,7 +2103,7 @@ op {
     }
   }
   summary: "Calculates the determinants for a batch of square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a 1-D tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
   name: "BatchMatrixDiag"
@@ -3816,60 +3816,6 @@ op {
   summary: "Computes the gradients of 3-D convolution with respect to the input."
 }
 op {
-  name: "Copy"
-  input_arg {
-    name: "input"
-    description: "Input tensor."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    description: "Output tensor, deep-copied from input."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  attr {
-    name: "tensor_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "The name of the input tensor."
-  }
-  summary: "Copy Op."
-  description: "Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the\ndevice on which the tensor is allocated.\n\nUnlike the CopyHost Op, this op does not have HostMemory constraint on its\ninput or output."
-}
-op {
-  name: "CopyHost"
-  input_arg {
-    name: "input"
-    description: "Input tensor."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    description: "Output tensor, deep-copied from input."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  attr {
-    name: "tensor_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "The name of the input tensor."
-  }
-  summary: "Copy Host Op."
-  description: "Performs CPU-to-CPU deep-copying of tensor.\n\nUnlike the Copy Op, this op has HostMemory constraint on its input or output."
-}
-op {
   name: "Cos"
   input_arg {
     name: "x"
@@ -4139,60 +4085,6 @@ op {
   }
   summary: "Compute the pairwise cross product."
   description: "`a` and `b` must be the same shape; they can either be simple 3-element vectors,\nor any shape where the innermost dimension is 3. In the latter case, each pair\nof corresponding 3-element vectors is cross-multiplied independently."
-}
-op {
-  name: "DebugIdentity"
-  input_arg {
-    name: "input"
-    description: "Input tensor, non-Reference type."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    description: "Output tensor that equals the input tensor."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  attr {
-    name: "tensor_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "Name of the input tensor."
-  }
-  summary: "Debug Identity Op."
-  description: "Provides an identity mapping of the non-Ref type input tensor for debugging."
-}
-op {
-  name: "DebugNanCount"
-  input_arg {
-    name: "input"
-    description: "Input tensor, non-Reference type."
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    description: "An integer output tensor that is the number of NaNs in the input."
-    type: DT_INT64
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  attr {
-    name: "tensor_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "Name of the input tensor."
-  }
-  summary: "Debug NaN Value Counter Op"
-  description: "Counts number of NaNs in the input tensor, for debugging."
 }
 op {
   name: "DecodeCSV"
@@ -4980,7 +4872,7 @@ op {
     }
   }
   summary: "Draw bounding boxes on a batch of images."
-  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"

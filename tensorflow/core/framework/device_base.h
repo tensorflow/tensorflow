@@ -87,7 +87,8 @@ class DeviceContext : public core::RefCounted {
   }
 };
 
-typedef std::unordered_map<int, DeviceContext*> DeviceContextMap;
+// map[i] is the DeviceContext* for the node with id i, if i < map.size().
+typedef std::vector<DeviceContext*> DeviceContextMap;
 
 class DeviceBase {
  public:

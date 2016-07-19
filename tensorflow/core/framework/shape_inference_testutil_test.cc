@@ -48,6 +48,7 @@ REGISTER_OP("OpTwoOut")
 
 string RunInferShapes(const string& op_name, const string& ins,
                       const string& expected_outs, OpShapeInferenceFn fn) {
+  ShapeInferenceTestOp op(op_name);
   const int num_inputs = std::count(ins.begin(), ins.end(), ';');
   std::vector<NodeDefBuilder::NodeOut> src_list;
   for (int i = 0; i < num_inputs; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
@@ -55,9 +56,9 @@ string RunInferShapes(const string& op_name, const string& ins,
   TF_CHECK_OK(NodeDefBuilder("dummy", op_name)
                   .Input(src_list)
                   .Attr("N", num_inputs)
-                  .Finalize(&node_def));
+                  .Finalize(&op.node_def));
   global_fn_ptr = &fn;
-  return InferShapes(op_name, ins, expected_outs, &node_def).error_message();
+  return InferShapes(op, ins, expected_outs).error_message();
 }
 
 }  // namespace
@@ -91,8 +92,9 @@ TEST(ShapeInferenceTestutilTest, Failures) {
             RunInferShapes(op, "[1];[2];[1]", "e", fn_copy_input_0));
   EXPECT_EQ("Wrong number of expected outputs (2 vs 1)",
             RunInferShapes(op, "[1];[2];[1]", "[1];[2]", fn_copy_input_0));
-  EXPECT_EQ("Op type not registered 'NoSuchOp'",
-            InferShapes("NoSuchOp", "", "").error_message());
+  EXPECT_EQ(
+      "Op type not registered 'NoSuchOp'",
+      InferShapes(ShapeInferenceTestOp("NoSuchOp"), "", "").error_message());
 
   // Wrong shape error messages.
   EXPECT_EQ(

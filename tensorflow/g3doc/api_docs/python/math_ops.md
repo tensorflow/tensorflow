@@ -1384,7 +1384,7 @@ Calculates the determinant of a square matrix.
 Calculates the determinants for a batch of square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. The output is a 1-D tensor containing the determinants
+form square matrices. The output is a tensor containing the determinants
 for all input submatrices `[..., :, :]`.
 
 ##### Args:

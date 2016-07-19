@@ -146,7 +146,7 @@ module TF {
      */
     private _onDatasetChanged(dataset: Plottable.Dataset) {
       if (this.smoothingEnabled) {
-        this.smoothDataset(this.getSmoothDataset(dataset.metadata().name));
+        this.resmoothDataset(this.getSmoothDataset(dataset.metadata().name));
         this.updateSpecialDatasets(this.smoothDatasets);
       } else {
         this.updateSpecialDatasets(this.datasets);
@@ -398,11 +398,11 @@ module TF {
       return this.name2smoothDatasets[name];
     }
 
-    private smoothDataset(dataset: Plottable.Dataset) {
-      let data = this.getDataset(dataset.metadata().name).data();
+    private resmoothDataset(dataset: Plottable.Dataset) {
+      let unsmoothedData = this.getDataset(dataset.metadata().name).data();
 
       // EMA with first step initialized to first element.
-      let smoothedData = _.cloneDeep(data);
+      let smoothedData = _.cloneDeep(unsmoothedData);
       smoothedData.forEach((d, i) => {
         if (i === 0) {
           return;
@@ -456,7 +456,7 @@ module TF {
       }
 
       this.smoothingDecay = decay;
-      this.smoothDatasets.forEach((d) => this.smoothDataset(d));
+      this.smoothDatasets.forEach((d) => this.resmoothDataset(d));
       this.updateSpecialDatasets(this.smoothDatasets);
     }
 

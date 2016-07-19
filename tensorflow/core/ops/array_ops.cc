@@ -171,6 +171,77 @@ REGISTER_OP("Concat")
     .Output("output: T")
     .Attr("N: int >= 2")
     .Attr("T: type")
+    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+
+      const Tensor* concat_dim_t = c->input_tensor(0);
+      if (concat_dim_t == nullptr) {
+        // Return an unknown shape with same rank as inputs, or an unknown rank
+        // if no input's rank is known.
+
+        // Find rank.
+        int32 rank = InferenceContext::kUnknownRank;
+        for (int i = 1; i < c->num_inputs(); ++i) {
+          if (rank == InferenceContext::kUnknownRank)
+            rank = c->Rank(c->input(i));
+          if (rank != InferenceContext::kUnknownRank) {
+            TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+          }
+        }
+        if (rank == InferenceContext::kUnknownRank) {
+          c->set_output(0, c->UnknownShape());
+          return Status::OK();
+        }
+        if (rank == 0) {
+          return errors::InvalidArgument(
+              "Can't concatenate scalars (use tf.pack instead)");
+        }
+        // Build result of <rank> different unknown dims.
+        std::vector<const Dimension*> dims;
+        for (int i = 0; i < rank; ++i) dims.push_back(c->UnknownDim());
+        c->set_output(0, c->MakeShape(dims));
+        return Status::OK();
+      }
+
+      // Merge all the non-concat dims, and sum the concat dim to make an output
+      // shape.
+      const int32 concat_dim = concat_dim_t->scalar<int32>()();
+      if (concat_dim < 0) {
+        return errors::InvalidArgument("Expected concat_dim >= 0, but got ",
+                                       concat_dim);
+      }
+
+      const Shape* output_before;
+      const Shape* output_after;
+
+      const Shape* input = c->input(c->num_inputs() - 1);
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &output_before));
+      const Dimension* output_middle = c->Dim(input, concat_dim);
+      TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
+
+      for (int i = c->num_inputs() - 2; i > 0; --i) {
+        const Shape* before;
+        const Shape* after;
+        input = c->input(i);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+        TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &before));
+        const Dimension* middle = c->Dim(input, concat_dim);
+        TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
+
+        TF_RETURN_IF_ERROR(c->Merge(before, output_before, &output_before));
+        TF_RETURN_IF_ERROR(c->Add(output_middle, middle, &output_middle));
+        TF_RETURN_IF_ERROR(c->Merge(after, output_after, &output_after));
+      }
+
+      const Shape* s;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(output_before, c->Vector(output_middle), &s));
+      TF_RETURN_IF_ERROR(c->Concatenate(s, output_after, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    }))
     .Doc(R"doc(
 Concatenates tensors along one dimension.
 
@@ -2305,73 +2376,6 @@ num_bits: The bitwidth of the quantization.
 range_given: If the range is given or should be computed from the tensor.
 input_min: If range is given, this is the min of the range.
 input_max: If range is given, this is the max of the range.
-)doc");
-
-// EXPERIMENTAL: tfdb debugger-inserted ops.
-REGISTER_OP("Copy")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Doc(R"doc(
-Copy Op.
-
-Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the
-device on which the tensor is allocated.
-
-Unlike the CopyHost Op, this op does not have HostMemory constraint on its
-input or output.
-
-input: Input tensor.
-output: Output tensor, deep-copied from input.
-tensor_name: The name of the input tensor.
-)doc");
-
-REGISTER_OP("CopyHost")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Doc(R"doc(
-Copy Host Op.
-
-Performs CPU-to-CPU deep-copying of tensor.
-
-Unlike the Copy Op, this op has HostMemory constraint on its input or output.
-
-input: Input tensor.
-output: Output tensor, deep-copied from input.
-tensor_name: The name of the input tensor.
-)doc");
-
-REGISTER_OP("DebugIdentity")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Doc(R"doc(
-Debug Identity Op.
-
-Provides an identity mapping of the non-Ref type input tensor for debugging.
-
-input: Input tensor, non-Reference type.
-output: Output tensor that equals the input tensor.
-tensor_name: Name of the input tensor.
-)doc");
-
-REGISTER_OP("DebugNanCount")
-    .Input("input: T")
-    .Output("output: int64")  // The debug signal (nan count) is int64
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Doc(R"doc(
-Debug NaN Value Counter Op
-
-Counts number of NaNs in the input tensor, for debugging.
-
-input: Input tensor, non-Reference type.
-output: An integer output tensor that is the number of NaNs in the input.
-tensor_name: Name of the input tensor.
 )doc");
 
 }  // namespace tensorflow

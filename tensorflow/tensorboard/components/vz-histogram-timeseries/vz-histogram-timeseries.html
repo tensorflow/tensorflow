@@ -1,6 +1,6 @@
 <link rel="import" href="../polymer/polymer.html">
 
-<dom-module id="tf-vz-histogram-series">
+<dom-module id="vz-histogram-timeseries">
 
     <template>
       <style>
@@ -117,7 +117,7 @@
     <script>
     "use strict";
     Polymer({
-      is: "tf-vz-histogram-series",
+      is: "vz-histogram-timeseries",
       properties: {
         mode: { type: String, value: "offset" }, //offset | overlay
         width: { type: Number, value: 500 },
@@ -128,7 +128,7 @@
         dx: { type: String, value: "dx" },
         y: { type: String, value: "y" },
         data: { type: Array, value: function(){ return [{ step: 0, bins: [{ x: 0, dx: 1, y: 0 }] }, { step: 1, bins: [{ x: 0, dx: 1, y: 0 }] }];}}
-        // type: HistogramSeriesDatum[] as described in tf-vz-histogram-series.d.ts
+        // type: HistogramSeriesDatum[] as described in vz-histogram-timeseries.d.ts
       },
       ready: function() {
         // Polymer's way of scoping styles on nodes that d3 created
