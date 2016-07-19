@@ -3,7 +3,7 @@
 Outputs a `Summary` protocol buffer with a serialized tensor.proto.
 
 The generated
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto) # pylint: disable=line-too-long
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 has one summary value containing input_tensor.
 
 ##### Args:

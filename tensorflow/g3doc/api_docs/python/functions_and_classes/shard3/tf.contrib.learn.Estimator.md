@@ -20,10 +20,13 @@ Constructs an Estimator instance.
 
       * `features` are single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
-      * `targets` are `Tensor` or
-             `dict` of `Tensor`s (for multi-head model).
+      * `targets` are `Tensor` or `dict` of `Tensor`s (for multi-head
+             models). If mode is `ModeKeys.INFER`, `targets=None` will be
+             passed. If the `model_fn`'s signature does not accept
+             `mode`, the `model_fn` must still be able to handle
+             `targets=None`.
       * `mode` represents if this training, evaluation or
-             prediction. See `ModeKeys` for example keys.
+             prediction. See `ModeKeys`.
       * `params` is a `dict` of hyperparameters. Will receive what
              is passed to Estimator in `params` parameter. This allows
              to configure Estimators from hyper parameter tunning.

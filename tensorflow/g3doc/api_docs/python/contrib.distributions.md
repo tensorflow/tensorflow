@@ -647,6 +647,378 @@ Variance of the distribution.
 
 - - -
 
+### `class tf.contrib.distributions.Beta` {#Beta}
+
+Beta distribution.
+
+This distribution is parameterized by `a` and `b` which are shape
+parameters.
+
+#### Mathematical details
+
+The Beta is a distribution over the interval (0, 1).
+The distribution has hyperparameters `a` and `b` and
+probability mass function (pdf):
+
+```pdf(x) = 1 / Beta(a, b) * x^(a - 1) * (1 - x)^(b - 1)```
+
+where `Beta(a, b) = Gamma(a) * Gamma(b) / Gamma(a + b)`
+is the beta function.
+
+
+This class provides methods to create indexed batches of Beta
+distributions. One entry of the broacasted
+shape represents of `a` and `b` represents one single Beta distribution.
+When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
+and `x` are broadcast to the same shape (if possible).
+Every entry in a/b/x corresponds to a single Beta distribution.
+
+#### Examples
+
+Creates 3 distributions.
+The distribution functions can be evaluated on x.
+
+```python
+a = [1, 2, 3]
+b = [1, 2, 3]
+dist = Beta(a, b)
+```
+
+```python
+# x same shape as a.
+x = [.2, .3, .7]
+dist.pdf(x)  # Shape [3]
+
+# a/b will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
+x = [[.1, .4, .5], [.2, .3, .5]]
+dist.pdf(x)  # Shape [2, 3]
+
+# a/b will be broadcast to shape [5, 7, 3] to match x.
+x = [[...]]  # Shape [5, 7, 3]
+dist.pdf(x)  # Shape [5, 7, 3]
+```
+
+Creates a 2-batch of 3-class distributions.
+
+```python
+a = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
+b = 5  # Shape []
+dist = Beta(a, b)
+
+# x will be broadcast to [[.2, .3, .9], [.2, .3, .9]] to match a/b.
+x = [.2, .3, .9]
+dist.pdf(x)  # Shape [2]
+```
+- - -
+
+#### `tf.contrib.distributions.Beta.__init__(a, b, strict=True, strict_statistics=True, name='Beta')` {#Beta.__init__}
+
+Initialize a batch of Beta distributions.
+
+##### Args:
+
+
+*  <b>`a`</b>: Positive `float` or `double` tensor with shape broadcastable to
+    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
+     different Beta distributions. This also defines the
+     dtype of the distribution.
+*  <b>`b`</b>: Positive `float` or `double` tensor with shape broadcastable to
+    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
+     different Beta distributions.
+*  <b>`strict`</b>: Whether to assert valid values for parameters `a` and `b`, and
+    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+
+
+*  <b>`Examples`</b>: 
+
+```python
+# Define 1-batch.
+dist = Beta(1.1, 2.0)
+
+# Define a 2-batch.
+dist = Beta([1.0, 2.0], [4.0, 5.0])
+```
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.a` {#Beta.a}
+
+Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.b` {#Beta.b}
+
+Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.batch_shape(name='batch_shape')` {#Beta.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.cdf(x, name='cdf')` {#Beta.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.dtype` {#Beta.dtype}
+
+dtype of samples from this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.entropy(name='entropy')` {#Beta.entropy}
+
+Entropy of the distribution in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.event_shape(name='event_shape')` {#Beta.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.get_batch_shape()` {#Beta.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  batch shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.get_event_shape()` {#Beta.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  event shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_continuous` {#Beta.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_reparameterized` {#Beta.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_cdf(x, name='log_cdf')` {#Beta.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_pdf(value, name='log_pdf')` {#Beta.log_pdf}
+
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_pmf(value, name='log_pmf')` {#Beta.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_prob(x, name='log_prob')` {#Beta.log_prob}
+
+`Log(P[counts])`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+    be broadcast with `self.a` and `self.b`.  For fixed leading
+    dimensions, the last dimension represents counts for the corresponding
+    Beta distribution in `self.a` and `self.b`. `x` is only legal if
+    0 < x < 1.
+*  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
+
+##### Returns:
+
+  Log probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.mean(name='mean')` {#Beta.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.mode(name='mode')` {#Beta.mode}
+
+Mode of the distribution.
+
+Note that the mode for the Beta distribution is only defined
+when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
+and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name for this op.
+
+##### Returns:
+
+  Mode of the Beta distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.name` {#Beta.name}
+
+Name to prepend to all ops.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.pdf(value, name='pdf')` {#Beta.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.pmf(value, name='pmf')` {#Beta.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.prob(x, name='prob')` {#Beta.prob}
+
+`P[x]`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+    be broadcast with `self.a` and `self.b`.  For fixed leading
+    dimensions, the last dimension represents x for the corresponding Beta
+    distribution in `self.a` and `self.b`. `x` is only legal if is
+    between 0 and 1.
+*  <b>`name`</b>: Name to give this Op, defaults to "pdf".
+
+##### Returns:
+
+  Probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.sample(n, seed=None, name='sample')` {#Beta.sample}
+
+Sample `n` observations from the Beta Distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by broadcasting the hyperparameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.std(name='std')` {#Beta.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.strict` {#Beta.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.strict_statistics` {#Beta.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.variance(name='variance')` {#Beta.variance}
+
+Variance of the distribution.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.Categorical` {#Categorical}
 
 Categorical distribution.
@@ -4451,6 +4823,367 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
 
 
 #### Other multivariate distributions
+
+- - -
+
+### `class tf.contrib.distributions.Dirichlet` {#Dirichlet}
+
+Dirichlet distribution.
+
+This distribution is parameterized by a vector `alpha` of concentration
+parameters for `k` classes.
+
+#### Mathematical details
+
+The Dirichlet is a distribution over the standard n-simplex, where the
+standard n-simplex is defined by:
+```{ (x_1, ..., x_n) in R^(n+1) | sum_j x_j = 1 and x_j >= 0 for all j }```.
+The distribution has hyperparameters `alpha = (alpha_1,...,alpha_k)`,
+and probability mass function (prob):
+
+```prob(x) = 1 / Beta(alpha) * prod_j x_j^(alpha_j - 1)```
+
+where `Beta(x) = prod_j Gamma(x_j) / Gamma(sum_j x_j)` is the multivariate
+beta function.
+
+
+This class provides methods to create indexed batches of Dirichlet
+distributions.  If the provided `alpha` is rank 2 or higher, for
+every fixed set of leading dimensions, the last dimension represents one
+single Dirichlet distribution.  When calling distribution
+functions (e.g. `dist.prob(x)`), `alpha` and `x` are broadcast to the
+same shape (if possible).  In all cases, the last dimension of alpha/x
+represents single Dirichlet distributions.
+
+#### Examples
+
+```python
+alpha = [1, 2, 3]
+dist = Dirichlet(alpha)
+```
+
+Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+The distribution functions can be evaluated on x.
+
+```python
+# x same shape as alpha.
+x = [.2, .3, .5]
+dist.prob(x)  # Shape []
+
+# alpha will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
+x = [[.1, .4, .5], [.2, .3, .5]]
+dist.prob(x)  # Shape [2]
+
+# alpha will be broadcast to shape [5, 7, 3] to match x.
+x = [[...]]  # Shape [5, 7, 3]
+dist.prob(x)  # Shape [5, 7]
+```
+
+Creates a 2-batch of 3-class distributions.
+
+```python
+alpha = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
+dist = Dirichlet(alpha)
+
+# x will be broadcast to [[2, 1, 0], [2, 1, 0]] to match alpha.
+x = [.2, .3, .5]
+dist.prob(x)  # Shape [2]
+```
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.__init__(alpha, strict=True, strict_statistics=True, name='Dirichlet')` {#Dirichlet.__init__}
+
+Initialize a batch of Dirichlet distributions.
+
+##### Args:
+
+
+*  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
+    `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
+     different `k` class Dirichlet distributions.
+*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and
+    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    guaranteed.
+*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If False, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+
+
+*  <b>`Examples`</b>: 
+
+```python
+# Define 1-batch of 2-class Dirichlet distributions,
+# also known as a Beta distribution.
+dist = Dirichlet([1.1, 2.0])
+
+# Define a 2-batch of 3-class distributions.
+dist = Dirichlet([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+```
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.alpha` {#Dirichlet.alpha}
+
+Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.batch_shape(name='batch_shape')` {#Dirichlet.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.cdf(x, name='cdf')` {#Dirichlet.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.dtype` {#Dirichlet.dtype}
+
+dtype of samples from this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.entropy(name='entropy')` {#Dirichlet.entropy}
+
+Entropy of the distribution in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.event_shape(name='event_shape')` {#Dirichlet.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.get_batch_shape()` {#Dirichlet.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  batch shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.get_event_shape()` {#Dirichlet.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  event shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_continuous` {#Dirichlet.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_reparameterized` {#Dirichlet.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_cdf(x, name='log_cdf')` {#Dirichlet.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_pdf(value, name='log_pdf')` {#Dirichlet.log_pdf}
+
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_pmf(value, name='log_pmf')` {#Dirichlet.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_prob(x, name='log_prob')` {#Dirichlet.log_prob}
+
+`Log(P[counts])`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+    be broadcast with `self.alpha`.  For fixed leading dimensions, the last
+    dimension represents counts for the corresponding Dirichlet distribution
+    in `self.alpha`. `x` is only legal if it sums up to one.
+*  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
+
+##### Returns:
+
+  Log probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.mean(name='mean')` {#Dirichlet.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.mode(name='mode')` {#Dirichlet.mode}
+
+Mode of the distribution.
+
+Note that the mode for the Beta distribution is only defined
+when `alpha > 1`. This returns the mode when `alpha > 1`,
+and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name for this op.
+
+##### Returns:
+
+  Mode of the Dirichlet distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.name` {#Dirichlet.name}
+
+Name to prepend to all ops.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.pdf(value, name='pdf')` {#Dirichlet.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.pmf(value, name='pmf')` {#Dirichlet.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.prob(x, name='prob')` {#Dirichlet.prob}
+
+`P[x]`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+    be broadcast with `self.alpha`.  For fixed leading dimensions, the last
+    dimension represents x for the corresponding Dirichlet distribution in
+    `self.alpha` and `self.beta`. `x` is only legal if it sums up to one.
+*  <b>`name`</b>: Name to give this Op, defaults to "prob".
+
+##### Returns:
+
+  Probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.sample(n, seed=None, name='sample')` {#Dirichlet.sample}
+
+Sample `n` observations from the Normal Distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by broadcasting the hyperparameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.std(name='std')` {#Dirichlet.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.strict` {#Dirichlet.strict}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.strict_statistics` {#Dirichlet.strict_statistics}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.variance(name='variance')` {#Dirichlet.variance}
+
+Variance of the distribution.
+
+
 
 - - -
 
