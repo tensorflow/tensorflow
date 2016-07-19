@@ -4,7 +4,7 @@ Draw bounding boxes on a batch of images.
 
 Outputs a copy of `images` but draws on top of the pixels zero or more bounding
 boxes specified by the locations in `boxes`. The coordinates of the each
-bounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The
+bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
 bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 

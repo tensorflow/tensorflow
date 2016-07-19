@@ -493,6 +493,7 @@ class OpKernelContext {
 
     bool track_allocations = false;
     bool log_memory = false;
+    bool record_tensor_accesses = false;
 
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;
@@ -978,11 +979,10 @@ class OpKernelContext {
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
 
-  // Constructed only if <record_tensor_accesses_>.
+  // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
 
   bool is_output_dead_ = false;
-  bool record_tensor_accesses_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1132,16 +1132,16 @@ inline DataType OpKernelContext::expected_output_dtype(int index) const {
 }
 
 inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  DCHECK(params_->device->RequiresRecordingAccessedTensors() ==
-         record_tensor_accesses_);
-  if (record_tensor_accesses_) {
+  DCHECK_EQ(params_->device->RequiresRecordingAccessedTensors(),
+            params_->record_tensor_accesses);
+  if (params_->record_tensor_accesses) {
     really_record_tensor_reference(tensor);
   }
 }
 
 inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
-  if (record_tensor_accesses_) {
+  if (params_->record_tensor_accesses) {
     mutex_lock l(mu_);
     referenced_tensors_->FreezeAndReturnReferences(out_vector);
   }

@@ -463,21 +463,25 @@ Status InferenceContext::Divide(const Dimension* dividend, int64 divisor,
   return Status::OK();
 }
 
-Status InferenceContext::Add(const Dimension* first, int64 second,
+Status InferenceContext::Add(const Dimension* first, DimensionOrConstant second,
                              const Dimension** out) {
-  if (second == 0) {
+  const int64 second_value =
+      second.dim == nullptr ? second.val : Value(second.dim);
+  if (second.dim != nullptr && !ValueKnown(second.dim)) {
+    *out = UnknownDim();
+  } else if (second_value == 0) {
     *out = first;
   } else if (!ValueKnown(first)) {
     *out = UnknownDim();
   } else {
     const int64 v = Value(first);
-    const int64 sum = v + second;
-    if (second > 0 && sum < 0) {
+    const int64 sum = v + second_value;
+    if (second_value > 0 && sum < 0) {
       return errors::InvalidArgument("Dimension size overflow from adding ", v,
-                                     " and ", second);
-    } else if (second < 0 && sum < 0) {
+                                     " and ", second_value);
+    } else if (second_value < 0 && sum < 0) {
       return errors::InvalidArgument("Negative dimension size from adding ", v,
-                                     " and ", second);
+                                     " and ", second_value);
     }
     *out = MakeDim(sum);
   }

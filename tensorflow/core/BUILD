@@ -560,8 +560,6 @@ filegroup(
             "client/**/*.cc",
             "common_runtime/**/*.h",
             "common_runtime/**/*.cc",
-            "debug/**/*.h",
-            "debug/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
             "graph/**/*.h",
@@ -1090,7 +1088,6 @@ tf_cuda_library(
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
-        ":debug_graph_utils",
         ":framework",
         ":gpu_tracer",
         ":lib",
@@ -1112,23 +1109,6 @@ tf_cuda_library(
         ":direct_session_internal",
         ":framework",
         ":gpu_tracer",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "debug_graph_utils",
-    srcs = ["debug/debug_graph_utils.cc"],
-    hdrs = ["debug/debug_graph_utils.h"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_internal",
-        ":framework",
         ":lib",
         ":lib_internal",
         ":proto_text",
@@ -1606,8 +1586,42 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cc_test(
     name = "debug/debug_gateway_test",
+    size = "small",
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":debug_gateway_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:control_flow_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:dense_update_ops",
+        "//tensorflow/core/kernels:fifo_queue_op",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:queue_ops",
+        "//tensorflow/core/kernels:session_ops",
+        "//tensorflow/core/kernels:variable_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "debug/debug_gateway_gpu_test",
     size = "small",
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -1617,7 +1631,6 @@ tf_cc_test_gpu(
         ":core_cpu",
         ":core_cpu_internal",
         ":debug_gateway_internal",
-        ":debug_graph_utils",
         ":direct_session",
         ":direct_session_internal",
         ":framework",
@@ -1630,7 +1643,6 @@ tf_cc_test_gpu(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:debug_ops",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
@@ -1845,8 +1857,12 @@ tf_cc_tests(
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = [
         "ops/array_ops_test.cc",
+        "ops/data_flow_ops_test.cc",
+        "ops/io_ops_test.cc",
+        "ops/linalg_ops_test.cc",
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
+        "ops/training_ops_test.cc",
     ],
     deps = [
         ":core",

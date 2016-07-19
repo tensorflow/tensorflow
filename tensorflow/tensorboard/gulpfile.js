@@ -39,9 +39,9 @@ gulp.task('test', ['tslint', 'compile'], getTask('test'));
 
 gulp.task('watch', [], function() {
   // Avoid watching generated .d.ts in the build (aka output) directory.
-  return gulp.watch('components/tf-*/**/*.ts',
-          {ignoreInitial: true},
-          ['compile', 'tslint.permissive']);
+  return gulp.watch(
+      ['components/tf-*/**/*.ts', 'components/vz-*/**/*.ts'],
+      {ignoreInitial: true}, ['compile', 'tslint.permissive']);
 });
 
 

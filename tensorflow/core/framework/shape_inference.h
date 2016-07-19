@@ -239,7 +239,8 @@ class InferenceContext {
                 const Dimension** out);
 
   // Returns in <out> the sum of <first> and <second>.
-  Status Add(const Dimension* first, int64 second, const Dimension** out);
+  Status Add(const Dimension* first, DimensionOrConstant second,
+             const Dimension** out);
 
  private:
   const Dimension* GetDimension(const DimensionOrConstant& d);

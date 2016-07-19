@@ -23,69 +23,61 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(ArrayOpsTest, TopK_ShapeFn) {
-  std::unique_ptr<NodeDef> def_storage(new NodeDef);
-  NodeDef* def = def_storage.get();
-  auto set_k = [def](int k) {
+  ShapeInferenceTestOp op("TopK");
+  auto set_k = [&op](int k) {
     TF_CHECK_OK(NodeDefBuilder("test", "Pack")
                     .Input({{"a", 0, DT_FLOAT}})
                     .Attr("k", k)
-                    .Finalize(def));
+                    .Finalize(&op.node_def));
   };
-  const char op[] = "TopK";
 
   set_k(20);
   // With known input, each output is an unknown shape.
-  INFER_OK_WITH_DEF(op, def, "?", "?;?");
+  INFER_OK(op, "?", "?;?");
   // With vector input, each output is [k].
-  INFER_OK_WITH_DEF(op, def, "[20]", "[20];[20]");
-  INFER_OK_WITH_DEF(op, def, "[21]", "[20];[20]");
+  INFER_OK(op, "[20]", "[20];[20]");
+  INFER_OK(op, "[21]", "[20];[20]");
 
   // With input rank 3, each output is the two first 2 dims of input, plus k.
-  INFER_OK_WITH_DEF(op, def, "[1,?,21]", "[d0_0,d0_1,20];[d0_0,d0_1,20]");
+  INFER_OK(op, "[1,?,21]", "[d0_0,d0_1,20];[d0_0,d0_1,20]");
   // With input rank 4, each output is the two first 3 dims of input, plus k.
-  INFER_OK_WITH_DEF(op, def, "[1,?,21,?]",
-                    "[d0_0,d0_1,d0_2,20];[d0_0,d0_1,d0_2,20]");
+  INFER_OK(op, "[1,?,21,?]", "[d0_0,d0_1,d0_2,20];[d0_0,d0_1,d0_2,20]");
 
-  INFER_ERROR_WITH_DEF("Shape must be at least rank 1 but is rank 0", op, def,
-                       "[]");
-  INFER_ERROR_WITH_DEF("input must have last dimension >= k = 20 but is 1", op,
-                       def, "[1]");
-  INFER_ERROR_WITH_DEF("input must have last dimension >= k = 20 but is 4", op,
-                       def, "[1,2,3,4]");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
+  INFER_ERROR("input must have last dimension >= k = 20 but is 1", op, "[1]");
+  INFER_ERROR("input must have last dimension >= k = 20 but is 4", op,
+              "[1,2,3,4]");
   set_k(-1);
-  INFER_ERROR_WITH_DEF("Need k >= 0, got -1", op, def, "[1,2,3,4]");
+  INFER_ERROR("Need k >= 0, got -1", op, "[1,2,3,4]");
 }
 
 TEST(ArrayOpsTest, TopKV2_ShapeFn) {
-  std::vector<const Tensor*> in_tensors{nullptr, nullptr};
-  const char op[] = "TopKV2";
+  ShapeInferenceTestOp op("TopKV2");
+  op.input_tensors.resize(2);
 
   Tensor k_t;
-  in_tensors[1] = &k_t;
+  op.input_tensors[1] = &k_t;
 
   k_t = test::AsScalar<int32>(20);
   // With known input, each output is an unknown shape.
-  INFER_OK_WITH_TENSORS(op, "?;[]", in_tensors, "?;?");
+  INFER_OK(op, "?;[]", "?;?");
   // With vector input, each output is [k].
-  INFER_OK_WITH_TENSORS(op, "[20];[]", in_tensors, "[20];[20]");
+  INFER_OK(op, "[20];[]", "[20];[20]");
 
   // With input rank 3, each output is the two first 2 dims of input, plus k.
-  INFER_OK_WITH_TENSORS(op, "[1,?,21];[]", in_tensors,
-                        "[d0_0,d0_1,20];[d0_0,d0_1,20]");
+  INFER_OK(op, "[1,?,21];[]", "[d0_0,d0_1,20];[d0_0,d0_1,20]");
   // With input rank 4, each output is the two first 3 dims of input, plus k.
-  INFER_OK_WITH_TENSORS(op, "[1,?,21,?];[]", in_tensors,
-                        "[d0_0,d0_1,d0_2,20];[d0_0,d0_1,d0_2,20]");
+  INFER_OK(op, "[1,?,21,?];[]", "[d0_0,d0_1,d0_2,20];[d0_0,d0_1,d0_2,20]");
 
-  INFER_ERROR_WITH_TENSORS("Shape must be at least rank 1 but is rank 0", op,
-                           "[];[]", in_tensors);
-  INFER_ERROR_WITH_TENSORS("input must have last dimension >= k = 20 but is 1",
-                           op, "[1];[]", in_tensors);
-  INFER_ERROR_WITH_TENSORS("input must have last dimension >= k = 20 but is 4",
-                           op, "[1,2,3,4];[]", in_tensors);
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[]");
+  INFER_ERROR("input must have last dimension >= k = 20 but is 1", op,
+              "[1];[]");
+  INFER_ERROR("input must have last dimension >= k = 20 but is 4", op,
+              "[1,2,3,4];[]");
   k_t = test::AsScalar<int32>(-1);
-  INFER_ERROR_WITH_TENSORS(
+  INFER_ERROR(
       "Dimension size, given by scalar input 1, must be non-negative but is -1",
-      op, "[1,2,3,4];[]", in_tensors);
+      op, "[1,2,3,4];[]");
 }
 
 }  // end namespace tensorflow

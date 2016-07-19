@@ -7,7 +7,7 @@ exports_files(["LICENSE"])
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["tf-*/**/*"],
+        ["tf-*/**/*", "vz-*/**/*"],
         exclude = [
             "**/tf_model_zoo/*",
             "**/METADATA",

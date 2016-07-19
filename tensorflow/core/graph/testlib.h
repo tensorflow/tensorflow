@@ -51,8 +51,6 @@ Node* HostConstant(Graph* g, const Tensor& tensor, const string& name);
 
 // Adds a variable in "g" of the given "shape" and "dtype".
 Node* Var(Graph* g, const DataType dtype, const TensorShape& shape);
-Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
-          const string& name);
 
 // Adds an assign node in "g" which assigns "val" into "var".
 Node* Assign(Graph* g, Node* var, Node* val);

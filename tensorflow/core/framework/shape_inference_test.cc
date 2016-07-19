@@ -729,24 +729,40 @@ TEST(ShapeInferenceTest, Add) {
   auto d_6 = c.Dim(s, 0);
   auto d_unknown = c.Dim(s, 1);
 
-  // Adding non-zero to known gives new unknown.
+  // Adding non-zero to unknown gives new unknown.
   const Dimension* out;
   EXPECT_TRUE(c.Add(d_unknown, 1, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out != d_unknown);
 
   // Adding 0 to anything gives input.
-  EXPECT_TRUE(c.Add(d_unknown, 0, &out).ok());
+  EXPECT_TRUE(c.Add(d_unknown, static_cast<int64>(0), &out).ok());
   EXPECT_TRUE(out == d_unknown);
-  EXPECT_TRUE(c.Add(d_6, 0, &out).ok());
+  EXPECT_TRUE(c.Add(d_6, static_cast<int64>(0), &out).ok());
   EXPECT_TRUE(out == d_6);
 
+  // Adding dimension with value 0 to anything gives input.
+  EXPECT_TRUE(c.Add(d_unknown, c.MakeDim(0), &out).ok());
+  EXPECT_TRUE(out == d_unknown);
+  EXPECT_TRUE(c.Add(d_6, c.MakeDim(0), &out).ok());
+  EXPECT_TRUE(out == d_6);
+
+  // Test addition.
   EXPECT_TRUE(c.Add(d_6, 2, &out).ok());
   EXPECT_EQ("8", c.DebugString(out));
   EXPECT_TRUE(c.Add(d_6, -6, &out).ok());
   EXPECT_EQ("0", c.DebugString(out));
   EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64>::max() - 6, &out).ok());
   EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+
+  // Test addition using dimension as second value.
+  EXPECT_TRUE(c.Add(d_6, c.MakeDim(2), &out).ok());
+  EXPECT_EQ("8", c.DebugString(out));
+  EXPECT_TRUE(
+      c.Add(d_6, c.MakeDim(std::numeric_limits<int64>::max() - 6), &out).ok());
+  EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+  EXPECT_TRUE(c.Add(d_6, c.UnknownDim(), &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
 
   EXPECT_EQ("Negative dimension size from adding 6 and -7",
             c.Add(d_6, -7, &out).error_message());

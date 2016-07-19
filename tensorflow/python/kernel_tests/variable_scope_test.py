@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy
 import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
@@ -67,6 +68,21 @@ class VariableScopeTest(tf.test.TestCase):
           w = tf.get_variable("w", [])
           sess.run(tf.initialize_variables([w]))
           self.assertAllClose(w.eval(), 0.3)
+
+  def testInitFromNonTensorValue(self):
+    with self.test_session() as sess:
+      v = tf.get_variable("v", initializer=4, dtype=tf.int32)
+      sess.run(tf.initialize_variables([v]))
+      self.assertAllClose(v.eval(), 4)
+
+      w = tf.get_variable("w",
+                          initializer=numpy.array([1, 2, 3]),
+                          dtype=tf.int32)
+      sess.run(tf.initialize_variables([w]))
+      self.assertAllClose(w.eval(), [1, 2, 3])
+
+      with self.assertRaises(TypeError):
+        tf.get_variable("x", initializer={})
 
   def testVarScopeCachingDevice(self):
     with self.test_session():
