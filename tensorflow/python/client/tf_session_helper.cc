@@ -553,7 +553,7 @@ void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
 void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
                           const NameVector& output_names,
                           const NameVector& target_nodes, TF_Status* out_status,
-                          char** out_handle) {
+                          const char** out_handle) {
   Py_BEGIN_ALLOW_THREADS;
   TF_PRunSetup(
       session, const_cast<const char**>(input_names.data()), input_names.size(),

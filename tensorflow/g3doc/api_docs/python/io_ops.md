@@ -2399,8 +2399,7 @@ operations that depend on fixed batch_size would fail.
     The given dimensions are padded upon dequeue so that tensors within a
     batch have the same shapes.
 *  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
-  batch to be smaller if there are insufficient items left in the queue.
-
+    batch to be smaller if there are insufficient items left in the queue.
 *  <b>`shared_name`</b>: (Optional). If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.
@@ -2490,8 +2489,7 @@ operations that depend on fixed batch_size would fail.
     The given dimensions are padded upon dequeue so that tensors within a
     batch have the same shapes.
 *  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
-  batch to be smaller if there are insufficient items left in the queue.
-
+    batch to be smaller if there are insufficient items left in the queue.
 *  <b>`shared_name`</b>: (Optional) If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.
@@ -2510,7 +2508,7 @@ operations that depend on fixed batch_size would fail.
 
 - - -
 
-### `tf.train.shuffle_batch(tensors, batch_size, capacity, min_after_dequeue, num_threads=1, seed=None, enqueue_many=False, shapes=None, shared_name=None, name=None)` {#shuffle_batch}
+### `tf.train.shuffle_batch(tensors, batch_size, capacity, min_after_dequeue, num_threads=1, seed=None, enqueue_many=False, shapes=None, allow_smaller_final_batch=False, shared_name=None, name=None)` {#shuffle_batch}
 
 Creates batches by randomly shuffling tensors.
 
@@ -2557,6 +2555,13 @@ passed, or (ii) all of the tensors in `tensors` must have
 fully-defined shapes. `ValueError` will be raised if neither of
 these conditions holds.
 
+If `allow_smaller_final_batch` is `True`, a smaller batch value than
+`batch_size` is returned when the queue is closed and there are not enough
+elements to fill the batch, otherwise the pending elements are discarded.
+In addition, all output tensors' static shapes, as accessed via the
+`get_shape` method will have a first `Dimension` value of `None`, and
+operations that depend on fixed batch_size would fail.
+
 ##### Args:
 
 
@@ -2570,6 +2575,8 @@ these conditions holds.
 *  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list` is a single example.
 *  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
     inferred shapes for `tensor_list`.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batch to be smaller if there are insufficient items left in the queue.
 *  <b>`shared_name`</b>: (Optional) If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.
@@ -2587,7 +2594,7 @@ these conditions holds.
 
 - - -
 
-### `tf.train.shuffle_batch_join(tensors_list, batch_size, capacity, min_after_dequeue, seed=None, enqueue_many=False, shapes=None, shared_name=None, name=None)` {#shuffle_batch_join}
+### `tf.train.shuffle_batch_join(tensors_list, batch_size, capacity, min_after_dequeue, seed=None, enqueue_many=False, shapes=None, allow_smaller_final_batch=False, shared_name=None, name=None)` {#shuffle_batch_join}
 
 Create batches by randomly shuffling tensors.
 
@@ -2627,6 +2634,13 @@ operation is feeding another input queue, its queue runner will catch
 this exception, however, if this operation is used in your main thread
 you are responsible for catching this yourself.
 
+If `allow_smaller_final_batch` is `True`, a smaller batch value than
+`batch_size` is returned when the queue is closed and there are not enough
+elements to fill the batch, otherwise the pending elements are discarded.
+In addition, all output tensors' static shapes, as accessed via the
+`get_shape` method will have a first `Dimension` value of `None`, and
+operations that depend on fixed batch_size would fail.
+
 ##### Args:
 
 
@@ -2640,6 +2654,8 @@ you are responsible for catching this yourself.
     example.
 *  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
     inferred shapes for `tensors_list[i]`.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batch to be smaller if there are insufficient items left in the queue.
 *  <b>`shared_name`</b>: (optional). If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.

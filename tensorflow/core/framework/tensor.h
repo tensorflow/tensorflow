@@ -242,6 +242,14 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor tensor();
 
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the
+  /// same size but a bitwise cast to the specified dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// NOTE: this is the same as `tensor()` except a bitcast is allowed.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::Tensor bit_casted_tensor();
+
   /// \brief Return the tensor data as an `Eigen::Tensor` of the data type and a
   /// specified shape.
   ///
@@ -298,6 +306,15 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor shaped(gtl::ArraySlice<int64> new_sizes);
 
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the new
+  /// shape specified in `new_sizes` and cast to a new dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// The allowed bitcast is the only difference from `shaped()`.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::Tensor bit_casted_shaped(
+      gtl::ArraySlice<int64> new_sizes);
+
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::UnalignedTensor unaligned_shaped(
       gtl::ArraySlice<int64> new_sizes);
@@ -324,6 +341,14 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor tensor() const;
 
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the
+  /// same size but a bitwise cast to the specified dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// NOTE: this is the same as `tensor()` except a bitcast is allowed.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::ConstTensor bit_casted_tensor() const;
+
   template <typename T>
   typename TTypes<T>::ConstFlat flat() const {
     return shaped<T, 1>({NumElements()});
@@ -336,6 +361,15 @@ class Tensor {
 
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor shaped(
+      gtl::ArraySlice<int64> new_sizes) const;
+
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the new
+  /// shape specified in `new_sizes` and cast to a new dtype `T`.
+  ///
+  /// Using a bitcast is useful for move and copy operations.
+  /// The allowed bitcast is the only difference from `shaped()`.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::ConstTensor bit_casted_shaped(
       gtl::ArraySlice<int64> new_sizes) const;
 
   template <typename T, size_t NDIMS>
@@ -477,6 +511,22 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
                                                 shape().AsEigenDSizes<NDIMS>());
 }
 
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_tensor() {
+  CHECK(IsAligned());
+  ;
+  return typename TTypes<T, NDIMS>::Tensor(base<T>(),
+                                           shape().AsEigenDSizes<NDIMS>());
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_tensor() const {
+  CHECK(IsAligned());
+  ;
+  return typename TTypes<T, NDIMS>::ConstTensor(base<const T>(),
+                                                shape().AsEigenDSizes<NDIMS>());
+}
+
 template <size_t NDIMS>
 void Tensor::FillDimsAndValidateCompatibleShape(
     gtl::ArraySlice<int64> new_sizes,
@@ -494,6 +544,16 @@ template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, NDIMS> dims;
+  FillDimsAndValidateCompatibleShape<NDIMS>(new_sizes, &dims);
+  return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_shaped(
+    gtl::ArraySlice<int64> new_sizes) {
+  CHECK(IsAligned());
+  ;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape<NDIMS>(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
@@ -525,6 +585,16 @@ template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) const {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, NDIMS> dims;
+  FillDimsAndValidateCompatibleShape(&dims, new_sizes);
+  return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_shaped(
+    gtl::ArraySlice<int64> new_sizes) const {
+  CHECK(IsAligned());
+  ;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(&dims, new_sizes);
   return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);

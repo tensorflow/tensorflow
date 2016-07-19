@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 
 
@@ -75,10 +76,10 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
                     exports_to_keep=exports_to_keep)
 
 
-def _generic_signature_fn(examples, unused_features, predictions):
+def generic_signature_fn(examples, unused_features, predictions):
   """Creates generic signature from given examples and predictions.
 
-  This is neeed for backward compatibility with default behaviour of
+  This is needed for backward compatibility with default behaviour of
   export_estimator.
 
   Args:
@@ -97,6 +98,46 @@ def _generic_signature_fn(examples, unused_features, predictions):
   return default_signature, {}
 
 
+def logistic_regression_signature_fn(examples, unused_features, predictions):
+  """Creates regression signature from given examples and predictions.
+
+  Args:
+    examples: `Tensor`.
+    unused_features: `dict` of `Tensor`s.
+    predictions: `dict` of `Tensor`s.
+
+  Returns:
+    Tuple of default classification signature and named signature.
+  """
+  # predictions has shape [batch_size, 2] where first column is P(Y=0|x)
+  # while second column is P(Y=1|x). We are only interested in the second
+  # column for inference.
+  assert predictions.get_shape()[1] == 2
+  positive_predictions = predictions[:, 1]
+
+  signatures = {}
+  signatures['regression'] = exporter.regression_signature(examples,
+                                                           positive_predictions)
+  return signatures['regression'], signatures
+
+
+def classification_signature_fn(examples, unused_features, predictions):
+  """Creates classification signature from given examples and predictions.
+
+  Args:
+    examples: `Tensor`.
+    unused_features: `dict` of `Tensor`s.
+    predictions: `dict` of `Tensor`s.
+
+  Returns:
+    Tuple of default classification signature and named signature.
+  """
+  signatures = {}
+  signatures['classification'] = exporter.classification_signature(
+      examples, classes_tensor=predictions)
+  return signatures['classification'], signatures
+
+
 # pylint: disable=protected-access
 def _default_input_fn(estimator, examples):
   """Creates default input parsing using Estimator's feature signatures."""
@@ -105,8 +146,8 @@ def _default_input_fn(estimator, examples):
 
 def export_estimator(estimator,
                      export_dir,
-                     input_fn=_default_input_fn,
                      signature_fn=None,
+                     input_fn=_default_input_fn,
                      default_batch_size=1,
                      exports_to_keep=None):
   """Exports inference graph into given dir.
@@ -115,10 +156,10 @@ def export_estimator(estimator,
     estimator: Estimator to export
     export_dir: A string containing a directory to write the exported graph
       and checkpoints.
-    input_fn: Function that given `Tensor` of `Example` strings, parses it into
-      features that are then passed to the model.
     signature_fn: Function that given `Tensor` of `Example` strings,
       `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
+    input_fn: Function that given `Tensor` of `Example` strings, parses it into
+      features that are then passed to the model.
       and returns default and named exporting signatures.
     default_batch_size: Default batch size of the `Example` placeholder.
     exports_to_keep: Number of exports to keep.
@@ -136,7 +177,14 @@ def export_estimator(estimator,
                                                                features,
                                                                predictions)
     else:
-      default_signature, named_graph_signatures = _generic_signature_fn(
+      logging.warn(
+          'Change warning: `signature_fn` will be required after 2016-08-01.\n'
+          'Using generic signatures for now.  To maintain this behavior, '
+          'pass:\n'
+          '  signature_fn=export.generic_signature_fn\n'
+          'Also consider passing a regression or classification signature; see '
+          'cl/126430915 for an example.')
+      default_signature, named_graph_signatures = generic_signature_fn(
           examples, features, predictions)
     if exports_to_keep is not None:
       exports_to_keep = gc.largest_export_versions(exports_to_keep)

@@ -98,6 +98,20 @@ void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
     Set_TF_Status_from_Status(out_status, status);
   }
 }
+
+void RenameFile(const string& src, const string& target, bool overwrite,
+                TF_Status* out_status) {
+  // If overwrite is false and the target file exists then its an error.
+  if (!overwrite && FileExists(target)) {
+    TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
+    return;
+  }
+  tensorflow::Status status = tensorflow::Env::Default()->RenameFile(src,
+                                                                     target);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
 %}
 
 // Wrap the above functions.
@@ -111,3 +125,5 @@ std::vector<string> GetMatchingFiles(const string& filename,
 void CreateDir(const string& dirname, TF_Status* out_status);
 void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
               TF_Status* out_status);
+void RenameFile(const string& oldname, const string& newname, bool overwrite,
+                TF_Status* out_status);

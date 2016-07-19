@@ -155,6 +155,7 @@ type and representation (RGB or HSV).
 ## Working with Bounding Boxes
 
 @@draw_bounding_boxes
+@@non_max_suppression
 @@sample_distorted_bounding_box
 """
 from __future__ import absolute_import
@@ -185,14 +186,14 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.contrib.framework.python.framework import is_tensor
 
 
-
 ops.NoGradient('RandomCrop')
 ops.NoGradient('RGBToHSV')
 ops.NoGradient('HSVToRGB')
 ops.NoGradient('DrawBoundingBoxes')
 ops.NoGradient('SampleDistortedBoundingBox')
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
-ops.NoGradient("ExtractGlimpse")
+ops.NoGradient('ExtractGlimpse')
+ops.NoGradient('NonMaxSuppression')
 
 
 def _assert(cond, ex_type, msg):
@@ -1398,6 +1399,12 @@ def _crop_and_resize_shape(op):
     crop_width = None
   return [tensor_shape.TensorShape(
       [box_shape[0], crop_height, crop_width, image_shape[3]])]
+
+
+@ops.RegisterShape('NonMaxSuppression')
+def _non_max_suppression_shape(_):
+  """Shape function for the NonMaxSuppression op."""
+  return [tensor_shape.TensorShape([None])]
 
 
 __all__ = make_all(__name__)

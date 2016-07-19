@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/test.h"
@@ -22,6 +23,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
+static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 namespace {
 
@@ -46,8 +48,16 @@ REGISTER_OP("OpTwoOut")
 
 string RunInferShapes(const string& op_name, const string& ins,
                       const string& expected_outs, OpShapeInferenceFn fn) {
+  const int num_inputs = std::count(ins.begin(), ins.end(), ';');
+  std::vector<NodeDefBuilder::NodeOut> src_list;
+  for (int i = 0; i < num_inputs; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
+  NodeDef node_def;
+  TF_CHECK_OK(NodeDefBuilder("dummy", op_name)
+                  .Input(src_list)
+                  .Attr("N", num_inputs)
+                  .Finalize(&node_def));
   global_fn_ptr = &fn;
-  return InferShapes(op_name, ins, expected_outs).error_message();
+  return InferShapes(op_name, ins, expected_outs, &node_def).error_message();
 }
 
 }  // namespace
@@ -63,16 +73,16 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   };
   auto fn_output_unknown_shapes = [](InferenceContext* c) {
     for (int i = 0; i < c->num_outputs(); ++i) {
-      c->set_output(i, c->CreateUnknownShape());
+      c->set_output(i, c->UnknownShape());
     }
     return Status::OK();
   };
   auto fn_output_1_2 = [](InferenceContext* c) {
-    c->set_output(0, c->CreateShape({c->CreateDim(1), c->CreateDim(2)}));
+    c->set_output(0, c->Matrix(1, 2));
     return Status::OK();
   };
   auto fn_output_u_2 = [](InferenceContext* c) {
-    c->set_output(0, c->CreateShape({c->CreateUnknownDim(), c->CreateDim(2)}));
+    c->set_output(0, c->Matrix(kUnknownDim, 2));
     return Status::OK();
   };
   const string& op = "OpOneOut";
@@ -82,7 +92,7 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   EXPECT_EQ("Wrong number of expected outputs (2 vs 1)",
             RunInferShapes(op, "[1];[2];[1]", "[1];[2]", fn_copy_input_0));
   EXPECT_EQ("Op type not registered 'NoSuchOp'",
-            RunInferShapes("NoSuchOp", "", "", fn_copy_input_0));
+            InferShapes("NoSuchOp", "", "").error_message());
 
   // Wrong shape error messages.
   EXPECT_EQ(
@@ -129,9 +139,8 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   EXPECT_EQ("Output dim 0,0 expected to be 1 but was ?; output shape was [?,2]",
             RunInferShapes(op, "[0,1,?];[2];[1]", "[1,2]", fn_output_u_2));
   auto fn = [](InferenceContext* c) {
-    c->set_output(
-        0, c->CreateShape({c->Dim(c->input(0), 1), c->CreateDim(2),
-                           c->CreateUnknownDim(), c->Dim(c->input(2), 0)}));
+    c->set_output(0, c->MakeShape({c->Dim(c->input(0), 1), c->MakeDim(2),
+                                   c->UnknownDim(), c->Dim(c->input(2), 0)}));
     return Status::OK();
   };
   const string ins = "[0,1,?];[2];[1]";

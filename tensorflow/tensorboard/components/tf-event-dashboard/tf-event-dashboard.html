@@ -4,6 +4,7 @@
 <link rel="import" href="tf-x-type-selector.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
+<link rel="import" href="tf-chart-scaffold.html">
 <link rel="import" href="tf-line-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
@@ -84,18 +85,21 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                 <div class="card">
                   <span class="card-title">[[tag]]</span>
                   <div class="card-content">
-                    <tf-line-chart
+                    <tf-chart-scaffold
                       tag="[[tag]]"
                       data-provider="[[dataProvider]]"
-                      id="chart"
-                      selected-runs="[[validRuns(tag, selectedRuns.*, run2tag.*)]]"
-                      x-type="[[xType]]"
-                      color-scale="[[colorScale]]"
-                      smoothing-decay="[[_smoothingDecay]]"
-                      smoothing-enabled="[[_smoothingEnabled]]"
-                      on-keyup="toggleSelected"
-                      tabindex="2"
-                    ></tf-line-chart>
+                      visible-series="[[validRuns(tag, selectedRuns.*, run2tag.*)]]"
+                      >
+                      <tf-line-chart
+                        id="chart"
+                        x-type="[[xType]]"
+                        color-scale="[[colorScale]]"
+                        smoothing-decay="[[_smoothingDecay]]"
+                        smoothing-enabled="[[_smoothingEnabled]]"
+                        on-keyup="toggleSelected"
+                        tabindex="2"
+                      ></tf-line-chart>
+                    </tf-chart-scaffold>
                     <paper-icon-button
                       class="expand-button"
                       shift$="[[_showDownloadLinks]]"
@@ -130,7 +134,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
     Polymer({
       is: "tf-event-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-line-chart"),
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],
       properties: {
@@ -184,9 +188,9 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
         var currentTarget = Polymer.dom(e.currentTarget);
         var parentDiv = currentTarget.parentNode.parentNode;
         parentDiv.classList.toggle("selected");
-        var chart = currentTarget.previousElementSibling;
-        if (chart) {
-          chart.redraw();
+        var chartScaffold = currentTarget.previousElementSibling;
+        if (chartScaffold) {
+          chartScaffold.chart().redraw();
         }
       },
       validRuns: function(tag, runsChange, run2tagChange) {

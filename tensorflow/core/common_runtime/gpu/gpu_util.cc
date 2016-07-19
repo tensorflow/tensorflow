@@ -426,4 +426,32 @@ uint64 GPUUtil::Checksum(const Tensor& tensor) {
                 tensor.TotalBytes(), 0);
 }
 
+// static
+void GPUUtil::CopyGPUTensorToSameGPU(Device* gpu_device,
+                                     const DeviceContext* device_context,
+                                     const Tensor* src_gpu_tensor,
+                                     Tensor* dst_gpu_tensor,
+                                     StatusCallback done) {
+  VLOG(1) << "CopyGPUTensorToSameGPU";
+  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  gpu::Stream* send_stream = nullptr;
+  Status s = PrepareCopy(gpu_device, device_context, *src_gpu_tensor,
+                         dst_gpu_tensor, &dev_info, &send_stream);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+
+  const int64 total_bytes = src_gpu_tensor->TotalBytes();
+  if (total_bytes > 0) {
+    void* src_ptr = GetBase(src_gpu_tensor);
+    DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
+    void* dst_ptr = GetBase(dst_gpu_tensor);
+    DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
+    send_stream->ThenMemcpy(&gpu_dst_ptr, gpu_src_ptr, total_bytes);
+  }
+
+  done(Status::OK());
+}
+
 }  // namespace tensorflow

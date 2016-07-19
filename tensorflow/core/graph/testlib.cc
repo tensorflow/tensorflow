@@ -121,6 +121,16 @@ Node* Var(Graph* g, const DataType dtype, const TensorShape& shape) {
   return ret;
 }
 
+Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
+          const string& name) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(name, "Variable")
+                  .Attr("dtype", dtype)
+                  .Attr("shape", shape)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Assign(Graph* g, Node* var, Node* val) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Assign")

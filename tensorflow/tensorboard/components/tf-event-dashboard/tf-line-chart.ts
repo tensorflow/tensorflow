@@ -16,10 +16,8 @@ limitations under the License.
 
 module TF {
   export class LineChart {
-    private dataFn: TF.ChartHelpers.DataFn;
-    private tag: string;
-    private run2datasets: {[run: string]: Plottable.Dataset};
-    private runs: string[];
+    private name2datasets: {[name: string]: Plottable.Dataset};
+    private seriesNames: string[];
 
     private xAccessor: Plottable.Accessor<number|Date>;
     private xScale: Plottable.QuantitativeScale<number|Date>;
@@ -41,23 +39,22 @@ module TF {
     private lastPointsDataset: Plottable.Dataset;
     private datasets: Plottable.Dataset[];
     private smoothDatasets: Plottable.Dataset[];
-    private run2smoothDatasets: {[run: string]: Plottable.Dataset};
+    private name2smoothDatasets: {[name: string]: Plottable.Dataset};
     private onDatasetChanged: (dataset: Plottable.Dataset) => void;
     private nanDataset: Plottable.Dataset;
     private smoothingDecay: number;
     private smoothingEnabled: Boolean;
 
     constructor(
-        tag: string, dataFn: TF.ChartHelpers.DataFn, xType: string,
-        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
-      this.dataFn = dataFn;
-      this.run2datasets = {};
-      this.tag = tag;
+        xType: string, colorScale: Plottable.Scales.Color,
+        tooltip: d3.Selection<any>) {
+      this.seriesNames = [];
+      this.name2datasets = {};
       this.colorScale = colorScale;
       this.tooltip = tooltip;
       this.datasets = [];
       this.smoothDatasets = [];
-      this.run2smoothDatasets = {};
+      this.name2smoothDatasets = {};
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
@@ -106,7 +103,7 @@ module TF {
       linePlot.y(this.yAccessor, yScale);
       linePlot.attr(
           'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
-                        this.colorScale.scale(dataset.metadata().run));
+                        this.colorScale.scale(dataset.metadata().name));
       this.linePlot = linePlot;
       let group = this.setupTooltips(linePlot);
 
@@ -115,7 +112,7 @@ module TF {
       smoothLinePlot.y(this.yAccessor, yScale);
       smoothLinePlot.attr(
           'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
-                        this.colorScale.scale(dataset.metadata().run));
+                        this.colorScale.scale(dataset.metadata().name));
       this.smoothLinePlot = smoothLinePlot;
 
       // The scatterPlot will display the last point for each dataset.
@@ -124,7 +121,7 @@ module TF {
       let scatterPlot = new Plottable.Plots.Scatter<number|Date, number>();
       scatterPlot.x(xAccessor, xScale);
       scatterPlot.y(this.yAccessor, yScale);
-      scatterPlot.attr('fill', (d: any) => this.colorScale.scale(d.run));
+      scatterPlot.attr('fill', (d: any) => this.colorScale.scale(d.name));
       scatterPlot.attr('opacity', 1);
       scatterPlot.size(TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
       scatterPlot.datasets([this.lastPointsDataset]);
@@ -133,7 +130,7 @@ module TF {
       let nanDisplay = new Plottable.Plots.Scatter<number|Date, number>();
       nanDisplay.x(xAccessor, xScale);
       nanDisplay.y((x) => x.displayY, yScale);
-      nanDisplay.attr('fill', (d: any) => this.colorScale.scale(d.run));
+      nanDisplay.attr('fill', (d: any) => this.colorScale.scale(d.name));
       nanDisplay.attr('opacity', 1);
       nanDisplay.size(TF.ChartHelpers.NAN_SYMBOL_SIZE * 2);
       nanDisplay.datasets([this.nanDataset]);
@@ -149,7 +146,7 @@ module TF {
      */
     private _onDatasetChanged(dataset: Plottable.Dataset) {
       if (this.smoothingEnabled) {
-        this.smoothDataset(this.getSmoothDataset(dataset.metadata().run));
+        this.smoothDataset(this.getSmoothDataset(dataset.metadata().name));
         this.updateSpecialDatasets(this.smoothDatasets);
       } else {
         this.updateSpecialDatasets(this.datasets);
@@ -158,7 +155,7 @@ module TF {
 
     /** Constructs special datasets. Each special dataset contains exceptional
      * values from all of the regular datasets, e.g. last points in series, or
-     * NaN values. Those points will have a `run` and `relative` property added
+     * NaN values. Those points will have a `name` and `relative` property added
      * (since usually those are context in the surrounding dataset).
      */
     private updateSpecialDatasets(datasets: Plottable.Dataset[]) {
@@ -171,7 +168,7 @@ module TF {
                 if (nonNanData.length > 0) {
                   let idx = nonNanData.length - 1;
                   datum = nonNanData[idx];
-                  datum.run = d.metadata().run;
+                  datum.name = d.metadata().name;
                   datum.relative =
                       TF.ChartHelpers.relativeAccessor(datum, -1, d);
                 }
@@ -201,7 +198,7 @@ module TF {
           if (!isNaN(data[i].scalar)) {
             displayY = data[i].scalar;
           } else {
-            data[i].run = d.metadata().run;
+            data[i].name = d.metadata().name;
             data[i].displayY = displayY;
             data[i].relative = TF.ChartHelpers.relativeAccessor(data[i], -1, d);
             nanData.push(data[i]);
@@ -260,7 +257,7 @@ module TF {
                 Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
         let pts: any = pointsComponent.content().selectAll('.point').data(
             pointsToCircle,
-            (p: TF.ChartHelpers.Point) => p.dataset.metadata().run);
+            (p: TF.ChartHelpers.Point) => p.dataset.metadata().name);
         if (points.length !== 0) {
           pts.enter().append('circle').classed('point', true);
           pts.attr('r', TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
@@ -269,7 +266,7 @@ module TF {
               .style('stroke', 'none')
               .attr(
                   'fill',
-                  (p) => this.colorScale.scale(p.dataset.metadata().run));
+                  (p) => this.colorScale.scale(p.dataset.metadata().name));
           pts.exit().remove();
           this.drawTooltips(points, target);
         } else {
@@ -292,7 +289,7 @@ module TF {
       let dist = (p: TF.ChartHelpers.Point) =>
           Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
       let closestDist = _.min(points.map(dist));
-      points = _.sortBy(points, (d) => d.dataset.metadata().run);
+      points = _.sortBy(points, (d) => d.dataset.metadata().name);
 
       let rows = this.tooltip.select('tbody')
                      .html('')
@@ -329,8 +326,8 @@ module TF {
           .classed('swatch', true)
           .style(
               'background-color',
-              (d) => this.colorScale.scale(d.dataset.metadata().run));
-      rows.append('td').text((d) => d.dataset.metadata().run);
+              (d) => this.colorScale.scale(d.dataset.metadata().name));
+      rows.append('td').text((d) => d.dataset.metadata().name);
       rows.append('td').text(
           (d) =>
               isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar));
@@ -393,16 +390,16 @@ module TF {
       }
     }
 
-    private getSmoothDataset(run: string) {
-      if (this.run2smoothDatasets[run] === undefined) {
-        this.run2smoothDatasets[run] =
-            new Plottable.Dataset([], {run: run, tag: this.tag});
+    private getSmoothDataset(name: string) {
+      if (this.name2smoothDatasets[name] === undefined) {
+        this.name2smoothDatasets[name] =
+            new Plottable.Dataset([], {name: name});
       }
-      return this.run2smoothDatasets[run];
+      return this.name2smoothDatasets[name];
     }
 
     private smoothDataset(dataset: Plottable.Dataset) {
-      let data = this.getDataset(dataset.metadata().run).data();
+      let data = this.getDataset(dataset.metadata().name).data();
 
       // EMA with first step initialized to first element.
       let smoothedData = _.cloneDeep(data);
@@ -417,42 +414,44 @@ module TF {
       dataset.data(smoothedData);
     }
 
-    private getDataset(run: string) {
-      if (this.run2datasets[run] === undefined) {
-        this.run2datasets[run] =
-            new Plottable.Dataset([], {run: run, tag: this.tag});
+    private getDataset(name: string) {
+      if (this.name2datasets[name] === undefined) {
+        this.name2datasets[name] = new Plottable.Dataset([], {name: name});
       }
-      return this.run2datasets[run];
+      return this.name2datasets[name];
     }
 
     /**
-     * Change the runs on the chart.
-     * Changing runs automatically triggers a reload; this ensures that the
-     * newly selected run will have data, and that all the runs will be current
-     * (it would be weird if one run was ahead of the others, and the display
-     * depended on the order in which runs were added)
+     * Update the selected series on the chart.
      */
-    public changeRuns(runs: string[]) {
-      this.runs = runs;
-      this.reload();
+    public setVisibleSeries(names: string[]) {
+      this.seriesNames = names;
 
-      runs.reverse();  // draw first run on top
+      names.reverse();  // draw first series on top
       this.datasets.forEach((d) => d.offUpdate(this.onDatasetChanged));
-      this.datasets = runs.map((r) => this.getDataset(r));
+      this.datasets = names.map((r) => this.getDataset(r));
       this.datasets.forEach((d) => d.onUpdate(this.onDatasetChanged));
       this.linePlot.datasets(this.datasets);
 
       if (this.smoothingEnabled) {
-        this.smoothDatasets = runs.map((r) => this.getSmoothDataset(r));
+        this.smoothDatasets = names.map((r) => this.getSmoothDataset(r));
         this.smoothLinePlot.datasets(this.smoothDatasets);
       }
+    }
+
+    /**
+     * Set the data of a series on the chart.
+     */
+    public setSeriesData(name: string, data: TF.Backend.ScalarDatum[]) {
+      this.getDataset(name).data(data);
     }
 
     public smoothingUpdate(decay: number) {
       if (!this.smoothingEnabled) {
         this.linePlot.addClass('ghost');
         this.smoothingEnabled = true;
-        this.smoothDatasets = this.runs.map((r) => this.getSmoothDataset(r));
+        this.smoothDatasets =
+            this.seriesNames.map((r) => this.getSmoothDataset(r));
         this.smoothLinePlot.datasets(this.smoothDatasets);
       }
 
@@ -469,16 +468,6 @@ module TF {
         this.smoothingEnabled = false;
         this.updateSpecialDatasets(this.datasets);
       }
-    }
-
-    /**
-     * Reload data for each run in view.
-     */
-    public reload() {
-      this.runs.forEach((run) => {
-        let dataset = this.getDataset(run);
-        this.dataFn(this.tag, run).then((x) => dataset.data(x));
-      });
     }
 
     public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }

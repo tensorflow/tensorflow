@@ -42,13 +42,12 @@ TEST(ConvertGraphdefMemmappedFormatTest, ConvertModel) {
   Tensor test_tensor2(DT_FLOAT, kTestTensorShapeT);
   test::FillFn<float>(&test_tensor2, [](int) -> float { return 3.0; });
 
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  Node* node1 = ops::Const(test_tensor1, b.opts());
-  Node* node2 = ops::Const(test_tensor2, b.opts());
-  const string result_name = ops::MatMul(node1, node2, b.opts())->name();
+  auto root = Scope::NewRootScope().ExitOnError();
+  ops::Output m = ops::MatMul(root, test_tensor1, test_tensor2);
+  const string result_name = m.node()->name();
 
   GraphDef graph_def;
-  TF_ASSERT_OK(b.ToGraphDef(&graph_def));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
   string graph_def_serialized;
   graph_def.SerializeToString(&graph_def_serialized);
   TF_ASSERT_OK(

@@ -19,37 +19,37 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import tf_logging as logging
-
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.layers import batch_norm
 
+from tensorflow.python.framework import ops
 
+
+@deprecated(date="2016-08-15",
+            instructions="Please use tf.contrib.layers.batch_norm instead.")
 def batch_normalize(tensor_in,
                     epsilon=1e-5,
-                    convnet=False,
+                    convnet=False,  # pylint: disable=unused-argument
                     decay=0.9,
                     scale_after_normalization=True):
-  """Batch normalization. Note this is deprecated. 
+  """Batch normalization.
+
   Instead, please use contrib.layers.batch_norm. You can get is_training
   via `tf.python.framework.ops.get_collection("IS_TRAINING")`.
 
   Args:
     tensor_in: input `Tensor`, 4D shape: [batch, in_height, in_width, in_depth].
     epsilon : A float number to avoid being divided by 0.
-    convnet: Whether this is for convolutional net use. If `True`, moments
-        will sum across axis `[0, 1, 2]`. Otherwise, only `[0]`.
+    convnet: Whether this is for convolutional net use (ignored)
     decay: Decay rate for exponential moving average.
     scale_after_normalization: Whether to scale after normalization.
 
   Returns:
     A batch-normalized `Tensor`.
   """
-  logging.warning("learn.ops.batch_normalize is deprecated, \
-    please use contrib.layers.batch_norm.")
   is_training = ops.get_collection("IS_TRAINING")
   return batch_norm(tensor_in,
-    is_training=is_training,
-    epsilon=epsilon,
-    decay=decay,
-    scale=scale_after_normalization)
+                    is_training=is_training,
+                    epsilon=epsilon,
+                    decay=decay,
+                    scale=scale_after_normalization)

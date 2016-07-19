@@ -70,8 +70,7 @@ operations that depend on fixed batch_size would fail.
     The given dimensions are padded upon dequeue so that tensors within a
     batch have the same shapes.
 *  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
-  batch to be smaller if there are insufficient items left in the queue.
-
+    batch to be smaller if there are insufficient items left in the queue.
 *  <b>`shared_name`</b>: (Optional) If set, this queue will be shared under the given
     name across multiple sessions.
 *  <b>`name`</b>: (Optional) A name for the operations.

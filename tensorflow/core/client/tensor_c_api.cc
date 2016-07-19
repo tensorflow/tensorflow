@@ -137,7 +137,7 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
                         void (*deallocator)(void* data, size_t len, void* arg),
                         void* deallocator_arg) {
   std::vector<tensorflow::int64> dimvec(num_dims);
-  for (int i = 0; i < num_dims; i++) {
+  for (int i = 0; i < num_dims; ++i) {
     dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
   }
 
@@ -272,7 +272,7 @@ namespace {
 void TF_Reset_Helper(const TF_SessionOptions* opt, const char** containers,
                      int ncontainers, TF_Status* status) {
   std::vector<tensorflow::string> container_names(ncontainers);
-  for (int i = 0; i < ncontainers; i++) {
+  for (int i = 0; i < ncontainers; ++i) {
     container_names[i] = containers[i];
   }
 
@@ -309,7 +309,7 @@ bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status) {
 
   *dst = Tensor(static_cast<DataType>(src->dtype), src->shape);
   auto dstarray = dst->flat<tensorflow::string>();
-  for (tensorflow::int64 i = 0; i < num_elements; i++) {
+  for (tensorflow::int64 i = 0; i < num_elements; ++i) {
     tensorflow::uint64 offset =
         reinterpret_cast<const tensorflow::uint64*>(input)[i];
     tensorflow::uint64 len;
@@ -332,7 +332,7 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
   // Compute bytes needed for encoding.
   size_t size = 0;
   const auto& srcarray = src.flat<tensorflow::string>();
-  for (int i = 0; i < srcarray.size(); i++) {
+  for (int i = 0; i < srcarray.size(); ++i) {
     const tensorflow::string& s = srcarray(i);
     // uint64 starting_offset, varint64 length, string contents
     size += sizeof(tensorflow::uint64) +
@@ -344,7 +344,7 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
   char* data_start = base + sizeof(tensorflow::uint64) * srcarray.size();
   char* dst = data_start;  // Where next string is encoded.
   tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
-  for (int i = 0; i < srcarray.size(); i++) {
+  for (int i = 0; i < srcarray.size(); ++i) {
     const tensorflow::string& s = srcarray(i);
     *offsets = (dst - data_start);
     offsets++;
@@ -356,7 +356,7 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
 
   auto dims = src.shape().dim_sizes();
   std::vector<tensorflow::int64> dimvec(dims.size());
-  for (size_t i = 0; i < dims.size(); i++) {
+  for (size_t i = 0; i < dims.size(); ++i) {
     dimvec[i] = dims[i];
   }
   static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
@@ -399,56 +399,52 @@ Status LoadLibrary(const char* library_filename, void** result,
 
 }  // namespace tensorflow
 
-void TF_Run_Helper(Session* session, const char* handle,
-                   const TF_Buffer* run_options,
-                   // Input tensors
-                   const char** c_input_names, TF_Tensor* const* c_inputs,
-                   int ninputs,
-                   // Output tensors
-                   const char** c_output_tensor_names, TF_Tensor** c_outputs,
-                   int noutputs,
-                   // Target nodes
-                   const char** c_target_node_names, int ntargets,
-                   TF_Buffer* run_metadata, TF_Status* status) {
+static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
+                         TF_Status* status) {
   status->status = Status::OK();
-  for (int i = 0; i < noutputs; i++) {
+  for (int i = 0; i < noutputs; ++i) {
     c_outputs[i] = NULL;
   }
+}
 
-  // Initialize inputs.
-  std::vector<std::pair<tensorflow::string, Tensor>> inputs(ninputs);
+static bool TF_Run_Inputs(
+    TF_Tensor* const* c_inputs,
+    std::vector<std::pair<tensorflow::string, Tensor>>* input_pairs,
+    TF_Status* status) {
+  const int ninputs = input_pairs->size();
   bool ok = true;
-  for (int i = 0; i < ninputs; i++) {
+  for (int i = 0; i < ninputs; ++i) {
     TF_Tensor* src = c_inputs[i];
     if (ok) {
-      inputs[i].first = c_input_names[i];
       if (c_inputs[i]->dtype != TF_STRING) {
-        inputs[i].second = tensorflow::TensorCApi::MakeTensor(
+        (*input_pairs)[i].second = tensorflow::TensorCApi::MakeTensor(
             src->dtype, src->shape, src->buffer);
       } else {
         // TF_STRING tensors require copying since Tensor class expects
         // a sequence of string objects.
-        ok =
-            tensorflow::TF_Tensor_DecodeStrings(src, &inputs[i].second, status);
-        // Must keep looping through all inputs even if there is an error
-        // so that TF_DeleteTensor() is called unconditionally on all inputs.
+        ok = tensorflow::TF_Tensor_DecodeStrings(src, &(*input_pairs)[i].second,
+                                                 status);
+        // Must keep looping through all c_inputs even if there is an error
+        // so that TF_DeleteTensor() is called unconditionally on all c_inputs.
       }
     }
     TF_DeleteTensor(src);
   }
-  if (!ok) {
-    return;
-  }
+  return ok;
+}
 
-  std::vector<tensorflow::string> output_tensor_names(noutputs);
+static void TF_Run_Helper(
+    Session* session, const char* handle, const TF_Buffer* run_options,
+    // Input tensors
+    const std::vector<std::pair<tensorflow::string, Tensor>>& input_pairs,
+    // Output tensors
+    const std::vector<tensorflow::string>& output_tensor_names,
+    TF_Tensor** c_outputs,
+    // Target nodes
+    const std::vector<tensorflow::string>& target_node_names,
+    TF_Buffer* run_metadata, TF_Status* status) {
+  const int noutputs = output_tensor_names.size();
   std::vector<Tensor> outputs(noutputs);
-  std::vector<tensorflow::string> target_node_names(ntargets);
-  for (int i = 0; i < noutputs; i++) {
-    output_tensor_names[i] = c_output_tensor_names[i];
-  }
-  for (int i = 0; i < ntargets; i++) {
-    target_node_names[i] = c_target_node_names[i];
-  }
   Status result;
 
   if (handle == nullptr) {
@@ -467,7 +463,7 @@ void TF_Run_Helper(Session* session, const char* handle,
     }
 
     RunMetadata run_metadata_proto;
-    result = session->Run(run_options_proto, inputs, output_tensor_names,
+    result = session->Run(run_options_proto, input_pairs, output_tensor_names,
                           target_node_names, &outputs, &run_metadata_proto);
 
     // Serialize back to upstream client, who now owns the new buffer
@@ -483,15 +479,16 @@ void TF_Run_Helper(Session* session, const char* handle,
     }
   } else {
     // NOTE(zongheng): PRun does not support RunOptions yet.
-    result = session->PRun(handle, inputs, output_tensor_names, &outputs);
+    result = session->PRun(handle, input_pairs, output_tensor_names, &outputs);
   }
   if (!result.ok()) {
+    LOG(ERROR) << result.error_message();
     status->status = result;
     return;
   }
 
   // Store results in c_outputs[]
-  for (int i = 0; i < noutputs; i++) {
+  for (int i = 0; i < noutputs; ++i) {
     const Tensor& src = outputs[i];
     if (!src.IsInitialized() || src.NumElements() == 0) {
       c_outputs[i] = tensorflow::EmptyTensor(
@@ -521,9 +518,23 @@ void TF_Run(TF_Session* s, const TF_Buffer* run_options,
             // Target nodes
             const char** c_target_node_names, int ntargets,
             TF_Buffer* run_metadata, TF_Status* status) {
-  TF_Run_Helper(s->session, nullptr, run_options, c_input_names, c_inputs,
-                ninputs, c_output_tensor_names, c_outputs, noutputs,
-                c_target_node_names, ntargets, run_metadata, status);
+  TF_Run_Setup(noutputs, c_outputs, status);
+  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
+  for (int i = 0; i < ninputs; ++i) {
+    input_pairs[i].first = c_input_names[i];
+  }
+  std::vector<tensorflow::string> output_tensor_names(noutputs);
+  for (int i = 0; i < noutputs; ++i) {
+    output_tensor_names[i] = c_output_tensor_names[i];
+  }
+  std::vector<tensorflow::string> target_node_names(ntargets);
+  for (int i = 0; i < ntargets; ++i) {
+    target_node_names[i] = c_target_node_names[i];
+  }
+  TF_Run_Helper(s->session, nullptr, run_options, input_pairs,
+                output_tensor_names, c_outputs, target_node_names, run_metadata,
+                status);
 }
 
 void TF_PRunSetup(TF_Session* s,
@@ -532,20 +543,20 @@ void TF_PRunSetup(TF_Session* s,
                   // Output names
                   const char** c_output_tensor_names, int noutputs,
                   // Target nodes
-                  const char** c_target_node_names, int ntargets, char** handle,
-                  TF_Status* status) {
+                  const char** c_target_node_names, int ntargets,
+                  const char** handle, TF_Status* status) {
   status->status = Status::OK();
 
   std::vector<tensorflow::string> input_names(ninputs);
   std::vector<tensorflow::string> output_tensor_names(noutputs);
   std::vector<tensorflow::string> target_node_names(ntargets);
-  for (int i = 0; i < ninputs; i++) {
+  for (int i = 0; i < ninputs; ++i) {
     input_names[i] = c_input_names[i];
   }
-  for (int i = 0; i < noutputs; i++) {
+  for (int i = 0; i < noutputs; ++i) {
     output_tensor_names[i] = c_output_tensor_names[i];
   }
-  for (int i = 0; i < ntargets; i++) {
+  for (int i = 0; i < ntargets; ++i) {
     target_node_names[i] = c_target_node_names[i];
   }
   tensorflow::string new_handle;
@@ -553,8 +564,9 @@ void TF_PRunSetup(TF_Session* s,
   result = s->session->PRunSetup(input_names, output_tensor_names,
                                  target_node_names, &new_handle);
   if (result.ok()) {
-    *handle = new char[new_handle.size() + 1];
-    memcpy(*handle, new_handle.c_str(), new_handle.size() + 1);
+    char* buf = new char[new_handle.size() + 1];
+    memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
+    *handle = buf;
   } else {
     status->status = result;
   }
@@ -569,9 +581,23 @@ void TF_PRun(TF_Session* s, const char* handle,
              // Target nodes
              const char** c_target_node_names, int ntargets,
              TF_Status* status) {
-  TF_Run_Helper(s->session, handle, nullptr, c_input_names, c_inputs, ninputs,
-                c_output_tensor_names, c_outputs, noutputs, c_target_node_names,
-                ntargets, nullptr, status);
+  TF_Run_Setup(noutputs, c_outputs, status);
+  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  if (!TF_Run_Inputs(c_inputs, &input_pairs, status)) return;
+  for (int i = 0; i < ninputs; ++i) {
+    input_pairs[i].first = c_input_names[i];
+  }
+
+  std::vector<tensorflow::string> output_tensor_names(noutputs);
+  for (int i = 0; i < noutputs; ++i) {
+    output_tensor_names[i] = c_output_tensor_names[i];
+  }
+  std::vector<tensorflow::string> target_node_names(ntargets);
+  for (int i = 0; i < ntargets; ++i) {
+    target_node_names[i] = c_target_node_names[i];
+  }
+  TF_Run_Helper(s->session, handle, nullptr, input_pairs, output_tensor_names,
+                c_outputs, target_node_names, nullptr, status);
 }
 
 struct TF_Library {
@@ -1033,6 +1059,34 @@ int TF_NodeGetControlOutputs(TF_Node* node, TF_Node** control_outputs,
   return count;
 }
 
+void TF_NodeGetAttrValueProto(TF_Node* node, const char* attr_name,
+                              TF_Buffer* output_attr_value, TF_Status* status) {
+  if (output_attr_value->data != nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Passing non-empty output_attr_value is invalid.");
+    return;
+  }
+
+  const auto& attr_map = node->node.def().attr();
+  auto iter = attr_map.find(attr_name);
+  if (iter == attr_map.end()) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Node has no attr named '", attr_name, "'.");
+    return;
+  }
+
+  const auto& attr = iter->second;
+  const auto proto_size = attr.ByteSize();
+  void* str_buf = malloc(proto_size);
+  attr.SerializeToArray(str_buf, proto_size);
+  output_attr_value->data = str_buf;
+  output_attr_value->length = proto_size;
+  output_attr_value->data_deallocator = [](void* data, size_t length) {
+    free(data);
+  };
+  status->status = Status::OK();
+}
+
 void TF_NodeToNodeDef(TF_Node* node, TF_Buffer* output_node_def,
                       TF_Status* status) {
   if (output_node_def->data != nullptr) {
@@ -1160,24 +1214,11 @@ void TF_DeleteSessionWithGraph(TF_SessionWithGraph* s, TF_Status* status) {
   delete s;
 }
 
-void TF_SessionRun(TF_SessionWithGraph* session,
-                   // RunOptions
-                   const TF_Buffer* run_options,
-                   // Input tensors
-                   const TF_Port* inputs, TF_Tensor* const* input_values,
-                   int ninputs,
-                   // Output tensors
-                   const TF_Port* outputs, TF_Tensor** output_values,
-                   int noutputs,
-                   // Target nodes
-                   const TF_Node* const* target_nodes, int ntargets,
-                   // RunMetadata
-                   TF_Buffer* run_metadata,
-                   // Output status
-                   TF_Status* status) {
-  // TODO(josh11b,mrry): Change Session to be able to use a Graph*
-  // directly, instead of requiring us to serialize to a GraphDef and
-  // call Session::Extend().
+// TODO(josh11b,mrry): Change Session to be able to use a Graph*
+// directly, instead of requiring us to serialize to a GraphDef and
+// call Session::Extend().
+static bool ExtendSessionGraphHelper(TF_SessionWithGraph* session,
+                                     TF_Status* status) {
   if (session->graph != nullptr) {
     mutex_lock session_lock(session->mu);
     session->graph->mu.lock();
@@ -1201,10 +1242,7 @@ void TF_SessionRun(TF_SessionWithGraph* session,
       status->status = session->session->Extend(graph_def);
       if (!status->status.ok()) {
         // Contract is we always delete input_values[i].
-        for (int i = 0; i < ninputs; i++) {
-          TF_DeleteTensor(input_values[i]);
-        }
-        return;
+        return false;
       }
       // Note: session->session is not modified if Extend() fails, so
       // we only set last_num_graph_nodes if it succeeds.
@@ -1213,33 +1251,124 @@ void TF_SessionRun(TF_SessionWithGraph* session,
       session->graph->mu.unlock();
     }
   }
+  return true;
+}
 
-  // Convert from TF_Port and TF_Node* to const char* names.
-  // TODO(josh11b): Should skip string -> const char* conversion here by
-  // changing TF_Run_Helper().
-  const int num_io = ninputs + noutputs;
-  tensorflow::string* io_names = new tensorflow::string[num_io];
-  const char** c_names = new const char*[num_io + ntargets];
-  int index = 0;
+void TF_SessionRun(TF_SessionWithGraph* session, const TF_Buffer* run_options,
+                   const TF_Port* inputs, TF_Tensor* const* input_values,
+                   int ninputs, const TF_Port* outputs,
+                   TF_Tensor** output_values, int noutputs,
+                   const TF_Node* const* target_nodes, int ntargets,
+                   TF_Buffer* run_metadata, TF_Status* status) {
+  // TODO(josh11b,mrry): Change Session to be able to use a Graph*
+  // directly, instead of requiring us to serialize to a GraphDef and
+  // call Session::Extend().
+  if (!ExtendSessionGraphHelper(session, status)) {
+    for (int i = 0; i < ninputs; ++i) {
+      TF_DeleteTensor(input_values[i]);
+    }
+    return;
+  }
+
+  TF_Run_Setup(noutputs, output_values, status);
+
+  // Convert from TF_Port and TF_Tensor to a string and Tensor.
+  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
   for (int i = 0; i < ninputs; ++i) {
-    io_names[index] = PortName(inputs[i]);
-    c_names[index] = io_names[index].c_str();
-    ++index;
+    input_pairs[i].first = PortName(inputs[i]);
   }
+
+  // Convert from TF_Port to string names.
+  std::vector<tensorflow::string> output_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    io_names[index] = PortName(outputs[i]);
-    c_names[index] = io_names[index].c_str();
-    ++index;
+    output_names[i] = PortName(outputs[i]);
   }
+
+  // Convert from TF_Node* to string names.
+  std::vector<tensorflow::string> target_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
-    c_names[index] = target_nodes[i]->node.name().c_str();
-    ++index;
+    target_names[i] = target_nodes[i]->node.name();
   }
-  TF_Run_Helper(session->session, nullptr, run_options, c_names, input_values,
-                ninputs, c_names + ninputs, output_values, noutputs,
-                c_names + num_io, ntargets, run_metadata, status);
-  delete[] c_names;
-  delete[] io_names;
+
+  // Actually run.
+  TF_Run_Helper(session->session, nullptr, run_options, input_pairs,
+                output_names, output_values, target_names, run_metadata,
+                status);
+}
+
+void TF_SessionPRunSetup(TF_SessionWithGraph* session, const TF_Port* inputs,
+                         int ninputs, const TF_Port* outputs, int noutputs,
+                         const TF_Node* const* target_nodes, int ntargets,
+                         const char** handle, TF_Status* status) {
+  if (!ExtendSessionGraphHelper(session, status)) {
+    return;
+  }
+
+  std::vector<tensorflow::string> input_names(ninputs);
+  for (int i = 0; i < ninputs; ++i) {
+    input_names[i] = PortName(inputs[i]);
+  }
+
+  std::vector<tensorflow::string> output_names(noutputs);
+  for (int i = 0; i < noutputs; ++i) {
+    output_names[i] = PortName(outputs[i]);
+  }
+
+  std::vector<tensorflow::string> target_names(ntargets);
+  for (int i = 0; i < ntargets; ++i) {
+    target_names[i] = target_nodes[i]->node.name();
+  }
+
+  tensorflow::string new_handle;
+  status->status = session->session->PRunSetup(input_names, output_names,
+                                               target_names, &new_handle);
+  if (status->status.ok()) {
+    char* buf = new char[new_handle.size() + 1];
+    memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
+    *handle = buf;
+  }
+}
+
+void TF_SessionPRun(TF_SessionWithGraph* session, const char* handle,
+                    const TF_Port* inputs, TF_Tensor* const* input_values,
+                    int ninputs, const TF_Port* outputs,
+                    TF_Tensor** output_values, int noutputs,
+                    const TF_Node* const* target_nodes, int ntargets,
+                    TF_Status* status) {
+  // TODO(josh11b,mrry): Change Session to be able to use a Graph*
+  // directly, instead of requiring us to serialize to a GraphDef and
+  // call Session::Extend().
+  if (!ExtendSessionGraphHelper(session, status)) {
+    for (int i = 0; i < ninputs; ++i) {
+      TF_DeleteTensor(input_values[i]);
+    }
+    return;
+  }
+
+  TF_Run_Setup(noutputs, output_values, status);
+
+  // Convert from TF_Port and TF_Tensor to a string and Tensor.
+  std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
+  if (!TF_Run_Inputs(input_values, &input_pairs, status)) return;
+  for (int i = 0; i < ninputs; ++i) {
+    input_pairs[i].first = PortName(inputs[i]);
+  }
+
+  // Convert from TF_Port to string names.
+  std::vector<tensorflow::string> output_names(noutputs);
+  for (int i = 0; i < noutputs; ++i) {
+    output_names[i] = PortName(outputs[i]);
+  }
+
+  // Convert from TF_Node* to string names.
+  std::vector<tensorflow::string> target_names(ntargets);
+  for (int i = 0; i < ntargets; ++i) {
+    target_names[i] = target_nodes[i]->node.name();
+  }
+
+  TF_Run_Helper(session->session, handle, nullptr, input_pairs, output_names,
+                output_values, target_names, nullptr, status);
 }
 
 }  // end extern "C"

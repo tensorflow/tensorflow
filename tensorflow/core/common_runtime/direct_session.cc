@@ -219,7 +219,7 @@ void DirectSession::MaybeInitializeExecutionState(const GraphDef& graph) {
   options.device_set = &device_set_;
   options.session_options = &options_;
   execution_state_.reset(
-      new SimpleGraphExecutionState(flib_def_.get(), options));
+      new SimpleGraphExecutionState(graph.library(), options));
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
@@ -283,6 +283,15 @@ Status DirectSession::Run(const RunOptions& run_options,
                                    run_options.inter_op_thread_pool());
   }
   thread::ThreadPool* pool = thread_pools_[run_options.inter_op_thread_pool()];
+
+  // EXPERIMENTAL: Options that allow the client to insert nodes into partition
+  // graphs for debugging.
+  if (!run_options.debug_tensor_watch_opts().empty()) {
+    debug_node_inserter_.reset(
+        new DebugNodeInserter(run_options.debug_tensor_watch_opts()));
+  } else {
+    debug_node_inserter_.reset(nullptr);
+  }
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
@@ -794,6 +803,12 @@ Status DirectSession::GetOrCreateExecutors(
 
     partition_graph = iter->second.release();
     optimizer.Optimize(lib, device, &partition_graph);
+
+    // EXPERIMENTAL: tfdb inserts debug nodes (i.e., probes) to the graph
+    if (debug_node_inserter_) {
+      TF_RETURN_IF_ERROR(
+          debug_node_inserter_->InsertNodes(partition_graph, params.device));
+    }
     iter->second.reset(partition_graph);
 
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
@@ -847,8 +862,8 @@ Status DirectSession::CreateGraphs(
     SimpleGraphExecutionStateOptions prune_options;
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
-    temp_exec_state_holder.reset(
-        new SimpleGraphExecutionState(flib_def_.get(), prune_options));
+    temp_exec_state_holder.reset(new SimpleGraphExecutionState(
+        execution_state_->original_graph_def().library(), prune_options));
     {
       mutex_lock l(mu_);
       temp_exec_state_holder->SetStatefulPlacements(stateful_placements_);
@@ -946,7 +961,7 @@ Status DirectSession::CreateGraphs(
     // may be possible use cases where a device may want to modify
     // function definitions - in which case the library would need to be
     // replicated per device.
-    s = d->MaybeRewriteGraph(flib_def_->ToProto(), graph_def);
+    s = d->MaybeRewriteGraph(client_graph->flib_def->ToProto(), graph_def);
     if (!s.ok()) {
       break;
     }

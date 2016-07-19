@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
-from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky  # pylint: disable=line-too-long
-from tensorflow.contrib.distributions.python.ops import operator_pd_full  # pylint: disable=line-too-long
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
+from tensorflow.contrib.distributions.python.ops import operator_pd_full
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -239,20 +239,45 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
   def log_prob(self, x, name="log_prob"):
     """Log prob of observations `x` given these Multivariate Normals.
 
+    `x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+    shape can be broadcast up to either:
+
+    ````
+    self.batch_shape + self.event_shape
+    OR
+    [M1,...,Mm] + self.batch_shape + self.event_shape
+    ```
+
     Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `mu`.
+      x: Compatible batch vector with same `dtype` as this distribution.
       name: The name to give this op.
 
     Returns:
       log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
+    # Q:  Why are shape requirements as stated above?
+    # A:  The compatible shapes are precisely the ones that will broadcast to
+    #     a shape compatible with self._cov.
+    # See Operator base class for notes about shapes compatible with self._cov.
     with ops.name_scope(self.name):
       with ops.op_scope([self._mu, x] + self._cov.inputs, name):
         x = ops.convert_to_tensor(x)
         contrib_tensor_util.assert_same_float_dtype((self._mu, x))
 
+        # _check_mu asserts that self.mu has same batch shape as self.cov.
+        # so batch shape of self.mu = that of self._cov and self, and the
+        # batch shape of x_centered is a broadcast version of these.  If this
+        # broadcast results in a shape like
+        # [M1,...,Mm] + self.batch_shape + self.event_shape
+        # OR
+        # self.batch_shape + self.event_shape
+        # then subsequent operator calls are guaranteed to work.
         x_centered = x - self.mu
-        x_whitened_norm = self._cov.inv_quadratic_form(x_centered)
+
+        # Compute the term x^{-1} sigma^{-1} x which appears in the exponent of
+        # the pdf.
+        x_whitened_norm = self._cov.inv_quadratic_form_on_vectors(x_centered)
+
         log_sigma_det = self.log_sigma_det()
 
         log_two_pi = constant_op.constant(
@@ -267,8 +292,17 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
   def prob(self, x, name="prob"):
     """The PDF of observations `x` under these Multivariate Normals.
 
+    `x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+    shape can be broadcast up to either:
+
+    ````
+    self.batch_shape + self.event_shape
+    OR
+    [M1,...,Mm] + self.batch_shape + self.event_shape
+    ```
+
     Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+      x: Compatible batch vector with same `dtype` as this distribution.
       name: The name to give this op.
 
     Returns:

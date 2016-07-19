@@ -669,12 +669,9 @@ static void BM_LargeTensorWrite(int iters, int num_elements) {
   // Builds the graph.
   const string temp_filename =
       io::JoinPath(testing::TmpDir(), "benchmark_checkpoint");
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  Node* filename = ops::Const(test::AsScalar<string>(temp_filename), b.opts());
-  Node* tensor_names =
-      ops::Const(test::AsTensor<string>({"my_tensor"}), b.opts());
-  Node* tensors = ops::Const(tensor, b.opts());
-  ops::Save(filename, tensor_names, {tensors}, b.opts());
+  auto root = Scope::NewRootScope().ExitOnError();
+  const string tensor_name = "my_tensor";
+  ops::Save(root, temp_filename, {tensor_name}, {{tensor}});
 
   // Disables optimizations.
   SessionOptions session_options;
@@ -682,13 +679,14 @@ static void BM_LargeTensorWrite(int iters, int num_elements) {
       ->mutable_optimizer_options()
       ->set_opt_level(tensorflow::OptimizerOptions_Level_L0);
 
-  Graph* g = new Graph(OpRegistry::Global());
-  TF_CHECK_OK(b.ToGraph(g));
+  TF_CHECK_OK(root.status());
+  Graph g(OpRegistry::Global());
+  root.ToGraph(&g);
   VLOG(1) << "Save op's output path: " << temp_filename;
-  VLOG(1) << "# nodes in Graph: " << g->num_nodes();
+  VLOG(1) << "# nodes in Graph: " << g.num_nodes();
 
   testing::StartTiming();
-  test::Benchmark("cpu", g, &session_options).Run(iters);
+  test::Benchmark("cpu", &g, &session_options).Run(iters);
 }
 BENCHMARK(BM_LargeTensorWrite)->Arg((1 << 30) / 4 /* 1GB float tensor */);
 

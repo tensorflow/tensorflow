@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CC_OPS_CC_OP_GEN_H_
-#define TENSORFLOW_CC_OPS_CC_OP_GEN_H_
+#define EIGEN_USE_THREADS
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
 
-#include "tensorflow/core/framework/op_def.pb.h"
-
-namespace tensorflow {
-
-// Result is written to files dot_h and dot_cc.
-void WriteCCOps(const OpList& ops, const std::string& dot_h_fname,
-                const std::string& dot_cc_fname);
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CC_OPS_CC_OP_GEN_H_
+#define STRIDED_SLICE_INSTANTIATE_DIM 5
+#include "tensorflow/core/kernels/strided_slice_op_impl.h"
+#undef STRIDED_SLICE_INSTANTIATE_DIM

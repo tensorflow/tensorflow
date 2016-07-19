@@ -168,7 +168,7 @@ class LinearComposableModel(_ComposableModel):
         max_partitions=self._num_ps_replicas,
         min_slice_size=64 << 20)
     with variable_scope.variable_op_scope(
-        features.values(), "linear", partitioner) as scope:
+        features.values(), "linear", partitioner=partitioner) as scope:
       logits, _, _ = layers.weighted_sum_from_feature_columns(
           columns_to_tensors=features,
           feature_columns=self._get_feature_columns(),

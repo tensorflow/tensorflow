@@ -175,6 +175,11 @@ def tf_gen_op_wrappers_cc(name,
                           other_srcs=[],
                           other_hdrs=[],
                           pkg="",
+                          deps=[
+                              "//tensorflow/cc:ops",
+                              "//tensorflow/cc:scope",
+                              "//tensorflow/cc:const_op",
+                          ],
                           op_gen="//tensorflow/cc:cc_op_gen_main"):
   subsrcs = other_srcs
   subhdrs = other_hdrs
@@ -186,7 +191,12 @@ def tf_gen_op_wrappers_cc(name,
   native.cc_library(name=name,
                     srcs=subsrcs,
                     hdrs=subhdrs,
-                    deps=["//tensorflow/core:core_cpu"],
+                    deps=deps + [
+                        "//tensorflow/core:core_cpu",
+                        "//tensorflow/core:framework",
+                        "//tensorflow/core:lib",
+                        "//tensorflow/core:protos_all_cc",
+                    ],
                     copts=tf_copts(),
                     alwayslink=1,)
 

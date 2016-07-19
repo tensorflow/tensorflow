@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
+#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -253,7 +254,9 @@ class DirectSession : public Session {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
+  // EXPERIMENTAL: debugger (tfdb) related
   friend class DebugGateway;
+  std::unique_ptr<DebugNodeInserter> debug_node_inserter_;
 };
 
 }  // end namespace tensorflow
