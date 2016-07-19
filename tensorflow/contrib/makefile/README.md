@@ -285,6 +285,17 @@ make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
  OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize"
 ```
 
+If you hit compilation errors mentioning `__atomic_compare_exchange` and you're
+using gcc 4.9, you should try installing gcc 4.8 and using that instead:
+
+```bash
+sudo apt-get install -y gcc-4.8 g++-4.8
+make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
+OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize" \
+CXX=g++-4.8
+```
+
+
 # Other notes
 
 ## Supported Systems
