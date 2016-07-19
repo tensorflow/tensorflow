@@ -776,6 +776,8 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     # sufficient statistics. As a workaround we simply perform the operations
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
+    shift = math_ops.cast(shift, dtypes.float32) if (
+        shift and x.dtype == dtypes.float16) else shift
     counts, m_ss, v_ss, shift = sufficient_statistics(y,
                                                       axes,
                                                       shift=shift,
