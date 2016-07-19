@@ -37,15 +37,10 @@ Status InferShapes(ShapeInferenceTestOp op, const string& ins,
   std::vector<string> ins_v = str_util::Split(ins, ';');
   std::unique_ptr<const NodeDef> new_node_def;
 
-  NameRangeMap inputs_name_map;
-  NameRangeMap outputs_name_map;
-  TF_RETURN_IF_ERROR(NameRangesForNode(op.node_def, op_reg_data->op_def,
-                                       &inputs_name_map, &outputs_name_map));
-  const int num_outputs = op_reg_data->op_def.output_arg_size();
-
   shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def, ins_v,
                                       op.input_tensors);
   TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
+  const int num_outputs = c.num_outputs();
 
   std::unordered_map<const Dimension*, std::pair<int, int>>
       dim_to_input_and_dim_idx;

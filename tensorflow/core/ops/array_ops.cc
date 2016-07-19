@@ -259,6 +259,12 @@ REGISTER_OP("ConcatOffset")
     .Input("shape: N * int32")
     .Output("offset: N * int32")
     .Attr("N: int >= 2")
+    .SetShapeFn([](InferenceContext* c) {
+      for (int i = 1; i < c->num_inputs(); ++i) {
+        c->set_output(i - 1, c->input(i));
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes offsets of concat inputs within its output.
 

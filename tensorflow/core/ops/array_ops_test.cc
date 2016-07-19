@@ -88,13 +88,13 @@ TEST(ArrayOpsTest, UnPack_ShapeFn) {
   }
   for (int axis : {1, -2}) {
     set_axis_and_num(axis, 2);
-    INFER_OK(op, "[1,2,3]", "[d0_0,d0_2]");
-    INFER_OK(op, "[?,?,?]", "[d0_0,d0_2]");
+    INFER_OK(op, "[1,2,3]", "[d0_0,d0_2];[d0_0,d0_2]");
+    INFER_OK(op, "[?,?,?]", "[d0_0,d0_2];[d0_0,d0_2]");
   }
   for (int axis : {2, -1}) {
     set_axis_and_num(axis, 3);
-    INFER_OK(op, "[1,2,3]", "[d0_0,d0_1]");
-    INFER_OK(op, "[?,?,?]", "[d0_0,d0_1]");
+    INFER_OK(op, "[1,2,3]", "[d0_0,d0_1];[d0_0,d0_1];[d0_0,d0_1]");
+    INFER_OK(op, "[?,?,?]", "[d0_0,d0_1];[d0_0,d0_1];[d0_0,d0_1]");
   }
 
   set_axis_and_num(2, 2);
@@ -299,6 +299,20 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   // Repeat successful case with several unknown inputs.
   set_n(5);
   INFER_OK(op, "[];?;[1,100,?];[?,?,?];[?,10,3];?", "[d2_0,?,d4_2]");
+}
+
+TEST(ArrayOpsTest, ConcatOffset_ShapeFn) {
+  ShapeInferenceTestOp op("ConcatOffset");
+
+  const int n = 4;
+  std::vector<NodeDefBuilder::NodeOut> src_list;
+  for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_INT32);
+  TF_CHECK_OK(NodeDefBuilder("test", "ConcatOffset")
+                  .Input({"concat_dim", 0, DT_INT32})
+                  .Input(src_list)
+                  .Attr("n", n)
+                  .Finalize(&op.node_def));
+  INFER_OK(op, "?;?;?;?;?", "in1;in2;in3;in4");
 }
 
 }  // end namespace tensorflow
