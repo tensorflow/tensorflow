@@ -122,7 +122,8 @@ Log-probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+*  <b>`k`</b>: `int32` or `int64` Tensor. Must be broadcastable with a `batch_shape`
+    `Tensor`.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -188,7 +189,7 @@ Probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+*  <b>`k`</b>: `int32` or `int64` Tensor. Must be broadcastable with logits.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -198,7 +199,31 @@ Probability of class `k`.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.sample(n, seed=None, name='sample')` {#Categorical.sample}
+#### `tf.contrib.distributions.Categorical.sample(sample_shape=(), seed=None, name='sample')` {#Categorical.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.sample_n(n, seed=None, name='sample_n')` {#Categorical.sample_n}
 
 Sample `n` observations from the Categorical distribution.
 

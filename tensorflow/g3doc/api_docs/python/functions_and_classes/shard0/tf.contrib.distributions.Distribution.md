@@ -21,15 +21,16 @@ All distributions support batches of independent distributions of that type.
 The batch shape is determined by broadcasting together the parameters.
 
 The shape of arguments to `__init__`, `cdf`, `log_cdf`, `prob`, and
-`log_prob` reflect this broadcasting, as does the return value of `sample`.
+`log_prob` reflect this broadcasting, as does the return value of `sample` and
+`sample_n`.
 
-`sample_shape = (n,) + batch_shape + event_shape`, where `sample_shape` is the
-shape of the `Tensor` returned from `sample`, `n` is the number of samples,
-`batch_shape` defines how many independent distributions there are, and
-`event_shape` defines the shape of samples from each of those independent
-distributions. Samples are independent along the `batch_shape` dimensions,
-but not necessarily so along the `event_shape` dimensions (dependending on
-the particulars of the underlying distribution).
+`sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
+the shape of the `Tensor` returned from `sample_n`, `n` is the number of
+samples, `batch_shape` defines how many independent distributions there are,
+and `event_shape` defines the shape of samples from each of those independent
+distributions. Samples are independent along the `batch_shape` dimensions, but
+not necessarily so along the `event_shape` dimensions (dependending on the
+particulars of the underlying distribution).
 
 Using the `Uniform` distribution as an example:
 
@@ -51,7 +52,7 @@ event_shape_t = u.event_shape
 # Sampling returns a sample per distribution.  `samples` has shape
 # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
 # batch_shape=(2, 2), and event_shape=().
-samples = u.sample(5)
+samples = u.sample_n(5)
 
 # The broadcasting holds across methods. Here we use `cdf` as an example. The
 # same holds for `log_cdf` and the likelihood functions.
@@ -259,7 +260,31 @@ Probability density/mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.sample(n, seed=None, name='sample')` {#Distribution.sample}
+#### `tf.contrib.distributions.Distribution.sample(sample_shape=(), seed=None, name='sample')` {#Distribution.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.sample_n(n, seed=None, name='sample_n')` {#Distribution.sample_n}
 
 Generate `n` samples.
 
