@@ -81,6 +81,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
 
+import struct
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -370,6 +371,40 @@ def ensure_dir_exists(dir_name):
   if not os.path.exists(dir_name):
     os.makedirs(dir_name)
 
+	
+def write_list_of_floats_to_file(list_of_floats , file_path):
+  """Writes a given list of floats to a binary file.
+
+  Args:
+    list_of_floats: List of floats we want to write to a file.
+	file_path: Path to a file where list of floats will be stored.
+
+  """
+
+  s = struct.pack('d' * BOTTLENECK_TENSOR_SIZE, *list_of_floats)
+
+  f = open(file_path, 'wb')
+  f.write(s)
+  f.close()
+
+	
+def read_list_of_floats_from_file(file_path):
+  """Reads list of floats from a given file.
+
+  Args:    
+	file_path: Path to a file where list of floats was stored.
+  Returns:
+    Array of bottleneck values (list of floats).
+
+  """
+  f = open(file_path, 'rb')
+  s = []
+  s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
+  f.close()
+  #print (list(s))
+  
+  return list(s)
+	
 
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                              category, bottleneck_dir, jpeg_data_tensor,
@@ -412,13 +447,9 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
     bottleneck_values = run_bottleneck_on_image(sess, image_data,
                                                 jpeg_data_tensor,
                                                 bottleneck_tensor)
-    bottleneck_string = ','.join(str(x) for x in bottleneck_values)
-    with open(bottleneck_path, 'w') as bottleneck_file:
-      bottleneck_file.write(bottleneck_string)
+    bottleneck_values = read_list_of_floats_from_file(bottleneck_path)	
 
-  with open(bottleneck_path, 'r') as bottleneck_file:
-    bottleneck_string = bottleneck_file.read()
-  bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
+  bottleneck_values = read_list_of_floats_from_file(bottleneck_path)  
   return bottleneck_values
 
 
