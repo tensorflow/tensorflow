@@ -287,6 +287,13 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args;
+
+  // EXPERIMENTAL: Options that allow the client to insert nodes into partition
+  // graphs for debugging.
+  if (!run_options.debug_tensor_watch_opts().empty()) {
+    run_state_args.debug_tensor_watches = run_options.debug_tensor_watch_opts();
+  }
+
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
                            &executors_and_keys, &run_state_args));
@@ -794,6 +801,13 @@ Status DirectSession::GetOrCreateExecutors(
 
     partition_graph = iter->second.release();
     optimizer.Optimize(lib, device, &partition_graph);
+
+    // EXPERIMENTAL: tfdb inserts debug nodes (i.e., probes) to the graph
+    if (!run_state_args->debug_tensor_watches.empty()) {
+      TF_RETURN_IF_ERROR(
+          DebugNodeInserter::InsertNodes(run_state_args->debug_tensor_watches,
+                                         partition_graph, params.device));
+    }
     iter->second.reset(partition_graph);
 
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),

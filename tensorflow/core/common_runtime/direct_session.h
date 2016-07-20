@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
+#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -140,6 +141,7 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
+    protobuf::RepeatedPtrField<DebugTensorWatch> debug_tensor_watches;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -253,6 +255,7 @@ class DirectSession : public Session {
 
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
+  // EXPERIMENTAL: debugger (tfdb) related
   friend class DebugGateway;
 };
 

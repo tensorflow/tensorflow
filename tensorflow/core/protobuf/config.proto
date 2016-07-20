@@ -180,6 +180,24 @@ message ConfigProto {
   int64 operation_timeout_in_ms = 11;
 };
 
+// EXPERIMENTAL. Option for watching a node
+message DebugTensorWatch {
+  // Name of the node to watch.
+  string node_name = 1;
+
+  // Output slot to watch.
+  // The semantics of output_slot == -1 is that the node is only watched for
+  // completion, but not for any output tensors. See NodeCompletionCallback
+  // in debug_gateway.h.
+  // TODO(cais): Implement this semantics.
+  int32 output_slot = 2;
+
+  // Name(s) of the debugging op(s).
+  // One or more than one probes on a tensor.
+  // e.g., {"DebugIdentity", "DebugNanCount"}
+  repeated string debug_ops = 3;
+}
+
 // EXPERIMENTAL. Options for a single Run() call.
 message RunOptions {
   // TODO(pbar) Turn this into a TraceOptions proto which allows
@@ -197,6 +215,9 @@ message RunOptions {
 
   // The thread pool to use, if session_inter_op_thread_pool is configured.
   int32 inter_op_thread_pool = 3;
+
+  // Debugging options
+  repeated DebugTensorWatch debug_tensor_watch_opts = 4;
 }
 
 // EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.
