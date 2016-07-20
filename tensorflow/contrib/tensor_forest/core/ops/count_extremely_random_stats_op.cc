@@ -46,6 +46,7 @@ using tensorforest::CheckTensorBounds;
 using tensorforest::DataColumnTypes;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
+using tensorforest::FeatureSpec;
 
 // A data structure to store the results of parallel tree traversal.
 struct InputDataResult {
@@ -83,7 +84,6 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
       params.candidate_split_features.tensor<int32, 2>();
   const auto split_thresholds =
       params.candidate_split_thresholds.tensor<float, 2>();
-  const auto spec = params.input_spec.unaligned_flat<int32>();
 
   const int32 num_splits = static_cast<int32>(
       params.candidate_split_features.shape().dim_size(1));
@@ -114,9 +114,10 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
           params.results[i].splits_initialized = true;
           for (int split = 0; split < num_splits; split++) {
             const int32 feature = split_features(accumulator, split);
+
             if (!params.decide_function(
-                i, feature, split_thresholds(accumulator, split),
-                static_cast<tensorforest::DataColumnTypes>(spec(feature)))) {
+                    i, feature, split_thresholds(accumulator, split),
+                    FeatureSpec(feature, params.input_spec))) {
               params.results[i].split_adds.push_back(split);
             }
           }
@@ -129,9 +130,9 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
       }
       const int32 feature = tree(node_index, FEATURE_INDEX);
       node_index =
-          left_child + params.decide_function(
-              i, feature, thresholds(node_index),
-              static_cast<tensorforest::DataColumnTypes>(spec(feature)));
+          left_child +
+          params.decide_function(i, feature, thresholds(node_index),
+                                 FeatureSpec(feature, params.input_spec));
     }
   }
 }
@@ -192,7 +193,8 @@ sparse_input_indices: The indices tensor from the SparseTensor input.
 sparse_input_values: The values tensor from the SparseTensor input.
 sparse_input_shape: The shape tensor from the SparseTensor input.
 input_spec: A 1-D tensor containing the type of each column in input_data,
-  (e.g. continuous float, categorical).
+  (e.g. continuous float, categorical).  Index 0 should contain the default
+  type, individual feature types start at index 1.
 input_labels: The training batch's labels; `input_labels[i]` is the class
   of the i-th input.
 tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
@@ -481,8 +483,14 @@ class CountExtremelyRandomStats : public OpKernel {
     TupleMapType<int32> split_delta;
 
     for (int32 i = 0; i < num_data; ++i) {
+      out_leaves(i) = results[i].node_indices.back();
+
       const int32 label = internal::SubtleMustCopy(
           static_cast<int32>(labels(i)));
+      // Labels that come from sparse tensors can have missing values.
+      if (label < 0) {
+        continue;
+      }
       const int32 column = label + 1;
       CHECK_LT(column, num_classes_);
       const int32 accumulator = results[i].leaf_accumulator;
@@ -493,7 +501,7 @@ class CountExtremelyRandomStats : public OpKernel {
         ++out_node_sums(node, column);
         ++out_node_sums(node, 0);
       }
-      out_leaves(i) = results[i].node_indices.back();
+
       if (epoch > start_epochs(out_leaves(i)) + 1) {
         continue;
       }

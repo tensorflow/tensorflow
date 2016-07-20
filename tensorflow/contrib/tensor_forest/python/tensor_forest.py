@@ -347,8 +347,7 @@ class RandomForestGraphs(object):
     Returns:
       The last op in the random forest training graph.
     """
-    data_spec = ([constants.DATA_FLOAT] * self.params.num_features
-                 if data_spec is None else data_spec)
+    data_spec = [constants.DATA_FLOAT] if data_spec is None else data_spec
     tree_graphs = []
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
@@ -396,8 +395,7 @@ class RandomForestGraphs(object):
     Returns:
       The last op in the random forest inference graph.
     """
-    data_spec = ([constants.DATA_FLOAT] * self.params.num_features
-                 if data_spec is None else data_spec)
+    data_spec = [constants.DATA_FLOAT] if data_spec is None else data_spec
     probabilities = []
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):

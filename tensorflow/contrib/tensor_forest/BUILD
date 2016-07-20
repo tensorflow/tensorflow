@@ -52,6 +52,7 @@ py_library(
 tf_custom_op_library(
     name = "data/_data_ops.so",
     srcs = [
+        "data/sparse_values_to_indices.cc",
         "data/string_to_float_op.cc",
     ],
     deps = [
