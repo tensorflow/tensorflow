@@ -465,6 +465,24 @@ TEST(ShapeInferenceTest, Concatenate) {
   }
 }
 
+TEST(ShapeInferenceTest, ReplaceDim) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(2, 0), {"[1,2,3]", "?"}, {});
+
+  auto in = c.input(0);
+  auto unknown = c.input(1);
+
+  const Shape* replaced;
+  EXPECT_TRUE(c.ReplaceDim(in, 0, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("[2,2,3]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(in, 2, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("[1,2,2]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(in, 1, c.Dim(in, 2), &replaced).ok());
+  EXPECT_EQ("[1,3,3]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(unknown, 0, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("?", c.DebugString(replaced));
+}
+
 TEST(ShapeInferenceTest, MakeShape) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,3,?,5]"}, {});

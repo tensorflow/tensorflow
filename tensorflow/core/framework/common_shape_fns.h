@@ -61,6 +61,14 @@ inline Status ScalarShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+// Shape function for binary ops where both inputs and the output match.
+inline Status MergeBothInputsShapeFn(InferenceContext* c) {
+  const Shape* out;
+  TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 inline Status MatMulShape(shape_inference::InferenceContext* c) {
   const Shape* a;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &a));

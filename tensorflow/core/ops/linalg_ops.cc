@@ -71,13 +71,12 @@ Status SquareMatrixSolveShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &rhs));
 
   // lhs and rhs have the same number of rows. Make a new output
-  // shape that has the merged-rows and the rest of the rhs.
+  // shape that uses rows to replace rhs.dim[0].
   const Dimension* rows;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, 0), c->Dim(rhs, 0), &rows));
-  const Shape* rhs_remaining;
-  TF_RETURN_IF_ERROR(c->Subshape(rhs, 1, &rhs_remaining));
-  TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(rows), rhs_remaining, &rhs));
-  c->set_output(0, rhs);
+  const Shape* out;
+  TF_RETURN_IF_ERROR(c->ReplaceDim(rhs, 0, rows, &out));
+  c->set_output(0, out);
   return Status::OK();
 }
 

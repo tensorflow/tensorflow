@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-TEST(ArrayOpsTest, TopK_ShapeFn) {
+TEST(NNOpsTest, TopK_ShapeFn) {
   ShapeInferenceTestOp op("TopK");
   auto set_k = [&op](int k) {
     TF_CHECK_OK(NodeDefBuilder("test", "Pack")
@@ -51,7 +51,7 @@ TEST(ArrayOpsTest, TopK_ShapeFn) {
   INFER_ERROR("Need k >= 0, got -1", op, "[1,2,3,4]");
 }
 
-TEST(ArrayOpsTest, TopKV2_ShapeFn) {
+TEST(NNOpsTest, TopKV2_ShapeFn) {
   ShapeInferenceTestOp op("TopKV2");
   op.input_tensors.resize(2);
 
@@ -78,6 +78,232 @@ TEST(ArrayOpsTest, TopKV2_ShapeFn) {
   INFER_ERROR(
       "Dimension size, given by scalar input 1, must be non-negative but is -1",
       op, "[1,2,3,4];[]");
+}
+
+TEST(NNOpsTest, InputTensorShapeOrUnknown2D_ShapeFn) {
+  typedef std::pair<const char*, int> NameAndInputIndex;
+  for (const auto& p :
+       {NameAndInputIndex("AvgPoolGrad", 0),
+        NameAndInputIndex("Conv2DBackpropInput", 0),
+        NameAndInputIndex("Conv2DBackpropFilter", 1),
+        NameAndInputIndex("DepthwiseConv2dNativeBackpropInput", 0),
+        NameAndInputIndex("DepthwiseConv2dNativeBackpropFilter", 1)}) {
+    ShapeInferenceTestOp op(p.first);
+    op.input_tensors.resize(2);
+
+    // When the input tensor is not known, the output is 4 unknown dims.
+    INFER_OK(op, "?;?", "[?,?,?,?]");
+    INFER_OK(op, "[4];?", "[?,?,?,?]");
+
+    // When input tensor is known, its values determine output shape.
+    std::vector<int32> shape{1, 2, 3, 4};
+    Tensor shape_t = test::AsTensor<int32>(shape);
+    op.input_tensors[p.second] = &shape_t;
+    INFER_OK(op, "[4];?", "[1,2,3,4]");
+  }
+}
+
+TEST(NNOpsTest, InputTensorShapeOrUnknown3D_ShapeFn) {
+  typedef std::pair<const char*, int> NameAndInputIndex;
+  for (const auto& p : {NameAndInputIndex("AvgPool3DGrad", 0),
+                        NameAndInputIndex("Conv3DBackpropInputV2", 0),
+                        NameAndInputIndex("Conv3DBackpropFilterV2", 1)}) {
+    ShapeInferenceTestOp op(p.first);
+    op.input_tensors.resize(2);
+
+    // When the input tensor is not known, the output is 4 unknown dims.
+    INFER_OK(op, "?;?;?", "[?,?,?,?,?]");
+    INFER_OK(op, "[5];?;?", "[?,?,?,?,?]");
+
+    // When input tensor is known, its values determine output shape.
+    std::vector<int32> shape{1, 2, 3, 4, 5};
+    Tensor shape_t = test::AsTensor<int32>(shape);
+    op.input_tensors[p.second] = &shape_t;
+    INFER_OK(op, "[5];?;?", "[1,2,3,4,5]");
+  }
+}
+
+TEST(NNOpsTest, BatchNormWithGlobalNormalization_ShapeFn) {
+  ShapeInferenceTestOp op("BatchNormWithGlobalNormalization");
+
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;?;[1,2,3]");
+
+  // last dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?]");
+  INFER_OK(op, "?;[1];?;?;?", "[?,?,?,d1_0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0]");
+  INFER_OK(op, "?;?;?;[1];?", "[?,?,?,d3_0]");
+  INFER_OK(op, "?;?;?;?;[1]", "[?,?,?,d4_0]");
+  INFER_OK(op, "[1,2,3,4];[4];[4];[4];[4]",
+           "[d0_0,d0_1,d0_2,d0_3|d1_0|d2_0|d3_0|d4_0]");
+}
+
+TEST(NNOpsTest, BatchNormWithGlobalNormalizationGrad_ShapeFn) {
+  ShapeInferenceTestOp op("BatchNormWithGlobalNormalizationGrad");
+
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;[1,2,3];?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;[1,2,3];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op, "?;?;?;[1,2,3];?");
+  INFER_ERROR("Shapes must be equal rank, but are 4 and 3", op,
+              "?;?;?;?;[1,2,3]");
+
+  // The first output comes from the first and last inputs merged together.
+  // Other inputs are merged with the last dim of that merge result, and that
+  // merged vector dim is the last 4 outputs.
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?];[?];[?];[?];[?]");
+  INFER_OK(op, "?;[1];?;?;?", "[?,?,?,d1_0];[d1_0];[d1_0];[d1_0];[d1_0]");
+  INFER_OK(op, "?;?;[1];?;?", "[?,?,?,d2_0];[d2_0];[d2_0];[d2_0];[d2_0]");
+  INFER_OK(op, "?;?;?;[1];?", "[?,?,?,d3_0];[d3_0];[d3_0];[d3_0];[d3_0]");
+  INFER_OK(op, "[1,?,3,?];[?];[?];[?];[?,2,?,4]",
+           "[d0_0,d4_1,d0_2,d4_3];[d4_3];[d4_3];[d4_3];[d4_3]");
+}
+
+TEST(NNOpsTest, Conv3DBackpropInput_ShapeFn) {
+  ShapeInferenceTestOp op("Conv3DBackpropInput");
+
+  // Test rank error.
+  INFER_ERROR("Shape must be rank 5 but is rank 3", op, "[1,2,3];?;?");
+
+  // input[1] is transferred to output after asserting its rank.
+  INFER_OK(op, "?;?;?", "[?,?,?,?,?]");
+  INFER_OK(op, "[?,?,?,?,?];?;?", "in0");
+  INFER_OK(op, "[?,2,?,4,?];?;?", "in0");
+}
+
+TEST(NNOpsTest, Conv3DBackpropFilter_ShapeFn) {
+  ShapeInferenceTestOp op("Conv3DBackpropFilter");
+
+  // Test rank error.
+  INFER_ERROR("Shape must be rank 5 but is rank 3", op, "?;[1,2,3];?");
+
+  // input[1] is transferred to output after asserting its rank.
+  INFER_OK(op, "?;?;?", "[?,?,?,?,?]");
+  INFER_OK(op, "?;[?,?,?,?,?];?", "in1");
+  INFER_OK(op, "?;[?,2,?,4,?];?", "in1");
+}
+
+TEST(NNOpsTest, MaxPool3DGrad_ShapeFn) {
+  ShapeInferenceTestOp op("MaxPool3DGrad");
+
+  // Test rank error.
+  INFER_ERROR("Shape must be rank 5 but is rank 3", op, "[1,2,3];?;?");
+
+  // input[0] is transferred to output after asserting its rank.
+  INFER_OK(op, "?;?;?", "[?,?,?,?,?]");
+  INFER_OK(op, "[?,?,?,?,?];?;?", "in0");
+  INFER_OK(op, "[?,2,?,4,?];?;?", "in0");
+}
+
+TEST(NNOpsTest, LRNGrad_ShapeFn) {
+  ShapeInferenceTestOp op("LRNGrad");
+
+  // LRN Grad is a merge of all three inputs, of rank 4.
+  INFER_OK(op, "[1,?,?,4];[?,2,?,?];[?,?,3,?]", "[d0_0,d1_1,d2_2,d0_3]");
+
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?");
+  INFER_ERROR("Shapes must be equal rank, but are 4 and 3", op, "?;[1,2,3];?");
+  INFER_ERROR("Shapes must be equal rank, but are 4 and 3", op, "?;?;[1,2,3]");
+}
+
+TEST(NNOpsTest, MaxPoolGrad_ShapeFn) {
+  for (const char* op_name : {"MaxPoolGrad", "MaxPoolGradWithArgmax"}) {
+    ShapeInferenceTestOp op(op_name);
+
+    // Test rank error.
+    INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?");
+
+    // input[0] is transferred to output after asserting its rank.
+    INFER_OK(op, "?;?;?", "[?,?,?,?]");
+    INFER_OK(op, "[?,?,?,?];?;?", "in0");
+    INFER_OK(op, "[?,2,?,4];?;?", "in0");
+  }
+}
+
+TEST(NNOpsTest, Dilation2DBackpropInput_ShapeFn) {
+  ShapeInferenceTestOp op("Dilation2DBackpropInput");
+
+  // input[0] is transferred to output.
+  INFER_OK(op, "?;?;?", "in0");
+  INFER_OK(op, "?;[?,?,?,?,?];?", "in0");
+  INFER_OK(op, "?;[?,2,?,4,?];?", "in0");
+}
+
+TEST(NNOpsTest, Dilation2DBackpropFilter_ShapeFn) {
+  ShapeInferenceTestOp op("Dilation2DBackpropFilter");
+
+  // input[1] is transferred to output.
+  INFER_OK(op, "?;?;?", "in1");
+  INFER_OK(op, "?;[?,?,?,?,?];?", "in1");
+  INFER_OK(op, "?;[?,2,?,4,?];?", "in1");
+}
+
+TEST(NNOpsTest, MergeBothInputs_ShapeFn) {
+  for (const char* op_name :
+       {"ReluGrad", "Relu6Grad", "EluGrad", "SoftplusGrad", "SoftsignGrad"}) {
+    ShapeInferenceTestOp op(op_name);
+
+    INFER_OK(op, "?;?", "in0|in1");
+    INFER_OK(op, "?;[1,?,3]", "in1");
+    INFER_OK(op, "[1,?,3];?", "in0");
+    INFER_OK(op, "[1,?];[?,2]", "[d0_0,d1_1]");
+    INFER_ERROR("Dimension 1 in both shapes must be equal, but are 3 and 2", op,
+                "[1,3];[?,2]");
+  }
+}
+
+TEST(NNOpsTest, SoftmaxCrossEntropyWithLogits_ShapeFn) {
+  ShapeInferenceTestOp op("SoftmaxCrossEntropyWithLogits");
+
+  // Inputs are [batch_size,N] and [batch_size,N], and outputs are [batch_size]
+  // and
+  // [batch_size,N].
+  INFER_OK(op, "?;?", "[?];[?,?]");
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0|d1_0];in0|in1");
+  INFER_OK(op, "[1,2];[?,2]", "[d0_0];in0");
+  INFER_OK(op, "[1,?];[?,2]", "[d0_0];[d0_0,d0_1|d1_1]");
+  INFER_OK(op, "[?,2];[1,2]", "[d1_0];in1");
+
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
+              "[1,?];[2,?]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3];?");
+  INFER_ERROR("Shapes must be equal rank, but are 2 and 3", op, "?;[1,2,3]");
+}
+
+TEST(NNOpsTest, SparseSoftmaxCrossEntropyWithLogits_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSoftmaxCrossEntropyWithLogits");
+
+  // Inputs are [batch_size,N] and [batch_size], and outputs are [batch_size]
+  // and [batch_size,N].
+  INFER_OK(op, "?;?", "[?];[?,?]");
+  INFER_OK(op, "[?,?];[?]", "[d0_0|d1_0];[d0_0|d1_0,d0_1]");
+  INFER_OK(op, "[1,2];[1]", "[d0_0|d1_0];[d0_0|d1_0,d0_1]");
+  INFER_OK(op, "[?,2];[1]", "[d1_0];[d1_0,d0_1]");
+
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,?];[2]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,2]");
+}
+
+TEST(NNOpsTest, InTopK_ShapeFn) {
+  ShapeInferenceTestOp op("InTopK");
+
+  // Inputs are [batch_size,N] and [batch_size], and output is [batch_size].
+  INFER_OK(op, "?;?", "[?]");
+  INFER_OK(op, "[?,?];[?]", "[d0_0|d1_0]");
+  INFER_OK(op, "[1,2];[1]", "[d0_0|d1_0]");
+  INFER_OK(op, "[?,2];[1]", "[d1_0]");
+
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,?];[2]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,2]");
 }
 
 }  // end namespace tensorflow

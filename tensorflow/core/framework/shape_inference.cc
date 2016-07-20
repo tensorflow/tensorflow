@@ -329,6 +329,17 @@ Status InferenceContext::Concatenate(const Shape* s1, const Shape* s2,
   return ReturnCreatedShape(dims, out);
 }
 
+Status InferenceContext::ReplaceDim(const Shape* s, int dim_index,
+                                    const Dimension* new_dim,
+                                    const Shape** out) {
+  if (!RankKnown(s)) {
+    return ReturnUnknownShape(out);
+  }
+  std::vector<const Dimension*> dims(s->dims_);
+  dims[dim_index] = new_dim;
+  return ReturnCreatedShape(dims, out);
+}
+
 const Shape* InferenceContext::MakeShape(
     const std::vector<const Dimension*>& dims) {
   all_shapes_.push_back(new Shape(dims));

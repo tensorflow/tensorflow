@@ -192,6 +192,11 @@ class InferenceContext {
   Status Concatenate(const Shape* s1, const Shape* s2,
                      const Shape** out) TF_MUST_USE_RESULT;
 
+  // Returns in <out> the shape from replacing <s.dim[dim_index]> with
+  // <new_dim>.
+  Status ReplaceDim(const Shape* s, int dim_index, const Dimension* new_dim,
+                    const Shape** out) TF_MUST_USE_RESULT;
+
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
   const Shape* MakeShape(const std::vector<const Dimension*>& dims);
