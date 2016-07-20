@@ -586,10 +586,11 @@
   * [`SampleValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#SampleValue)
   * [`score_function`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#score_function)
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#StochasticTensor)
-  * [`surrogate_losses`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_losses)
+  * [`surrogate_loss`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_loss)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#value_type)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
+  * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
   * [`batch_matrix_diag_transform`](../../api_docs/python/contrib.distributions.md#batch_matrix_diag_transform)
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
   * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)

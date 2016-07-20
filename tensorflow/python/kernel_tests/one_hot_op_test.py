@@ -334,9 +334,11 @@ class OneHotTest(tf.test.TestCase):
                          off_value=off_value, dtype=tf.string, truth=truth)
 
   def testIndicesTypes(self):
-    tf_types = [tf.int32, tf.int64]
+    tf_types = [tf.uint8, tf.int32, tf.int64]
     np_types = [np.int32, np.int64]
     for itype in tf_types + np_types:
+      # Note: to keep the tests simple in the case of uint8 the index -1 below
+      # maps to 255 which is out of the depth range, just like -1.
       if itype in tf_types:
         indices = tf.constant([[0, 2, -1, 1],
                                [1, 0, 1, -1]],

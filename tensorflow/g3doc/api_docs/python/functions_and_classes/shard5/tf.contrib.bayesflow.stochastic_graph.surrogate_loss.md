@@ -1,12 +1,11 @@
-### `tf.contrib.bayesflow.stochastic_graph.surrogate_losses(sample_losses, name='SurrogateLosses')` {#surrogate_losses}
+### `tf.contrib.bayesflow.stochastic_graph.surrogate_loss(sample_losses, name='SurrogateLoss')` {#surrogate_loss}
 
-Compute surrogate losses for StochasticTensors in the graph.
+Surrogate loss for stochastic graphs.
 
-This function will call `surrogate_loss` on each `StochasticTensor` in the
-graph and pass the losses in `sample_losses` that that `StochasticTensor`
-influenced.
+This function will call `loss_fn` on each `StochasticTensor`
+upstream of `sample_losses`, passing the losses that it influenced.
 
-Note that currently `surrogate_losses` does not work with `StochasticTensor`s
+Note that currently `surrogate_loss` does not work with `StochasticTensor`s
 instantiated in `while_loop`s or other control structures.
 
 ##### Args:
@@ -19,7 +18,8 @@ instantiated in `while_loop`s or other control structures.
 
 ##### Returns:
 
-  A list of surrogate losses.
+  `Tensor` loss, which is the sum of `sample_losses` and the
+  `loss_fn`s returned by the `StochasticTensor`s.
 
 ##### Raises:
 

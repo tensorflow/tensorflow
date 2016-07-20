@@ -1,4 +1,4 @@
-Abstract base class for probability distributions.
+Fully-featured abstract base class for probability distributions.
 
 This class defines the API for probability distributions. Users will only ever
 instantiate subclasses of `Distribution`.

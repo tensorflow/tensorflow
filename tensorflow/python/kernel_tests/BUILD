@@ -12,6 +12,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_tests(
     name = "cpu_only_kernel_tests",
@@ -70,6 +71,13 @@ py_tests(
     ],
 )
 
+cuda_py_test(
+    name = "dense_update_ops_no_tsan_test",
+    size = "small",
+    srcs = ["dense_update_ops_no_tsan_test.py"],
+    tags = ["notsan"],
+)
+
 py_tests(
     name = "reader_ops_test",
     size = "small",
@@ -99,7 +107,6 @@ cuda_py_tests(
         "conv3d_backprop_filter_v2_grad_test.py",
         "cross_grad_test.py",
         "denormal_test.py",
-        "dense_update_ops_no_tsan_test.py",
         "dense_update_ops_test.py",
         "depthtospace_op_test.py",
         "depthwise_conv_op_test.py",

@@ -29,8 +29,82 @@ from tensorflow.python.ops import math_ops
 
 
 @six.add_metaclass(abc.ABCMeta)
-class Distribution(object):
-  """Abstract base class for probability distributions.
+class BaseDistribution(object):
+  """Simple abstract base class for probability distributions.
+
+  Implementations of core distributions to be included in the `distributions`
+  module should subclass `Distribution`. This base class may be useful to users
+  that want to fulfill a simpler distribution contract.
+  """
+
+  @abc.abstractproperty
+  def name(self):
+    """Name to prepend to all ops."""
+    # return self._name.
+    pass
+
+  @abc.abstractmethod
+  def prob(self, value, name="prob"):
+    """Probability density/mass function."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
+        return math_ops.exp(self.log_prob(value))
+
+  @abc.abstractmethod
+  def log_prob(self, value, name="log_prob"):
+    """Log of the probability density/mass function."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
+        return math_ops.log(self.prob(value))
+
+  def sample_n(self, n, seed=None, name="sample_n"):
+    """Generate `n` samples.
+
+    Args:
+      n: scalar. Number of samples to draw.
+      seed: Python integer seed for RNG
+      name: name to give to the op.
+
+    Returns:
+      samples: a `Tensor` with a prepended dimension (n,).
+    """
+    raise NotImplementedError("sample_n not implemented")
+
+  def sample(self, sample_shape=(), seed=None, name="sample"):
+    """Generate samples of the specified shape.
+
+    Note that a call to `sample()` without arguments will generate a single
+    sample.
+
+    Args:
+      sample_shape: int32 `Tensor` or tuple or list. Shape of the generated
+        samples.
+      seed: Python integer seed for RNG
+      name: name to give to the op.
+
+    Returns:
+      samples: a `Tensor` with prepended dimensions `sample_shape`.
+    """
+    with ops.name_scope(self.name):
+      with ops.op_scope([sample_shape], name):
+        sample_shape = ops.convert_to_tensor(sample_shape,
+                                             dtype=dtypes.int32,
+                                             name="sample_shape")
+        total = math_ops.reduce_prod(sample_shape)
+        samples = self.sample_n(total, seed)
+        output_shape = array_ops.concat(0, [sample_shape, array_ops.slice(
+            array_ops.shape(samples), [1], [-1])])
+        output = array_ops.reshape(samples, output_shape, name=name)
+        output.set_shape(tensor_util.constant_value_as_shape(
+            sample_shape).concatenate(samples.get_shape()[1:]))
+    return output
+
+
+@six.add_metaclass(abc.ABCMeta)
+class Distribution(BaseDistribution):
+  """Fully-featured abstract base class for probability distributions.
 
   This class defines the API for probability distributions. Users will only ever
   instantiate subclasses of `Distribution`.
@@ -166,12 +240,6 @@ class Distribution(object):
     pass
 
   @abc.abstractproperty
-  def name(self):
-    """Name to prepend to all ops."""
-    # return self._name.
-    pass
-
-  @abc.abstractproperty
   def dtype(self):
     """dtype of samples from this distribution."""
     # return self._dtype
@@ -240,7 +308,7 @@ class Distribution(object):
       samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
           with values of type `self.dtype`.
     """
-    raise NotImplementedError("sample_n not implemented")
+    return super(Distribution, self).sample_n(n, seed, name)
 
   def sample(self, sample_shape=(), seed=None, name="sample"):
     """Generate samples of the specified shape for each batched distribution.
@@ -258,23 +326,7 @@ class Distribution(object):
       samples: a `Tensor` of dtype `self.dtype` and shape
           `sample_shape + self.batch_shape + self.event_shape`.
     """
-    with ops.name_scope(self.name):
-      with ops.op_scope([sample_shape], name):
-        sample_shape = ops.convert_to_tensor(sample_shape,
-                                             dtype=dtypes.int32,
-                                             name="sample_shape")
-        sample_shape_val = tensor_util.constant_value(sample_shape)
-        if sample_shape_val is None:
-          total = math_ops.reduce_prod(sample_shape)
-        else:
-          total = math_ops.cast(sample_shape_val.prod(), dtypes.int32)
-        samples = self.sample_n(total, seed)
-        output_shape = array_ops.concat(
-            0, [sample_shape, self.batch_shape(), self.event_shape()])
-        output = array_ops.reshape(samples, output_shape, name=name)
-        output.set_shape(tensor_util.constant_value_as_shape(
-            sample_shape).concatenate(samples.get_shape()[1:]))
-    return output
+    return super(Distribution, self).sample(sample_shape, seed, name)
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function."""
@@ -314,22 +366,6 @@ class Distribution(object):
   @abc.abstractproperty
   def is_reparameterized(self):
     pass
-
-  @abc.abstractmethod
-  def prob(self, value, name="prob"):
-    """Probability density/mass function."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([value], name):
-        value = ops.convert_to_tensor(value)
-        return math_ops.exp(self.log_prob(value))
-
-  @abc.abstractmethod
-  def log_prob(self, value, name="log_prob"):
-    """Log of the probability density/mass function."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([value], name):
-        value = ops.convert_to_tensor(value)
-        return math_ops.log(self.prob(value))
 
   def log_pdf(self, value, name="log_pdf"):
     """Log of the probability density function."""
