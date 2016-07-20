@@ -90,11 +90,7 @@ class MonitoredSessionTest(tf.test.TestCase):
           'run_metadata': 'a_metadata'
       })
 
-<<<<<<< HEAD
-  def testCallsMonitorsBeginAndEnd(self):
-=======
   def testCallsMonitorsBeginEndAndPost(self):
->>>>>>> master
     with tf.Graph().as_default(), tf.Session() as sess:
       global_step_tensor = tf.contrib.framework.create_global_step()
       mock_mon = FakeMonitor()
@@ -110,19 +106,12 @@ class MonitoredSessionTest(tf.test.TestCase):
 
       for mon in [mock_mon, mock_mon2]:
         self.assertEqual(mon.output, {})
-<<<<<<< HEAD
-        self.assertEqual(mon.begin_step, 11)
-        self.assertEqual(mon.end_step, 11)
-        self.assertEqual(mon.call_counter['step_end'], 1)
-        self.assertEqual(mon.call_counter['step_begin'], 1)
-=======
         self.assertEqual(mon.last_begin_step, 11)
         self.assertEqual(mon.last_end_step, 11)
         self.assertEqual(mon.last_post_step, 11)
         self.assertEqual(mon.call_counter['step_end'], 1)
         self.assertEqual(mon.call_counter['step_begin'], 1)
         self.assertEqual(mon.call_counter['post_step'], 1)
->>>>>>> master
 
   def testCallsMonitorsWithLastStep(self):
     with tf.Graph().as_default(), tf.Session() as sess:
@@ -139,20 +128,6 @@ class MonitoredSessionTest(tf.test.TestCase):
 
       mon_sess.run(fetches=[inc_5])
       for mon in [mock_mon, mock_mon2]:
-<<<<<<< HEAD
-        self.assertEqual(mon.begin_step, 1)
-        self.assertEqual(mon.end_step, 1)
-
-      mon_sess.run(fetches=[inc_5])
-      for mon in [mock_mon, mock_mon2]:
-        self.assertEqual(mon.begin_step, 6)
-        self.assertEqual(mon.end_step, 6)
-
-      mon_sess.run(fetches=[inc_5])
-      for mon in [mock_mon, mock_mon2]:
-        self.assertEqual(mon.begin_step, 11)
-        self.assertEqual(mon.end_step, 11)
-=======
         self.assertEqual(mon.last_begin_step, 1)
         self.assertEqual(mon.last_end_step, 1)
         self.assertEqual(mon.last_post_step, 1)
@@ -168,7 +143,6 @@ class MonitoredSessionTest(tf.test.TestCase):
         self.assertEqual(mon.last_begin_step, 11)
         self.assertEqual(mon.last_end_step, 11)
         self.assertEqual(mon.last_post_step, 11)
->>>>>>> master
 
   def testShouldStop(self):
     with tf.Graph().as_default(), tf.Session() as sess:

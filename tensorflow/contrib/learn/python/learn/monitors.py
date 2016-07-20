@@ -214,12 +214,8 @@ class BaseMonitor(object):
 
     In addition, the callback has the opportunity to stop training by returning
     `True`. This is useful for early stopping, for example.
-<<<<<<< HEAD
-=======
-
     Note that this method is not called if the call to `Session.run()` that
     followed the last call to `step_begin()` failed.
->>>>>>> master
 
     Args:
       step: `int`, the current value of the global step.
@@ -266,42 +262,22 @@ class EveryN(BaseMonitor):
   When extending this class, note that if you wish to use any of the
   `BaseMonitor` callbacks, you must call their respective super implementation:
 
-<<<<<<< HEAD
-  This class adds two new callbacks:
-    - every_n_step_begin
-    - every_n_step_end
-
-  The callbacks are executed every n steps, or optionally every step for the
-  first m steps, where m and n can both be user-specified.
-
-  When extending this class, note that if you wish to use any of the
-  `BaseMonitor` callbacks, you must call their respective super implementation:
-
-=======
->>>>>>> master
     def step_begin(self, step):
       super(ExampleMonitor, self).step_begin(step)
       return []
 
   Failing to call the super implementation will cause unpredictible behavior.
-<<<<<<< HEAD
-=======
 
   The `every_n_post_step()` callback is also called after the last step if it
   was not already called through the regular conditions.  Note that
   `every_n_step_begin()` and `every_n_step_end()` do not receive that special
   treatment.
->>>>>>> master
 
   """
   # TODO(ipolosukhin): Add also every n seconds.
 
   def __init__(self, every_n_steps=100, first_n_steps=1):
-<<<<<<< HEAD
-    """Initialized an `EveryN` monitor.
-=======
     """Initializes an `EveryN` monitor.
->>>>>>> master
 
     Args:
       every_n_steps: `int`, the number of steps to allow between callbacks.
@@ -312,25 +288,10 @@ class EveryN(BaseMonitor):
     super(EveryN, self).__init__()
     self._every_n_steps = every_n_steps
     self._first_n_steps = first_n_steps
-<<<<<<< HEAD
-    self._last_step = 0
-    self._active_step = None
-
-  def begin(self, max_steps=None):
-    """Overrides `BaseMonitor.begin`.
-
-    When overriding this method, you must call the super implementation.
-
-    Args:
-      max_steps: `int`, the maximum global step value.
-    """
-    super(EveryN, self).begin(max_steps)
-=======
     # Last step in the model.
     self._last_step = None
     # Last step at which we called one of the every_n methods
     self._last_active_step = None
->>>>>>> master
 
   def every_n_step_begin(self, step):  # pylint: disable=unused-argument
     """Callback before every n'th step begins.
@@ -719,17 +680,10 @@ class ValidationMonitor(EveryN):
 # ':0' suffix on var_name.
 class CaptureVariable(EveryN):
   """Captures a variable's values into a collection.
-<<<<<<< HEAD
 
   This monitor is useful for unit testing. You should exercise caution when
   using this monitor in production, since it never discards values.
 
-=======
-
-  This monitor is useful for unit testing. You should exercise caution when
-  using this monitor in production, since it never discards values.
-
->>>>>>> master
   This is an `EveryN` monitor and has consistent semantic for `every_n`
   and `first_n`.
   """

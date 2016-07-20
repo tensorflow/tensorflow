@@ -102,23 +102,16 @@ class MonitoredSession(WrappedSession):
       induce_stop = monitor.step_end(monitors_step, monitor_outputs)
       self._should_stop = self._should_stop or induce_stop
 
-<<<<<<< HEAD
-=======
     # Call the post_step methods.
     for monitor in self._monitors:
       monitor.post_step(monitors_step, self._sess)
 
->>>>>>> master
     return outputs['caller']
 
 
 # TODO(ispir): Remove following logic after forcing monitors returns tensors.
 def _as_graph_element(obj, graph):
-<<<<<<< HEAD
-  """Retrieves Graph element from tensors or tensor names."""
-=======
   """Retrieves Graph element."""
->>>>>>> master
   graph = graph or ops.get_default_graph()
   if not isinstance(obj, six.string_types):
     if not hasattr(obj, 'graph') or obj.graph != graph:
