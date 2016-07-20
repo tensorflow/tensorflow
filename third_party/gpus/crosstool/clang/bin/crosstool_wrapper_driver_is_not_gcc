@@ -100,36 +100,15 @@ def GetHostCompilerOptions(argv):
   args, _ = parser.parse_known_args(argv)
 
   opts = ''
-  # This is a temporary workaround for b/12960069.
-  # NVIDIA is going to fix this in CUDA 6.5, but until then this workaround
-  # will let us compile Thrust with the cuda crosstool.
-  # bazel passes all include directories as '-isystem dir' to the crosstool.
-  # This causes nvcc to think that there are kernel launches from system
-  # directories (which apparently is not supported by the compiler). This
-  # workaround changes '-isystem third_party/gpus/cuda/include' to
-  # '-iquote third_party/gpus/cuda/include'.
-  isystem_args = [x for x in args.isystem
-                  if 'third_party/gpus/cuda/include' not in x]
-  iquote_args = (args.iquote +
-                 [x for x in args.isystem
-                  if 'third_party/gpus/cuda/include' in x])
-  # This hack is needed so that we can compile eigen3. We need to include
-  # third_party/eigen3 with -I. Some eigen file include using the
-  # include <Eigen/Core> syntax, and -iquote doesn't work for that.
-  has_eigen = ['third_party/eigen3'] in isystem_args
-  if has_eigen:
-    isystem_args.remove(['third_party/eigen3'])
 
-  if isystem_args:
-    opts += '-isystem ' + ' -isystem '.join(sum(isystem_args, []))
-  if iquote_args:
-    opts += ' -iquote ' + ' -iquote '.join(sum(iquote_args, []))
+  if args.isystem:
+    opts += ' -isystem ' + ' -isystem '.join(sum(args.isystem, []))
+  if args.iquote:
+    opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
-  if has_eigen:
-    opts += ' -I third_party/eigen3'
 
   return opts
 

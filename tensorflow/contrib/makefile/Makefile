@@ -38,8 +38,8 @@ HOST_OBJDIR := $(MAKEFILE_DIR)/gen/host_obj/
 HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
 HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
-# Find the current Eigen version name from the Bazel build file
-EIGEN_HASH := $(shell cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
+# Find the current Eigen version from the Bazel configuration
+EIGEN_VERSION := $(shell grep eigen_version tensorflow/workspace.bzl | head -1 | sed -e 's/.*eigen_version\s*=\s*"\(.*\)"/\1/')
 
 # Settings for the host compiler.
 HOST_CXX := $(CC_PREFIX) gcc
@@ -53,7 +53,7 @@ HOST_LDOPTS += -L/usr/local/lib
 HOST_INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
+-I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_VERSION) \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -123,7 +123,7 @@ LDFLAGS := \
 INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
+-I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_VERSION) \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -208,7 +208,7 @@ ifeq ($(TARGET),ANDROID)
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_HASH) \
+-I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_VERSION) \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)

@@ -341,8 +341,10 @@ REGISTER_OP("ApplyMomentum")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .Doc(R"doc(
-Update '*var' according to the momentum scheme.
+Update '*var' according to the momentum scheme. Set use_nesterov = True if you 
+want to use Nesterov momentum.
 
 accum = accum * momentum + grad
 var -= lr * accum
@@ -356,6 +358,9 @@ out: Same as "var".
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, the tensor passed to compute grad will be 
+var - lr * momentum * accum, so in the end, the var you get is actually
+var - lr * momentum * accum.
 )doc");
 
 REGISTER_OP("SparseApplyMomentum")
@@ -369,8 +374,10 @@ REGISTER_OP("SparseApplyMomentum")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .Doc(R"doc(
 Update relevant entries in '*var' and '*accum' according to the momentum scheme.
+Set use_nesterov = True if you want to use Nesterov momentum.
 
 That is for rows we have grad for, we update var and accum as follows:
 
@@ -387,6 +394,9 @@ out: Same as "var".
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, the tensor passed to compute grad will be 
+var - lr * momentum * accum, so in the end, the var you get is actually
+var - lr * momentum * accum.
 )doc");
 
 REGISTER_OP("ApplyAdam")

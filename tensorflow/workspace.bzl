@@ -4,10 +4,17 @@
 # within the workspace (e.g. "tensorflow/"), and tf_repo_name is the name of the
 # local_repository rule (e.g. "@tf").
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+
+  # These lines need to be changed when updating Eigen. They are parsed from
+  # this file by the cmake and make builds to determine the eigen version and hash.
+  eigen_version = "b4fa9622b809"
+  eigen_sha256 = "2862840c2de9c0473a4ef20f8678949ae89ab25965352ee53329e63ba46cec62"
+
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/b4fa9622b809.tar.gz",
-    sha256 = "2862840c2de9c0473a4ef20f8678949ae89ab25965352ee53329e63ba46cec62",
+    url = "https://bitbucket.org/eigen/eigen/get/" + eigen_version + ".tar.gz",
+    sha256 = eigen_sha256,
+    strip_prefix = "eigen-eigen-" + eigen_version,
     build_file = path_prefix + "eigen.BUILD",
   )
 
