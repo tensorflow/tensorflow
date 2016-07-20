@@ -2029,7 +2029,6 @@ filegroup(
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
-            "example_parsing_ops.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             # Ops excluded because they do not build correctly for Android.
