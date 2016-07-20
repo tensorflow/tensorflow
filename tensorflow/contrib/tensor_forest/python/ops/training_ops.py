@@ -82,7 +82,7 @@ def _BestSplitsShape(op):
 @ops.RegisterShape('GrowTree')
 def _GrowTreeShape(unused_op):
   """Shape function for GrowTree Op."""
-  return [[None], [None, 2], [None], [None], [1]]
+  return [[None], [None, 2], [None], [1]]
 
 
 @ops.RegisterShape('FinishedNodes')
