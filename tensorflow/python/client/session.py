@@ -885,8 +885,9 @@ class Session(BaseSession):
 
     Args:
       target: (Optional.) The execution engine to connect to.
-        Defaults to using an in-process engine. At present, no value
-        other than the empty string is supported.
+        Defaults to using an in-process engine. See [Distributed Tensorflow]
+        (https://www.tensorflow.org/how_tos/distributed/index.html)
+        for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
         protocol buffer with configuration options for the session.
