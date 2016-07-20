@@ -21,9 +21,9 @@ mkdir -p ${DOWNLOADS_DIR}
 
 # Grab the current Eigen version name from the Bazel build file
 EIGEN_HASH=$(cat "${BZL_FILE_PATH}" | egrep "eigen_version.*=.*\".*\"" | awk '{ print $3 }')
+# Trim trailing and preceding double quotes
 EIGEN_HASH="${EIGEN_HASH%\"}"
 EIGEN_HASH="${EIGEN_HASH#\"}"
-#EIGEN_HASH=$(cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
 
 if [[ -z "${EIGEN_HASH}" ]]; then
     echo >&2 "Eigen hash does not exist."
