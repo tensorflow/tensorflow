@@ -252,13 +252,13 @@ class ExponentialMovingAverage(object):
 
     Args:
       var_list: A list of Variable or Tensor objects. The variables
-        and Tensors must be of types float32 or float64.
+        and Tensors must be of types float16, float32, or float64.
 
     Returns:
       An Operation that updates the moving averages.
 
     Raises:
-      TypeError: If the arguments are not all float32 or float64.
+      TypeError: If the arguments are not all float16, float32, or float64.
       ValueError: If the moving average of one of the variables is already
         being computed.
     """
