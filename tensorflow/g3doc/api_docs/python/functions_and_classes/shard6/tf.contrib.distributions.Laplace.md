@@ -10,7 +10,7 @@ Note that the Laplace distribution can be thought of two exponential
 distributions spliced together "back-to-back."
 - - -
 
-#### `tf.contrib.distributions.Laplace.__init__(loc, scale, strict=True, strict_statistics=True, name='Laplace')` {#Laplace.__init__}
+#### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=True, allow_nan_stats=False, name='Laplace')` {#Laplace.__init__}
 
 Construct Laplace distribution with parameters `loc` and `scale`.
 
@@ -24,11 +24,12 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: `float` or `double`, positive-valued tensor which characterzes the
     spread of the distribution.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -36,6 +37,13 @@ broadcasting (e.g., `loc / scale` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `loc` and `scale` are of different dtype.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.allow_nan_stats` {#Laplace.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -332,16 +340,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.strict` {#Laplace.strict}
+#### `tf.contrib.distributions.Laplace.validate_args` {#Laplace.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Laplace.strict_statistics` {#Laplace.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

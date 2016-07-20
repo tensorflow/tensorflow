@@ -60,7 +60,7 @@ dist.pdf(x)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Beta.__init__(a, b, strict=True, strict_statistics=True, name='Beta')` {#Beta.__init__}
+#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=True, allow_nan_stats=False, name='Beta')` {#Beta.__init__}
 
 Initialize a batch of Beta distributions.
 
@@ -74,12 +74,12 @@ Initialize a batch of Beta distributions.
 *  <b>`b`</b>: Positive `float` or `double` tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `a` and `b`, and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `a` and `b`,
+    and `x` in `prob` and `log_prob`.  If False, correct behavior is not
     guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -100,6 +100,13 @@ dist = Beta([1.0, 2.0], [4.0, 5.0])
 #### `tf.contrib.distributions.Beta.a` {#Beta.a}
 
 Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.allow_nan_stats` {#Beta.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -262,7 +269,7 @@ Mode of the distribution.
 
 Note that the mode for the Beta distribution is only defined
 when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -370,16 +377,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.strict` {#Beta.strict}
+#### `tf.contrib.distributions.Beta.validate_args` {#Beta.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.strict_statistics` {#Beta.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

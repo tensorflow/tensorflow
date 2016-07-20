@@ -45,7 +45,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, strict_statistics=True, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=True, allow_nan_stats=False, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -63,11 +63,12 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
-*  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
-    and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
+    `validate_args` is False and inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -75,6 +76,13 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.allow_nan_stats` {#StudentT.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -203,7 +211,7 @@ Log prob of observations in `x` under these Student's t-distribution(s).
 Mean of the distribution.
 
 The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
-`self.strict_statistics=True`, then an exception will be raised rather than
+`self.allow_nan_stats=False`, then an exception will be raised rather than
 returning `NaN`.
 
 ##### Args:
@@ -330,16 +338,9 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.strict` {#StudentT.strict}
+#### `tf.contrib.distributions.StudentT.validate_args` {#StudentT.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.strict_statistics` {#StudentT.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -357,7 +358,7 @@ NaN, when df <= 1
 ```
 
 The NaN state occurs because mean is undefined for `df <= 1`, and if
-`self.strict_statistics` is `True`, an exception will be raised if any batch
+`self.allow_nan_stats` is `False`, an exception will be raised if any batch
 members fall into this state.
 
 ##### Args:

@@ -3,7 +3,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, strict_statistics=True, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=True, allow_nan_stats=False, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -33,18 +33,18 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
 *  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-*  <b>`strict`</b>: Whether to assert that `a > b`. If `strict` is False and inputs
-    are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is False
+    and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `strict=True`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=True`.
 
 
 - - -
@@ -52,6 +52,13 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 #### `tf.contrib.distributions.Uniform.a` {#Uniform.a}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.allow_nan_stats` {#Uniform.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -288,16 +295,9 @@ Sample `n` observations from the Uniform Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.strict` {#Uniform.strict}
+#### `tf.contrib.distributions.Uniform.validate_args` {#Uniform.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.strict_statistics` {#Uniform.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

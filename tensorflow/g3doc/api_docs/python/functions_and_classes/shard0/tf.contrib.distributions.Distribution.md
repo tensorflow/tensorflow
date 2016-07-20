@@ -84,11 +84,11 @@ a = tf.exp(tf.matmul(logits, weights_a))
 b = tf.exp(tf.matmul(logits, weights_b))
 
 # Will raise exception if ANY batch member has a < 1 or b < 1.
-dist = distributions.beta(a, b, strict_statistics=True)  # default is True
+dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
 mode = dist.mode().eval()
 
 # Will return NaN for batch members with either a < 1 or b < 1.
-dist = distributions.beta(a, b, strict_statistics=False)
+dist = distributions.beta(a, b, allow_nan_stats=True)
 mode = dist.mode().eval()
 ```
 
@@ -97,9 +97,16 @@ In all cases, an exception is raised if *invalid* parameters are passed, e.g.
 ```python
 # Will raise an exception if any Op is run.
 negative_a = -1.0 * a  # beta distribution by definition has a > 0.
-dist = distributions.beta(negative_a, b, strict_statistics=False)
+dist = distributions.beta(negative_a, b, allow_nan_stats=True)
 dist.mean().eval()
 ```
+- - -
+
+#### `tf.contrib.distributions.Distribution.allow_nan_stats` {#Distribution.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
 - - -
 
 #### `tf.contrib.distributions.Distribution.batch_shape(name='batch_shape')` {#Distribution.batch_shape}
@@ -311,16 +318,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.strict` {#Distribution.strict}
+#### `tf.contrib.distributions.Distribution.validate_args` {#Distribution.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Distribution.strict_statistics` {#Distribution.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

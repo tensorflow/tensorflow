@@ -9,7 +9,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, strict=True, strict_statistics=True, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -21,12 +21,19 @@ Initialize Categorical distributions using class log-probabilities.
       index into a batch of independent distributions and the last dimension
       indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`strict`</b>: Unused in this distribution.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Unused in this distribution.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.allow_nan_stats` {#Categorical.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -248,16 +255,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.strict` {#Categorical.strict}
+#### `tf.contrib.distributions.Categorical.validate_args` {#Categorical.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.strict_statistics` {#Categorical.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

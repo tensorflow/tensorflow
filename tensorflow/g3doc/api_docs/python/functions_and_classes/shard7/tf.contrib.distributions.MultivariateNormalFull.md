@@ -41,7 +41,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, strict=True, strict_statistics=True, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
+#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -54,11 +54,12 @@ User must provide means `mu` and `sigma`, the mean and covariance.
     `b >= 0`.
 *  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -66,6 +67,13 @@ User must provide means `mu` and `sigma`, the mean and covariance.
 
 
 *  <b>`TypeError`</b>: If `mu` and `sigma` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.allow_nan_stats` {#MultivariateNormalFull.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -332,16 +340,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.strict` {#MultivariateNormalFull.strict}
+#### `tf.contrib.distributions.MultivariateNormalFull.validate_args` {#MultivariateNormalFull.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalFull.strict_statistics` {#MultivariateNormalFull.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

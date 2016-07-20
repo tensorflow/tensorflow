@@ -67,7 +67,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -84,14 +84,14 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.  If `strict` is
-    `False`, this assertion is turned off.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
-    guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    but are only a distribution over non-negative integers.  If
+    `validate_args` is `False`, this assertion is turned off.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
+    `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
+    not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -106,6 +106,13 @@ dist = DirichletMultinomial(2.0, [1.1, 2.0])
 # Define a 2-batch of 3-class distributions.
 dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 ```
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.allow_nan_stats` {#DirichletMultinomial.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -383,16 +390,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
+#### `tf.contrib.distributions.DirichletMultinomial.validate_args` {#DirichletMultinomial.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

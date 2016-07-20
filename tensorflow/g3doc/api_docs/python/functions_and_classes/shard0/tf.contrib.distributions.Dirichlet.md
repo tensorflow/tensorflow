@@ -61,7 +61,7 @@ dist.prob(x)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.__init__(alpha, strict=True, strict_statistics=True, name='Dirichlet')` {#Dirichlet.__init__}
+#### `tf.contrib.distributions.Dirichlet.__init__(alpha, validate_args=True, allow_nan_stats=False, name='Dirichlet')` {#Dirichlet.__init__}
 
 Initialize a batch of Dirichlet distributions.
 
@@ -71,12 +71,12 @@ Initialize a batch of Dirichlet distributions.
 *  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet distributions.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
     `x` in `prob` and `log_prob`.  If False, correct behavior is not
     guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -91,6 +91,13 @@ dist = Dirichlet([1.1, 2.0])
 # Define a 2-batch of 3-class distributions.
 dist = Dirichlet([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 ```
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.allow_nan_stats` {#Dirichlet.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -252,7 +259,7 @@ Mode of the distribution.
 
 Note that the mode for the Beta distribution is only defined
 when `alpha > 1`. This returns the mode when `alpha > 1`,
-and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -359,16 +366,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.strict` {#Dirichlet.strict}
+#### `tf.contrib.distributions.Dirichlet.validate_args` {#Dirichlet.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.strict_statistics` {#Dirichlet.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

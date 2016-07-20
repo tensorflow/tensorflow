@@ -62,6 +62,13 @@ Construct a Transformed Distribution.
 
 - - -
 
+#### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.TransformedDistribution.base_distribution` {#TransformedDistribution.base_distribution}
 
 Base distribution, p(x).
@@ -333,23 +340,16 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.strict` {#TransformedDistribution.strict}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.strict_statistics` {#TransformedDistribution.strict_statistics}
-
-
-
-
-- - -
-
 #### `tf.contrib.distributions.TransformedDistribution.transform` {#TransformedDistribution.transform}
 
 Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
+
+
 
 
 - - -

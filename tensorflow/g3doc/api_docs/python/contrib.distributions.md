@@ -102,11 +102,11 @@ a = tf.exp(tf.matmul(logits, weights_a))
 b = tf.exp(tf.matmul(logits, weights_b))
 
 # Will raise exception if ANY batch member has a < 1 or b < 1.
-dist = distributions.beta(a, b, strict_statistics=True)  # default is True
+dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
 mode = dist.mode().eval()
 
 # Will return NaN for batch members with either a < 1 or b < 1.
-dist = distributions.beta(a, b, strict_statistics=False)
+dist = distributions.beta(a, b, allow_nan_stats=True)
 mode = dist.mode().eval()
 ```
 
@@ -115,9 +115,16 @@ In all cases, an exception is raised if *invalid* parameters are passed, e.g.
 ```python
 # Will raise an exception if any Op is run.
 negative_a = -1.0 * a  # beta distribution by definition has a > 0.
-dist = distributions.beta(negative_a, b, strict_statistics=False)
+dist = distributions.beta(negative_a, b, allow_nan_stats=True)
 dist.mean().eval()
 ```
+- - -
+
+#### `tf.contrib.distributions.Distribution.allow_nan_stats` {#Distribution.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
 - - -
 
 #### `tf.contrib.distributions.Distribution.batch_shape(name='batch_shape')` {#Distribution.batch_shape}
@@ -329,16 +336,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.strict` {#Distribution.strict}
+#### `tf.contrib.distributions.Distribution.validate_args` {#Distribution.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Distribution.strict_statistics` {#Distribution.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -366,7 +366,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
@@ -381,11 +381,11 @@ Construct Bernoulli distributions.
       event. Each entry in the `Tensor` parameterizes an independent
       Bernoulli distribution.
 *  <b>`dtype`</b>: dtype for samples.
-*  <b>`strict`</b>: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
-    return nans.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `0 <= p <= 1`. If not validate_args,
+   `log_pmf` may return nans.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution.
 
@@ -393,6 +393,13 @@ Construct Bernoulli distributions.
 
 
 *  <b>`ValueError`</b>: If p and logits are passed, or if neither are passed.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.allow_nan_stats` {#Bernoulli.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -664,16 +671,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.strict` {#Bernoulli.strict}
+#### `tf.contrib.distributions.Bernoulli.validate_args` {#Bernoulli.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Bernoulli.strict_statistics` {#Bernoulli.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -760,7 +760,7 @@ dist.pdf(x)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Beta.__init__(a, b, strict=True, strict_statistics=True, name='Beta')` {#Beta.__init__}
+#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=True, allow_nan_stats=False, name='Beta')` {#Beta.__init__}
 
 Initialize a batch of Beta distributions.
 
@@ -774,12 +774,12 @@ Initialize a batch of Beta distributions.
 *  <b>`b`</b>: Positive `float` or `double` tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `a` and `b`, and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `a` and `b`,
+    and `x` in `prob` and `log_prob`.  If False, correct behavior is not
     guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -800,6 +800,13 @@ dist = Beta([1.0, 2.0], [4.0, 5.0])
 #### `tf.contrib.distributions.Beta.a` {#Beta.a}
 
 Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.allow_nan_stats` {#Beta.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -962,7 +969,7 @@ Mode of the distribution.
 
 Note that the mode for the Beta distribution is only defined
 when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -1070,16 +1077,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Beta.strict` {#Beta.strict}
+#### `tf.contrib.distributions.Beta.validate_args` {#Beta.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Beta.strict_statistics` {#Beta.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1105,7 +1105,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, strict=True, strict_statistics=True, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -1117,12 +1117,19 @@ Initialize Categorical distributions using class log-probabilities.
       index into a batch of independent distributions and the last dimension
       indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`strict`</b>: Unused in this distribution.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Unused in this distribution.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.allow_nan_stats` {#Categorical.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1344,16 +1351,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.strict` {#Categorical.strict}
+#### `tf.contrib.distributions.Categorical.validate_args` {#Categorical.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.strict_statistics` {#Categorical.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1378,7 +1378,7 @@ Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, strict_statistics=True, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, validate_args=True, allow_nan_stats=False, name='Chi2')` {#Chi2.__init__}
 
 Construct Chi2 distributions with parameter `df`.
 
@@ -1387,14 +1387,21 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`. If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
+    methods `prob(x)` and `log_prob(x)`. If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.allow_nan_stats` {#Chi2.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1613,7 +1620,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -1726,16 +1733,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.strict` {#Chi2.strict}
+#### `tf.contrib.distributions.Chi2.validate_args` {#Chi2.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.strict_statistics` {#Chi2.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1760,7 +1760,7 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, strict_statistics=True, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=True, allow_nan_stats=False, name='Exponential')` {#Exponential.__init__}
 
 Construct Exponential distribution with parameter `lam`.
 
@@ -1769,14 +1769,21 @@ Construct Exponential distribution with parameter `lam`.
 
 *  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
     `lam` must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
+    methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.allow_nan_stats` {#Exponential.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1995,7 +2002,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -2105,16 +2112,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.strict` {#Exponential.strict}
+#### `tf.contrib.distributions.Exponential.validate_args` {#Exponential.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.strict_statistics` {#Exponential.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2151,7 +2151,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, strict=True, strict_statistics=True, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -2167,12 +2167,12 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
@@ -2180,6 +2180,13 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.allow_nan_stats` {#Gamma.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2391,7 +2398,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -2504,16 +2511,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.strict` {#Gamma.strict}
+#### `tf.contrib.distributions.Gamma.validate_args` {#Gamma.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Gamma.strict_statistics` {#Gamma.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2550,7 +2550,7 @@ dist2 = InverseGamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, strict=True, strict_statistics=True, name='InverseGamma')` {#InverseGamma.__init__}
+#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='InverseGamma')` {#InverseGamma.__init__}
 
 Construct InverseGamma distributions with parameters `alpha` and `beta`.
 
@@ -2565,12 +2565,12 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
     alpha must contain only positive values.
 *  <b>`beta`</b>: `float` or `double` tensor, the scale params of the distribution(s).
     beta must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
@@ -2578,6 +2578,13 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.allow_nan_stats` {#InverseGamma.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2782,8 +2789,8 @@ Log prob of observations in `x` under these InverseGamma distribution(s).
 Mean of each batch member.
 
 The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-when `alpha > 1`, and `NaN` otherwise.  If `self.strict_statistics` is
-`True`, an exception will be raised rather than returning `NaN`
+when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
+`False`, an exception will be raised rather than returning `NaN`
 
 ##### Args:
 
@@ -2913,16 +2920,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.strict` {#InverseGamma.strict}
+#### `tf.contrib.distributions.InverseGamma.validate_args` {#InverseGamma.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGamma.strict_statistics` {#InverseGamma.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2932,7 +2932,7 @@ Boolean describing behavior when a stat is undefined for batch member.
 Variance of each batch member.
 
 Variance for inverse gamma is defined only for `alpha > 2`. If
-`self.strict_statistics` is `True`, an exception will be raised rather
+`self.allow_nan_stats` is `False`, an exception will be raised rather
 than returning `NaN`.
 
 ##### Args:
@@ -2962,7 +2962,7 @@ Note that the Laplace distribution can be thought of two exponential
 distributions spliced together "back-to-back."
 - - -
 
-#### `tf.contrib.distributions.Laplace.__init__(loc, scale, strict=True, strict_statistics=True, name='Laplace')` {#Laplace.__init__}
+#### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=True, allow_nan_stats=False, name='Laplace')` {#Laplace.__init__}
 
 Construct Laplace distribution with parameters `loc` and `scale`.
 
@@ -2976,11 +2976,12 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: `float` or `double`, positive-valued tensor which characterzes the
     spread of the distribution.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -2988,6 +2989,13 @@ broadcasting (e.g., `loc / scale` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `loc` and `scale` are of different dtype.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.allow_nan_stats` {#Laplace.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3284,16 +3292,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.strict` {#Laplace.strict}
+#### `tf.contrib.distributions.Laplace.validate_args` {#Laplace.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Laplace.strict_statistics` {#Laplace.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3352,7 +3353,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, strict=True, strict_statistics=True, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -3365,11 +3366,11 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 *  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
 *  <b>`sigma`</b>: `float` or `double` tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `sigma > 0`. If `strict` is False,
-    correct output is not guaranteed when input is invalid.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `sigma > 0`. If `validate_args` is
+    False, correct output is not guaranteed when input is invalid.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -3377,6 +3378,13 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.allow_nan_stats` {#Normal.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3666,16 +3674,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.strict` {#Normal.strict}
+#### `tf.contrib.distributions.Normal.validate_args` {#Normal.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.strict_statistics` {#Normal.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3737,7 +3738,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, strict_statistics=True, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=True, allow_nan_stats=False, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -3755,11 +3756,12 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
-*  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
-    and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
+    `validate_args` is False and inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -3767,6 +3769,13 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.allow_nan_stats` {#StudentT.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3895,7 +3904,7 @@ Log prob of observations in `x` under these Student's t-distribution(s).
 Mean of the distribution.
 
 The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
-`self.strict_statistics=True`, then an exception will be raised rather than
+`self.allow_nan_stats=False`, then an exception will be raised rather than
 returning `NaN`.
 
 ##### Args:
@@ -4022,16 +4031,9 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.strict` {#StudentT.strict}
+#### `tf.contrib.distributions.StudentT.validate_args` {#StudentT.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.strict_statistics` {#StudentT.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4049,7 +4051,7 @@ NaN, when df <= 1
 ```
 
 The NaN state occurs because mean is undefined for `df <= 1`, and if
-`self.strict_statistics` is `True`, an exception will be raised if any batch
+`self.allow_nan_stats` is `False`, an exception will be raised if any batch
 members fall into this state.
 
 ##### Args:
@@ -4072,7 +4074,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, strict_statistics=True, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=True, allow_nan_stats=False, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -4102,18 +4104,18 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
 *  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-*  <b>`strict`</b>: Whether to assert that `a > b`. If `strict` is False and inputs
-    are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is False
+    and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `strict=True`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=True`.
 
 
 - - -
@@ -4121,6 +4123,13 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 #### `tf.contrib.distributions.Uniform.a` {#Uniform.a}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.allow_nan_stats` {#Uniform.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4357,16 +4366,9 @@ Sample `n` observations from the Uniform Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.strict` {#Uniform.strict}
+#### `tf.contrib.distributions.Uniform.validate_args` {#Uniform.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.strict_statistics` {#Uniform.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4429,7 +4431,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, strict=True, strict_statistics=True, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
+#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -4442,11 +4444,12 @@ User must provide means `mu` and `sigma`, the mean and covariance.
     `b >= 0`.
 *  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -4454,6 +4457,13 @@ User must provide means `mu` and `sigma`, the mean and covariance.
 
 
 *  <b>`TypeError`</b>: If `mu` and `sigma` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.allow_nan_stats` {#MultivariateNormalFull.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4720,16 +4730,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.strict` {#MultivariateNormalFull.strict}
+#### `tf.contrib.distributions.MultivariateNormalFull.validate_args` {#MultivariateNormalFull.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalFull.strict_statistics` {#MultivariateNormalFull.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4791,7 +4794,7 @@ Trainable (batch) Choesky matrices can be created with
 `tf.contrib.distributions.batch_matrix_diag_transform()`
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, strict=True, strict_statistics=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=True, allow_nan_stats=False, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -4805,11 +4808,12 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
     `b >= 0`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`,
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -4817,6 +4821,13 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
 
 
 *  <b>`TypeError`</b>: If `mu` and `chol` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.allow_nan_stats` {#MultivariateNormalCholesky.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -5083,16 +5094,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.strict` {#MultivariateNormalCholesky.strict}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.validate_args` {#MultivariateNormalCholesky.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalCholesky.strict_statistics` {#MultivariateNormalCholesky.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -5229,7 +5233,7 @@ dist.prob(x)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.__init__(alpha, strict=True, strict_statistics=True, name='Dirichlet')` {#Dirichlet.__init__}
+#### `tf.contrib.distributions.Dirichlet.__init__(alpha, validate_args=True, allow_nan_stats=False, name='Dirichlet')` {#Dirichlet.__init__}
 
 Initialize a batch of Dirichlet distributions.
 
@@ -5239,12 +5243,12 @@ Initialize a batch of Dirichlet distributions.
 *  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet distributions.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
     `x` in `prob` and `log_prob`.  If False, correct behavior is not
     guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -5259,6 +5263,13 @@ dist = Dirichlet([1.1, 2.0])
 # Define a 2-batch of 3-class distributions.
 dist = Dirichlet([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 ```
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.allow_nan_stats` {#Dirichlet.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -5420,7 +5431,7 @@ Mode of the distribution.
 
 Note that the mode for the Beta distribution is only defined
 when `alpha > 1`. This returns the mode when `alpha > 1`,
-and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -5527,16 +5538,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.strict` {#Dirichlet.strict}
+#### `tf.contrib.distributions.Dirichlet.validate_args` {#Dirichlet.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Dirichlet.strict_statistics` {#Dirichlet.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -5620,7 +5624,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -5637,14 +5641,14 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.  If `strict` is
-    `False`, this assertion is turned off.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
-    guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    but are only a distribution over non-negative integers.  If
+    `validate_args` is `False`, this assertion is turned off.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
+    `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
+    not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -5659,6 +5663,13 @@ dist = DirichletMultinomial(2.0, [1.1, 2.0])
 # Define a 2-batch of 3-class distributions.
 dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 ```
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.allow_nan_stats` {#DirichletMultinomial.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -5936,16 +5947,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
+#### `tf.contrib.distributions.DirichletMultinomial.validate_args` {#DirichletMultinomial.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -6023,6 +6027,13 @@ Construct a Transformed Distribution.
 
 *  <b>`TypeError`</b>: if `base_dist_cls` is not a subclass of
       `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
+
+
 
 
 - - -
@@ -6298,23 +6309,16 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.strict` {#TransformedDistribution.strict}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.strict_statistics` {#TransformedDistribution.strict_statistics}
-
-
-
-
-- - -
-
 #### `tf.contrib.distributions.TransformedDistribution.transform` {#TransformedDistribution.transform}
 
 Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
+
+
 
 
 - - -
