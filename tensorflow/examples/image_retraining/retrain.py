@@ -406,6 +406,9 @@ def read_list_of_floats_from_file(file_path):
   return list(s)
 	
 
+bottleneck_path_2_bottleneck_values = {}
+
+	
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                              category, bottleneck_dir, jpeg_data_tensor,
                              bottleneck_tensor):
@@ -437,20 +440,39 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
   ensure_dir_exists(sub_dir_path)
   bottleneck_path = get_bottleneck_path(image_lists, label_name, index,
                                         bottleneck_dir, category)
-  if not os.path.exists(bottleneck_path):
-    print('Creating bottleneck at ' + bottleneck_path)
-    image_path = get_image_path(image_lists, label_name, index, image_dir,
-                                category)
-    if not gfile.Exists(image_path):
-      tf.logging.fatal('File does not exist %s', image_path)
-    image_data = gfile.FastGFile(image_path, 'rb').read()
-    bottleneck_values = run_bottleneck_on_image(sess, image_data,
-                                                jpeg_data_tensor,
-                                                bottleneck_tensor)
-    bottleneck_values = read_list_of_floats_from_file(bottleneck_path)	
+										
+  #if key in map, take it form there and  return
+  #else
+  #     if file does not exist
+  #         create bottleneck file
+  #     read file from disk
+  #     put bottleneck values to map
+  #     return
+  
+  if bottleneck_path in bottleneck_path_2_bottleneck_values:
+      assert (bottleneck_path in bottleneck_path_2_bottleneck_values), "Attempt to use unassigned key value."
+      return bottleneck_path_2_bottleneck_values[bottleneck_path]
+  else:
+      if not os.path.exists(bottleneck_path):
+        print('Creating bottleneck at ' + bottleneck_path)
+        image_path = get_image_path(image_lists, label_name, index, image_dir,
+                                    category)
+        if not gfile.Exists(image_path):
+          tf.logging.fatal('File does not exist %s', image_path)
+        image_data = gfile.FastGFile(image_path, 'rb').read()
+        bottleneck_values = run_bottleneck_on_image(sess, image_data,
+                                                    jpeg_data_tensor,
+                                                    bottleneck_tensor)
+        write_list_of_floats_to_file(bottleneck_values, bottleneck_path)
 
-  bottleneck_values = read_list_of_floats_from_file(bottleneck_path)  
-  return bottleneck_values
+      bottleneck_values = read_list_of_floats_from_file(bottleneck_path)
+
+      assert(not (bottleneck_path in bottleneck_path_2_bottleneck_values)), "Attempt to overwrite map value."
+
+      bottleneck_path_2_bottleneck_values[bottleneck_path] = bottleneck_values
+
+      return bottleneck_values
+
 
 
 def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
