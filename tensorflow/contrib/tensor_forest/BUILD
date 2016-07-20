@@ -267,3 +267,22 @@ py_test(
         "//tensorflow/python:platform_test",
     ],
 )
+
+cc_test(
+    name = "training_ops_test",
+    size = "small",
+    srcs = [
+        "core/ops/training_ops_test.cc",
+        ":custom_op_sources",
+    ],
+    deps = [
+        ":tree_utils",
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//third_party/eigen3",
+    ],
+)

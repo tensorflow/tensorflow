@@ -100,7 +100,7 @@ def _ScatterAddNdimShape(unused_op):
 @ops.RegisterShape('UpdateFertileSlots')
 def _UpdateFertileSlotsShape(unused_op):
   """Shape function for UpdateFertileSlots Op."""
-  return [[None, 2], [None], [None]]
+  return [[2, None], [None], [None]]
 
 
 # Workaround for the fact that importing tensorflow imports contrib

@@ -22,12 +22,17 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 
 
 namespace tensorflow {
+
+typedef shape_inference::Dimension Dimension;
+typedef shape_inference::InferenceContext InferenceContext;
+typedef shape_inference::Shape Shape;
 
 using gtl::TopN;
 using tensorforest::CheckTensorBounds;
@@ -46,6 +51,12 @@ REGISTER_OP("UpdateFertileSlots")
     .Output("node_map_updates: int32")
     .Output("accumulators_cleared: int32")
     .Output("accumulators_allocated: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->MakeDim(2), InferenceContext::kUnknownDim));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Updates accumulator slots to reflect finished or newly fertile nodes.
 

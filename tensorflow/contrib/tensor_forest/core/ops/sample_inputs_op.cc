@@ -21,12 +21,17 @@
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+
+typedef shape_inference::Dimension Dimension;
+typedef shape_inference::InferenceContext InferenceContext;
+typedef shape_inference::Shape Shape;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
@@ -45,6 +50,16 @@ REGISTER_OP("SampleInputs")
     .Output("accumulators_to_update: int32")
     .Output("new_split_feature_rows: int32")
     .Output("new_split_threshold_rows: float")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* candidate_split_features;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(6), 2, &candidate_split_features));
+      const Dimension* split_dim = c->Dim(candidate_split_features, 1);
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->Matrix(InferenceContext::kUnknownDim, split_dim));
+      c->set_output(2, c->Matrix(InferenceContext::kUnknownDim, split_dim));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Initializes candidate splits for newly fertile nodes.
 
