@@ -97,7 +97,8 @@ class Beta(distribution.Distribution):
   ```
   """
 
-  def __init__(self, a, b, strict=True, strict_statistics=True, name="Beta"):
+  def __init__(self, a, b, validate_args=True, allow_nan_stats=False,
+               name="Beta"):
     """Initialize a batch of Beta distributions.
 
     Args:
@@ -108,12 +109,12 @@ class Beta(distribution.Distribution):
       b:  Positive `float` or `double` tensor with shape broadcastable to
         `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different Beta distributions.
-      strict: Whether to assert valid values for parameters `a` and `b`, and
-        `x` in `prob` and `log_prob`.  If False, correct behavior is not
+      validate_args: Whether to assert valid values for parameters `a` and `b`,
+        and `x` in `prob` and `log_prob`.  If False, correct behavior is not
         guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
@@ -130,7 +131,7 @@ class Beta(distribution.Distribution):
     with ops.op_scope([a, b], name):
       with ops.control_dependencies([
           check_ops.assert_positive(a),
-          check_ops.assert_positive(b)] if strict else []):
+          check_ops.assert_positive(b)] if validate_args else []):
         a = array_ops.identity(a, name="a")
         b = array_ops.identity(b, name="b")
 
@@ -143,8 +144,8 @@ class Beta(distribution.Distribution):
 
       self._get_batch_shape = self._a_b_sum.get_shape()
       self._get_event_shape = tensor_shape.TensorShape([])
-      self._strict = strict
-      self._strict_statistics = strict_statistics
+      self._validate_args = validate_args
+      self._allow_nan_stats = allow_nan_stats
 
   @property
   def a(self):
@@ -167,14 +168,14 @@ class Beta(distribution.Distribution):
     return self._a_b_sum.dtype
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   def batch_shape(self, name="batch_shape"):
     """Batch dimensions of this instance as a 1-D int32 `Tensor`.
@@ -249,7 +250,7 @@ class Beta(distribution.Distribution):
 
     Note that the mode for the Beta distribution is only defined
     when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-    and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+    and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
     will be raised rather than returning `NaN`.
 
     Args:
@@ -266,17 +267,17 @@ class Beta(distribution.Distribution):
         one = math_ops.cast(1, self.dtype)
         mode = (a - 1)/ (a_b_sum - 2)
 
-        if self.strict_statistics:
-          return control_flow_ops.with_dependencies([
-              check_ops.assert_less(one, a),
-              check_ops.assert_less(one, b)], mode)
-        else:
+        if self.allow_nan_stats:
           return math_ops.select(
               math_ops.logical_and(
                   math_ops.greater(a, 1), math_ops.greater(b, 1)),
               mode,
               (constant_op.constant(float("NaN"), dtype=self.dtype) *
                array_ops.ones_like(a_b_sum, dtype=self.dtype)))
+        else:
+          return control_flow_ops.with_dependencies([
+              check_ops.assert_less(one, a),
+              check_ops.assert_less(one, b)], mode)
 
   def entropy(self, name="entropy"):
     """Entropy of the distribution in nats."""
@@ -389,5 +390,5 @@ class Beta(distribution.Distribution):
     dependencies = [
         check_ops.assert_positive(x),
         check_ops.assert_less(x, math_ops.cast(
-            1, self.dtype))] if self.strict else []
+            1, self.dtype))] if self.validate_args else []
     return control_flow_ops.with_dependencies(dependencies, x)

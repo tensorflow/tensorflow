@@ -243,12 +243,12 @@ class TransformedDistribution(distribution.Distribution):
     return self._base_dist.is_reparameterized
 
   @property
-  def strict_statistics(self):
-    return self._base_dist.strict_statistics
+  def allow_nan_stats(self):
+    return self._base_dist.allow_nan_stats
 
   @property
-  def strict(self):
-    return self._base_dist.strict
+  def validate_args(self):
+    return self._base_dist.validate_args
 
   @property
   def is_continuous(self):

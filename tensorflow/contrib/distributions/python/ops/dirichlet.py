@@ -119,7 +119,10 @@ class Dirichlet(distribution.Distribution):
   ```
   """
 
-  def __init__(self, alpha, strict=True, strict_statistics=True,
+  def __init__(self,
+               alpha,
+               validate_args=True,
+               allow_nan_stats=False,
                name="Dirichlet"):
     """Initialize a batch of Dirichlet distributions.
 
@@ -127,12 +130,12 @@ class Dirichlet(distribution.Distribution):
       alpha:  Positive `float` or `double` tensor with shape broadcastable to
         `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different `k` class Dirichlet distributions.
-      strict: Whether to assert valid values for parameters `alpha` and
+      validate_args: Whether to assert valid values for parameters `alpha` and
         `x` in `prob` and `log_prob`.  If False, correct behavior is not
         guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
@@ -150,8 +153,9 @@ class Dirichlet(distribution.Distribution):
     with ops.op_scope([alpha], name):
       alpha = ops.convert_to_tensor(alpha, name="alpha_before_deps")
       with ops.control_dependencies([
-          check_ops.assert_positive(alpha),
-          check_ops.assert_rank_at_least(alpha, 1)] if strict else []):
+          check_ops.assert_positive(alpha), check_ops.assert_rank_at_least(
+              alpha, 1)
+      ] if validate_args else []):
         alpha = array_ops.identity(alpha, name="alpha")
 
       self._alpha = alpha
@@ -164,8 +168,8 @@ class Dirichlet(distribution.Distribution):
 
       self._get_batch_shape = self._alpha_0.get_shape()
       self._get_event_shape = self._alpha.get_shape().with_rank_at_least(1)[-1:]
-      self._strict = strict
-      self._strict_statistics = strict_statistics
+      self._validate_args = validate_args
+      self._allow_nan_stats = allow_nan_stats
 
   @property
   def alpha(self):
@@ -183,14 +187,14 @@ class Dirichlet(distribution.Distribution):
     return self._alpha.dtype
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   def batch_shape(self, name="batch_shape"):
     """Batch dimensions of this instance as a 1-D int32 `Tensor`.
@@ -274,7 +278,7 @@ class Dirichlet(distribution.Distribution):
 
     Note that the mode for the Beta distribution is only defined
     when `alpha > 1`. This returns the mode when `alpha > 1`,
-    and NaN otherwise. If `self.strict_statistics` is `True`, an exception
+    and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
     will be raised rather than returning `NaN`.
 
     Args:
@@ -290,15 +294,16 @@ class Dirichlet(distribution.Distribution):
             array_ops.expand_dims(self._alpha_0, -1) - math_ops.cast(
                 self.event_shape()[0], self.dtype))
 
-        if self.strict_statistics:
-          return control_flow_ops.with_dependencies([
-              check_ops.assert_less(one, self._alpha)], mode)
-        else:
+        if self.allow_nan_stats:
           return math_ops.select(
               math_ops.greater(self._alpha, 1),
               mode,
               (constant_op.constant(float("NaN"), dtype=self.dtype) *
                array_ops.ones_like(self._alpha, dtype=self.dtype)))
+        else:
+          return control_flow_ops.with_dependencies([
+              check_ops.assert_less(one, self._alpha)
+          ], mode)
 
   def entropy(self, name="entropy"):
     """Entropy of the distribution in nats."""
@@ -401,7 +406,7 @@ class Dirichlet(distribution.Distribution):
     x = ops.convert_to_tensor(x, name="x_before_deps")
     candidate_one = math_ops.reduce_sum(x, reduction_indices=[-1])
     one = math_ops.cast(1., self.dtype)
-    dependencies = [check_ops.assert_positive(x),
-                    check_ops.assert_less(x, one),
-                    _assert_close(one, candidate_one)] if self.strict else []
+    dependencies = [check_ops.assert_positive(x), check_ops.assert_less(x, one),
+                    _assert_close(one, candidate_one)
+                   ] if self.validate_args else []
     return control_flow_ops.with_dependencies(dependencies, x)

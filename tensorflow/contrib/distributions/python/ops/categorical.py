@@ -45,8 +45,8 @@ class Categorical(distribution.Distribution):
       self,
       logits,
       dtype=dtypes.int32,
-      strict=True,
-      strict_statistics=True,
+      validate_args=True,
+      allow_nan_stats=False,
       name="Categorical"):
     """Initialize Categorical distributions using class log-probabilities.
 
@@ -56,17 +56,17 @@ class Categorical(distribution.Distribution):
           index into a batch of independent distributions and the last dimension
           indexes into the classes.
       dtype: The type of the event samples (default: int32).
-      strict: Unused in this distribution.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      validate_args: Unused in this distribution.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
-    self._strict_statistics = strict_statistics
+    self._allow_nan_stats = allow_nan_stats
     self._name = name
     self._dtype = dtype
-    self._strict = strict
+    self._validate_args = validate_args
     with ops.op_scope([logits], name):
       self._logits = ops.convert_to_tensor(logits, name="logits")
       logits_shape = array_ops.shape(self._logits)
@@ -76,14 +76,14 @@ class Categorical(distribution.Distribution):
       self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):

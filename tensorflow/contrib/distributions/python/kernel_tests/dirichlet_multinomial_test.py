@@ -272,7 +272,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
       counts = [[1., 0], [0., -1]]  # counts should be non-negative.
       n = [-5.3]  # n should be a non negative integer equal to counts.sum.
       dist = tf.contrib.distributions.DirichletMultinomial(
-          n, alpha, strict=False)
+          n, alpha, validate_args=False)
       dist.pmf(counts).eval()  # Should not raise.
 
 

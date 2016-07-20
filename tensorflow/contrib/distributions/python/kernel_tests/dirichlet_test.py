@@ -157,11 +157,11 @@ class DirichletTest(tf.test.TestCase):
       with self.assertRaisesOpError('Condition x < y.*'):
         dirichlet.mode().eval()
 
-  def testDirichletMode_disable_strict_statistics(self):
+  def testDirichletMode_enable_allow_nan_stats(self):
     with self.test_session():
       alpha = np.array([1., 2, 3])
       dirichlet = tf.contrib.distributions.Dirichlet(
-          alpha=alpha, strict_statistics=False)
+          alpha=alpha, allow_nan_stats=True)
       expected_mode = (alpha - 1)/(np.sum(alpha) - 3)
       expected_mode[0] = np.nan
 

@@ -169,7 +169,7 @@ class BernoulliTest(tf.test.TestCase):
 
   def testEntropyWithBatch(self):
     p = [[0.1, 0.7], [0.2, 0.6]]
-    dist = tf.contrib.distributions.Bernoulli(p=p, strict=False)
+    dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=False)
     with self.test_session():
       self.assertAllClose(dist.entropy().eval(), [[entropy(0.1), entropy(0.7)],
                                                   [entropy(0.2), entropy(0.6)]])

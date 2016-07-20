@@ -116,11 +116,11 @@ class Distribution(object):
   b = tf.exp(tf.matmul(logits, weights_b))
 
   # Will raise exception if ANY batch member has a < 1 or b < 1.
-  dist = distributions.beta(a, b, strict_statistics=True)  # default is True
+  dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
   mode = dist.mode().eval()
 
   # Will return NaN for batch members with either a < 1 or b < 1.
-  dist = distributions.beta(a, b, strict_statistics=False)
+  dist = distributions.beta(a, b, allow_nan_stats=True)
   mode = dist.mode().eval()
   ```
 
@@ -129,16 +129,16 @@ class Distribution(object):
   ```python
   # Will raise an exception if any Op is run.
   negative_a = -1.0 * a  # beta distribution by definition has a > 0.
-  dist = distributions.beta(negative_a, b, strict_statistics=False)
+  dist = distributions.beta(negative_a, b, allow_nan_stats=True)
   dist.mean().eval()
   ```
 
   """
 
   @abc.abstractproperty
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    # return self._strict_statistics
+    # return self._allow_nan_stats
     # Notes:
     #
     # When it makes sense, return +- infinity for statistics.  E.g. the variance
@@ -150,19 +150,19 @@ class Distribution(object):
     # it is either + or - infinity), so the variance = E[(X - mean)^2] is also
     # undefined.
     #
-    # Distributions should be initialized with a kwarg "strict_statistics" with
+    # Distributions should be initialized with a kwarg "allow_nan_stats" with
     # the following docstring (refer to above docstring note on undefined
     # statistics for more detail).
-    # strict_statistics:  Boolean, default True.  If True, raise an exception if
+    # allow_nan_stats:  Boolean, default False.  If False, raise an exception if
     #   a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    #   If False, batch members with valid parameters leading to undefined
+    #   If True, batch members with valid parameters leading to undefined
     #   statistics will return NaN for this statistic.
     pass
 
   @abc.abstractproperty
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    # return self._strict.
+    # return self._validate_args.
     pass
 
   @abc.abstractproperty

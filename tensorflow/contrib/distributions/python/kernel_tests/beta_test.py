@@ -193,11 +193,11 @@ class BetaTest(tf.test.TestCase):
       with self.assertRaisesOpError('Condition x < y.*'):
         dist.mode().eval()
 
-  def testBetaMode_disable_strict_statistics(self):
+  def testBetaMode_enable_allow_nan_stats(self):
     with tf.Session():
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
-      dist = tf.contrib.distributions.Beta(a, b, strict_statistics=False)
+      dist = tf.contrib.distributions.Beta(a, b, allow_nan_stats=True)
 
       expected_mode = (a - 1)/(a + b - 2)
       expected_mode[0] = np.nan
@@ -206,7 +206,7 @@ class BetaTest(tf.test.TestCase):
 
       a = np.array([2., 2, 3])
       b = np.array([1., 4, 1.2])
-      dist = tf.contrib.distributions.Beta(a, b, strict_statistics=False)
+      dist = tf.contrib.distributions.Beta(a, b, allow_nan_stats=True)
 
       expected_mode = (a - 1)/(a + b - 2)
       expected_mode[0] = np.nan

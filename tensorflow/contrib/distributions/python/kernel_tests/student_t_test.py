@@ -229,38 +229,38 @@ class StudentTTest(tf.test.TestCase):
     _check2d_rows(tf.contrib.distributions.StudentT(
         df=7., mu=3., sigma=[[2.], [3.], [4.]]))
 
-  def testMeanStrictStatisticsIsTrueWorksWhenAllBatchMembersAreDefined(self):
+  def testMeanAllowNanStatsIsFalseWorksWhenAllBatchMembersAreDefined(self):
     with tf.Session():
       mu = [1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
           df=[3., 5., 7.],
           mu=mu,
-          sigma=[3., 2., 1.])  # strict_statistics=True is the default.
+          sigma=[3., 2., 1.])
       mean = student.mean().eval()
       self.assertAllClose([1., 3.3, 4.4], mean)
 
-  def testMeanStrictStatisticsIsTrueRaisesWhenBatchMemberIsUndefined(self):
+  def testMeanAllowNanStatsIsFalseRaisesWhenBatchMemberIsUndefined(self):
     with tf.Session():
       mu = [1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
           df=[0.5, 5., 7.],
           mu=mu,
-          sigma=[3., 2., 1.])  # strict_statistics=True is the default.
+          sigma=[3., 2., 1.])
       with self.assertRaisesOpError('x < y'):
         student.mean().eval()
 
-  def testMeanStrictStatisticsIsFalseReturnsNaNForUndefinedBatchMembers(self):
+  def testMeanAllowNanStatsIsTrueReturnsNaNForUndefinedBatchMembers(self):
     with tf.Session():
       mu = [-2, 0., 1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
           df=[0.5, 1., 3., 5., 7.],
           mu=mu,
           sigma=[5., 4., 3., 2., 1.],
-          strict_statistics=False)
+          allow_nan_stats=True)
       mean = student.mean().eval()
       self.assertAllClose([np.nan, np.nan, 1., 3.3, 4.4], mean)
 
-  def testVarianceStrictStatisticsFalseReturnsNaNforUndefinedBatchMembers(self):
+  def testVarianceAllowNanStatsTrueReturnsNaNforUndefinedBatchMembers(self):
     with tf.Session():
       # df = 0.5 ==> undefined mean ==> undefined variance.
       # df = 1.5 ==> infinite variance.
@@ -268,7 +268,7 @@ class StudentTTest(tf.test.TestCase):
       mu = [-2, 0., 1., 3.3, 4.4]
       sigma = [5., 4., 3., 2., 1.]
       student = tf.contrib.distributions.StudentT(
-          df=df, mu=mu, sigma=sigma, strict_statistics=False)
+          df=df, mu=mu, sigma=sigma, allow_nan_stats=True)
       var = student.variance().eval()
       ## scipy uses inf for variance when the mean is undefined.  When mean is
       # undefined we say variance is undefined as well.  So test the first
@@ -281,7 +281,7 @@ class StudentTTest(tf.test.TestCase):
           stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
       self.assertAllClose(expected_var, var)
 
-  def testVarianceStrictStatisticsTrueGivesCorrectValueForDefinedBatchMembers(
+  def testVarianceAllowNanStatsFalseGivesCorrectValueForDefinedBatchMembers(
       self):
     with tf.Session():
       # df = 1.5 ==> infinite variance.
@@ -289,25 +289,25 @@ class StudentTTest(tf.test.TestCase):
       mu = [0., 1., 3.3, 4.4]
       sigma = [4., 3., 2., 1.]
       student = tf.contrib.distributions.StudentT(
-          df=df, mu=mu, sigma=sigma)  # strict_statistics=True is the default.
+          df=df, mu=mu, sigma=sigma)
       var = student.variance().eval()
 
       expected_var = [
           stats.t.var(d, loc=m, scale=s) for (d, m, s) in zip(df, mu, sigma)]
       self.assertAllClose(expected_var, var)
 
-  def testVarianceStrictStatisticsTrueRaisesForUndefinedBatchMembers(self):
+  def testVarianceAllowNanStatsFalseRaisesForUndefinedBatchMembers(self):
     with tf.Session():
       # df <= 1 ==> variance not defined
       student = tf.contrib.distributions.StudentT(
-          df=1.0, mu=0.0, sigma=1.0)  # strict_statistics=True is the default.
+          df=1.0, mu=0.0, sigma=1.0)
       with self.assertRaisesOpError('x < y'):
         student.variance().eval()
 
     with tf.Session():
       # df <= 1 ==> variance not defined
       student = tf.contrib.distributions.StudentT(
-          df=0.5, mu=0.0, sigma=1.0)  # strict_statistics=True is the default.
+          df=0.5, mu=0.0, sigma=1.0)
       with self.assertRaisesOpError('x < y'):
         student.variance().eval()
 

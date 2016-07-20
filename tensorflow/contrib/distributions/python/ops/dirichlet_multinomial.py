@@ -133,8 +133,8 @@ class DirichletMultinomial(distribution.Distribution):
                n,
                alpha,
                allow_arbitrary_counts=False,
-               strict=True,
-               strict_statistics=True,
+               validate_args=True,
+               allow_nan_stats=False,
                name='DirichletMultinomial'):
     """Initialize a batch of DirichletMultinomial distributions.
 
@@ -149,14 +149,14 @@ class DirichletMultinomial(distribution.Distribution):
       allow_arbitrary_counts: Boolean. This represents whether the pmf/cdf
         allows for the `counts` tensor to be non-integral values.
         The pmf/cdf are functions that can be evaluated at non-integral values,
-        but are only a distribution over non-negative integers.  If `strict` is
-        `False`, this assertion is turned off.
-      strict: Whether to assert valid values for parameters `alpha` and `n`, and
-        `x` in `prob` and `log_prob`.  If False, correct behavior is not
-        guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+        but are only a distribution over non-negative integers.  If
+        `validate_args` is `False`, this assertion is turned off.
+      validate_args: Whether to assert valid values for parameters `alpha` and
+        `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
+        not guaranteed.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
@@ -171,8 +171,8 @@ class DirichletMultinomial(distribution.Distribution):
     dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     ```
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
+    self._allow_nan_stats = allow_nan_stats
+    self._validate_args = validate_args
     self._name = name
     self._allow_arbitrary_counts = allow_arbitrary_counts
     with ops.op_scope([n, alpha], name):
@@ -208,14 +208,14 @@ class DirichletMultinomial(distribution.Distribution):
     return self._alpha
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):
@@ -364,7 +364,7 @@ class DirichletMultinomial(distribution.Distribution):
   def _check_counts(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
     counts = ops.convert_to_tensor(counts, name='counts')
-    if not self.strict:
+    if not self.validate_args:
       return counts
     candidate_n = math_ops.reduce_sum(counts, reduction_indices=[-1])
     dependencies = [check_ops.assert_non_negative(counts),
@@ -378,7 +378,7 @@ class DirichletMultinomial(distribution.Distribution):
 
   def _check_alpha(self, alpha):
     alpha = ops.convert_to_tensor(alpha, name='alpha')
-    if not self.strict:
+    if not self.validate_args:
       return alpha
     return control_flow_ops.with_dependencies(
         [check_ops.assert_rank_at_least(alpha, 1),
@@ -386,7 +386,7 @@ class DirichletMultinomial(distribution.Distribution):
 
   def _check_n(self, n):
     n = ops.convert_to_tensor(n, name='n')
-    if not self.strict:
+    if not self.validate_args:
       return n
     return control_flow_ops.with_dependencies(
         [check_ops.assert_non_negative(n), _assert_integer_form(n)], n)
