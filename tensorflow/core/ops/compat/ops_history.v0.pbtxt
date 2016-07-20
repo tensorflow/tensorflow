@@ -7330,6 +7330,50 @@ op {
   }
 }
 op {
+  name: "Copy"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "CopyHost"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
   name: "Cos"
   input_arg {
     name: "x"
@@ -7639,6 +7683,50 @@ op {
         type: DT_UINT16
         type: DT_HALF
       }
+    }
+  }
+}
+op {
+  name: "DebugIdentity"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "DebugNanCount"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }

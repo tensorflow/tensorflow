@@ -3816,6 +3816,60 @@ op {
   summary: "Computes the gradients of 3-D convolution with respect to the input."
 }
 op {
+  name: "Copy"
+  input_arg {
+    name: "input"
+    description: "Input tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Output tensor, deep-copied from input."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The name of the input tensor."
+  }
+  summary: "Copy Op."
+  description: "Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the\ndevice on which the tensor is allocated.\n\nUnlike the CopyHost Op, this op does not have HostMemory constraint on its\ninput or output."
+}
+op {
+  name: "CopyHost"
+  input_arg {
+    name: "input"
+    description: "Input tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Output tensor, deep-copied from input."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The name of the input tensor."
+  }
+  summary: "Copy Host Op."
+  description: "Performs CPU-to-CPU deep-copying of tensor.\n\nUnlike the Copy Op, this op has HostMemory constraint on its input or output."
+}
+op {
   name: "Cos"
   input_arg {
     name: "x"
@@ -4085,6 +4139,60 @@ op {
   }
   summary: "Compute the pairwise cross product."
   description: "`a` and `b` must be the same shape; they can either be simple 3-element vectors,\nor any shape where the innermost dimension is 3. In the latter case, each pair\nof corresponding 3-element vectors is cross-multiplied independently."
+}
+op {
+  name: "DebugIdentity"
+  input_arg {
+    name: "input"
+    description: "Input tensor, non-Reference type."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Output tensor that equals the input tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Name of the input tensor."
+  }
+  summary: "Debug Identity Op."
+  description: "Provides an identity mapping of the non-Ref type input tensor for debugging."
+}
+op {
+  name: "DebugNanCount"
+  input_arg {
+    name: "input"
+    description: "Input tensor, non-Reference type."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "An integer output tensor that is the number of NaNs in the input."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Name of the input tensor."
+  }
+  summary: "Debug NaN Value Counter Op"
+  description: "Counts number of NaNs in the input tensor, for debugging."
 }
 op {
   name: "DecodeCSV"
