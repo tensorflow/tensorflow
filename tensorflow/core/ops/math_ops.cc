@@ -467,7 +467,8 @@ REGISTER_OP("Add")
     .Doc(R"doc(
 Returns x + y element-wise.
 
-*NOTE*: Add supports broadcasting. AddN does not.
+*NOTE*: Add supports broadcasting. AddN does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("Sub")
@@ -475,6 +476,9 @@ REGISTER_OP("Sub")
     .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns x - y element-wise.
+
+*NOTE*: Sub supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("Mul")
@@ -483,6 +487,9 @@ REGISTER_OP("Mul")
     .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns x * y element-wise.
+
+*NOTE*: Mul supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("Div")
@@ -490,6 +497,9 @@ REGISTER_OP("Div")
     .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns x / y element-wise.
+
+*NOTE*: Div supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("SquaredDifference")
@@ -498,6 +508,9 @@ REGISTER_OP("SquaredDifference")
     .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns (x - y)(x - y) element-wise.
+
+*NOTE*: SquaredDifference supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 #undef BINARY_FEWER
@@ -511,7 +524,10 @@ REGISTER_OP("Maximum")
     .SetIsCommutative()
     .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
-Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
+Returns the max of x and y (i.e. x > y ? x : y) element-wise.
+
+*NOTE*: Maximum supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("Minimum")
@@ -522,7 +538,10 @@ REGISTER_OP("Minimum")
     .SetIsCommutative()
     .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
-Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts.
+Returns the min of x and y (i.e. x < y ? x : y) element-wise.
+
+*NOTE*: Minimum supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("Mod")
@@ -533,6 +552,9 @@ REGISTER_OP("Mod")
     .SetShapeFn(OpShapeInferenceFn(BroadcastBinaryOpShapeFn))
     .Doc(R"doc(
 Returns element-wise remainder of division.
+
+*NOTE*: Mod supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("Pow")
@@ -650,24 +672,36 @@ REGISTER_OP("Less")
     .COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x < y) element-wise.
+
+*NOTE*: Less supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("LessEqual")
     .COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x <= y) element-wise.
+
+*NOTE*: Less supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("Greater")
     .COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x > y) element-wise.
+
+*NOTE*: Greater supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("GreaterEqual")
     .COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x >= y) element-wise.
+
+*NOTE*: GreaterEqual supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 #undef COMPARISON
@@ -689,12 +723,18 @@ REGISTER_OP("Equal")
     .EQUALITY_COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x == y) element-wise.
+
+*NOTE*: Equal supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("NotEqual")
     .EQUALITY_COMPARISON()
     .Doc(R"doc(
 Returns the truth value of (x != y) element-wise.
+
+*NOTE*: NotEqual supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 #undef EQUALITY_COMPARISON
@@ -720,12 +760,18 @@ REGISTER_OP("LogicalAnd")
     .BINARY_LOGICAL()
     .Doc(R"doc(
 Returns the truth value of x AND y element-wise.
+
+*NOTE*: LogicalAnd supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 REGISTER_OP("LogicalOr")
     .BINARY_LOGICAL()
     .Doc(R"doc(
 Returns the truth value of x OR y element-wise.
+
+*NOTE*: LogicalOr supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
 #undef BINARY_LOGICAL
