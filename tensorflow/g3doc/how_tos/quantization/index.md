@@ -105,15 +105,23 @@ versus 91MB). You can still run this model using exactly the same inputs and
 outputs though, and you should get equivalent results. Here's an example:
 
 ```sh
+# Note: You need to add the dependencies of the quantization operation to the
+#       cc_binary in the BUILD file of the label_image program:
+#
+#     //tensorflow/contrib/quantization:cc_ops
+#     //tensorflow/contrib/quantization/kernels:quantized_ops
+
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
---input_graph=/tmp/quantized_graph.pb \
+--image=<input-image> \
+--graph=/tmp/quantized_graph.pb \
+--labels=/tmp/imagenet_synset_to_human_label_map.txt \
 --input_width=299 \
 --input_height=299 \
---mean_value=128 \
---std_value=128 \
---input_layer_name="Mul:0" \
---output_layer_name="softmax:0"
+--input_mean=128 \
+--input_std=128 \
+--input_layer="Mul:0" \
+--output_layer="softmax:0"
 ```
 
 You'll see that this runs the newly-quantized graph, and outputs a very similar
