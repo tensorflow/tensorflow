@@ -88,6 +88,13 @@ py_tests(
 )
 
 cuda_py_tests(
+    name = "cast_op_test",
+    size = "small",
+    srcs = ["cast_op_test.py"],
+    tags = ["noasan"],
+)
+
+cuda_py_tests(
     name = "kernel_tests",
     size = "small",
     srcs = [
@@ -97,7 +104,6 @@ cuda_py_tests(
         "batchtospace_op_test.py",
         "bias_op_test.py",
         "bitcast_op_test.py",
-        "cast_op_test.py",
         "check_ops_test.py",
         "constant_op_test.py",
         "control_flow_ops_py_test.py",
@@ -166,11 +172,17 @@ cuda_py_tests(
     ],
 )
 
+cuda_py_test(
+    name = "atrous_conv2d_test",
+    size = "medium",
+    srcs = ["atrous_conv2d_test.py"],
+    tags = ["noasan"],
+)
+
 cuda_py_tests(
     name = "medium_kernel_tests",
     size = "medium",
     srcs = [
-        "atrous_conv2d_test.py",
         "concat_op_test.py",
         "conv3d_transpose_test.py",
         "conv_ops_test.py",
