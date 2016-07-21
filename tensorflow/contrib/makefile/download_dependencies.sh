@@ -19,11 +19,10 @@ DOWNLOADS_DIR=tensorflow/contrib/makefile/downloads
 mkdir ${DOWNLOADS_DIR}
 
 # Grab the current Eigen version name from the Bazel build file
-EIGEN_HASH=$(cat eigen.BUILD | grep archive_dir | head -1 | cut -f3 -d- | cut -f1 -d\")
+EIGEN_VERSION=$(grep eigen_version tensorflow/workspace.bzl | head -1 | sed -e 's/.*eigen_version\s*=\s*"\(.*\)"/\1/')
 
-curl "https://bitbucket.org/eigen/eigen/get/${EIGEN_HASH}.tar.gz" \
--o /tmp/eigen-${EIGEN_HASH}.tar.gz
-tar xzf /tmp/eigen-${EIGEN_HASH}.tar.gz -C ${DOWNLOADS_DIR}
+curl "https://bitbucket.org/eigen/eigen/get/${EIGEN_VERSION}.tar.gz" -o /tmp/eigen-${EIGEN_VERSION}.tar.gz
+tar xzf /tmp/eigen-${EIGEN_VERSION}.tar.gz -C ${DOWNLOADS_DIR}
 
 git clone https://github.com/google/re2.git ${DOWNLOADS_DIR}/re2
 git clone https://github.com/google/gemmlowp.git ${DOWNLOADS_DIR}/gemmlowp
@@ -33,4 +32,4 @@ git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
 # the downloaded name changes with every version.
 cd ${DOWNLOADS_DIR}
 rm -rf eigen-latest
-ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
+ln -s eigen-eigen-${EIGEN_VERSION} eigen-latest
