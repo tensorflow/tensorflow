@@ -12,7 +12,7 @@ to run exclusively on the elected chief worker.
 
 - - -
 
-#### `tf.contrib.learn.monitors.BaseMonitor.begin(max_steps=None, init_step=None)` {#BaseMonitor.begin}
+#### `tf.contrib.learn.monitors.BaseMonitor.begin(max_steps=None)` {#BaseMonitor.begin}
 
 Called at the beginning of training.
 
@@ -22,7 +22,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 

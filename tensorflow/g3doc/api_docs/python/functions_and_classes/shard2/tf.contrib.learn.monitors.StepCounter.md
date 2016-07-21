@@ -8,9 +8,21 @@ Steps per second monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.StepCounter.begin(init_step)` {#StepCounter.begin}
+#### `tf.contrib.learn.monitors.StepCounter.begin(max_steps=None)` {#StepCounter.begin}
+
+Called at the beginning of training.
+
+When called, the default graph is the one we are executing.
+
+##### Args:
 
 
+*  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if we've already begun a run.
 
 
 - - -

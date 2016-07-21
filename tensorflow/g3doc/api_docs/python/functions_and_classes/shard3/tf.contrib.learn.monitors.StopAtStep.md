@@ -28,9 +28,21 @@ call.
 
 - - -
 
-#### `tf.contrib.learn.monitors.StopAtStep.begin(max_steps=None, init_step=None)` {#StopAtStep.begin}
+#### `tf.contrib.learn.monitors.StopAtStep.begin(max_steps=None)` {#StopAtStep.begin}
+
+Called at the beginning of training.
+
+When called, the default graph is the one we are executing.
+
+##### Args:
 
 
+*  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if we've already begun a run.
 
 
 - - -
@@ -128,25 +140,7 @@ A setter called automatically by the target estimator.
 
 #### `tf.contrib.learn.monitors.StopAtStep.step_begin(step)` {#StopAtStep.step_begin}
 
-Callback before training step begins.
 
-You may use this callback to request evaluation of additional tensors
-in the graph.
-
-##### Args:
-
-
-*  <b>`step`</b>: `int`, the current value of the global step.
-
-##### Returns:
-
-  List of `Tensor` objects or string tensor names to be run.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if we've already begun a step, or `step` < 0, or
-      `step` > `max_steps`.
 
 
 - - -

@@ -18,7 +18,7 @@ Initializes LoggingTrainable monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.LoggingTrainable.begin(max_steps=None, init_step=None)` {#LoggingTrainable.begin}
+#### `tf.contrib.learn.monitors.LoggingTrainable.begin(max_steps=None)` {#LoggingTrainable.begin}
 
 Called at the beginning of training.
 
@@ -28,7 +28,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 

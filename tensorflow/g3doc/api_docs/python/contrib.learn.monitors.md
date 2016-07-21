@@ -92,7 +92,7 @@ to run exclusively on the elected chief worker.
 
 - - -
 
-#### `tf.contrib.learn.monitors.BaseMonitor.begin(max_steps=None, init_step=None)` {#BaseMonitor.begin}
+#### `tf.contrib.learn.monitors.BaseMonitor.begin(max_steps=None)` {#BaseMonitor.begin}
 
 Called at the beginning of training.
 
@@ -102,7 +102,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -288,7 +287,7 @@ Initializes a CaptureVariable monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.CaptureVariable.begin(max_steps=None, init_step=None)` {#CaptureVariable.begin}
+#### `tf.contrib.learn.monitors.CaptureVariable.begin(max_steps=None)` {#CaptureVariable.begin}
 
 Called at the beginning of training.
 
@@ -298,7 +297,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -488,7 +486,7 @@ Initialize CheckpointSaver monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.CheckpointSaver.begin(max_steps=None, init_step=None)` {#CheckpointSaver.begin}
+#### `tf.contrib.learn.monitors.CheckpointSaver.begin(max_steps=None)` {#CheckpointSaver.begin}
 
 Called at the beginning of training.
 
@@ -498,7 +496,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -718,7 +715,7 @@ Initializes an `EveryN` monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.EveryN.begin(max_steps=None, init_step=None)` {#EveryN.begin}
+#### `tf.contrib.learn.monitors.EveryN.begin(max_steps=None)` {#EveryN.begin}
 
 Called at the beginning of training.
 
@@ -728,7 +725,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -935,7 +931,7 @@ Initializes ExportMonitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.ExportMonitor.begin(max_steps=None, init_step=None)` {#ExportMonitor.begin}
+#### `tf.contrib.learn.monitors.ExportMonitor.begin(max_steps=None)` {#ExportMonitor.begin}
 
 Called at the beginning of training.
 
@@ -945,7 +941,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -1130,7 +1125,7 @@ Initializes GraphDump monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.GraphDump.begin(max_steps=None, init_step=None)` {#GraphDump.begin}
+#### `tf.contrib.learn.monitors.GraphDump.begin(max_steps=None)` {#GraphDump.begin}
 
 
 
@@ -1298,7 +1293,7 @@ Initializes LoggingTrainable monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.LoggingTrainable.begin(max_steps=None, init_step=None)` {#LoggingTrainable.begin}
+#### `tf.contrib.learn.monitors.LoggingTrainable.begin(max_steps=None)` {#LoggingTrainable.begin}
 
 Called at the beginning of training.
 
@@ -1308,7 +1303,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -1486,7 +1480,7 @@ Initializes NanLoss monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.NanLoss.begin(max_steps=None, init_step=None)` {#NanLoss.begin}
+#### `tf.contrib.learn.monitors.NanLoss.begin(max_steps=None)` {#NanLoss.begin}
 
 Called at the beginning of training.
 
@@ -1496,7 +1490,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -1677,7 +1670,7 @@ Initializes a PrintTensor monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.PrintTensor.begin(max_steps=None, init_step=None)` {#PrintTensor.begin}
+#### `tf.contrib.learn.monitors.PrintTensor.begin(max_steps=None)` {#PrintTensor.begin}
 
 Called at the beginning of training.
 
@@ -1687,7 +1680,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -1855,9 +1847,21 @@ Steps per second monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.StepCounter.begin(init_step)` {#StepCounter.begin}
+#### `tf.contrib.learn.monitors.StepCounter.begin(max_steps=None)` {#StepCounter.begin}
+
+Called at the beginning of training.
+
+When called, the default graph is the one we are executing.
+
+##### Args:
 
 
+*  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if we've already begun a run.
 
 
 - - -
@@ -2039,9 +2043,21 @@ call.
 
 - - -
 
-#### `tf.contrib.learn.monitors.StopAtStep.begin(max_steps=None, init_step=None)` {#StopAtStep.begin}
+#### `tf.contrib.learn.monitors.StopAtStep.begin(max_steps=None)` {#StopAtStep.begin}
+
+Called at the beginning of training.
+
+When called, the default graph is the one we are executing.
+
+##### Args:
 
 
+*  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if we've already begun a run.
 
 
 - - -
@@ -2139,25 +2155,7 @@ A setter called automatically by the target estimator.
 
 #### `tf.contrib.learn.monitors.StopAtStep.step_begin(step)` {#StopAtStep.step_begin}
 
-Callback before training step begins.
 
-You may use this callback to request evaluation of additional tensors
-in the graph.
-
-##### Args:
-
-
-*  <b>`step`</b>: `int`, the current value of the global step.
-
-##### Returns:
-
-  List of `Tensor` objects or string tensor names to be run.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if we've already begun a step, or `step` < 0, or
-      `step` > `max_steps`.
 
 
 - - -
@@ -2194,7 +2192,7 @@ Initializes a `SummarySaver` monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.SummarySaver.begin(max_steps=None, init_step=None)` {#SummarySaver.begin}
+#### `tf.contrib.learn.monitors.SummarySaver.begin(max_steps=None)` {#SummarySaver.begin}
 
 Called at the beginning of training.
 
@@ -2204,7 +2202,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 
@@ -2398,7 +2395,7 @@ Initializes a ValidationMonitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.ValidationMonitor.begin(max_steps=None, init_step=None)` {#ValidationMonitor.begin}
+#### `tf.contrib.learn.monitors.ValidationMonitor.begin(max_steps=None)` {#ValidationMonitor.begin}
 
 Called at the beginning of training.
 
@@ -2408,7 +2405,6 @@ When called, the default graph is the one we are executing.
 
 
 *  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-*  <b>`init_step`</b>: `int`, step at which this training will start.
 
 ##### Raises:
 

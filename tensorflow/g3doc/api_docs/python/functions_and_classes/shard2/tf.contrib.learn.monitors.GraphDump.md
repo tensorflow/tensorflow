@@ -16,7 +16,7 @@ Initializes GraphDump monitor.
 
 - - -
 
-#### `tf.contrib.learn.monitors.GraphDump.begin(max_steps=None, init_step=None)` {#GraphDump.begin}
+#### `tf.contrib.learn.monitors.GraphDump.begin(max_steps=None)` {#GraphDump.begin}
 
 
 
