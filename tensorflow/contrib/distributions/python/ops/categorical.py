@@ -141,6 +141,7 @@ class Categorical(distribution.Distribution):
             array_ops.slice(
                 array_ops.shape(logits), [0], [array_ops.rank(logits) - 1]),
             dtype=k.dtype)
+        k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
 
         return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
 
