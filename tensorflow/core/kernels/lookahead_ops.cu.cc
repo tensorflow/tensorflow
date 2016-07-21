@@ -1,3 +1,4 @@
+#define EIGEN_USE_THREADS
 #include "tensorflow/core/kernels/lookahead_ops.h"
 
 #include <memory>
@@ -58,18 +59,15 @@ class LookaheadOp<T, 1> : public OpKernel {
                                                      &output_tensor));
     auto output = output_tensor->template tensor<T, 3>();
     int batch_size = input_tensor.dim_size(1);
-    cudaStream_t stream;
     int dim_timestep = input_tensor.dim_size(0);
     int dim_feature = input_tensor.dim_size(2);
     int dim_tau = filter_tensor.dim_size(0);
-    cudaStreamCreate(&stream);
     dim3 grid(dim_timestep, batch_size);
+    auto device = context->template eigen_device<Eigen::GpuDevice>();
+    auto stream = device.stream();
     kernel<T><<<grid, dim_feature, 0, stream>>>(dim_tau, &input(0, 0, 0), &filter(0, 0), &output(0, 0, 0));
-    cudaStreamSynchronize(stream);
-    cudaStreamDestroy(stream);
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("Lookahead").Device(DEVICE_GPU), LookaheadOp<float, 1>);
-REGISTER_KERNEL_BUILDER(Name("Lookaheadgpu").Device(DEVICE_GPU), LookaheadOp<float, 1>);
+REGISTER_KERNEL_BUILDER(Name("Lookahead").Device(DEVICE_GPU).TypeConstraint<float>("T"), LookaheadOp<float, 1>);
 

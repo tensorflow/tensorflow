@@ -1,3 +1,4 @@
+#define EIGEN_USE_THREADS
 #include "tensorflow/core/kernels/lookahead_grad_ops.h"
 #include <cuda_runtime.h>
 
@@ -27,6 +28,7 @@ __global__ void kernel_grad_filter(int dim_batch, int dim_timestep, const T* inp
   int dim_tau = gridDim.x;
   int feature = threadIdx.x;
   int tau = blockIdx.x;
+  output[tau * dim_feature + feature] = 0;
   for (int batch = 0; batch < dim_batch; batch++) {
     for (int timestep = 0; timestep < dim_timestep - tau; timestep++) {
       output[tau * dim_feature + feature] += output_grad[(timestep * dim_batch + batch) * dim_feature + feature] * input[((timestep + tau) * dim_batch + batch) * dim_feature + feature];
@@ -73,23 +75,19 @@ class LookaheadGradOp<T, 1> : public OpKernel {
     int dim_batch = input_tensor.dim_size(1);
     int dim_feature = input_tensor.dim_size(2);
     int dim_tau = filter_tensor.dim_size(0);
-    cudaStream_t stream;
-    cudaStreamCreate(&stream);
+    
     dim3 grid(dim_timestep, dim_batch);
+    auto device = context->template eigen_device<Eigen::GpuDevice>();
+    auto stream = device.stream(); 
     kernel_grad_input<T><<<grid, dim_feature, 0, stream>>>(dim_tau, &filter(0, 0), &output_grad(0, 0, 0), &output(0, 0, 0));
-    cudaStreamSynchronize(stream);
     // Create filter grad output tensor
     OP_REQUIRES_OK(context, context->allocate_output(1, filter_tensor.shape(),
                                                      &output_tensor));
     auto output2 = output_tensor->template matrix<T>();
 
-    cudaMemset(&output2(0, 0), 0, dim_tau * dim_feature * sizeof(T));
     kernel_grad_filter<T><<<dim_tau, dim_feature, 0, stream>>>(dim_batch, dim_timestep, &input(0, 0, 0), &output_grad(0, 0, 0), &output2(0, 0));
-    cudaStreamSynchronize(stream);
-    cudaStreamDestroy(stream);
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("Lookaheadgrad").Device(DEVICE_GPU), LookaheadGradOp<float, 1>);
-REGISTER_KERNEL_BUILDER(Name("Lookaheadgradgpu").Device(DEVICE_GPU), LookaheadGradOp<float, 1>);
+REGISTER_KERNEL_BUILDER(Name("Lookaheadgrad").Device(DEVICE_GPU).TypeConstraint<float>("T"), LookaheadGradOp<float, 1>);
 
