@@ -787,7 +787,7 @@ def run_n(output_dict, feed_dict=None, restore_checkpoint_path=None, n=1):
 
 
 # TODO(ptucker): Add save_checkpoint_path.
-def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
+def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
   """Run `output_dict` tensors with each input in `feed_dicts`.
 
   If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
@@ -800,9 +800,9 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
     restore_checkpoint_path: A string containing the path to a checkpoint to
       restore.
 
-  Returns:
-    A list of dicts of values read from `output_dict` tensors, one item in the
-    list for each item in `feed_dicts`. Keys are the same as `output_dict`,
+  Yields:
+    A sequence of dicts of values read from `output_dict` tensors, one item
+    yielded for each item in `feed_dicts`. Keys are the same as `output_dict`,
     values are the results read from the corresponding `Tensor` in
     `output_dict`.
 
@@ -828,11 +828,17 @@ def run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None):
       threads = None
       try:
         threads = queue_runner.start_queue_runners(session, coord=coord)
-        return [session.run(output_dict, f) for f in feed_dicts]
+        for f in feed_dicts:
+          yield session.run(output_dict, f)
       finally:
         coord.request_stop()
         if threads:
           coord.join(threads, stop_grace_period_secs=120)
+
+
+def run_feeds(*args, **kwargs):
+  """See run_feeds_iter(). Returns a `list` instead of an iterator."""
+  return list(run_feeds_iter(*args, **kwargs))
 
 
 def infer(restore_checkpoint_path, output_dict, feed_dict=None):

@@ -166,6 +166,32 @@ class GraphActionsTest(tf.test.TestCase):
           learn.graph_actions.infer(None, {'a': in0, 'b': in1, 'c': out}))
       self._assert_ckpt(self._output_dir, False)
 
+  @tf.test.mock.patch.object(
+      learn.graph_actions.coordinator.Coordinator, 'request_stop',
+      side_effect=learn.graph_actions.coordinator.Coordinator.request_stop,
+      autospec=True)
+  def test_coordinator_request_stop_called(self, request_stop):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      in0, in1, out = self._build_inference_graph()
+      learn.graph_actions.infer(None, {'a': in0, 'b': in1, 'c': out})
+      self.assertTrue(request_stop.called)
+
+  @tf.test.mock.patch.object(
+      learn.graph_actions.coordinator.Coordinator, 'request_stop',
+      side_effect=learn.graph_actions.coordinator.Coordinator.request_stop,
+      autospec=True)
+  def test_run_feeds_iter_cleanup_with_exceptions(self, request_stop):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      in0, in1, out = self._build_inference_graph()
+      try:
+        for _ in learn.graph_actions.run_feeds_iter(
+            {'a': in0, 'b': in1, 'c': out}, [None]*3):
+          self.assertFalse(request_stop.called)
+          raise ValueError('Fake exception')
+      except ValueError:
+        pass
+      self.assertTrue(request_stop.called)
+
   def test_infer_different_default_graph(self):
     with self.test_session():
       self._assert_ckpt(self._output_dir, False)

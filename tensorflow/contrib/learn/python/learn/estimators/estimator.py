@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import abc
 import inspect
+import itertools
 import os
 import tempfile
 import time
@@ -38,6 +39,7 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedE
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
@@ -354,7 +356,9 @@ class BaseEstimator(sklearn.BaseEstimator):
       eval_results.update({'global_step': global_step})
     return eval_results
 
-  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None):
+  def predict(
+      self, x=None, input_fn=None, batch_size=None, outputs=None,
+      as_iterable=False):
     """Returns predictions for given features.
 
     Args:
@@ -366,18 +370,26 @@ class BaseEstimator(sklearn.BaseEstimator):
         'None'.
       outputs: list of `str`, name of the output to predict.
         If `None`, returns all.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
     Returns:
-      Numpy array of predicted classes or regression values.
+      A numpy array of predicted classes or regression values if the
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+      of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+      predictions if as_iterable is True.
 
     Raises:
       ValueError: If x and input_fn are both provided or both `None`.
     """
-    input_fn, feed_fn = _get_input_fn(x, None, input_fn=input_fn,
-                                      feed_fn=None, batch_size=batch_size,
-                                      shuffle=False, epochs=1)
-    return self._infer_model(input_fn=input_fn, feed_fn=feed_fn,
-                             outputs=outputs)
+    input_fn, feed_fn = _get_input_fn(
+        x, None, input_fn=input_fn, feed_fn=None, batch_size=batch_size,
+        shuffle=False, epochs=1)
+    return self._infer_model(
+        input_fn=input_fn, feed_fn=feed_fn, outputs=outputs,
+        as_iterable=as_iterable)
 
   def get_variable_value(self, name):
     """Returns value of the variable given by name.
@@ -634,7 +646,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       return result[0]
     return result
 
-  def _infer_model(self, input_fn, feed_fn=None, outputs=None):
+  def _infer_model(
+      self, input_fn, feed_fn=None, outputs=None, as_iterable=False):
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
@@ -648,9 +661,10 @@ class BaseEstimator(sklearn.BaseEstimator):
       predictions = self._get_predict_ops(features)
       # If predictions is single output - wrap it into dict, and remember to
       # return not a dict.
-      return_dict = True
-      if not isinstance(predictions, dict):
-        predictions, return_dict = {'predictions': predictions}, False
+      return_dict = isinstance(predictions, dict)
+      if not return_dict:
+        predictions = {'predictions': predictions}
+
       # Filter what to run predictions on, if outputs provided.
       if outputs:
         existing_keys = predictions.keys()
@@ -660,23 +674,61 @@ class BaseEstimator(sklearn.BaseEstimator):
         if not predictions:
           raise ValueError('Expected to run at least one output from %s, '
                            'provided %s.' % (existing_keys, outputs))
-      if feed_fn is None:
-        preds = graph_actions.infer(checkpoint_path, predictions)
+
+      if as_iterable:
+        return self._infer_model_as_iterable(
+            checkpoint_path, predictions, feed_fn, return_dict)
       else:
-        preds = {}
-        def _feed_fn():
-          while True:
-            yield feed_fn()
-        outputs = graph_actions.run_feeds(
-            output_dict=predictions,
-            feed_dicts=_feed_fn(),
-            restore_checkpoint_path=checkpoint_path)
-        for key in predictions:
-          preds[key] = np.concatenate(
-              [output[key] for output in outputs], axis=0)
-      if return_dict:
-        return preds
-      return preds['predictions']
+        return self._infer_model_single(
+            checkpoint_path, predictions, feed_fn, return_dict)
+
+  def _infer_model_single(
+      self, checkpoint_path, predictions, feed_fn, return_dict):
+    if feed_fn is None:
+      preds = graph_actions.infer(checkpoint_path, predictions)
+    else:
+      def _feed_fn():
+        while True:
+          yield feed_fn()
+
+      outputs = graph_actions.run_feeds(
+          output_dict=predictions,
+          feed_dicts=_feed_fn(),
+          restore_checkpoint_path=checkpoint_path)
+      preds = {
+          key: np.concatenate([output[key] for output in outputs], axis=0)
+          for key in predictions}
+
+    return preds if return_dict else preds['predictions']
+
+  def _infer_model_as_iterable(
+      self, checkpoint_path, predictions, feed_fn, return_dict):
+    if feed_fn is None:
+      feed_dicts = itertools.repeat(None)
+    else:
+      def _feed_fn():
+        while True:
+          yield feed_fn()
+      feed_dicts = _feed_fn()
+
+    try:
+      for output_batch in graph_actions.run_feeds_iter(
+          output_dict=predictions,
+          feed_dicts=feed_dicts,
+          restore_checkpoint_path=checkpoint_path):
+        # Unpack batches into individual predictions
+        if return_dict:
+          batch_length = list(output_batch.values())[0].shape[0]
+          for i in range(batch_length):
+            yield {key: value[i] for key, value in output_batch.items()}
+        else:
+          for pred in output_batch['predictions']:
+            yield pred
+
+    except errors.OutOfRangeError:
+      # We fall out of the above loop naturally if feed_fn raises StopIteration,
+      # or we catch an OutOfRangeError if we've reached the end of inputs.
+      logging.info('Reached end of inputs for predict_iter.')
 
 
 class Estimator(BaseEstimator):

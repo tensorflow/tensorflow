@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import itertools
 import tempfile
 
@@ -33,10 +34,12 @@ _BOSTON_INPUT_DIM = 13
 _IRIS_INPUT_DIM = 4
 
 
-def boston_input_fn():
+def boston_input_fn(num_epochs=None):
   boston = tf.contrib.learn.datasets.load_boston()
   features = tf.cast(
       tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM]), tf.float32)
+  if num_epochs:
+    features = tf.train.limit_epochs(features, num_epochs=num_epochs)
   target = tf.cast(
       tf.reshape(tf.constant(boston.target), [-1, 1]), tf.float32)
   return features, target
@@ -306,12 +309,29 @@ class EstimatorTest(tf.test.TestCase):
     output = est.predict(boston.data)
     self.assertEqual(output.shape[0], boston.target.shape[0])
 
-  def testPredictFn(self):
+  def testPredictInputFn(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston = tf.contrib.learn.datasets.load_boston()
     est.fit(input_fn=boston_input_fn, steps=1)
     output = est.predict(input_fn=boston_input_fn)
     self.assertEqual(output.shape[0], boston.target.shape[0])
+
+  def testPredictAsIterable(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    self.assertEqual(
+        len(list(est.predict(boston.data, batch_size=10, as_iterable=True))),
+        boston.target.shape[0])
+
+  def testPredictInputFnAsIterable(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    input_fn = functools.partial(boston_input_fn, num_epochs=1)
+    self.assertEqual(
+        len(list(est.predict(input_fn=input_fn, as_iterable=True))),
+        boston.target.shape[0])
 
   def testWrongInput(self):
     def other_input_fn():
