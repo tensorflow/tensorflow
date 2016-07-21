@@ -314,9 +314,16 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   if (CFDictionaryGetValueIfPresent(kext_infos, kDriverKextIdentifier, (const void**)&cuda_driver_info)) {
     // NOTE: OSX CUDA driver does not currently store the same driver version
     // in kCFBundleVersionKey as is returned by cuDriverGetVersion
-    const char * version = CFStringGetCStringPtr((CFStringRef)CFDictionaryGetValue(cuda_driver_info, kCFBundleVersionKey), kCFStringEncodingUTF8);
     CFRelease(kext_infos);
-    return StringToDriverVersion(version);
+    const CFStringRef str = (CFStringRef)CFDictionaryGetValue(cuda_driver_info,
+							 kCFBundleVersionKey);
+    const char * version = CFStringGetCStringPtr(str, kCFStringEncodingUTF8);
+
+    // version can be NULL in which case treat it as empty string
+    // see https://github.com/tensorflow/tensorflow/issues/3435
+    if (version != NULL)
+      return StringToDriverVersion(version);
+    return StringToDriverVersion("");
   }
   CFRelease(kext_infos);
   auto status =
