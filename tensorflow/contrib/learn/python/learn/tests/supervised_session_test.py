@@ -74,6 +74,13 @@ class ScaffoldTest(tf.test.TestCase):
       self.assertEqual(6, scaffold.local_init_op)
       self.assertEqual(7, scaffold.saver)
 
+  def test_graph_is_finalized(self):
+    with tf.Graph().as_default():
+      supervised_session.Scaffold()
+      with self.assertRaisesRegexp(RuntimeError,
+                                   'Graph is finalized and cannot be modified'):
+        tf.constant([0])
+
 
 class RaiseOnceAtStepN(tf.contrib.learn.monitors.BaseMonitor):
   """Monitor that raises an Exception at step N."""
@@ -121,9 +128,9 @@ class SupervisedSessionTest(tf.test.TestCase):
   def test_last_step(self):
     logdir = self._test_dir('test_last_step')
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       # Run till step 3 and save.
       monitors = [tf.contrib.learn.monitors.StopAtStep(last_step=3)]
       with supervised_session.SupervisedSession('', scaffold=scaffold,
@@ -155,9 +162,9 @@ class SupervisedSessionTest(tf.test.TestCase):
   def test_num_steps(self):
     logdir = self._test_dir('test_num_steps')
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       # Do 3 steps and save.
       monitors = [tf.contrib.learn.monitors.StopAtStep(num_steps=3)]
       with supervised_session.SupervisedSession('', scaffold=scaffold,
@@ -193,9 +200,9 @@ class SupervisedSessionTest(tf.test.TestCase):
   def test_recovery(self):
     logdir = self._test_dir('test_recovery')
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       # Use a monitor to save the model every 100 steps.  It also saves it at
       # the end.
       monitors = [tf.contrib.learn.monitors.CheckpointSaver(
@@ -215,9 +222,9 @@ class SupervisedSessionTest(tf.test.TestCase):
     # Tests that we silently retry on abort.  Note that this does not test
     # recovery as we do not use a CheckpointSaver in this test.
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       monitor = RaiseOnceAtStepN(3, tf.errors.AbortedError(None, None, 'Abort'))
       with supervised_session.SupervisedSession('', scaffold=scaffold,
                                                 monitors=[monitor]) as session:
@@ -240,9 +247,9 @@ class SupervisedSessionTest(tf.test.TestCase):
     # a CheckpointSaver to have something to recover from.
     logdir = self._test_dir('test_recover_and_retry_on_aborted_error')
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       abort_monitor = RaiseOnceAtStepN(
           3, tf.errors.AbortedError(None, None, 'Abort'))
       # Save after each step.
@@ -267,9 +274,9 @@ class SupervisedSessionTest(tf.test.TestCase):
   def test_stop_cleanly_on_out_of_range_exception(self):
     # Tests that we stop cleanly when OutOfRange is raised.
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       monitor = RaiseOnceAtStepN(
           3, tf.errors.OutOfRangeError(None, None, 'EOI'))
       with supervised_session.SupervisedSession('', scaffold=scaffold,
@@ -285,40 +292,13 @@ class SupervisedSessionTest(tf.test.TestCase):
         self.assertTrue(monitor.raised)
         self.assertTrue(session.should_stop())
 
-  def test_stop_cleanly_on_custom_exception(self):
-    # Tests that we stop cleanly when an exception type of
-    # our choice is raised (StopIteration here.)
-    with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
-      do_step = tf.assign_add(gstep, 1)
-      monitor = RaiseOnceAtStepN(3, StopIteration('I choose you'))
-      exception_types = [tf.errors.OutOfRangeError, StopIteration]
-      with supervised_session.SupervisedSession(
-          '', scaffold=scaffold,
-          monitors=[monitor],
-          clean_stop_exception_types=exception_types) as session:
-        self.assertEqual(0, session.run(gstep))
-        self.assertEqual(1, session.run(do_step))
-        self.assertEqual(2, session.run(do_step))
-        self.assertFalse(session.should_stop())
-        # Here at step 3, the monitor triggers and raises StopIteration.  The
-        # session should go into should_stop() mode.  We do not get a result
-        # in that case.
-        self.assertEqual(None, session.run(do_step))
-        self.assertTrue(monitor.raised)
-        self.assertTrue(session.should_stop())
-
-  # This set of tests, verifies the session behavior when exceptions are raised
-  # from code inside a "with SupervisedSession:" context.
-
-  def test_regular_exception_pass_through_in_with_body(self):
+  def test_regular_exception_pass_through_run(self):
     # Tests that regular exceptions just pass through a "with
     # SupervisedSession" block and set the session in stop mode.
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       monitor = RaiseOnceAtStepN(3, RuntimeError('regular exception'))
       session = supervised_session.SupervisedSession('', scaffold=scaffold,
                                                      monitors=[monitor])
@@ -335,33 +315,20 @@ class SupervisedSessionTest(tf.test.TestCase):
       self.assertTrue(monitor.raised)
       self.assertTrue(session.should_stop())
 
+  # This set of tests, verifies the session behavior when exceptions are raised
+  # from code inside a "with SupervisedSession:" context.
+
   def test_stop_cleanly_when_no_exception_in_with_body(self):
     # Tests that regular exceptions pass through
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       session = supervised_session.SupervisedSession('', scaffold=scaffold)
       with session:
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
-      # Should have closed.
-      self.assertTrue(session.should_stop())
-      self.assertTrue(session._is_closed())
-
-  def test_stop_cleanly_on_out_of_range_exception_in_with_body(self):
-    # Tests that regular exceptions pass through
-    with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
-      do_step = tf.assign_add(gstep, 1)
-      session = supervised_session.SupervisedSession('', scaffold=scaffold)
-      with session:
-        self.assertEqual(1, session.run(do_step))
-        self.assertEqual(2, session.run(do_step))
-        self.assertFalse(session.should_stop())
-        raise tf.errors.OutOfRangeError(None, None, 'EOI')
       # Should have closed.
       self.assertTrue(session.should_stop())
       self.assertTrue(session._is_closed())
@@ -369,9 +336,9 @@ class SupervisedSessionTest(tf.test.TestCase):
   def test_raises_regular_exceptions_in_with_body(self):
     # Tests that regular exceptions in "with body" are seen outside.
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
+      gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
       session = supervised_session.SupervisedSession('', scaffold=scaffold)
       # We should see that exception.
       with self.assertRaisesRegexp(RuntimeError, 'regular exception'):
@@ -381,23 +348,6 @@ class SupervisedSessionTest(tf.test.TestCase):
           self.assertFalse(session.should_stop())
           # Will be visible outside the "with body".
           raise RuntimeError('regular exception')
-      # Should have closed.
-      self.assertTrue(session.should_stop())
-      self.assertTrue(session._is_closed())
-
-  def test_stop_cleanly_on_custom_exception_in_with_body(self):
-    with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold()
-      gstep = scaffold.global_step_tensor
-      do_step = tf.assign_add(gstep, 1)
-      exception_types = [tf.errors.OutOfRangeError, StopIteration]
-      session = supervised_session.SupervisedSession(
-          '', scaffold=scaffold, clean_stop_exception_types=exception_types)
-      with session:
-        self.assertEqual(1, session.run(do_step))
-        self.assertEqual(2, session.run(do_step))
-        self.assertFalse(session.should_stop())
-        raise StopIteration('EOI')
       # Should have closed.
       self.assertTrue(session.should_stop())
       self.assertTrue(session._is_closed())

@@ -31,7 +31,6 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn import graph_actions
-from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
@@ -42,7 +41,6 @@ from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
@@ -478,8 +476,8 @@ class BaseEstimator(sklearn.BaseEstimator):
 
   def _check_inputs(self, features, targets):
     if self._features_info is not None:
-      logging.warning('Given features: %s, required signatures: %s.' %
-                      (str(features), str(self._features_info)))
+      logging.warning('Given features: %s, required signatures: %s.',
+                      str(features), str(self._features_info))
       if not tensor_signature.tensors_compatible(features, self._features_info):
         raise ValueError('Features are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
@@ -489,8 +487,8 @@ class BaseEstimator(sklearn.BaseEstimator):
       logging.warning('Setting feature info to %s', str(self._features_info))
     if targets is not None:
       if self._targets_info is not None:
-        logging.warning('Given targets: %s, required signatures: %s.' %
-                        (str(targets), str(self._targets_info)))
+        logging.warning('Given targets: %s, required signatures: %s.',
+                        str(targets), str(self._targets_info))
         if not tensor_signature.tensors_compatible(targets, self._targets_info):
           raise ValueError('Targets are incompatible with given information. '
                            'Given targets: %s, required signatures: %s.' %
@@ -541,22 +539,11 @@ class BaseEstimator(sklearn.BaseEstimator):
       if monitors is None:
         monitors = []
 
-      is_chief = self._config.task == 0
-
-      if is_chief:
-        monitors += monitors_lib.get_default_monitors(
-            loss_op=loss_op,
-            summary_op=logging_ops.get_summary_op(),
-            save_summary_steps=self._config.save_summary_steps,
-            summary_writer=graph_actions.get_summary_writer(self._model_dir))
-      else:
-        monitors = []
-
       # Setup monitors.
       for monitor in monitors:
         monitor.set_estimator(self)
 
-      return graph_actions.train(
+      return graph_actions._supervised_train(  # pylint: disable=protected-access
           graph=g,
           output_dir=self._model_dir,
           train_op=train_op,
@@ -566,7 +553,7 @@ class BaseEstimator(sklearn.BaseEstimator):
           init_feed_dict=init_feed_fn() if init_feed_fn is not None else None,
           init_fn=init_fn,
           log_every_steps=log_every_steps,
-          supervisor_is_chief=is_chief,
+          supervisor_is_chief=(self._config.task == 0),
           supervisor_master=self._config.master,
           supervisor_save_model_secs=self._config.save_checkpoints_secs,
           keep_checkpoint_max=self._config.keep_checkpoint_max,
@@ -745,7 +732,7 @@ class Estimator(BaseEstimator):
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
         logging.warning('Estimator\'s model_fn (%s) has includes params '
-                        'argument, but params are not passed to Estimator.' %
+                        'argument, but params are not passed to Estimator.',
                         model_fn)
     self._model_fn = model_fn
     self.params = params

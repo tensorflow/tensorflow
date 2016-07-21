@@ -97,15 +97,14 @@ def logistic_model_no_mode_fn(features, target):
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
-  def __init__(self):
+  def __init__(self, expect_calls):
     self.begin_calls = None
     self.end_calls = None
-    self.expect_calls = None
+    self.expect_calls = expect_calls
 
   def begin(self, max_steps):
     self.begin_calls = 0
     self.end_calls = 0
-    self.expect_calls = max_steps
 
   def step_begin(self, step):
     self.begin_calls += 1
@@ -324,7 +323,17 @@ class EstimatorTest(tf.test.TestCase):
 
   def testMonitors(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
-    est.fit(input_fn=boston_input_fn, steps=21, monitors=[CheckCallsMonitor()])
+    est.fit(input_fn=boston_input_fn,
+            steps=21,
+            monitors=[CheckCallsMonitor(expect_calls=21)])
+
+  def testSummaryWriting(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200)
+    est.evaluate(input_fn=boston_input_fn, steps=200)
+    loss_summary = tf.contrib.testing.simple_values_from_events(
+        tf.contrib.testing.latest_events(est.model_dir), ['loss'])
+    self.assertEqual(len(loss_summary), 1)
 
 
 class InferRealValuedColumnsTest(tf.test.TestCase):

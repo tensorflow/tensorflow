@@ -87,7 +87,7 @@ class MonitorsTest(tf.test.TestCase):
       max_steps = num_epochs * num_steps_per_epoch - 1
     else:
       max_steps = None
-    monitor.begin(max_steps=max_steps, init_step=0)
+    monitor.begin(max_steps=max_steps)
     for epoch in xrange(num_epochs):
       monitor.epoch_begin(epoch)
       should_stop = False
@@ -128,6 +128,68 @@ class MonitorsTest(tf.test.TestCase):
       self.assertEqual(begin_end_steps, monitor.steps_begun)
       self.assertEqual(begin_end_steps, monitor.steps_ended)
       self.assertEqual(post_steps, monitor.post_steps)
+
+  def test_every_n_recovered_after_step_begin(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      # It should call begin again since, end was not called
+      self.assertEqual([8, 8, 16, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16], monitor.post_steps)
+
+  def test_every_n_recovered_after_step_end(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      # It should not call begin twice since end was called
+      self.assertEqual([8, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16], monitor.post_steps)
+
+  def test_every_n_call_post_step_at_the_end(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      monitor.begin()
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      monitor.step_begin(19)
+      monitor.step_end(19, output=None)
+      monitor.post_step(19, session=None)
+      monitor.end(session=None)
+      # It should not call begin twice since end was called
+      self.assertEqual([8, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16, 19], monitor.post_steps)
+
+  def test_every_n_call_post_step_should_not_be_called_twice(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      monitor.begin()
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      monitor.step_begin(16)
+      monitor.step_end(16, output=None)
+      monitor.post_step(16, session=None)
+      monitor.end(session=None)
+      # It should not call begin twice since end was called
+      self.assertEqual([8, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16], monitor.post_steps)
 
   def test_print(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -235,6 +297,35 @@ class MonitorsTest(tf.test.TestCase):
           26: 6.0,
           29: 7.0,
       }, monitor.values)
+
+
+class StopAtStepTest(tf.test.TestCase):
+
+  def test_raise_in_both_last_step_and_num_steps(self):
+    with self.assertRaises(ValueError):
+      learn.monitors.StopAtStep(num_steps=10, last_step=20)
+
+  def test_stop_based_on_last_step(self):
+    m = learn.monitors.StopAtStep(last_step=10)
+    m.step_begin(5)
+    self.assertFalse(m.step_end(5, None))
+    m.step_begin(9)
+    self.assertFalse(m.step_end(9, None))
+    m.step_begin(10)
+    self.assertTrue(m.step_end(10, None))
+    m.step_begin(11)
+    self.assertTrue(m.step_end(11, None))
+
+  def test_stop_based_on_num_step(self):
+    m = learn.monitors.StopAtStep(num_steps=10)
+    m.step_begin(5)
+    self.assertFalse(m.step_end(5, None))
+    m.step_begin(13)
+    self.assertFalse(m.step_end(13, None))
+    m.step_begin(14)
+    self.assertTrue(m.step_end(14, None))
+    m.step_begin(15)
+    self.assertTrue(m.step_end(15, None))
 
 
 if __name__ == '__main__':

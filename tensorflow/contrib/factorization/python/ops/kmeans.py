@@ -117,9 +117,13 @@ class KMeansClustering(estimator.Estimator,
       super(KMeansClustering._StopWhenConverged, self).begin(max_steps)
       self._prev_loss = None
 
+    def step_begin(self, step):
+      super(KMeansClustering._StopWhenConverged, self).step_begin(step)
+      return [self._estimator._loss]
+
     def step_end(self, step, output):
       super(KMeansClustering._StopWhenConverged, self).step_end(step, output)
-      loss = output[self._estimator._loss.name]
+      loss = output[self._estimator._loss]
 
       if self._prev_loss is None:
         self._prev_loss = loss
