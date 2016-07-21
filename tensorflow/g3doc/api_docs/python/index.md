@@ -605,6 +605,7 @@
   * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
   * [`Laplace`](../../api_docs/python/contrib.distributions.md#Laplace)
   * [`MultivariateNormalCholesky`](../../api_docs/python/contrib.distributions.md#MultivariateNormalCholesky)
+  * [`MultivariateNormalDiag`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiag)
   * [`MultivariateNormalFull`](../../api_docs/python/contrib.distributions.md#MultivariateNormalFull)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
   * [`normal_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_congugates_known_sigma_predictive)

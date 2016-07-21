@@ -23,6 +23,7 @@ Extra leading dimensions, if provided, allow for batches.
 
 ```python
 # Initialize a single 3-variate Gaussian with diagonal covariance.
+# Note, this would be more efficient with MultivariateNormalDiag.
 mu = [1, 2, 3.]
 chol = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
 dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)
