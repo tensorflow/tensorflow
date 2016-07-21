@@ -320,7 +320,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     const char * version = CFStringGetCStringPtr(str, kCFStringEncodingUTF8);
 
     // version can be NULL in which case treat it as empty string
-    // see https://github.com/tensorflow/tensorflow/issues/3435
+    // see https://developer.apple.com/library/mac/documentation/CoreFoundation/Conceptual/CFStrings/Articles/AccessingContents.html#//apple_ref/doc/uid/20001184-100980-TPXREF112
     if (version != NULL)
       return StringToDriverVersion(version);
     return StringToDriverVersion("");
