@@ -29,6 +29,7 @@ Usage:
   with slim.arg_scope(alexnet.alexnet_v2_arg_scope()):
     outputs, end_points = alexnet.alexnet_v2(inputs)
 
+@@alexnet_v2
 """
 
 import tensorflow as tf

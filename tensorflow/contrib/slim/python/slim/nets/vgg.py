@@ -27,6 +27,9 @@ Usage:
 
   with slim.arg_scope(vgg.vgg_arg_scope()):
     outputs, end_points = vgg.vgg_16(inputs)
+
+@@vgg_a
+@@vgg_16
 """
 
 import tensorflow as tf
@@ -157,3 +160,6 @@ def vgg_16(inputs,
         net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+
+# Alias
+vgg_d = vgg_16

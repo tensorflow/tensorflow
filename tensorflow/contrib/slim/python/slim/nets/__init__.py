@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TF-Slim Nets."""
+"""TF-Slim Nets.
+
+## Standard Networks.
+@@alexnet_v2
+@@overfeat
+@@vgg_a
+@@vgg_16
+"""
 # pylint: disable=unused-import,
 # pylint: disable=wildcard-import
 

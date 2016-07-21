@@ -24,6 +24,8 @@ The definition for the network was obtained from:
 Usage:
   with slim.arg_scope(overfeat.overfeat_arg_scope()):
     outputs, end_points = overfeat.overfeat(inputs)
+
+@@overfeat
 """
 
 import tensorflow as tf
