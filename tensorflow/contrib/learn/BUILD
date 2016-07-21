@@ -432,6 +432,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # http://b/30035845
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
