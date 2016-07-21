@@ -50,6 +50,74 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T, bool USE_CUBLAS>
 struct LaunchMatMul;
 
+namespace {
+// Converts a TensorFlow Tensor to an Eigen Matrix.
+template <typename T>
+Eigen::Map<
+    const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+ToEigenMatrix(const Tensor& tensor) {
+  auto matrix = tensor.matrix<T>();
+  return Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>::Map(
+      matrix.data(), matrix.dimension(0), matrix.dimension(1));
+}
+
+// Converts a TensorFlow Tensor to an Eigen Vector.
+template <typename T>
+Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1>> ToEigenVector(Tensor* tensor) {
+  auto v = tensor->flat<T>();
+  return Eigen::Matrix<T, Eigen::Dynamic, 1>::Map(v.data(), v.dimension(0));
+}
+template <typename T>
+Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> ToEigenVector(
+    const Tensor& tensor) {
+  auto v = tensor.flat<T>();
+  return Eigen::Matrix<T, Eigen::Dynamic, 1>::Map(v.data(), v.dimension(0));
+}
+}  // namespace
+
+// If either side can be represented as a vector, do an explicit vector
+// matrix multiply and return true; else return false.
+//
+// Note: this uses plain Eigen and not Eigen Tensor because it is more
+// efficient.
+template <typename T>
+bool ExplicitVectorMatrixOptimization(
+    const Tensor& a, const Tensor& b,
+    const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
+    Tensor* out) {
+  if (out->dim_size(0) == 1) {
+    if (dim_pair[0].second == 0) {
+      // Note: this case is optimized in Eigen Tensors.
+      return false;
+    } else {
+      auto out_v = ToEigenVector<T>(out);
+      auto a_v = ToEigenVector<T>(a);
+      auto b_m = ToEigenMatrix<T>(b);
+      out_v.noalias() = b_m * a_v;
+    }
+    return true;
+  } else if (out->dim_size(1) == 1) {
+    auto out_v = ToEigenVector<T>(out);
+    auto a_m = ToEigenMatrix<T>(a);
+    auto b_v = ToEigenVector<T>(b);
+    if (dim_pair[0].first == 0) {
+      out_v.noalias() = a_m.transpose() * b_v;
+    } else {
+      out_v.noalias() = a_m * b_v;
+    }
+    return true;
+  }
+  return false;
+}
+// Half is not supported.
+template <>
+bool ExplicitVectorMatrixOptimization<Eigen::half>(
+    const Tensor& a, const Tensor& b,
+    const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
+    Tensor* out) {
+  return false;
+}
+
 // On CPUs, we ignore USE_CUBLAS
 template <typename T>
 struct LaunchMatMulCPU {
@@ -57,9 +125,14 @@ struct LaunchMatMulCPU {
       OpKernelContext* ctx, OpKernel* kernel, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
       Tensor* out) {
-    functor::MatMulFunctor<CPUDevice, T>()(ctx->eigen_device<CPUDevice>(),
-                                           out->matrix<T>(), a.matrix<T>(),
-                                           b.matrix<T>(), dim_pair);
+    // An explicit vector-matrix multiply is much better optimized than an
+    // implicit one and this is a bottleneck during non-batched inference.
+    bool was_vector = ExplicitVectorMatrixOptimization<T>(a, b, dim_pair, out);
+    if (!was_vector) {
+      functor::MatMulFunctor<CPUDevice, T>()(ctx->eigen_device<CPUDevice>(),
+                                             out->matrix<T>(), a.matrix<T>(),
+                                             b.matrix<T>(), dim_pair);
+    }
   }
 };
 

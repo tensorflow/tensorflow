@@ -70,9 +70,9 @@ class MatMulTest(tf.test.TestCase):
   def _randMatrix(self, rows, cols, dtype):
     if dtype in (np.complex64, np.complex128):
       if dtype == np.complex64:
-          float_dtype = np.float32
+        float_dtype = np.float32
       else:
-          float_dtype = np.float64
+        float_dtype = np.float64
       real = self._randMatrix(rows, cols, float_dtype)
       imag = self._randMatrix(rows, cols, float_dtype)
       return real + 1j * imag
@@ -122,6 +122,59 @@ class MatMulTest(tf.test.TestCase):
     y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex128)
     self._testCpuMatmul(x, y)
     self._testGpuMatmul(x, y)
+
+  # Vector optimized tests
+  #   x            *  y
+  #   [1, 2, 3, 4] *  [[1, 2, 3, 4],
+  #                    [5, 6, 7, 8]]
+  #
+  # and y^T * x^T
+  def _vectorTest(self, dtype, gpu):
+    x = np.arange(1., 5.).reshape([1, 4]).astype(np.float32)
+    y = np.arange(1., 9.).reshape([4, 2]).astype(np.float32)
+    x_t = x.transpose()
+    y_t = y.transpose()
+    if gpu:
+      self._testGpuMatmul(x, y)
+      self._testGpuMatmul(x_t, y, transpose_x=True)
+      self._testGpuMatmul(x, y_t, transpose_y=True)
+      self._testGpuMatmul(y_t, x_t)
+      self._testGpuMatmul(y, x_t, transpose_x=True)
+      self._testGpuMatmul(y_t, x, transpose_y=True)
+    else:
+      self._testCpuMatmul(x, y)
+      self._testCpuMatmul(x_t, y, transpose_x=True)
+      self._testCpuMatmul(x, y_t, transpose_y=True)
+      self._testCpuMatmul(y_t, x_t)
+      self._testCpuMatmul(y, x_t, transpose_x=True)
+      self._testCpuMatmul(y_t, x, transpose_y=True)
+
+  def testFloatVector(self):
+    self._vectorTest(np.float32, gpu=False)
+    self._vectorTest(np.float32, gpu=True)
+
+  def testDoubleVector(self):
+    self._vectorTest(np.float64, gpu=False)
+    self._vectorTest(np.float64, gpu=True)
+
+  def testHalfVector(self):
+    self._vectorTest(np.float16, gpu=False)
+    if test_util.CudaSupportsHalfMatMulAndConv():
+      self._vectorTest(np.float16, gpu=True)
+    else:
+      print("Built without fp16 matmul support, skipping GPU test.")
+
+  def testInt32Vector(self):
+    self._vectorTest(np.int32, gpu=False)
+    self._vectorTest(np.int32, gpu=True)
+
+  def testComplex64Vector(self):
+    self._vectorTest(np.complex64, gpu=False)
+    self._vectorTest(np.complex64, gpu=True)
+
+  def testComplex128Vector(self):
+    self._vectorTest(np.complex128, gpu=False)
+    self._vectorTest(np.complex128, gpu=True)
 
   # Tests testing random sized matrices.
   def testFloatRandom(self):
