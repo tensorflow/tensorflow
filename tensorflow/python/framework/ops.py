@@ -4063,3 +4063,14 @@ def get_from_proto_function(collection_name):
     return _proto_function_registry.lookup(collection_name)[2]
   except LookupError:
     return None
+
+
+def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
+  """Produce a nice error if someone converts an Operation to a Tensor."""
+  raise TypeError(
+      ("Can't convert Operation '%s' to Tensor "
+       "(target dtype=%r, name=%r, as_ref=%r)") %
+      (op.name, dtype, name, as_ref))
+
+
+register_tensor_conversion_function(Operation, _operation_conversion_error)
