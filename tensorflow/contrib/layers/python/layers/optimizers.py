@@ -228,7 +228,12 @@ def _multiply_gradients(grads_and_vars, gradient_multipliers):
     if (grad is not None and
         (var in gradient_multipliers or var.name in gradient_multipliers)):
       key = var if var in gradient_multipliers else var.name
-      grad *= constant_op.constant(
+      multiplier = constant_op.constant(
           gradient_multipliers[key], dtype=dtypes.float32)
+      if isinstance(grad, ops.IndexedSlices):
+        grad_values = grad.values * multiplier
+        grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
+      else:
+        grad *= multiplier
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars
