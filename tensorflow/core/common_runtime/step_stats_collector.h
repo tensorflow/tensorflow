@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,14 +34,14 @@ class StepStatsCollector {
   explicit StepStatsCollector(StepStats* ss,
                               CostModelManager* cost_model_manager = nullptr);
 
-  void UpdateCostModel(const NodeExecStats* nt, const Graph* graph,
-                       const Node* node);
+  void UpdateCostModelNode(const NodeExecStats* nt, const Graph* graph,
+                           const Node* node);
+
   void Save(const string& device, NodeExecStats* nt);
 
   void Swap(StepStats* ss);
 
  private:
-  friend class StepStatsMgr;
   mutex mu_;
   StepStats* step_stats_ GUARDED_BY(mu_);
   CostModelManager* cost_model_manager_ GUARDED_BY(mu_);

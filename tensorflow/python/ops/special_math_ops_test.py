@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
@@ -56,6 +57,20 @@ class LBetaTest(tf.test.TestCase):
       ph = tf.placeholder(tf.float32)
       beta_ph = tf.exp(tf.lbeta(ph))
       self.assertAllClose([0.5, 0.5], beta_ph.eval(feed_dict={ph: x_one_half}))
+
+  def test_two_dimensional_proper_shape(self):
+    # Should evaluate to 1/2.
+    x_one_half = [[2, 1.], [2, 1.]]
+    with self.test_session(use_gpu=self._use_gpu):
+      self.assertAllClose([0.5, 0.5], tf.exp(tf.lbeta(x_one_half)).eval())
+      self.assertEqual((2,), tf.shape(tf.lbeta(x_one_half)).eval())
+      self.assertEqual(tf.TensorShape([2]), tf.lbeta(x_one_half).get_shape())
+
+  def test_complicated_shape(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      x = tf.convert_to_tensor(np.random.rand(3, 2, 2))
+      self.assertAllEqual((3, 2), tf.shape(tf.lbeta(x)).eval())
+      self.assertEqual(tf.TensorShape([3, 2]), tf.lbeta(x).get_shape())
 
   def test_length_1_last_dimension_results_in_one(self):
     # If there is only one coefficient, the formula still works, and we get one

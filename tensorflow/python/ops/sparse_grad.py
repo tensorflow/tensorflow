@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -141,8 +141,7 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   if a_type != b_type:
     raise TypeError("SparseTensorDenseMatMul op received operands with "
                     "different types: ", a_type, " and ", b_type)
-  is_complex = a_type == ops.dtypes.complex64
-  if is_complex:
+  if a_type in (ops.dtypes.complex64, ops.dtypes.complex128):
     raise NotImplementedError("SparseTensorDenseMatMul op does not support "
                               "complex gradients.")
 
@@ -171,6 +170,12 @@ def _SparseTensorDenseMatMulGrad(op, grad):
 
   # gradients w.r.t. (a_indices, a_values, a_shape, b)
   return (None, a_values_grad, None, b_grad)
+
+
+@ops.RegisterGradient("SparseDenseCwiseAdd")
+def _SparseDenseCwiseAddGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for SparseDenseCwiseAdd is currently not"
+                            " implemented yet.")
 
 
 def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
@@ -218,3 +223,48 @@ def _SparseDenseCwiseMulGrad(op, grad):
 def _SparseDenseCwiseDivGrad(op, grad):
   """Gradients for SparseDenseCwiseDiv."""
   return _SparseDenseCwiseMulOrDivGrad(op, grad, False)
+
+
+@ops.RegisterGradient("SparseSoftmax")
+def _SparseSoftmaxGrad(op, grad):
+  """Gradients for SparseSoftmax.
+
+  The calculation is the same as SoftmaxGrad:
+
+    grad_x = grad_softmax * softmax - sum(grad_softmax * softmax) * softmax
+
+  where we now only operate on the non-zero values present in the SparseTensors.
+
+  Args:
+    op: the SparseSoftmax op.
+    grad: the upstream gradient w.r.t. the non-zero SparseSoftmax output values.
+
+  Returns:
+    Gradients w.r.t. the input (sp_indices, sp_values, sp_shape).
+  """
+  indices, shape = op.inputs[0], op.inputs[2]
+  out_vals = op.outputs[0]
+  sp_output = ops.SparseTensor(indices, out_vals, shape)
+  sp_grad = ops.SparseTensor(indices, grad, shape)
+  sp_product = ops.SparseTensor(
+      indices, sp_output.values * sp_grad.values, shape)
+
+  # [..., B, 1], dense.
+  sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keep_dims=True)
+  # sparse [..., B, C] + dense [..., B, 1] with broadcast; outputs sparse.
+  sp_sum = sparse_ops.sparse_dense_cwise_add(sp_grad, sum_reduced)
+
+  grad_x = sp_sum.values * sp_output.values
+  return [None, grad_x, None]
+
+
+@ops.RegisterGradient("SparseSparseMaximum")
+def _SparseSparseMaximumGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for SparseSparseMaximum is currently not"
+                            " implemented yet.")
+
+
+@ops.RegisterGradient("SparseSparseMinimum")
+def _SparseSparseMinimumGrad(unused_op, unused_grad):
+  raise NotImplementedError("Gradient for SparseSparseMinimum is currently not"
+                            " implemented yet.")

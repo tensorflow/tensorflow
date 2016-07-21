@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -135,7 +135,6 @@ namespace functor {
   DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::ADD); \
   DECLARE_GPU_SPEC_FOR_OP(T, DenseUpdateType::SUB)
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_FOR_OP
 }  // namespace functor

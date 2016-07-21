@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Ops for building quantized models."""
 
 from __future__ import absolute_import
@@ -22,7 +23,6 @@ from __future__ import print_function
 from tensorflow.contrib.quantization.python import array_ops as quantized_array_ops
 from tensorflow.contrib.quantization.python.math_ops import *
 from tensorflow.contrib.quantization.python.nn_ops import *
-from tensorflow.python.util.all_util import make_all
 
 from tensorflow.contrib.quantization.ops import gen_array_ops as quantized_gen_array_ops
 from tensorflow.contrib.quantization.ops.gen_array_ops import dequantize

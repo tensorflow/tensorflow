@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,15 @@ namespace port {
 // Aligned allocation/deallocation
 void* aligned_malloc(size_t size, int minimum_alignment);
 void aligned_free(void* aligned_memory);
+
+// Tries to release num_bytes of free memory back to the operating
+// system for reuse.  Use this routine with caution -- to get this
+// memory back may require faulting pages back in by the OS, and
+// that may be slow.
+//
+// Currently, if a malloc implementation does not support this
+// routine, this routine is a no-op.
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes);
 
 // Returns the actual number N of bytes reserved by the malloc for the
 // pointer p.  This number may be equal to or greater than the number

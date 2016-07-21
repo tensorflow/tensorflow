@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,8 +48,12 @@ class ReshapeTest(tf.test.TestCase):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.int32)
     self._testBothReshape(x, [2, 3])
 
-  def testSComplexBasic(self):
+  def testComplex64Basic(self):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.complex64)
+    self._testBothReshape(x, [2, 3])
+
+  def testComplex128Basic(self):
+    x = np.arange(1., 7.).reshape([1, 6]).astype(np.complex128)
     self._testBothReshape(x, [2, 3])
 
   def testFloatReshapeThreeDimensions(self):
@@ -95,11 +99,6 @@ class ReshapeTest(tf.test.TestCase):
     self._testBothReshape(x, [1, -1, 5])
 
   def testErrors(self):
-    x = tf.constant(0.0, shape=[1, 0, 3])
-    with self.assertRaisesRegexp(
-        ValueError, "cannot infer the missing input size"):
-      tf.reshape(x, [0, -1, 5])
-
     y = tf.constant(0.0, shape=[23, 29, 31])
     with self.assertRaisesRegexp(ValueError, "isn't divisible by 17"):
       tf.reshape(y, [17, -1])
@@ -123,6 +122,20 @@ class ReshapeTest(tf.test.TestCase):
     # Unknown input shape, known rank for new shape.
     y = tf.reshape(x, tf.placeholder(tf.int32, shape=(3,)))
     self.assertEqual([None, None, None], y.get_shape().as_list())
+
+    # Unknown input shape, partial new shape using `tf.pack()`.
+    y = tf.reshape(x, [tf.placeholder(tf.int32), 37])
+    self.assertEqual([None, 37], y.get_shape().as_list())
+
+    # Unknown input shape, partial new shape using `tf.concat()`.
+    y = tf.reshape(x, tf.concat(0, [tf.placeholder(tf.int32, shape=(2,)),
+                                    [37, 42]]))
+    self.assertEqual([None, None, 37, 42], y.get_shape().as_list())
+
+    # Unknown input shape, partial new shape using `tf.shape()`.
+    y = tf.reshape(x, tf.shape(tf.placeholder(tf.float32,
+                                              shape=[None, 37, None])))
+    self.assertEqual([None, 37, None], y.get_shape().as_list())
 
 
 if __name__ == "__main__":

@@ -106,7 +106,7 @@ P(w_t | h) &= \text{softmax}(\text{score}(w_t, h)) \\
 \end{align}
 $$
 
-where \\(\text{score}(w\_t, h)\\) computes the compatibility of word \\(w\_t\\)
+where \\(\text{score}(w_t, h)\\) computes the compatibility of word \\(w_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
 by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
 on the training set, i.e. by maximizing

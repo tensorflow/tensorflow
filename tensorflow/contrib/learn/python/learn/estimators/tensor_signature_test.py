@@ -1,16 +1,18 @@
-#  Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Tests for learn.estimators.tensor_signature."""
 
 from __future__ import absolute_import
@@ -25,6 +27,13 @@ from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 
 class TensorSignatureTest(tf.test.TestCase):
 
+  def testTensorPlaceholderNone(self):
+    self.assertEqual(
+        None, tensor_signature.create_placeholders_from_signatures(None))
+
+  def testTensorSignatureNone(self):
+    self.assertEqual(None, tensor_signature.create_signatures(None))
+
   def testTensorSignatureCompatible(self):
     placeholder_a = tf.placeholder(name='test',
                                    shape=[None, 100],
@@ -35,13 +44,21 @@ class TensorSignatureTest(tf.test.TestCase):
     placeholder_c = tf.placeholder(name='mismatch',
                                    shape=[256, 100],
                                    dtype=tf.float32)
+    placeholder_d = tf.placeholder(name='mismatch',
+                                   shape=[128, 100],
+                                   dtype=tf.int32)
     signatures = tensor_signature.create_signatures(placeholder_a)
+    self.assertTrue(tensor_signature.tensors_compatible(None, None))
+    self.assertFalse(tensor_signature.tensors_compatible(None, signatures))
+    self.assertFalse(tensor_signature.tensors_compatible(placeholder_a, None))
     self.assertTrue(tensor_signature.tensors_compatible(placeholder_a,
                                                         signatures))
     self.assertTrue(tensor_signature.tensors_compatible(placeholder_b,
                                                         signatures))
     self.assertFalse(tensor_signature.tensors_compatible(placeholder_c,
                                                          signatures))
+    self.assertTrue(tensor_signature.tensors_compatible(placeholder_d,
+                                                        signatures))
 
     inputs = {'a': placeholder_a}
     signatures = tensor_signature.create_signatures(inputs)
@@ -71,7 +88,8 @@ class TensorSignatureTest(tf.test.TestCase):
     placeholder_out = tensor_signature.create_placeholders_from_signatures(
         signatures)
     self.assertEqual(placeholder_out.dtype, placeholder_a.dtype)
-    self.assertEqual(placeholder_out.get_shape(), placeholder_a.get_shape())
+    self.assertTrue(placeholder_out.get_shape().is_compatible_with(
+        placeholder_a.get_shape()))
     self.assertTrue(tensor_signature.tensors_compatible(placeholder_out,
                                                         signatures))
 
@@ -80,8 +98,9 @@ class TensorSignatureTest(tf.test.TestCase):
     placeholders_out = tensor_signature.create_placeholders_from_signatures(
         signatures)
     self.assertEqual(placeholders_out['a'].dtype, placeholder_a.dtype)
-    self.assertEqual(placeholders_out['a'].get_shape(),
-                     placeholder_a.get_shape())
+    self.assertTrue(
+        placeholders_out['a'].get_shape().is_compatible_with(
+            placeholder_a.get_shape()))
     self.assertTrue(tensor_signature.tensors_compatible(placeholders_out,
                                                         signatures))
 
@@ -93,6 +112,35 @@ class TensorSignatureTest(tf.test.TestCase):
         signature)
     self.assertTrue(isinstance(placeholder, tf.SparseTensor))
     self.assertEqual(placeholder.values.dtype, tensor.values.dtype)
+
+  def testTensorSignatureExampleParserSingle(self):
+    examples = tf.placeholder(name='example', shape=[None], dtype=tf.string)
+    placeholder_a = tf.placeholder(name='test',
+                                   shape=[None, 100],
+                                   dtype=tf.int32)
+    signatures = tensor_signature.create_signatures(placeholder_a)
+    result = tensor_signature.create_example_parser_from_signatures(
+        signatures, examples)
+    self.assertTrue(tensor_signature.tensors_compatible(result, signatures))
+    new_signatures = tensor_signature.create_signatures(result)
+    self.assertTrue(new_signatures.is_compatible_with(signatures))
+
+  def testTensorSignatureExampleParserDict(self):
+    examples = tf.placeholder(name='example', shape=[None], dtype=tf.string)
+    placeholder_a = tf.placeholder(name='test',
+                                   shape=[None, 100],
+                                   dtype=tf.int32)
+    placeholder_b = tf.placeholder(name='bb',
+                                   shape=[None, 100],
+                                   dtype=tf.float64)
+    inputs = {'a': placeholder_a, 'b': placeholder_b}
+    signatures = tensor_signature.create_signatures(inputs)
+    result = tensor_signature.create_example_parser_from_signatures(
+        signatures, examples)
+    self.assertTrue(tensor_signature.tensors_compatible(result, signatures))
+    new_signatures = tensor_signature.create_signatures(result)
+    self.assertTrue(new_signatures['a'].is_compatible_with(signatures['a']))
+    self.assertTrue(new_signatures['b'].is_compatible_with(signatures['b']))
 
 
 if __name__ == '__main__':

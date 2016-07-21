@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -131,13 +131,13 @@ class ResizeBilinearOpGrad : public OpKernel {
           const float inverse_x_lerp = (1.0f - x_lerp);
           for (int64 c = 0; c < st.channels; ++c) {
             output_grad(b, top_y_index, left_x_index, c) +=
-                input_grad(b, y, x, c) * inverse_y_lerp * inverse_x_lerp;
+                T(input_grad(b, y, x, c) * inverse_y_lerp * inverse_x_lerp);
             output_grad(b, top_y_index, right_x_index, c) +=
-                input_grad(b, y, x, c) * inverse_y_lerp * x_lerp;
+                T(input_grad(b, y, x, c) * inverse_y_lerp * x_lerp);
             output_grad(b, bottom_y_index, left_x_index, c) +=
-                input_grad(b, y, x, c) * y_lerp * inverse_x_lerp;
+                T(input_grad(b, y, x, c) * y_lerp * inverse_x_lerp);
             output_grad(b, bottom_y_index, right_x_index, c) +=
-                input_grad(b, y, x, c) * y_lerp * x_lerp;
+                T(input_grad(b, y, x, c) * y_lerp * x_lerp);
           }
         }
       }
@@ -159,12 +159,12 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
-REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        ResizeBilinearOpGrad<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        ResizeBilinearOpGrad<CPUDevice, double>);
+#define REGISTER_CPU_GRAD_KERNEL(T)                                         \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("ResizeBilinearGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      ResizeBilinearOpGrad<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_GRAD_KERNEL);
+TF_CALL_float(REGISTER_CPU_GRAD_KERNEL);
+TF_CALL_double(REGISTER_CPU_GRAD_KERNEL);
+
 }  // namespace tensorflow

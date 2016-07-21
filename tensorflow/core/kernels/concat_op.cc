@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ class ConcatOp : public OpKernel {
     for (int d = 0; d < concat_dim; ++d) {
       inputs_flat_dim0 *= input_shape.dim_size(d);
     }
-    int output_concat_dim = 0;
+    int64 output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       const auto in = values[i];

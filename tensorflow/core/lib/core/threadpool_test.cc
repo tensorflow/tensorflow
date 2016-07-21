@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,6 +56,31 @@ TEST(ThreadPool, DoWork) {
     }
   }
 }
+
+#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
+TEST(ThreadPool, ParallelFor) {
+  // Make ParallelFor use as many threads as possible.
+  int64 kHugeCost = 1 << 30;
+  for (int num_threads = 1; num_threads < kNumThreads; num_threads++) {
+    fprintf(stderr, "Testing with %d threads\n", num_threads);
+    const int kWorkItems = 15;
+    bool work[kWorkItems];
+    ThreadPool pool(Env::Default(), "test", num_threads);
+    for (int i = 0; i < kWorkItems; i++) {
+      work[i] = false;
+    }
+    pool.ParallelFor(kWorkItems, kHugeCost, [&work](int64 begin, int64 end) {
+      for (int64 i = begin; i < end; ++i) {
+        ASSERT_FALSE(work[i]);
+        work[i] = true;
+      }
+    });
+    for (int i = 0; i < kWorkItems; i++) {
+      ASSERT_TRUE(work[i]);
+    }
+  }
+}
+#endif
 
 static void BM_Sequential(int iters) {
   ThreadPool pool(Env::Default(), "test", kNumThreads);

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <set>
 
-#include "tensorflow/contrib/ffmpeg/kernels/ffmpeg_lib.h"
+#include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -38,9 +38,8 @@ const char* kValidFileFormats[] = {"mp3", "ogg", "wav"};
 // Writes binary data to a file.
 Status WriteFile(const string& filename, tensorflow::StringPiece contents) {
   Env& env = *Env::Default();
-  WritableFile* file = nullptr;
+  std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env.NewWritableFile(filename, &file));
-  std::unique_ptr<WritableFile> file_deleter(file);
   TF_RETURN_IF_ERROR(file->Append(contents));
   TF_RETURN_IF_ERROR(file->Close());
   return Status::OK();

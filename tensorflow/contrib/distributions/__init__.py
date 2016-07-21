@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,38 +21,73 @@ initialized with parameters that define the distributions.
 
 ### Base classes
 
-@@BaseDistribution
-@@ContinuousDistribution
-@@DiscreteDistribution
+@@Distribution
 
 ### Univariate (scalar) distributions
 
-@@Gaussian
+@@Bernoulli
+@@Categorical
+@@Chi2
+@@Exponential
+@@Gamma
+@@InverseGamma
+@@Laplace
+@@Normal
+@@StudentT
 @@Uniform
 
 ### Multivariate distributions
 
-@@MultivariateNormal
+#### Multivariate normal
+
+@@MultivariateNormalFull
+@@MultivariateNormalCholesky
+@@batch_matrix_diag_transform
+
+#### Other multivariate distributions
+
 @@DirichletMultinomial
+
+### Transformed distributions
+
+@@TransformedDistribution
 
 ## Posterior inference with conjugate priors.
 
 Functions that transform conjugate prior/likelihood pairs to distributions
 representing the posterior or posterior predictive.
 
-### Gaussian likelihood with conjugate prior.
+### Normal likelihood with conjugate prior.
 
-@@gaussian_conjugates_known_sigma_posterior
-@@gaussian_congugates_known_sigma_predictive
+@@normal_conjugates_known_sigma_posterior
+@@normal_congugates_known_sigma_predictive
+
+## Kullback Leibler Divergence
+
+@@kl
+@@RegisterKL
+
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.contrib.distributions.python.ops.bernoulli import *
+from tensorflow.contrib.distributions.python.ops.categorical import *
+from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
-from tensorflow.contrib.distributions.python.ops.gaussian import *
-from tensorflow.contrib.distributions.python.ops.gaussian_conjugate_posteriors import *
+from tensorflow.contrib.distributions.python.ops.exponential import *
+from tensorflow.contrib.distributions.python.ops.gamma import *
+from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
+from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
+from tensorflow.contrib.distributions.python.ops.laplace import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
+from tensorflow.contrib.distributions.python.ops.normal import *
+from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
+from tensorflow.contrib.distributions.python.ops.operator_pd_cholesky import batch_matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.student_t import *
+from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *

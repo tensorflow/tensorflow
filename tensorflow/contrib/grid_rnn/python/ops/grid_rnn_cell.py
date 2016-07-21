@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+# TODO(b/28879898) Fix all lint issues and clean the code.
 """Module for constructing GridRNN cells"""
 from __future__ import absolute_import
 from __future__ import division
@@ -335,10 +335,12 @@ def _propagate(dim_indices, conf, cell, c_prev, m_prev, new_output, new_state, f
       with vs.variable_scope('non_recurrent' if conf.tied else 'non_recurrent/cell_{}'.format(i)):
         if conf.tied and not(first_call and i == dim_indices[0]):
           vs.get_variable_scope().reuse_variables()
-        new_output[d.idx] = layers.fully_connected(linear_args, num_output_units=conf.num_units,
-                                                   activation_fn=d.non_recurrent_fn,
-                                                   weight_init=vs.get_variable_scope().initializer or
-                                                               layers.initializers.xavier_initializer)
+        new_output[d.idx] = layers.legacy_fully_connected(
+            linear_args,
+            num_output_units=conf.num_units,
+            activation_fn=d.non_recurrent_fn,
+            weight_init=vs.get_variable_scope().initializer or
+            layers.initializers.xavier_initializer)
     else:
       if c_prev[i] is not None:
         cell_state = array_ops.concat(1, [c_prev[i], last_dim_output])

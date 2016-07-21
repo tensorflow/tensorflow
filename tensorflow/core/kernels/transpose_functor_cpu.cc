@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,6 +97,10 @@ Status DoTranspose<Device>(const Device& d, const Tensor& in,
     case DT_DOUBLE:
     case DT_INT64:
       internal::Transpose<Device, uint64>(d, in, perm, out);
+      break;
+
+    case DT_COMPLEX128:
+      internal::Transpose<Device, complex128>(d, in, perm, out);
       break;
 
     case DT_STRING:

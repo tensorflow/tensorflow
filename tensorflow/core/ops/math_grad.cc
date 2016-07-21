@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -192,6 +192,63 @@ Status CosGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Cos", CosGrad);
+
+Status AcosGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+    {{"x2"}, "Square", {"x"}},
+    FDH::Const("const", 1.0f),
+    {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+    {{"a"}, "Sub", {"one", "x2"}}, // 1 - x^2
+    {{"b"}, "Sqrt", {"a"}},
+    {{"inv"}, "Inv", {"b"}},
+    {{"neg"}, "Neg", {"inv"}},
+    {{"dx"}, "Mul", {"dy", "neg"}}
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Acos", AcosGrad);
+
+Status AsinGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+    {{"x2"}, "Square", {"x"}},
+    FDH::Const("const", 1.0f),
+    {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+    {{"a"}, "Sub", {"one", "x2"}}, // 1 - x^2
+    {{"b"}, "Sqrt", {"a"}},
+    {{"inv"}, "Inv", {"b"}},
+    {{"dx"}, "Mul", {"dy", "inv"}}
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Asin", AsinGrad);
+
+Status AtanGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+    {{"x2"}, "Square", {"x"}},
+    FDH::Const("const", 1.0f),
+    {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+    {{"a"}, "Add", {"one", "x2"}}, // 1 + x^2
+    {{"inv"}, "Inv", {"a"}},
+    {{"dx"}, "Mul", {"dy", "inv"}}
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Atan", AtanGrad);
+
+Status TanGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+    {{"cosx"}, "Cos", {"x"}},
+    {{"secx"}, "Inv", {"cosx"}},
+    {{"secx2"}, "Square", {"secx"}},
+    {{"dx"}, "Mul", {"dy", "secx2"}}
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Tan", TanGrad);
 
 Status RealGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -523,7 +580,7 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
       // Ret val defs
       {"dx: T", "dy: T"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {half, float, double}"}},
       // Nodes
       {
           {{"dx"},

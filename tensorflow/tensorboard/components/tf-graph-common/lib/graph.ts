@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -51,6 +51,8 @@ const OUTPUT_SHAPES_KEY = '_output_shapes';
 export interface BaseEdge extends graphlib.EdgeObject {
   isControlDependency: boolean;
   isReferenceEdge: boolean;
+  /** The index of the output tensor of the source node. */
+  outputTensorIndex: number;
 }
 
 /**
@@ -69,7 +71,8 @@ export class SlimGraph {
 
 export interface NormalizedInput {
   name: string;
-  hasNumberPart: boolean;
+  /** The index of the output tensor of the source node. */
+  outputTensorIndex: number;
   isControlDependency: boolean;
 }
 
@@ -322,7 +325,7 @@ export class EllipsisNodeImpl implements EllipsisNode {
  * A label object for nodes in the full graph and leaf nodes in the render
  * graph.
  */
-class OpNodeImpl implements OpNode {
+export class OpNodeImpl implements OpNode {
   name: string;
   op: string;
   device: string;
@@ -376,8 +379,16 @@ export function createMetanode(name: string, opt = {}): Metanode {
  * graph information.
  */
 export function joinStatsInfoWithGraph(
-    graph: SlimGraph, stats: tf.graph.proto.StepStats): void {
+    graph: SlimGraph, stats: tf.graph.proto.StepStats,
+    devicesForStats?: {[device: string]: boolean}): void {
+  // Reset stats for each node.
+  _.each(graph.nodes, node => { node.stats = null; });
+
   _.each(stats.dev_stats, devStats => {
+    // Ignore devices that are not selected.
+    if (devicesForStats && !devicesForStats[devStats.device]) {
+      return;
+    }
     _.each(devStats.node_stats, nodeStats => {
       // Lookup the node in the graph by its original name, e.g. A. If not
       // found, lookup by the rewritten name A/(A) in case the name is both
@@ -407,16 +418,6 @@ export function joinStatsInfoWithGraph(
           }
         });
       }
-      let totalMicroSeconds = 0;
-      if (nodeStats.all_end_rel_micros) {
-        if (nodeStats.all_end_rel_micros > 0) {
-          totalMicroSeconds = Number(nodeStats.all_end_rel_micros);
-        } else {
-          /* tslint:disable */
-          console.log('ignoring negative runtime for ' + nodeName);
-          /* tslint:enable */
-        }
-      }
       let outputSize: number[][] = null;
       if (nodeStats.output) {
         outputSize = _.map(nodeStats.output, output => {
@@ -425,8 +426,21 @@ export function joinStatsInfoWithGraph(
         });
       }
       graph.nodes[nodeName].device = devStats.device;
-      graph.nodes[nodeName].stats = new NodeStats(totalBytes,
-        totalMicroSeconds, outputSize);
+      if (graph.nodes[nodeName].stats == null) {
+        graph.nodes[nodeName].stats = new NodeStats(outputSize);
+      }
+      graph.nodes[nodeName].stats.addBytesAllocation(totalBytes);
+      if (nodeStats.all_end_rel_micros) {
+        if (nodeStats.all_end_rel_micros > 0) {
+          graph.nodes[nodeName].stats.addExecutionTime(
+              nodeStats.all_start_micros,
+              nodeStats.all_start_micros + nodeStats.all_end_rel_micros);
+        } else {
+          /* tslint:disable */
+          console.log('ignoring negative runtime for ' + nodeName);
+          /* tslint:enable */
+        }
+      }
     });
   });
 }
@@ -435,22 +449,60 @@ export function joinStatsInfoWithGraph(
  * Execution stats for the node.
  */
 export class NodeStats {
-  constructor(totalBytes: number, totalMicros: number, outputSize: number[][]) {
-    this.totalBytes = totalBytes;
-    this.totalMicros = totalMicros;
-    this.outputSize = outputSize;
+  constructor(outputSize: number[][]) { this.outputSize = outputSize; }
+
+  /**
+   * Add the start and end time for a particular kernel execution of this op.
+   * Ops can have multiple kernel executions within the same session run.
+   */
+  addExecutionTime(startTime: number, endTime: number) {
+    if (this.startTime != null) {
+      this.startTime = Math.min(this.startTime, startTime);
+    } else {
+      this.startTime = startTime;
+    }
+    if (this.endTime != null) {
+      this.endTime = Math.max(this.endTime, endTime);
+    } else {
+      this.endTime = endTime;
+    }
   }
 
+  /**
+   * Add the bytes allocated for a particular kernel execution of this op.
+   * Ops can have multiple kernel executions within the same session run.
+   */
+  addBytesAllocation(totalBytes: number) {
+    if (this.totalBytes != null) {
+      this.totalBytes = Math.max(this.totalBytes, totalBytes);
+    } else {
+      this.totalBytes = totalBytes;
+    }
+  }
+
+  /**
+   * Absolute start time for the very first kernel execution of this op.
+   */
+  startTime: number;
+  /**
+   * Absolute end time for the very last kernel execution of this op.
+   */
+  endTime: number;
   /**
    * Total number of bytes used for the node. Sum of all children
    * if it is a Group node.
    */
-  totalBytes: number;
+  totalBytes = 0;
   /**
    * Total number of compute time in microseconds used for the node.
-   * Sum of all children if it is a Group node.
+   * Sum of all children if it is a Group node. Null if it is unknown.
    */
-  totalMicros: number;
+  get totalMicros(): number {
+    if (this.startTime == null || this.endTime == null) {
+      return null;
+    }
+    return this.endTime - this.startTime;
+  }
   /**
    * The shape of each output tensors, if there are any.
    * Empty if it is a Group node.
@@ -467,12 +519,12 @@ export class NodeStats {
       this.totalBytes += stats.totalBytes;
     }
     if (stats.totalMicros != null) {
-      this.totalMicros += stats.totalMicros;
+      this.addExecutionTime(stats.startTime, stats.endTime);
     }
   }
 }
 
-class MetanodeImpl implements Metanode {
+export class MetanodeImpl implements Metanode {
   name: string;
   stats: NodeStats;
   type: NodeType;
@@ -609,7 +661,7 @@ export function createMetaedge(v: string, w: string): Metaedge {
 /**
  * A label object for edges between metanodes of subgraphs in the render graph.
  */
-class MetaedgeImpl implements Metaedge {
+export class MetaedgeImpl implements Metaedge {
   v: string;
   w: string;
   baseEdgeList: BaseEdge[];
@@ -786,7 +838,8 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
  * @param inputs Array of unnormalized names of input nodes.
  */
 function normalizeInputs(inputs: string[]): NormalizedInput[] {
-  return _.reduce(inputs, function(normalizedInputs, inputName) {
+  let normalizedInputs: NormalizedInput[] = [];
+  _.each(inputs, inputName => {
     let start = inputName[0] === '^';
     let colon = inputName.lastIndexOf(':');
     let end = colon !== -1 &&
@@ -798,17 +851,18 @@ function normalizeInputs(inputs: string[]): NormalizedInput[] {
       name !== normalizedInputs[normalizedInputs.length - 1].name) {
       normalizedInputs.push({
         name: name,
-        hasNumberPart: end !== inputName.length,
+        outputTensorIndex:
+            end === inputName.length ? 0 : Number(inputName.slice(colon + 1)),
         isControlDependency: start
       });
     }
-    return normalizedInputs;
-  }, []);
+  });
+  return normalizedInputs;
 }
 
-function addEdgeToGraph(graph: SlimGraph, inputName: string,
-    outputNode: OpNode, isControlDependency: boolean, params: BuildParams,
-    index: number) {
+function addEdgeToGraph(
+    graph: SlimGraph, inputName: string, outputNode: OpNode,
+    input: NormalizedInput, params: BuildParams, index: number) {
   // Don't allow loops in the graph.
   if (inputName === outputNode.name) {
     return;
@@ -819,7 +873,8 @@ function addEdgeToGraph(graph: SlimGraph, inputName: string,
   graph.edges.push({
     v: inputName,
     w: outputNode.name,
-    isControlDependency: isControlDependency,
+    outputTensorIndex: input.outputTensorIndex,
+    isControlDependency: input.isControlDependency,
     isReferenceEdge: isRefEdge
   });
 }
@@ -937,7 +992,7 @@ export function build(
                       addEdgeToGraph(
                           graph, normalizedNameDict[embedInput.name] ||
                               embedInput.name,
-                          opNode, embedInput.isControlDependency, params, i);
+                          opNode, embedInput, params, i);
                     }
                   } else if (inputName in outEmbedding) {
                     // Move the inputs of the out-embedding node into inputs of
@@ -947,12 +1002,12 @@ export function build(
                       addEdgeToGraph(
                           graph, normalizedNameDict[embedInput.name] ||
                               embedInput.name,
-                          opNode, input.isControlDependency, params, i);
+                          opNode, input, params, i);
                     }
                   } else {
                     addEdgeToGraph(
                         graph, normalizedNameDict[inputName] || inputName,
-                        opNode, input.isControlDependency, params, i);
+                        opNode, input, params, i);
                   }
                 });
               });
@@ -1000,7 +1055,7 @@ function getEmbedPredicate(types: string[]) {
  * Returns a strict node name (name => name/(name)) to avoid conflicts
  * where the node name is also a namespace.
  */
-function getStrictName(name: string): string {
+export function getStrictName(name: string): string {
   let parts = name.split(NAMESPACE_DELIM);
   return name + NAMESPACE_DELIM + '(' + parts[parts.length - 1] + ')';
 }

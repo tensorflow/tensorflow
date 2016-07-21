@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -199,7 +199,9 @@ class PersistentTensor {
 
   // The check for initialization does not need to access the
   // underlying tensor buffer.
-  bool IsInitialized() { return tensor_.IsInitialized(); }
+  bool IsInitialized() const { return tensor_.IsInitialized(); }
+
+  int64 NumElements() const { return tensor_.NumElements(); }
 
  private:
   Tensor tensor_;
@@ -490,6 +492,7 @@ class OpKernelContext {
     }
 
     bool track_allocations = false;
+    bool log_memory = false;
 
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;
@@ -532,6 +535,7 @@ class OpKernelContext {
     // Function call supports.
     FunctionCallFrame* call_frame = nullptr;
     FunctionLibraryRuntime* function_library = nullptr;
+    std::function<void(std::function<void()>)>* runner = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -867,6 +871,10 @@ class OpKernelContext {
     return params_->function_library;
   }
 
+  std::function<void(std::function<void()>)>* runner() const {
+    return params_->runner;
+  }
+
   // Shared resources accessible to this kernel.
   ResourceMgr* resource_manager() const { return params_->resource_manager; }
 
@@ -1071,6 +1079,10 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
 // registered with the current library's global kernel registry (obtained by
 // calling GlobalKernelRegistry()), inserts 'k' into registry_ptr.
 extern "C" void RegisterKernels(void* registry_ptr);
+
+// Writes a list of all registered kernels to LOG(INFO), to help users debug
+// missing kernel errors.
+void LogAllRegisteredKernels();
 
 namespace kernel_factory {
 

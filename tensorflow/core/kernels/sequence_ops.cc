@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -118,21 +118,16 @@ class LinSpaceOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("LinSpace")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .HostMemory("start")
-                            .HostMemory("stop")
-                            .HostMemory("num")
-                            .HostMemory("output"),
-                        LinSpaceOp<float>);
-REGISTER_KERNEL_BUILDER(Name("LinSpace")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T")
-                            .HostMemory("start")
-                            .HostMemory("stop")
-                            .HostMemory("num")
-                            .HostMemory("output"),
-                        LinSpaceOp<double>);
+#define REGISTER_CPU_KERNEL(T)                        \
+  REGISTER_KERNEL_BUILDER(Name("LinSpace")            \
+                              .Device(DEVICE_CPU)     \
+                              .TypeConstraint<T>("T") \
+                              .HostMemory("start")    \
+                              .HostMemory("stop")     \
+                              .HostMemory("num")      \
+                              .HostMemory("output"),  \
+                          LinSpaceOp<T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
 
 }  // namespace tensorflow

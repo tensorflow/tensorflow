@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,8 +49,8 @@ class LookupTableOp : public OpKernel {
     mutex_lock l(mu_);
     if (!table_handle_set_) {
       OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def()));
-      auto creator = [this](lookup::LookupInterface** ret) {
-        *ret = new Container();
+      auto creator = [ctx, this](lookup::LookupInterface** ret) {
+        *ret = new Container(ctx, this);
         return Status::OK();
       };
 

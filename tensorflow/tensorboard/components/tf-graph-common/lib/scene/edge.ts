@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -123,14 +123,17 @@ export function buildGroup(sceneGroup,
   return edgeGroups;
 };
 
-export function getShapeLabelFromNode(node: OpNode,
-    renderInfo: render.RenderGraphInfo) {
+/**
+ * Returns the label for the given base edge.
+ * The label is the shape of the underlying tensor.
+ */
+export function getLabelForBaseEdge(
+    baseEdge: BaseEdge, renderInfo: render.RenderGraphInfo): string {
+  let node = <OpNode>renderInfo.getNodeByName(baseEdge.v);
   if (node.outputShapes == null || node.outputShapes.length === 0) {
     return null;
   }
-  // TODO(smilkov): Figure out exactly which output tensor this
-  // edge is from.
-  let shape = node.outputShapes[0];
+  let shape = node.outputShapes[baseEdge.outputTensorIndex];
   if (shape == null) {
     return null;
   }
@@ -149,12 +152,9 @@ export function getShapeLabelFromNode(node: OpNode,
 export function getLabelForEdge(metaedge: Metaedge,
     renderInfo: render.RenderGraphInfo): string {
   let isMultiEdge = metaedge.baseEdgeList.length > 1;
-  if (isMultiEdge) {
-    return metaedge.baseEdgeList.length + ' tensors';
-  } else {
-    let node = <OpNode> renderInfo.getNodeByName(metaedge.baseEdgeList[0].v);
-    return getShapeLabelFromNode(node, renderInfo);
-  }
+  return isMultiEdge ?
+      metaedge.baseEdgeList.length + ' tensors' :
+      getLabelForBaseEdge(metaedge.baseEdgeList[0], renderInfo);
 }
 
 /**
@@ -343,6 +343,7 @@ function position(d) {
  * d's label property will be a RenderMetaedgeInfo object.
  */
 function stylize(edgeGroup, d: EdgeData, stylize) {
+  edgeGroup.classed('faded', d.label.isFadedOut);
   let metaedge = d.label.metaedge;
   edgeGroup.select('path.' + Class.Edge.LINE)
       .classed('control-dep', metaedge && !metaedge.numRegularEdges);

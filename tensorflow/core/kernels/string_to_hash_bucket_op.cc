@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
+#include "tensorflow/core/kernels/string_to_hash_bucket_op.h"
 
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/strong_hash.h"
 
 namespace tensorflow {
 
-class StringToHashBucketOp : public OpKernel {
+// Deprecated class. It also uses `string_tensor` as Op argument instead of
+// `input`.
+class LegacyStringToHashBucketOp : public OpKernel {
  public:
-  explicit StringToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit LegacyStringToHashBucketOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
   }
 
@@ -55,10 +55,17 @@ class StringToHashBucketOp : public OpKernel {
  private:
   int64 num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StringToHashBucketOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(LegacyStringToHashBucketOp);
 };
 
+// StringToHashBucket is deprecated in favor of StringToHashBucketFast/Strong.
 REGISTER_KERNEL_BUILDER(Name("StringToHashBucket").Device(DEVICE_CPU),
-                        StringToHashBucketOp);
+                        LegacyStringToHashBucketOp);
+
+REGISTER_KERNEL_BUILDER(Name("StringToHashBucketFast").Device(DEVICE_CPU),
+                        StringToHashBucketOp<Fingerprint64>);
+
+REGISTER_KERNEL_BUILDER(Name("StringToHashBucketStrong").Device(DEVICE_CPU),
+                        StringToKeyedHashBucketOp<StrongKeyedHash>);
 
 }  // namespace tensorflow

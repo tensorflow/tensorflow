@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,15 +82,19 @@ class CoordinatorTest(tf.test.TestCase):
     coord.join(threads)
 
   def testJoinGraceExpires(self):
-    coord = tf.train.Coordinator()
-    threads = [
-        threading.Thread(target=StopInN, args=(coord, 0.01)),
-        threading.Thread(target=SleepABit, args=(10.0,))]
-    for t in threads:
-      t.daemon = True
-      t.start()
-    with self.assertRaisesRegexp(RuntimeError, "threads still running"):
-      coord.join(threads, stop_grace_period_secs=0.02)
+    def TestWithGracePeriod(stop_grace_period):
+      coord = tf.train.Coordinator()
+      threads = [
+          threading.Thread(target=StopInN, args=(coord, 0.01)),
+          threading.Thread(target=SleepABit, args=(10.0,))]
+      for t in threads:
+        t.daemon = True
+        t.start()
+      with self.assertRaisesRegexp(RuntimeError, "threads still running"):
+        coord.join(threads, stop_grace_period_secs=stop_grace_period)
+    TestWithGracePeriod(1e-10)
+    TestWithGracePeriod(0.002)
+    TestWithGracePeriod(1.0)
 
   def testJoinRaiseReportExcInfo(self):
     coord = tf.train.Coordinator()
@@ -128,6 +132,16 @@ class CoordinatorTest(tf.test.TestCase):
       t.start()
     coord.join(threads)
 
+  def testJoinIgnoresMyExceptionType(self):
+    coord = tf.train.Coordinator(clean_stop_exception_types=(ValueError,))
+    threads = [
+        threading.Thread(target=RaiseInN,
+                         args=(coord, 0.01, ValueError("Clean stop"), True))
+        ]
+    for t in threads:
+      t.start()
+    coord.join(threads)
+
   def testJoinRaiseReportExceptionUsingHandler(self):
     coord = tf.train.Coordinator()
     threads = [
@@ -138,6 +152,26 @@ class CoordinatorTest(tf.test.TestCase):
     for t in threads:
       t.start()
     with self.assertRaisesRegexp(RuntimeError, "First"):
+      coord.join(threads)
+
+  def testClearStopClearsExceptionToo(self):
+    coord = tf.train.Coordinator()
+    threads = [
+        threading.Thread(target=RaiseInN,
+                         args=(coord, 0.01, RuntimeError("First"), True)),
+        ]
+    for t in threads:
+      t.start()
+    with self.assertRaisesRegexp(RuntimeError, "First"):
+      coord.join(threads)
+    coord.clear_stop()
+    threads = [
+        threading.Thread(target=RaiseInN,
+                         args=(coord, 0.01, RuntimeError("Second"), True)),
+        ]
+    for t in threads:
+      t.start()
+    with self.assertRaisesRegexp(RuntimeError, "Second"):
       coord.join(threads)
 
 

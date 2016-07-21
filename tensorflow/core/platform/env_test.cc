@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 
+#include <sys/stat.h>
+
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
@@ -44,9 +47,15 @@ TEST(EnvTest, ReadFileToString) {
 
     // Read the file back and check equality
     string output;
-    TF_CHECK_OK(ReadFileToString(env, filename, &output));
-    CHECK_EQ(length, output.size());
-    CHECK_EQ(input, output);
+    TF_EXPECT_OK(ReadFileToString(env, filename, &output));
+    EXPECT_EQ(length, output.size());
+    EXPECT_EQ(input, output);
+
+    // Obtain stats.
+    FileStatistics stat;
+    TF_EXPECT_OK(env->Stat(filename, &stat));
+    EXPECT_EQ(length, stat.length);
+    EXPECT_TRUE(S_ISREG(stat.mode));
   }
 }
 
@@ -61,13 +70,16 @@ TEST(EnvTest, FileToReadonlyMemoryRegion) {
     const string input = CreateTestFile(env, filename, length);
 
     // Create the region.
-    ReadOnlyMemoryRegion* region;
-    TF_CHECK_OK(env->NewReadOnlyMemoryRegionFromFile(filename, &region));
-    std::unique_ptr<ReadOnlyMemoryRegion> region_uptr(region);
+    std::unique_ptr<ReadOnlyMemoryRegion> region;
+    TF_EXPECT_OK(env->NewReadOnlyMemoryRegionFromFile(filename, &region));
     ASSERT_NE(region, nullptr);
     EXPECT_EQ(length, region->length());
     EXPECT_EQ(input, string(reinterpret_cast<const char*>(region->data()),
                             region->length()));
+    FileStatistics stat;
+    TF_EXPECT_OK(env->Stat(filename, &stat));
+    EXPECT_EQ(length, stat.length);
+    EXPECT_TRUE(S_ISREG(stat.mode));
   }
 }
 
@@ -86,9 +98,14 @@ TEST(EnvTest, LocalFileSystem) {
 
     // Read the file back and check equality
     string output;
-    TF_CHECK_OK(ReadFileToString(env, filename, &output));
-    CHECK_EQ(length, output.size());
-    CHECK_EQ(input, output);
+    TF_EXPECT_OK(ReadFileToString(env, filename, &output));
+    EXPECT_EQ(length, output.size());
+    EXPECT_EQ(input, output);
+
+    FileStatistics stat;
+    TF_EXPECT_OK(env->Stat(filename, &stat));
+    EXPECT_EQ(length, stat.length);
+    EXPECT_TRUE(S_ISREG(stat.mode));
   }
 }
 
@@ -107,7 +124,7 @@ REGISTER_FILE_SYSTEM("ipfs", InterPlanetaryFileSystem);
 TEST(EnvTest, IPFS) {
   Env* env = Env::Default();
   std::vector<string> planets;
-  TF_CHECK_OK(env->GetChildren("ipfs://solarsystem", &planets));
+  TF_EXPECT_OK(env->GetChildren("ipfs://solarsystem", &planets));
   int c = 0;
   std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
                                  "Jupiter", "Saturn", "Uranus", "Neptune"};
@@ -125,6 +142,14 @@ TEST(EnvTest, GetSchemeForURI) {
   EXPECT_EQ(GetSchemeFromURI("a-b:///foo"), "");
   EXPECT_EQ(GetSchemeFromURI(":///foo"), "");
   EXPECT_EQ(GetSchemeFromURI("9dfd:///foo"), "");
+}
+
+TEST(EnvTest, SleepForMicroseconds) {
+  Env* env = Env::Default();
+  const int64 start = env->NowMicros();
+  env->SleepForMicroseconds(1e6 + 5e5);
+  const int64 delta = env->NowMicros() - start;
+  EXPECT_GE(delta, 1e6 + 5e5);
 }
 
 }  // namespace tensorflow

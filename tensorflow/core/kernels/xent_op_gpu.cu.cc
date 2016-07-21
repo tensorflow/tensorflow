@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,9 +42,10 @@ struct XentFunctor<GPUDevice, T> {
 };
 }  // end namespace functor
 
-// Instantiate the GPU implementation for half and float.
+// Instantiate the GPU implementation for half, float and double.
 template struct functor::XentFunctor<GPUDevice, Eigen::half>;
 template struct functor::XentFunctor<GPUDevice, float>;
+template struct functor::XentFunctor<GPUDevice, double>;
 
 }  // end namespace tensorflow
 

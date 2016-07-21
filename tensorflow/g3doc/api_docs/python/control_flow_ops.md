@@ -280,8 +280,9 @@ Example 2:
 Repeat `body` while the condition `cond` is true.
 
 `cond` is a callable returning a boolean scalar tensor. `body` is a callable
-returning a list of tensors of the same length and with the same types as
-`loop_vars`. `loop_vars` is a list of tensors that is passed to both `cond`
+returning a (possibly nested) tuple or list of tensors of the same
+arity (length and structure) and types as `loop_vars`. `loop_vars` is a
+(possibly nested) tuple or list of tensors that is passed to both `cond`
 and `body`. `cond` and `body` both take as many arguments as there are
 `loop_vars`.
 
@@ -309,7 +310,8 @@ sequences and large batches.
 
 *  <b>`cond`</b>: A callable that represents the termination condition of the loop.
 *  <b>`body`</b>: A callable that represents the loop body.
-*  <b>`loop_vars`</b>: The list of variable input tensors.
+*  <b>`loop_vars`</b>: A (possibly nested) tuple or list of numpy array, `Tensor`,
+    and `TensorArray` objects.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
 *  <b>`back_prop`</b>: Whether backprop is enabled for this while loop.
 *  <b>`swap_memory`</b>: Whether GPU-CPU memory swap is enabled for this loop.
@@ -333,6 +335,15 @@ sequences and large batches.
   c = lambda i: tf.less(i, 10)
   b = lambda i: tf.add(i, 1)
   r = tf.while_loop(c, b, [i])
+  ```
+
+Example with nesting:
+
+  ```python
+  ijk_0 = (tf.constant(0), (tf.constant(1), tf.constant(2)))
+  c = lambda i, (j, k): i < 10
+  b = lambda i, (j, k): (i + 1, ((j + k), (j - k)))
+  ijk_final = tf.while_loop(c, b, ijk_0)
   ```
 
 
@@ -417,7 +428,7 @@ Returns the truth value of (x == y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `quint8`, `qint8`, `qint32`, `string`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`, `bool`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -435,7 +446,7 @@ Returns the truth value of (x != y) element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`, `quint8`, `qint8`, `qint32`, `string`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `quint8`, `qint8`, `qint32`, `string`, `bool`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -726,10 +737,10 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
 
 Connect a `check_numerics` to every floating point tensor.
 
-`check_numerics` operations themselves are added for each `float` or `double`
-tensor in the graph. For all ops in the graph, the `check_numerics` op for
-all of its (`float` or `double`) inputs is guaranteed to run before the
-`check_numerics` op on any of its outputs.
+`check_numerics` operations themselves are added for each `half`, `float`,
+or `double` tensor in the graph. For all ops in the graph, the
+`check_numerics` op for all of its (`half`, `float`, or `double`) inputs
+is guaranteed to run before the `check_numerics` op on any of its outputs.
 
 ##### Returns:
 

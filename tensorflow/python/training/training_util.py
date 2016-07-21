@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,9 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import os.path
 
-from tensorflow.python.platform import gfile
+from tensorflow.python.lib.io import file_io
 
 
 def global_step(sess, global_step_tensor):
@@ -50,7 +51,7 @@ def global_step(sess, global_step_tensor):
 
 
 def write_graph(graph_def, logdir, name, as_text=True):
-  """Writes a graph proto on disk.
+  """Writes a graph proto to a file.
 
   The graph is written as a binary proto unless `as_text` is `True`.
 
@@ -62,17 +63,16 @@ def write_graph(graph_def, logdir, name, as_text=True):
 
   Args:
     graph_def: A `GraphDef` protocol buffer.
-    logdir: Directory where to write the graph.
+    logdir: Directory where to write the graph. This can refer to remote
+      filesystems, such as Google Cloud Storage (GCS).
     name: Filename for the graph.
     as_text: If `True`, writes the graph as an ASCII proto.
   """
-  if not gfile.IsDirectory(logdir):
-    gfile.MakeDirs(logdir)
+  # gcs does not have the concept of directory at the moment.
+  if not file_io.file_exists(logdir) and not logdir.startswith("gs:"):
+    file_io.recursive_create_dir(logdir)
   path = os.path.join(logdir, name)
   if as_text:
-    f = gfile.FastGFile(path, "w")
-    f.write(str(graph_def))
+    file_io.write_string_to_file(path, str(graph_def))
   else:
-    f = gfile.FastGFile(path, "wb")
-    f.write(graph_def.SerializeToString())
-  f.close()
+    file_io.write_string_to_file(path, graph_def.SerializeToString())

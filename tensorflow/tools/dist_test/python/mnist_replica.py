@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ values for --worker_index. There should be exactly one invocation with
 initialization. The other, non-master, sessions will wait for the master
 session to finish the initialization before proceeding to the training stage.
 
-The coordination between the multpile worker invocations occurs due to
+The coordination between the multiple worker invocations occurs due to
 the definition of the parameters on the same ps devices. The parameter updates
 from one worker is visible to all other workers. As such, the workers can
 perform forward computation and gradient calculation in parallel, which
@@ -61,7 +61,7 @@ flags.DEFINE_integer("num_workers", None,
 flags.DEFINE_integer("num_parameter_servers", 2,
                      "Total number of parameter servers (must be >= 1)")
 flags.DEFINE_integer("replicas_to_aggregate", None,
-                     "Number of replicas to aggregate before paramter update"
+                     "Number of replicas to aggregate before parameter update"
                      "is applied (For sync_replicas mode only; default: "
                      "num_workers)")
 flags.DEFINE_integer("grpc_port", 2222,
@@ -77,7 +77,7 @@ flags.DEFINE_string("worker_grpc_url", None,
                     "grpc://tf-worker0:2222)")
 flags.DEFINE_boolean("sync_replicas", False,
                      "Use the sync_replicas (synchronized replicas) mode, "
-                     "wherein the parameter updates from workersare aggregated "
+                     "wherein the parameter updates from workers are aggregated "
                      "before applied to avoid stale gradients")
 FLAGS = flags.FLAGS
 

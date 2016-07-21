@@ -29,19 +29,37 @@ module TF {
       '#ff7043',  // deep orange 400
       '#f4b400'   // google yellow 700
     ],
-    googleColorBlind: [
-      '#c53929',  // google red 700
-      '#ff7043',  // deep orange 400
-      '#f7cb4d',  // google yellow 300
-      '#0b8043',  // google green 700
-      '#80deea',  // cyan 200
-      '#4285f4',  // google blue 500
-      '#5e35b1'   // deep purple 600
+    googleColorBlindAssist: [
+      '#ff7043',  // orange
+      '#00ACC1',  // dark cyan
+      '#AB47BC',  // bright purple
+      '#2A56C6',  // dark blue
+      '#0b8043',  // green
+      '#F7CB4D',  // yellow
+      '#c0ca33',  // lime
+      '#5e35b1',  // purple
+      '#A52714',  // red
     ],
-    // This rainbow palette attempts to keep a constant brightness across hues.
-    constantValue: [
-      '#f44336', '#ffa216', '#c2d22d', '#51b455', '#1ca091', '#505ec4',
-      '#a633ba'
+    // These palettes try to be better for color differentiation.
+    // https://personal.sron.nl/~pault/
+    colorBlindAssist1:
+        ['#4477aa', '#44aaaa', '#aaaa44', '#aa7744', '#aa4455', '#aa4488'],
+    colorBlindAssist2: [
+      '#88ccee', '#44aa99', '#117733', '#999933', '#ddcc77', '#cc6677',
+      '#882255', '#aa4499'
+    ],
+    colorBlindAssist3: [
+      '#332288', '#6699cc', '#88ccee', '#44aa99', '#117733', '#999933',
+      '#ddcc77', '#cc6677', '#aa4466', '#882255', '#661100', '#aa4499'
+    ],
+    // based on this palette: http://mkweb.bcgsc.ca/biovis2012/
+    colorBlindAssist4: [
+      '#FF6DB6', '#920000', '#924900', '#DBD100', '#24FF24', '#006DDB',
+      '#490092'
+    ],
+    mldash: [
+      '#E47EAD', '#F4640D', '#FAA300', '#F5E636', '#00A077', '#0077B8',
+      '#00B7ED'
     ]
   };
 }

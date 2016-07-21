@@ -132,6 +132,11 @@ public class CameraConnectionFragment extends Fragment {
   private CameraDevice cameraDevice;
 
   /**
+   * The rotation in degrees of the camera sensor from the display. 
+   */
+  private Integer sensorOrientation;
+  
+  /**
    * The {@link android.util.Size} of camera preview.
    */
   private Size previewSize;
@@ -338,6 +343,8 @@ public class CameraConnectionFragment extends Fragment {
                 Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)),
                 new CompareSizesByArea());
 
+        sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        
         // Danger, W.R.! Attempting to use too large a preview size could  exceed the camera
         // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
         // garbage capture data.
@@ -417,7 +424,7 @@ public class CameraConnectionFragment extends Fragment {
     backgroundThread = new HandlerThread("ImageListener");
     backgroundThread.start();
     backgroundHandler = new Handler(backgroundThread.getLooper());
-    
+
     inferenceThread = new HandlerThread("InferenceThread");
     inferenceThread.start();
     inferenceHandler = new Handler(inferenceThread.getLooper());
@@ -433,7 +440,7 @@ public class CameraConnectionFragment extends Fragment {
       backgroundThread.join();
       backgroundThread = null;
       backgroundHandler = null;
-      
+
       inferenceThread.join();
       inferenceThread = null;
       inferenceThread = null;
@@ -442,7 +449,7 @@ public class CameraConnectionFragment extends Fragment {
     }
   }
 
-  private final TensorflowImageListener tfPreviewListener = new TensorflowImageListener();
+  private final TensorFlowImageListener tfPreviewListener = new TensorFlowImageListener();
 
   private final CameraCaptureSession.CaptureCallback captureCallback =
       new CameraCaptureSession.CaptureCallback() {
@@ -530,8 +537,9 @@ public class CameraConnectionFragment extends Fragment {
     }
 
     LOGGER.i("Getting assets.");
-    tfPreviewListener.initialize(getActivity().getAssets(), scoreView, inferenceHandler);
-    LOGGER.i("Tensorflow initialized.");
+    tfPreviewListener.initialize(
+        getActivity().getAssets(), scoreView, inferenceHandler, sensorOrientation);
+    LOGGER.i("TensorFlow initialized.");
   }
 
   /**

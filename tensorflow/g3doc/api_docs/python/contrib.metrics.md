@@ -223,7 +223,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 *  <b>`labels`</b>: The ground truth values, a binary `Tensor` whose dimensions must
     match `predictions`.
 *  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `predictions`.
-*  <b>`metrics_collections`</b>: An optional list of collections that `precision` should
+*  <b>`metrics_collections`</b>: An optional list of collections that `recall` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
@@ -242,9 +242,9 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `weight` is not `None` and its shape doesn't match `predictions` or
-    if either `metrics_collections` or `updates_collections` are not
-    a list or tuple.
+    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -295,14 +295,14 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `weight` is not `None` and its shape doesn't match `predictions` or
-    if either `metrics_collections` or `updates_collections` are not
-    a list or tuple.
+    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
 
-### `tf.contrib.metrics.streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200, metrics_collections=None, updates_collections=None, name=None)` {#streaming_auc}
+### `tf.contrib.metrics.streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200, metrics_collections=None, updates_collections=None, curve='ROC', name=None)` {#streaming_auc}
 
 Computes the approximate AUC via a Riemann sum.
 
@@ -310,8 +310,9 @@ The `streaming_auc` function creates four local variables, `true_positives`,
 `true_negatives`, `false_positives` and `false_negatives` that are used to
 compute the AUC. To discretize the AUC curve, a linearly spaced set of
 thresholds is used to compute pairs of recall and precision values. The area
-under the curve is therefore computed using the height of the recall values
-by the false positive rate.
+under the ROC-curve is therefore computed using the height of the recall
+values by the false positive rate, while the area under the PR-curve is the
+computed using the height of the precision values by the recall.
 
 This value is ultimately returned as `auc`, an idempotent
 operation the computes the area under a discretized curve of precision versus
@@ -321,12 +322,12 @@ numbers of thresholds more closely approximating the true AUC.
 
 To faciliate the estimation of the AUC over a stream of data, the function
 creates an `update_op` operation whose behavior is dependent on the value of
-`weights`. If `weights` is None, then `update_op` increments the
+`ignore_mask`. If `ignore_mask` is None, then `update_op` increments the
 `true_positives`, `true_negatives`, `false_positives` and `false_negatives`
 counts with the number of each found in the current `predictions` and `labels`
-`Tensors`. If `weights` is not `None`, then the increment is performed using
-only the elements of `predictions` and `labels` whose corresponding value
-in `ignore_mask` is `False`. In addition to performing the updates,
+`Tensors`. If `ignore_mask` is not `None`, then the increment is performed
+using only the elements of `predictions` and `labels` whose corresponding
+value in `ignore_mask` is `False`. In addition to performing the updates,
 `update_op` also returns the `auc`.
 
 ##### Args:
@@ -342,12 +343,15 @@ in `ignore_mask` is `False`. In addition to performing the updates,
     added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
+*  <b>`curve`</b>: Specifies the name of the curve to be computed, 'ROC' [default] or
+  'PR' for the Precision-Recall-curve.
+
 *  <b>`name`</b>: An optional variable_op_scope name.
 
 ##### Returns:
 
 
-*  <b>`auc`</b>: A tensor representing the current area-under-curve.
+*  <b>`auc`</b>: A scalar tensor representing the current area-under-curve.
 *  <b>`update_op`</b>: An operation that increments the `true_positives`,
     `true_negatives`, `false_positives` and `false_negatives` variables
     appropriately and whose value matches `auc`.
@@ -356,9 +360,9 @@ in `ignore_mask` is `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
-    `weights` is not `None` and its shape doesn't match `values`
-    or if either `metrics_collections` or `updates_collections` are not a list
-    or tuple.
+    `ignore_mask` is not `None` and its shape doesn't match `predictions` or
+    if either `metrics_collections` or `updates_collections` are not a list or
+    tuple.
 
 
 - - -
@@ -389,7 +393,7 @@ recall value.
 *  <b>`predictions`</b>: A floating point tensor of dimension [batch_size, num_classes]
 *  <b>`labels`</b>: A tensor of dimension [batch_size] whose type is in `int32`,
     `int64`.
-*  <b>`k`</b>: The number of top elements to look at for computing precision.
+*  <b>`k`</b>: The number of top elements to look at for computing recall.
 *  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `labels`. If an
     element of `ignore_mask` is True, the corresponding prediction and label
     pair is used to compute the metrics. Otherwise, the pair is ignored.
@@ -411,9 +415,9 @@ recall value.
 
 
 *  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
-    if `weight` is not `None` and its shape doesn't match `predictions` or if
-    either `metrics_collections` or `updates_collections` are not a list or
-    tuple.
+    if `ignore_mask` is not `None` and its shape doesn't match `predictions`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -465,6 +469,57 @@ value.
 *  <b>`ValueError`</b>: If `weights` is not `None` and its shape doesn't match
     `predictions` or if either `metrics_collections` or `updates_collections`
     are not a list or tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_mean_iou(predictions, labels, num_classes, ignore_mask=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_mean_iou}
+
+Calculate per-step mean Intersection-Over-Union (mIOU).
+
+Mean Intersection-Over-Union is a common evaluation metric for
+semantic image segmentation, which first computes the IOU for each
+semantic class and then computes the average over classes.
+
+##### IOU is defined as follows:
+
+  IOU = true_positive / (true_positive + false_positive + false_negative).
+The predictions are accumulated in a confusion matrix, and mIOU is then
+calculated from it.
+
+##### Args:
+
+
+*  <b>`predictions`</b>: A tensor of prediction results for semantic labels, whose
+    shape is [batch size] and type `int32` or `int64`. The tensor will be
+    flattened, if its rank > 1.
+*  <b>`labels`</b>: A tensor of ground truth labels with shape [batch size] and of
+    type `int32` or `int64`. The tensor will be flattened, if its rank > 1.
+*  <b>`num_classes`</b>: The possible number of labels the prediction task can
+    have. This value must be provided, since a confusion matrix of
+    dimension = [num_classes, num_classes] will be allocated.
+*  <b>`ignore_mask`</b>: An optional, boolean tensor whose size matches `labels`. If an
+    element of `ignore_mask` is True, the corresponding prediction and label
+    pair is NOT used to compute the metrics. Otherwise, the pair is included.
+*  <b>`metrics_collections`</b>: An optional list of collections that `mean_iou`
+    should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
+    added to.
+*  <b>`name`</b>: An optional variable_op_scope name.
+
+##### Returns:
+
+
+*  <b>`mean_iou`</b>: A tensor representing the mean intersection-over-union.
+*  <b>`update_op`</b>: An operation that increments the confusion matrix.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the dimensions of `predictions` and `labels` don't match or
+    if `ignore_mask` is not `None` and its shape doesn't match `labels`
+    or if either `metrics_collections` or `updates_collections` are not a list
+    or tuple.
 
 
 - - -
@@ -739,16 +794,17 @@ If `class_id` is not specified, we'll calculate precision as how often on
 `streaming_sparse_precision_at_k` creates two local variables,
 `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
 the precision@k frequency. This frequency is ultimately returned as
-`recall_at_<k>`: an idempotent operation that simply divides
-`true_positive_at_<k>` by total (`true_positive_at_<k>` + `recall_at_<k>`). To
-facilitate the estimation of precision@k over a stream of data, the function
-utilizes three steps.
+`precision_at_<k>`: an idempotent operation that simply divides
+`true_positive_at_<k>` by total (`true_positive_at_<k>` +
+`false_positive_at_<k>`). To facilitate the estimation of
+precision@k over a stream of data, the function utilizes three
+steps.
 * A `top_k` operation computes a tensor whose elements indicate the top `k`
   predictions of the `predictions` `Tensor`.
 * Set operations are applied to `top_k` and `labels` to calculate true
   positives and false positives.
 * An `update_op` operation increments `true_positive_at_<k>` and
-  `false_positive_at_<k>`. It also returns the recall value.
+  `false_positive_at_<k>`. It also returns the precision value.
 
 ##### Args:
 
@@ -889,7 +945,6 @@ numbers of bins and comparing results.
 
 
 
-## Other Functions and Classes
 - - -
 
 ### `tf.contrib.metrics.accuracy(predictions, labels, weights=None)` {#accuracy}
@@ -918,15 +973,15 @@ Computes the percentage of times that predictions matches labels.
 
 - - -
 
-### `tf.contrib.metrics.confusion_matrix(predictions, targets, num_classes=None, name=None)` {#confusion_matrix}
+### `tf.contrib.metrics.confusion_matrix(predictions, labels, num_classes=None, dtype=tf.int32, name=None)` {#confusion_matrix}
 
-Computes the confusion matrix from predictions and targets
+Computes the confusion matrix from predictions and labels.
 
 Calculate the Confusion Matrix for a pair of prediction and
-target 1-D int arrays.
+label 1-D int arrays.
 
 Considering a prediction array such as: `[1, 2, 3]`
-And a target array such as: `[2, 2, 3]`
+And a label array such as: `[2, 2, 3]`
 
 ##### The confusion matrix returned would be the following one:
 
@@ -936,9 +991,9 @@ And a target array such as: `[2, 2, 3]`
      [0, 0, 1]]
 
 Where the matrix rows represent the prediction labels and the columns
-represents the target labels. The confusion matrix is always a 2-D array
+represents the real labels. The confusion matrix is always a 2-D array
 of shape [n, n], where n is the number of valid labels for a given
-classification task. Both prediction and target must be 1-D arrays of
+classification task. Both prediction and labels must be 1-D arrays of
 the same shape in order for this function to work.
 
 ##### Args:
@@ -946,10 +1001,11 @@ the same shape in order for this function to work.
 
 *  <b>`predictions`</b>: A 1-D array represeting the predictions for a given
                classification.
-*  <b>`targets`</b>: A 1-D represeting the real labels for the classification task.
+*  <b>`labels`</b>: A 1-D represeting the real labels for the classification task.
 *  <b>`num_classes`</b>: The possible number of labels the classification task can
                have. If this value is not provided, it will be calculated
-               using both predictions and targets array.
+               using both predictions and labels array.
+*  <b>`dtype`</b>: Data type of the confusion matrix.
 *  <b>`name`</b>: Scope name.
 
 ##### Returns:
@@ -960,9 +1016,67 @@ the same shape in order for this function to work.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If both predictions and targets are not 1-D vectors and do not
+*  <b>`ValueError`</b>: If both predictions and labels are not 1-D vectors and do not
               have the same size.
 
+
+
+- - -
+
+### `tf.contrib.metrics.aggregate_metrics(*value_update_tuples)` {#aggregate_metrics}
+
+Aggregates the metric value tensors and update ops into two lists.
+
+##### Args:
+
+
+*  <b>`*value_update_tuples`</b>: a variable number of tuples, each of which contain the
+    pair of (value_tensor, update_op) from a streaming metric.
+
+##### Returns:
+
+  a list of value tensors and a list of update ops.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `value_update_tuples` is empty.
+
+
+- - -
+
+### `tf.contrib.metrics.aggregate_metric_map(names_to_tuples)` {#aggregate_metric_map}
+
+Aggregates the metric names to tuple dictionary.
+
+This function is useful for pairing metric names with their associated value
+and update ops when the list of metrics is long. For example:
+
+  metrics_to_values, metrics_to_updates = slim.metrics.aggregate_metric_map({
+      'Mean Absolute Error': new_slim.metrics.streaming_mean_absolute_error(
+          predictions, labels, weights),
+      'Mean Relative Error': new_slim.metrics.streaming_mean_relative_error(
+          predictions, labels, labels, weights),
+      'RMSE Linear': new_slim.metrics.streaming_root_mean_squared_error(
+          predictions, labels, weights),
+      'RMSE Log': new_slim.metrics.streaming_root_mean_squared_error(
+          predictions, labels, weights),
+  })
+
+##### Args:
+
+
+*  <b>`names_to_tuples`</b>: a map of metric names to tuples, each of which contain the
+    pair of (value_tensor, update_op) from a streaming metric.
+
+##### Returns:
+
+  A dictionary from metric names to value ops and a dictionary from metric
+  names to update ops.
+
+
+
+## Set `Ops`
 
 - - -
 

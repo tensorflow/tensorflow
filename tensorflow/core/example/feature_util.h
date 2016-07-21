@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@ limitations under the License.
 
 // A set of lightweight wrappers which simplify access to Example features.
 //
-// Tensorflow Example proto uses associative maps on top of oneof fields.
+// TensorFlow Example proto uses associative maps on top of oneof fields.
 // So accessing feature values is not very convenient.
 //
 // For example, to read a first value of integer feature "tag":

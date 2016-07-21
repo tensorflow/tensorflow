@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,6 +66,24 @@ Status ReluGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Relu", ReluGrad);
+
+Status Relu6Grad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "dy: T"},
+      // Ret val defs
+      {"dx: T"},
+      // Attr defs
+      {{"T: {float, double}"}},
+      // Nodes
+      {
+        {{"dx"}, "Relu6Grad", {"dy", "x"}, {{"T", "$T"}}}
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("Relu6", Relu6Grad);
 
 Status CrossEntropyGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -136,22 +154,25 @@ Status MaxPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs
-    {"input: float", "grad: float"},
+    {"input: T", "grad: T"},
     // Ret val defs
-    {"output: float"},
+    {"output: T"},
     // Attr defs
-    {"ksize: list(int) >= 4",
+    {"T: {float, half} = DT_FLOAT",
+     "ksize: list(int) >= 4",
      "strides: list(int) >= 4",
      GetPaddingAttrString()},
     // Nodes
     {
       // Invoke MaxPool again to recompute the outputs (removed by CSE?).
       {{"maxpool"}, "MaxPool", {"input"},
-       /*Attrs=*/{{"ksize", "$ksize"},
+       /*Attrs=*/{{"T", "$T"},
+                  {"ksize", "$ksize"},
                   {"strides", "$strides"},
                   {"padding", "$padding"}}},
       {{"output"}, "MaxPoolGrad", {"input", "maxpool", "grad"},
-       /*Attrs=*/{{"ksize", "$ksize"},
+       /*Attrs=*/{{"T", "$T"},
+                  {"ksize", "$ksize"},
                   {"strides", "$strides"},
                   {"padding", "$padding"}}}
     });

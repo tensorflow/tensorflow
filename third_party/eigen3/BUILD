@@ -8,11 +8,11 @@ cc_library(
         "Eigen/Cholesky",
         "Eigen/Eigenvalues",
         "Eigen/QR",
+        "unsupported/Eigen/SpecialFunctions",
         "unsupported/Eigen/CXX11/Tensor",
         "unsupported/Eigen/CXX11/FixedPoint",
         "unsupported/Eigen/CXX11/src/FixedPoint/*.h",
     ]),
-    includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
         "@eigen_archive//:eigen",

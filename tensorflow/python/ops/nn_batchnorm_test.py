@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -317,16 +317,10 @@ class SufficientStatisticsTest(tf.test.TestCase):
 
   def _npSuffStats(self, x, axes, shift, keep_dims):
     axis = tuple(axes)
-    if shift:
-      shift_value = x[[slice(None) if i not in set(axis) else slice(0, 1)
-                       for i in xrange(x.ndim)]]
-      m_ss = np.sum(x - shift_value, axis=axis, keepdims=keep_dims)
-      v_ss = np.sum(
-          (x - shift_value) * (x - shift_value),
-          axis=axis,
-          keepdims=keep_dims)
+    if shift is not None:
+      m_ss = np.sum(x - shift, axis=axis, keepdims=keep_dims)
+      v_ss = np.sum((x - shift) * (x - shift), axis=axis, keepdims=keep_dims)
     else:
-      shift_value = None
       m_ss = np.sum(x, axis=axis, keepdims=keep_dims)
       v_ss = np.sum(x * x, axis=axis, keepdims=keep_dims)
     count = 1.0
@@ -334,8 +328,8 @@ class SufficientStatisticsTest(tf.test.TestCase):
       if d in set(axes):
         count *= x.shape[d]
     if not keep_dims:
-      shift_value = np.squeeze(shift_value, axis=axis)
-    return count, m_ss, v_ss, shift_value
+      shift = np.squeeze(shift, axis=axis)
+    return count, m_ss, v_ss, shift
 
   def _opSuffStats(self, x, axes, shift, keep_dims):
     return tf.nn.sufficient_statistics(x, axes, shift, keep_dims)
@@ -375,7 +369,7 @@ class SufficientStatisticsTest(tf.test.TestCase):
   def testSuffStats(self):
     for has_shape in [True, False]:
       for keep_dims in [True, False]:
-        for shift in [True, False]:
+        for shift in [None, 1.0]:
           self._testSuffStats([2, 3], [1], shift, keep_dims, has_shape)
           self._testSuffStats([2, 3], [0], shift, keep_dims, has_shape)
           self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
@@ -419,20 +413,20 @@ class NormalizeMomentsTest(tf.test.TestCase):
         self.assertAllClose(npv, tfv, atol=0.000001)
 
   def testNormalizeMoments(self):
-    for shift in [True, False]:
+    for shift in [None, 4.0]:
       self._testNormalizeMoments([3], shift)
       self._testNormalizeMoments([2, 3], shift)
 
 
 class MomentsTest(tf.test.TestCase):
 
-  def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims):
+  def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims, dtype):
     with self.test_session():
       # shape = [batch, width, height, depth]
       assert len(shape) == 4
 
       x_numpy = np.random.normal(size=shape).astype(np.float32)
-      x = tf.placeholder(tf.float32, shape=[None] * len(shape))
+      x = tf.placeholder(dtype, shape=[None] * len(shape))
 
       mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
 
@@ -449,16 +443,18 @@ class MomentsTest(tf.test.TestCase):
       expected_variance = expected_x_squared - expected_mean_squared
 
       # Check that the moments are correct.
-      self.assertAllClose(expected_mean, mean.eval(feed_dict={x: x_numpy}))
-      self.assertAllClose(expected_variance, var.eval(feed_dict={x: x_numpy}))
+      self.assertAllCloseAccordingToType(expected_mean,
+                                         mean.eval(feed_dict={x: x_numpy}))
+      self.assertAllCloseAccordingToType(expected_variance,
+                                         var.eval(feed_dict={x: x_numpy}))
 
-  def RunMomentTest(self, shape, axes, keep_dims):
+  def RunMomentTest(self, shape, axes, keep_dims, dtype):
     with self.test_session():
       # shape = [batch, width, height, depth]
       assert len(shape) == 4
 
       x_numpy = np.random.normal(size=shape).astype(np.float32)
-      x = tf.constant(x_numpy)
+      x = tf.cast(tf.constant(x_numpy), dtype=dtype)
 
       mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
 
@@ -475,28 +471,44 @@ class MomentsTest(tf.test.TestCase):
       expected_variance = expected_x_squared - expected_mean_squared
 
       # Check that the moments are correct.
-      self.assertAllClose(expected_mean, mean.eval())
-      self.assertAllClose(expected_variance, var.eval())
+      self.assertAllCloseAccordingToType(expected_mean, mean.eval())
+      self.assertAllCloseAccordingToType(expected_variance, var.eval())
 
   def testBasic(self):
     for keep_dims in [False, True]:
-      self.RunMomentTest(shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
+      for dtype in [tf.float32, tf.float16]:
+        self.RunMomentTest(shape=[2, 3, 5, 4],
+                           axes=[0],
+                           keep_dims=keep_dims,
+                           dtype=dtype)
+        self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4],
+                                           axes=[0],
+                                           keep_dims=keep_dims,
+                                           dtype=dtype)
 
   def testGlobalNormalization(self):
     for keep_dims in [False, True]:
-      self.RunMomentTest(
-          shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
+      for dtype in [tf.float32, tf.float16]:
+        self.RunMomentTest(shape=[2, 3, 5, 4],
+                           axes=[0, 1, 2],
+                           keep_dims=keep_dims,
+                           dtype=dtype)
+        self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4],
+                                           axes=[0, 1, 2],
+                                           keep_dims=keep_dims,
+                                           dtype=dtype)
 
   def testAxes(self):
     for keep_dims in [False, True]:
-      self.RunMomentTest(
-          shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
+      for dtype in [tf.float32, tf.float16]:
+        self.RunMomentTest(shape=[2, 3, 5, 4],
+                           axes=[1, 2, 3],
+                           keep_dims=keep_dims,
+                           dtype=dtype)
+        self.RunMomentTestWithDynamicShape(shape=[2, 3, 5, 4],
+                                           axes=[1, 2, 3],
+                                           keep_dims=keep_dims,
+                                           dtype=dtype)
 
   def _testGlobalGradient(self, from_y="mean"):
     with self.test_session():

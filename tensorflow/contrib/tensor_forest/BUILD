@@ -1,9 +1,11 @@
-# Tensorflow code for training random forests.
+# TensorFlow code for training random forests.
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = [
+    "//visibility:public",
+])
 
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
@@ -16,6 +18,75 @@ filegroup(
             "**/OWNERS",
         ],
     ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "custom_op_sources",
+    srcs = glob(
+        [
+            "core/ops/*.cc",
+            "data/*.cc",
+        ],
+        exclude = ["core/ops/*_test.cc"],
+    ),
+)
+
+filegroup(
+    name = "custom_op_headers",
+    srcs = glob(
+        [
+            "core/ops/*.h",
+        ],
+    ),
+)
+
+py_library(
+    name = "constants",
+    srcs = [
+        "python/constants.py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+tf_custom_op_library(
+    name = "data/_data_ops.so",
+    srcs = [
+        "data/string_to_float_op.cc",
+    ],
+    deps = [
+        ":tree_utils",
+    ],
+)
+
+py_library(
+    name = "data_ops_lib",
+    srcs = [
+        "data/data_ops.py",
+    ],
+    data = [
+        "data/_data_ops.so",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+    ],
+)
+
+py_library(
+    name = "eval_metrics",
+    srcs = ["client/eval_metrics.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "client_lib",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":data_ops_lib",
+        ":eval_metrics",
+        ":tensor_forest_py",
+    ],
 )
 
 cc_library(
@@ -25,9 +96,9 @@ cc_library(
         "core/ops/tree_utils.h",
     ],
     deps = [
-        "//google/protobuf",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@protobuf//:protobuf",
     ],
 )
 
@@ -86,6 +157,7 @@ py_test(
     srcs = ["python/kernel_tests/count_extremely_random_stats_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
@@ -151,6 +223,7 @@ py_test(
     srcs = ["python/kernel_tests/tree_predictions_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":ops_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
@@ -176,6 +249,7 @@ py_library(
     srcs = ["python/tensor_forest.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":ops_lib",
     ],
 )

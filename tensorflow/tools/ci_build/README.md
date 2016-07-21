@@ -1,4 +1,4 @@
-# Tensorflow Builds
+# TensorFlow Builds
 
 This directory contains all the files and setup instructions to run all
 the important builds and tests. **You can trivially run it yourself!** It also
@@ -20,7 +20,7 @@ run continuous integration [ci.tensorflow.org](http://ci.tensorflow.org).
 2. Clone tensorflow repository.
 
    ```bash
-git clone --recurse-submodules https://github.com/tensorflow/tensorflow.git
+git clone https://github.com/tensorflow/tensorflow.git
 ```
 
 3. Go to tensorflow directory
@@ -75,7 +75,7 @@ for incoming gerrit changes. Gpu tests and benchmark are coming soon. Check
 
 
 
-## How Does Tensorflow Continuous Integration Work
+## How Does TensorFlow Continuous Integration Work
 
 We use [jenkins](https://jenkins-ci.org/) as our continuous integration.
 It is running at [ci.tensorflow.org](http://ci.tensorflow.org).

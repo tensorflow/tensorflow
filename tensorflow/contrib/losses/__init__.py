@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Ops for building neural network losses."""
 
 from __future__ import absolute_import
@@ -22,4 +23,3 @@ import sys
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.losses.python.losses import *
-from tensorflow.python.util.all_util import make_all

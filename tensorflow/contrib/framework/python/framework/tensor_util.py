@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor utility functions.
-
-@@assert_same_float_dtype
-@@assert_scalar_int
-@@convert_to_tensor_or_sparse_tensor
-@@local_variable
-@@reduce_sum_n
-@@with_shape
-@@with_same_shape
-"""
+"""Tensor utility functions."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -35,14 +26,17 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
 __all__ = [
-    'assert_same_float_dtype', 'assert_scalar_int',
-    'convert_to_tensor_or_sparse_tensor', 'local_variable', 'reduce_sum_n',
-    'with_shape', 'with_same_shape',
-]
+    'assert_same_float_dtype',
+    'assert_scalar_int',
+    'convert_to_tensor_or_sparse_tensor',
+    'is_tensor',
+    'reduce_sum_n',
+    'with_shape',
+    'with_same_shape']
 
 
 def _assert_same_base_type(items, expected_type=None):
-  """Asserts all items are of the same base type.
+  r"""Asserts all items are of the same base type.
 
   Args:
     items: List of graph items (e.g., `Variable`, `Tensor`, `SparseTensor`,
@@ -116,23 +110,6 @@ def assert_scalar_int(tensor):
   if shape.ndims != 0:
     raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
   return tensor
-
-
-# TODO(ptucker): Move to tf.variables?
-def local_variable(initial_value, validate_shape=True, name=None):
-  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
-
-  Args:
-    initial_value: See variables.Variable.__init__.
-    validate_shape: See variables.Variable.__init__.
-    name: See variables.Variable.__init__.
-  Returns:
-    New variable.
-  """
-  return variables.Variable(
-      initial_value, trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      validate_shape=validate_shape, name=name)
 
 
 def reduce_sum_n(tensors, name=None):
@@ -239,8 +216,19 @@ def with_same_shape(expected_tensor, tensor):
     return with_shape(expected_shape, tensor)
 
 
-def _is_tensor(t):
-  return isinstance(t, (ops.Tensor, ops.SparseTensor, variables.Variable))
+def is_tensor(x):
+  """Check for tensor types.
+  Check whether an object is a tensor. Equivalent to
+  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+  Args:
+    x: An python object to check.
+
+  Returns:
+    `True` if `x` is a tensor, `False` if not.
+  """
+  tensor_types = (ops.Tensor, ops.SparseTensor, variables.Variable)
+  return isinstance(x, tensor_types)
 
 
 def with_shape(expected_shape, tensor):
@@ -263,7 +251,7 @@ def with_shape(expected_shape, tensor):
     raise ValueError('SparseTensor not supported.')
 
   # Shape type must be 1D int32.
-  if _is_tensor(expected_shape):
+  if is_tensor(expected_shape):
     if expected_shape.dtype.base_dtype != dtypes.int32:
       raise ValueError(
           'Invalid dtype %s for shape %s expected of tensor %s.' % (
@@ -288,18 +276,18 @@ def with_shape(expected_shape, tensor):
 
   actual_shape = tensor.get_shape()
 
-  if not actual_shape.is_fully_defined() or _is_tensor(expected_shape):
+  if not actual_shape.is_fully_defined() or is_tensor(expected_shape):
     with ops.op_scope([tensor], '%s/' % tensor.op.name):
-      if not _is_tensor(expected_shape) and (len(expected_shape) < 1):
+      if not is_tensor(expected_shape) and (len(expected_shape) < 1):
         # TODO(irving): Remove scalar special case
         return array_ops.reshape(tensor, [])
       with ops.control_dependencies([_assert_shape_op(expected_shape, tensor)]):
         result = array_ops.identity(tensor)
-      if not _is_tensor(expected_shape):
+      if not is_tensor(expected_shape):
         result.set_shape(expected_shape)
       return result
 
-  if (not _is_tensor(expected_shape) and
+  if (not is_tensor(expected_shape) and
       not actual_shape.is_compatible_with(expected_shape)):
     if (len(expected_shape) < 1) and actual_shape.is_compatible_with([1]):
       # TODO(irving): Remove scalar special case.

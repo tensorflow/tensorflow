@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,6 +60,19 @@ void FillValues(Tensor* tensor, gtl::ArraySlice<T> vals) {
   }
 }
 
+// Fills in '*tensor' with 'vals', converting the types as needed.
+template <typename T, typename SrcType>
+void FillValues(Tensor* tensor, std::initializer_list<SrcType> vals) {
+  auto flat = tensor->flat<T>();
+  CHECK_EQ(flat.size(), vals.size());
+  if (flat.size() > 0) {
+    size_t i = 0;
+    for (auto itr = vals.begin(); itr != vals.end(); ++itr, ++i) {
+      flat(i) = T(*itr);
+    }
+  }
+}
+
 // Fills in '*tensor' with a sequence of value of val, val+1, val+2, ...
 //   Tensor x(&alloc, DT_FLOAT, TensorShape({2, 2}));
 //   test::FillIota<float>(&x, 1.0);
@@ -100,7 +113,8 @@ namespace internal {
 
 template <typename T>
 struct is_floating_point_type {
-  static const bool value = std::is_same<T, float>::value ||
+  static const bool value = std::is_same<T, Eigen::half>::value ||
+                            std::is_same<T, float>::value ||
                             std::is_same<T, double>::value ||
                             std::is_same<T, std::complex<float> >::value ||
                             std::is_same<T, std::complex<double> >::value;
@@ -175,7 +189,8 @@ struct Expector<T, true> {
 
   static void Near(const T& a, const T& b, const double abs_err) {
     if (a != b) {  // Takes care of inf.
-      EXPECT_LE(std::abs(a - b), abs_err) << "a = " << a << " b = " << b;
+      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err) << "a = " << a
+                                                            << " b = " << b;
     }
   }
 

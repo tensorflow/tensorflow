@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -246,6 +246,16 @@ class SparseConcatTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.sparse_concat(1, [sp_a, sp_e])
 
+  def testMismatchedRankExpandNonconcatDim(self):
+    with self.test_session(use_gpu=False):
+      sp_a = self._SparseTensor_3x3()
+      sp_e = self._SparseTensor_2x3x4()
+
+      # Rank mismatches should be caught at shape-inference time, even for
+      # expand_nonconcat_dim=True.
+      with self.assertRaises(ValueError):
+        tf.sparse_concat(1, [sp_a, sp_e], expand_nonconcat_dim=True)
+
   def testMismatchedShapes(self):
     with self.test_session(use_gpu=False) as sess:
       sp_a = self._SparseTensor_3x3()
@@ -257,6 +267,42 @@ class SparseConcatTest(tf.test.TestCase):
       # Shape mismatches can only be caught when the op is run
       with self.assertRaisesOpError("Input shapes must match"):
         sess.run(sp_concat)
+
+  def testMismatchedShapesExpandNonconcatDim(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_a = self._SparseTensor_3x3()
+      sp_b = self._SparseTensor_3x5()
+      sp_c = self._SparseTensor_3x2()
+      sp_d = self._SparseTensor_2x3()
+      sp_concat_dim0 = tf.sparse_concat(0, [sp_a, sp_b, sp_c, sp_d],
+                                        expand_nonconcat_dim=True)
+      sp_concat_dim1 = tf.sparse_concat(1, [sp_a, sp_b, sp_c, sp_d],
+                                        expand_nonconcat_dim=True)
+
+      sp_concat_dim0_out = sess.run(sp_concat_dim0)
+      sp_concat_dim1_out = sess.run(sp_concat_dim1)
+
+      self.assertAllEqual(
+          sp_concat_dim0_out.indices,
+          [[0, 2], [1, 0], [2, 0], [2, 2], [4, 1], [5, 0], [5, 3], [5, 4],
+           [7, 0], [8, 0], [9, 1], [10, 0], [10, 2]])
+      self.assertAllEqual(
+          sp_concat_dim0_out.values,
+          [1, 2, 3, 4, 1, 2, 1, 0, 1, 2, 1, 1, 2])
+      self.assertAllEqual(
+          sp_concat_dim0_out.shape,
+          [11, 5])
+
+      self.assertAllEqual(
+          sp_concat_dim1_out.indices,
+          [[0, 2], [0, 11], [1, 0], [1, 4], [1, 8], [1, 10], [1, 12], [2, 0],
+           [2, 2], [2, 3], [2, 6], [2, 7], [2, 8]])
+      self.assertAllEqual(
+          sp_concat_dim1_out.values,
+          [1, 1, 2, 1, 1, 1, 2, 3, 4, 2, 1, 0, 2])
+      self.assertAllEqual(
+          sp_concat_dim1_out.shape,
+          [3, 13])
 
   def testShapeInferenceUnknownShapes(self):
     with self.test_session(use_gpu=False):

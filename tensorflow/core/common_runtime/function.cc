@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -229,7 +229,7 @@ static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Device* device,
-                             Runner runner, int graph_def_version,
+                             int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options);
 
@@ -255,7 +255,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   const DeviceMgr* const device_mgr_;
   Device* const device_;
-  Runner runner_ = nullptr;
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
@@ -293,19 +292,16 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    const DeviceMgr* dmgr, Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options)
     : device_mgr_(dmgr),
       device_(device),
-      runner_(runner),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
       optimizer_(optimizer_options) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
-    Status s;
-    *sig = lib_def_->LookUp(op, &s);
-    return s;
+    return lib_def_->LookUpOpDef(op, sig);
   };
   create_kernel_ = [this](const NodeDef& ndef, OpKernel** kernel) {
     return CreateKernel(ndef, kernel);
@@ -334,6 +330,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -379,6 +376,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -660,12 +658,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     delete frame;
     return done(s);
   }
+  DCHECK(opts.runner != nullptr);
+
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
-  exec_args.runner = runner_;
+  exec_args.runner = *opts.runner;
   // TODO(zhifengc): we can avoid creating rendez here if we know
   // there is no send/recv nodes in the graph.
   auto* rendez = new IntraProcessRendezvous(device_mgr_);
@@ -687,52 +687,29 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
-  Status s;
-  auto sig = lib_def_->LookUp(func, &s);
-  return s.ok() && sig->is_stateful();
+  const OpDef* op_def;
+  const Status s = lib_def_->LookUpOpDef(func, &op_def);
+  return s.ok() && op_def->is_stateful();
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Device* device, Runner runner, int graph_def_version,
+    const DeviceMgr* dmgr, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(dmgr, device, runner, graph_def_version,
+  return new FunctionLibraryRuntimeImpl(dmgr, device, graph_def_version,
                                         lib_def, optimizer_options);
 }
 
 bool RemoveDeadNodes(Graph* g) {
   VLOG(2) << "Removing dead nodes";
-  std::vector<bool> visited(g->num_node_ids(), false);
-  std::deque<Node*> q;
+  std::unordered_set<const Node*> nodes;
   for (auto n : g->nodes()) {
     if (n->IsSource() || n->IsSink() || n->IsControlFlow() ||
         n->op_def().is_stateful()) {
-      q.push_back(n);
-      visited[n->id()] = true;
+      nodes.insert(n);
     }
   }
-  while (!q.empty()) {
-    const Node* n = q.front();
-    q.pop_front();
-    for (auto e : n->in_edges()) {
-      Node* p = e->src();
-      if (!visited[p->id()]) {
-        q.push_back(p);
-        visited[p->id()] = true;
-      }
-    }
-  }
-  bool removed_any = false;
-  for (std::size_t i = 0; i < visited.size(); ++i) {
-    if (!visited[i]) {
-      Node* n = g->FindNodeId(i);
-      if (n) {
-        g->RemoveNode(n);
-        removed_any = true;
-      }
-    }
-  }
-  return removed_any;
+  return PruneForReverseReachability(g, std::move(nodes));
 }
 
 namespace {

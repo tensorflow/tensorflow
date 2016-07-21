@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ class CrashOnErrorCollector
   }
 };
 
-static const char kTensorflowHeaderPrefix[] = "";
+static const char kTensorFlowHeaderPrefix[] = "";
 
 static const char kPlaceholderFile[] =
     "tensorflow/tools/proto_text/placeholder.txt";
@@ -77,7 +77,7 @@ int MainImpl(int argc, char** argv) {
   }
 
   const string output_root = argv[1];
-  const string output_relative_path = kTensorflowHeaderPrefix + string(argv[2]);
+  const string output_relative_path = kTensorFlowHeaderPrefix + string(argv[2]);
 
   string src_relative_path;
   bool has_placeholder = false;
@@ -114,7 +114,7 @@ int MainImpl(int argc, char** argv) {
         proto_path_no_suffix.substr(output_relative_path.size());
 
     const auto code =
-        tensorflow::GetProtoTextFunctionCode(*fd, kTensorflowHeaderPrefix);
+        tensorflow::GetProtoTextFunctionCode(*fd, kTensorFlowHeaderPrefix);
 
     // Three passes, one for each output file.
     for (int pass = 0; pass < 3; ++pass) {

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ flags.DEFINE_float("float_foo", 42.0, "HelpString")
 
 flags.DEFINE_boolean("bool_foo", True, "HelpString")
 flags.DEFINE_boolean("bool_negation", True, "HelpString")
+flags.DEFINE_boolean("bool-dash-negation", True, "HelpString")
 flags.DEFINE_boolean("bool_a", False, "HelpString")
 flags.DEFINE_boolean("bool_c", False, "HelpString")
 flags.DEFINE_boolean("bool_d", True, "HelpString")
@@ -64,6 +65,10 @@ class FlagsTest(googletest.TestCase):
     # --bool_flag=True sets to True
     self.assertEqual(True, FLAGS.bool_c)
 
+    # --no before the flag mirrors argparse's behavior with
+    # regard to dashes in flag names
+    self.assertEqual(False, FLAGS.bool_dash_negation)
+
     # --bool_flag=False sets to False
     self.assertEqual(False, FLAGS.bool_d)
 
@@ -85,9 +90,9 @@ class FlagsTest(googletest.TestCase):
 
 if __name__ == "__main__":
   # Test command lines
-  sys.argv.extend(["--bool_a", "--nobool_negation", "--bool_c=True",
-                   "--bool_d=False", "--bool_e=gibberish", "--unknown_flag",
-                   "and_argument"])
+  sys.argv.extend(["--bool_a", "--nobool_negation", "--nobool-dash-negation",
+                   "--bool_c=True", "--bool_d=False", "--bool_e=gibberish",
+                   "--unknown_flag", "and_argument"])
 
   # googletest.main() tries to interpret the above flags, so use the
   # direct functions instead.

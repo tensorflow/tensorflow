@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,20 +34,20 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python.client import graph_util
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
@@ -285,7 +285,7 @@ class BaseSaverBuilder(object):
 
   def _AddShardedRestoreOps(self, filename_tensor, per_device,
                             restore_sequentially, reshape):
-    """Add Ops to save variables from multiple devices.
+    """Add Ops to restore variables from multiple devices.
 
     Args:
       filename_tensor: Tensor for the path of the file to load.
@@ -461,7 +461,8 @@ class BaseSaverBuilder(object):
             max_to_keep=5,
             keep_checkpoint_every_n_hours=10000.0,
             name=None,
-            restore_sequentially=False):
+            restore_sequentially=False,
+            filename="model"):
     """Adds save/restore nodes to the graph and creates a SaverDef proto.
 
     Args:
@@ -485,6 +486,8 @@ class BaseSaverBuilder(object):
       name: String.  Optional name to use as a prefix when adding operations.
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving.
 
     Returns:
       A SaverDef proto.
@@ -501,7 +504,7 @@ class BaseSaverBuilder(object):
 
     with ops.op_scope([vs.var for vs in vars_to_save], name, "save") as name:
       # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant("model")
+      filename_tensor = constant_op.constant(filename)
 
       # Add the save ops.
       if sharded:
@@ -618,9 +621,8 @@ def update_checkpoint_state(save_dir,
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
-  f = gfile.FastGFile(coord_checkpoint_filename, mode="w")
-  f.write(text_format.MessageToString(ckpt))
-  f.close()
+  file_io.write_string_to_file(
+      coord_checkpoint_filename, text_format.MessageToString(ckpt))
 
 
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
@@ -637,6 +639,9 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   Returns:
     A CheckpointState if the state was available, None
     otherwise.
+
+  Raises:
+    ValueError: if the checkpoint read doesn't have model_checkpoint_path set.
   """
   ckpt = None
   coord_checkpoint_filename = _GetCheckpointFilename(
@@ -645,22 +650,26 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   try:
     # Check that the file exists before opening it to avoid
     # many lines of errors from colossus in the logs.
-    if gfile.Exists(coord_checkpoint_filename):
-      f = gfile.FastGFile(coord_checkpoint_filename, mode="r")
+    if file_io.file_exists(coord_checkpoint_filename):
+      file_content = file_io.read_file_to_string(
+          coord_checkpoint_filename).decode("utf-8")
       ckpt = CheckpointState()
-      text_format.Merge(f.read(), ckpt)
+      text_format.Merge(file_content, ckpt)
+      if not ckpt.model_checkpoint_path:
+        raise ValueError("Invalid checkpoint state loaded from %s", checkpoint_dir)
       # For relative model_checkpoint_path and all_model_checkpoint_paths,
       # prepend checkpoint_dir.
-      if not os.path.isabs(checkpoint_dir):
-        if not os.path.isabs(ckpt.model_checkpoint_path):
-          ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
+      if not os.path.isabs(ckpt.model_checkpoint_path):
+        ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
                                                     ckpt.model_checkpoint_path)
-        for i in range(len(ckpt.all_model_checkpoint_paths)):
-          p = ckpt.all_model_checkpoint_paths[i]
-          if not os.path.isabs(p):
-            ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
-  except IOError:
+      for i in range(len(ckpt.all_model_checkpoint_paths)):
+        p = ckpt.all_model_checkpoint_paths[i]
+        if not os.path.isabs(p):
+          ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
+  except IOError as e:
     # It's ok if the file cannot be read
+    logging.warning(str(e))
+    logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   except text_format.ParseError as e:
     logging.warning(str(e))
@@ -921,14 +930,15 @@ class Saver(object):
             self.saver_def.keep_checkpoint_every_n_hours * 3600)
         return
       # Otherwise delete the files.
-      for f in gfile.Glob(self._CheckpointFilename(p)):
+      for f in file_io.get_matching_files(
+          self._CheckpointFilename(p)):
         try:
-          gfile.Remove(f)
+          file_io.delete_file(f)
           meta_graph_filename = self._MetaGraphFilename(
               f, meta_graph_suffix=meta_graph_suffix)
-          if gfile.Exists(meta_graph_filename):
-            gfile.Remove(meta_graph_filename)
-        except OSError as e:
+          if file_io.file_exists(meta_graph_filename):
+            file_io.delete_file(meta_graph_filename)
+        except Exception as e:  # pylint: disable=broad-except
           logging.warning("Ignoring: %s", str(e))
 
   def as_saver_def(self):
@@ -1098,7 +1108,7 @@ class Saver(object):
     Raises:
       ValueError: If the given `save_path` does not point to a file.
     """
-    if not gfile.Glob(save_path):
+    if not file_io.get_matching_files(save_path):
       raise ValueError("Restore called with invalid save path %s" % save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
@@ -1129,8 +1139,11 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-    if gfile.Glob(ckpt.model_checkpoint_path):
+    if file_io.get_matching_files(ckpt.model_checkpoint_path):
       return ckpt.model_checkpoint_path
+    else:
+      logging.error("Couldn't match files for pattern %s",
+                    ckpt.model_checkpoint_path)
 
   return None
 
@@ -1278,27 +1291,23 @@ def read_meta_graph_file(filename):
     IOError: If the file doesn't exist, or cannot be successfully parsed.
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  if not gfile.Exists(filename):
+  if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  with gfile.FastGFile(filename, "rb") as f:
-    file_content = f.read()
-    try:
-      meta_graph_def.ParseFromString(file_content)
-      return meta_graph_def
-    except Exception:  # pylint: disable=broad-except
-      pass
+  file_content = file_io.read_file_to_string(filename)
+  try:
+    meta_graph_def.ParseFromString(file_content)
+    return meta_graph_def
+  except Exception:  # pylint: disable=broad-except
+    pass
 
   # Next try to read it as a text file.
-  with gfile.FastGFile(filename, "r") as f:
-    file_content = f.read()
-    try:
-      text_format.Merge(file_content, meta_graph_def)
-      return meta_graph_def
-    except text_format.ParseError as e:
-      raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+  try:
+    text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
+  except text_format.ParseError as e:
+    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
 
-  return None
+  return meta_graph_def
 
 
 def _import_meta_graph_def(meta_graph_def):

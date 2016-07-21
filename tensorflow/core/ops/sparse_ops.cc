@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -390,6 +390,42 @@ output_indices: 2-D.  `N x R` matrix with the same indices as input_indices, but
 output_values: 1-D.  `N` non-empty values corresponding to `output_indices`.
 )doc");
 
+REGISTER_OP("SparseReshape")
+    .Input("input_indices: int64")
+    .Input("input_shape: int64")
+    .Input("new_shape: int64")
+    .Output("output_indices: int64")
+    .Output("output_shape: int64")
+    .Doc(R"doc(
+Reshapes a SparseTensor to represent values in a new dense shape.
+
+This operation has the same semantics as reshape on the represented dense
+tensor.  The `input_indices` are recomputed based on the requested `new_shape`.
+
+If one component of `new_shape` is the special value -1, the size of that
+dimension is computed so that the total dense size remains constant.  At
+most one component of `new_shape` can be -1.  The number of dense elements
+implied by `new_shape` must be the same as the number of dense elements
+originally implied by `input_shape`.
+
+Reshaping does not affect the order of values in the SparseTensor.
+
+If the input tensor has rank `R_in` and `N` non-empty values, and `new_shape`
+has length `R_out`, then `input_indices` has shape `[N, R_in]`,
+`input_shape` has length `R_in`, `output_indices` has shape `[N, R_out]`, and
+`output_shape` has length `R_out`.
+
+input_indices: 2-D.  `N x R_in` matrix with the indices of non-empty values in a
+  SparseTensor.
+input_shape: 1-D.  `R_in` vector with the input SparseTensor's dense shape.
+new_shape: 1-D.  `R_out` vector with the requested new dense shape.
+output_indices: 2-D.  `N x R_out` matrix with the updated indices of non-empty
+  values in the output SparseTensor.
+output_shape: 1-D.  `R_out` vector with the full dense shape of the output
+  SparseTensor.  This is the same as `new_shape` but with any -1 dimensions
+  filled in.
+)doc");
+
 REGISTER_OP("SparseTensorDenseAdd")
     .Input("a_indices: Tindices")
     .Input("a_values: T")
@@ -430,7 +466,8 @@ Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
 with length 1.
 
 If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-with a single element is returned.
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
 
 input_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
   SparseTensor, possibly not in canonical ordering.
@@ -441,15 +478,20 @@ keep_dims: If true, retain reduced dimensions with length 1.
 output: `R-K`-D.  The reduced Tensor.
 )doc");
 
-REGISTER_OP("SparseDenseCwiseMul")
-    .Input("sp_indices: int64")
-    .Input("sp_values: T")
-    .Input("sp_shape: int64")
-    .Input("dense: T")
-    .Output("output: T")
-    .Attr("T: numbertype")
-    .Doc(R"doc(
+#define SPARSE_DENSE_CWISE_SIGNATURE() \
+  Input("sp_indices: int64")           \
+      .Input("sp_values: T")           \
+      .Input("sp_shape: int64")        \
+      .Input("dense: T")               \
+      .Output("output: T")             \
+      .Attr("T: numbertype")
+
+REGISTER_OP("SparseDenseCwiseMul").SPARSE_DENSE_CWISE_SIGNATURE().Doc(R"doc(
 Component-wise multiplies a SparseTensor by a dense Tensor.
+
+The output locations corresponding to the implicitly zero elements in the sparse
+tensor will be zero (i.e., will not take up storage space), regardless of the
+contents of the dense tensor (even if it's +/-INF and that INF*0 == NaN).
 
 *Limitation*: this Op only broadcasts the dense side to the sparse side, but not
 the other direction.
@@ -462,14 +504,7 @@ dense: `R`-D.  The dense Tensor operand.
 output: 1-D.  The `N` values that are operated on.
 )doc");
 
-REGISTER_OP("SparseDenseCwiseDiv")
-    .Input("sp_indices: int64")
-    .Input("sp_values: T")
-    .Input("sp_shape: int64")
-    .Input("dense: T")
-    .Output("output: T")
-    .Attr("T: numbertype")
-    .Doc(R"doc(
+REGISTER_OP("SparseDenseCwiseDiv").SPARSE_DENSE_CWISE_SIGNATURE().Doc(R"doc(
 Component-wise divides a SparseTensor by a dense Tensor.
 
 *Limitation*: this Op only broadcasts the dense side to the sparse side, but not
@@ -481,6 +516,112 @@ sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
 sp_shape: 1-D.  Shape of the input SparseTensor.
 dense: `R`-D.  The dense Tensor operand.
 output: 1-D.  The `N` values that are operated on.
+)doc");
+
+REGISTER_OP("SparseDenseCwiseAdd").SPARSE_DENSE_CWISE_SIGNATURE().Doc(R"doc(
+Adds up a SparseTensor and a dense Tensor, using these special rules:
+
+(1) Broadcasts the dense side to have the same shape as the sparse side, if
+    eligible;
+(2) Then, only the dense values pointed to by the indices of the SparseTensor
+    participate in the cwise addition.
+
+By these rules, the result is a logical SparseTensor with exactly the same
+indices and shape, but possibly with different non-zero values.  The output of
+this Op is the resultant non-zero values.
+
+sp_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, possibly not in canonical ordering.
+sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
+sp_shape: 1-D.  Shape of the input SparseTensor.
+dense: `R`-D.  The dense Tensor operand.
+output: 1-D.  The `N` values that are operated on.
+)doc");
+
+REGISTER_OP("SparseSoftmax")
+    .Input("sp_indices: int64")
+    .Input("sp_values: T")
+    .Input("sp_shape: int64")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Applies softmax to a batched N-D `SparseTensor`.
+
+The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
+(where `N >= 2`), and with indices sorted in the canonical lexicographic order.
+
+This op is equivalent to applying the normal `tf.nn.softmax()` to each innermost
+logical submatrix with shape `[B, C]`, but with the catch that *the implicitly
+zero elements do not participate*.  Specifically, the algorithm is equivalent
+to the following:
+
+  (1) Applies `tf.nn.softmax()` to a densified view of each innermost submatrix
+      with shape `[B, C]`, along the size-C dimension;
+  (2) Masks out the original implicitly-zero locations;
+  (3) Renormalizes the remaining elements.
+
+Hence, the `SparseTensor` result has exactly the same non-zero indices and
+shape.
+
+sp_indices: 2-D.  `NNZ x R` matrix with the indices of non-empty values in a
+  SparseTensor, in canonical ordering.
+sp_values: 1-D.  `NNZ` non-empty values corresponding to `sp_indices`.
+sp_shape: 1-D.  Shape of the input SparseTensor.
+output: 1-D.  The `NNZ` values for the result `SparseTensor`.
+)doc");
+
+REGISTER_OP("SparseSparseMaximum")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b_indices: int64")
+    .Input("b_values: T")
+    .Input("b_shape: int64")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Attr("T: realnumbertype")
+    .Doc(R"doc(
+Returns the element-wise max of two SparseTensors.
+
+Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+
+a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, in the canonical lexicographic ordering.
+a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
+a_shape: 1-D.  Shape of the input SparseTensor.
+b_indices: counterpart to `a_indices` for the other operand.
+b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
+b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
+
+output_indices: 2-D.  The indices of the output SparseTensor.
+output_values: 1-D.  The values of the output SparseTensor.
+)doc");
+
+REGISTER_OP("SparseSparseMinimum")
+    .Input("a_indices: int64")
+    .Input("a_values: T")
+    .Input("a_shape: int64")
+    .Input("b_indices: int64")
+    .Input("b_values: T")
+    .Input("b_shape: int64")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Returns the element-wise min of two SparseTensors.
+
+Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+
+a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, in the canonical lexicographic ordering.
+a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
+a_shape: 1-D.  Shape of the input SparseTensor.
+b_indices: counterpart to `a_indices` for the other operand.
+b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
+b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
+
+output_indices: 2-D.  The indices of the output SparseTensor.
+output_values: 1-D.  The values of the output SparseTensor.
 )doc");
 
 }  // namespace tensorflow

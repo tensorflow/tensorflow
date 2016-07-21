@@ -1,15 +1,64 @@
 # Changes Since Last Release
 
-## Features & Improvements
-* TensorBoard now has an Audio Dashboard, with associated audio summaries.
-* TensorBoard now has a reload button, and supports auto-reloading
-* TensorBoard scalar charts now show tooltips with more information
-* TensorBoard now supports run filtering
-* TensorBoard has color changes: the same run always gets the same hue
+## Features and Improvements
+* Connectionist Temporal Classification ops are now "official" (see, e.g.,
+  `tf.nn.ctc_loss`)
+* Preliminary graph-construction C API, for use by language bindings.
+* Major revision to the graph-construction C++ API. Scoping mechanism to make op
+  naming, specifying control dependencies etc. more consistent. C++ values can
+  be used directly as operands, making op construction more concise.
 
-## Bug Fixes and Other Changes
-* TensorBoard now displays graphs with only one data point
-* TensorBoard now visually displays NaN values
+## Breaking Changes to the API
+* `env.h` replaces use of `New*File()` functions to use `std::unique_ptr`
+  return arguments, removing the old raw pointer returns.
+
+# Release 0.9.0
+
+## Major Features and Improvements
+
+* Python 3.5 support and binaries
+* Added iOS support
+* Added support for processing on GPUs on MacOS
+* Added makefile for better cross-platform build support (C API only)
+* fp16 support and improved complex128 support for many ops
+* Higher level functionality in contrib.{layers,losses,metrics,learn}
+* More features to Tensorboard
+* Improved support for string embedding and sparse features
+* The RNN api is finally "official" (see, e.g., `tf.nn.dynamic_rnn`,
+  `tf.nn.rnn`, and the classes in `tf.nn.rnn_cell`).
+* TensorBoard now has an Audio Dashboard, with associated audio summaries.
+
+## Big Fixes and Other Changes
+
+* Turned on CuDNN Autotune.
+* Added support for using third-party Python optimization algorithms (contrib.opt).
+* Google Cloud Storage filesystem support.
+* HDF5 support
+* Add support for 3d convolutions and pooling.
+* Update gRPC release to 0.14.
+* Eigen version upgrade.
+* Switch to eigen thread pool
+* `tf.nn.moments()` now accepts a `shift` argument. Shifting by a good estimate
+  of the mean improves numerical stability. Also changes the behavior of the
+  `shift` argument to `tf.nn.sufficient_statistics()`.
+* Performance improvements
+* Many bugfixes
+* Many documentation fixes
+* TensorBoard fixes: graphs with only one data point, Nan values, 
+  reload button and auto-reload, tooltips in scalar charts, run 
+  filtering, stable colors
+* Tensorboard graph visualizer now supports run metadata. Clicking on nodes
+  while viewing a stats for a particular run will show runtime statistics, such
+  as memory or compute usage. Unused nodes will be faded out.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aaron Schumacher, Aidan Dang, Akihiko ITOH, Aki Sukegawa, Arbit Chen, Aziz Alto, Danijar Hafner, Erik Erwitt, Fabrizio Milo, Felix Maximilian Möller, Henry Saputra, Sung Kim, Igor Babuschkin, Jan Zikes, Jeremy Barnes, Jesper Steen Møller, Johannes Mayer, Justin Harris, Kashif Rasul, Kevin Robinson, Loo Rong Jie, Lucas Moura, Łukasz Bieniasz-Krzywiec, Mario Cho, Maxim Grechkin, Michael Heilman, Mostafa Rahmani, Mourad Mourafiq, @ninotoshi, Orion Reblitz-Richardson, Yuncheng Li, @raoqiyu, Robert DiPietro, Sam Abrahams, Sebastian Raschka, Siddharth Agrawal, @snakecharmer1024, Stephen Roller, Sung Kim, SunYeop Lee, Thijs Vogels, Till Hoffmann, Victor Melo, Ville Kallioniemi, Waleed Abdulla, Wenjian Huang, Yaroslav Bulatov, Yeison Rodriguez, Yuan (Terry) Tang, Yuxin Wu, @zhongzyd, Ziming Dong, Zohar Jackson
+
+We are also grateful to all who filed issues or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
 
 # Release 0.8.0
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -308,8 +308,19 @@ void SetAttrValue(StringPiece value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
 
+void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
 void SetAttrValue(const TensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
+}
+
+void SetAttrValue(const TensorShapeProto& value, AttrValue* out) {
+  *out->mutable_shape() = value;
 }
 
 void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
@@ -320,6 +331,13 @@ void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
   out->mutable_list();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
+  }
+}
+
+void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
+  out->mutable_list();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    *out->mutable_list()->add_shape() = v;
   }
 }
 

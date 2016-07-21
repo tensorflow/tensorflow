@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -86,6 +86,46 @@ class ClipTest(tf.test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  def testClipByNormClippedWithDim0(self):
+    # Norm clipping when clip_norm < 5
+    with self.test_session():
+      x = tf.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
+      # Norm of x[:, 0] = sqrt(3^2 + 4^2) = 5, x[:, 2] = 3
+      np_ans = [[-2.4, 0.0, 0.0],
+                [3.2, 0.0, 3.0]]
+      clip_norm = 4.0
+      ans = tf.clip_by_norm(x, clip_norm, [0])
+      tf_ans = ans.eval()
+
+    self.assertAllClose(np_ans, tf_ans)
+
+  def testClipByNormClippedWithDim1(self):
+    # Norm clipping when clip_norm < 5
+    with self.test_session():
+      x = tf.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
+      # Norm of x[0, :] = 3, x[1, :] = sqrt(3^2 + 4^2) = 5
+      np_ans = [[-3.0, 0.0, 0.0],
+                [3.2, 0.0, 2.4]]
+      clip_norm = 4.0
+      ans = tf.clip_by_norm(x, clip_norm, [1])
+      tf_ans = ans.eval()
+
+    self.assertAllClose(np_ans, tf_ans)
+
+  def testClipByNormNotClippedWithAxes(self):
+    # No norm clipping when clip_norm >= 5
+    with self.test_session():
+      x = tf.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
+      # Norm of x[0, :] = 3, x[1, :] = sqrt(3^2 + 4^2) = 5
+      np_ans = [[-3.0, 0.0, 0.0],
+                [4.0, 0.0, 3.0]]
+      clip_norm = 6.0
+      ans = tf.clip_by_norm(x, clip_norm, [1])
+      tf_ans = ans.eval()
+
+    self.assertAllClose(np_ans, tf_ans)
+
+  # ClipByGlobalNorm tests
   def testClipByGlobalNormClipped(self):
     # Norm clipping when clip_norm < 5
     with self.test_session():
@@ -132,7 +172,6 @@ class ClipTest(tf.test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
-  # ClipByGlobalNorm tests
   def testClipByGlobalNormWithIndexedSlicesClipped(self):
     # Norm clipping when clip_norm < 5
     with self.test_session():

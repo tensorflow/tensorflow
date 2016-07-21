@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,15 +23,16 @@ import contextlib
 import warnings
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
@@ -141,7 +142,7 @@ def _GatherInputs(to_ops, reached_ops):
   return inputs
 
 
-def _PendingCount(graph, to_ops, from_ops):
+def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
   """Initialize the pending count for ops between two lists of Operations.
 
   'pending_count[op._id]' indicates the number of backprop inputs
@@ -151,12 +152,13 @@ def _PendingCount(graph, to_ops, from_ops):
     graph: a Graph.
     to_ops: list of Operations.
     from_ops: list of Operations.
+    colocate_gradients_with_ops: Python bool.  See docstring of gradients().
 
   Returns:
     A tuple containing: (1) a list of integers indexed by operation id,
     indicating the number of backprop inputs to this operation, and (2)
-    a boolean which is True if any of the ops in between from_ops and to_ops
-    contain control flow loops.
+    a ControlFlowState object which is not None if the ops between from_ops
+    and to_ops contain control flow loops.
   """
   # Mark reachable ops from from_ops.
   reached_ops = [False] * (graph._last_id + 1)
@@ -181,8 +183,8 @@ def _PendingCount(graph, to_ops, from_ops):
         queue.append(inp.op)
 
   # 'loop_state' is None if there are no while loops.
-  loop_state = control_flow_ops.MaybeCreateControlFlowState(between_op_list,
-                                                            between_ops)
+  loop_state = control_flow_ops.MaybeCreateControlFlowState(
+      between_op_list, between_ops, colocate_gradients_with_ops)
 
   # Initialize pending count for between ops.
   pending_count = [0] * (graph._last_id + 1)
@@ -376,7 +378,8 @@ def gradients(ys,
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     pending_count, loop_state = _PendingCount(ops.get_default_graph(),
-                                              to_ops, from_ops)
+                                              to_ops, from_ops,
+                                              colocate_gradients_with_ops)
 
     # Iterate over the collected ops.
     #
@@ -483,18 +486,7 @@ def gradients(ys,
               if gate_gradients and len(
                   [x for x in in_grads if x is not None]) > 1:
                 in_grads = control_flow_ops.tuple(in_grads)
-          logging.vlog(1, "Gradient for '" + op.name + "'")
-          def _FilterGrad(x):
-            if x is None:
-              return False
-            if isinstance(x, (list, tuple)):
-              return bool(x)
-            else:
-              return True
-          logging.vlog(1, "  in  --> %s",
-                       ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
-          logging.vlog(1, "  out --> %s",
-                       ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
+          _LogOpGradients(op, out_grads, in_grads)
         else:
           # If no grad_fn is defined or none of out_grads is available,
           # just propagates a list of None backwards.
@@ -507,7 +499,7 @@ def gradients(ys,
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)
 
-      # update pending count for the inputs of op.
+      # update pending count for the inputs of op and enqueue ready ops.
       # pylint: disable=protected-access
       for x in op.inputs:
         pending_count[x.op._id] -= 1
@@ -522,6 +514,9 @@ def gradients(ys,
         if pending_count[x._id] is 0:
           queue.append(x)
       # pylint: enable=protected-access
+
+  if loop_state:
+    loop_state.PostProcessing()
   return [_GetGrad(grads, x) for x in xs]
 
 
@@ -579,6 +574,45 @@ def _AccumulatorShape(inputs):
   return shape
 
 
+def _LogOpGradients(op, out_grads, in_grads):
+  """Log the in and out grads of an op."""
+  logging.vlog(1, "Gradient for '" + op.name + "'")
+  def _FilterGrad(x):
+    if x is None:
+      return False
+    if isinstance(x, (list, tuple)):
+      return bool(x)
+    else:
+      return True
+  logging.vlog(1, "  in  --> %s",
+               ", ".join([x.name for x in out_grads if _FilterGrad(x)]))
+  logging.vlog(1, "  out --> %s",
+               ", ".join([x.name for x in in_grads if _FilterGrad(x)]))
+
+
+def _MultiDeviceAddN(tensor_list):
+  """Adds tensors from potentially multiple devices."""
+  # Basic function structure comes from control_flow_ops.group().
+  # Sort tensors according to their devices.
+  tensors_on_device = collections.defaultdict(lambda: [])
+  for tensor in tensor_list:
+    tensors_on_device[tensor.device].append(tensor)
+
+  # For each device, add the tensors on that device first.
+  # Then gather the partial sums from multiple devices.
+  # TODO(sjhwang): Create hierarchical aggregation tree as pbar's suggestion.
+  # E.g., aggregate per GPU, then per task, and so on.
+  summands = []
+  def DeviceKey(dev):
+    return "" if dev is None else dev
+  for dev in sorted(six.iterkeys(tensors_on_device), key=DeviceKey):
+    tensors = tensors_on_device[dev]
+    with ops.colocate_with(tensors[0].op, ignore_existing=True):
+      summands.append(math_ops.add_n(tensors))
+
+  return math_ops.add_n(summands)
+
+
 class AggregationMethod(object):
   """A class listing aggregation methods used to combine gradients.
 
@@ -634,8 +668,9 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
         assert control_flow_ops.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
-    if not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
-                for g in out_grad if g is not None]):
+    if (isinstance(out_grad, collections.Sequence) and
+        not all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
+                 for g in out_grad if g is not None])):
       raise TypeError("gradients have to be either all Tensors "
                       "or all IndexedSlices")
     # Aggregate multiple gradients, and convert [] to None.
@@ -675,7 +710,7 @@ def _AggregatedGrads(grads, op, loop_state, aggregation_method=None):
             out_grads[i] = running_sum
         else:
           used = "add_n"
-          out_grads[i] = math_ops.add_n(out_grad)
+          out_grads[i] = _MultiDeviceAddN(out_grad)
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:

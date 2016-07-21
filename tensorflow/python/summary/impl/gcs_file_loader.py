@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,8 @@ class GCSFileLoader(object):
       name = temp_file.name
       logging.debug('Temp file created at %s', name)
       gcs.CopyContents(self._gcs_path, self._gcs_offset, temp_file)
-      reader = pywrap_tensorflow.PyRecordReader_New(compat.as_bytes(name), 0)
+      reader = pywrap_tensorflow.PyRecordReader_New(
+          compat.as_bytes(name), 0, compat.as_bytes(''))
       while reader.GetNext():
         event = event_pb2.Event()
         event.ParseFromString(reader.record())

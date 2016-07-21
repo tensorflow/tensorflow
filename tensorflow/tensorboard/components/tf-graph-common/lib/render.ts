@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -147,6 +147,7 @@ const PARAMS = {
  */
 export class RenderGraphInfo {
   hierarchy: hierarchy.Hierarchy;
+  private displayingStats: boolean;
   private index: {[nodeName: string]: RenderNodeInfo};
   private deviceColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
@@ -160,9 +161,11 @@ export class RenderGraphInfo {
   // node.
   private hasSubhierarchy: {[nodeName: string]: boolean};
   root: RenderGroupNodeInfo;
+  traceInputs: Boolean;
 
-  constructor(hierarchy: hierarchy.Hierarchy) {
+  constructor(hierarchy: hierarchy.Hierarchy, displayingStats: boolean) {
     this.hierarchy = hierarchy;
+    this.displayingStats = displayingStats;
     this.index = {};
 
     this.computeScales();
@@ -173,6 +176,7 @@ export class RenderGraphInfo {
     this.index[hierarchy.root.name] = this.root;
     this.buildSubhierarchy(hierarchy.root.name);
     this.root.expanded = true;
+    this.traceInputs = false;
   }
 
   computeScales() {
@@ -260,6 +264,10 @@ export class RenderGraphInfo {
       renderInfo.computeTimeColor =
         this.computeTimeScale(node.stats.totalMicros);
     }
+
+    // We only fade nodes when we're displaying stats.
+    renderInfo.isFadedOut = this.displayingStats &&
+        !tf.graph.util.hasDisplayableNodeStats(node.stats);
 
     if (node.isGroupNode) {
       // Make a list of tuples (device, proportion), where proportion
@@ -381,6 +389,8 @@ export class RenderGraphInfo {
     _.each(metagraph.edges(), edgeObj => {
       let metaedge = metagraph.edge(edgeObj);
       let renderMetaedgeInfo = new RenderMetaedgeInfo(metaedge);
+      renderMetaedgeInfo.isFadedOut =
+          this.index[edgeObj.v].isFadedOut || this.index[edgeObj.w].isFadedOut;
       coreGraph.setEdge(edgeObj.v, edgeObj.w, renderMetaedgeInfo);
     });
 
@@ -996,6 +1006,11 @@ export class RenderNodeInfo {
    */
   computeTimeColor: string;
 
+  /**
+   * Whether this node is faded out. Used when displaying stats.
+   */
+  isFadedOut: boolean;
+
   constructor(node: Node) {
     this.node = node;
     this.expanded = false;
@@ -1027,6 +1042,9 @@ export class RenderNodeInfo {
     this.isInExtract = false;
     this.isOutExtract = false;
     this.coreBox = {width: 0, height: 0};
+
+    // By default, we don't fade nodes out. Default to false for safety.
+    this.isFadedOut = false;
   }
 
   isInCore(): boolean {
@@ -1088,11 +1106,18 @@ export class RenderMetaedgeInfo {
   /** Id of the <marker> used as an end-marker for the edge path. */
   endMarkerId: string;
 
+  /**
+   * Whether this edge is faded out. Used for fading out unused edges when
+   * displaying run statistics.
+   */
+  isFadedOut: boolean;
+
   constructor(metaedge: Metaedge) {
     this.metaedge = metaedge;
     this.adjoiningMetaedge = null;
     this.structural = false;
     this.weight = 1;
+    this.isFadedOut = false;
   }
 }
 

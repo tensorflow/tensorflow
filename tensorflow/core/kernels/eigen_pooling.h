@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -309,7 +309,7 @@ struct AvgPoolMeanReducer {
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE AvgPoolMeanReducer() : scalarCount_(0) {
     typedef typename packet_traits<T>::type Packet;
-    packetCount_ = pset1<Packet>(0.0);
+    packetCount_ = pset1<Packet>(T(0.0));
   }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reduce(const T t, T* accum) {
@@ -374,6 +374,24 @@ struct AvgPoolMeanReducer {
   typedef typename packet_traits<T>::type Packet;
   int scalarCount_;
   Packet packetCount_;
+};
+
+template <typename Device>
+struct reducer_traits<AvgPoolMeanReducer<float>, Device> {
+  enum {
+    Cost = 1,
+#if (EIGEN_ARCH_i386 || EIGEN_ARCH_x86_64) && !defined(__CUDACC__)
+    // We only support packet access for floats.
+    PacketAccess = true
+#else
+    PacketAccess = false
+#endif
+  };
+};
+
+template <>
+struct reducer_traits<AvgPoolMeanReducer<float>, GpuDevice> {
+  enum { Cost = 1, PacketAccess = false };
 };
 
 }  // namespace internal

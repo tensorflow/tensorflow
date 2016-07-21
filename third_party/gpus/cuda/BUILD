@@ -31,6 +31,15 @@ config_setting(
     },
 )
 
+# Equivalent to using_clang && -c opt.
+config_setting(
+    name = "using_clang_opt",
+    values = {
+        "define": "using_cuda_clang=true",
+        "compilation_mode": "opt",
+    },
+)
+
 config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
@@ -148,7 +157,7 @@ cc_library(
 # This rule checks if Cuda libraries in the source tree has been properly configured.
 # The output list makes bazel runs this rule first if the Cuda files are missing.
 # This gives us an opportunity to check and print a meaningful error message.
-# But we will need to create the output file list to make bazel happy in a successfull run.
+# But we will need to create the output file list to make bazel happy in a successful run.
 genrule(
     name = "cuda_check",
     srcs = [
@@ -169,7 +178,7 @@ genrule(
     ],
     cmd = if_cuda(
         # Under cuda config, create all the symbolic links to the actual cuda files
-        "OUTPUTDIR=`{} -f $(@D)/../../..`; cd third_party/gpus/cuda; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;".format(readlink_command()),
+        "OUTPUTDIR=`{} -f $(@D)/../../..`; cd `dirname $(location :cuda_config.sh)`; OUTPUTDIR=$$OUTPUTDIR ./cuda_config.sh --check;".format(readlink_command()),
 
         # Under non-cuda config, create all dummy files to make the build go through
         ";".join([

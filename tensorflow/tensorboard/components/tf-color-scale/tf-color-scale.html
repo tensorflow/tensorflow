@@ -13,15 +13,21 @@ a set of colors.
       Polymer({
         is: "tf-color-scale",
         properties: {
-          runs: Array,
+          runs: {
+            type: Array,
+          },
           outColorScale: {
             type: Object,
-            computed: "makeColorScale(runs.*)",
+            readOnly: true,
             notify: true,
+            value: function() {
+              return new TF.ColorScale();
+            },
           },
         },
-        makeColorScale: function(runs) {
-          return new TF.ColorScale().domain(this.runs);
+        observers: ['updateColorScale(runs.*)'],
+        updateColorScale: function(runsChange) {
+          this.outColorScale.domain(this.runs);
         },
       });
     })();

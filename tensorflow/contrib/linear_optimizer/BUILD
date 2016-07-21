@@ -47,10 +47,14 @@ py_library(
     srcs = [
         "__init__.py",
         "python/ops/sdca_ops.py",
+        "python/sdca_optimizer.py",
     ],
     data = [":python/ops/_sdca_ops.so"],
     srcs_version = "PY2AND3",
-    deps = [":sdca_ops"],
+    deps = [
+        ":sdca_ops",
+        "//tensorflow/contrib/lookup:lookup_py",
+    ],
 )
 
 py_test(

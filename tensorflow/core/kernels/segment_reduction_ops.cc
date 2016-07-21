@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -172,50 +172,48 @@ class SegmentReductionOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU_KERNELS(type, index_type)                 \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("SegmentSum")                                       \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .TypeConstraint<index_type>("Tindices"),             \
-      SegmentReductionOp<CPUDevice, type, index_type,          \
-                         Eigen::internal::SumReducer<type>>);  \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("SegmentMean")                                      \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .TypeConstraint<index_type>("Tindices"),             \
-      SegmentReductionOp<CPUDevice, type, index_type,          \
-                         Eigen::internal::MeanReducer<type>>); \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("SegmentProd")                                      \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .TypeConstraint<index_type>("Tindices"),             \
-      SegmentReductionOp<CPUDevice, type, index_type,          \
-                         Eigen::internal::ProdReducer<type>>); \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("SegmentMin")                                       \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .TypeConstraint<index_type>("Tindices"),             \
-      SegmentReductionOp<CPUDevice, type, index_type,          \
-                         Eigen::internal::MinReducer<type>>);  \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("SegmentMax")                                       \
-          .Device(DEVICE_CPU)                                  \
-          .TypeConstraint<type>("T")                           \
-          .TypeConstraint<index_type>("Tindices"),             \
-      SegmentReductionOp<CPUDevice, type, index_type,          \
-                         Eigen::internal::MaxReducer<type>>);
+#define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type) \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name(name)                                                     \
+          .Device(DEVICE_CPU)                                        \
+          .TypeConstraint<type>("T")                                 \
+          .TypeConstraint<index_type>("Tindices"),                   \
+      SegmentReductionOp<CPUDevice, type, index_type, functor>)
 
-#define REGISTER_CPU_KERNELS_ALL(type) \
-  REGISTER_CPU_KERNELS(type, int32);   \
-  REGISTER_CPU_KERNELS(type, int64);
+#define REGISTER_REAL_CPU_KERNELS(type, index_type)                         \
+  REGISTER_CPU_KERNEL_SEGMENT(                                              \
+      "SegmentSum", Eigen::internal::SumReducer<type>, type, index_type);   \
+  REGISTER_CPU_KERNEL_SEGMENT(                                              \
+      "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type); \
+  REGISTER_CPU_KERNEL_SEGMENT(                                              \
+      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type); \
+  REGISTER_CPU_KERNEL_SEGMENT(                                              \
+      "SegmentMin", Eigen::internal::MinReducer<type>, type, index_type);   \
+  REGISTER_CPU_KERNEL_SEGMENT(                                              \
+      "SegmentMax", Eigen::internal::MaxReducer<type>, type, index_type)
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS_ALL);
-#undef REGISTER_CPU_KERNELS
-#undef REGISTER_CPU_KERNELS_ALL
+#define REGISTER_COMPLEX_CPU_KERNELS(type, index_type)                      \
+  REGISTER_CPU_KERNEL_SEGMENT(                                              \
+      "SegmentSum", Eigen::internal::SumReducer<type>, type, index_type);   \
+  REGISTER_CPU_KERNEL_SEGMENT(                                              \
+      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type)
+
+#define REGISTER_REAL_CPU_KERNELS_ALL(type) \
+  REGISTER_REAL_CPU_KERNELS(type, int32);   \
+  REGISTER_REAL_CPU_KERNELS(type, int64)
+
+#define REGISTER_COMPLEX_CPU_KERNELS_ALL(type) \
+  REGISTER_COMPLEX_CPU_KERNELS(type, int32);   \
+  REGISTER_COMPLEX_CPU_KERNELS(type, int64)
+
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_REAL_CPU_KERNELS_ALL);
+REGISTER_COMPLEX_CPU_KERNELS_ALL(complex64);
+REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
+#undef REGISTER_CPU_KERNEL_SEGMENT
+#undef REGISTER_REAL_CPU_KERNELS
+#undef REGISTER_COMPLEX_CPU_KERNELS
+#undef REGISTER_REAL_CPU_KERNELS_ALL
+#undef REGISTER_COMPLEX_CPU_KERNELS_ALL
 
 // Similar to SegmentReductionOp but can handle unsorted segment definitions and
 // specifying size of output.
@@ -285,7 +283,7 @@ class UnsortedSegmentSumOp : public OpKernel {
   REGISTER_CPU_UNSORTED_KERNELS(type, int32);   \
   REGISTER_CPU_UNSORTED_KERNELS(type, int64);
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_UNSORTED_KERNELS_ALL);
+TF_CALL_NUMBER_TYPES(REGISTER_CPU_UNSORTED_KERNELS_ALL);
 #undef REGISTER_CPU_UNSORTED_KERNELS
 #undef REGISTER_CPU_UNSORTED_KERNELS_ALL
 

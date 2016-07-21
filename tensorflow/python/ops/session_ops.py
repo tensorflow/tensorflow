@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,13 +63,26 @@ class TensorHandle(object):
 
   @property
   def handle(self):
+    """The string representation of this handle."""
     return self._handle
 
   def eval(self):
     """Return the value of the tensor represented by this handle."""
+    if not self._auto_gc_enabled:
+      raise TypeError("Persistent tensor %s may have already been deleted."
+                      % self.handle)
     holder, reader = _get_handle_reader(self._session.graph, self._handle,
                                         self._dtype)
     return self._session.run(reader, feed_dict={holder: self._handle})
+
+  def delete(self):
+    """Force the deletion of this persistent tensor."""
+    if not self._auto_gc_enabled:
+      raise TypeError("Persistent tensor %s may have already been deleted."
+                      % self.handle)
+    self._auto_gc_enabled = False
+    holder, deleter = _get_handle_deleter(self._session.graph, self._handle)
+    self._session.run(deleter, feed_dict={holder: self.handle})
 
   def get_raw_handle(self):
     """Return the raw handle of the tensor.
@@ -85,23 +98,23 @@ class TensorHandle(object):
   def _get_device_name(handle):
     """The device name encoded in the handle."""
     handle_str = compat.as_str_any(handle)
-    return pydev.canonical_name(handle_str.split(';')[-1])
+    return pydev.canonical_name(handle_str.split(";")[-1])
 
   @staticmethod
   def _get_reader_key(handle):
     """The graph key for reader."""
-    handle_parts = str(handle).split(';')
-    return handle_parts[0] + ';' + handle_parts[-1]
+    handle_parts = str(handle).split(";")
+    return handle_parts[0] + ";" + handle_parts[-1]
 
   @staticmethod
   def _get_deleter_key(handle):
     """The graph key for deleter."""
-    return str(handle).split(';')[-1]
+    return str(handle).split(";")[-1]
 
   @staticmethod
   def _get_mover_key(feeder, handle):
     """The graph key for mover."""
-    return feeder.op.name + ';' + TensorHandle._get_reader_key(handle)
+    return feeder.op.name + ";" + TensorHandle._get_reader_key(handle)
 
 
 def get_session_handle(data, name=None):
@@ -114,17 +127,6 @@ def get_session_handle(data, name=None):
 
   Combined with `get_session_tensor`, we can keep a tensor produced in
   one run call in place, and use it as the input in a future run call.
-  Below is a simple example:
-
-  ```python
-  c = tf.mul(a, b)
-  h = tf.get_session_handle(c)
-  h = sess.run(h)
-
-  p, a = tf.get_session_tensor(tf.float32)
-  b = tf.mul(a, 10)
-  c = sess.run(b, feed_dict={p: h.handle})
-  ```
 
   Args:
     data: A tensor to be stored in the session.
@@ -135,16 +137,29 @@ def get_session_handle(data, name=None):
 
   Raises:
     TypeError: if `data` is not a Tensor.
+
+  Example:
+
+  ```python
+  c = tf.mul(a, b)
+  h = tf.get_session_handle(c)
+  h = sess.run(h)
+
+  p, a = tf.get_session_tensor(h.handle, tf.float32)
+  b = tf.mul(a, 10)
+  c = sess.run(b, feed_dict={p: h.handle})
+  ```
+
   """
   if not isinstance(data, ops.Tensor):
-    raise TypeError('`data` must be of type Tensor.')
+    raise TypeError("`data` must be of type Tensor.")
 
   # Colocate this operation with data.
   with ops.colocate_with(data):
     return gen_data_flow_ops._get_session_handle(data, name=name)
 
 
-def get_session_tensor(dtype, name=None):
+def get_session_tensor(handle, dtype, name=None):
   """Get the tensor of type `dtype` by feeding a tensor handle.
 
   This is EXPERIMENTAL and subject to change.
@@ -154,6 +169,7 @@ def get_session_tensor(dtype, name=None):
   session.
 
   Args:
+    handle: The string representation of a persistent tensor handle.
     dtype: The type of the output tensor.
     name: Optional name prefix for the return tensor.
 
@@ -161,17 +177,30 @@ def get_session_tensor(dtype, name=None):
     A pair of tensors. The first is a placeholder for feeding a
     tensor handle and the second is the tensor in the session state
     keyed by the tensor handle.
+
+  Example:
+
+  ```python
+  c = tf.mul(a, b)
+  h = tf.get_session_handle(c)
+  h = sess.run(h)
+
+  p, a = tf.get_session_tensor(h.handle, tf.float32)
+  b = tf.mul(a, 10)
+  c = sess.run(b, feed_dict={p: h.handle})
+  ```
+
   """
-  with ops.device(None):
-    # Commit the device when it is used the first time.
+  handle_device = TensorHandle._get_device_name(handle)
+  with ops.device(handle_device):
     holder = array_ops.placeholder(dtypes.string)
     _register_handle_feeder(holder.graph, holder, dtype)
     tensor = gen_data_flow_ops._get_session_tensor(holder, dtype, name=name)
   return (holder, tensor)
 
 
-def delete_session_tensor(name=None):
-  """Delete the tensor by feeding a tensor handle.
+def delete_session_tensor(handle, name=None):
+  """Delete the tensor for the given tensor handle.
 
   This is EXPERIMENTAL and subject to change.
 
@@ -179,16 +208,17 @@ def delete_session_tensor(name=None):
   in a previous run() and stored in the state of the session.
 
   Args:
+    handle: The string representation of a persistent tensor handle.
     name: Optional name prefix for the return tensor.
 
   Returns:
     A pair of graph elements. The first is a placeholder for feeding a
     tensor handle and the second is a deletion operation.
   """
-  with ops.device(None):
-    # We will commit the device at the time it is used.
+  handle_device = TensorHandle._get_device_name(handle)
+  with ops.device(handle_device):
     holder = array_ops.placeholder(dtypes.string)
-  deleter = gen_data_flow_ops._delete_session_tensor(holder, name=name)
+    deleter = gen_data_flow_ops._delete_session_tensor(holder, name=name)
   return (holder, deleter)
 
 
@@ -207,7 +237,7 @@ def _get_handle_reader(graph, handle, dtype):
   if result is None:
     # Create reader if we haven't done it.
     handle_device = TensorHandle._get_device_name(handle)
-    with ops.device(handle_device):
+    with graph.as_default(), graph.device(handle_device):
       holder = array_ops.placeholder(dtypes.string)
       _register_handle_feeder(holder.graph, holder, dtype)
       reader = gen_data_flow_ops._get_session_tensor(holder, dtype)
@@ -222,10 +252,6 @@ def _get_handle_mover(graph, feeder, handle):
   if dtype is None:
     return None
   handle_device = TensorHandle._get_device_name(handle)
-  if not feeder.op.device:
-    feeder.op._set_device(handle_device)
-    feeder.consumers()[0]._set_device(handle_device)
-    return None
   if feeder.op.device == handle_device:
     return None
   # Now we know we have to move the tensor.
@@ -234,7 +260,7 @@ def _get_handle_mover(graph, feeder, handle):
   if result is None:
     # Create mover if we haven't done it.
     holder, reader = _get_handle_reader(graph, handle, dtype)
-    with ops.device(feeder.op.device):
+    with graph.as_default(), graph.device(feeder.op.device):
       mover = gen_data_flow_ops._get_session_handle(reader)
     result = (holder, mover)
     graph._handle_movers[graph_key] = result
@@ -248,7 +274,7 @@ def _get_handle_deleter(graph, handle):
   if result is None:
     # Create deleter if we haven't done it.
     handle_device = TensorHandle._get_device_name(handle)
-    with ops.device(handle_device):
+    with graph.as_default(), graph.device(handle_device):
       holder = array_ops.placeholder(dtypes.string)
       deleter = gen_data_flow_ops._delete_session_tensor(holder)
     result = (holder, deleter)

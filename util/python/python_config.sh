@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,11 +16,16 @@
 
 set -e -o errexit
 
-# Prefix expected paths with ./ locally and external/reponame/ for remote repos.
-# TODO(kchodorow): remove once runfiles paths are fixed, see
-# https://github.com/bazelbuild/bazel/issues/848.
-script_path=$(dirname $(dirname $(dirname "$0")))
-script_path=${script_path:-.}
+if [ -d "../org_tensorflow" ]; then
+  script_path="../org_tensorflow"
+else
+  # Prefix expected paths with ./ locally and external/reponame/ for remote repos.
+  # TODO(kchodorow): remove once runfiles paths are fixed, see
+  # https://github.com/bazelbuild/bazel/issues/848.
+  script_path=$(dirname $(dirname $(dirname "$0")))
+  script_path=${script_path:-.}
+fi
+
 EXPECTED_PATHS="$script_path/util/python/python_include"\
 " $script_path/util/python/python_lib"\
 " $script_path/third_party/py/numpy/numpy_include"

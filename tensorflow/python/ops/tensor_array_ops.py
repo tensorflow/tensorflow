@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,19 +13,24 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Data Flow Operations."""
+"""TensorArray operations.
+
+## Classes containing dynamically sized arrays of Tensors.
+
+@@TensorArray
+"""
 # Mixture of pep8 and non-pep8 names, so disable pylint bad-name
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 
@@ -37,8 +42,8 @@ class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
 
   This class is meant to be used with dynamic iteration primitives such as
-  `While` loops, and supports gradient back-propagation via special "flow"
-  control flow dependencies.
+  `while_loop` and `map_fn`.  It supports gradient back-propagation via special
+  "flow" control flow dependencies.
 
   @@handle
   @@flow
@@ -56,8 +61,15 @@ class TensorArray(object):
 
   def __init__(self, dtype, size=None, dynamic_size=None,
                clear_after_read=None, tensor_array_name=None, handle=None,
-               flow=None, infer_shape=False, name=None):
+               flow=None, infer_shape=True, name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
+
+    A note about the parameter `name`:
+
+    The name of the `TensorArray` (even if passed in) is uniquified: each time
+    a new `TensorArray` is created at runtime it is assigned its own name for
+    the duration of the run.  This avoids name collissions if a `TensorArray`
+    is created within a `while_loop`.
 
     Args:
       dtype: (required) data type of the TensorArray.
@@ -74,8 +86,9 @@ class TensorArray(object):
       handle: (optional) A `Tensor` handle to an existing TensorArray.  If this
         is set, tensor_array_name should be None.
       flow: (optional) A float `Tensor` scalar coming from an existing
-        TensorArray.flow.
-      infer_shape: (optional) If True, shape inference is enabled.
+        `TensorArray.flow`.
+      infer_shape: (optional, default: True) If True, shape inference
+        is enabled.  In this case, all elements must have the same shape.
       name: A name for the operation (optional).
 
     Raises:
@@ -158,7 +171,8 @@ class TensorArray(object):
             handle=self._handle, source=source, flow_in=flow, name=name)
         with ops.control_dependencies([g_handle]):
           flow = array_ops.identity(flow, name="gradient_flow")
-        g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow)
+        g = TensorArray(dtype=self._dtype, handle=g_handle, flow=flow,
+                        infer_shape=self._infer_shape)
         return g
 
   def read(self, index, name=None):
@@ -206,7 +220,9 @@ class TensorArray(object):
         val_shape = flow_out.op.inputs[2].get_shape()
         if ta._elem_shape:
           if not val_shape == ta._elem_shape[0]:
-            raise ValueError("Shape inference failed.")
+            raise ValueError(
+                "Inconsistent shapes: saw %s but expected %s "
+                "(and infer_shape=True)" % (val_shape, ta._elem_shape[0]))
         else:
           ta._elem_shape.append(val_shape)
       return ta
@@ -223,10 +239,16 @@ class TensorArray(object):
       All the tensors in the TensorArray packed into one tensor.
     """
     with ops.colocate_with(self._handle):
-      value = gen_data_flow_ops._tensor_array_pack(
-          handle=self._handle, flow_in=self._flow, dtype=self._dtype,
-          name=name)
-      if self._elem_shape and self._elem_shape[0].dims:
+      if self._elem_shape:
+        element_shape = self._elem_shape[0]
+      else:
+        element_shape = tensor_shape.TensorShape(None)
+      value = gen_data_flow_ops._tensor_array_pack(handle=self._handle,
+                                                   flow_in=self._flow,
+                                                   dtype=self._dtype,
+                                                   name=name,
+                                                   element_shape=element_shape)
+      if self._elem_shape and self._elem_shape[0].dims is not None:
         value.set_shape([None] + self._elem_shape[0].dims)
       return value
 
@@ -242,11 +264,19 @@ class TensorArray(object):
     Returns:
       All the tensors in the TensorArray concatenated into one tensor.
     """
+    if self._elem_shape and self._elem_shape[0].dims is not None:
+      element_shape_except0 = tensor_shape.TensorShape(self._elem_shape[0].dims[
+          1:])
+    else:
+      element_shape_except0 = tensor_shape.TensorShape(None)
     with ops.colocate_with(self._handle):
       value, _ = gen_data_flow_ops._tensor_array_concat(
-          handle=self._handle, flow_in=self._flow, dtype=self._dtype,
-          name=name)
-      if self._elem_shape and self._elem_shape[0].dims:
+          handle=self._handle,
+          flow_in=self._flow,
+          dtype=self._dtype,
+          name=name,
+          element_shape_except0=element_shape_except0)
+      if self._elem_shape and self._elem_shape[0].dims is not None:
         value.set_shape([None] + self._elem_shape[0].dims[1:])
       return value
 
@@ -275,11 +305,13 @@ class TensorArray(object):
       if ta._infer_shape:
         val_shape = flow_out.op.inputs[1].get_shape()
         elem_shape = tensor_shape.unknown_shape()
-        if val_shape.dims:
+        if val_shape.dims is not None:
           elem_shape = tensor_shape.TensorShape(val_shape.dims[1:])
         if ta._elem_shape:
           if not elem_shape == ta._elem_shape[0]:
-            raise ValueError("Shape inference failed.")
+            raise ValueError(
+                "Inconsistent shapes: saw %s but expected %s "
+                "(and infer_shape=True)" % (elem_shape, ta._elem_shape[0]))
         else:
           ta._elem_shape.append(elem_shape)
       return ta
@@ -315,13 +347,15 @@ class TensorArray(object):
         val_shape = flow_out.op.inputs[1].get_shape()
         clengths = tensor_util.constant_value(flow_out.op.inputs[2])
         elem_shape = tensor_shape.unknown_shape()
-        if val_shape.dims:
+        if val_shape.dims is not None:
           if clengths is not None and clengths.max() == clengths.min():
             elem_shape = tensor_shape.TensorShape(
                 [clengths[0]] + val_shape.dims[1:])
         if ta._elem_shape:
           if not elem_shape == ta._elem_shape[0]:
-            raise ValueError("Shape inference failed.")
+            raise ValueError(
+                "Inconsistent shapes: saw %s but expected %s "
+                "(and infer_shape=True)" % (elem_shape, ta._elem_shape[0]))
         else:
           ta._elem_shape.append(elem_shape)
       return ta

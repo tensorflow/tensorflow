@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 suite('parser', () => {
   let assert = chai.assert;
 
-  test('simple pbtxt', (done) => {
+  test('simple pbtxt', done => {
     let pbtxt = `node {
        name: "Q"
        op: "Input"
@@ -45,6 +45,33 @@ suite('parser', () => {
       assert.equal('Q', nodes[2].input[0]);
       assert.equal('W', nodes[2].input[1]);
 
+      done();
+    });
+  });
+
+  test('stats pbtxt parsing', done => {
+    let statsPbtxt = `step_stats {
+      dev_stats {
+        device: "cpu"
+        node_stats {
+          node_name: "Q"
+          all_start_micros: 10
+          all_end_rel_micros: 4
+        }
+        node_stats {
+          node_name: "Q"
+          all_start_micros: 12
+          all_end_rel_micros: 4
+        }
+      }
+    }`;
+    tf.graph.parser.parseStatsPbTxt(new Blob([statsPbtxt])).then(stepStats => {
+      assert.equal(stepStats.dev_stats.length, 1);
+      assert.equal(stepStats.dev_stats[0].device, 'cpu');
+      assert.equal(stepStats.dev_stats[0].node_stats.length, 2);
+      assert.equal(stepStats.dev_stats[0].node_stats[0].all_start_micros, 10);
+      assert.equal(stepStats.dev_stats[0].node_stats[1].node_name, 'Q');
+      assert.equal(stepStats.dev_stats[0].node_stats[1].all_end_rel_micros, 4);
       done();
     });
   });

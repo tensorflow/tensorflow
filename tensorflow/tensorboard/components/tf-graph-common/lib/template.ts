@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -39,14 +39,16 @@ export function detect(h, verifyTemplate): {[templateId: string]: string[]} {
   // Sort the templates by minimum level in the graph at which they appear,
   // as this leads to optimal setting of the colors of each template for
   // maximum differentiation.
-  return <{[templateId: string]: string[]}> _(templates).pairs()
-      .sortBy(function(pair) {
+  return <{[templateId: string]: string[]}>_(templates)
+      .pairs()
+      .sortBy(function(pair: {level: number, nodes: string[]}[]) {
         return pair[1].level;
       })
-      .map(function(pair) {
+      .map(function(pair: {level: number, nodes: string[]}[]) {
         return [pair[0], pair[1].nodes];
       })
-      .object().value();
+      .object()
+      .value();
 };
 
 /**
@@ -100,17 +102,18 @@ function clusterSimilarSubgraphs(h: hierarchy.Hierarchy) {
     return hash;
   }, {});
 
-  return _(hashDict).pairs()
-           // filter nn metanode with only one member
-           .filter(function(pair) {
-             return pair[1].nodes.length > 1;
-           })
-           .sortBy(function(pair) {
-              // sort by depth
-              // (all members in the same nnGroup has equal depth)
-              return pair[1].nodes[0].depth;
-            })
-            .value();
+  return _(hashDict)
+      .pairs()
+      // filter nn metanode with only one member
+      .filter(function(pair: {level: number, nodes: string[]}) {
+        return pair[1].nodes.length > 1;
+      })
+      .sortBy(function(pair: {level: number, nodes: string[]}) {
+        // sort by depth
+        // (all members in the same nnGroup has equal depth)
+        return pair[1].nodes[0].depth;
+      })
+      .value();
 }
 
 function groupTemplateAndAssignId(nnGroups, verifyTemplate) {

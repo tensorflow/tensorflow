@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,13 +83,12 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
                           MemoryTypeVector* inp_mtypes,
                           MemoryTypeVector* out_mtypes) {
   // Look up the Op registered for this op name.
-  Status status;
-  const OpDef* op_def = op_registry->LookUp(ndef.op(), &status);
-  if (op_def == nullptr) return status;
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(op_registry->LookUpOpDef(ndef.op(), &op_def));
 
   // Look up the Kernel registered for this node def.
   const KernelDef* kdef = nullptr;
-  status =
+  Status status =
       FindKernelDef(device_type, ndef, &kdef, nullptr /* kernel_class_name */);
 
   if (!status.ok() || HasTypeList(*op_def)) {

@@ -305,7 +305,7 @@ Construct a new gradient descent optimizer.
 Optimizer that implements the Adadelta algorithm. 
 
 See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-([pdf](http://arxiv.org/pdf/1212.5701.pdf))
+([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
 
 - - -
 
@@ -419,6 +419,10 @@ The default value of 1e-8 for epsilon might not be a good default in
 general. For example, when training an Inception network on ImageNet a
 current good choice is 1.0 or 0.1.
 
+Note that in dense implement of this algorithm, m_t, v_t and variable will
+update even if g is zero, but in sparse implement, m_t, v_t and variable
+will not update in iterations g is zero.
+
 ##### Args:
 
 
@@ -485,6 +489,10 @@ See the [paper]
 #### `tf.train.RMSPropOptimizer.__init__(learning_rate, decay=0.9, momentum=0.0, epsilon=1e-10, use_locking=False, name='RMSProp')` {#RMSPropOptimizer.__init__}
 
 Construct a new RMSProp optimizer.
+
+Note that in dense implement of this algorithm, m_t and v_t will
+update even if g is zero, but in sparse implement, m_t and v_t
+will not update in iterations g is zero.
 
 ##### Args:
 
@@ -647,20 +655,25 @@ greater than `clip_value_max` are set to `clip_value_max`.
 
 - - -
 
-### `tf.clip_by_norm(t, clip_norm, name=None)` {#clip_by_norm}
+### `tf.clip_by_norm(t, clip_norm, axes=None, name=None)` {#clip_by_norm}
 
 Clips tensor values to a maximum L2-norm.
 
 Given a tensor `t`, and a maximum clip value `clip_norm`, this operation
-normalizes `t` so that its L2-norm is less than or equal to `clip_norm`.
-Specifically, if the L2-norm is already less than or equal to `clip_norm`,
-then `t` is not modified. If the L2-norm is greater than `clip_norm`, then
-this operation returns a tensor of the same type and shape as `t` with its
-values set to:
+normalizes `t` so that its L2-norm is less than or equal to `clip_norm`,
+along the dimensions given in `axes`. Specifically, in the default case
+where all dimensions are used for calculation, if the L2-norm of `t` is
+already less than or equal to `clip_norm`, then `t` is not modified. If
+the L2-norm is greater than `clip_norm`, then this operation returns a
+tensor of the same type and shape as `t` with its values set to:
 
 `t * clip_norm / l2norm(t)`
 
 In this case, the L2-norm of the output tensor is `clip_norm`.
+
+As another example, if `t` is a matrix and `axes == [1]`, then each row
+of the output will have L2-norm equal to `clip_norm`. If `axes == [0]`
+instead, each column of the output will be clipped.
 
 This operation is typically used to clip gradients before applying them with
 an optimizer.
@@ -670,6 +683,9 @@ an optimizer.
 
 *  <b>`t`</b>: A `Tensor`.
 *  <b>`clip_norm`</b>: A 0-D (scalar) `Tensor` > 0. A maximum clipping value.
+*  <b>`axes`</b>: A 1-D (vector) `Tensor` of type int32 containing the dimensions
+    to use for computing the L2-norm. If `None` (the default), uses all
+    dimensions.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -948,7 +964,7 @@ saver.restore(...checkpoint filename...)
 
 Creates a new ExponentialMovingAverage object.
 
-The `Apply()` method has to be called to create shadow variables and add
+The `apply()` method has to be called to create shadow variables and add
 ops to maintain moving averages.
 
 The optional `num_updates` parameter allows one to tweak the decay rate
@@ -965,7 +981,7 @@ move faster.  If passed, the actual decay rate used is:
 *  <b>`decay`</b>: Float.  The decay to use.
 *  <b>`num_updates`</b>: Optional count of number of updates applied to variables.
 *  <b>`name`</b>: String. Optional prefix name to use for the name of ops added in
-    `Apply()`.
+    `apply()`.
 
 
 - - -
@@ -1198,9 +1214,20 @@ except Exception:
 ```
 - - -
 
-#### `tf.train.Coordinator.__init__()` {#Coordinator.__init__}
+#### `tf.train.Coordinator.__init__(clean_stop_exception_types=None)` {#Coordinator.__init__}
 
 Create a new Coordinator.
+
+##### Args:
+
+
+*  <b>`clean_stop_exception_types`</b>: Optional tuple of Exception types that should
+    cause a clean stop of the coordinator. If an exception of one of these
+    types is reported to `request_stop(ex)` the coordinator will behave as
+    if `request_stop(None)` was called.  Defaults to
+    `(tf.errors.OutOfRangeError,)` which is used by input queues to signal
+    the end of input. When feeding training data from a Python iterator it
+    is common to add `StopIteration` to this list.
 
 
 - - -
@@ -1562,7 +1589,7 @@ communicate with any other server in the same cluster.
 
 - - -
 
-#### `tf.train.Server.__init__(server_or_cluster_def, job_name=None, task_index=None, protocol=None, start=True)` {#Server.__init__}
+#### `tf.train.Server.__init__(server_or_cluster_def, job_name=None, task_index=None, protocol=None, config=None, start=True)` {#Server.__init__}
 
 Creates a new server with the given definition.
 
@@ -1585,6 +1612,8 @@ override any information provided in `server_or_cluster_def`.
 *  <b>`protocol`</b>: (Optional.) Specifies the protocol to be used by the server.
     Acceptable values include `"grpc"`. Defaults to the value in
     `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+*  <b>`config`</b>: (Options.) A `tf.ConfigProto` that specifies default
+    configuration options for all sessions that run on this server.
 *  <b>`start`</b>: (Optional.) Boolean, indicating whether to start the server
     after creating it. Defaults to `True`.
 
@@ -1596,7 +1625,7 @@ override any information provided in `server_or_cluster_def`.
 
 - - -
 
-#### `tf.train.Server.create_local_server(start=True)` {#Server.create_local_server}
+#### `tf.train.Server.create_local_server(config=None, start=True)` {#Server.create_local_server}
 
 Creates a new single-process cluster running on the local host.
 
@@ -1608,6 +1637,8 @@ single-process cluster containing a single task in a job called
 ##### Args:
 
 
+*  <b>`config`</b>: (Options.) A `tf.ConfigProto` that specifies default
+    configuration options for all sessions that run on this server.
 *  <b>`start`</b>: (Optional.) Boolean, indicating whether to start the server after
     creating it. Defaults to `True`.
 
@@ -1635,6 +1666,18 @@ with tf.Session(server.target):
 ##### Returns:
 
   A string containing a session target for this server.
+
+
+- - -
+
+#### `tf.train.Server.server_def` {#Server.server_def}
+
+Returns the `tf.train.ServerDef` for this server.
+
+##### Returns:
+
+  A `tf.train.ServerDef` prototocol buffer that describes the configuration
+  of this server.
 
 
 
@@ -1672,7 +1715,7 @@ This method currently blocks forever.
 A training helper that checkpoints models and computes summaries.
 
 The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
-and a `SessionManager` that takes care of common needs of Tensorflow
+and a `SessionManager` that takes care of common needs of TensorFlow
 training programs.
 
 #### Use for a single program
@@ -1682,7 +1725,7 @@ with tf.Graph().as_default():
   ...add operations to the graph...
   # Create a Supervisor that will checkpoint the model in '/tmp/mydir'.
   sv = Supervisor(logdir='/tmp/mydir')
-  # Get a Tensorflow session managed by the supervisor.
+  # Get a TensorFlow session managed by the supervisor.
   with sv.managed_session(FLAGS.master) as sess:
     # Use the session to train the graph.
     while not sv.should_stop():
@@ -3078,7 +3121,7 @@ Merges all summaries collected in the default graph.
 ##### Returns:
 
   If no summaries were collected, returns None.  Otherwise returns a scalar
-  `Tensor` of type`string` containing the serialized `Summary` protocol
+  `Tensor` of type `string` containing the serialized `Summary` protocol
   buffer resulting from the merging.
 
 
@@ -3264,6 +3307,20 @@ Call this method when you do not need the summary writer anymore.
 
 
 
+#### Other Methods
+- - -
+
+#### `tf.train.SummaryWriter.reopen()` {#SummaryWriter.reopen}
+
+Reopens the summary writer.
+
+Can be called after `close()` to add more events in the same directory.
+The events will go into a new events file.
+
+Does nothing if the summary writer was not closed.
+
+
+
 - - -
 
 ### `tf.train.summary_iterator(path)` {#summary_iterator}
@@ -3346,7 +3403,7 @@ global_step: 10
 
 ### `tf.train.write_graph(graph_def, logdir, name, as_text=True)` {#write_graph}
 
-Writes a graph proto on disk.
+Writes a graph proto to a file.
 
 The graph is written as a binary proto unless `as_text` is `True`.
 
@@ -3360,7 +3417,8 @@ tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
 
 
 *  <b>`graph_def`</b>: A `GraphDef` protocol buffer.
-*  <b>`logdir`</b>: Directory where to write the graph.
+*  <b>`logdir`</b>: Directory where to write the graph. This can refer to remote
+    filesystems, such as Google Cloud Storage (GCS).
 *  <b>`name`</b>: Filename for the graph.
 *  <b>`as_text`</b>: If `True`, writes the graph as an ASCII proto.
 
@@ -3584,6 +3642,13 @@ Called when the thread starts.
 #### `tf.train.LooperThread.stop_loop()` {#LooperThread.stop_loop}
 
 Called when the thread stops.
+
+
+
+- - -
+
+### `tf.train.do_quantize_training_on_graphdef(input_graph, num_bits)` {#do_quantize_training_on_graphdef}
+
 
 
 

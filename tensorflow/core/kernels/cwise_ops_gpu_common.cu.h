@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -150,6 +150,9 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
 #define DEFINE_BINARY9(F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
   DEFINE_BINARY4(F, T0, T1, T2, T3);                          \
   DEFINE_BINARY5(F, T4, T5, T6, T7, T8)
+#define DEFINE_BINARY10(F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
+  DEFINE_BINARY5(F, T0, T1, T2, T3, T4);                           \
+  DEFINE_BINARY5(F, T5, T6, T7, T8, T9)
 
 }  // end namespace functor
 }  // end namespace tensorflow

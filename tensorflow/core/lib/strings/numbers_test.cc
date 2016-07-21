@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -233,8 +233,20 @@ TEST(safe_strtof, Float) {
   // Overflow to infinity, underflow to 0.
   EXPECT_TRUE(safe_strtof("1e39", &result));
   EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("-1e39", &result));
+  EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
+
   EXPECT_TRUE(safe_strtof("1e-50", &result));
   EXPECT_EQ(0, result);
+
+  EXPECT_TRUE(safe_strtof("0xF", &result));
+  EXPECT_EQ(0xF, result);
+
+  EXPECT_TRUE(safe_strtof("-0x2A", &result));
+  EXPECT_EQ(-42.0f, result);
+
+  EXPECT_FALSE(safe_strtof("-infinity is awesome", &result));
 }
 
 TEST(safe_strtod, Double) {
@@ -247,6 +259,10 @@ TEST(safe_strtod, Double) {
   // Overflow to infinity, underflow to 0.
   EXPECT_TRUE(safe_strtod("1e310", &result));
   EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("-1e310", &result));
+  EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
+
   EXPECT_TRUE(safe_strtod("1e-325", &result));
   EXPECT_EQ(0, result);
 }

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@ var assert = chai.assert;
 
 module TF.Backend {
   describe('urlPathHelpers', function() {
-    var demoify = TF.Backend.demoify;
-    var encode = TF.Backend.queryEncoder;
+    let demoify = TF.Backend.demoify;
+    let encode = TF.Backend.queryEncoder;
     it('demoify works as expected', function() {
-      var demoified = demoify(BAD_CHARACTERS);
-      var all_clean = '';
-      for (var i = 0; i < BAD_CHARACTERS.length; i++) {
+      let demoified = demoify(BAD_CHARACTERS);
+      let all_clean = '';
+      for (let i = 0; i < BAD_CHARACTERS.length; i++) {
         all_clean += '_';
       }
       assert.equal(demoified, all_clean, 'cleaning the BAD_CHARACTERS works');
@@ -30,9 +30,9 @@ module TF.Backend {
     });
 
     it('queryEncoder works with demoify on spaces and parens', function() {
-      var params = {foo: 'something with spaces and (parens)'};
-      var actual = demoify(encode(params));
-      var expected = '_foo_something_with_spaces_and__28parens_29';
+      let params = {foo: 'something with spaces and (parens)'};
+      let actual = demoify(encode(params));
+      let expected = '_foo_something_with_spaces_and__28parens_29';
       assert.equal(actual, expected);
     });
   });
@@ -43,10 +43,10 @@ module TF.Backend {
   }
 
   describe('backend tests', function() {
-    var backend: Backend;
-    var rm: RequestManager;
-    var base = 'data';
-    var demoRouter = TF.Backend.router(base, true);
+    let backend: Backend;
+    let rm: RequestManager;
+    let base = 'data';
+    let demoRouter = TF.Backend.router(base, true);
     beforeEach(function() {
       // Construct a demo Backend (third param is true)
       backend = new Backend(demoRouter);
@@ -54,8 +54,8 @@ module TF.Backend {
     });
 
     it('runs are loaded properly', function(done) {
-      var runsResponse = backend.runs();
-      var actualRuns = rm.request(demoRouter.runs());
+      let runsResponse = backend.runs();
+      let actualRuns = rm.request(demoRouter.runs());
       Promise.all([runsResponse, actualRuns]).then((values) => {
         assert.deepEqual(values[0], values[1]);
         done();
@@ -65,7 +65,7 @@ module TF.Backend {
     it('scalars are loaded properly', function(done) {
       backend.scalar('cross_entropy (1)', 'run1').then((s) => {
         // just check the data got reformatted properly
-        var aScalar = s[s.length - 1];
+        let aScalar = s[s.length - 1];
         assertIsDatum(aScalar);
         assert.isNumber(aScalar.scalar);
         // verify date conversion works
@@ -76,7 +76,7 @@ module TF.Backend {
 
     it('histograms are loaded properly', function(done) {
       backend.histogram('histo1', 'run1').then((histos) => {
-        var histo = histos[0];
+        let histo = histos[0];
         assertIsDatum(histo);
         assert.instanceOf(histo.bins, Array);
         done();
@@ -92,12 +92,12 @@ module TF.Backend {
 
     it('images are loaded properly', function(done) {
       backend.image('im1', 'run1').then((images) => {
-        var image = images[0];
+        let image = images[0];
         assertIsDatum(image);
         assert.isNumber(image.width);
         assert.isNumber(image.height);
-        var nonDemoQuery = 'index=0&tag=im1&run=run1';
-        var expectedUrl = demoRouter.individualImage(nonDemoQuery);
+        let nonDemoQuery = 'index=0&tag=im1&run=run1';
+        let expectedUrl = demoRouter.individualImage(nonDemoQuery);
         assert.equal(image.url, expectedUrl);
         done();
       });
@@ -105,30 +105,31 @@ module TF.Backend {
 
     it('audio is loaded properly', function(done) {
       backend.audio('audio1', 'run1').then((audio_clips) => {
-        var audio = audio_clips[0];
+        let audio = audio_clips[0];
         assertIsDatum(audio);
         assert.equal(audio.content_type, 'audio/wav');
-        var nonDemoQuery = 'index=0&tag=audio1&run=run1';
-        var expectedUrl = demoRouter.individualAudio(nonDemoQuery);
+        let nonDemoQuery = 'index=0&tag=audio1&run=run1';
+        let expectedUrl = demoRouter.individualAudio(nonDemoQuery);
         assert.equal(audio.url, expectedUrl);
         done();
       });
     });
 
     it('trailing slash removed from base route', function() {
-      var r = TF.Backend.router('foo/');
+      let r = TF.Backend.router('foo/');
       assert.equal(r.runs(), 'foo/runs');
     });
 
     it('run helper methods work', function(done) {
-      var scalar = {run1: ['cross_entropy (1)'], fake_run_no_data: ['scalar2']};
-      var image = {run1: ['im1'], fake_run_no_data: ['im1', 'im2']};
-      var audio = {run1: ['audio1'], fake_run_no_data: ['audio1', 'audio2']};
-      var graph = ['fake_run_no_data'];
-      var count = 0;
+      let scalar = {run1: ['cross_entropy (1)'], fake_run_no_data: ['scalar2']};
+      let image = {run1: ['im1'], fake_run_no_data: ['im1', 'im2']};
+      let audio = {run1: ['audio1'], fake_run_no_data: ['audio1', 'audio2']};
+      let runMetadata = {run1: ['step99'], fake_run_no_data: ['step99']};
+      let graph = ['fake_run_no_data'];
+      let count = 0;
       function next() {
         count++;
-        if (count === 3) {
+        if (count === 4) {
           done();
         }
       }
@@ -144,6 +145,10 @@ module TF.Backend {
         assert.deepEqual(x, audio);
         next();
       });
+      backend.runMetadataRuns().then((x) => {
+        assert.deepEqual(x, runMetadata);
+        next();
+      });
       backend.graphRuns().then((x) => {
         assert.deepEqual(x, graph);
         next();
@@ -151,13 +156,13 @@ module TF.Backend {
     });
 
     it('runToTag helpers work', function() {
-      var r2t: RunToTag = {
+      let r2t: RunToTag = {
         run1: ['foo', 'bar', 'zod'],
         run2: ['zod', 'zoink'],
         a: ['foo', 'zod']
       };
-      var empty1: RunToTag = {};
-      var empty2: RunToTag = {run1: [], run2: []};
+      let empty1: RunToTag = {};
+      let empty2: RunToTag = {run1: [], run2: []};
       assert.deepEqual(getRuns(r2t), ['a', 'run1', 'run2']);
       assert.deepEqual(getTags(r2t), ['bar', 'foo', 'zod', 'zoink']);
       assert.deepEqual(filterTags(r2t, ['run1', 'run2']), getTags(r2t));
@@ -176,7 +181,7 @@ module TF.Backend {
 
     function assertHistogramEquality(h1, h2) {
       h1.forEach(function(b1, i) {
-        var b2 = h2[i];
+        let b2 = h2[i];
         assert.closeTo(b1.x, b2.x, 1e-10);
         assert.closeTo(b1.dx, b2.dx, 1e-10);
         assert.closeTo(b1.y, b2.y, 1e-10);
@@ -197,12 +202,10 @@ module TF.Backend {
     });
 
     it('Handles data with one bin', function() {
-      var counts = [1];
-      var rightEdges = [1.21e-12];
-      var histogram = [
-        { x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 1 }
-      ];
-      var newHistogram = convertBins({
+      let counts = [1];
+      let rightEdges = [1.21e-12];
+      let histogram = [{x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 1}];
+      let newHistogram = convertBins({
         bucketRightEdges: rightEdges,
         bucketCounts: counts,
         min: 1.1e-12,
@@ -212,13 +215,13 @@ module TF.Backend {
     });
 
     it('Handles data with two bins.', function() {
-      var counts = [1, 2];
-      var rightEdges = [1.1e-12, 1.21e-12];
-      var histogram = [
-        { x: 1.0e-12, dx: 1.1e-12 - 1.0e-12, y: 1 },
-        { x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 2 }
+      let counts = [1, 2];
+      let rightEdges = [1.1e-12, 1.21e-12];
+      let histogram = [
+        {x: 1.0e-12, dx: 1.1e-12 - 1.0e-12, y: 1},
+        {x: 1.1e-12, dx: 1.21e-12 - 1.1e-12, y: 2}
       ];
-      var newHistogram = convertBins({
+      let newHistogram = convertBins({
         bucketRightEdges: rightEdges,
         bucketCounts: counts,
         min: 1.0e-12,
@@ -230,13 +233,13 @@ module TF.Backend {
     it('Handles a domain that crosses zero, but doesn\'t include zero as ' +
            'an edge.',
        function() {
-         var counts = [1, 2];
-         var rightEdges = [-1.0e-12, 1.0e-12];
-         var histogram = [
+         let counts = [1, 2];
+         let rightEdges = [-1.0e-12, 1.0e-12];
+         let histogram = [
            {x: -1.1e-12, dx: 1.1e-12 - 1.0e-12, y: 1},
            {x: -1.0e-12, dx: 2.0e-12, y: 2}
          ];
-         var newHistogram = convertBins({
+         let newHistogram = convertBins({
            bucketRightEdges: rightEdges,
            bucketCounts: counts,
            min: -1.1e-12,
@@ -247,13 +250,13 @@ module TF.Backend {
 
     it('Handles a right-most right edge that extends to very large number.',
        function() {
-         var counts = [1, 2, 3];
-         var rightEdges = [0, 1.0e-12, 1.0e14];
-         var histogram = [
+         let counts = [1, 2, 3];
+         let rightEdges = [0, 1.0e-12, 1.0e14];
+         let histogram = [
            {x: -1.0e-12, dx: 1.0e-12, y: 1}, {x: 0, dx: 1.0e-12, y: 2},
            {x: 1.0e-12, dx: 1.1e-12 - 1.0e-12, y: 3}
          ];
-         var newHistogram = convertBins({
+         let newHistogram = convertBins({
            bucketRightEdges: rightEdges,
            bucketCounts: counts,
            min: -1.0e-12,

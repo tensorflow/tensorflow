@@ -178,9 +178,10 @@ https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_starte
 [bazel](https://github.com/bazelbuild/bazel)).
 
 Next:
-```
+
+```bash
 cd tensorflow/models/rnn/ptb
-python ptb_word_lm --data_path=/tmp/simple-examples/data/ --model small
+python ptb_word_lm.py --data_path=/tmp/simple-examples/data/ --model small
 ```
 
 There are 3 supported model configurations in the tutorial code: "small",

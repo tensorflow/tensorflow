@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
@@ -134,6 +135,53 @@ def _as_graph_element(obj):
   if conv_fn and callable(conv_fn):
     return conv_fn()
   return None
+
+
+_TENSOR_LIKE_TYPES = tuple()
+
+
+def is_dense_tensor_like(t):
+  """EXPERIMENTAL: Returns true if `t` implements the tensor interface.
+
+  See `register_dense_tensor_like_type()` for the current definition of a
+  "tensor-like type".
+
+  Args:
+    t: An object.
+
+  Returns:
+    True iff `t` is an instance of one of the registered "tensor-like" types.
+  """
+  return isinstance(t, _TENSOR_LIKE_TYPES)
+
+
+def register_dense_tensor_like_type(tensor_type):
+  """EXPERIMENTAL: Registers `tensor_type` as implementing the tensor interface.
+
+  A "tensor-like type" can represent a single dense tensor, and implements
+  the `name` and `dtype` properties.
+
+  Args:
+    tensor_type: A type implementing the tensor interface.
+
+  Raises:
+    TypeError: If `tensor_type` does not implement the tensor interface.
+  """
+  try:
+    if not isinstance(tensor_type.name, property):
+      raise TypeError("Type %s does not define a `name` property")
+  except AttributeError:
+    raise TypeError("Type %s does not define a `name` property")
+  try:
+    if not isinstance(tensor_type.dtype, property):
+      raise TypeError("Type %s does not define a `dtype` property")
+  except AttributeError:
+    raise TypeError("Type %s does not define a `dtype` property")
+  # We expect this list to be small, so choose quadratic complexity
+  # for registration, so that we have a tuple that can be used for
+  # more efficient `isinstance` checks later.
+  global _TENSOR_LIKE_TYPES
+  _TENSOR_LIKE_TYPES = tuple(list(_TENSOR_LIKE_TYPES) + [tensor_type])
 
 
 class Tensor(object):
@@ -519,6 +567,7 @@ def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
 
 _tensor_conversion_func_registry = {
     0: [(Tensor, _TensorTensorConversionFunction)]}
+register_dense_tensor_like_type(Tensor)
 
 
 def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
@@ -570,6 +619,8 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     for base_type, conversion_func in funcs_at_priority:
       if isinstance(value, base_type):
         ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
+        if ret is NotImplemented:
+          continue
         if not isinstance(ret, Tensor):
           raise RuntimeError(
               "%sConversion function %r for type %s returned non-Tensor: %r"
@@ -699,6 +750,10 @@ def register_tensor_conversion_function(base_type, conversion_func,
   It must return a `Tensor` with the given `dtype` if specified. If the
   conversion function creates a new `Tensor`, it should use the given
   `name` if specified. All exceptions will be propagated to the caller.
+
+  The conversion function may return `NotImplemented` for some
+  inputs. In this case, the conversion process will continue to try
+  subsequent conversion functions.
 
   If `as_ref` is true, the function must return a `Tensor` reference,
   such as a `Variable`.
@@ -840,7 +895,7 @@ IndexedSlicesValue = collections.namedtuple(
 class SparseTensor(object):
   """Represents a sparse tensor.
 
-  Tensorflow represents a sparse tensor as three separate dense tensors:
+  TensorFlow represents a sparse tensor as three separate dense tensors:
   `indices`, `values`, and `shape`.  In Python, the three tensors are
   collected into a `SparseTensor` class for ease of use.  If you have separate
   `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
@@ -885,8 +940,9 @@ class SparseTensor(object):
   @@__init__
   @@indices
   @@values
-  @@dtype
   @@shape
+  @@dtype
+  @@op
   @@graph
   """
 
@@ -948,6 +1004,11 @@ class SparseTensor(object):
       A 1-D Tensor of any data type.
     """
     return self._values
+
+  @property
+  def op(self):
+    """The `Operation` that produces `values` as an output."""
+    return self.values.op
 
   @property
   def dtype(self):
@@ -1040,7 +1101,8 @@ def _NodeDef(op_type, name, device=None, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-/]*")
+_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/]*$")
 
 
 class Operation(object):
@@ -1640,6 +1702,9 @@ def set_shapes_for_outputs(op):
       raise RuntimeError("No shape function registered for standard op: %s"
                          % op.type)
   shapes = shape_func(op)
+  if shapes is None:
+    raise RuntimeError(
+        "Shape function for op %s did not return any shapes" % op)
   if len(op.outputs) != len(shapes):
     raise RuntimeError(
         "Shape function for op %s returned %d shapes but expected %d" %
@@ -1862,10 +1927,19 @@ class Graph(object):
 
   def __init__(self):
     """Creates a new, empty Graph."""
-    self._nodes_by_id = dict()
-    self._next_node_id = [dict()]
-    self._next_id_counter = 0
-    self._nodes_by_name = dict()
+    # Protects the core state that may be accessed by multiple readers.
+    # Only state that can be returned via public accessors (`as_graph_def()`,
+    # `get_operations()`, `as_graph_element()`, `get_collection()`, and
+    # `get_collection_ref()`) is by the lock. Thread-safety is provided on a
+    # best-effort basis to support buggy programs, and is not guaranteed by the
+    # public `tf.Graph` API.
+    # NOTE(mrry): This does not protect the various stacks. A warning will
+    # be reported if these are used from multiple threads
+    self._lock = threading.Lock()
+    self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
+    self._next_id_counter = 0  # GUARDED_BY(self._lock)
+    self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
+    self._version = 0  # GUARDED_BY(self._lock)
     # Current name stack: uniquified names
     self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
@@ -1902,6 +1976,8 @@ class Graph(object):
     self._colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
+    # Set of operations that are dangerous to fetch!
+    self._unfetchable_ops = set()
     # A map of tensor handle placeholder to tensor dtype.
     self._handle_feeders = {}
     # A map from tensor handle to its read op.
@@ -1910,6 +1986,9 @@ class Graph(object):
     self._handle_movers = {}
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
+    # Resource container.
+    self._container = ""
+    self._registered_ops = op_def_registry.get_registered_ops()
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -1933,15 +2012,18 @@ class Graph(object):
     self._check_not_finalized()
     if not isinstance(op, (Tensor, Operation)):
       raise TypeError("op must be a Tensor or Operation: %s" % op)
-
-    if op._id in self._nodes_by_id:
-      raise ValueError("cannot add an op with id %d as it already "
-                       "exists in the graph" % op._id)
-    if op.name in self._nodes_by_name:
-      raise ValueError("cannot add op with name %s as that name "
-                       "is already used" % op.name)
-    self._nodes_by_id[op._id] = op
-    self._nodes_by_name[op.name] = op
+    with self._lock:
+      # pylint: disable=protected-access
+      if op._id in self._nodes_by_id:
+        raise ValueError("cannot add an op with id %d as it already "
+                         "exists in the graph" % op._id)
+      if op.name in self._nodes_by_name:
+        raise ValueError("cannot add op with name %s as that name "
+                         "is already used" % op.name)
+      self._nodes_by_id[op._id] = op
+      self._nodes_by_name[op.name] = op
+      self._version = max(self._version, op._id)
+      # pylint: enable=protected-access
 
   @property
   def version(self):
@@ -1950,7 +2032,8 @@ class Graph(object):
     Note that this is unrelated to the
     [GraphDef version](#Graph.graph_def_version).
     """
-    return self._next_id_counter
+    with self._lock:
+      return self._version
 
   @property
   def graph_def_versions(self):
@@ -2004,6 +2087,60 @@ class Graph(object):
     """
     self._control_flow_context = context
 
+  def _as_graph_def(self, from_version=None, add_shapes=False):
+    """Returns a serialized `GraphDef` representation of this graph.
+
+    The serialized `GraphDef` can be imported into another `Graph`
+    (using [`import_graph_def()`](#import_graph_def)) or used with the
+    [C++ Session API](../../api_docs/cc/index.md).
+
+    This method is thread-safe.
+
+    Args:
+      from_version: Optional.  If this is set, returns a `GraphDef`
+        containing only the nodes that were added to this graph since
+        its `version` property had the given value.
+      add_shapes: If true, adds an "_output_shapes" list attr to each
+        node with the inferred shapes of each of its outputs.
+
+    Returns:
+      A tuple containing a
+      [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      protocol buffer, and the version of the graph to which that
+      `GraphDef` corresponds.
+
+    Raises:
+      ValueError: If the `graph_def` would be too large.
+
+    """
+    with self._lock:
+      graph = graph_pb2.GraphDef()
+      graph.versions.CopyFrom(self._graph_def_versions)
+      bytesize = 0
+      for op_id in sorted(self._nodes_by_id):
+        op = self._nodes_by_id[op_id]
+        if from_version is None or op_id > from_version:
+          graph.node.extend([op.node_def])
+          if op.outputs and add_shapes:
+            assert "_output_shapes" not in graph.node[-1].attr
+            graph.node[-1].attr["_output_shapes"].list.shape.extend([
+                output.get_shape().as_proto() for output in op.outputs])
+          bytesize += op.node_def.ByteSize()
+          if bytesize >= (1 << 31) or bytesize < 0:
+            raise ValueError("GraphDef cannot be larger than 2GB.")
+      if self._functions:
+        for f in self._functions.values():
+          bytesize += f.ByteSize()
+          if bytesize >= (1 << 31) or bytesize < 0:
+            raise ValueError("GraphDef cannot be larger than 2GB.")
+        graph.library.function.extend(self._functions.values())
+        for func in self._function_gradient:
+          grad_def = function_pb2.GradientDef()
+          grad_def.function_name = func
+          grad_def.gradient_func = self._function_gradient[func]
+          graph.library.gradient.extend([grad_def])
+      return graph, self._version
+
   def as_graph_def(self, from_version=None, add_shapes=False):
     """Returns a serialized `GraphDef` representation of this graph.
 
@@ -2027,33 +2164,8 @@ class Graph(object):
     Raises:
       ValueError: If the `graph_def` would be too large.
     """
-    graph = graph_pb2.GraphDef()
-    graph.versions.CopyFrom(self._graph_def_versions)
-    bytesize = 0
-    for op_id in sorted(self._nodes_by_id):
-      op = self._nodes_by_id[op_id]
-      if from_version is None or op_id > from_version:
-        graph.node.extend([op.node_def])
-        if op.outputs and add_shapes:
-          assert "_output_shapes" not in graph.node[-1].attr
-          graph.node[-1].attr["_output_shapes"].list.shape.extend([
-              output.get_shape().as_proto() for output in op.outputs])
-        bytesize += op.node_def.ByteSize()
-        if bytesize >= (1 << 31) or bytesize < 0:
-          raise ValueError("GraphDef cannot be larger than 2GB.")
-    if self._functions:
-      for f in self._functions.values():
-        bytesize += f.ByteSize()
-        if bytesize >= (1 << 31) or bytesize < 0:
-          raise ValueError("GraphDef cannot be larger than 2GB.")
-      graph.library.function.extend(self._functions.values())
-      for func in self._function_gradient:
-        grad_def = function_pb2.GradientDef()
-        grad_def.function_name = func
-        grad_def.gradient_func = self._function_gradient[func]
-        graph.library.gradient.extend([grad_def])
-
-    return graph
+    result, _ = self._as_graph_def(from_version, add_shapes)
+    return result
 
   def _is_function(self, name):
     """Tests whether 'name' is registered in this graph's function library.
@@ -2213,6 +2325,19 @@ class Graph(object):
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
 
+    # Sets "container" attribute if
+    # (1) self._container is not None
+    # (2) "is_stateful" is set in OpDef
+    # (3) "container" attribute is in OpDef
+    # (4) "container" attribute is None
+    if (self._container and
+        op_type in self._registered_ops and
+        self._registered_ops[op_type].is_stateful and
+        "container" in ret.node_def.attr and
+        not ret.node_def.attr["container"].s):
+      ret.node_def.attr["container"].CopyFrom(
+          attr_value_pb2.AttrValue(s=compat.as_bytes(self._container)))
+
     return ret
 
   def as_graph_element(self, obj, allow_tensor=True, allow_operation=True):
@@ -2244,7 +2369,11 @@ class Graph(object):
         example, an invalid string.
       KeyError: If `obj` is not an object in the graph.
     """
+    with self._lock:
+      return self._as_graph_element_locked(obj, allow_tensor, allow_operation)
 
+  def _as_graph_element_locked(self, obj, allow_tensor, allow_operation):
+    """See `Graph.as_graph_element()` for details."""
     # The vast majority of this function is figuring
     # out what an API user might be doing wrong, so
     # that we can give helpful error messages.
@@ -2344,7 +2473,8 @@ class Graph(object):
     Returns:
       A list of Operations.
     """
-    return list(self._nodes_by_id.values())
+    with self._lock:
+      return list(self._nodes_by_id.values())
 
   def get_operation_by_name(self, name):
     """Returns the `Operation` with the given `name`.
@@ -2391,8 +2521,9 @@ class Graph(object):
   def _next_id(self):
     """Id for next Operation instance. Also increments the internal id."""
     self._check_not_finalized()
-    self._next_id_counter += 1
-    return self._next_id_counter
+    with self._lock:
+      self._next_id_counter += 1
+      return self._next_id_counter
 
   @property
   def _last_id(self):
@@ -2445,10 +2576,11 @@ class Graph(object):
       value: The value to add to the collection.
     """
     self._check_not_finalized()
-    if name not in self._collections:
-      self._collections[name] = [value]
-    else:
-      self._collections[name].append(value)
+    with self._lock:
+      if name not in self._collections:
+        self._collections[name] = [value]
+      else:
+        self._collections[name].append(value)
 
   def add_to_collections(self, names, value):
     """Stores `value` in the collections given by `names`.
@@ -2489,11 +2621,12 @@ class Graph(object):
       The list of values in the collection with the given `name`, or an empty
       list if no value has been added to that collection.
     """
-    coll_list = self._collections.get(name, None)
-    if coll_list is None:
-      coll_list = []
-      self._collections[name] = coll_list
-    return coll_list
+    with self._lock:
+      coll_list = self._collections.get(name, None)
+      if coll_list is None:
+        coll_list = []
+        self._collections[name] = coll_list
+      return coll_list
 
   def get_collection(self, name, scope=None):
     """Returns a list of values in the collection with the given `name`.
@@ -2517,22 +2650,24 @@ class Graph(object):
       list contains the values in the order under which they were
       collected.
     """
-    coll_list = self._collections.get(name, None)
-    if coll_list is None:
-      return []
-    if scope is None:
-      return list(coll_list)
-    else:
-      c = []
-      regex = re.compile(scope)
-      for item in coll_list:
-        if hasattr(item, "name") and regex.match(item.name):
-          c.append(item)
-      return c
+    with self._lock:
+      coll_list = self._collections.get(name, None)
+      if coll_list is None:
+        return []
+      if scope is None:
+        return list(coll_list)
+      else:
+        c = []
+        regex = re.compile(scope)
+        for item in coll_list:
+          if hasattr(item, "name") and regex.match(item.name):
+            c.append(item)
+        return c
 
   def get_all_collection_keys(self):
     """Returns a list of collections used in this graph."""
-    return [x for x in self._collections if isinstance(x, six.string_types)]
+    with self._lock:
+      return [x for x in self._collections if isinstance(x, six.string_types)]
 
   @contextlib.contextmanager
   def _original_op(self, op):
@@ -2562,7 +2697,7 @@ class Graph(object):
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def name_scope(self, name):
-    """Returns a context manager that creates hierarchical names for operations.
+    r"""Returns a context manager that creates hierarchical names for operations.
 
     A graph maintains a stack of name scopes. A `with name_scope(...):`
     statement pushes a new name onto the stack for the lifetime of the context.
@@ -2629,12 +2764,33 @@ class Graph(object):
       output = tf.nn.relu(affine, name=scope)
     ```
 
+    NOTE: This constructor validates the given `name`. Valid scope
+    names match one of the following regular expressions:
+
+        [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (for scopes at the root)
+        [A-Za-z0-9_.\\-/]* (for other scopes)
+
     Args:
       name: A name for the scope.
 
     Returns:
       A context manager that installs `name` as a new name scope.
+
+    Raises:
+      ValueError: If `name` is not a valid scope name. The rules are the
     """
+    if name:
+      if self._name_stack:
+        # Scopes created in a nested scope may have initial characters
+        # that are illegal as the initial character of an op name
+        # (viz. '-', '\', '/', and '_').
+        if not _VALID_SCOPE_NAME_REGEX.match(name):
+          raise ValueError("'%s' is not a valid scope name" % name)
+      else:
+        # Scopes created in the root must match the more restrictive
+        # op name regex, which constrains the initial character.
+        if not _VALID_OP_NAME_REGEX.match(name):
+          raise ValueError("'%s' is not a valid scope name" % name)
     try:
       old_stack = self._name_stack
       if not name:  # Both for name=None and name="" we re-set to empty scope.
@@ -2840,6 +2996,60 @@ class Graph(object):
       if device_function is None:
         break
       op._set_device(device_function(op))
+
+  # pylint: disable=g-doc-return-or-yield
+  @contextlib.contextmanager
+  def container(self, container_name):
+    """Returns a context manager that specifies the resource container to use.
+
+    Stateful operations, such as variables and queues, can maintain their
+    states on devices so that they can be shared by multiple processes.
+    A resource container is a string name under which these stateful
+    operations are tracked. These resources can be released or cleared
+    with `tf.Session.reset()`.
+
+    For example:
+
+    ```python
+    with g.container('experiment0'):
+      # All stateful Operations constructed in this context will be placed
+      # in resource container "experiment0".
+      v1 = tf.Variable([1.0])
+      v2 = tf.Variable([2.0])
+      with g.container("experiment1"):
+        # All stateful Operations constructed in this context will be
+        # placed in resource container "experiment1".
+        v3 = tf.Variable([3.0])
+        q1 = tf.FIFOQueue(10, tf.float32)
+      # All stateful Operations constructed in this context will be
+      # be created in the "experiment0".
+      v4 = tf.Variable([4.0])
+      q1 = tf.FIFOQueue(20, tf.float32)
+      with g.container(""):
+        # All stateful Operations constructed in this context will be
+        # be placed in the default resource container.
+        v5 = tf.Variable([5.0])
+        q3 = tf.FIFOQueue(30, tf.float32)
+
+    # Resets container "experiment0", after which the state of v1, v2, v4, q1
+    # will become undefined (such as unitialized).
+    tf.Session.reset(target, ["experiment0"])
+    ```
+
+    Args:
+      container_name: container name string.
+
+    Returns:
+      A context manager for defining resource containers for stateful ops,
+        yields the container name.
+    """
+    original_container = self._container
+    try:
+      self._container = container_name
+      yield self._container
+    finally:
+      self._container = original_container
+  # pylint: enable=g-doc-return-or-yield
 
   class _ControlDependenciesController(object):
     """Context manager for `control_dependencies()`."""
@@ -3188,6 +3398,17 @@ class Graph(object):
     """Returns `True` if and only if `tensor` is feedable."""
     return tensor not in self._unfeedable_tensors
 
+  def prevent_fetching(self, op):
+    """Marks the given `op` as unfetchable in this graph."""
+    self._unfetchable_ops.add(op)
+
+  def is_fetchable(self, tensor_or_op):
+    """Returns `True` if and only if `tensor_or_op` is fetchable."""
+    if isinstance(tensor_or_op, Tensor):
+      return tensor_or_op.op not in self._unfetchable_ops
+    else:
+      return tensor_or_op not in self._unfetchable_ops
+
 
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
@@ -3205,6 +3426,19 @@ def device(device_name_or_function):
     created ops.
   """
   return get_default_graph().device(device_name_or_function)
+
+
+def container(container_name):
+  """Wrapper for `Graph.container()` using the default graph.
+
+  Args:
+    container_name: The container string to use in the context.
+
+  Returns:
+    A context manager that specifies the default container to use for newly
+    created stateful ops.
+  """
+  return get_default_graph().container(container_name)
 
 
 def colocate_with(op, ignore_existing=False):
@@ -3252,6 +3486,7 @@ class _DefaultStack(threading.local):
 
   def __init__(self):
     super(_DefaultStack, self).__init__()
+    self._enforce_nesting = True
     self.stack = []
 
   def get_default(self):
@@ -3260,6 +3495,14 @@ class _DefaultStack(threading.local):
   def reset(self):
     self.stack = []
 
+  @property
+  def enforce_nesting(self):
+    return self._enforce_nesting
+
+  @enforce_nesting.setter
+  def enforce_nesting(self, value):
+    self._enforce_nesting = value
+
   @contextlib.contextmanager
   def get_controller(self, default):
     """A context manager for manipulating a default stack."""
@@ -3267,9 +3510,14 @@ class _DefaultStack(threading.local):
       self.stack.append(default)
       yield default
     finally:
-      assert self.stack[-1] is default
-      self.stack.pop()
-
+      if self._enforce_nesting:
+        if self.stack[-1] is not default:
+          raise AssertionError(
+              "Nesting violated for default stack of %s objects"
+              % type(default))
+        self.stack.pop()
+      else:
+        self.stack.remove(default)
 
 _default_session_stack = _DefaultStack()
 
@@ -3372,15 +3620,15 @@ def _eval_using_default_session(tensors, feed_dict, graph, session=None):
   if session is None:
     session = get_default_session()
     if session is None:
-      raise ValueError("Cannot evaluate tensor using eval(): No default "
+      raise ValueError("Cannot evaluate tensor using `eval()`: No default "
                        "session is registered. Use `with "
                        "sess.as_default()` or pass an explicit session to "
-                       "eval(session=sess)")
+                       "`eval(session=sess)`")
     if session.graph is not graph:
       raise ValueError("Cannot use the default session to evaluate tensor: "
                        "the tensor's graph is different from the session's "
                        "graph. Pass an explicit session to "
-                       "eval(session=sess).")
+                       "`eval(session=sess)`.")
   else:
     if session.graph is not graph:
       raise ValueError("Cannot use the given session to evaluate tensor: "
@@ -3407,15 +3655,15 @@ def _run_using_default_session(operation, feed_dict, graph, session=None):
   if session is None:
     session = get_default_session()
     if session is None:
-      raise ValueError("Cannot execute operation using Run(): No default "
-                       "session is registered. Use 'with "
-                       "default_session(sess)' or pass an explicit session to "
-                       "Run(session=sess)")
+      raise ValueError("Cannot execute operation using `run()`: No default "
+                       "session is registered. Use `with "
+                       "sess.as_default():` or pass an explicit session to "
+                       "`run(session=sess)`")
     if session.graph is not graph:
       raise ValueError("Cannot use the default session to execute operation: "
                        "the operation's graph is different from the "
                        "session's graph. Pass an explicit session to "
-                       "Run(session=sess).")
+                       "run(session=sess).")
   else:
     if session.graph is not graph:
       raise ValueError("Cannot use the given session to execute operation: "
@@ -3607,6 +3855,8 @@ class GraphKeys(object):
   TRAINABLE_VARIABLES = "trainable_variables"
   # Key to collect local variables that are not saved/restored.
   LOCAL_VARIABLES = "local_variables"
+  # Key to collect model variables defined by layers.
+  MODEL_VARIABLES = "model_variables"
   # Key to collect summaries.
   SUMMARIES = "summaries"
   # Key to collect QueueRunners.
@@ -3632,6 +3882,8 @@ class GraphKeys(object):
   ACTIVATIONS = "activations"
   # Key to collect update_ops
   UPDATE_OPS = "update_ops"
+  # Key to collect losses
+  LOSSES = "losses"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"

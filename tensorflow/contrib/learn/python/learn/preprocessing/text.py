@@ -1,34 +1,38 @@
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Implements a number of text preprocessing utilities."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import re
-import six
-
-try:
-  import cPickle as pickle
-except ImportError:
-  import pickle
-
 import numpy as np
+import six
 
 from tensorflow.python.platform import gfile
 
-from .categorical_vocabulary import CategoricalVocabulary
+from .categorical_vocabulary import CategoricalVocabulary  # pylint: disable=g-bad-import-order
+
+try:
+  # pylint: disable=g-import-not-at-top
+  import cPickle as pickle
+except ImportError:
+  # pylint: disable=g-import-not-at-top
+  import pickle
 
 TOKENIZER_RE = re.compile(r"[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+",
                           re.UNICODE)
@@ -53,40 +57,40 @@ class ByteProcessor(object):
   def __init__(self, max_document_length):
     self.max_document_length = max_document_length
 
-  def fit(self, X):
+  def fit(self, x):
     """Does nothing. No fitting required."""
     pass
 
-  def fit_transform(self, X):
+  def fit_transform(self, x):
     """Calls transform."""
-    return self.transform(X)
+    return self.transform(x)
 
   # pylint: disable=no-self-use
-  def reverse(self, X):
+  def reverse(self, x):
     """Reverses output of transform back to text.
 
     Args:
-      X: iterator or matrix of integers.
-        Document representation in bytes.
+      x: iterator or matrix of integers. Document representation in bytes.
 
-    Returns:
+    Yields:
       Iterators of utf-8 strings.
     """
-    for data in X:
+    for data in x:
       document = np.trim_zeros(data.astype(np.int8), trim='b').tostring()
       try:
         yield document.decode('utf-8')
       except UnicodeDecodeError:
         yield ''
 
-  def transform(self, X):
+  def transform(self, x):
     """Transforms input documents into sequence of ids.
 
     Args:
-      X: iterator or list of input documents.
+      x: iterator or list of input documents.
         Documents can be bytes or unicode strings, which will be encoded as
         utf-8 to map to bytes. Note, in Python2 str and bytes is the same type.
-    Returns:
+
+    Yields:
       iterator of byte ids.
     """
     if six.PY3:
@@ -94,7 +98,7 @@ class ByteProcessor(object):
       buffer_or_memoryview = memoryview
     else:
       buffer_or_memoryview = buffer  # pylint: disable=undefined-variable
-    for document in X:
+    for document in x:
       if isinstance(document, six.text_type):
         document = document.encode('utf-8')
       document_mv = buffer_or_memoryview(document)
@@ -104,23 +108,24 @@ class ByteProcessor(object):
 
 
 class VocabularyProcessor(object):
-  """Maps documents to sequences of word ids.
-
-  Parameters:
-    max_document_length: Maximum length of documents.
-      if documents are longer, they will be trimmed, if shorter - padded.
-    min_frequency: Minimum frequency of words in the vocabulary.
-    vocabulary: CategoricalVocabulary object.
-
-  Attributes:
-    vocabulary_: CategoricalVocabulary object.
-  """
+  """Maps documents to sequences of word ids."""
 
   def __init__(self,
                max_document_length,
                min_frequency=0,
                vocabulary=None,
                tokenizer_fn=None):
+    """Initializes a VocabularyProcessor instance.
+
+    Args:
+      max_document_length: Maximum length of documents.
+        if documents are longer, they will be trimmed, if shorter - padded.
+      min_frequency: Minimum frequency of words in the vocabulary.
+      vocabulary: CategoricalVocabulary object.
+
+    Attributes:
+      vocabulary_: CategoricalVocabulary object.
+    """
     self.max_document_length = max_document_length
     self.min_frequency = min_frequency
     if vocabulary:
@@ -158,8 +163,7 @@ class VocabularyProcessor(object):
       unused_y: to match fit_transform signature of estimators.
 
     Returns:
-      X: iterable, [n_samples, max_document_length]
-          Word-id matrix.
+      x: iterable, [n_samples, max_document_length]. Word-id matrix.
     """
     self.fit(raw_documents)
     return self.transform(raw_documents)
@@ -173,9 +177,8 @@ class VocabularyProcessor(object):
     Args:
       raw_documents: An iterable which yield either str or unicode.
 
-    Returns:
-      X: iterable, [n_samples, max_document_length]
-          Word-id matrix.
+    Yields:
+      x: iterable, [n_samples, max_document_length]. Word-id matrix.
     """
     for tokens in self._tokenizer(raw_documents):
       word_ids = np.zeros(self.max_document_length, np.int64)
@@ -191,7 +194,7 @@ class VocabularyProcessor(object):
     Args:
       documents: iterable, list of class ids.
 
-    Returns:
+    Yields:
       Iterator over mapped in words documents.
     """
     for item in documents:

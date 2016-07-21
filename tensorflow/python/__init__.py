@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -100,10 +100,10 @@ from tensorflow.python.util.all_util import make_all
 
 # Import modules whose docstrings contribute, for use by make_all below.
 from tensorflow.python.client import client_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops
@@ -114,6 +114,7 @@ from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import tensor_array_ops
 
 # Don't export modules except for the few we really want
 _whitelist = set([app, compat, contrib, errors, flags, gfile, image, logging,
@@ -126,7 +127,7 @@ __all__ = make_all(__name__, [framework_lib, array_ops, client_lib, check_ops,
                               constant_op, control_flow_ops, functional_ops,
                               histogram_ops, io_ops, math_ops, nn, script_ops,
                               session_ops, sparse_ops, state_ops, string_ops,
-                              train])
+                              tensor_array_ops, train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -147,7 +148,6 @@ __all__.extend([
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
-    'PaddingFIFOQueue',
     'RunOptions',
     'RunMetadata',
     'SessionLog',
@@ -226,7 +226,7 @@ __all__.extend([
     'uint8_ref',
 ])
 
-# Export modules.
+# Export modules and constants.
 __all__.extend([
     'app',
     'contrib',
@@ -235,6 +235,7 @@ __all__.extend([
     'gfile',
     'image',
     'logging',
+    'newaxis',
     'nn',
     'python_io',
     'resource_loader',

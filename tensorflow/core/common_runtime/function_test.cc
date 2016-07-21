@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/function.h"
+
+#include <atomic>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -36,9 +38,7 @@ namespace tensorflow {
 typedef FunctionDefHelper FDH;
 
 Status GetOpSig(const string& op, const OpDef** sig) {
-  Status s;
-  *sig = OpRegistry::Global()->LookUp(op, &s);
-  return s;
+  return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {
@@ -146,11 +146,11 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     FunctionDefLibrary proto;
     for (auto fdef : flib) *(proto.add_function()) = fdef;
     delete lib_def_;
-    lib_def_ = new FunctionLibraryDefinition(proto);
+    lib_def_ = new FunctionLibraryDefinition(OpRegistry::Global(), proto);
     delete lib_;
     OptimizerOptions opts;
-    lib_ = NewFunctionLibraryRuntime(nullptr, device_, FunctionTestSchedClosure,
-                                     TF_GRAPH_DEF_VERSION, lib_def_, opts);
+    lib_ = NewFunctionLibraryRuntime(nullptr, device_, TF_GRAPH_DEF_VERSION,
+                                     lib_def_, opts);
   }
 
   Status Run(const string& name, InstantiateAttrValueSlice attrs,
@@ -160,8 +160,17 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) {
       return status;
     }
+
+    std::atomic<int32> call_count(0);
+    std::function<void(std::function<void()>)> runner =
+        [&call_count](std::function<void()> fn) {
+          ++call_count;
+          FunctionTestSchedClosure(fn);
+        };
+
     Notification done;
     FunctionLibraryRuntime::Options opts;
+    opts.runner = &runner;
     std::vector<Tensor> out;
     lib_->Run(opts, handle, args, &out, [&status, &done](const Status& s) {
       status = s;
@@ -175,6 +184,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
+
+    EXPECT_GE(call_count, 1);  // Test runner is used.
+
     return Status::OK();
   }
 

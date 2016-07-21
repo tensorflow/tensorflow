@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ class ExtractGlimpseTest(tf.test.TestCase):
     glimpse_cols = (tf.transpose(
         tf.image.extract_glimpse(t_cols_4d, t1, t2), [0, 2, 1, 3]))
 
-    # Evaluate the Tensorflow Graph.
+    # Evaluate the TensorFlow Graph.
     with self.test_session() as sess:
       value_rows, value_cols = sess.run([glimpse_rows, glimpse_cols])
 

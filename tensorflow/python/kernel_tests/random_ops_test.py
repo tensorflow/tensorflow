@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -237,9 +237,10 @@ class RandomUniformTest(tf.test.TestCase):
   def testSeed(self):
     for use_gpu in False, True:
       for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
-        sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=345)
-        sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=345)
-        self.assertAllEqual(sx(), sy())
+          for seed in [345, 2**100, -2**100]:
+            sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
+            sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
+            self.assertAllEqual(sx(), sy())
 
   def testNoCSE(self):
     shape = [2, 3, 4]

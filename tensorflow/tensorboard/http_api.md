@@ -43,6 +43,7 @@ from the TensorBoard server. Here is an example:
         "images": ["input"],
         "audio": ["input_audio"],
         "graph": true,
+        "firstEventTimestamp": 123456.789
         "run_metadata": ["forward prop", "inference"]
       },
       "eval": {
@@ -54,7 +55,9 @@ from the TensorBoard server. Here is an example:
         "graph": false,
         "run_metadata": []
       }
-    }
+      }
+
+The `firstEventTimestamp` value is in seconds since the epoch.
 
 Note that the same tag may be present for many runs. It is not guaranteed that
 they will have the same meaning across runs. It is also not guaranteed that they
@@ -324,7 +327,7 @@ proto. For example:
 ## Notes
 
 All returned values, histograms, audio, and images are returned in the order
-they were written by Tensorflow (which should correspond to increasing
+they were written by TensorFlow (which should correspond to increasing
 `wall_time` order, but may not necessarily correspond to increasing step count
 if the process had to restart from a previous checkpoint).
 

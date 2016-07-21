@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,12 @@ namespace tensorflow {
 
 inline uint64 Fingerprint64(const string& s) {
   return ::util::Fingerprint64(s);
+}
+
+inline Fprint128 Fingerprint128(const string& s) {
+  const auto fingerprint = ::util::Fingerprint128(s);
+  return {::util::Uint128Low64(fingerprint),
+          ::util::Uint128High64(fingerprint)};
 }
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -87,8 +87,8 @@ bool MemmappedFileSystem::FileExists(const string& fname) {
   return dir_element != directory_.end();
 }
 
-Status MemmappedFileSystem::NewRandomAccessFile(const string& filename,
-                                                RandomAccessFile** result) {
+Status MemmappedFileSystem::NewRandomAccessFile(
+    const string& filename, std::unique_ptr<RandomAccessFile>* result) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -96,14 +96,14 @@ Status MemmappedFileSystem::NewRandomAccessFile(const string& filename,
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  *result = new RandomAccessFileFromMemmapped(
+  result->reset(new RandomAccessFileFromMemmapped(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length);
+      dir_element->second.length));
   return Status::OK();
 }
 
 Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& filename, ReadOnlyMemoryRegion** result) {
+    const string& filename, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -111,9 +111,9 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  *result = new ReadOnlyMemoryRegionFromMemmapped(
+  result->reset(new ReadOnlyMemoryRegionFromMemmapped(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length);
+      dir_element->second.length));
   return Status::OK();
 }
 
@@ -129,13 +129,22 @@ Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
   return Status::OK();
 }
 
+Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
+  uint64 size;
+  auto status = GetFileSize(fname, &size);
+  if (status.ok()) {
+    stat->length = size;
+  }
+  return status;
+}
+
 Status MemmappedFileSystem::NewWritableFile(const string& filename,
-                                            WritableFile** wf) {
+                                            std::unique_ptr<WritableFile>* wf) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
-Status MemmappedFileSystem::NewAppendableFile(const string& filename,
-                                              WritableFile** result) {
+Status MemmappedFileSystem::NewAppendableFile(
+    const string& filename, std::unique_ptr<WritableFile>* result) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
@@ -170,9 +179,8 @@ constexpr char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
 
 Status MemmappedFileSystem::InitializeFromFile(Env* env,
                                                const string& filename) {
-  ReadOnlyMemoryRegion* region;
-  TF_RETURN_IF_ERROR(env->NewReadOnlyMemoryRegionFromFile(filename, &region));
-  mapped_memory_.reset(region);
+  TF_RETURN_IF_ERROR(
+      env->NewReadOnlyMemoryRegionFromFile(filename, &mapped_memory_));
   directory_.clear();
   if (mapped_memory_->length() <= sizeof(uint64)) {
     return errors::DataLoss("Corrupted memmapped model file: ", filename,

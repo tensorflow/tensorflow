@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
 import time
 import numpy as np
 
@@ -72,11 +71,6 @@ class SessionManager(object):
   `wait_for_session()` waits for a model to be initialized by other processes.
 
   """
-  # Protects _TENSORFLOW_LAUNCHED
-  _launch_lock = threading.Lock()
-
-  # True if we have already launched the tensorflow in-process server.
-  _TENSORFLOW_LAUNCHED = False
 
   def __init__(self, local_init_op=None, ready_op=None,
                graph=None, recovery_wait_secs=30):

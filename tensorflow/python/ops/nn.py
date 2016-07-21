@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
+# =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
 """## Activation Functions
@@ -131,6 +131,46 @@ to the `Convolution` section for details about the padding calculation.
 @@avg_pool3d
 @@max_pool3d
 
+## Morphological filtering
+
+Morphological operators are non-linear filters used in image processing.
+
+[Greyscale morphological dilation]
+(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        max_{dy, dx} input[b,
+                           strides[1] * y + rates[1] * dy,
+                           strides[2] * x + rates[2] * dx,
+                           c] +
+                     filter[dy, dx, c]
+
+The `filter` is usually called structuring function. Max-pooling is a special
+case of greyscale morphological dilation when the filter assumes all-zero
+values (a.k.a. flat structuring function).
+
+[Greyscale morphological erosion]
+(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
+of standard sum-product convolution:
+
+    output[b, y, x, c] =
+        min_{dy, dx} input[b,
+                           strides[1] * y - rates[1] * dy,
+                           strides[2] * x - rates[2] * dx,
+                           c] -
+                     filter[dy, dx, c]
+
+Dilation and erosion are dual to each other. The dilation of the input signal
+`f` by the structuring signal `g` is equal to the negation of the erosion of
+`-f` by the reflected `g`, and vice versa.
+
+Striding and padding is carried out in exactly the same way as in standard
+convolution. Please refer to the `Convolution` section for details.
+
+@@dilation2d
+@@erosion2d
+
 ## Normalization
 
 Normalization is useful to prevent neurons from saturating when inputs may
@@ -168,6 +208,23 @@ tensors.
 
 @@embedding_lookup
 @@embedding_lookup_sparse
+
+## Recurrent Neural Networks
+
+TensorFlow provides a number of methods for constructing Recurrent
+Neural Networks.  Most accept an `RNNCell`-subclassed object
+(see the documentation for `tf.nn.rnn_cell`).
+
+@@dynamic_rnn
+@@rnn
+@@state_saving_rnn
+@@bidirectional_rnn
+
+## Conectionist Temporal Classification (CTC)
+
+@@ctc_loss
+@@ctc_greedy_decoder
+@@ctc_beam_search_decoder
 
 ## Evaluation
 
@@ -218,12 +275,12 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
@@ -243,6 +300,7 @@ from tensorflow.python.util.all_util import make_all
 # Bring more nn-associated functionality into this package.
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.ctc_ops import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
@@ -490,6 +548,7 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
@@ -555,10 +614,15 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
     A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
+
+  Raises:
+    ValueError: If channel_multiplier * in_channels > out_channels,
+      which means that the separable convolution is overparameterized.
   """
   with ops.op_scope([input, depthwise_filter, pointwise_filter],
                    name, "separable_conv2d") as name:
@@ -576,8 +640,13 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
         channel_multiplier = depthwise_filter.get_shape()[3]
         in_channels = input.get_shape()[3]
         out_channels = pointwise_filter.get_shape()[3]
-        # This would mean the separable convolutions is over-parametrized.
-        assert channel_multiplier * in_channels < out_channels
+        if channel_multiplier * in_channels > out_channels:
+          raise ValueError(
+              ("Refusing to perform an overparameterized separable "
+               "convolution: channel_multiplier * in_channels = "
+               "%d * %d = %d > %d = out_channels" %
+               (channel_multiplier, in_channels,
+                channel_multiplier * in_channels, out_channels)))
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
@@ -587,18 +656,19 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
                          padding="VALID", name=name)
 
 
-def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
+def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
   These sufficient statistics are computed using the one pass algorithm on
-  an input that's optionally shifted using the value of the 1st element in `x`.
-  See:
+  an input that's optionally shifted. See:
   https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
   Args:
     x: A `Tensor`.
     axes: Array of ints. Axes along which to compute mean and variance.
-    shift: If true, shift the data to provide more numerically stable results.
+    shift: A `Tensor` containing the value by which to shift the data for
+      numerical stability, or `None` if no shift is to be performed. A shift
+      close to the true mean provides the most numerically stable results.
     keep_dims: produce statistics with the same dimensionality as the input.
     name: Name used to scope the operations that compute the sufficient stats.
 
@@ -607,9 +677,9 @@ def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
     * the count (number of elements to average over).
     * the (possibly shifted) sum of the elements in the array.
     * the (possibly shifted) sum of squares of the elements in the array.
-    * the shift by which the mean must be corrected or None if `shift` is False.
+    * the shift by which the mean must be corrected or None if `shift` is None.
   """
-  with ops.op_scope([x, axes], name, "sufficient_statistics"):
+  with ops.op_scope([x, axes, shift], name, "sufficient_statistics"):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
     if x_shape.is_fully_defined():
@@ -632,23 +702,16 @@ def sufficient_statistics(x, axes, shift=True, keep_dims=False, name=None):
           math_ops.reduce_prod(x_shape / m_shape),
           x.dtype,
           name="count")
-    if shift:
-      shift_value = array_ops.slice(x, array_ops.zeros_like(m_shape), m_shape)
-      m_ss = math_ops.sub(x, shift_value)
-      v_ss = math_ops.squared_difference(x, shift_value)
-      if keep_dims:
-        shift_value = array_ops.identity(shift_value, name="shift")
-      else:
-        shift_value = array_ops.squeeze(shift_value,
-                                        squeeze_dims=axes,
-                                        name="shift")
-    else:  # not shift.
+    if shift is not None:
+      shift = ops.convert_to_tensor(shift, name="shift")
+      m_ss = math_ops.sub(x, shift)
+      v_ss = math_ops.squared_difference(x, shift)
+    else:  # no shift.
       m_ss = x
       v_ss = math_ops.square(x)
-      shift_value = None
     m_ss = math_ops.reduce_sum(m_ss, axes, keep_dims=keep_dims, name="mean_ss")
     v_ss = math_ops.reduce_sum(v_ss, axes, keep_dims=keep_dims, name="var_ss")
-  return counts, m_ss, v_ss, shift_value
+  return counts, m_ss, v_ss, shift
 
 
 def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
@@ -682,7 +745,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   return (mean, variance)
 
 
-def moments(x, axes, name=None, keep_dims=False):
+def moments(x, axes, shift=None, name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -699,18 +762,32 @@ def moments(x, axes, name=None, keep_dims=False):
     x: A `Tensor`.
     axes: array of ints.  Axes along which to compute mean and
       variance.
+    shift: A `Tensor` containing the value by which to shift the data for
+      numerical stability, or `None` if no shift is to be performed. A shift
+      close to the true mean provides the most numerically stable results.
     keep_dims: produce moments with the same dimensionality as the input.
     name: Name used to scope the operations that compute the moments.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.op_scope([x, axes], name, "moments"):
-    counts, m_ss, v_ss, shift = sufficient_statistics(x,
+  with ops.op_scope([x, axes, shift], name, "moments"):
+    # The dynamic range of fp16 is too limited to support the collection of
+    # sufficient statistics. As a workaround we simply perform the operations
+    # on 32-bit floats before converting the mean and variance back to fp16
+    y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
+    counts, m_ss, v_ss, shift = sufficient_statistics(y,
                                                       axes,
+                                                      shift=shift,
                                                       keep_dims=keep_dims,
                                                       name=name)
-    return normalize_moments(counts, m_ss, v_ss, shift, name=name)
+    with ops.control_dependencies([counts, m_ss, v_ss]):
+      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
+      if x.dtype == dtypes.float16:
+        return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+            variance, dtypes.float16))
+      else:
+        return (mean, variance)
 
 
 def batch_normalization(x,
@@ -1062,7 +1139,7 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   the full softmax loss.
 
   At inference time, you can compute full softmax probabilities with the
-  expression `tf.nn.softmax(tf.matmul(inputs, weights) + biases)`.
+  expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
 
   See our [Candidate Sampling Algorithms Reference]
   (../../extras/candidate_sampling.pdf)
@@ -1126,14 +1203,10 @@ __all__.extend([
     "all_candidate_sampler",
     "batch_norm_with_global_normalization",
     "batch_normalization",
-    "bidirectional_rnn",
     "conv2d_backprop_filter",
     "conv2d_backprop_input",
     "depthwise_conv2d_native",
-    "dynamic_rnn",
     "lrn",
     "relu_layer",
-    "rnn",
-    "state_saving_rnn",
     "xw_plus_b",
 ])

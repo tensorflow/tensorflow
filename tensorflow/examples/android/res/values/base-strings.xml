@@ -16,5 +16,5 @@
 -->
 
 <resources>
-    <string name="app_name">Tensorflow Demo</string>
+    <string name="app_name">TensorFlow Demo</string>
 </resources>

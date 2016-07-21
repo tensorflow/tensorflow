@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tensorflow/core/common_runtime/gpu/cupti_wrapper.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/cupti_wrapper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -127,7 +127,7 @@ class CUPTIClient {
 class CUPTIManager {
  public:
   CUPTIManager() {
-    cupti_wrapper_.reset(new CuptiWrapper());
+    cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
     CUPTI_CALL(ActivityRegisterCallbacks(BufferRequested, BufferCompleted));
   }
 
@@ -163,7 +163,7 @@ class CUPTIManager {
 
   mutex mu_;
   CUPTIClient *client_ GUARDED_BY(mu_);
-  std::unique_ptr<CuptiWrapper> cupti_wrapper_;
+  std::unique_ptr<perftools::gputools::profiler::CuptiWrapper> cupti_wrapper_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CUPTIManager);
 };
@@ -351,7 +351,7 @@ class GPUTracerImpl : public GPUTracer,
   inline int64 NowInUsec() { return Env::Default()->NowMicros(); }
 
   CUPTIManager *cupti_manager_;
-  std::unique_ptr<CuptiWrapper> cupti_wrapper_;
+  std::unique_ptr<perftools::gputools::profiler::CuptiWrapper> cupti_wrapper_;
   CUpti_SubscriberHandle subscriber_;
 
   mutex trace_mu_;
@@ -374,7 +374,7 @@ GPUTracerImpl::GPUTracerImpl() {
   VLOG(1) << "GPUTracer created.";
   cupti_manager_ = GetCUPTIManager();
   CHECK(cupti_manager_);
-  cupti_wrapper_.reset(new CuptiWrapper());
+  cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
   enabled_ = false;
 }
 
@@ -479,20 +479,25 @@ void GPUTracerImpl::AddCorrelationId(uint32 correlation_id,
     if (cbInfo->callbackSite == CUPTI_API_ENTER) {
       auto *params = reinterpret_cast<const cuLaunchKernel_params *>(
           cbInfo->functionParams);
-      VLOG(2) << "LAUNCH stream " << params->hStream << " correllation "
-              << cbInfo->correlationId << " kernel " << cbInfo->symbolName;
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << "LAUNCH stream " << params->hStream << " correllation "
+                << cbInfo->correlationId << " kernel " << cbInfo->symbolName;
+      }
       const string annotation =
           tls_annotation ? tls_annotation : cbInfo->symbolName;
       tracer->AddCorrelationId(cbInfo->correlationId, annotation);
     }
   } else if ((domain == CUPTI_CB_DOMAIN_RUNTIME_API) &&
-             (cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020)) {
+             (cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020 ||
+              cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyAsync_v3020)) {
     if (cbInfo->callbackSite == CUPTI_API_ENTER) {
-      auto *funcParams = reinterpret_cast<const cudaMemcpy_v3020_params *>(
-          cbInfo->functionParams);
-      size_t count = funcParams->count;
-      enum cudaMemcpyKind kind = funcParams->kind;
-      VLOG(2) << "MEMCPY count " << count << " kind " << kind;
+      if (VLOG_IS_ON(2)) {
+        auto *funcParams = reinterpret_cast<const cudaMemcpy_v3020_params *>(
+            cbInfo->functionParams);
+        size_t count = funcParams->count;
+        enum cudaMemcpyKind kind = funcParams->kind;
+        VLOG(2) << "MEMCPY count " << count << " kind " << kind;
+      }
       if (tls_annotation) {
         const string annotation = tls_annotation;
         tracer->AddCorrelationId(cbInfo->correlationId, annotation);
@@ -510,7 +515,7 @@ void GPUTracerImpl::AddCorrelationId(uint32 correlation_id,
       tracer->AddCorrelationId(cbInfo->correlationId, annotation);
     }
   } else {
-    LOG(WARNING) << "Unhandled API Callback for " << domain << " " << cbid;
+    VLOG(1) << "Unhandled API Callback for " << domain << " " << cbid;
   }
 }
 
@@ -585,13 +590,14 @@ Status GPUTracerImpl::Collect(StepStatsCollector *collector) {
         std::max<int64>((rec.end_timestamp - rec.start_timestamp) / 1000, 1);
     ns->set_op_end_rel_micros(elapsed_us);
     ns->set_all_end_rel_micros(elapsed_us);
-    ns->set_node_name(name);
     auto copyKind = static_cast<CUpti_ActivityMemcpyKind>(rec.copyKind);
     auto srcKind = static_cast<CUpti_ActivityMemoryKind>(rec.srcKind);
     auto dstKind = static_cast<CUpti_ActivityMemoryKind>(rec.dstKind);
     const string details = strings::Printf(
         "MEMCPY%s %llu bytes (%s to %s)", getMemcpyKindString(copyKind),
         rec.bytes, getMemoryKindString(srcKind), getMemoryKindString(dstKind));
+    ns->set_node_name(
+        strings::StrCat(name, ":MEMCPY", getMemcpyKindString(copyKind)));
     ns->set_timeline_label(details);
     auto nscopy = new NodeExecStats;
     *nscopy = *ns;

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/core/protobuf/worker_service.grpc.pb.h"
 
 namespace tensorflow {
 
@@ -97,49 +97,66 @@ class GrpcRemoteWorker : public WorkerInterface {
       req_copy->set_dma_ok(false);
     }
     // Type-specialized logging for this method.
-    StatusCallback logging_callback = [this, request, req_copy, response, done,
-                                       start_usec](Status s) {
-      if (logger_->LoggingActive()) {
-        int64 end_usec = Env::Default()->NowMicros();
-        int64 step_id = request->step_id();
-        int64 bytes = response->tensor().ByteSize();
-        int64 send_start_usec = start_usec;
-        // If a send start time was reported by the other side, use
-        // that instead.  Maybe we should mark the display if we're using
-        // our local time instead of the remote start time?
-        if (response->send_start_micros()) {
-          // send_start_micros is the timestamp taken when the remote
-          // machine began to send the RecvTensor response.
-          // Due to clock skew between source and dest machines, it is
-          // possible that send_start_micros can be larger than end_usec or
-          // less than start_usec.
-          // To respect causality, we enforce the invariants that the RecvTensor
-          // response can not have been sent before the RecvTensor request, and
-          // must have been sent before it was received.
-          send_start_usec = std::max(start_usec, response->send_start_micros());
-          send_start_usec = std::min(send_start_usec, end_usec - 1);
+    bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
+    StatusCallback wrapper_done;
+    const StatusCallback* cb_to_use;
+    if (!logging_active && req_copy == nullptr) {
+      cb_to_use = &done;  // No additional work to do, so just use done directly
+    } else if (!logging_active) {
+      wrapper_done = [req_copy, done](Status s) {
+        delete req_copy;
+        done(s);
+      };
+      cb_to_use = &wrapper_done;
+    } else {
+      wrapper_done = [this, request, req_copy, response, done,
+                      start_usec](Status s) {
+        if (logger_->LoggingActive()) {
+          int64 end_usec = Env::Default()->NowMicros();
+          int64 step_id = request->step_id();
+          int64 bytes = response->tensor().ByteSize();
+          int64 send_start_usec = start_usec;
+          // If a send start time was reported by the other side, use
+          // that instead.  Maybe we should mark the display if we're using
+          // our local time instead of the remote start time?
+          if (response->send_start_micros()) {
+            // send_start_micros is the timestamp taken when the
+            // remote machine began to send the RecvTensor response.
+            // Due to clock skew between source and dest machines, it
+            // is possible that send_start_micros can be larger than
+            // end_usec or less than start_usec.
+            //
+            // To respect causality, we enforce the invariants that
+            // the RecvTensor response can not have been sent before
+            // the RecvTensor request, and must have been sent before
+            // it was received.
+            send_start_usec =
+                std::max(start_usec, response->send_start_micros());
+            send_start_usec = std::min(send_start_usec, end_usec - 1);
+          }
+          const string& key = request->rendezvous_key();
+          std::vector<string> key_parts = str_util::Split(key, ';');
+          if (key_parts.size() != 5) {
+            LOG(WARNING) << "Bad key: " << key;
+          } else {
+            logger_->RecordRecvTensor(step_id, send_start_usec, end_usec,
+                                      key_parts[3],  // tensor name
+                                      key_parts[0],  // src_device
+                                      key_parts[2],  // dst_device
+                                      bytes);
+          }
         }
-        const string& key = request->rendezvous_key();
-        std::vector<string> key_parts = str_util::Split(key, ';');
-        if (key_parts.size() != 5) {
-          LOG(WARNING) << "Bad key: " << key;
-        } else {
-          logger_->RecordRecvTensor(step_id, send_start_usec, end_usec,
-                                    key_parts[3],  // tensor name
-                                    key_parts[0],  // src_device
-                                    key_parts[2],  // dst_device
-                                    bytes);
-        }
-      }
-      VLOG(2) << "done callback, req: " << request->DebugString()
-              << " response " << response->DebugString();
-      delete req_copy;
-      done(s);
-    };
+        VLOG(2) << "done callback, req: " << request->DebugString()
+                << " response " << response->DebugString();
+        delete req_copy;
+        done(s);
+      };
+      cb_to_use = &wrapper_done;
+    }
 
     IssueRequest(req_copy ? req_copy : request, response,
-                 &grpc::WorkerService::Stub::AsyncRecvTensor, logging_callback,
-                 call_opts);
+                 &grpc::WorkerService::Stub::AsyncRecvTensor,
+                 std::move(*cb_to_use), call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
@@ -169,6 +186,9 @@ class GrpcRemoteWorker : public WorkerInterface {
                     AsyncMethod<RequestMessage, ResponseMessage> async_method,
                     StatusCallback done, CallOptions* call_opts = nullptr) {
     ::grpc::ClientContext* context = new ::grpc::ClientContext;
+    // The initialization and recovery protocols rely on blocking
+    // until we get a response.
+    context->set_fail_fast(false);
     if (call_opts) {
       call_opts->SetCancelCallback([context]() { context->TryCancel(); });
     }

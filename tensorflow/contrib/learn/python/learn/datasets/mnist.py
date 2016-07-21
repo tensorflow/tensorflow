@@ -1,5 +1,4 @@
-"""Functions for downloading and reading MNIST data."""
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+"""Functions for downloading and reading MNIST data."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -84,7 +85,8 @@ class DataSet(object):
                labels,
                fake_data=False,
                one_hot=False,
-               dtype=dtypes.float32):
+               dtype=dtypes.float32,
+               reshape=True):
     """Construct a DataSet.
     one_hot arg is used only if fake_data is true.  `dtype` can be either
     `uint8` to leave the input as `[0, 255]`, or `float32` to rescale into
@@ -104,9 +106,10 @@ class DataSet(object):
 
       # Convert shape from [num examples, rows, columns, depth]
       # to [num examples, rows*columns] (assuming depth == 1)
-      assert images.shape[3] == 1
-      images = images.reshape(images.shape[0],
-                              images.shape[1] * images.shape[2])
+      if reshape:
+        assert images.shape[3] == 1
+        images = images.reshape(images.shape[0],
+                                images.shape[1] * images.shape[2])
       if dtype == dtypes.float32:
         # Convert from [0, 255] -> [0.0, 1.0].
         images = images.astype(numpy.float32)
@@ -164,7 +167,8 @@ class DataSet(object):
 def read_data_sets(train_dir,
                    fake_data=False,
                    one_hot=False,
-                   dtype=dtypes.float32):
+                   dtype=dtypes.float32,
+                   reshape=True):
   if fake_data:
 
     def fake():
@@ -202,9 +206,12 @@ def read_data_sets(train_dir,
   train_images = train_images[VALIDATION_SIZE:]
   train_labels = train_labels[VALIDATION_SIZE:]
 
-  train = DataSet(train_images, train_labels, dtype=dtype)
-  validation = DataSet(validation_images, validation_labels, dtype=dtype)
-  test = DataSet(test_images, test_labels, dtype=dtype)
+  train = DataSet(train_images, train_labels, dtype=dtype, reshape=reshape)
+  validation = DataSet(validation_images,
+                       validation_labels,
+                       dtype=dtype,
+                       reshape=reshape)
+  test = DataSet(test_images, test_labels, dtype=dtype, reshape=reshape)
 
   return base.Datasets(train=train, validation=validation, test=test)
 

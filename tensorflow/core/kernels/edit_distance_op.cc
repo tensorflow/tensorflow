@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -144,7 +144,7 @@ class EditDistanceOp : public OpKernel {
     std::iota(group_dims.begin(), group_dims.end(), 0);
 
     TensorShape output_shape;
-    for (size_t d = 0; d < group_dims.size(); ++d) {
+    for (int d = 0; d < static_cast<int>(group_dims.size()); ++d) {
       output_shape.AddDim(std::max(hypothesis_st_shape.dim_size(d),
                                    truth_st_shape.dim_size(d)));
     }
@@ -179,34 +179,38 @@ class EditDistanceOp : public OpKernel {
 
       if (g_truth == g_hypothesis) {
         auto loc = std::inner_product(g_truth.begin(), g_truth.end(),
-                                      output_strides.begin(), 0);
+                                      output_strides.begin(), int64{0});
         output_t(loc) =
             gtl::LevenshteinDistance<T>(truth_seq, hypothesis_seq, cmp);
         if (normalize_) output_t(loc) /= truth_seq.size();
 
         ++hypothesis_iter;
         ++truth_iter;
-      } else if (g_truth > g_hypothesis) {  // missing truth @ this hypothesis
+      } else if (g_truth > g_hypothesis) {  // zero-length truth
         auto loc = std::inner_product(g_hypothesis.begin(), g_hypothesis.end(),
-                                      output_strides.begin(), 0);
+                                      output_strides.begin(), int64{0});
         output_t(loc) = hypothesis_seq.size();
-        if (normalize_) output_t(loc) /= 0.0;
+        if (normalize_ && output_t(loc) != 0.0f) {
+          output_t(loc) = std::numeric_limits<float>::infinity();
+        }
         ++hypothesis_iter;
-      } else {  // missing hypothesis @ this truth
+      } else {  // zero-length hypothesis
         auto loc = std::inner_product(g_truth.begin(), g_truth.end(),
-                                      output_strides.begin(), 0);
+                                      output_strides.begin(), int64{0});
         output_t(loc) = (normalize_) ? 1.0 : truth_seq.size();
         ++truth_iter;
       }
     }
-    while (hypothesis_iter != hypothesis_grouper.end()) {  // missing truths
+    while (hypothesis_iter != hypothesis_grouper.end()) {  // zero-length truths
       sparse::Group hypothesis_j = *hypothesis_iter;
       std::vector<int64> g_hypothesis = hypothesis_j.group();
       auto hypothesis_seq = hypothesis_j.values<T>();
       auto loc = std::inner_product(g_hypothesis.begin(), g_hypothesis.end(),
-                                    output_strides.begin(), 0);
+                                    output_strides.begin(), int64{0});
       output_t(loc) = hypothesis_seq.size();
-      if (normalize_) output_t(loc) /= 0.0;
+      if (normalize_ && output_t(loc) != 0.0f) {
+        output_t(loc) = std::numeric_limits<float>::infinity();
+      }
       ++hypothesis_iter;
     }
     while (truth_iter != truth_grouper.end()) {  // missing hypotheses
@@ -214,7 +218,7 @@ class EditDistanceOp : public OpKernel {
       std::vector<int64> g_truth = truth_i.group();
       auto truth_seq = truth_i.values<T>();
       auto loc = std::inner_product(g_truth.begin(), g_truth.end(),
-                                    output_strides.begin(), 0);
+                                    output_strides.begin(), int64{0});
       output_t(loc) = (normalize_) ? 1.0 : truth_seq.size();
       ++truth_iter;
     }

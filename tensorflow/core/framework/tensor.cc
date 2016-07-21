@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -129,7 +129,12 @@ struct Helper {
       return nullptr;
     }
     Buffer<T>* buf = new Buffer<T>(a, n);
-    port::CopyToArray(in, buf->template base<char>());
+    char* data = buf->template base<char>();
+    if (data == nullptr) {
+      buf->Unref();
+      return nullptr;
+    }
+    port::CopyToArray(in, data);
     return buf;
   }
 
@@ -161,6 +166,10 @@ struct Helper<string> {
   static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
     Buffer<string>* buf = new Buffer<string>(a, n);
     string* strings = buf->template base<string>();
+    if (strings == nullptr) {
+      buf->Unref();
+      return nullptr;
+    }
     if (port::DecodeStringList(in, strings, n)) {
       return buf;
     } else {
@@ -308,7 +317,9 @@ Buffer<T>::~Buffer() {
   if (LogMemory::IsEnabled()) {
     RecordDeallocation();
   }
-  alloc_->Deallocate<T>(data_, elem_);
+  if (data_) {
+    alloc_->Deallocate<T>(data_, elem_);
+  }
 }
 
 // Allocates a T[n] buffer. Fills in the buffer with repeated values
@@ -326,6 +337,11 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
   CHECK_GT(n, 0);
   Buffer<T>* buf = new Buffer<T>(a, n);
   T* data = buf->template base<T>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+
   const int64 in_n = ProtoHelper<T>::NumElements(in);
   auto begin = ProtoHelper<T>::Begin(in);
   if (n <= in_n) {
@@ -349,6 +365,10 @@ TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
   CHECK_GT(n, 0);
   Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
   uint16* data = buf->template base<uint16>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
   const int64 in_n = in.half_val().size();
   auto begin = in.half_val().begin();
   if (n <= in_n) {
@@ -396,7 +416,8 @@ Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
 }
 
 bool Tensor::IsInitialized() const {
-  return buf_ != nullptr && buf_->data() != nullptr;
+  return (buf_ != nullptr && buf_->data() != nullptr) ||
+         shape_.num_elements() == 0;
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
@@ -487,7 +508,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
   if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
-  if (IsInitialized() && LogMemory::IsEnabled()) {
+  if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation("Unknown", LogMemory::UNKNOWN_STEP_ID,
                                       *this);
   }
@@ -501,8 +522,8 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
   if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
-  if (!allocation_attr.allocation_will_be_logged && IsInitialized() &&
-      LogMemory::IsEnabled()) {
+  if (!allocation_attr.allocation_will_be_logged && buf_ != nullptr &&
+      buf_->data() != nullptr && LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation("Unknown (with attributes)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }
@@ -597,7 +618,7 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   buf_ = p;
   // TODO(misard) add tracking of which kernels and steps are calling
   // FromProto.
-  if (IsInitialized() && LogMemory::IsEnabled()) {
+  if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation("Unknown (from Proto)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }
@@ -661,6 +682,9 @@ string Tensor::SummarizeValue(int64 max_entries) const {
   }
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
+    case DT_HALF:
+      return SummarizeArray<Eigen::half>(limit, num_elts, data);
+      break;
     case DT_FLOAT:
       return SummarizeArray<float>(limit, num_elts, data);
       break;
@@ -742,7 +766,7 @@ string Tensor::DebugString() const {
 void Tensor::FillDescription(TensorDescription* description) const {
   description->set_dtype(dtype());
   shape().AsProto(description->mutable_shape());
-  if (IsInitialized()) {
+  if (buf_ != nullptr && buf_->data() != nullptr) {
     buf_->FillAllocationDescription(
         description->mutable_allocation_description());
   }

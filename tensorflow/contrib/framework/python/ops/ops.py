@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,14 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Classes and functions used to construct graphs.
+"""Classes and functions used to construct graphs."""
 
-@@get_graph_from_inputs
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.framework import ops
+
 
 __all__ = ['get_graph_from_inputs']
 

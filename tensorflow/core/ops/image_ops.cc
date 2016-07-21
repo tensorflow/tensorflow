@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ REGISTER_OP("ResizeArea")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using area interpolation.
@@ -44,7 +44,7 @@ REGISTER_OP("ResizeBicubic")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using bicubic interpolation.
@@ -66,7 +66,7 @@ REGISTER_OP("ResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using bilinear interpolation.
@@ -88,7 +88,7 @@ REGISTER_OP("ResizeBilinearGrad")
     .Input("grads: float")
     .Input("original_image: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, half, double}")
     .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Computes the gradient of bilinear interpolation.
@@ -109,7 +109,7 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: T")
-    .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
+    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Resize `images` to `size` using nearest neighbor interpolation.
@@ -129,7 +129,7 @@ REGISTER_OP("ResizeNearestNeighborGrad")
     .Input("grads: T")
     .Input("size: int32")
     .Output("output: T")
-    .Attr("T: {uint8, int8, int32, float, double}")
+    .Attr("T: {uint8, int8, int32, half, float, double}")
     .Attr("align_corners: bool = false")
     .Doc(R"doc(
 Computes the gradient of nearest neighbor interpolation.
@@ -350,9 +350,26 @@ contents: 0-D. PNG-encoded image.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("DecodeGif")
+    .Input("contents: string")
+    .Output("image: uint8")
+    .Doc(R"doc(
+Decode the first frame of a GIF-encoded image to a uint8 tensor.
+
+GIF with frame or transparency compression are not supported
+convert animated GIF from compressed to uncompressed by:
+
+convert $src.gif -coalesce $dst.gif
+
+contents: 0-D.  The GIF-encoded image.
+image: 4-D with shape `[num_frames, height, width, 3]`. RGB order
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("RGBToHSV")
-    .Input("images: float")
-    .Output("output: float")
+    .Input("images: T")
+    .Output("output: T")
+    .Attr("T: {float, double} = DT_FLOAT")
     .Doc(R"doc(
 Converts one or more images from RGB to HSV.
 
@@ -370,8 +387,9 @@ output: `images` converted to HSV.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("HSVToRGB")
-    .Input("images: float")
-    .Output("output: float")
+    .Input("images: T")
+    .Output("output: T")
+    .Attr("T: {float, double} = DT_FLOAT")
     .Doc(R"doc(
 Convert one or more images from HSV to RGB.
 
@@ -387,9 +405,10 @@ output: `images` converted to RGB.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("DrawBoundingBoxes")
-    .Input("images: float")
+    .Input("images: T")
     .Input("boxes: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
     .Doc(R"doc(
 Draw bounding boxes on a batch of images.
 
@@ -495,7 +514,6 @@ use_image_if_no_bounding_boxes: Controls behavior if no bounding boxes supplied.
   raise an error.
 )doc");
 
-
 // --------------------------------------------------------------------------
 
 // glimpse = extract_glimpse(input, size, offsets) extract the glimpse
@@ -525,8 +543,7 @@ glimpse_width, channels]`. The channels and batch dimensions are the
 same as that of the input tensor. The height and width of the output
 windows are specified in the `size` parameter.
 
-The argument `normalized` and `centered` controls how the windows are
-built:
+The argument `normalized` and `centered` controls how the windows are built:
 
 * If the coordinates are normalized but not centered, 0.0 and 1.0
   correspond to the minimum and maximum of each height and width
@@ -553,6 +570,155 @@ centered: indicates if the offset coordinates are centered relative to
 normalized: indicates if the offset coordinates are normalized.
 uniform_noise: indicates if the noise should be generated using a
   uniform distribution or a gaussian distribution.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("CropAndResize")
+    .Input("image: T")
+    .Input("boxes: float")
+    .Input("box_ind: int32")
+    .Input("crop_size: int32")
+    .Output("crops: float")
+    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Attr("extrapolation_value: float = 0")
+    .Doc(R"doc(
+Extracts crops from the input image tensor and bilinearly resizes them (possibly
+with aspect ratio change) to a common output size specified by `crop_size`. This
+is more general than the `crop_to_bounding_box` op which extracts a fixed size
+slice from the input image and does not allow resizing or aspect ratio change.
+
+Returns a tensor with `crops` from the input `image` at positions defined at the
+bounding box locations in `boxes`. The cropped boxes are all resized (with
+bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
+result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
+
+image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+  Both `image_height` and `image_width` need to be positive.
+boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+  specifies the coordinates of a box in the `box_ind[i]` image and is specified
+  in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
+  `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
+  `[0, 1]` interval of normalized image height is mapped to
+  `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+  which case the sampled crop is an up-down flipped version of the original
+  image. The width dimension is treated similarly. Normalized coordinates
+  outside the `[0, 1]` range are allowed, in which case we use
+  `extrapolation_value` to extrapolate the input image values.
+box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
+  The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
+crop_size: A 1-D tensor of 2 elements, `size = [crop_height, crop_width]`. All
+  cropped image patches are resized to this size. The aspect ratio of the image
+  content is not preserved. Both `crop_height` and `crop_width` need to be
+  positive.
+crops: A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+method: A string specifying the interpolation method. Only 'bilinear' is
+  supported for now.
+extrapolation_value: Value used for extrapolation, when applicable.
+)doc");
+
+REGISTER_OP("CropAndResizeGradImage")
+    .Input("grads: float")
+    .Input("boxes: float")
+    .Input("box_ind: int32")
+    .Input("image_size: int32")
+    .Output("output: T")
+    .Attr("T: {float, half, double}")
+    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Doc(R"doc(
+Computes the gradient of the crop_and_resize op wrt the input image tensor.
+
+grads: A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+  specifies the coordinates of a box in the `box_ind[i]` image and is specified
+  in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
+  `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
+  `[0, 1]` interval of normalized image height is mapped to
+  `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+  which case the sampled crop is an up-down flipped version of the original
+  image. The width dimension is treated similarly. Normalized coordinates
+  outside the `[0, 1]` range are allowed, in which case we use
+  `extrapolation_value` to extrapolate the input image values.
+box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
+  The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
+image_size: A 1-D tensor with value `[batch, image_height, image_width, depth]`
+  containing the original image size. Both `image_height` and `image_width` need
+  to be positive.
+output: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+method: A string specifying the interpolation method. Only 'bilinear' is
+  supported for now.
+)doc");
+
+REGISTER_OP("CropAndResizeGradBoxes")
+    .Input("grads: float")
+    .Input("image: T")
+    .Input("boxes: float")
+    .Input("box_ind: int32")
+    .Output("output: float")
+    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Doc(R"doc(
+Computes the gradient of the crop_and_resize op wrt the input boxes tensor.
+
+grads: A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+  Both `image_height` and `image_width` need to be positive.
+boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+  specifies the coordinates of a box in the `box_ind[i]` image and is specified
+  in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
+  `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
+  `[0, 1]` interval of normalized image height is mapped to
+  `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+  which case the sampled crop is an up-down flipped version of the original
+  image. The width dimension is treated similarly. Normalized coordinates
+  outside the `[0, 1]` range are allowed, in which case we use
+  `extrapolation_value` to extrapolate the input image values.
+box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
+  The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
+output: A 2-D tensor of shape `[num_boxes, 4]`.
+method: A string specifying the interpolation method. Only 'bilinear' is
+  supported for now.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("NonMaxSuppression")
+    .Input("boxes: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Output("selected_indices: int32")
+    .Attr("iou_threshold: float = 0.5")
+    .Doc(R"doc(
+Greedily selects a subset of bounding boxes in descending order of score,
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system.  Note that this
+algorithm is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the tf.gather operation.  For example:
+
+  selected_indices = tf.image.non_max_suppression(
+      boxes, scores, max_output_size, iou_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+
+boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+  score corresponding to each box (each row of boxes).
+max_output_size: A scalar integer tensor representing the maximum number of
+  boxes to be selected by non max suppression.
+iou_threshold: A float representing the threshold for deciding whether boxes
+  overlap too much with respect to IOU.
+selected_indices: A 1-D integer tensor of shape `[M]` representing the selected
+  indices from the boxes tensor, where `M <= max_output_size`.
 )doc");
 
 }  // namespace tensorflow

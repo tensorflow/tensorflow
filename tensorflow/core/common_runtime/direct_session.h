@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
+#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -44,8 +45,8 @@ limitations under the License.
 namespace tensorflow {
 
 class CostModel;
+class DebugGateway;
 class Device;
-class ThreadPool;
 
 class DirectSession : public Session {
  public:
@@ -84,9 +85,8 @@ class DirectSession : public Session {
 
   ::tensorflow::Status Close() override;
 
-  // This is mainly for testing/debugging.
-  gtl::iterator_range<CostModelManager::CostModelMapIter> CostModels() {
-    return cost_model_manager_.CostModels();
+  void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
+    cost_model_manager_.ExportCostModels(cost_models);
   }
 
  private:
@@ -95,34 +95,26 @@ class DirectSession : public Session {
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
-    Executor* executor = nullptr;
-    FunctionLibraryRuntime* flib = nullptr;
+    Graph* graph = nullptr;
+    std::unique_ptr<FunctionLibraryRuntime> flib;
+    std::unique_ptr<Executor> executor;
   };
 
   // An ExecutorsAndKeys is created for a given set of feeds/fetches.
-  // 'func_defs' are the function definition used by all the
-  // underlying executors. 'graph' is the entire graph being
-  // executed. 'name_to_node' maps node name to node. We keep 'graph'
-  // and 'name_to_node' only in the case of partial runs. Each item in
-  // 'items' is the executor for a partition of the graph bundled with
-  // its dependent library runtime. 'input_keys' are the rendezvous keys
-  // for the feeds and 'output_keys' are rendezvous keys for the fetches.
+  // 'step_count' is the number of times this graph is executed.
+  // 'graph' is the entire graph being executed. 'name_to_node'
+  // maps node name to node. We keep 'graph' and 'name_to_node' only in
+  // the case of partial runs. Each item in 'items' is the executor for
+  // a partition of the graph bundled with its dependent library runtime.
+  // 'input_keys' are the rendezvous keys for the feeds and 'output_keys'
+  // are rendezvous keys for the fetches.
   struct ExecutorsAndKeys {
-    FunctionLibraryDefinition* func_defs = nullptr;
-    Graph* graph = nullptr;
-    NameNodeMap* name_to_node = nullptr;
+    int64 step_count = 0;
+    std::unique_ptr<Graph> graph;
+    NameNodeMap name_to_node;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, string> input_keys;
     std::unordered_map<string, string> output_keys;
-
-    ~ExecutorsAndKeys() {
-      for (auto item : items) {
-        delete item.executor;
-        delete item.flib;
-      }
-      delete graph;
-      delete name_to_node;
-    }
   };
 
   // For each live partial execution, the session maintains a RunState.
@@ -133,22 +125,14 @@ class DirectSession : public Session {
     mutex mu_;
     Status status GUARDED_BY(mu_);
     IntraProcessRendezvous* rendez = nullptr;
-    StepStatsCollector* collector = nullptr;
+    std::unique_ptr<StepStatsCollector> collector;
     Notification executors_done;
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
     TensorStore tensor_store;
 
     RunState(const std::vector<string>& input_names,
-             const std::vector<string>& output_names) {
-      // Initially all the feeds and fetches are pending.
-      for (auto& name : input_names) {
-        pending_inputs.emplace(name);
-      }
-      for (auto& name : output_names) {
-        pending_outputs.emplace(name);
-      }
-    }
+             const std::vector<string>& output_names);
 
     ~RunState();
   };
@@ -156,25 +140,27 @@ class DirectSession : public Session {
   struct RunStateArgs {
     bool is_partial_run = false;
     string handle;
-    Graph* graph = nullptr;
+    std::unique_ptr<Graph> graph;
   };
 
   // Initializes the base execution state given the 'graph',
   // if not already initialized.
-  void MaybeInitializeExecutionState(const GraphDef& graph);
+  void MaybeInitializeExecutionState(const GraphDef& graph)
+      EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
 
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
   ::tensorflow::Status GetOrCreateExecutors(
-      gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
-      gtl::ArraySlice<string> target_nodes,
+      thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
+      gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
       ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
 
   // Creates several graphs given the existing graph_def_ and the
   // input feeds and fetches, given 'devices'.
-  ::tensorflow::Status CreateGraphs(const BuildGraphOptions& options,
-                                    std::unordered_map<string, Graph*>* outputs,
-                                    RunStateArgs* run_state_args);
+  ::tensorflow::Status CreateGraphs(
+      const BuildGraphOptions& options,
+      std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
+      RunStateArgs* run_state_args);
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
@@ -216,21 +202,22 @@ class DirectSession : public Session {
   mutex graph_def_lock_;
   GraphDef graph_def_ GUARDED_BY(graph_def_lock_);
 
-  // The thread-pool to use for running ops.
-  thread::ThreadPool* thread_pool_ = nullptr;
+  // The thread-pools to use for running ops.
+  std::vector<thread::ThreadPool*> thread_pools_;
+  bool owns_thread_pools_ = false;
 
-  // Schedules 'c' for execution.
-  void SchedClosure(std::function<void()> c);
+  // Schedules 'c' for execution on pool.
+  void SchedClosure(thread::ThreadPool* pool, std::function<void()> c);
 
   mutex executor_lock_;  // protects executors_
   // Holds mappings from signature to the executors that process
   // it. The reason for a level of indirection around mapped_type is
   // to guarantee address stability.
-  std::unordered_map<string, ExecutorsAndKeys*> executors_
+  std::unordered_map<string, std::unique_ptr<ExecutorsAndKeys>> executors_
       GUARDED_BY(executor_lock_);
 
   // Holds mappings from handle to partial run state.
-  std::unordered_map<string, RunState*> partial_runs_
+  std::unordered_map<string, std::unique_ptr<RunState>> partial_runs_
       GUARDED_BY(executor_lock_);
 
   // This holds all the tensors that are currently alive in the session.
@@ -247,7 +234,8 @@ class DirectSession : public Session {
   std::unordered_map<string, string> stateful_placements_ GUARDED_BY(mu_);
 
   // Execution_state; used when placing the entire graph.
-  std::unique_ptr<SimpleGraphExecutionState> execution_state_;
+  std::unique_ptr<SimpleGraphExecutionState> execution_state_
+      GUARDED_BY(graph_def_lock_);
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
   // For generating unique names.
@@ -262,7 +250,13 @@ class DirectSession : public Session {
   // Manages all the cost models for the graphs executed in this session.
   CostModelManager cost_model_manager_;
 
+  Executor::Args::NodeOutputsCallback node_outputs_callback_ = nullptr;
+
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
+
+  // EXPERIMENTAL: debugger (tfdb) related
+  friend class DebugGateway;
+  std::unique_ptr<DebugNodeInserter> debug_node_inserter_;
 };
 
 }  // end namespace tensorflow

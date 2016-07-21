@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -127,12 +127,30 @@ class OptimizersTest(tf.test.TestCase):
   def testIgnoreVariablesWithNoGradients(self):
     _, _, loss, global_step = _setup_model()
 
-    unused_variable = tf.get_variable("ignore me", [])
+    unused_variable = tf.get_variable("ignore_me", [])
 
     tf.contrib.layers.optimize_loss(
         loss, global_step, learning_rate=0.1, optimizer="SGD")
 
+  def testUpdateOp(self):
+    optimizers = ["SGD", tf.train.GradientDescentOptimizer,
+                  tf.train.GradientDescentOptimizer(learning_rate=0.1)]
+    for optimizer in optimizers:
+      with tf.Graph().as_default() as g:
+        with self.test_session(graph=g) as session:
+          x, var, loss, global_step = _setup_model()
+          update_op = tf.assign(var, 20)
+          train = tf.contrib.layers.optimize_loss(loss,
+                                                  global_step,
+                                                  learning_rate=0.1,
+                                                  optimizer=optimizer,
+                                                  update_ops=[update_op])
+          tf.initialize_all_variables().run()
+          session.run(train, feed_dict={x: 5})
+          var_value, global_step_value = session.run([var, global_step])
+          # 19.5, due to update of var to 20 before loss computation.
+          self.assertEqual(var_value, 19.5)
+          self.assertEqual(global_step_value, 1)
 
 if __name__ == "__main__":
   tf.test.main()
-

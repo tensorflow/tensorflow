@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,10 +97,12 @@ class ResizeAreaOp : public OpKernel {
           sum_data.setConstant(0.0);
           for (int64 i = y_start; i < y_end; ++i) {
             float scale_y =
-                i < in_y ? i + 1 - in_y : (i + 1 > in_y1 ? in_y1 - i : 1.0);
+                i < in_y ? (i + 1 > in_y1 ? st.height_scale : i + 1 - in_y)
+                         : (i + 1 > in_y1 ? in_y1 - i : 1.0);
             for (int64 j = x_start; j < x_end; ++j) {
               float scale_x =
-                  j < in_x ? j + 1 - in_x : (j + 1 > in_x1 ? in_x1 - j : 1.0);
+                  j < in_x ? (j + 1 > in_x1 ? st.width_scale : j + 1 - in_x)
+                           : (j + 1 > in_x1 ? in_x1 - j : 1.0);
               for (int64 c = 0; c < st.channels; ++c) {
 #define BOUND(val, limit) std::min(((limit)-1ll), (std::max(0ll, (val))))
                 sum_data(c) += float(input_data(b, BOUND(i, st.in_height),

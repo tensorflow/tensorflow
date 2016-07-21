@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,6 +79,15 @@ class SimplePlacer {
   Status Run();
 
  private:
+  // Returns true if the device type of 'candidate_device_name' is
+  // found in 'devices'.
+  bool CanAssignToDevice(const string& candidate_device_name,
+                         const std::vector<Device*> devices) const;
+
+  // Assigns 'node's devices to 'assigned_device', and logs the
+  // placement if the SessionOptions entry in 'options_' requests it.
+  void AssignAndLog(const string& assigned_device, Node* node) const;
+
   Graph* const graph_;                           // Not owned.
   const DeviceSet* const devices_;               // Not owned.
   const SessionOptions* options_;                // Not owned.

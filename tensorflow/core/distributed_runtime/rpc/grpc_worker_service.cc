@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -40,8 +41,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/core/protobuf/worker_service.grpc.pb.h"
-#include "tensorflow/core/protobuf/worker_service.pb.h"
 
 namespace tensorflow {
 
@@ -109,7 +108,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
   } while (0)
 
   // This method blocks forever handling requests from the completion queue.
-  void HandleRPCsLoop() {
+  void HandleRPCsLoop() override {
     // TODO(mrry): This may require performance engineering. We can
     // add more threads to service the completion queue, and add more
     // of various request types if they are short and frequent.
@@ -350,11 +349,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   // Helper for RecvTensor. Validates "key" and returns the source
   // device in "*src_dev".
-  Status PrepareRecvTensor(const string& key, Device** src_dev) {
-    // Validate the key.
-    Rendezvous::ParsedKey parsed;
-    TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, &parsed));
-
+  Status PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
+                           Device** src_dev) {
     // Figures out which device the tensor is hosted on.
     TF_RETURN_IF_ERROR(
         env_->device_mgr->LookupDevice(parsed.src_device, src_dev));
@@ -376,8 +372,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
     const int64 step_id = call->request.step_id();
     const string& key = call->request.rendezvous_key();
     TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
+    Rendezvous::ParsedKey parsed;
+    Status s = Rendezvous::ParseKey(key, &parsed);
     Device* src_dev = nullptr;
-    Status s = PrepareRecvTensor(key, &src_dev);
+    if (s.ok()) {
+      s = PrepareRecvTensor(parsed, &src_dev);
+    }
     if (!s.ok()) {
       call->SendResponse(ToGrpcStatus(s));
       return;
@@ -389,7 +389,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     // cancellation should abort the rendezvous.
     call->SetCancelCallback([this, step_id]() { AbortStep(step_id); });
     env_->rendezvous_mgr->RecvLocalAsync(
-        step_id, key,
+        step_id, parsed,
         [this, call, src_dev](const Status& status,
                               const Rendezvous::Args& send_args,
                               const Rendezvous::Args& recv_args,

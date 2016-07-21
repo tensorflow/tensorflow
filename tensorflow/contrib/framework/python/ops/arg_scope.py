@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,11 +47,6 @@
 
   @tf.contrib.add_arg_scope
   def conv2d(*args, **kwargs)
-
-@@arg_scope
-@@add_arg_scope
-@@has_arg_scope
-@@arg_scoped_arguments
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -59,8 +54,10 @@ from __future__ import print_function
 import contextlib
 import functools
 
-__all__ = ['arg_scope', 'add_arg_scope',
-           'has_arg_scope', 'arg_scoped_arguments']
+__all__ = ['arg_scope',
+           'add_arg_scope',
+           'has_arg_scope',
+           'arg_scoped_arguments']
 
 _ARGSTACK = [{}]
 

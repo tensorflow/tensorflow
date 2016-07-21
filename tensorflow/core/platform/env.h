@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,7 +84,8 @@ class Env {
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewRandomAccessFile(const string& fname, RandomAccessFile** result);
+  Status NewRandomAccessFile(const string& fname,
+                             std::unique_ptr<RandomAccessFile>* result);
 
   /// \brief Creates an object that writes to a new file with the specified
   /// name.
@@ -99,7 +100,8 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewWritableFile(const string& fname, WritableFile** result);
+  Status NewWritableFile(const string& fname,
+                         std::unique_ptr<WritableFile>* result);
 
   /// \brief Creates an object that either appends to an existing file, or
   /// writes to a new file (if the file does not exist to begin with).
@@ -113,7 +115,8 @@ class Env {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used. The file object
   /// shouldn't live longer than the Env object.
-  Status NewAppendableFile(const string& fname, WritableFile** result);
+  Status NewAppendableFile(const string& fname,
+                           std::unique_ptr<WritableFile>* result);
 
   /// \brief Creates a readonly region of memory with the file context.
   ///
@@ -126,8 +129,8 @@ class Env {
   /// The ownership of the returned ReadOnlyMemoryRegion is passed to the caller
   /// and the object should be deleted when is not used. The memory region
   /// object shouldn't live longer than the Env object.
-  Status NewReadOnlyMemoryRegionFromFile(const string& fname,
-                                         ReadOnlyMemoryRegion** result);
+  Status NewReadOnlyMemoryRegionFromFile(
+      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
   /// Returns true iff the named file exists.
   bool FileExists(const string& fname);
@@ -147,6 +150,18 @@ class Env {
   /// Deletes the specified directory.
   Status DeleteDir(const string& dirname);
 
+  /// Obtains statistics for the given path.
+  Status Stat(const string& fname, FileStatistics* stat);
+
+  /// \brief Returns whether the given path is a directory or not.
+  /// Typical return codes (not guaranteed exhaustive):
+  ///  * OK - The path exists and is a directory.
+  ///  * FAILED_PRECONDITION - The path exists and is not a directory.
+  ///  * NOT_FOUND - The path entry does not exist.
+  ///  * PERMISSION_DENIED - Insufficient permissions.
+  ///  * UNIMPLEMENTED - The file factory doesn't support directories.
+  Status IsDirectory(const string& fname);
+
   /// Stores the size of `fname` in `*file_size`.
   Status GetFileSize(const string& fname, uint64* file_size);
 
@@ -162,8 +177,12 @@ class Env {
   /// time. Only useful for computing deltas of time.
   virtual uint64 NowMicros() = 0;
 
+  /// \brief Returns the number of seconds since some fixed point in
+  /// time. Only useful for computing deltas of time.
+  virtual uint64 NowSeconds() { return NowMicros() / 1000000L; }
+
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
-  virtual void SleepForMicroseconds(int micros) = 0;
+  virtual void SleepForMicroseconds(int64 micros) = 0;
 
   /// \brief Returns a new thread that is running fn() and is identified
   /// (for debugging/performance-analysis) by "name".
@@ -183,7 +202,8 @@ class Env {
   // of microseconds.
   //
   // NOTE(mrry): This closure must not block.
-  virtual void SchedClosureAfter(int micros, std::function<void()> closure) = 0;
+  virtual void SchedClosureAfter(int64 micros,
+                                 std::function<void()> closure) = 0;
 
   // \brief Load a dynamic library.
   //
@@ -242,7 +262,7 @@ class EnvWrapper : public Env {
   }
 
   uint64 NowMicros() override { return target_->NowMicros(); }
-  void SleepForMicroseconds(int micros) override {
+  void SleepForMicroseconds(int64 micros) override {
     target_->SleepForMicroseconds(micros);
   }
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
@@ -252,7 +272,7 @@ class EnvWrapper : public Env {
   void SchedClosure(std::function<void()> closure) override {
     target_->SchedClosure(closure);
   }
-  void SchedClosureAfter(int micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
     target_->SchedClosureAfter(micros, closure);
   }
   Status LoadLibrary(const char* library_filename, void** handle) override {

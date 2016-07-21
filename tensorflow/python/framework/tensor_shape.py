@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.util import compat
 
 
 class Dimension(object):
@@ -30,6 +31,9 @@ class Dimension(object):
       self._value = None
     else:
       self._value = int(value)
+      if (not isinstance(value, compat.bytes_or_text_types)
+          and self._value != value):
+        raise ValueError("Ambiguous dimension: %s" % value)
       if self._value < 0:
         raise ValueError("Dimension %d must be >= 0" % self._value)
 
@@ -42,14 +46,20 @@ class Dimension(object):
 
   def __eq__(self, other):
     """Returns true if `other` has the same known value as this Dimension."""
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except ValueError:
+      return NotImplemented
     if self._value is None or other.value is None:
       return None
     return self._value == other.value
 
   def __ne__(self, other):
     """Returns true if `other` has a different known value from `self`."""
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except ValueError:
+      return NotImplemented
     if self._value is None or other.value is None:
       return None
     return self._value != other.value
@@ -410,10 +420,16 @@ class TensorShape(object):
     Args:
       dims: A list of Dimensions, or None if the shape is unspecified.
         DEPRECATED: A single integer is treated as a singleton list.
+
+    Raises:
+      TypeError: If dims cannot be converted to a list of dimensions.
     """
     # TODO(irving): Eliminate the single integer special case.
     if dims is None:
       self._dims = None
+    elif isinstance(dims, compat.bytes_or_text_types):
+      raise TypeError("A string has ambiguous TensorShape, please wrap in a "
+                       "list or convert to an int: %s" % dims)
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:
         self._dims = None
@@ -758,12 +774,18 @@ class TensorShape(object):
 
   def __eq__(self, other):
     """Returns True if `self` is equivalent to `other`."""
-    other = as_shape(other)
+    try:
+      other = as_shape(other)
+    except TypeError:
+      return NotImplemented
     return self._dims == other.dims
 
   def __ne__(self, other):
     """Returns True if `self` is known to be different from `other`."""
-    other = as_shape(other)
+    try:
+      other = as_shape(other)
+    except TypeError:
+      return NotImplemented
     if self.ndims is None or other.ndims is None:
       raise ValueError("The inequality of unknown TensorShapes is undefined.")
     if self.ndims != other.ndims:
