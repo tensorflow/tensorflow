@@ -419,5 +419,34 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,4,d1_3]");
 }
 
+TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
+  ShapeInferenceTestOp op("DepthwiseConv2dNative");
+  std::vector<int32> strides = {{1, 1, 1, 1}};
+  TF_CHECK_OK(NodeDefBuilder("test", "DepthwiseConv2dNative")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("filter", 0, DT_FLOAT)
+                  .Attr("strides", strides)
+                  .Attr("padding", "VALID")
+                  .Finalize(&op.node_def));
+
+  // Most of DepthwiseConv2D is implicitly tested by Conv2D, so
+  // we test only the very-specific differences here.
+
+  // 1x1 filter, depth multiplication
+  INFER_OK(op, "[1,2,2,3];[1,1,3,4]", "[d0_0,2,2,12]");
+
+  // Input depths not compatible
+  INFER_ERROR("Dimensions must be equal, but are 3 and 12", op,
+              "[1,2,2,3];[1,1,12,4]");
+
+  // No unknown dims in the critical fields.
+  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
+  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
+  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
+  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
+  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,?,1]");
+  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,1,?]");
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

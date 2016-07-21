@@ -248,6 +248,10 @@ class InferenceContext {
   Status Add(const Dimension* first, DimensionOrConstant second,
              const Dimension** out);
 
+  // Returns in <out> the product of <first> and <second>.
+  Status Multiply(const Dimension* first, DimensionOrConstant second,
+                  const Dimension** out);
+
  private:
   const Dimension* GetDimension(const DimensionOrConstant& d);
 

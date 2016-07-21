@@ -519,5 +519,66 @@ Status InferenceContext::Add(const Dimension* first, DimensionOrConstant second,
   return Status::OK();
 }
 
+Status InferenceContext::Multiply(const Dimension* first,
+                                  DimensionOrConstant second,
+                                  const Dimension** out) {
+  int64 first_value = -1;
+  // Special cases for multiply are when the values are 0 or 1.
+  if (ValueKnown(first)) {
+    first_value = Value(first);
+    if (first_value == 0) {
+      *out = MakeDim(0);
+      return Status::OK();
+    }
+
+    // Output is whatever the second value is.
+    if (first_value == 1) {
+      *out = GetDimension(second);
+      return Status::OK();
+    }
+  }
+
+  // Same check for when the second argument is a known value.
+  // First find out if the value is known from DimOrConstant.
+  int64 second_value;
+  if (second.dim == nullptr) {
+    second_value = second.val;
+  } else {
+    if (!ValueKnown(second.dim)) {
+      // Second value is not known and first is not a special caase
+      *out = UnknownDim();
+      return Status::OK();
+    }
+    second_value = Value(second.dim);
+  }
+
+  // Now that we know whether the value is known, apply the special
+  // casing.
+  if (second_value == 0) {
+    *out = MakeDim(0);
+    return Status::OK();
+  }
+
+  // Output is whatever the first value is.
+  if (second_value == 1) {
+    *out = first;
+    return Status::OK();
+  }
+
+  if (!ValueKnown(first)) {
+    // First value is not known and second is not a special caase
+    *out = UnknownDim();
+    return Status::OK();
+  }
+
+  const int64 product = first_value * second_value;
+  if (product < 0) {
+    return errors::InvalidArgument("Negative dimension size from multiplying ",
+                                   first_value, " and ", second_value);
+  }
+  *out = MakeDim(product);
+  return Status::OK();
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

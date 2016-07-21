@@ -806,5 +806,60 @@ TEST(ShapeInferenceTest, Add) {
       c.Add(d_6, std::numeric_limits<int64>::max() - 5, &out).error_message());
 }
 
+TEST(ShapeInferenceTest, Multiply) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?,0,1]"}, {});
+
+  auto s = c.input(0);
+  auto d_6 = c.Dim(s, 0);
+  auto d_unknown = c.Dim(s, 1);
+  auto d_0 = c.Dim(s, 2);
+  auto d_1 = c.Dim(s, 3);
+
+  // Multiplying non-zero to unknown gives new unknown.
+  const Dimension* out;
+  EXPECT_TRUE(c.Multiply(d_unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+
+  // Multiplying 0 to anything gives 0.
+  EXPECT_TRUE(c.Multiply(d_unknown, static_cast<int64>(0), &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_unknown, d_0, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_0, d_unknown, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+
+  // Multiplying 1 to anything gives the original.
+  // (unknown -> unknown)
+  EXPECT_TRUE(c.Multiply(d_unknown, static_cast<int64>(1), &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_unknown, d_1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_1, d_unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  // (known -> known)
+  EXPECT_TRUE(c.Multiply(d_6, static_cast<int64>(1), &out).ok());
+  EXPECT_EQ("6", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_6, d_1, &out).ok());
+  EXPECT_EQ("6", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_1, d_6, &out).ok());
+  EXPECT_EQ("6", c.DebugString(out));
+
+  // Test multiplication.
+  EXPECT_TRUE(c.Multiply(d_6, 2, &out).ok());
+  EXPECT_EQ("12", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_6, 6, &out).ok());
+  EXPECT_EQ("36", c.DebugString(out));
+
+  // Test multiplication using dimension as second value.
+  EXPECT_TRUE(c.Multiply(d_6, c.MakeDim(2), &out).ok());
+  EXPECT_EQ("12", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_6, c.UnknownDim(), &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+
+  EXPECT_EQ("Negative dimension size from multiplying 6 and -7",
+            c.Multiply(d_6, -7, &out).error_message());
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow
