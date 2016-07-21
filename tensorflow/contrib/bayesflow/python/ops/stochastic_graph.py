@@ -493,11 +493,13 @@ class DistributionTensor(StochasticTensor):
                           self._value_type)
 
 
-def _stochastic_dependencies_map(fixed_losses):
+def _stochastic_dependencies_map(fixed_losses, stochastic_tensors=None):
   """Map stochastic tensors to the fixed losses that depend on them.
 
   Args:
-    fixed_losses: a list of Tensors.
+    fixed_losses: a list of `Tensor`s.
+    stochastic_tensors: a list of `StochasticTensor`s to map to fixed losses.
+      If `None`, all `StochasticTensor`s in the graph will be used.
 
   Returns:
     A dict `dependencies` that maps `StochasticTensor` objects to subsets of
@@ -506,7 +508,7 @@ def _stochastic_dependencies_map(fixed_losses):
     If `loss in dependencies[st]`, for some `loss` in `fixed_losses` then there
     is a direct path from `st.value()` to `loss` in the graph.
   """
-  stoch_value_collection = ops.get_collection(
+  stoch_value_collection = stochastic_tensors or ops.get_collection(
       STOCHASTIC_TENSOR_COLLECTION)
 
   if not stoch_value_collection:
@@ -530,7 +532,9 @@ def _stochastic_dependencies_map(fixed_losses):
   return stoch_dependencies_map
 
 
-def surrogate_loss(sample_losses, name="SurrogateLoss"):
+def surrogate_loss(sample_losses,
+                   stochastic_tensors=None,
+                   name="SurrogateLoss"):
   """Surrogate loss for stochastic graphs.
 
   This function will call `loss_fn` on each `StochasticTensor`
@@ -543,6 +547,9 @@ def surrogate_loss(sample_losses, name="SurrogateLoss"):
     sample_losses: a list or tuple of final losses. Each loss should be per
       example in the batch (and possibly per sample); that is, it should have
       dimensionality of 1 or greater. All losses should have the same shape.
+    stochastic_tensors: a list of `StochasticTensor`s to add loss terms for.
+      If None, defaults to all `StochasticTensor`s in the graph upstream of
+      the `Tensor`s in `sample_losses`.
     name: the name with which to prepend created ops.
 
   Returns:
@@ -568,7 +575,8 @@ def surrogate_loss(sample_losses, name="SurrogateLoss"):
                          loss)
       fixed_losses.append(array_ops.stop_gradient(loss))
 
-    stoch_dependencies_map = _stochastic_dependencies_map(fixed_losses)
+    stoch_dependencies_map = _stochastic_dependencies_map(
+        fixed_losses, stochastic_tensors=stochastic_tensors)
     if not stoch_dependencies_map:
       logging.warn(
           "No collection of Stochastic Tensors found for current graph.")
