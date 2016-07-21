@@ -125,6 +125,39 @@ REGISTER_OP("BatchMatMul")
     .Attr("T: {half, float, double, int32, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* a_shape;
+      const Shape* b_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &a_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 3, &b_shape));
+
+      // Determine output rows and cols.
+      bool adj_x;
+      bool adj_y;
+      TF_RETURN_IF_ERROR(c->GetAttr("adj_x", &adj_x));
+      TF_RETURN_IF_ERROR(c->GetAttr("adj_y", &adj_y));
+      const Dimension* output_rows = c->Dim(a_shape, adj_x ? -1 : -2);
+      const Dimension* output_cols = c->Dim(b_shape, adj_y ? -2 : -1);
+
+      // Batch dims match between inputs.
+      const Shape* a_batch_dims;
+      const Shape* b_batch_dims;
+      const Shape* batch_dims;
+      TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_dims));
+      TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_dims));
+      TF_RETURN_IF_ERROR(c->Merge(a_batch_dims, b_batch_dims, &batch_dims));
+
+      // Assert inner dims match.
+      const Dimension* unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, adj_x ? -2 : -1),
+                                  c->Dim(b_shape, adj_y ? -1 : -2), &unused));
+
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->Concatenate(
+          batch_dims, c->Matrix(output_rows, output_cols), &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Multiplies slices of two tensors in batches.
 
@@ -729,7 +762,6 @@ Returns the truth value of x OR y element-wise.
 
 // --------------------------------------------------------------------------
 
-// TODO(cwhipkey): review what the python code here does.
 REGISTER_OP("Select")
     .Input("condition: bool")
     .Input("t: T")

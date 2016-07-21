@@ -310,4 +310,43 @@ TEST(MathOpsTest, UnsortedSegmentSum_ShapeFn) {
               op, "[3];[3];?");
 }
 
+TEST(MathOpsTest, BatchMatMul_ShapeFn) {
+  ShapeInferenceTestOp op("BatchMatMul");
+  auto set_adj = [&op](bool adj_x, bool adj_y) {
+    TF_CHECK_OK(NodeDefBuilder("test", "BatchMatMul")
+                    .Input({"a", 0, DT_FLOAT})
+                    .Input({"b", 0, DT_FLOAT})
+                    .Attr("adj_x", adj_x)
+                    .Attr("adj_y", adj_y)
+                    .Finalize(&op.node_def));
+  };
+
+  set_adj(false, false);
+
+  // Rank checks.
+  INFER_ERROR("at least rank 3", op, "[1,2];?");
+  INFER_ERROR("at least rank 3", op, "?;[1,2]");
+
+  INFER_OK(op, "?;?", "?");
+
+  // 2 batch dims.
+  INFER_OK(op, "[?,?,?,?];?", "[d0_0,d0_1,d0_2,?]");
+
+  // Test adj_a, testing output and that inner dims are compared.
+  set_adj(false, false);
+  INFER_OK(op, "[1,2,3,4];[1,2,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_ERROR("are 2 and 3", op, "[?,1,2];[?,3,1]");  // inner dim mismatch
+  set_adj(true, false);
+  INFER_OK(op, "[1,2,3,4];[1,2,?,?]", "[d0_0,d0_1,d0_3,d1_3]");
+  INFER_ERROR("are 2 and 3", op, "[?,2,1];[?,3,1]");  // inner dim mismatch
+
+  // Test adj_b=true.
+  set_adj(false, true);
+  INFER_OK(op, "[1,2,?,?];[1,2,3,4]", "[d0_0,d0_1,d0_2,d1_2]");
+  INFER_ERROR("are 2 and 3", op, "[?,1,2];[?,1,3]");  // inner dim mismatch
+  set_adj(true, true);
+  INFER_OK(op, "[1,2,?,?];[1,2,3,4]", "[d0_0,d0_1,d0_3,d1_2]");
+  INFER_ERROR("are 2 and 3", op, "[?,2,1];[?,1,3]");  // inner dim mismatch
+}
+
 }  // end namespace tensorflow
