@@ -745,6 +745,9 @@ class SingleSequenceExampleParserOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),
                         SingleSequenceExampleParserOp);
 
+#ifndef IS_MOBILE_PLATFORM
+// when using lite protos on mobile, decoding JSON is not available.
+
 class DecodeJSONExampleOp : public OpKernel {
  public:
   explicit DecodeJSONExampleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -777,5 +780,6 @@ class DecodeJSONExampleOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DecodeJSONExample").Device(DEVICE_CPU),
                         DecodeJSONExampleOp);
+#endif
 
 }  // namespace tensorflow
