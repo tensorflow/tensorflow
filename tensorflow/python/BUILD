@@ -1221,8 +1221,16 @@ cuda_py_tests(
             "ops/nn_test.py",
             "ops/nn_xent_test.py",
             "ops/op_def_library_test.py",
+            "ops/special_math_ops_test.py",
         ],
     ),
+)
+
+cuda_py_test(
+    name = "special_math_ops_test",
+    size = "small",
+    srcs = ["ops/special_math_ops_test.py"],
+    tags = ["notsan"],
 )
 
 cuda_py_tests(
@@ -1245,6 +1253,7 @@ cuda_py_tests(
         "//tensorflow/core:image_testdata",
     ],
     shard_count = 5,
+    tags = ["notsan"],
 )
 
 cuda_py_tests(
