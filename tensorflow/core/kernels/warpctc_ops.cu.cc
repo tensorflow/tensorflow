@@ -43,10 +43,6 @@ class WarpCtcLossOp<GPUDevice> : public OpKernel {
 
     // Calculate the score analytically
 
-    cudaStream_t stream;
-    throw_on_error(cudaStreamCreate(&stream),
-                   "cudaStreamCreate");
-
     const Tensor& input_tensor = ctx->input(0);
     const Tensor& labels_indices_tensor = ctx->input(1);
     const Tensor& labels_values_tensor = ctx->input(2);
@@ -69,8 +65,6 @@ class WarpCtcLossOp<GPUDevice> : public OpKernel {
     for(int i = 0; i < labels_indices_tensor.dim_size(0); i++) {
       int64 first;
       int label_of_first;
-      cudaMemcpy(&first, &labels_indices(i,0), sizeof(int64), cudaMemcpyDeviceToHost);
-      cudaMemcpy(&label_of_first, &labels_values(i), sizeof(int), cudaMemcpyDeviceToHost);
       labels.push_back(label_of_first);
       if (first == last_first) {
         sum++;
@@ -85,13 +79,11 @@ class WarpCtcLossOp<GPUDevice> : public OpKernel {
     }
     int size_of_lengths = seq_len_tensor.dim_size(0);
     int lengths[size_of_lengths];
-    cudaMemcpy(lengths, seq_len.data(), size_of_lengths * sizeof(int), cudaMemcpyDeviceToHost);
-
     float score;
 
     ctcComputeInfo info;
     info.loc = CTC_GPU;
-    info.stream = stream;
+    info.stream = ctx->template eigen_device<Eigen::GpuDevice>().stream();
 
     size_t gpu_alloc_bytes;
     throw_on_error(get_workspace_size(label_lengths.data(), (const int*)&lengths,
@@ -100,9 +92,6 @@ class WarpCtcLossOp<GPUDevice> : public OpKernel {
                    "Error: get_workspace_size in small_test");
 
     char *ctc_gpu_workspace;
-    throw_on_error(cudaMalloc(&ctc_gpu_workspace, gpu_alloc_bytes),
-                   "cudaMalloc");
-
     Tensor* loss = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("loss", seq_len_tensor.shape(), &loss));
     auto loss_t = loss->vec<float>();
@@ -121,12 +110,7 @@ class WarpCtcLossOp<GPUDevice> : public OpKernel {
                                     ctc_gpu_workspace,
                                     info),
                    "Error: compute_ctc_loss in small_test");
-    cudaMemcpy(loss_t.data(), loss_cpu, size_of_lengths * sizeof(float), cudaMemcpyHostToDevice);
 
-    throw_on_error(cudaFree(ctc_gpu_workspace),
-                   "cudaFree");
-    throw_on_error(cudaStreamDestroy(stream),
-                   "cudaStreamDestroy");
   }
 
  private:
