@@ -240,7 +240,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#BaseEstimator.predict}
+#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#BaseEstimator.predict}
 
 Returns predictions for given features.
 
@@ -255,10 +255,17 @@ Returns predictions for given features.
     'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
     If `None`, returns all.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
 
 ##### Raises:
 
@@ -547,7 +554,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#Estimator.predict}
+#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#Estimator.predict}
 
 Returns predictions for given features.
 
@@ -562,10 +569,17 @@ Returns predictions for given features.
     'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
     If `None`, returns all.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
 
 ##### Raises:
 
@@ -1225,9 +1239,9 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.predict(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict}
+#### `tf.contrib.learn.DNNClassifier.predict(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#DNNClassifier.predict}
 
-Returns predictions for given features.
+Returns predicted classes for given features.
 
 ##### Args:
 
@@ -1235,15 +1249,20 @@ Returns predictions for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  Numpy array of predicted classes (or an iterable of predicted classes if
+  as_iterable is True).
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.predict_proba(x=None, input_fn=None, batch_size=None)` {#DNNClassifier.predict_proba}
+#### `tf.contrib.learn.DNNClassifier.predict_proba(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#DNNClassifier.predict_proba}
 
 Returns prediction probabilities for given features.
 
@@ -1253,10 +1272,15 @@ Returns prediction probabilities for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x and y must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted probabilities.
+  Numpy array of predicted probabilities (or an iterable of predicted
+  probabilities if as_iterable is True).
 
 
 - - -
@@ -1630,7 +1654,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#DNNRegressor.predict}
+#### `tf.contrib.learn.DNNRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#DNNRegressor.predict}
 
 Returns predictions for given features.
 
@@ -1645,10 +1669,17 @@ Returns predictions for given features.
     'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
     If `None`, returns all.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
 
 ##### Raises:
 
@@ -2877,9 +2908,9 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None)` {#LinearClassifier.predict}
+#### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict}
 
-Returns predictions for given features.
+Returns predicted classes for given features.
 
 ##### Args:
 
@@ -2887,15 +2918,20 @@ Returns predictions for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  Numpy array of predicted classes (or an iterable of predicted classes if
+  as_iterable is True).
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None)` {#LinearClassifier.predict_proba}
+#### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict_proba}
 
 Returns prediction probabilities for given features.
 
@@ -2905,10 +2941,15 @@ Returns prediction probabilities for given features.
 *  <b>`x`</b>: features.
 *  <b>`input_fn`</b>: Input function. If set, x and y must be None.
 *  <b>`batch_size`</b>: Override default batch size.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted probabilities.
+  Numpy array of predicted probabilities (or an iterable of predicted
+  probabilities if as_iterable is True).
 
 
 - - -
@@ -3265,7 +3306,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#LinearRegressor.predict}
+#### `tf.contrib.learn.LinearRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#LinearRegressor.predict}
 
 Returns predictions for given features.
 
@@ -3280,10 +3321,17 @@ Returns predictions for given features.
     'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
     If `None`, returns all.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
 
 ##### Raises:
 
@@ -4926,33 +4974,9 @@ init all variables.
 
 - - -
 
-### `tf.contrib.learn.run_feeds(output_dict, feed_dicts, restore_checkpoint_path=None)` {#run_feeds}
+### `tf.contrib.learn.run_feeds(*args, **kwargs)` {#run_feeds}
 
-Run `output_dict` tensors with each input in `feed_dicts`.
-
-If `restore_checkpoint_path` is supplied, restore from checkpoint. Otherwise,
-init all variables.
-
-##### Args:
-
-
-*  <b>`output_dict`</b>: A `dict` mapping string names to `Tensor` objects to run.
-    Tensors must all be from the same graph.
-*  <b>`feed_dicts`</b>: Iterable of `dict` objects of input values to feed.
-*  <b>`restore_checkpoint_path`</b>: A string containing the path to a checkpoint to
-    restore.
-
-##### Returns:
-
-  A list of dicts of values read from `output_dict` tensors, one item in the
-  list for each item in `feed_dicts`. Keys are the same as `output_dict`,
-  values are the results read from the corresponding `Tensor` in
-  `output_dict`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `output_dict` or `feed_dicts` is None or empty.
+See run_feeds_iter(). Returns a `list` instead of an iterator.
 
 
 - - -
