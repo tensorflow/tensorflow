@@ -1862,13 +1862,17 @@ tf_cc_tests(
     linkstatic = tf_kernel_tests_linkstatic(),
     tests = [
         "ops/array_ops_test.cc",
+        "ops/candidate_sampling_ops_test.cc",
+        "ops/ctc_ops_test.cc",
         "ops/data_flow_ops_test.cc",
+        "ops/functional_ops_test.cc",
         "ops/image_ops_test.cc",
         "ops/io_ops_test.cc",
         "ops/linalg_ops_test.cc",
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",
+        "ops/string_ops_test.cc",
         "ops/training_ops_test.cc",
     ],
     deps = [
