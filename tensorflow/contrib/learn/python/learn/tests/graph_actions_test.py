@@ -403,6 +403,33 @@ class GraphActionsTest(tf.test.TestCase):
           self._output_dir, tf.contrib.framework.get_global_step().name)
       self.assertEqual(15, step)
 
+  def test_train_skip_train_if_max_step_already_saved(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          max_steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          max_steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
   def test_train_loss(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       tf.contrib.framework.create_global_step()

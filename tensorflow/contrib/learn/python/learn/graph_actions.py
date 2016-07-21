@@ -220,6 +220,16 @@ def _supervised_train(graph,
   if global_step_tensor is None:
     raise ValueError('No "global_step" was provided or found in the graph.')
 
+  if max_steps is not None:
+    try:
+      start_step = checkpoints.load_variable(output_dir,
+                                             global_step_tensor.name)
+      if max_steps <= start_step:
+        logging.info('Skipping training since max_steps has already saved.')
+        return None
+    except:  # pylint: disable=bare-except
+      pass
+
   with graph.as_default():
     # See question about adding the summary writer to the scaffold.
     if supervisor_is_chief:
