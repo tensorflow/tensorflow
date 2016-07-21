@@ -33,6 +33,17 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "operator_pd_diag_test",
+    size = "small",
+    srcs = ["python/kernel_tests/operator_pd_diag_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "operator_pd_full_test",
     size = "small",
     srcs = ["python/kernel_tests/operator_pd_full_test.py"],

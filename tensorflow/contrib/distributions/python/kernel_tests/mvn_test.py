@@ -65,6 +65,58 @@ class MultivariateNormalShapeTest(tf.test.TestCase):
     self._testPDFShapes(distributions.MultivariateNormalCholesky, mu, sigma)
 
 
+class MultivariateNormalDiagTest(tf.test.TestCase):
+  """Well tested because this is a simple override of the base class."""
+
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
+  def testMean(self):
+    mu = [-1.0, 1.0]
+    diag = [1.0, 5.0]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiag(mu, diag)
+      self.assertAllEqual(mu, dist.mean().eval())
+
+  def testEntropy(self):
+    mu = [-1.0, 1.0]
+    diag = [1.0, 5.0]
+    diag_mat = np.diag(diag)
+    scipy_mvn = stats.multivariate_normal(mean=mu, cov=diag_mat**2)
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiag(mu, diag)
+      self.assertAllClose(scipy_mvn.entropy(), dist.entropy().eval(), atol=1e-4)
+
+  def testNonmatchingMuDiagDimensionsFailsStatic(self):
+    mu = [-1.0, 1.0]
+    diag = [[1.0, 5.0]]
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "shape.*should match"):
+        distributions.MultivariateNormalDiag(mu, diag)
+
+  def testNonmatchingMuDiagDimensionsFailsDynamic(self):
+    mu_v = [-1.0, 1.0]
+    diag_v = [[1.0, 5.0]]
+
+    with self.test_session():
+      mu_ph = tf.placeholder(tf.float32, name="mu_ph")
+      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
+      dist = distributions.MultivariateNormalDiag(mu_ph, diag_ph)
+      with self.assertRaisesOpError("mu should have rank"):
+        dist.mean().eval(feed_dict={mu_ph: mu_v, diag_ph: diag_v})
+
+  def testSample(self):
+    mu = [-1.0, 1.0]
+    diag = [1.0, 2.0]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiag(mu, diag)
+      samps = dist.sample_n(1000, seed=0).eval()
+      cov_mat = tf.batch_matrix_diag(diag).eval() ** 2
+
+      self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
+      self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
+
+
 class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
   def setUp(self):
@@ -78,19 +130,34 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
     sigma = tf.batch_matmul(chol, chol, adj_y=True)
     return chol.eval(), sigma.eval()
 
-  def testNonmatchingMuSigmaFails(self):
+  def testNonmatchingMuSigmaFailsStatic(self):
     with self.test_session():
       mu = self._rng.rand(2)
       chol, _ = self._random_chol(2, 2, 2)
-      mvn = distributions.MultivariateNormalCholesky(mu, chol)
-      with self.assertRaisesOpError("mu should have rank 1 less than cov"):
-        mvn.mean().eval()
+      with self.assertRaisesRegexp(ValueError, "shape.*should match"):
+        distributions.MultivariateNormalCholesky(mu, chol)
 
       mu = self._rng.rand(2, 1)
       chol, _ = self._random_chol(2, 2, 2)
-      mvn = distributions.MultivariateNormalCholesky(mu, chol)
+      with self.assertRaisesRegexp(ValueError, "shape.*should match"):
+        distributions.MultivariateNormalCholesky(mu, chol)
+
+  def testNonmatchingMuSigmaFailsDynamic(self):
+    with self.test_session():
+      mu_ph = tf.placeholder(tf.float64)
+      chol_ph = tf.placeholder(tf.float64)
+
+      mu_v = self._rng.rand(2)
+      chol_v, _ = self._random_chol(2, 2, 2)
+      mvn = distributions.MultivariateNormalCholesky(mu_ph, chol_ph)
+      with self.assertRaisesOpError("mu should have rank 1 less than cov"):
+        mvn.mean().eval(feed_dict={mu_ph: mu_v, chol_ph: chol_v})
+
+      mu_v = self._rng.rand(2, 1)
+      chol_v, _ = self._random_chol(2, 2, 2)
+      mvn = distributions.MultivariateNormalCholesky(mu_ph, chol_ph)
       with self.assertRaisesOpError("mu.shape and cov.shape.*should match"):
-        mvn.mean().eval()
+        mvn.mean().eval(feed_dict={mu_ph: mu_v, chol_ph: chol_v})
 
   def testLogPDFScalarBatch(self):
     with self.test_session():

@@ -22,6 +22,7 @@ import math
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
+from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_pd_full
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
@@ -36,6 +37,7 @@ from tensorflow.python.ops import random_ops
 
 
 __all__ = [
+    "MultivariateNormalDiag",
     "MultivariateNormalCholesky",
     "MultivariateNormalFull",
 ]
@@ -92,7 +94,6 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
   def __init__(self,
                mu,
                cov,
-               allow_nan=False,
                validate_args=True,
                allow_nan_stats=False,
                name="MultivariateNormalCov"):
@@ -105,10 +106,6 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
       mu: `float` or `double` tensor with shape `[N1,...,Nb, k]`, `b >= 0`.
       cov: `float` or `double` instance of `OperatorPDBase` with same `dtype`
         as `mu` and shape `[N1,...,Nb, k, k]`.
-      allow_nan:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
       validate_args: Whether to validate input with asserts.  If `validate_args`
         is `False`, and the inputs are invalid, correct behavior is not
         guaranteed.
@@ -139,25 +136,37 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
           "mu and cov must have the same dtype.  Found mu.dtype = %s, "
           "cov.dtype = %s"
           % (mu.dtype, cov.dtype))
+
+    # Try to validate with static checks.
+    mu_shape = mu.get_shape()
+    cov_shape = cov.get_shape()
+    if mu_shape.is_fully_defined() and cov_shape.is_fully_defined():
+      if mu_shape != cov_shape[:-1]:
+        raise ValueError(
+            "mu.shape and cov.shape[:-1] should match.  Found: mu.shape=%s, "
+            "cov.shape=%s" % (mu_shape, cov_shape))
+      else:
+        return mu
+
+    # Static checks could not be run, so possibly do dyamic checks.
     if not self.validate_args:
       return mu
     else:
-      assert_compatible_shapes = control_flow_ops.group(
-          check_ops.assert_equal(
-              array_ops.rank(mu) + 1,
-              cov.rank(),
-              data=["mu should have rank 1 less than cov.  Found: rank(mu) = ",
-                    array_ops.rank(mu), " rank(cov) = ", cov.rank()],
-          ),
-          check_ops.assert_equal(
-              array_ops.shape(mu),
-              cov.vector_shape(),
-              data=["mu.shape and cov.shape[:-1] should match.  "
-                    "Found: shape(mu) = "
-                    , array_ops.shape(mu), " shape(cov) = ", cov.shape()],
-          ),
+      assert_same_rank = check_ops.assert_equal(
+          array_ops.rank(mu) + 1,
+          cov.rank(),
+          data=["mu should have rank 1 less than cov.  Found: rank(mu) = ",
+                array_ops.rank(mu), " rank(cov) = ", cov.rank()],
       )
-      return control_flow_ops.with_dependencies([assert_compatible_shapes], mu)
+      with ops.control_dependencies([assert_same_rank]):
+        assert_same_shape = check_ops.assert_equal(
+            array_ops.shape(mu),
+            cov.vector_shape(),
+            data=["mu.shape and cov.shape[:-1] should match.  "
+                  "Found: shape(mu) = "
+                  , array_ops.shape(mu), " shape(cov) = ", cov.shape()],
+        )
+        return control_flow_ops.with_dependencies([assert_same_shape], mu)
 
   @property
   def validate_args(self):
@@ -392,6 +401,92 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
     return True
 
 
+class MultivariateNormalDiag(MultivariateNormalOperatorPD):
+  """The multivariate normal distribution on `R^k`.
+
+  This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
+  `diag_stdev`, representing the standard deviations.  This distribution
+  assumes the random variables, `(X_1,...,X_k)` are independent, thus no
+  non-diagonal terms of the covariance matrix are needed.
+
+  This allows for `O(k)` pdf evaluation, sampling, and storage.
+
+  #### Mathematical details
+
+  The PDF of this distribution is defined in terms of the diagonal covariance
+  determined by `diag_stdev`: `C_{ii} = diag_stdev[i]**2`.
+
+  ```
+  f(x) = (2*pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 * (x - mu)^T C^{-1} (x - mu))
+  ```
+
+  #### Examples
+
+  A single multi-variate Gaussian distribution is defined by a vector of means
+  of length `k`, and the square roots of the (independent) random variables.
+
+  Extra leading dimensions, if provided, allow for batches.
+
+  ```python
+  # Initialize a single 3-variate Gaussian with diagonal standard deviation.
+  mu = [1, 2, 3.]
+  diag_stdev = [4, 5, 6.]
+  dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+
+  # Evaluate this on an observation in R^3, returning a scalar.
+  dist.pdf([-1, 0, 1])
+
+  # Initialize a batch of two 3-variate Gaussians.
+  mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
+  diag_stdev = ...  # shape 2 x 3, positive.
+  dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+
+  # Evaluate this on a two observations, each in R^3, returning a length two
+  # tensor.
+  x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
+  dist.pdf(x)
+  ```
+
+  """
+
+  def __init__(
+      self,
+      mu,
+      diag_stdev,
+      validate_args=True,
+      allow_nan_stats=False,
+      name="MultivariateNormalDiag"):
+    """Multivariate Normal distributions on `R^k`.
+
+    User must provide means `mu` and standard deviations `diag_stdev`.
+    Each batch member represents a random vector `(X_1,...,X_k)` of independent
+    random normals.
+    The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
+
+    Args:
+      mu:  Rank `N + 1` `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+        `b >= 0`.
+      diag_stdev: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
+        representing the standard deviations.
+      validate_args: Whether to validate input with asserts.  If `validate_args`
+        is `False`,
+        and the inputs are invalid, correct behavior is not guaranteed.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If True, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
+      name: The name to give Ops created by the initializer.
+
+    Raises:
+      TypeError: If `mu` and `diag_stdev` are different dtypes.
+    """
+    cov = operator_pd_diag.OperatorPDSqrtDiag(
+        diag_stdev, verify_pd=validate_args)
+    super(MultivariateNormalDiag, self).__init__(
+        mu, cov, allow_nan_stats=allow_nan_stats, validate_args=validate_args,
+        name=name)
+
+
 class MultivariateNormalCholesky(MultivariateNormalOperatorPD):
   """The multivariate normal distribution on `R^k`.
 
@@ -418,6 +513,7 @@ class MultivariateNormalCholesky(MultivariateNormalOperatorPD):
 
   ```python
   # Initialize a single 3-variate Gaussian with diagonal covariance.
+  # Note, this would be more efficient with MultivariateNormalDiag.
   mu = [1, 2, 3.]
   chol = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
   dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)

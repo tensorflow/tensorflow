@@ -41,6 +41,7 @@ initialized with parameters that define the distributions.
 
 #### Multivariate normal
 
+@@MultivariateNormalDiag
 @@MultivariateNormalFull
 @@MultivariateNormalCholesky
 @@batch_matrix_diag_transform

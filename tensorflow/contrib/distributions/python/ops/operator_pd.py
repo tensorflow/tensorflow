@@ -28,11 +28,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
-__all__ = [
-    'OperatorPDBase',
-]
-
-
 @six.add_metaclass(abc.ABCMeta)
 class OperatorPDBase(object):
   """Class representing a (batch) of positive definite matrices `A`.
@@ -122,6 +117,25 @@ class OperatorPDBase(object):
   def dtype(self):
     """Data type of matrix elements of `A`."""
     pass
+
+  def add_to_tensor(self, mat, name='add_to_tensor'):
+    """Add matrix represented by this operator to `mat`.  Equiv to `A + mat`.
+
+    Args:
+      mat:  `Tensor` with same `dtype` and shape broadcastable to `self`.
+      name:  A name to give this `Op`.
+
+    Returns:
+      A `Tensor` with broadcast shape and same `dtype` as `self`.
+    """
+    with ops.name_scope(self.name):
+      with ops.op_scope(self.inputs + [mat], name):
+        mat = ops.convert_to_tensor(mat, name='mat')
+        return self._add_to_tensor(mat)
+
+  def _add_to_tensor(self, mat):
+    # Re-implement in derived class if a more efficient method is available.
+    return self.to_dense() + mat
 
   def _dispatch_based_on_batch(self, batch_method, singleton_method, **args):
     """Helper to automatically call batch or singleton operation."""
@@ -252,6 +266,29 @@ class OperatorPDBase(object):
     # As implemented here, this just calls the batch version.  If a more
     # efficient non-batch version is available, override in the derived class.
     return self._batch_log_det()
+
+  def sqrt_log_det(self, name='sqrt_log_det'):
+    """Log of the determinant of the sqrt `S` for every batch member.
+
+    Args:
+      name:  A name scope to use for ops added by this method.
+
+    Returns:
+      Logarithm of determinant of the square root `S` for every batch member.
+    """
+    with ops.name_scope(self.name):
+      with ops.op_scope(self.inputs, name):
+        return self._dispatch_based_on_batch(
+            self._batch_sqrt_log_det, self._sqrt_log_det)
+
+  def _batch_sqrt_log_det(self):
+    # Over-ride in derived class if it can be done more efficiently.
+    return 0.5 * self._log_det()
+
+  def _sqrt_log_det(self):
+    # As implemented here, this just calls the batch version.  If a more
+    # efficient non-batch version is available, override in the derived class.
+    return self._batch_sqrt_log_det()
 
   @abc.abstractproperty
   def inputs(self):
