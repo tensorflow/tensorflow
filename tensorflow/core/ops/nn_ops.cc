@@ -22,9 +22,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-typedef shape_inference::Dimension Dimension;
-typedef shape_inference::InferenceContext InferenceContext;
-typedef shape_inference::Shape Shape;
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 namespace {
 
@@ -1342,7 +1342,7 @@ Status TopKShapeFn(InferenceContext* c) {
   // Replace last_dim with k_dim.
   const Shape* s;
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
-  TF_RETURN_IF_ERROR(c->Concatenate(s, c->MakeShape({k_dim}), &s));
+  TF_RETURN_IF_ERROR(c->Concatenate(s, c->Vector(k_dim), &s));
   c->set_output(0, s);
   c->set_output(1, s);
   return Status::OK();

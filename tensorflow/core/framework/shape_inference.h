@@ -200,6 +200,7 @@ class InferenceContext {
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
   const Shape* MakeShape(const std::vector<const Dimension*>& dims);
+  const Shape* MakeShape(std::initializer_list<DimensionOrConstant> dims);
 
   // Returns a new unknown shape.
   const Shape* UnknownShape();

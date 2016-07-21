@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -329,26 +330,25 @@ Status InferenceContext::Concatenate(const Shape* s1, const Shape* s2,
   return ReturnCreatedShape(dims, out);
 }
 
-Status InferenceContext::ReplaceDim(const Shape* s, int dim_index,
+Status InferenceContext::ReplaceDim(const Shape* s, int dim_index_in,
                                     const Dimension* new_dim,
                                     const Shape** out) {
   if (!RankKnown(s)) {
     return ReturnUnknownShape(out);
   }
+  int dim_index = dim_index_in;
+  if (dim_index < 0) {
+    dim_index = s->dims_.size() + dim_index;
+  }
+  if (!FastBoundsCheck(dim_index, s->dims_.size())) {
+    *out = nullptr;
+    return errors::InvalidArgument("Out of range dim_index ", dim_index_in,
+                                   " for shape with ", s->dims_.size(),
+                                   " dimensions");
+  }
   std::vector<const Dimension*> dims(s->dims_);
   dims[dim_index] = new_dim;
   return ReturnCreatedShape(dims, out);
-}
-
-const Shape* InferenceContext::MakeShape(
-    const std::vector<const Dimension*>& dims) {
-  all_shapes_.push_back(new Shape(dims));
-  return all_shapes_.back();
-}
-
-const Shape* InferenceContext::UnknownShape() {
-  all_shapes_.push_back(new Shape());
-  return all_shapes_.back();
 }
 
 const Dimension* InferenceContext::GetDimension(const DimensionOrConstant& d) {
@@ -357,15 +357,35 @@ const Dimension* InferenceContext::GetDimension(const DimensionOrConstant& d) {
   return MakeDim(d.val);
 }
 
+const Shape* InferenceContext::MakeShape(
+    const std::vector<const Dimension*>& dims) {
+  all_shapes_.push_back(new Shape(dims));
+  return all_shapes_.back();
+}
+
+const Shape* InferenceContext::MakeShape(
+    std::initializer_list<DimensionOrConstant> dims) {
+  std::vector<const Dimension*> dims_actual;
+  dims_actual.reserve(dims.size());
+  for (const DimensionOrConstant& d : dims) {
+    dims_actual.push_back(GetDimension(d));
+  }
+  return MakeShape(dims_actual);
+}
+
+const Shape* InferenceContext::UnknownShape() {
+  all_shapes_.push_back(new Shape());
+  return all_shapes_.back();
+}
 const Shape* InferenceContext::Scalar() { return MakeShape({}); }
 
 const Shape* InferenceContext::Vector(DimensionOrConstant dim) {
-  return MakeShape({GetDimension(dim)});
+  return MakeShape({dim});
 }
 
 const Shape* InferenceContext::Matrix(DimensionOrConstant dim1,
                                       DimensionOrConstant dim2) {
-  return MakeShape({GetDimension(dim1), GetDimension(dim2)});
+  return MakeShape({dim1, dim2});
 }
 
 Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,

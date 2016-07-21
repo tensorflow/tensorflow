@@ -481,6 +481,19 @@ TEST(ShapeInferenceTest, ReplaceDim) {
   EXPECT_EQ("[1,3,3]", c.DebugString(replaced));
   EXPECT_TRUE(c.ReplaceDim(unknown, 0, c.Dim(in, 1), &replaced).ok());
   EXPECT_EQ("?", c.DebugString(replaced));
+
+  // Negative indexing.
+  EXPECT_TRUE(c.ReplaceDim(in, -1, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("[1,2,2]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(unknown, -1, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("?", c.DebugString(replaced));
+
+  // out of range indexing.
+  EXPECT_FALSE(c.ReplaceDim(in, 3, c.Dim(in, 1), &replaced).ok());
+  EXPECT_TRUE(replaced == nullptr);
+  replaced = in;
+  EXPECT_FALSE(c.ReplaceDim(in, -4, c.Dim(in, 1), &replaced).ok());
+  EXPECT_TRUE(replaced == nullptr);
 }
 
 TEST(ShapeInferenceTest, MakeShape) {
@@ -501,6 +514,10 @@ TEST(ShapeInferenceTest, MakeShape) {
   auto s2 = c.MakeShape(dims);
   EXPECT_TRUE(s != s2);  // different pointers
   EXPECT_TRUE(c.Dim(s2, 0) == c.Dim(in0, rank - 1));
+
+  auto s3 = c.MakeShape({1, 2, dims[2]});
+  EXPECT_TRUE(s != s3);  // different pointers
+  EXPECT_EQ("[1,2,3]", c.DebugString(s3));
 }
 
 TEST(ShapeInferenceTest, UnknownShape) {

@@ -21,9 +21,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-typedef shape_inference::Dimension Dimension;
-typedef shape_inference::InferenceContext InferenceContext;
-typedef shape_inference::Shape Shape;
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 namespace {
 
@@ -479,7 +479,7 @@ REGISTER_OP("BatchMatrixDiag")
       const int32 rank = c->Rank(in);
       const Shape* out;
       TF_RETURN_IF_ERROR(
-          c->Concatenate(in, c->MakeShape({c->Dim(in, rank - 1)}), &out));
+          c->Concatenate(in, c->Vector(c->Dim(in, rank - 1)), &out));
       c->set_output(0, out);
       return Status::OK();
     })
@@ -1154,7 +1154,7 @@ Status ShapeShapeFn(InferenceContext* c) {
     } else {
       dim = c->UnknownDim();
     }
-    c->set_output(i, c->MakeShape({dim}));
+    c->set_output(i, c->Vector(dim));
   }
   return Status::OK();
 }
