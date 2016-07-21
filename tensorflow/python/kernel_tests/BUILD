@@ -172,13 +172,6 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_test(
-    name = "atrous_conv2d_test",
-    size = "medium",
-    srcs = ["atrous_conv2d_test.py"],
-    tags = ["noasan"],
-)
-
 cuda_py_tests(
     name = "medium_kernel_tests",
     size = "medium",
