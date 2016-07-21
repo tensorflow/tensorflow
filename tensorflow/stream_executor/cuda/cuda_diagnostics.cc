@@ -321,9 +321,10 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
 
     // version can be NULL in which case treat it as empty string
     // see https://developer.apple.com/library/mac/documentation/CoreFoundation/Conceptual/CFStrings/Articles/AccessingContents.html#//apple_ref/doc/uid/20001184-100980-TPXREF112
-    if (version != NULL)
-      return StringToDriverVersion(version);
-    return StringToDriverVersion("");
+    if (version == NULL) {
+      return StringToDriverVersion("");
+    }
+    return StringToDriverVersion(version);
   }
   CFRelease(kext_infos);
   auto status =
