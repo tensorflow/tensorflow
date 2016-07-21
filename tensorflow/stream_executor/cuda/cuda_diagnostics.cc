@@ -315,12 +315,13 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     // NOTE: OSX CUDA driver does not currently store the same driver version
     // in kCFBundleVersionKey as is returned by cuDriverGetVersion
     CFRelease(kext_infos);
-    const CFStringRef str =
-      (CFStringRef)CFDictionaryGetValue(cuda_driver_info, kCFBundleVersionKey);
-    const char * version = CFStringGetCStringPtr(str, kCFStringEncodingUTF8);
+    const CFStringRef str = (CFStringRef)CFDictionaryGetValue(
+        cuda_driver_info, kCFBundleVersionKey);
+    const char *version = CFStringGetCStringPtr(str, kCFStringEncodingUTF8);
 
     // version can be NULL in which case treat it as empty string
-    // see https://developer.apple.com/library/mac/documentation/CoreFoundation/Conceptual/CFStrings/Articles/AccessingContents.html#//apple_ref/doc/uid/20001184-100980-TPXREF112
+    // see
+    // https://developer.apple.com/library/mac/documentation/CoreFoundation/Conceptual/CFStrings/Articles/AccessingContents.html#//apple_ref/doc/uid/20001184-100980-TPXREF112
     if (version == NULL) {
       return StringToDriverVersion("");
     }
