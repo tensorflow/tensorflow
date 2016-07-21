@@ -15,9 +15,85 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
 
+#include <array>
+
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
+
+// GetWindowedOutputSize(): Given an input tensor, kernel, stride and padding
+// type, the function computes the output and padding dimensions.
+//
+// For example, ignoring batches or multiple features, a 1D convolution
+// takes as input a 1D tensor of shape (H), and convolves it with a filter of
+// shape (K).
+//
+// It also takes in a few additional parameters:
+//
+// Stride (S): the stride with which we apply the filters. This is the offset
+// between locations where we apply the filters. A larger stride
+// means that the output will be spatially smaller.
+//
+// Padding (P): the padding we apply to the input tensor along each
+// dimension. This is usually used to make sure that the spatial dimensions
+// do not shrink when we progress with convolutions. Two types of padding are
+// often used:
+//   SAME: the pad value is computed so that the output will have size H/S.
+//   VALID: no padding is carried out.
+// The padded area is zero-filled.
+//
+// The output dimensions for convolution and many other operations, when given
+// all the parameters above, are as follows:
+// - When Padding = SAME: the output size is (H'), where
+//     H' = ceil(float(H) / float(S))
+//   where ceil is the ceiling function. The number of padded cells
+//   is computed as:
+//     Pc = ((H' - 1) * S + K - H) / 2
+//   When the stride is 1, the expression simplifies to
+//     H' = H, Pc = (K-1)/2.
+//   This is where SAME comes from - the output has the same size as the input
+//   has.
+//
+// - When Padding = VALID: the output size is computed as
+//     H' = ceil(float(H - K + 1) / float(S))
+//   and the number of padded cells is always zero.
+//   When the stride is 1, the expression simplifies to
+//     H' = H-K+1.
+//
+// For convolution, mathematically, the output value at location (r')
+// is the inner product of two vectors: the chunk of input at
+//    ((r'*S-Pr) : (r'*S-Pr+K)),
+// and the filter.
+//
+// For 2D and 3D convolutions, the spatial dimensions are orthogonal, so the
+// size and padding of each spatial dimension can be computed by calling
+// GetWindowedOutputSize separately for each dimension.
+//
+Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
+                             Padding padding_type, int64* output_size,
+                             int64* padding_size);
+
+// Returns the same output dimensions as in GetWindowedOutputSize, but returns
+// verbose padding dimensions (before/after). Any excess padding
+// (caused by an odd padding size value) is added to the 'padding_after'
+// dimension.
+Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
+                                    int64 stride, Padding padding_type,
+                                    int64* output_size, int64* padding_before,
+                                    int64* padding_after);
+
+// Given an input tensor, kernel, stride and padding type, populates the 3D size
+// of the output tensor and padding to be applied to the input tensor at the
+// lower end of every dimension. Use for 3D convolutions, where the input data
+// is padded with zeros, as well as for 3D avg/max pooling, where the input data
+// is padded with invalid values that are not considered for pooling.
+Status Get3dOutputSize(const std::array<int64, 3>& input,
+                       const std::array<int64, 3>& window,
+                       const std::array<int64, 3>& strides,
+                       Padding padding_type, std::array<int64, 3>* output,
+                       std::array<int64, 3>* padding);
+
 namespace shape_inference {
 
 // Transfers shape of input(0) to output(0).
@@ -69,91 +145,20 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
-inline Status MatMulShape(shape_inference::InferenceContext* c) {
-  const Shape* a;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &a));
+// Shape function for MatMul-like operations.
+Status MatMulShape(shape_inference::InferenceContext* c);
 
-  const Shape* b;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &b));
+// Shape function for BiasAdd-like operations.
+Status BiasAddShape(shape_inference::InferenceContext* c);
 
-  bool transpose_a, transpose_b;
-  TF_RETURN_IF_ERROR(c->GetAttr("transpose_a", &transpose_a));
-  TF_RETURN_IF_ERROR(c->GetAttr("transpose_b", &transpose_b));
-  const Dimension* output_rows = transpose_a ? c->Dim(a, 1) : c->Dim(a, 0);
-  const Dimension* output_cols = transpose_b ? c->Dim(b, 0) : c->Dim(b, 1);
+// Shape function for BiasAddGrad-like operations.
+Status BiasAddGradShape(shape_inference::InferenceContext* c);
 
-  // Validate that the inner shapes are compatible.
-  const Dimension* inner_a = transpose_a ? c->Dim(a, 0) : c->Dim(a, 1);
-  const Dimension* inner_b = transpose_b ? c->Dim(b, 1) : c->Dim(b, 0);
-  const Dimension* merged;
-  TF_RETURN_IF_ERROR(c->Merge(inner_a, inner_b, &merged));
-
-  c->set_output(0, c->Matrix(output_rows, output_cols));
-  return Status::OK();
-}
-
-inline Status BiasAddShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
-
-  // Fetch the data_format attribute, which may not exist.
-  string data_format;
-  Status s = c->GetAttr("data_format", &data_format);
-
-  if (s.ok() && data_format == "NCHW") {
-    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 4, &input_shape));
-  } else {
-    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
-  }
-
-  const Shape* bias_shape;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &bias_shape));
-  const Dimension* bias_dim = c->Dim(bias_shape, 0);
-
-  // If rank unknown, return unknown shape.
-  if (!c->RankKnown(input_shape)) {
-    c->set_output(0, c->UnknownShape());
-    return Status::OK();
-  }
-
-  const int32 rank = c->Rank(input_shape);
-
-  // Output has the same shape as the input, and matches the length of
-  // the bias in its bias dimension.
-  const Shape* output_shape;
-  if (s.ok() && data_format == "NCHW") {
-    // Merge the length of bias_shape into the third to last dimension
-    const Shape* first;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, -3, &first));
-
-    const Shape* last;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, -2, &last));
-
-    const Dimension* input_bias_dim = c->Dim(input_shape, -3);
-    const Dimension* merged_bias_dim;
-    TF_RETURN_IF_ERROR(c->Merge(input_bias_dim, bias_dim, &merged_bias_dim));
-    const Shape* merged_bias = c->Vector(merged_bias_dim);
-
-    const Shape* temp;
-    TF_RETURN_IF_ERROR(c->Concatenate(first, merged_bias, &temp));
-    TF_RETURN_IF_ERROR(c->Concatenate(temp, last, &output_shape));
-  } else {
-    const Shape* all_but_bias;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, -1, &all_but_bias));
-
-    const Dimension* input_bias_dim = c->Dim(input_shape, -1);
-    const Dimension* merged_bias_dim;
-    TF_RETURN_IF_ERROR(c->Merge(input_bias_dim, bias_dim, &merged_bias_dim));
-
-    const Shape* merged_bias = c->Vector(merged_bias_dim);
-    TF_RETURN_IF_ERROR(
-        c->Concatenate(all_but_bias, merged_bias, &output_shape));
-  }
-
-  c->set_output(0, output_shape);
-  return Status::OK();
-}
+// Shape function for Conv2D-like operations.
+Status Conv2DShape(shape_inference::InferenceContext* c);
 
 }  // namespace shape_inference
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -258,6 +259,164 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
     InferenceContext c(&def, op_def, {"[2,3,4]", "[3]"}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
   }
+}
+
+TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
+  OpRegistrationData op_reg_data;
+  TF_CHECK_OK(OpDefBuilder("BiasAddGrad")
+                  .Input("a: float")
+                  .Output("b: float")
+                  .Finalize(&op_reg_data));
+
+  OpDef op_def = op_reg_data.op_def;
+  NodeDef def;
+  TF_CHECK_OK(NodeDefBuilder("test", "BiasAddGrad")
+                  .Input("a", 0, DT_FLOAT)
+                  .Finalize(&def));
+
+  {
+    InferenceContext c(&def, op_def, {"[2,10]"}, {});
+    TF_EXPECT_OK(BiasAddGradShape(&c));
+    const Shape* output = c.output(0);
+    EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
+  }
+
+  {
+    // Rank > 2
+    InferenceContext c(&def, op_def, {"[5,7,2,10]"}, {});
+    TF_EXPECT_OK(BiasAddGradShape(&c));
+    const Shape* output = c.output(0);
+    EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
+  }
+
+  {
+    // NCHW format
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAddGrad")
+                    .Input("a", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(&def, op_def, {"[2,3,4,5]"}, {});
+    TF_EXPECT_OK(BiasAddGradShape(&c));
+    const Shape* output = c.output(0);
+    EXPECT_EQ(3, c.Value(c.Dim(output, 0)));
+  }
+
+  {
+    // NCHW format with high input rank
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAddGrad")
+                    .Input("a", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(&def, op_def, {"[8,6,4,2,3,4,5]"}, {});
+    TF_EXPECT_OK(BiasAddGradShape(&c));
+    const Shape* output = c.output(0);
+    EXPECT_EQ(3, c.Value(c.Dim(output, 0)));
+  }
+
+  {
+    // Input rank not high enough
+    InferenceContext c(&def, op_def, {"[3]"}, {});
+    EXPECT_FALSE(BiasAddGradShape(&c).ok());
+  }
+
+  {
+    // NCHW rank not high enough
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAddGrad")
+                    .Input("a", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    // NCHW format
+    InferenceContext c(&def, op_def, {"[2,3,4]"}, {});
+    EXPECT_FALSE(BiasAddGradShape(&c).ok());
+  }
+}
+
+TEST(CommonShapeFnsTest, Conv2DShapeTest) {
+  ShapeInferenceTestOp op("Conv2D");
+  auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
+                      const string& data_format) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format)
+                    .Finalize(&op.node_def));
+  };
+
+  // 1x1 filter
+  set_op({{1, 1, 1, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,2,2,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
+
+  // 2x2 filter
+  set_op({{1, 1, 1, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,2,2,1];[2,2,1,1]", "[d0_0,1,1,d1_3]");
+
+  // 3x3 input, 1x1 filter, 2x2 stride
+  set_op({{1, 2, 2, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
+
+  // 3x3 input, 1x1 filter, 2x1 stride
+  set_op({{1, 2, 1, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,3,d1_3]");
+
+  // 4x4 input, 2x1 filter, 1x2 stride
+  set_op({{1, 1, 2, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
+
+  // Invalid rank for input
+  INFER_ERROR("must be rank 4", op, "[4,4];[2,1,1,1]");
+  // Invalid rank for filter
+  INFER_ERROR("must be rank 4", op, "[1,4,4,1];[2,1,1]");
+
+  // No unknown dims in the critical fields.
+  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
+  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
+  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
+  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
+
+  // input depths must match.
+  INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
+              "[1,2,2,10];[1,1,10000,20]");
+
+  // Tests for NCHW
+  // 1x1 filter
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,2,2];[1,1,1,1]", "[d0_0,d1_3,2,2]");
+
+  // 2x2 filter
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,2,2];[2,2,1,1]", "[d0_0,d1_3,1,1]");
+
+  // 3x3 input, 1x1 filter, 2x2 stride
+  set_op({{1, 1, 2, 2}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,2]");
+
+  // 3x3 input, 1x1 filter, 2x1 stride
+  set_op({{1, 1, 2, 1}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,3]");
+
+  // 4x4 input, 2x1 filter, 1x2 stride
+  set_op({{1, 1, 1, 2}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,4,4];[2,1,1,1]", "[d0_0,d1_3,3,2]");
+
+  // Some tests for "SAME" padding
+
+  // 4x4 input, 1x1 filter, 1x1 stride
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,4,4,d1_3]");
+
+  // 3x3 input, 2x2 filter, 1x1 stride
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,3,3,d1_3]");
+
+  // 4x4 input, 2x2 filter, 2x2 stride
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,2,2,d1_3]");
+
+  // 4x4 input, 2x2 filter, 1x1 stride
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,4,d1_3]");
 }
 
 }  // namespace shape_inference

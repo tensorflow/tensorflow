@@ -60,8 +60,15 @@ Status InferShapes(ShapeInferenceTestOp op, const string& ins,
                    const string& expected_outs);
 
 #define INFER_OK(op, i, o) EXPECT_EQ("", InferShapes(op, i, o).error_message())
-#define INFER_ERROR(s, op, i) \
-  EXPECT_EQ(s, InferShapes(op, i, "e").error_message())
+#define INFER_ERROR(error_substring, op, i)                              \
+  {                                                                      \
+    string error_message = InferShapes(op, i, "e").error_message();      \
+    const string& substring = error_substring;                           \
+    EXPECT_NE("", error_message);                                        \
+    EXPECT_TRUE(StringPiece(error_message).contains(substring))          \
+        << "Expected to see '" << substring << "' in '" << error_message \
+        << "'";                                                          \
+  }
 
 }  // namespace tensorflow
 
