@@ -462,7 +462,7 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
-### `tf.contrib.bayesflow.stochastic_graph.surrogate_loss(sample_losses, name='SurrogateLoss')` {#surrogate_loss}
+### `tf.contrib.bayesflow.stochastic_graph.surrogate_loss(sample_losses, stochastic_tensors=None, name='SurrogateLoss')` {#surrogate_loss}
 
 Surrogate loss for stochastic graphs.
 
@@ -478,6 +478,9 @@ instantiated in `while_loop`s or other control structures.
 *  <b>`sample_losses`</b>: a list or tuple of final losses. Each loss should be per
     example in the batch (and possibly per sample); that is, it should have
     dimensionality of 1 or greater. All losses should have the same shape.
+*  <b>`stochastic_tensors`</b>: a list of `StochasticTensor`s to add loss terms for.
+    If None, defaults to all `StochasticTensor`s in the graph upstream of
+    the `Tensor`s in `sample_losses`.
 *  <b>`name`</b>: the name with which to prepend created ops.
 
 ##### Returns:
