@@ -252,6 +252,7 @@ import time
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -666,32 +667,42 @@ def train(
       save_model_secs=save_interval_secs,
       init_fn=init_fn)
 
-  with sv.managed_session(master, start_standard_services=False) as sess:
-    if is_chief:
-      if logdir:
-        sv.start_standard_services(sess)
-    elif startup_delay_steps > 0:
-      _wait_for_step(sess, global_step,
-                     min(startup_delay_steps, number_of_steps or sys.maxint))
-    sv.start_queue_runners(sess)
-    if is_chief and sync_optimizer:
-      sv.start_queue_runners(sess, [chief_queue_runner])
-
+  should_retry = True
+  while should_retry:
     try:
-      while not sv.should_stop():
-        total_loss, should_stop = train_step_fn(
-            sess, train_op, global_step, train_step_kwargs)
-        if should_stop:
-          break
-    finally:
-      if sv.is_chief and cleanup_op is not None:
-        sess.run(cleanup_op)
+      should_retry = False
+      with sv.managed_session(master, start_standard_services=False) as sess:
+        logging.info('Starting Session.')
+        if is_chief:
+          if logdir:
+            sv.start_standard_services(sess)
+        elif startup_delay_steps > 0:
+          _wait_for_step(sess, global_step,
+                         min(startup_delay_steps,
+                             number_of_steps or sys.maxint))
+        sv.start_queue_runners(sess)
+        logging.info('Starting Queues.')
+        if is_chief and sync_optimizer:
+          sv.start_queue_runners(sess, [chief_queue_runner])
+        try:
+          while not sv.should_stop():
+            total_loss, should_stop = train_step_fn(
+                sess, train_op, global_step, train_step_kwargs)
+            if should_stop:
+              logging.info('Stopping Training.')
+              break
+          if logdir and sv.is_chief:
+            logging.info('Finished training! Saving model to disk.')
+            sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
+        finally:
+          if sv.is_chief and cleanup_op is not None:
+            logging.info('About to execute sync_clean_up_op!')
+            sess.run(cleanup_op)
 
-    # This waits for service threads to finish.
-    sv.Stop()
+    except errors.AbortedError:
+      # Always re-run on AbortedError as it indicates a restart of one of the
+      # distributed tensorflow servers.
+      logging.info('Retrying training!')
+      should_retry = True
 
-    if logdir and sv.is_chief:
-      logging.info('Finished training! Saving model to disk.')
-      sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-
-    return total_loss
+  return total_loss
