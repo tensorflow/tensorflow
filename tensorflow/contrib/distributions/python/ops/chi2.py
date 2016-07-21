@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import gamma
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
 
 
 class Chi2(gamma.Gamma):
@@ -61,7 +61,7 @@ class Chi2(gamma.Gamma):
       df = ops.convert_to_tensor(df)
       self._df = df
       super(Chi2, self).__init__(alpha=df / 2,
-                                 beta=math_ops.cast(0.5, dtype=df.dtype),
+                                 beta=constant_op.constant(0.5, dtype=df.dtype),
                                  validate_args=validate_args,
                                  allow_nan_stats=allow_nan_stats)
 

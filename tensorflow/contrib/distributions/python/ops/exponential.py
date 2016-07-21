@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import gamma
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -62,7 +63,7 @@ class Exponential(gamma.Gamma):
       lam = ops.convert_to_tensor(lam)
       self._lam = lam
       super(Exponential, self).__init__(
-          alpha=math_ops.cast(1.0, dtype=lam.dtype),
+          alpha=constant_op.constant(1.0, dtype=lam.dtype),
           beta=lam,
           allow_nan_stats=allow_nan_stats,
           validate_args=validate_args)
@@ -95,7 +96,7 @@ class Exponential(gamma.Gamma):
       shape = array_ops.concat(
           0, [array_ops.pack([n]), array_ops.shape(self._lam)])
       sampled = random_ops.random_uniform(
-          shape, maxval=math_ops.cast(1.0, dtype=self.dtype),
+          shape, maxval=constant_op.constant(1.0, dtype=self.dtype),
           dtype=self.dtype)
 
       n_val = tensor_util.constant_value(n)

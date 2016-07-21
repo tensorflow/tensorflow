@@ -289,7 +289,7 @@ class Dirichlet(distribution.Distribution):
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self._alpha, self._alpha_0], name):
-        one = math_ops.cast(1, self.dtype)
+        one = constant_op.constant(1, self.dtype)
         mode = (self._alpha - 1)/ (
             array_ops.expand_dims(self._alpha_0, -1) - math_ops.cast(
                 self.event_shape()[0], self.dtype))
@@ -384,7 +384,8 @@ class Dirichlet(distribution.Distribution):
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self.alpha, n], name):
-        gamma_sample = random_ops.random_gamma([n,], self.alpha)
+        gamma_sample = random_ops.random_gamma(
+            [n,], self.alpha, dtype=self.dtype, seed=seed)
         n_val = tensor_util.constant_value(n)
         final_shape = tensor_shape.vector(n_val).concatenate(
             self.alpha.get_shape())
@@ -405,7 +406,7 @@ class Dirichlet(distribution.Distribution):
     """Check x for proper shape, values, then return tensor version."""
     x = ops.convert_to_tensor(x, name="x_before_deps")
     candidate_one = math_ops.reduce_sum(x, reduction_indices=[-1])
-    one = math_ops.cast(1., self.dtype)
+    one = constant_op.constant(1., self.dtype)
     dependencies = [check_ops.assert_positive(x), check_ops.assert_less(x, one),
                     _assert_close(one, candidate_one)
                    ] if self.validate_args else []

@@ -264,7 +264,7 @@ class Beta(distribution.Distribution):
         a = self._a
         b = self._b
         a_b_sum = self._a_b_sum
-        one = math_ops.cast(1, self.dtype)
+        one = constant_op.constant(1, self.dtype)
         mode = (a - 1)/ (a_b_sum - 2)
 
         if self.allow_nan_stats:
@@ -362,8 +362,10 @@ class Beta(distribution.Distribution):
       with ops.op_scope([self.a, self.b, n], name):
         a = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.a
         b = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.b
-        gamma1_sample = random_ops.random_gamma([n,], a)
-        gamma2_sample = random_ops.random_gamma([n,], b)
+        gamma1_sample = random_ops.random_gamma(
+            [n,], a, dtype=self.dtype, seed=seed)
+        gamma2_sample = random_ops.random_gamma(
+            [n,], b, dtype=self.dtype, seed=seed)
 
         # This is equal to gamma1_sample / (gamma1_sample + gamma2_sample)
         # but is more numerically stable.
@@ -389,6 +391,6 @@ class Beta(distribution.Distribution):
     x = ops.convert_to_tensor(x, name="x_before_deps")
     dependencies = [
         check_ops.assert_positive(x),
-        check_ops.assert_less(x, math_ops.cast(
+        check_ops.assert_less(x, constant_op.constant(
             1, self.dtype))] if self.validate_args else []
     return control_flow_ops.with_dependencies(dependencies, x)
