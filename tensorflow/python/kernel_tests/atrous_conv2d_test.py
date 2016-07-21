@@ -54,18 +54,18 @@ class AtrousConv2DTest(tf.test.TestCase):
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu):
         # Input: [batch, height, width, input_depth]
-        height = 15
-        for width in [15, 16]:  # Test both odd and even width.
+        height = 9
+        for width in [9, 10]:  # Test both odd and even width.
           x_shape = [2, height, width, 2]
           x = np.arange(np.prod(x_shape), dtype=np.float32).reshape(x_shape)
 
           # Filter: [kernel_height, kernel_width, input_depth, output_depth]
-          for kernel_height in range(1, 5):
-            for kernel_width in range(1, 5):
+          for kernel_height in range(1, 4):
+            for kernel_width in range(1, 4):
               f_shape = [kernel_height, kernel_width, 2, 2]
               f = np.arange(np.prod(f_shape), dtype=np.float32).reshape(f_shape)
 
-              for rate in range(1, 5):
+              for rate in range(1, 4):
                 f_up = self._upsample_filters(f, rate)
 
                 for padding in ["SAME", "VALID"]:
