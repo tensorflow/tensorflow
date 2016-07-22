@@ -92,7 +92,7 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
   """Output the rows of `input_tensor` to a queue for an input pipeline.
 
   Args:
-    input_tensor: A tensor with the rows to produce. Must be at
+    input_tensor: A tensor with the rows to produce. Must be at least
       one-dimensional. Must either have a fully-defined shape, or
       `element_shape` must be defined.
     element_shape: (Optional.) A `TensorShape` representing the shape of a
