@@ -274,6 +274,15 @@ Use `get_slot_names()` to get the list of slot names created by the
 
 
 
+#### Other Methods
+- - -
+
+#### `tf.train.Optimizer.get_name()` {#Optimizer.get_name}
+
+
+
+
+
 
 - - -
 
