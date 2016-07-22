@@ -88,7 +88,7 @@ class OneHotOp : public OpKernel {
     // prefix_dim_size == # of elements before the axis
     // depth_v == # of elements per axis
     // suffix_dim_size == # of elements after the axis
-    TI prefix_dim_size = 1;
+    int64 prefix_dim_size = 1;
     for (int i = 0; i < axis; ++i) {
       prefix_dim_size *= indices_shape.dim_size(i);
     }
