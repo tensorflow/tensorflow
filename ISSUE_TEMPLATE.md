@@ -20,7 +20,7 @@ If installed from binary pip package, provide:
 
 If installed from source, provide 
 
-1. The commit hash:
+1. The commit hash (`git rev-parse HEAD`)
 2. The output of `bazel version`
 
 ### Steps to reproduce
