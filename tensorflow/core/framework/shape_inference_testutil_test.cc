@@ -45,7 +45,7 @@ REGISTER_OP("OpTwoOut")
 string RunInferShapes(const string& op_name, const string& ins,
                       const string& expected_outs, OpShapeInferenceFn fn) {
   ShapeInferenceTestOp op(op_name);
-  const int num_inputs = std::count(ins.begin(), ins.end(), ';');
+  const int num_inputs = 1 + std::count(ins.begin(), ins.end(), ';');
   std::vector<NodeDefBuilder::NodeOut> src_list;
   for (int i = 0; i < num_inputs; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
   NodeDef node_def;

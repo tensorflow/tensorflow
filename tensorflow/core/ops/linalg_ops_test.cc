@@ -48,12 +48,16 @@ TEST(LinalgOpsTest, BatchMatrixDeterminant_ShapeFn) {
 TEST(LinalgOpsTest, UnchangedSquare_ShapeFn) {
   for (const char* op_name : {"Cholesky", "CholeskyGrad", "MatrixInverse"}) {
     ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "[?,?]");
-    INFER_OK(op, "[?,?]", "[d0_0|d0_1,d0_0|d0_1]");
-    INFER_OK(op, "[1,?]", "[d0_0,d0_0]");
-    INFER_OK(op, "[?,1]", "[d0_1,d0_1]");
-    INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
-    INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
+
+    const string extra_shape = (op.name == "CholeskyGrad" ? ";?" : "");
+
+    INFER_OK(op, "?" + extra_shape, "[?,?]");
+    INFER_OK(op, "[?,?]" + extra_shape, "[d0_0|d0_1,d0_0|d0_1]");
+    INFER_OK(op, "[1,?]" + extra_shape, "[d0_0,d0_0]");
+    INFER_OK(op, "[?,1]" + extra_shape, "[d0_1,d0_1]");
+    INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]" + extra_shape);
+    INFER_ERROR("Dimensions must be equal, but are 1 and 2", op,
+                "[1,2]" + extra_shape);
   }
 }
 
@@ -61,18 +65,24 @@ TEST(LinalgOpsTest, BatchUnchangedSquare_ShapeFn) {
   for (const char* op_name :
        {"BatchCholesky", "BatchCholeskyGrad", "BatchMatrixInverse"}) {
     ShapeInferenceTestOp op(op_name);
-    INFER_OK(op, "?", "?");
-    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
-    INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
 
-    INFER_OK(op, "[?,?]", "[d0_0|d0_1,d0_0|d0_1]");
-    INFER_OK(op, "[1,?]", "[d0_0,d0_0]");
-    INFER_OK(op, "[?,1]", "[d0_1,d0_1]");
+    const string extra_shape = (op.name == "BatchCholeskyGrad" ? ";?" : "");
+
+    INFER_OK(op, "?" + extra_shape, "?");
+    INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+                "[1]" + extra_shape);
+    INFER_ERROR("Dimensions must be equal, but are 1 and 2", op,
+                "[1,2]" + extra_shape);
+
+    INFER_OK(op, "[?,?]" + extra_shape, "[d0_0|d0_1,d0_0|d0_1]");
+    INFER_OK(op, "[1,?]" + extra_shape, "[d0_0,d0_0]");
+    INFER_OK(op, "[?,1]" + extra_shape, "[d0_1,d0_1]");
 
     // Repeat previous block of tests with input rank > 2.
-    INFER_OK(op, "[5,?,7,?,?]", "[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
-    INFER_OK(op, "[5,?,7,1,?]", "[d0_0,d0_1,d0_2,d0_3,d0_3]");
-    INFER_OK(op, "[5,?,7,?,1]", "[d0_0,d0_1,d0_2,d0_4,d0_4]");
+    INFER_OK(op, "[5,?,7,?,?]" + extra_shape,
+             "[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
+    INFER_OK(op, "[5,?,7,1,?]" + extra_shape, "[d0_0,d0_1,d0_2,d0_3,d0_3]");
+    INFER_OK(op, "[5,?,7,?,1]" + extra_shape, "[d0_0,d0_1,d0_2,d0_4,d0_4]");
   }
 }
 
@@ -150,40 +160,44 @@ TEST(LinalgOpsTest, BatchSquareMatrixSolve_ShapeFn) {
 
 TEST(LinalgOpsTest, MatrixSolveLs_ShapeFn) {
   ShapeInferenceTestOp op("MatrixSolveLs");
-  INFER_OK(op, "?;?", "[?,?]");
+  INFER_OK(op, "?;?;?", "[?,?]");
 
-  // Inputs are [M,N] and [M,K].  Output is [N,K]
-  INFER_OK(op, "[1,?];[1,?]", "[d0_1,d1_1]");
-  INFER_OK(op, "[1,2];[1,3]", "[d0_1,d1_1]");
+  // TODO(cwhipkey): l2_regularizer (input[2]) can have rank asserted?
+  // (same question for BatchMatrixSolveLs).
+
+  // Inputs are [M,N], [M,K], and batch_regularizer.  Output is [N,K]
+  INFER_OK(op, "[1,?];[1,?];?", "[d0_1,d1_1]");
+  INFER_OK(op, "[1,2];[1,3];?", "[d0_1,d1_1]");
 
   // First dims must be compatible.
-  INFER_ERROR("Dimensions must be equal, but are 5 and 6", op, "[5,?];[6,?]");
+  INFER_ERROR("Dimensions must be equal, but are 5 and 6", op, "[5,?];[6,?];?");
 
   // Rank checks.
-  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1];?");
-  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "?;[1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1];?;?");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "?;[1];?");
 }
 
 TEST(LinalgOpsTest, BatchMatrixSolveLs_ShapeFn) {
   ShapeInferenceTestOp op("BatchMatrixSolveLs");
-  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "?;?;?", "?");
 
-  // Inputs are [...,M,N] and [...,M,K].  Output is [...,N,K]
+  // Inputs are [...,M,N], [...,M,K], and batch_regularizer.
+  // Output is [...,N,K]
 
   // Test with no batch dims.
-  INFER_OK(op, "[1,?];[1,?]", "[d0_1,d1_1]");
-  INFER_OK(op, "[1,2];[1,3]", "[d0_1,d1_1]");
-  INFER_ERROR("Dimensions must be equal, but are 5 and 6", op, "[5,?];[6,?]");
+  INFER_OK(op, "[1,?];[1,?];?", "[d0_1,d1_1]");
+  INFER_OK(op, "[1,2];[1,3];?", "[d0_1,d1_1]");
+  INFER_ERROR("Dimensions must be equal, but are 5 and 6", op, "[5,?];[6,?];?");
 
   // Test with batch dims.
-  INFER_OK(op, "[10,?,1,?];[?,20,1,?]", "[d0_0,d1_1,d0_3,d1_3]");
-  INFER_OK(op, "[10,20,1,2];[10,20,1,3]", "[d0_0|d1_0,d0_1|d1_1,d0_3,d1_3]");
+  INFER_OK(op, "[10,?,1,?];[?,20,1,?];?", "[d0_0,d1_1,d0_3,d1_3]");
+  INFER_OK(op, "[10,20,1,2];[10,20,1,3];?", "[d0_0|d1_0,d0_1|d1_1,d0_3,d1_3]");
   INFER_ERROR("Dimensions must be equal, but are 5 and 6", op,
-              "[10,?,5,?];[?,20,6,?]");
+              "[10,?,5,?];[?,20,6,?];?");
 
   // Rank checks.
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1];?");
-  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "?;[1]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1];?;?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "?;[1];?");
 }
 
 }  // end namespace tensorflow

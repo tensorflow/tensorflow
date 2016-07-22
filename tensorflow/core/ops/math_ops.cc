@@ -23,7 +23,6 @@ namespace tensorflow {
 using shape_inference::Dimension;
 using shape_inference::InferenceContext;
 using shape_inference::Shape;
-static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 REGISTER_OP("AddN")
     .Input("inputs: N * T")
@@ -1056,7 +1055,8 @@ Status SegmentReductionShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
 
   const Shape* out;
-  TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(kUnknownDim), subshape, &out));
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
   c->set_output(0, out);
   return Status::OK();
 }
@@ -1464,7 +1464,7 @@ REGISTER_OP("Range")
       const Tensor* limit_t = c->input_tensor(1);
       const Tensor* delta_t = c->input_tensor(2);
       if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
-        c->set_output(0, c->Vector(kUnknownDim));
+        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
         return Status::OK();
       }
       const int32 start = start_t->scalar<int32>()();
@@ -1518,7 +1518,7 @@ REGISTER_OP("LinSpace")
                                       " for 'num'");
       const Tensor* num_t = c->input_tensor(2);
       if (num_t == nullptr) {
-        c->set_output(0, c->Vector(kUnknownDim));
+        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
         return Status::OK();
       }
       const int64 num = num_t->scalar<int32>()();

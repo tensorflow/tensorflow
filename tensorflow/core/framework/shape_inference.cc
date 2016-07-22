@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -31,11 +32,18 @@ InferenceContext::InferenceContext(
     const std::vector<string>& input_shapes,
     const std::vector<const Tensor*>& input_tensors)
     : input_tensors_(input_tensors), node_def_(*CHECK_NOTNULL(node_def)) {
-  TF_CHECK_OK(NameRangesForNode(*node_def, op_def, &input_name_map_,
-                                &output_name_map_));
+  construction_status_ =
+      NameRangesForNode(*node_def, op_def, &input_name_map_, &output_name_map_);
+  if (!construction_status_.ok()) return;
+
   int num_outputs = 0;
   for (const auto& e : output_name_map_) {
     num_outputs = std::max(num_outputs, e.second.second);
+  }
+  int num_inputs_from_node_def = 0;
+  for (const auto& e : input_name_map_) {
+    num_inputs_from_node_def =
+        std::max(num_inputs_from_node_def, e.second.second);
   }
 
   for (const string& spec : input_shapes) {
@@ -61,13 +69,21 @@ InferenceContext::InferenceContext(
 
         if (scanner.Peek() == ',') {
           scanner.OneLiteral(",");
-        } else {
-          CHECK_EQ(scanner.Peek(), ']');
+        } else if (scanner.Peek() != ']') {
+          construction_status_ = errors::InvalidArgument(
+              "Invalid input spec (] not found in dim shape): ", spec);
+          return;
         }
       }
-      CHECK(scanner.OneLiteral("]").Eos().GetResult()) << spec;
+      CHECK(scanner.OneLiteral("]").Eos().GetResult());
       inputs_.push_back(MakeShape(dims));
     }
+  }
+  if (inputs_.size() != num_inputs_from_node_def) {
+    construction_status_ = errors::InvalidArgument(
+        "Wrong number of arguments passed: ", inputs_.size(), " while ",
+        num_inputs_from_node_def, " expected based on NodeDef");
+    return;
   }
 
   CHECK_LE(input_tensors_.size(), input_shapes.size());

@@ -21,7 +21,6 @@ namespace tensorflow {
 using shape_inference::Dimension;
 using shape_inference::InferenceContext;
 using shape_inference::Shape;
-static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 namespace {
 
@@ -73,7 +72,8 @@ Status DecodeImageShapeFn(InferenceContext* c) {
     channels_dim = c->UnknownDim();
   }
 
-  c->set_output(0, c->MakeShape({kUnknownDim, kUnknownDim, channels_dim}));
+  c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
+                                 InferenceContext::kUnknownDim, channels_dim}));
   return Status::OK();
 }
 

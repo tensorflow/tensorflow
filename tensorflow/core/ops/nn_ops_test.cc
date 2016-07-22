@@ -91,15 +91,18 @@ TEST(NNOpsTest, InputTensorShapeOrUnknown2D_ShapeFn) {
     ShapeInferenceTestOp op(p.first);
     op.input_tensors.resize(2);
 
+    // Conv and Depthwise conv have three inputs.
+    string extra_shapes = (op.name == "AvgPoolGrad" ? "" : ";?");
+
     // When the input tensor is not known, the output is 4 unknown dims.
-    INFER_OK(op, "?;?", "[?,?,?,?]");
-    INFER_OK(op, "[4];?", "[?,?,?,?]");
+    INFER_OK(op, "?;?" + extra_shapes, "[?,?,?,?]");
+    INFER_OK(op, "[4];?" + extra_shapes, "[?,?,?,?]");
 
     // When input tensor is known, its values determine output shape.
     std::vector<int32> shape{1, 2, 3, 4};
     Tensor shape_t = test::AsTensor<int32>(shape);
     op.input_tensors[p.second] = &shape_t;
-    INFER_OK(op, "[4];?", "[1,2,3,4]");
+    INFER_OK(op, "[4];?" + extra_shapes, "[1,2,3,4]");
   }
 }
 
@@ -111,15 +114,18 @@ TEST(NNOpsTest, InputTensorShapeOrUnknown3D_ShapeFn) {
     ShapeInferenceTestOp op(p.first);
     op.input_tensors.resize(2);
 
+    // Conv3D has an extra shape.
+    string extra_shapes = (op.name == "AvgPool3DGrad" ? "" : ";?");
+
     // When the input tensor is not known, the output is 4 unknown dims.
-    INFER_OK(op, "?;?;?", "[?,?,?,?,?]");
-    INFER_OK(op, "[5];?;?", "[?,?,?,?,?]");
+    INFER_OK(op, "?;?" + extra_shapes, "[?,?,?,?,?]");
+    INFER_OK(op, "[5];?" + extra_shapes, "[?,?,?,?,?]");
 
     // When input tensor is known, its values determine output shape.
     std::vector<int32> shape{1, 2, 3, 4, 5};
     Tensor shape_t = test::AsTensor<int32>(shape);
     op.input_tensors[p.second] = &shape_t;
-    INFER_OK(op, "[5];?;?", "[1,2,3,4,5]");
+    INFER_OK(op, "[5];?" + extra_shapes, "[1,2,3,4,5]");
   }
 }
 

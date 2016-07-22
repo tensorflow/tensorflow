@@ -238,7 +238,7 @@ TEST(ShapeInferenceTest, WithValue) {
 
 TEST(ShapeInferenceTest, MergeDim) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(4, 2), {"[2,?,2,1,?]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[2,?,2,1,?]"}, {});
 
   auto d2 = c.Dim(c.input(0), 0);
   auto d_unknown = c.Dim(c.input(0), 1);

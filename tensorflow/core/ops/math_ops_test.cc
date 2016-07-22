@@ -33,11 +33,15 @@ TEST(MathOpsTest, AddN_ShapeFn) {
                     .Finalize(&op.node_def));
   };
 
-  set_n(1);
+  set_n(2);
   // Adding two unknowns returns either input.
   INFER_OK(op, "?;?", "in0|in1");
+
   // known+unknown returns the known input.
-  INFER_OK(op, "[1,?]", "in0");
+  INFER_OK(op, "[1];[?]", "in0");
+  INFER_OK(op, "[1];?", "in0");
+  INFER_OK(op, "[?];[1]", "in1");
+  INFER_OK(op, "?;[1]", "in1");
 
   set_n(2);
   INFER_OK(op, "[1,2];[?,2]", "in0");
@@ -47,9 +51,10 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   set_n(3);
   INFER_OK(op, "[1,?];[?,2];[1,2]", "in2");
   INFER_OK(op, "[1,2];[?,2];[1,?]", "in0");
+  INFER_OK(op, "?;?;[1,2]", "in2");
 
   set_n(2);
-  INFER_OK(op, "?;?;[1,2]", "in2");
+  INFER_OK(op, "?;[1,2]", "in1");
   INFER_OK(op, "[1,?];[?,2]", "[d0_0,d1_1]");
   INFER_OK(op, "[?,2,?];[?,?,3]", "[d0_0|d1_0,d0_1,d1_2]");
   INFER_OK(op, "[?,2];[1,?]", "[d1_0,d0_1]");
@@ -58,7 +63,7 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   INFER_ERROR(("Dimension 1 in both shapes must be equal, but are 2 and "
                "4\n\tFrom merging shape 0 with other shapes."),
               op, "[1,2];?;[1,4]");
-  set_n(3);
+  set_n(4);
   INFER_ERROR(("Shapes must be equal rank, but are 2 and 3\n\tFrom merging "
                "shape 1 with other shapes."),
               op, "?;[1,2];?;[1,2,3]");

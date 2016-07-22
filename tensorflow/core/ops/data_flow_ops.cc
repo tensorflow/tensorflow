@@ -22,7 +22,6 @@ namespace tensorflow {
 using shape_inference::Dimension;
 using shape_inference::InferenceContext;
 using shape_inference::Shape;
-static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 // --------------------------------------------------------------------------
 

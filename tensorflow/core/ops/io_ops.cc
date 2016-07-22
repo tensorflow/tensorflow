@@ -21,7 +21,6 @@ namespace tensorflow {
 using shape_inference::Dimension;
 using shape_inference::InferenceContext;
 using shape_inference::Shape;
-static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 namespace {
 
@@ -352,7 +351,7 @@ REGISTER_OP("ReaderReadUpTo")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      const Shape* out = c->Vector(kUnknownDim);
+      const Shape* out = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, out);
       c->set_output(1, out);
       return Status::OK();
@@ -448,7 +447,7 @@ REGISTER_OP("MatchingFiles")
     .SetShapeFn([](InferenceContext* c) {
       const Shape* unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      c->set_output(0, c->Vector(kUnknownDim));
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     })
     .Doc(R"doc(

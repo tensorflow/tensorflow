@@ -25,8 +25,12 @@ namespace tensorflow {
 TEST(ArrayOpsTest, Pack_ShapeFn) {
   ShapeInferenceTestOp op("Pack");
   auto set_axis = [&op](int axis) {
+    int n = 3;
+    std::vector<NodeDefBuilder::NodeOut> src_list;
+    for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_CHECK_OK(NodeDefBuilder("test", "Pack")
-                    .Input({{"a", 0, DT_FLOAT}})
+                    .Input(src_list)
+                    .Attr("N", n)
                     .Attr("axis", axis)
                     .Finalize(&op.node_def));
   };
@@ -36,21 +40,21 @@ TEST(ArrayOpsTest, Pack_ShapeFn) {
 
   for (int axis : {0, -3}) {
     set_axis(axis);
-    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "?;?;?", "?");
     INFER_OK(op, "[1,3];[1,3];?", "[3,d0_0|d1_0,d0_1|d1_1]");
     INFER_OK(op, "[?,3];[1,3];?", "[3,d1_0,d0_1|d1_1]");
     INFER_OK(op, "[?,?];[1,3];?", "[3,d1_0,d1_1]");
   }
   for (int axis : {1, -2}) {
     set_axis(axis);
-    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "?;?;?", "?");
     INFER_OK(op, "[1,3];[1,3];?", "[d0_0|d1_0,3,d0_1|d1_1]");
     INFER_OK(op, "[?,3];[1,3];?", "[d1_0,3,d0_1|d1_1]");
     INFER_OK(op, "[?,?];[1,3];?", "[d1_0,3,d1_1]");
   }
   for (int axis : {2, -1}) {
     set_axis(axis);
-    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "?;?;?", "?");
     INFER_OK(op, "[1,3];[1,3];?", "[d0_0|d1_0,d0_1|d1_1,3]");
     INFER_OK(op, "[?,3];[1,3];?", "[d1_0,d0_1|d1_1,3]");
     INFER_OK(op, "[?,?];[1,3];?", "[d1_0,d1_1,3]");
@@ -78,7 +82,7 @@ TEST(ArrayOpsTest, UnPack_ShapeFn) {
   };
 
   set_axis_and_num(0, 1);
-  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "?", "?");
 
   for (int axis : {0, -3}) {
     set_axis_and_num(axis, 1);
@@ -130,14 +134,20 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
-           "BatchMatrixBandPart", "CheckNumerics", "Identity",
-           "QuantizeAndDequantize", "RefIdentity", "StopGradient", "ZerosLike",
+           "CheckNumerics", "Identity", "QuantizeAndDequantize", "RefIdentity",
+           "StopGradient", "ZerosLike",
        }) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");
     INFER_OK(op, "[]", "in0");
     INFER_OK(op, "[1,2,?,4,5]", "in0");
   }
+
+  // inputs 1 and 2 are ignored; input 0 is transferred to output 0.
+  ShapeInferenceTestOp op("BatchMatrixBandPart");
+  INFER_OK(op, "?;?;?", "in0");
+  INFER_OK(op, "[];?;?", "in0");
+  INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
 }
 
 TEST(ArrayOpsTest, Diag_ShapeFn) {

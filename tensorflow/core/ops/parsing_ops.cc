@@ -21,7 +21,6 @@ namespace tensorflow {
 using shape_inference::Dimension;
 using shape_inference::InferenceContext;
 using shape_inference::Shape;
-static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
 
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
@@ -31,8 +30,8 @@ REGISTER_OP("DecodeRaw")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
       const Shape* out;
-      TF_RETURN_IF_ERROR(
-          c->Concatenate(c->input(0), c->Vector(kUnknownDim), &out));
+      TF_RETURN_IF_ERROR(c->Concatenate(
+          c->input(0), c->Vector(InferenceContext::kUnknownDim), &out));
       c->set_output(0, out);
       return Status::OK();
     })

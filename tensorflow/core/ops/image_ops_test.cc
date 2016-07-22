@@ -139,7 +139,7 @@ TEST(ImageOpsTest, CropAndResize_ShapeFn) {
   INFER_ERROR("Shape must be rank 4 but is rank 5", op, "[1,2,3,4,5];?;?;?");
   INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?;?;?");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;[1,2,3];?;?");
-  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;?;[1,2];?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;?;[1,2];?");
   INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;?;?;[1,2]");
   INFER_ERROR("Dimension must be 2 but is 1", op, "?;?;?;[1]");
 
@@ -148,7 +148,7 @@ TEST(ImageOpsTest, CropAndResize_ShapeFn) {
 
   Tensor size_tensor = test::AsTensor<int32>({20, 30});
   op.input_tensors[3] = &size_tensor;
-  INFER_OK(op, "[1,?,3,?];?;?;[2];?", "[?,20,30,d0_3]");
+  INFER_OK(op, "[1,?,3,?];?;?;[2]", "[?,20,30,d0_3]");
 
   // boxes.dim(0) and box_ind.dim(0) are both the num_boxes dim.
   INFER_OK(op, "[1,?,3,?];[2,4];?;[2]", "[d1_0,20,30,d0_3]");

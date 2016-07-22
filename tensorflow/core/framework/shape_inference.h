@@ -256,6 +256,8 @@ class InferenceContext {
   Status Multiply(const Dimension* first, DimensionOrConstant second,
                   const Dimension** out);
 
+  Status construction_status() const { return construction_status_; }
+
  private:
   const Dimension* GetDimension(const DimensionOrConstant& d);
 
@@ -280,6 +282,10 @@ class InferenceContext {
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+
+  // An error set during construction. TODO(cwhipkey): remove when test
+  // constructor is removed.
+  Status construction_status_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
 };

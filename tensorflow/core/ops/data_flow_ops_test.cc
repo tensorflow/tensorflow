@@ -53,7 +53,7 @@ TEST(MathOpsTest, LookupTableSize) {
   INFER_OK(op, "[]", "[]");
 
   // Dim 0 (table handle) must be a scalar.
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1];[1,2,3];[]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
 }
 
 TEST(MathOpsTest, LookupTableExport) {
@@ -63,7 +63,7 @@ TEST(MathOpsTest, LookupTableExport) {
   INFER_OK(op, "[]", "[?];?");
 
   // Dim 0 (table handle) must be a scalar.
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1];[1,2,3];[]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
 }
 
 TEST(MathOpsTest, InitializeTable) {
