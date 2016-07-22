@@ -824,6 +824,7 @@ cc_library(
     hdrs = [
         "lib/core/blocking_counter.h",
         "lib/core/refcount.h",
+        "lib/gif/gif_io.h",
         "lib/gtl/edit_distance.h",
         "lib/gtl/int_type.h",
         "lib/gtl/iterator_range.h",
@@ -837,7 +838,6 @@ cc_library(
         "lib/io/zlib_outputbuffer.h",
         "lib/jpeg/jpeg_handle.h",
         "lib/png/png_io.h",
-        "lib/gif/gif_io.h",
         "lib/random/random.h",
         "lib/random/random_distributions.h",
         "lib/random/weighted_picker.h",
