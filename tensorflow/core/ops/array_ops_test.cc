@@ -191,8 +191,10 @@ TEST(ArrayOpsTest, Reverse_ShapeFn) {
 
 TEST(ArrayOpsTest, Fill_ShapeFn) {
   ShapeInferenceTestOp op("Fill");
-  op.input_tensors = {nullptr, nullptr};
+  op.input_tensors.resize(2);
   INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "[?];?", "?");
+  INFER_OK(op, "[4];?", "[?,?,?,?]");
 
   Tensor in_t = test::AsTensor<int32>({1, 2, 3, 4});
   op.input_tensors[0] = &in_t;

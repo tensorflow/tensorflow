@@ -76,6 +76,19 @@ TEST(ShapeInferenceTest, RankAndDimInspection) {
   EXPECT_EQ(0, c.Rank(in2));
 }
 
+TEST(ShapeInferenceTest, NumElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 2), {"?", "[1,?,3]", "[5,4,3,2]"}, {});
+
+  EXPECT_EQ("?", c.DebugString(c.NumElements(c.input(0))));
+  EXPECT_EQ("?", c.DebugString(c.NumElements(c.input(1))));
+
+  // Different pointers (not the same unknown value).
+  EXPECT_TRUE(c.Dim(c.input(1), 1) != c.NumElements(c.input(1)));
+
+  EXPECT_EQ("120", c.DebugString(c.NumElements(c.input(2))));
+}
+
 TEST(ShapeInferenceTest, WithRank) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(2, 2), {"?", "[1,?,3]"}, {});

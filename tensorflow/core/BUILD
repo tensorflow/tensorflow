@@ -1872,6 +1872,7 @@ tf_cc_tests(
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",
+        "ops/sparse_ops_test.cc",
         "ops/string_ops_test.cc",
         "ops/training_ops_test.cc",
     ],

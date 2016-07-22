@@ -83,6 +83,18 @@ InferenceContext::~InferenceContext() {
   for (auto* d : all_dims_) delete d;
 }
 
+const Dimension* InferenceContext::NumElements(const Shape* s) {
+  const auto rank = Rank(s);
+  if (rank == kUnknownRank) return UnknownDim();
+  int64 size = 1;
+  for (int i = 0; i < rank; ++i) {
+    int64 dim_val = Value(Dim(s, i));
+    if (dim_val == kUnknownDim) return UnknownDim();
+    size *= dim_val;
+  }
+  return MakeDim(size);
+}
+
 string InferenceContext::DebugString(const Shape* s) {
   if (RankKnown(s)) {
     std::vector<string> vals;
@@ -395,8 +407,18 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
 
   const Tensor* t = input_tensor(input_idx);
   if (t == nullptr) {
-    return ReturnUnknownShape(out);
+    // Shape tensor is not known, but if the shape of the shape tensor is then
+    // the right number of unknown dims can be created.
+    const Dimension* shape_dim = Dim(input_shape, 0);
+    if (!ValueKnown(shape_dim)) {
+      return ReturnUnknownShape(out);
+    }
+    const auto num_dims = Value(shape_dim);
+    std::vector<const Dimension*> dims;
+    for (int i = 0; i < num_dims; i++) dims.push_back(UnknownDim());
+    return ReturnCreatedShape(dims, out);
   }
+
   if (t->shape().dims() != 1) {
     *out = nullptr;
     return errors::InvalidArgument("Input tensor must be rank 1, but was rank ",
