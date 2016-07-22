@@ -39,7 +39,7 @@ HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
 HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
 # Find the current Eigen version from the Bazel configuration
-EIGEN_VERSION := $(shell grep eigen_version tensorflow/workspace.bzl | head -1 | sed -e 's/.*eigen_version\s*=\s*"\(.*\)"/\1/')
+EIGEN_VERSION := $(shell grep eigen_version tensorflow/workspace.bzl | head -1 | sed -e 's/.*eigen_version.*=.*"\(.*\)"/\1/')
 
 # Settings for the host compiler.
 HOST_CXX := $(CC_PREFIX) gcc
