@@ -237,6 +237,48 @@ class DirichletMultinomial(distribution.Distribution):
         mean_no_n = alpha / array_ops.expand_dims(alpha_sum, -1)
         return array_ops.expand_dims(n, -1) * mean_no_n
 
+  def variance(self, name='mean'):
+    """Class variances for every batch member.
+
+    The variance for each batch member is defined as the following:
+
+    ```
+    Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+      (n + alpha_0) / (1 + alpha_0)
+    ```
+
+    where `alpha_0 = sum_j alpha_j`.
+
+    The covariance between elements in a batch is defined as:
+
+    ```
+    Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+      (n + alpha_0) / (1 + alpha_0)
+    ```
+
+    Args:
+      name: The name for this op.
+
+    Returns:
+      A `Tensor` representing the variances for each batch member.
+    """
+    alpha = self._alpha
+    alpha_sum = self._alpha_sum
+    n = self._n
+    with ops.name_scope(self.name):
+      with ops.op_scope([alpha, alpha_sum, n], name):
+        expanded_alpha_sum = array_ops.expand_dims(alpha_sum, -1)
+        shared_factor = n * (expanded_alpha_sum + n) / (
+            expanded_alpha_sum + 1) * array_ops.ones_like(alpha)
+
+        mean_no_n = alpha / expanded_alpha_sum
+        expanded_mean_no_n = array_ops.expand_dims(mean_no_n, -1)
+        variance = -math_ops.batch_matmul(
+            expanded_mean_no_n, expanded_mean_no_n, adj_y=True)
+        variance += array_ops.batch_matrix_diag(mean_no_n)
+        variance *= array_ops.expand_dims(shared_factor, -1)
+        return variance
+
   def batch_shape(self, name='batch_shape'):
     """Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
