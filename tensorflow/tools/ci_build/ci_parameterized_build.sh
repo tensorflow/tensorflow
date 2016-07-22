@@ -174,24 +174,57 @@ function get_cuda_capability_version() {
   fi
 }
 
-# Process container type
+# Container type, e.g., CPU, GPU
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
+
+# Determine if Docker is available
 OPT_FLAG=""
+if [[ -z "$(which docker)" ]]; then
+  DO_DOCKER=0
+
+  echo "It appears that Docker is not available on this system. "\
+"Will perform build without Docker."
+  echo "Also, the additional option flags will be applied to the build:"
+  echo "  ${NO_DOCKER_OPT_FLAG}"
+  MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
+  OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
+fi
+
+# Process container type
 if [[ ${CTYPE} == "cpu" ]]; then
   :
 elif [[ ${CTYPE} == "gpu" ]]; then
-  OPT_FLAG="--config=cuda"
+  OPT_FLAG="${OPT_FLAG} --config=cuda"
 
-  # Attempt to determine CUDA capability version and use it
-  if [[ "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}" != \
-        *"TF_CUDA_COMPUTE_CAPABILITIES="* ]]; then
-    CUDA_CAPA_VER=$(get_cuda_capability_version)
-    if [[ ! -z ${CUDA_CAPA_VER} ]]; then
-      echo "TF_CUDA_COMPUTE_CAPABILITIES is not set."
-      echo "Using CUDA capability version from deviceQuery: ${CUDA_CAPA_VER}"
+  # Attempt to determine CUDA capability version automatically and use it if
+  # CUDA capability version is not specified by the environment variables.
+  CUDA_CAPA_VER=$(get_cuda_capability_version)
+
+  if [[ ! -z ${CUDA_CAPA_VER} ]]; then
+    AUTO_CUDA_CAPA_VER=0
+    if [[ ${DO_DOCKER} == "1" ]] && \
+       [[ "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}" != \
+           *"TF_CUDA_COMPUTE_CAPABILITIES="* ]]; then
+      AUTO_CUDA_CAPA_VER=1
       TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
 "${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e "\
 "TF_CUDA_COMPUTE_CAPABILITIES=${CUDA_CAPA_VER}"
+
+      echo "Docker GPU build: TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="\
+"\"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS}\""
+    elif [[ ${DO_DOCKER} == "0" ]] && \
+         [[ -z "${TF_CUDA_COMPUTE_CAPABILITIES}" ]]; then
+      AUTO_CUDA_CAPA_VER=1
+      TF_CUDA_COMPUTE_CAPABILITIES="${CUDA_CAPA_VER}"
+
+      echo "Non-Docker GPU build: TF_CUDA_COMPUTE_CAPABILITIES="\
+"\"${TF_CUDA_COMPUTE_CAPABILITIES}\""
+    fi
+
+    if [[ ${AUTO_CUDA_CAPA_VER} == "1" ]]; then
+      echo "TF_CUDA_COMPUTE_CAPABILITIES is not set:"
+      echo "Using CUDA capability version from deviceQuery: ${CUDA_CAPA_VER}"
+      echo ""
     fi
   fi
 elif [[ ${CTYPE} == "android" ]]; then
@@ -202,19 +235,6 @@ else
 fi
 
 EXTRA_PARAMS=""
-
-# Determine if Docker is available
-if [[ -z "$(which docker)" ]]; then
-  DO_DOCKER=0
-
-  echo "It appears that Docker is not available on this system. "\
-"Will perform build without Docker."
-  echo "Also, the additional option flags will be applied to the build:"
-  echo "  ${NO_DOCKER_OPT_FLAG}"
-  MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
-  OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
-
-fi
 
 # Determine if this is a benchmarks job
 RUN_BENCHMARKS=0
