@@ -115,9 +115,9 @@ For example, here is a well-organized TensorBoard log directory, with two runs,
 
 # The Visualizations
 
-### Scalar Dashboard
+### Events Dashboard
 
-TensorBoard's Scalar Dashboard visualizes scalar statistics that vary over time;
+TensorBoard's Events Dashboard visualizes scalar statistics that vary over time;
 for example, you might want to track the model's loss or learning rate. As
 described in *Key Concepts*, you can compare multiple runs, and the data is
 organized by tag. The line charts have the following interactions:
