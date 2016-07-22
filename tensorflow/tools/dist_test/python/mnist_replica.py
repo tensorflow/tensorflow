@@ -190,7 +190,7 @@ def main(unused_argv):
     train_step = opt.minimize(cross_entropy,
                               global_step=global_step)
 
-    if FLAGS.sync_replicas and is_chief:
+    if FLAGS.sync_replicas:
       # Initial token and chief queue runners required by the sync_replicas mode
       chief_queue_runner = opt.get_chief_queue_runner()
       init_tokens_op = opt.get_init_tokens_op()
@@ -221,7 +221,7 @@ def main(unused_argv):
 
     print("Worker %d: Session initialization complete." % FLAGS.worker_index)
 
-    if FLAGS.sync_replicas and is_chief:
+    if FLAGS.sync_replicas:
       # Chief worker will start the chief queue runner and call the init op
       print("Starting chief queue runner and running init_tokens_op")
       sv.start_queue_runners(sess, [chief_queue_runner])
