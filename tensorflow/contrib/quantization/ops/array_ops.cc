@@ -127,7 +127,7 @@ If the mode is 'MIN_FIRST', then this approach is used:
 number_of_steps = 1 << (# of bits in T)
 range_adjust = number_of_steps / (number_of_steps - 1)
 range = (range_max - range_min) * range_adjust
-range_scale = number_of_steps / range
+range_scale = range / number_of_steps
 const double offset_input = static_cast<double>(input) - lowest_quantized;
 result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
 ```
