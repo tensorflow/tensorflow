@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.distributions.python.ops import gamma
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -95,8 +97,11 @@ class Exponential(gamma.Gamma):
       n = ops.convert_to_tensor(n, name="n")
       shape = array_ops.concat(
           0, [array_ops.pack([n]), array_ops.shape(self._lam)])
+      # Sample uniformly-at-random from the open-interval (0, 1).
       sampled = random_ops.random_uniform(
-          shape, maxval=constant_op.constant(1.0, dtype=self.dtype),
+          shape, minval=np.nextafter(
+              self.dtype.as_numpy_dtype(0.), self.dtype.as_numpy_dtype(1.)),
+          maxval=constant_op.constant(1.0, dtype=self.dtype),
           dtype=self.dtype)
 
       n_val = tensor_util.constant_value(n)
