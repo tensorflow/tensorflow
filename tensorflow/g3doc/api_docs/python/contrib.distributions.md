@@ -6320,9 +6320,34 @@ Boolean describing behavior on invalid input.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.variance(name='variance')` {#DirichletMultinomial.variance}
+#### `tf.contrib.distributions.DirichletMultinomial.variance(name='mean')` {#DirichletMultinomial.variance}
 
-Variance of the distribution.
+Class variances for every batch member.
+
+The variance for each batch member is defined as the following:
+
+```
+Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+  (n + alpha_0) / (1 + alpha_0)
+```
+
+where `alpha_0 = sum_j alpha_j`.
+
+The covariance between elements in a batch is defined as:
+
+```
+Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+  (n + alpha_0) / (1 + alpha_0)
+```
+
+##### Args:
+
+
+*  <b>`name`</b>: The name for this op.
+
+##### Returns:
+
+  A `Tensor` representing the variances for each batch member.
 
 
 
