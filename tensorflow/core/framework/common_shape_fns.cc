@@ -274,7 +274,8 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
 
   if (strides.size() != 4) {
     return errors::InvalidArgument(
-        "Conv2D requires the stride attribute to contain 4 values, but got: ",
+        "DepthwiseConv2D requires the stride attribute to contain 4 values, "
+        "but got: ",
         strides.size());
   }
 
@@ -326,6 +327,89 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
 
   const Shape* output_shape =
       c->MakeShape({batch_size_dim, output_rows, output_cols, output_depth});
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+Status AvgPoolShape(shape_inference::InferenceContext* c) {
+  const Shape* input_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+
+  string data_format;
+  Status s = c->GetAttr("data_format", &data_format);
+
+  std::vector<int32> strides;
+  TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+  if (strides.size() != 4) {
+    return errors::InvalidArgument(
+        "AvgPool requires the stride attribute to contain 4 values, but "
+        "got: ",
+        strides.size());
+  }
+
+  std::vector<int32> kernel_sizes;
+  TF_RETURN_IF_ERROR(c->GetAttr("ksize", &kernel_sizes));
+  if (kernel_sizes.size() != 4) {
+    return errors::InvalidArgument(
+        "AvgPool requires the ksize attribute to contain 4 values, but got: ",
+        kernel_sizes.size());
+  }
+
+  int32 stride_rows, stride_cols;
+  int32 kernel_rows, kernel_cols;
+
+  if (s.ok() && data_format == "NCHW") {
+    // Convert input shape to default NHWC for inference
+    input_shape =
+        c->MakeShape({{c->Dim(input_shape, 0), c->Dim(input_shape, 2),
+                       c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
+    stride_rows = strides[2];
+    stride_cols = strides[3];
+    kernel_rows = kernel_sizes[2];
+    kernel_cols = kernel_sizes[3];
+  } else {
+    stride_rows = strides[1];
+    stride_cols = strides[2];
+    kernel_rows = kernel_sizes[1];
+    kernel_cols = kernel_sizes[2];
+  }
+
+  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
+  const Dimension* in_rows_dim = c->Dim(input_shape, 1);
+  const Dimension* in_cols_dim = c->Dim(input_shape, 2);
+  const Dimension* output_depth_dim = c->Dim(input_shape, 3);
+
+  // At the moment we need to know the values of several fields.
+  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
+
+  Padding padding;
+  TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+
+  // TODO(mrry,shlens): Raise an error if the stride would cause
+  // information in the input to be ignored. This will require a change
+  // in the kernel implementation.
+  auto in_rows = c->Value(in_rows_dim);
+  auto in_cols = c->Value(in_cols_dim);
+
+  int64 output_rows, output_cols;
+  int64 padding_before, padding_after;
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_rows, kernel_rows, stride_rows, padding, &output_rows, &padding_before,
+      &padding_after));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_cols, kernel_cols, stride_cols, padding, &output_cols, &padding_before,
+      &padding_after));
+
+  const Shape* output_shape;
+  if (data_format == "NCHW") {
+    output_shape = c->MakeShape(
+        {batch_size_dim, output_depth_dim, output_rows, output_cols});
+  } else {
+    output_shape = c->MakeShape(
+        {batch_size_dim, output_rows, output_cols, output_depth_dim});
+  }
+
   c->set_output(0, output_shape);
   return Status::OK();
 }

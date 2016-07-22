@@ -448,5 +448,42 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
   INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,1,?]");
 }
 
+TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
+  ShapeInferenceTestOp op("AvgPool");
+  auto set_op = [&op](const std::vector<int32>& strides,
+                      const std::vector<int32>& ksizes, const string& padding,
+                      const string& data_format) {
+    TF_CHECK_OK(NodeDefBuilder("test", "AvgPool")
+                    .Input("input", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("ksize", ksizes)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format)
+                    .Finalize(&op.node_def));
+  };
+
+  // Most of the functionality is tested by conv-like shapes,
+  // so we check the very-specific avgpooling features here.
+
+  // 1x1 filter, 1x1 stride
+  set_op({1, 1, 1, 1}, {1, 1, 1, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,2,2,1]", "[d0_0,2,2,d0_3]");
+
+  // 4x4 input, 2x1 ksize, 1x2 stride
+  set_op({1, 1, 2, 1}, {1, 2, 1, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,4,4,1]", "[d0_0,3,2,d0_3]");
+
+  // No unknown dims in the critical fields.  Assumes NHWC format.
+  INFER_ERROR("is not known", op, "[1,?,2,1]");
+  INFER_ERROR("is not known", op, "[1,2,?,1]");
+
+  // 4x4 input, 2x1 ksize, 1x2 stride, NCHW format
+  set_op({{1, 1, 1, 2}}, {1, 1, 2, 1}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,4,4]", "[d0_0,d0_1,3,2]");
+
+  // Invalid rank for input
+  INFER_ERROR("must be rank 4", op, "[4,4]");
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow
