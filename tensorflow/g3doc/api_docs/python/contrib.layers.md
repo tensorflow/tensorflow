@@ -13,6 +13,85 @@ common machine learning algorithms.
 
 - - -
 
+### `tf.contrib.layers.avg_pool2d(*args, **kwargs)` {#avg_pool2d}
+
+Adds a Avg Pooling op.
+
+It is assumed by the wrapper that the pooling is only done per image and not
+in depth or batch.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, depth].
+*  <b>`kernel_size`</b>: a list of length 2: [kernel_height, kernel_width] of the
+    pooling kernel over which the op is computed. Can be an int if both
+    values are the same.
+*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width].
+    Can be an int if both strides are the same.  Note that presently
+    both strides must have the same value.
+*  <b>`padding`</b>: the padding method, either 'VALID' or 'SAME'.
+*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`scope`</b>: Optional scope for op_scope.
+
+##### Returns:
+
+  a tensor representing the results of the pooling operation.
+
+
+- - -
+
+### `tf.contrib.layers.batch_norm(*args, **kwargs)` {#batch_norm}
+
+Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
+
+  "Batch Normalization: Accelerating Deep Network Training by Reducing
+  Internal Covariate Shift"
+
+  Sergey Ioffe, Christian Szegedy
+
+Can be used as a normalizer function for conv2d and fully_connected.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a tensor of size `[batch_size, height, width, channels]`
+          or `[batch_size, channels]`.
+*  <b>`decay`</b>: decay for the moving average.
+*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
+    not used. When the next layer is linear (also e.g. `nn.relu`), this can be
+    disabled since the scaling can be done by the next layer.
+*  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
+*  <b>`activation_fn`</b>: Optional activation function.
+*  <b>`updates_collections`</b>: collections to collect the update ops for computation.
+    If None, a control dependency would be added to make sure the updates are
+    computed.
+*  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode
+    it would accumulate the statistics of the moments into `moving_mean` and
+    `moving_variance` using an exponential moving average with the given
+    `decay`. When it is not in training mode then it would use the values of
+    the `moving_mean` and the `moving_variance`.
+*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+    able to reuse the layer scope must be given.
+*  <b>`variables_collections`</b>: optional collections for the variables.
+*  <b>`outputs_collections`</b>: collections to add the outputs.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+
+##### Returns:
+
+  A `Tensor` representing the output of the operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+
+
+- - -
+
 ### `tf.contrib.layers.convolution2d(*args, **kwargs)` {#convolution2d}
 
 Adds a 2D convolution followed by an optional batch_norm layer.
@@ -72,6 +151,129 @@ greater than one.
 
 - - -
 
+### `tf.contrib.layers.convolution2d_in_plane(*args, **kwargs)` {#convolution2d_in_plane}
+
+Performs the same in-plane convolution to each channel independently.
+
+This is useful for performing various simple channel-independent convolution
+operations such as image gradients:
+
+  image = tf.constant(..., shape=(16, 240, 320, 3))
+  vert_gradients = layers.conv2d_in_plane(image,
+                                          kernel=[1, -1],
+                                          kernel_size=[2, 1])
+  horz_gradients = layers.conv2d_in_plane(image,
+                                          kernel=[1, -1],
+                                          kernel_size=[1, 2])
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a 4-D tensor with dimensions [batch_size, height, width, channels].
+*  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
+    of the pooling. Can be an int if both values are the same.
+*  <b>`stride`</b>: a list of length 2 `[stride_height, stride_width]`.
+    Can be an int if both strides are the same. Note that presently
+    both strides must have the same value.
+*  <b>`padding`</b>: the padding type to use, either 'SAME' or 'VALID'.
+*  <b>`activation_fn`</b>: activation function.
+*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+    `normalize_fn` is provided then `biases_initializer` and
+    `biases_regularizer` are ignored and `biases` are not created nor added.
+*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`weights_initializer`</b>: An initializer for the weights.
+*  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
+*  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
+*  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
+*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+    able to reuse the layer scope must be given.
+*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+    a dictionay containing a different list of collection per variable.
+*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+
+##### Returns:
+
+  A `Tensor` representing the output of the operation.
+
+
+- - -
+
+### `tf.contrib.layers.convolution2d_transpose(*args, **kwargs)` {#convolution2d_transpose}
+
+Adds a convolution2d_transpose with an optional batch normalization layer.
+
+The function creates a variable called `weights`, representing the
+kernel, that is convolved with the input. If `batch_norm_params` is `None`, a
+second variable called 'biases' is added to the result of the operation.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, channels].
+*  <b>`num_outputs`</b>: integer, the number of output filters.
+*  <b>`kernel_size`</b>: a list of length 2 holding the [kernel_height, kernel_width] of
+    of the filters. Can be an int if both values are the same.
+*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width].
+    Can be an int if both strides are the same.  Note that presently
+    both strides must have the same value.
+*  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`activation_fn`</b>: activation function.
+*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+    `normalize_fn` is provided then `biases_initializer` and
+    `biases_regularizer` are ignored and `biases` are not created nor added.
+*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`weights_initializer`</b>: An initializer for the weights.
+*  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
+*  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
+*  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
+*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+    able to reuse the layer scope must be given.
+*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+    a dictionay containing a different list of collection per variable.
+*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`trainable`</b>: whether or not the variables should be trainable or not.
+*  <b>`scope`</b>: Optional scope for variable_op_scope.
+
+##### Returns:
+
+  a tensor representing the output of the operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if 'kernel_size' is not a list of length 2.
+
+
+- - -
+
+### `tf.contrib.layers.flatten(*args, **kwargs)` {#flatten}
+
+Flattens the input while maintaining the batch_size.
+
+  Assumes that the first dimension represents the batch.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a tensor of size [batch_size, ...].
+*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`scope`</b>: Optional scope for op_scope.
+
+##### Returns:
+
+  a flattened tensor with shape [batch_size, k].
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if inputs.shape is wrong.
+
+
+- - -
+
 ### `tf.contrib.layers.fully_connected(*args, **kwargs)` {#fully_connected}
 
 Adds a fully connected layer.
@@ -119,6 +321,217 @@ prior to the initial matrix multiply by `weights`.
 
 
 *  <b>`ValueError`</b>: if x has rank less than 2 or if its last dimension is not set.
+
+
+- - -
+
+### `tf.contrib.layers.max_pool2d(*args, **kwargs)` {#max_pool2d}
+
+Adds a Max Pooling op.
+
+It is assumed by the wrapper that the pooling is only done per image and not
+in depth or batch.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, depth].
+*  <b>`kernel_size`</b>: a list of length 2: [kernel_height, kernel_width] of the
+    pooling kernel over which the op is computed. Can be an int if both
+    values are the same.
+*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width].
+    Can be an int if both strides are the same.  Note that presently
+    both strides must have the same value.
+*  <b>`padding`</b>: the padding method, either 'VALID' or 'SAME'.
+*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`scope`</b>: Optional scope for op_scope.
+
+##### Returns:
+
+  a tensor representing the results of the pooling operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if 'kernel_size' is not a 2-D list
+
+
+- - -
+
+### `tf.contrib.layers.one_hot_encoding(*args, **kwargs)` {#one_hot_encoding}
+
+Transform numeric labels into onehot_labels using tf.one_hot.
+
+##### Args:
+
+
+*  <b>`labels`</b>: [batch_size] target labels.
+*  <b>`num_classes`</b>: total number of classes.
+*  <b>`on_value`</b>: A scalar defining the on-value.
+*  <b>`off_value`</b>: A scalar defining the off-value.
+*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`scope`</b>: Optional scope for op_scope.
+
+##### Returns:
+
+  one hot encoding of the labels.
+
+
+- - -
+
+### `tf.contrib.layers.repeat(inputs, repetitions, layer, *args, **kwargs)` {#repeat}
+
+Applies the same layer with the same arguments repeatedly.
+
+```python
+  y = repeat(x, 3, conv2d, 64, [3, 3], scope='conv1')
+  # It is equivalent to:
+
+  x = conv2d(x, 64, [3, 3], scope='conv1/conv1_1')
+  x = conv2d(x, 64, [3, 3], scope='conv1/conv1_2')
+  y = conv2d(x, 64, [3, 3], scope='conv1/conv1_3')
+```
+
+If the `scope` argument is not given in `kwargs`, it is set to
+`layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+objects). If neither `__name__` nor `func.__name__` is available, the
+layers are called with `scope='stack'`.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A `Tensor` suitable for layer.
+*  <b>`repetitions`</b>: Int, number of repetitions.
+*  <b>`layer`</b>: A layer with arguments `(inputs, *args, **kwargs)`
+*  <b>`*args`</b>: Extra args for the layer.
+*  <b>`**kwargs`</b>: Extra kwargs for the layer.
+
+##### Returns:
+
+  a tensor result of applying the layer, repetitions times.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the op is unknown or wrong.
+
+
+- - -
+
+### `tf.contrib.layers.separable_convolution2d(*args, **kwargs)` {#separable_convolution2d}
+
+Adds a depth-separable 2D convolution with optional batch_norm layer.
+
+This op first performs a depthwise convolution that acts separately on
+channels, creating a variable called `depthwise_weights`. If `num_outputs`
+is not None, it adds a pointwise convolution that mixes channels, creating a
+variable called `pointwise_weights`. Then, if `batch_norm_params` is None,
+it adds bias to the result, creating a variable called 'biases', otherwise
+it adds a batch normalization layer. It finally applies an activation function
+to produce the end result.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, channels].
+*  <b>`num_outputs`</b>: the number of pointwise convolution output filters. If is
+    None, then we skip the pointwise convolution stage.
+*  <b>`kernel_size`</b>: a list of length 2: [kernel_height, kernel_width] of
+    of the filters. Can be an int if both values are the same.
+*  <b>`depth_multiplier`</b>: the number of depthwise convolution output channels for
+    each input channel. The total number of depthwise convolution output
+    channels will be equal to `num_filters_in * depth_multiplier`.
+*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
+    depthwise convolution stride. Can be an int if both strides are the same.
+*  <b>`padding`</b>: one of 'VALID' or 'SAME'.
+*  <b>`activation_fn`</b>: activation function.
+*  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
+    `normalize_fn` is provided then `biases_initializer` and
+    `biases_regularizer` are ignored and `biases` are not created nor added.
+*  <b>`normalizer_params`</b>: normalization function parameters.
+*  <b>`weights_initializer`</b>: An initializer for the weights.
+*  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
+*  <b>`biases_initializer`</b>: An initializer for the biases. If None skip biases.
+*  <b>`biases_regularizer`</b>: Optional regularizer for the biases.
+*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+    able to reuse the layer scope must be given.
+*  <b>`variables_collections`</b>: optional list of collections for all the variables or
+    a dictionay containing a different list of collection per variable.
+*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`trainable`</b>: whether or not the variables should be trainable or not.
+*  <b>`scope`</b>: Optional scope for variable_op_scope.
+
+##### Returns:
+
+  A `Tensor` representing the output of the operation.
+
+
+- - -
+
+### `tf.contrib.layers.stack(inputs, layer, stack_args, **kwargs)` {#stack}
+
+Builds a stack of layers by applying layer repeatedly using stack_args.
+
+`stack` allows you to repeatedly apply the same operation with different
+arguments `stack_args[i]`. For each application of the layer, `stack` creates
+a new scope appended with an increasing number. For example:
+
+```python
+  y = stack(x, fully_connected, [32, 64, 128], scope='fc')
+  # It is equivalent to:
+
+  x = fully_connected(x, 32, scope='fc/fc_1')
+  x = fully_connected(x, 64, scope='fc/fc_2')
+  y = fully_connected(x, 128, scope='fc/fc_3')
+```
+
+If the `scope` argument is not given in `kwargs`, it is set to
+`layer.__name__`, or `layer.func.__name__` (for `functools.partial`
+objects). If neither `__name__` nor `func.__name__` is available, the
+layers are called with `scope='stack'`.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A `Tensor` suitable for layer.
+*  <b>`layer`</b>: A layer with arguments `(inputs, *args, **kwargs)`
+*  <b>`stack_args`</b>: A list/tuple of parameters for each call of layer.
+*  <b>`**kwargs`</b>: Extra kwargs for the layer.
+
+##### Returns:
+
+  a `Tensor` result of applying the stacked layers.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the op is unknown or wrong.
+
+
+- - -
+
+### `tf.contrib.layers.unit_norm(*args, **kwargs)` {#unit_norm}
+
+Normalizes the given input across the specified dimension to unit length.
+
+Note that the rank of `input` must be known.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A `Tensor` of arbitrary size.
+*  <b>`dim`</b>: The dimension along which the input is normalized.
+*  <b>`epsilon`</b>: A small value to add to the inputs to avoid dividing by zero.
+*  <b>`scope`</b>: Optional scope for variable_op_scope.
+
+##### Returns:
+
+  The normalized `Tensor`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If dim is smaller than the number of dimensions in 'inputs'.
 
 
 
