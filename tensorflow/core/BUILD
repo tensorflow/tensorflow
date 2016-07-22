@@ -147,6 +147,7 @@ cc_library(
         "lib/histogram/histogram.h",
         "lib/io/inputbuffer.h",  # TODO(josh11b): make internal
         "lib/io/path.h",
+        "lib/io/proto_encode_helper.h",
         "lib/io/record_reader.h",
         "lib/io/record_writer.h",
         "lib/io/table.h",
