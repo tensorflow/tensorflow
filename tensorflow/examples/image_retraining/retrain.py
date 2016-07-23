@@ -382,10 +382,8 @@ def write_list_of_floats_to_file(list_of_floats , file_path):
   """
 
   s = struct.pack('d' * BOTTLENECK_TENSOR_SIZE, *list_of_floats)
-
-  f = open(file_path, 'wb')
-  f.write(s)
-  f.close()
+  with open(file_path, 'wb') as f:
+    f.write(s)
 
 
 def read_list_of_floats_from_file(file_path):
@@ -398,11 +396,9 @@ def read_list_of_floats_from_file(file_path):
 
   """
 
-  f = open(file_path, 'rb')
-  s = []
-  s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
-  f.close()
-  return list(s)
+  with open(file_path, 'rb') as f:
+    s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
+    return list(s)
 
 
 bottleneck_path_2_bottleneck_values = {}
