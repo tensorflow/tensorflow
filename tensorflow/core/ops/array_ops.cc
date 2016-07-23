@@ -959,41 +959,118 @@ REGISTER_OP("GatherNd")
     .SetShapeFn([](InferenceContext* c) {
       const Shape* params = c->input(0);
       const Shape* indices;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &indices));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices));
       const Dimension* r_dim = c->Dim(indices, -1);
 
-      // Assert params.rank and r_dim are equal.
-      if (c->RankKnown(params)) {
-        TF_RETURN_IF_ERROR(c->WithValue(r_dim, c->Rank(params), &r_dim));
-      } else if (c->ValueKnown(r_dim)) {
-        TF_RETURN_IF_ERROR(c->WithRank(params, c->Value(r_dim), &params));
+      if (!c->RankKnown(params) || !c->ValueKnown(r_dim)) {
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+
+      if (c->Value(r_dim) > c->Rank(params)) {
+        return errors::InvalidArgument(
+            "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
+            c->DebugString(indices), " and params shape: ",
+            c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
+      const Shape* indices_slice;
+      const Shape* params_slice;
+      TF_RETURN_IF_ERROR(c->Subshape(indices, 0, -1, &indices_slice));
+      TF_RETURN_IF_ERROR(c->Subshape(params, c->Value(r_dim), &params_slice));
       const Shape* out;
-      TF_RETURN_IF_ERROR(c->Subshape(indices, 0, -1, &out));
+      TF_RETURN_IF_ERROR(c->Concatenate(indices_slice, params_slice, &out));
       c->set_output(0, out);
       return Status::OK();
     })
     .Doc(R"doc(
-Gather values from `params` according to `indices`.
+Gather values or slices from `params` according to `indices`.
+
+`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.
 
 `indices` must be integer tensor, containing indices into `params`.
-It must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.
-The innermost dimension of `indices` (with length `R`) corresponds to the
-indices of `params`.
+It must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.
 
-Produces an output tensor with shape `[d_0, ..., d_{n-1}]` where:
+The innermost dimension of `indices` (with length `R`) corresponds to
+indices into elements (if `R = M`) or slices (if `R < M`) along the `N`th
+dimension of `params`.
 
-    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]
+Produces an output tensor with shape
 
-e.g. for `indices` a matrix:
+    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].
 
-    output[i] = params[indices[i, :]]
+Some examples below.
 
-params: R-D.  The tensor from which to gather values.
-indices: (N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`.
-output: N-D.  Values from `params` gathered from indices given by `indices`.
+Simple indexing into a matrix:
+
+    indices = [[0, 0], [1, 1]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = ['a', 'd']
+
+Slice indexing into a matrix:
+
+    indices = [[1], [0]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['c', 'd'], ['a', 'b']]
+
+Indexing into a 3-tensor:
+
+    indices = [[1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['a1', 'b1'], ['c1', 'd1']]]
+
+
+    indices = [[0, 1], [1, 0]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['c0', 'd0'], ['a1', 'b1']]
+
+
+    indices = [[0, 0, 1], [1, 0, 1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = ['b0', 'b1']
+
+Batched indexing into a matrix:
+
+    indices = [[[0, 0]], [[0, 1]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['a'], ['b']]
+
+Batched slice indexing into a matrix:
+
+    indices = [[[1]], [[0]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [[['c', 'd']], [['a', 'b']]]
+
+Batched indexing into a 3-tensor:
+
+    indices = [[[1]], [[0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[[['a1', 'b1'], ['c1', 'd1']]],
+              [[['a0', 'b0'], ['c0', 'd0']]]]
+
+
+    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['c0', 'd0'], ['a1', 'b1']],
+              [['a0', 'b0'], ['c1', 'd1']]]
+
+
+    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['b0', 'b1'], ['d0', 'c1']]
+
+
+params: `M-D`.  The tensor from which to gather values.
+indices: `(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`.
+output: `(N+M-R)-D`.  Values from `params` gathered from indices given by
+  `indices`.
 )doc");
 
 // --------------------------------------------------------------------------
