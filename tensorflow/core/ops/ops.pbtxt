@@ -5904,17 +5904,17 @@ op {
   name: "GatherNd"
   input_arg {
     name: "params"
-    description: "R-D.  The tensor from which to gather values."
+    description: "`M-D`.  The tensor from which to gather values."
     type_attr: "Tparams"
   }
   input_arg {
     name: "indices"
-    description: "(N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`."
+    description: "`(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`."
     type_attr: "Tindices"
   }
   output_arg {
     name: "output"
-    description: "N-D.  Values from `params` gathered from indices given by `indices`."
+    description: "`(N+M-R)-D`.  Values from `params` gathered from indices given by\n`indices`."
     type_attr: "Tparams"
   }
   attr {
@@ -5931,8 +5931,8 @@ op {
       }
     }
   }
-  summary: "Gather values from `params` according to `indices`."
-  description: "`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.\nThe innermost dimension of `indices` (with length `R`) corresponds to the\nindices of `params`.\n\nProduces an output tensor with shape `[d_0, ..., d_{n-1}]` where:\n\n    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]\n\ne.g. for `indices` a matrix:\n\n    output[i] = params[indices[i, :]]"
+  summary: "Gather values or slices from `params` according to `indices`."
+  description: "`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.\n\n`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.\n\nThe innermost dimension of `indices` (with length `R`) corresponds to\nindices into elements (if `R = M`) or slices (if `R < M`) along the `N`th\ndimension of `params`.\n\nProduces an output tensor with shape\n\n    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n\nSlice indexing into a matrix:\n\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n\nIndexing into a 3-tensor:\n\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n\nBatched indexing into a matrix:\n\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n\nBatched slice indexing into a matrix:\n\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n\nBatched indexing into a 3-tensor:\n\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]"
 }
 op {
   name: "GetSessionHandle"
