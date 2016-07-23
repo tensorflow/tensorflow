@@ -371,13 +371,13 @@ def ensure_dir_exists(dir_name):
   if not os.path.exists(dir_name):
     os.makedirs(dir_name)
 
-	
+
 def write_list_of_floats_to_file(list_of_floats , file_path):
   """Writes a given list of floats to a binary file.
 
   Args:
     list_of_floats: List of floats we want to write to a file.
-	file_path: Path to a file where list of floats will be stored.
+    file_path: Path to a file where list of floats will be stored.
 
   """
 
@@ -387,28 +387,29 @@ def write_list_of_floats_to_file(list_of_floats , file_path):
   f.write(s)
   f.close()
 
-	
+
 def read_list_of_floats_from_file(file_path):
   """Reads list of floats from a given file.
 
   Args:    
-	file_path: Path to a file where list of floats was stored.
+    file_path: Path to a file where list of floats was stored.
   Returns:
     Array of bottleneck values (list of floats).
 
   """
+
   f = open(file_path, 'rb')
   s = []
   s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
   f.close()
-  #print (list(s))
-  
+  # print (list(s))
+
   return list(s)
-	
+
 
 bottleneck_path_2_bottleneck_values = {}
 
-	
+
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                              category, bottleneck_dir, jpeg_data_tensor,
                              bottleneck_tensor):
@@ -440,15 +441,15 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
   ensure_dir_exists(sub_dir_path)
   bottleneck_path = get_bottleneck_path(image_lists, label_name, index,
                                         bottleneck_dir, category)
-										
-  #if key in map, take it form there and  return
-  #else
+
+  # if key in map, take it form there and  return
+  # else
   #     if file does not exist
   #         create bottleneck file
   #     read file from disk
   #     put bottleneck values to map
   #     return
-  
+
   if bottleneck_path in bottleneck_path_2_bottleneck_values:
       assert (bottleneck_path in bottleneck_path_2_bottleneck_values), "Attempt to use unassigned key value."
       return bottleneck_path_2_bottleneck_values[bottleneck_path]
@@ -472,7 +473,6 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
       bottleneck_path_2_bottleneck_values[bottleneck_path] = bottleneck_values
 
       return bottleneck_values
-
 
 
 def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
