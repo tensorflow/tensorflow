@@ -73,6 +73,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
   The simplest form of RNN network generated is:
+
     state = cell.zero_state(...)
     outputs = []
     for input_ in inputs:
