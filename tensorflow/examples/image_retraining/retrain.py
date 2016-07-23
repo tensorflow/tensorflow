@@ -402,8 +402,6 @@ def read_list_of_floats_from_file(file_path):
   s = []
   s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
   f.close()
-  # print (list(s))
-
   return list(s)
 
 
