@@ -85,7 +85,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
         with self.assertRaisesOpError(expected_err_re):
           sess.run(decoded_unwrapped + [log_probability])
 
-  def testCTCGreedyDecoder(self):
+  def _testCTCGreedyDecoder(self, dtype):
     """Test two batch entries - best path decoder."""
     max_time_steps = 6
     # depth == 4
@@ -98,7 +98,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
          [0.0, 0.9, 0.1, 0.0],  # t=3
          [0.0, 0.0, 0.0, 0.0],  # t=4 (ignored)
          [0.0, 0.0, 0.0, 0.0]],  # t=5 (ignored)
-        dtype=np.float32)
+        dtype=dtype)
     input_log_prob_matrix_0 = np.log(input_prob_matrix_0)
 
     seq_len_1 = 5
@@ -111,7 +111,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
          [0.0, 0.9, 0.1, 0.1],  # t=3
          [0.9, 0.1, 0.0, 0.0],  # t=4
          [0.0, 0.0, 0.0, 0.0]],  # t=5 (ignored)
-        dtype=np.float32)
+        dtype=dtype)
     input_log_prob_matrix_1 = np.log(input_prob_matrix_1)
 
     # len max_time_steps array of batch_size x depth matrices
@@ -126,7 +126,7 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
     log_prob_truth = np.array([
         np.sum(-np.log([1.0, 0.6, 0.6, 0.9])),
         np.sum(-np.log([0.9, 0.9, 0.9, 0.9, 0.9]))
-    ], np.float32)[:, np.newaxis]
+    ], dtype)[:, np.newaxis]
 
     # decode_truth: one SparseTensor (ix, vals, shape)
     decode_truth = [
@@ -145,6 +145,10 @@ class CTCGreedyDecoderTest(tf.test.TestCase):
     self._testCTCDecoder(
         tf.nn.ctc_greedy_decoder,
         inputs, seq_lens, log_prob_truth, decode_truth)
+
+  def testCTCGreedyDecoder(self):
+    self._testCTCGreedyDecoder(np.float32)
+    self._testCTCGreedyDecoder(np.float64)
 
   def testCTCDecoderBeamSearch(self):
     """Test one batch, two beams - hibernating beam search."""
