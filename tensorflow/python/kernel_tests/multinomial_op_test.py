@@ -181,6 +181,14 @@ class MultinomialTest(tf.test.TestCase):
       with self.assertRaisesOpError("num_classes should be positive"):
         x.eval()
 
+  def testNegativeMinLogits(self):
+    tf.set_random_seed(78844)
+    with self.test_session(use_gpu=self.use_gpu):
+      logits = tf.constant([[np.finfo(np.float32).min] * 1023 + [0]])
+      num_samples = 1000
+      samples = tf.multinomial(logits, num_samples).eval()
+      self.assertAllEqual([[1023] * num_samples], samples)
+
 
 class MultinomialGpuTest(MultinomialTest):
   use_gpu = True
