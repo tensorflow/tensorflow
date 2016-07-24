@@ -565,6 +565,9 @@
 * **[Wraps python functions](../../api_docs/python/script_ops.md)**:
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
+* **[Summary Operations](../../api_docs/python/summary.md)**:
+  * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
+
 * **[Testing](../../api_docs/python/test.md)**:
   * [`assert_equal_graph_def`](../../api_docs/python/test.md#assert_equal_graph_def)
   * [`compute_gradient`](../../api_docs/python/test.md#compute_gradient)
@@ -583,14 +586,17 @@
   * [`SampleValue`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#SampleValue)
   * [`score_function`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#score_function)
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#StochasticTensor)
-  * [`surrogate_losses`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_losses)
+  * [`surrogate_loss`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_loss)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#value_type)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
+  * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
   * [`batch_matrix_diag_transform`](../../api_docs/python/contrib.distributions.md#batch_matrix_diag_transform)
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
+  * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)
   * [`Categorical`](../../api_docs/python/contrib.distributions.md#Categorical)
   * [`Chi2`](../../api_docs/python/contrib.distributions.md#Chi2)
+  * [`Dirichlet`](../../api_docs/python/contrib.distributions.md#Dirichlet)
   * [`DirichletMultinomial`](../../api_docs/python/contrib.distributions.md#DirichletMultinomial)
   * [`Distribution`](../../api_docs/python/contrib.distributions.md#Distribution)
   * [`Exponential`](../../api_docs/python/contrib.distributions.md#Exponential)
@@ -599,6 +605,7 @@
   * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
   * [`Laplace`](../../api_docs/python/contrib.distributions.md#Laplace)
   * [`MultivariateNormalCholesky`](../../api_docs/python/contrib.distributions.md#MultivariateNormalCholesky)
+  * [`MultivariateNormalDiag`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiag)
   * [`MultivariateNormalFull`](../../api_docs/python/contrib.distributions.md#MultivariateNormalFull)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
   * [`normal_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_congugates_known_sigma_predictive)
@@ -650,17 +657,28 @@
 
 * **[Layers (contrib)](../../api_docs/python/contrib.layers.md)**:
   * [`apply_regularization`](../../api_docs/python/contrib.layers.md#apply_regularization)
+  * [`avg_pool2d`](../../api_docs/python/contrib.layers.md#avg_pool2d)
+  * [`batch_norm`](../../api_docs/python/contrib.layers.md#batch_norm)
   * [`convolution2d`](../../api_docs/python/contrib.layers.md#convolution2d)
+  * [`convolution2d_in_plane`](../../api_docs/python/contrib.layers.md#convolution2d_in_plane)
+  * [`convolution2d_transpose`](../../api_docs/python/contrib.layers.md#convolution2d_transpose)
+  * [`flatten`](../../api_docs/python/contrib.layers.md#flatten)
   * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
   * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
   * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
+  * [`max_pool2d`](../../api_docs/python/contrib.layers.md#max_pool2d)
+  * [`one_hot_encoding`](../../api_docs/python/contrib.layers.md#one_hot_encoding)
   * [`optimize_loss`](../../api_docs/python/contrib.layers.md#optimize_loss)
+  * [`repeat`](../../api_docs/python/contrib.layers.md#repeat)
+  * [`separable_convolution2d`](../../api_docs/python/contrib.layers.md#separable_convolution2d)
+  * [`stack`](../../api_docs/python/contrib.layers.md#stack)
   * [`sum_regularizer`](../../api_docs/python/contrib.layers.md#sum_regularizer)
   * [`summarize_activation`](../../api_docs/python/contrib.layers.md#summarize_activation)
   * [`summarize_activations`](../../api_docs/python/contrib.layers.md#summarize_activations)
   * [`summarize_collection`](../../api_docs/python/contrib.layers.md#summarize_collection)
   * [`summarize_tensor`](../../api_docs/python/contrib.layers.md#summarize_tensor)
   * [`summarize_tensors`](../../api_docs/python/contrib.layers.md#summarize_tensors)
+  * [`unit_norm`](../../api_docs/python/contrib.layers.md#unit_norm)
   * [`variance_scaling_initializer`](../../api_docs/python/contrib.layers.md#variance_scaling_initializer)
   * [`xavier_initializer`](../../api_docs/python/contrib.layers.md#xavier_initializer)
   * [`xavier_initializer_conv2d`](../../api_docs/python/contrib.layers.md#xavier_initializer_conv2d)
@@ -697,6 +715,23 @@
   * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
   * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)
   * [`train`](../../api_docs/python/contrib.learn.md#train)
+
+* **[Monitors (contrib)](../../api_docs/python/contrib.learn.monitors.md)**:
+  * [`BaseMonitor`](../../api_docs/python/contrib.learn.monitors.md#BaseMonitor)
+  * [`CaptureVariable`](../../api_docs/python/contrib.learn.monitors.md#CaptureVariable)
+  * [`CheckpointSaver`](../../api_docs/python/contrib.learn.monitors.md#CheckpointSaver)
+  * [`EveryN`](../../api_docs/python/contrib.learn.monitors.md#EveryN)
+  * [`ExportMonitor`](../../api_docs/python/contrib.learn.monitors.md#ExportMonitor)
+  * [`get_default_monitors`](../../api_docs/python/contrib.learn.monitors.md#get_default_monitors)
+  * [`GraphDump`](../../api_docs/python/contrib.learn.monitors.md#GraphDump)
+  * [`LoggingTrainable`](../../api_docs/python/contrib.learn.monitors.md#LoggingTrainable)
+  * [`NanLoss`](../../api_docs/python/contrib.learn.monitors.md#NanLoss)
+  * [`PrintTensor`](../../api_docs/python/contrib.learn.monitors.md#PrintTensor)
+  * [`StepCounter`](../../api_docs/python/contrib.learn.monitors.md#StepCounter)
+  * [`StopAtStep`](../../api_docs/python/contrib.learn.monitors.md#StopAtStep)
+  * [`SummarySaver`](../../api_docs/python/contrib.learn.monitors.md#SummarySaver)
+  * [`SummaryWriterCache`](../../api_docs/python/contrib.learn.monitors.md#SummaryWriterCache)
+  * [`ValidationMonitor`](../../api_docs/python/contrib.learn.monitors.md#ValidationMonitor)
 
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)

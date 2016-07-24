@@ -67,7 +67,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -84,14 +84,14 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.  If `strict` is
-    `False`, this assertion is turned off.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
-    guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    but are only a distribution over non-negative integers.  If
+    `validate_args` is `False`, this assertion is turned off.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
+    `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
+    not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -106,6 +106,13 @@ dist = DirichletMultinomial(2.0, [1.1, 2.0])
 # Define a 2-batch of 3-class distributions.
 dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 ```
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.allow_nan_stats` {#DirichletMultinomial.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -332,7 +339,31 @@ probability includes a combinatorial coefficient.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.sample(n, seed=None, name='sample')` {#DirichletMultinomial.sample}
+#### `tf.contrib.distributions.DirichletMultinomial.sample(sample_shape=(), seed=None, name='sample')` {#DirichletMultinomial.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.sample_n(n, seed=None, name='sample_n')` {#DirichletMultinomial.sample_n}
 
 Generate `n` samples.
 
@@ -359,22 +390,40 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
+#### `tf.contrib.distributions.DirichletMultinomial.validate_args` {#DirichletMultinomial.validate_args}
 
 Boolean describing behavior on invalid input.
 
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
+#### `tf.contrib.distributions.DirichletMultinomial.variance(name='mean')` {#DirichletMultinomial.variance}
 
-Boolean describing behavior when a stat is undefined for batch member.
+Class variances for every batch member.
+
+The variance for each batch member is defined as the following:
+
+```
+Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+  (n + alpha_0) / (1 + alpha_0)
+```
+
+where `alpha_0 = sum_j alpha_j`.
+
+The covariance between elements in a batch is defined as:
+
+```
+Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+  (n + alpha_0) / (1 + alpha_0)
+```
+
+##### Args:
 
 
-- - -
+*  <b>`name`</b>: The name for this op.
 
-#### `tf.contrib.distributions.DirichletMultinomial.variance(name='variance')` {#DirichletMultinomial.variance}
+##### Returns:
 
-Variance of the distribution.
+  A `Tensor` representing the variances for each batch member.
 
 

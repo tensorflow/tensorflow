@@ -88,7 +88,7 @@ class OneHotOp : public OpKernel {
     // prefix_dim_size == # of elements before the axis
     // depth_v == # of elements per axis
     // suffix_dim_size == # of elements after the axis
-    TI prefix_dim_size = 1;
+    int64 prefix_dim_size = 1;
     for (int i = 0; i < axis; ++i) {
       prefix_dim_size *= indices_shape.dim_size(i);
     }
@@ -121,8 +121,9 @@ class OneHotOp : public OpKernel {
                               .HostMemory("depth"),               \
                           OneHotOp<CPUDevice, type, index_type>);
 
-#define REGISTER_ONE_HOT(type)          \
-  REGISTER_ONE_HOT_INDEX(type, int32);  \
+#define REGISTER_ONE_HOT(type)         \
+  REGISTER_ONE_HOT_INDEX(type, uint8); \
+  REGISTER_ONE_HOT_INDEX(type, int32); \
   REGISTER_ONE_HOT_INDEX(type, int64)
 
 TF_CALL_ALL_TYPES(REGISTER_ONE_HOT);
@@ -140,9 +141,10 @@ namespace functor {
       typename TTypes<T, 3>::Tensor* output);                               \
   extern template struct OneHot<GPUDevice, T, TI>;
 
-#define DECLARE_GPU_SPEC(T)          \
-  DECLARE_GPU_SPEC_INDEX(T, int32);  \
-  DECLARE_GPU_SPEC_INDEX(T, int64);  \
+#define DECLARE_GPU_SPEC(T)         \
+  DECLARE_GPU_SPEC_INDEX(T, uint8); \
+  DECLARE_GPU_SPEC_INDEX(T, int32); \
+  DECLARE_GPU_SPEC_INDEX(T, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
@@ -160,9 +162,10 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
                               .HostMemory("depth"),               \
                           OneHotOp<GPUDevice, type, index_type>);
 
-#define REGISTER_ONE_HOT_GPU(type)          \
-  REGISTER_ONE_HOT_GPU_INDEX(type, int32);  \
-  REGISTER_ONE_HOT_GPU_INDEX(type, int64);  \
+#define REGISTER_ONE_HOT_GPU(type)         \
+  REGISTER_ONE_HOT_GPU_INDEX(type, uint8); \
+  REGISTER_ONE_HOT_GPU_INDEX(type, int32); \
+  REGISTER_ONE_HOT_GPU_INDEX(type, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ONE_HOT_GPU);
 

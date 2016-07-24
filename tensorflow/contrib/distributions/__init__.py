@@ -26,6 +26,7 @@ initialized with parameters that define the distributions.
 ### Univariate (scalar) distributions
 
 @@Bernoulli
+@@Beta
 @@Categorical
 @@Chi2
 @@Exponential
@@ -40,12 +41,14 @@ initialized with parameters that define the distributions.
 
 #### Multivariate normal
 
+@@MultivariateNormalDiag
 @@MultivariateNormalFull
 @@MultivariateNormalCholesky
 @@batch_matrix_diag_transform
 
 #### Other multivariate distributions
 
+@@Dirichlet
 @@DirichletMultinomial
 
 ### Transformed distributions
@@ -75,8 +78,10 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
+from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
+from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
 from tensorflow.contrib.distributions.python.ops.exponential import *

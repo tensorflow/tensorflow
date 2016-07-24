@@ -118,15 +118,16 @@ Status RunBenchmark(DataType input_data_type, TensorShape input_shape,
   s = session->Run(run_options, input_tensors, output_names, {},
                    &output_tensors, &run_metadata);
 
+  if (!s.ok()) {
+    LOG(ERROR) << "Error during inference: " << s;
+  }
+
   assert(run_metadata.has_step_stats());
 
   const StepStats& step_stats = run_metadata.step_stats();
 
   stats->ProcessStepStats(step_stats);
 
-  if (!s.ok()) {
-    LOG(ERROR) << "Error during inference: " << s;
-  }
   return s;
 }
 

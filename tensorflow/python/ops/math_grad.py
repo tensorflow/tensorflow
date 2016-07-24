@@ -551,8 +551,10 @@ def _PowGrad(op, grad):
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
   gx = array_ops.reshape(
       math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
+  # Avoid false singularity at x = 0
+  log_x = math_ops.select(x > 0, math_ops.log(x), array_ops.zeros_like(x))
   gy = array_ops.reshape(
-      math_ops.reduce_sum(grad * z * math_ops.log(x), ry), sy)
+      math_ops.reduce_sum(grad * z * log_x, ry), sy)
   return gx, gy
 
 

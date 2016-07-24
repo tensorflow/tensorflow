@@ -20,7 +20,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, strict=True, strict_statistics=True, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -36,12 +36,12 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
@@ -49,6 +49,13 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.allow_nan_stats` {#Gamma.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -260,7 +267,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -319,7 +326,31 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.sample(n, seed=None, name='sample')` {#Gamma.sample}
+#### `tf.contrib.distributions.Gamma.sample(sample_shape=(), seed=None, name='sample')` {#Gamma.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.sample_n(n, seed=None, name='sample_n')` {#Gamma.sample_n}
 
 Draws `n` samples from the Gamma distribution(s).
 
@@ -349,16 +380,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.strict` {#Gamma.strict}
+#### `tf.contrib.distributions.Gamma.validate_args` {#Gamma.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Gamma.strict_statistics` {#Gamma.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

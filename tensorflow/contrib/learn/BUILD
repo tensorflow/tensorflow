@@ -251,7 +251,10 @@ py_test(
     size = "medium",
     srcs = ["python/learn/tests/early_stopping_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # http://b/28555477
+    tags = [
+        "manual",
+        "noasan",  # http://b/28555477
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -432,6 +435,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # http://b/30035845
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",

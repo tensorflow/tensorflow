@@ -8,7 +8,7 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, strict_statistics=True, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=True, allow_nan_stats=False, name='Exponential')` {#Exponential.__init__}
 
 Construct Exponential distribution with parameter `lam`.
 
@@ -17,14 +17,21 @@ Construct Exponential distribution with parameter `lam`.
 
 *  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
     `lam` must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
+    methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.allow_nan_stats` {#Exponential.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -243,7 +250,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -302,7 +309,31 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.sample(n, seed=None, name=None)` {#Exponential.sample}
+#### `tf.contrib.distributions.Exponential.sample(sample_shape=(), seed=None, name='sample')` {#Exponential.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.sample_n(n, seed=None, name='sample_n')` {#Exponential.sample_n}
 
 Sample `n` observations from the Exponential Distributions.
 
@@ -329,16 +360,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.strict` {#Exponential.strict}
+#### `tf.contrib.distributions.Exponential.validate_args` {#Exponential.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.strict_statistics` {#Exponential.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

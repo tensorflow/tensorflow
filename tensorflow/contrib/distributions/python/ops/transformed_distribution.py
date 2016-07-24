@@ -217,7 +217,7 @@ class TransformedDistribution(distribution.Distribution):
     """
     return super(TransformedDistribution, self).prob(y, name=name)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations.
 
     Samples from the base distribution and then passes through the transform.
@@ -232,7 +232,7 @@ class TransformedDistribution(distribution.Distribution):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name):
-        samples = self._base_dist.sample(n=n, seed=seed)
+        samples = self._base_dist.sample_n(n=n, seed=seed)
         with ops.name_scope("transform"):
           transformed = self._transform(samples)
           self._inverse_cache[transformed] = samples
@@ -243,12 +243,12 @@ class TransformedDistribution(distribution.Distribution):
     return self._base_dist.is_reparameterized
 
   @property
-  def strict_statistics(self):
-    return self._base_dist.strict_statistics
+  def allow_nan_stats(self):
+    return self._base_dist.allow_nan_stats
 
   @property
-  def strict(self):
-    return self._base_dist.strict
+  def validate_args(self):
+    return self._base_dist.validate_args
 
   @property
   def is_continuous(self):

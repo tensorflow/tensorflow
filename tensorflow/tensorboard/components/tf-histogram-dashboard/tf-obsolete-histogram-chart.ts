@@ -16,7 +16,7 @@ limitations under the License.
 
 module TF {
   export class HistogramChart {
-    protected dataFn: TF.ChartHelpers.DataFn;
+    protected dataFn: VZ.ChartHelpers.DataFn;
     protected tag: string;
     private run2datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];
@@ -36,7 +36,7 @@ module TF {
     private plots: Plottable.XYPlot<number|Date, number>[];
 
     constructor(
-        tag: string, dataFn: TF.ChartHelpers.DataFn, xType: string,
+        tag: string, dataFn: VZ.ChartHelpers.DataFn, xType: string,
         colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
       this.dataFn = dataFn;
       this.run2datasets = {};
@@ -83,15 +83,15 @@ module TF {
       if (this.outer) {
         this.outer.destroy();
       }
-      let xComponents = TF.ChartHelpers.getXComponents(xType);
+      let xComponents = VZ.ChartHelpers.getXComponents(xType);
       this.xAccessor = xComponents.accessor;
       this.xScale = xComponents.scale;
       this.xAxis = xComponents.axis;
       this.xAxis.margin(0).tickLabelPadding(3);
       this.yScale = new Plottable.Scales.Linear();
       this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
-      let yFormatter = TF.ChartHelpers.multiscaleFormatter(
-          TF.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
+      let yFormatter = VZ.ChartHelpers.multiscaleFormatter(
+          VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
       this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
       this.yAxis.usesTextWidthApproximation(true);
 

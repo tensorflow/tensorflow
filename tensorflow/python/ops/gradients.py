@@ -438,23 +438,24 @@ def gradients(ys,
         grad_fn = None
         # pylint: disable=protected-access
         is_func_call = ops.get_default_graph()._is_function(op.type)
-        if not is_func_call and any(
-            isinstance(g, ops.Tensor) or g for g in out_grads) and (
-                op._id not in stop_ops):
-          # pylint: enable=protected-access
-          # A grad_fn must be defined, either as a function or as None
-          # for ops that do not have gradients.
-          try:
-            grad_fn = ops.get_gradient_function(op)
-          except LookupError:
-            raise LookupError(
-                "No gradient defined for operation '%s' (op type: %s)" %
-                (op.name, op.type))
-
+        has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
+        if has_out_grads and (op._id not in stop_ops):
+          if is_func_call:
+            grad_fn = ops.get_default_graph()._function_python_gradient.get(
+                op.type, None)
+            # pylint: enable=protected-access
+          else:
+            # A grad_fn must be defined, either as a function or as None
+            # for ops that do not have gradients.
+            try:
+              grad_fn = ops.get_gradient_function(op)
+            except LookupError:
+              raise LookupError(
+                  "No gradient defined for operation '%s' (op type: %s)" %
+                  (op.name, op.type))
         if loop_state:
           loop_state.EnterGradWhileContext(op, before=False)
-        if (grad_fn or is_func_call) and any(
-            isinstance(g, ops.Tensor) or g for g in out_grads):
+        if (grad_fn or is_func_call) and has_out_grads:
           # NOTE: If _AggregatedGrads didn't compute a value for the i'th
           # output, it means that the cost does not depend on output[i],
           # therefore dC/doutput[i] is 0.
@@ -471,7 +472,11 @@ def gradients(ys,
             # pylint: disable=protected-access
             with ops.get_default_graph()._original_op(op):
               # pylint: enable=protected-access
-              if is_func_call:
+              if grad_fn:
+                # If grad_fn was found, do not use SymbolicGradient even for
+                # functions.
+                in_grads = _AsList(grad_fn(op, *out_grads))
+              else:
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
                 f_in = [x for x in op.inputs] + out_grads
@@ -480,8 +485,6 @@ def gradients(ys,
                 in_grads = _AsList(functional_ops._symbolic_gradient(
                     f_in, f_types, op.type))
                 # pylint: enable=protected-access
-              else:
-                in_grads = _AsList(grad_fn(op, *out_grads))
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len(
                   [x for x in in_grads if x is not None]) > 1:

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import glob
 import os
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -199,6 +200,16 @@ class EvaluationTest(tf.test.TestCase):
           sess, init_op=init_op, eval_op=update_op)
       self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
 
+  def testLatestCheckpointReturnsNoneAfterTimeout(self):
+    start = time.time()
+    ret = slim.evaluation.wait_for_new_checkpoint(
+        '/non-existent-dir', 'foo', timeout=1.0, seconds_to_sleep=0.5)
+    end = time.time()
+    self.assertIsNone(ret)
+    # We've waited one time.
+    self.assertGreater(end, start + 0.5)
+    # The timeout kicked in.
+    self.assertLess(end, start + 1.1)
 
 if __name__ == '__main__':
   tf.test.main()

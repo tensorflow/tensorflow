@@ -339,8 +339,9 @@ class Coordinator(object):
       if self._exc_info_to_raise:
         six.reraise(*self._exc_info_to_raise)
       elif stragglers:
-        raise RuntimeError("Coordinator stopped with threads still running: %s",
-                           " ".join(stragglers))
+        raise RuntimeError(
+            "Coordinator stopped with threads still running: %s" %
+            " ".join(stragglers))
 
 
 # Threads for the standard services.

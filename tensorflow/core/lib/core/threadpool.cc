@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -30,6 +31,7 @@ struct EigenEnvironment {
   typedef Thread EnvThread;
   struct Task {
     std::function<void()> f;
+    Context context;
     uint64 trace_id;
   };
 
@@ -56,10 +58,11 @@ struct EigenEnvironment {
       port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
                                  id);
     }
-    return Task{std::move(f), id};
+    return Task{std::move(f), Context(), id};
   }
 
   void ExecuteTask(const Task& t) {
+    WithContext wc(t.context);
     if (t.trace_id != 0) {
       port::Tracing::ScopedActivity region(
           port::Tracing::EventCategory::kRunClosure, t.trace_id);

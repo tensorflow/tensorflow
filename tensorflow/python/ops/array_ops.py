@@ -1083,15 +1083,24 @@ def batch_matrix_transpose(a, name="batch_matrix_transpose"):
   """
   with ops.op_scope([a], name):
     a = ops.convert_to_tensor(a, name="a")
-    ndims = a.get_shape().ndims
+
+    # If we know the number of dimensions (statically), we can do two things:
+    # 1. Check that `a` is a (batch) matrix.
+    # 2. Use a python list for perm.  This preserves static shape information
+    #    and avoids extra computations.
+    a_shape = a.get_shape()
+    ndims = a_shape.ndims
     if ndims is not None:
       if ndims < 2:
         raise ValueError(
             "Argument 'a' should be a (batch) matrix, with rank >= 2.  Found: "
-            "%s" % a.get_shape())
-    a_rank = rank(a)
-    perm = concat(
-        0, (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]))
+            "%s" % a_shape)
+      perm = list(range(ndims - 2)) + [ndims - 1] + [ndims - 2]
+    else:
+      a_rank = rank(a)
+      perm = concat(
+          0, (gen_math_ops._range(0, a_rank - 2, 1), [a_rank - 1, a_rank - 2]))
+
     return transpose(a, perm=perm)
 # pylint: enable=invalid-name
 
@@ -1670,10 +1679,20 @@ def _GatherShape(op):
 def _GatherNdShape(op):
   """Shape function for array_ops.gather_nd."""
   params_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape().with_rank_at_least(2)
-  if indices_shape.ndims is not None:
-    indices_shape[-1].merge_with(params_shape.ndims)
-  return [indices_shape[:-1]]
+  indices_shape = op.inputs[1].get_shape().with_rank_at_least(1)
+  indices_rank = indices_shape.ndims
+  indices_lookup_rank = (
+      None if indices_rank is None else indices_shape[-1].value)
+  if params_shape.ndims is None or indices_lookup_rank is None:
+    return [tensor_shape.unknown_shape()]
+  else:
+    if indices_lookup_rank > params_shape.ndims:
+      raise ValueError(
+          "indices.shape[-1] must be <= params.rank, but saw indices shape: %s "
+          " and params shape: %s" % (indices_shape, params_shape))
+    indices_lookup_shape = indices_shape[:-1]
+    params_slices_shape = params_shape[indices_lookup_rank:]
+    return [indices_lookup_shape.concatenate(params_slices_shape)]
 
 
 @ops.RegisterShape("Unique")

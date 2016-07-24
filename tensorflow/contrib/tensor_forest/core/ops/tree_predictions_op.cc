@@ -31,6 +31,7 @@ using tensorforest::FREE_NODE;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::DataColumnTypes;
+using tensorforest::FeatureSpec;
 using tensorforest::Sum;
 
 REGISTER_OP("TreePredictions")
@@ -188,7 +189,6 @@ class TreePredictions : public OpKernel {
 
     const auto node_pcw = node_per_class_weights.tensor<float, 2>();
     const auto tree = tree_tensor.tensor<int32, 2>();
-    const auto spec = input_spec.unaligned_flat<int32>();
     const auto thresholds = tree_thresholds.unaligned_flat<float>();
 
     for (int i = 0; i < num_data; i++) {
@@ -227,10 +227,9 @@ class TreePredictions : public OpKernel {
         }
         parent = node_index;
         const int32 feature = tree(node_index, FEATURE_INDEX);
-        node_index = left_child +
-            decide_function(
-                i, feature, thresholds(node_index),
-                static_cast<tensorforest::DataColumnTypes>(spec(feature)));
+        node_index =
+            left_child + decide_function(i, feature, thresholds(node_index),
+                                         FeatureSpec(feature, input_spec));
       }
     }
 

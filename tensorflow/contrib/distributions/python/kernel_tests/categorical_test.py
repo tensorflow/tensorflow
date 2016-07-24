@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,11 +48,11 @@ class CategoricalTest(tf.test.TestCase):
   def testDtype(self):
     dist = make_categorical([], 5, dtype=tf.int32)
     self.assertEqual(dist.dtype, tf.int32)
-    self.assertEqual(dist.dtype, dist.sample(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     dist = make_categorical([], 5, dtype=tf.int64)
     self.assertEqual(dist.dtype, tf.int64)
-    self.assertEqual(dist.dtype, dist.sample(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     self.assertEqual(dist.logits.dtype, tf.float32)
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
@@ -98,7 +98,7 @@ class CategoricalTest(tf.test.TestCase):
       histograms = [[[0.2, 0.8], [0.4, 0.6]]]
       dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
       n = 10000
-      samples = dist.sample(n, seed=123)
+      samples = dist.sample_n(n, seed=123)
       samples.set_shape([n, 1, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()
@@ -108,6 +108,71 @@ class CategoricalTest(tf.test.TestCase):
           [[0.2, 0.4]], np.mean(sample_values == 0, axis=0), atol=1e-2)
       self.assertAllClose(
           [[0.8, 0.6]], np.mean(sample_values == 1, axis=0), atol=1e-2)
+
+  def testSampleWithSampleShape(self):
+    with self.test_session():
+      histograms = [[[0.2, 0.8], [0.4, 0.6]]]
+      dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
+      samples = dist.sample((100, 100), seed=123)
+      prob = dist.prob(samples)
+      prob_val = prob.eval()
+      self.assertAllClose([0.2**2 + 0.8**2], [prob_val[:, :, :, 0].mean()],
+                          atol=1e-2)
+      self.assertAllClose([0.4**2 + 0.6**2], [prob_val[:, :, :, 1].mean()],
+                          atol=1e-2)
+
+  def testLogPMFBroadcasting(self):
+    with self.test_session():
+      histograms = [[[0.2, 0.8], [0.4, 0.6]]]
+      dist = tf.contrib.distributions.Categorical(tf.log(histograms) - 50.)
+
+      prob = dist.prob(1)
+      self.assertAllClose([[0.8, 0.6]], prob.eval())
+
+      prob = dist.prob([1])
+      self.assertAllClose([[0.8, 0.6]], prob.eval())
+
+      prob = dist.prob([0, 1])
+      self.assertAllClose([[0.2, 0.6]], prob.eval())
+
+      prob = dist.prob([[0, 1]])
+      self.assertAllClose([[0.2, 0.6]], prob.eval())
+
+      prob = dist.prob([[[0, 1]]])
+      self.assertAllClose([[[0.2, 0.6]]], prob.eval())
+
+      prob = dist.prob([[1, 0], [0, 1]])
+      self.assertAllClose([[0.8, 0.4], [0.2, 0.6]], prob.eval())
+
+      prob = dist.prob([[[1, 1], [1, 0]], [[1, 0], [0, 1]]])
+      self.assertAllClose([[[0.8, 0.6], [0.8, 0.4]], [[0.8, 0.4], [0.2, 0.6]]],
+                          prob.eval())
+
+  def testLogPMFShape(self):
+    with self.test_session():
+      # shape [1, 2, 2]
+      histograms = [[[0.2, 0.8], [0.4, 0.6]]]
+      dist = tf.contrib.distributions.Categorical(tf.log(histograms))
+
+      log_prob = dist.log_prob([0, 1])
+      self.assertEqual(2, log_prob.get_shape().ndims)
+      self.assertAllEqual([1, 2], log_prob.get_shape())
+
+      log_prob = dist.log_prob([[[1, 1], [1, 0]], [[1, 0], [0, 1]]])
+      self.assertEqual(3, log_prob.get_shape().ndims)
+      self.assertAllEqual([2, 2, 2], log_prob.get_shape())
+
+  def testLogPMFShapeNoBatch(self):
+      histograms = [0.2, 0.8]
+      dist = tf.contrib.distributions.Categorical(tf.log(histograms))
+
+      log_prob = dist.log_prob(0)
+      self.assertEqual(0, log_prob.get_shape().ndims)
+      self.assertAllEqual([], log_prob.get_shape())
+
+      log_prob = dist.log_prob([[[1, 1], [1, 0]], [[1, 0], [0, 1]]])
+      self.assertEqual(3, log_prob.get_shape().ndims)
+      self.assertAllEqual([2, 2, 2], log_prob.get_shape())
 
   def testMode(self):
     with self.test_session():

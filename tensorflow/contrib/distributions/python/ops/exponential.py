@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.distributions.python.ops import gamma
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -39,33 +42,33 @@ class Exponential(gamma.Gamma):
   """
 
   def __init__(
-      self, lam, strict=True, strict_statistics=True, name="Exponential"):
+      self, lam, validate_args=True, allow_nan_stats=False, name="Exponential"):
     """Construct Exponential distribution with parameter `lam`.
 
     Args:
       lam: `float` or `double` tensor, the rate of the distribution(s).
         `lam` must contain only positive values.
-      strict: Whether to assert that `lam > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+      validate_args: Whether to assert that `lam > 0`, and that `x > 0` in the
+        methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
         and the inputs are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
     """
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
-    # strict_statistics=True
+    # allow_nan_stats=False
     # through to the parent class results in unnecessary asserts.
     with ops.op_scope([lam], name):
       lam = ops.convert_to_tensor(lam)
       self._lam = lam
       super(Exponential, self).__init__(
-          alpha=math_ops.cast(1.0, dtype=lam.dtype),
+          alpha=constant_op.constant(1.0, dtype=lam.dtype),
           beta=lam,
-          strict_statistics=strict_statistics,
-          strict=strict)
+          allow_nan_stats=allow_nan_stats,
+          validate_args=validate_args)
 
   @property
   def lam(self):
@@ -77,7 +80,7 @@ class Exponential(gamma.Gamma):
     # exponential distribution is.
     return True
 
-  def sample(self, n, seed=None, name=None):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Exponential Distributions.
 
     Args:
@@ -94,8 +97,11 @@ class Exponential(gamma.Gamma):
       n = ops.convert_to_tensor(n, name="n")
       shape = array_ops.concat(
           0, [array_ops.pack([n]), array_ops.shape(self._lam)])
+      # Sample uniformly-at-random from the open-interval (0, 1).
       sampled = random_ops.random_uniform(
-          shape, maxval=math_ops.cast(1.0, dtype=self.dtype),
+          shape, minval=np.nextafter(
+              self.dtype.as_numpy_dtype(0.), self.dtype.as_numpy_dtype(1.)),
+          maxval=constant_op.constant(1.0, dtype=self.dtype),
           dtype=self.dtype)
 
       n_val = tensor_util.constant_value(n)

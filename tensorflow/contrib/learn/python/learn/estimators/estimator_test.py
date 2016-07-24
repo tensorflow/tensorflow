@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import itertools
 import tempfile
 
@@ -33,10 +34,12 @@ _BOSTON_INPUT_DIM = 13
 _IRIS_INPUT_DIM = 4
 
 
-def boston_input_fn():
+def boston_input_fn(num_epochs=None):
   boston = tf.contrib.learn.datasets.load_boston()
   features = tf.cast(
       tf.reshape(tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM]), tf.float32)
+  if num_epochs:
+    features = tf.train.limit_epochs(features, num_epochs=num_epochs)
   target = tf.cast(
       tf.reshape(tf.constant(boston.target), [-1, 1]), tf.float32)
   return features, target
@@ -97,15 +100,14 @@ def logistic_model_no_mode_fn(features, target):
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
-  def __init__(self):
+  def __init__(self, expect_calls):
     self.begin_calls = None
     self.end_calls = None
-    self.expect_calls = None
+    self.expect_calls = expect_calls
 
   def begin(self, max_steps):
     self.begin_calls = 0
     self.end_calls = 0
-    self.expect_calls = max_steps
 
   def step_begin(self, step):
     self.begin_calls += 1
@@ -307,12 +309,29 @@ class EstimatorTest(tf.test.TestCase):
     output = est.predict(boston.data)
     self.assertEqual(output.shape[0], boston.target.shape[0])
 
-  def testPredictFn(self):
+  def testPredictInputFn(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
     boston = tf.contrib.learn.datasets.load_boston()
     est.fit(input_fn=boston_input_fn, steps=1)
     output = est.predict(input_fn=boston_input_fn)
     self.assertEqual(output.shape[0], boston.target.shape[0])
+
+  def testPredictAsIterable(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    self.assertEqual(
+        len(list(est.predict(boston.data, batch_size=10, as_iterable=True))),
+        boston.target.shape[0])
+
+  def testPredictInputFnAsIterable(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.fit(input_fn=boston_input_fn, steps=1)
+    input_fn = functools.partial(boston_input_fn, num_epochs=1)
+    self.assertEqual(
+        len(list(est.predict(input_fn=input_fn, as_iterable=True))),
+        boston.target.shape[0])
 
   def testWrongInput(self):
     def other_input_fn():
@@ -324,7 +343,17 @@ class EstimatorTest(tf.test.TestCase):
 
   def testMonitors(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
-    est.fit(input_fn=boston_input_fn, steps=21, monitors=[CheckCallsMonitor()])
+    est.fit(input_fn=boston_input_fn,
+            steps=21,
+            monitors=[CheckCallsMonitor(expect_calls=21)])
+
+  def testSummaryWriting(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200)
+    est.evaluate(input_fn=boston_input_fn, steps=200)
+    loss_summary = tf.contrib.testing.simple_values_from_events(
+        tf.contrib.testing.latest_events(est.model_dir), ['loss'])
+    self.assertEqual(len(loss_summary), 1)
 
 
 class InferRealValuedColumnsTest(tf.test.TestCase):

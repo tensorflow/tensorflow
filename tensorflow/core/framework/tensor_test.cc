@@ -124,6 +124,8 @@ void TestCopies(const Tensor& t) {
     LOG(INFO) << "Move assignment";
     Tensor t2 = t;
     Tensor t3 = std::move(t2);
+    Tensor* t4 = &t3;
+    *t4 = std::move(t3);
     test::ExpectTensorEqual<T>(t, t3);
     EXPECT_TRUE(t3.IsInitialized());
     EXPECT_FALSE(t2.IsInitialized());

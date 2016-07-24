@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -30,11 +32,18 @@ InferenceContext::InferenceContext(
     const std::vector<string>& input_shapes,
     const std::vector<const Tensor*>& input_tensors)
     : input_tensors_(input_tensors), node_def_(*CHECK_NOTNULL(node_def)) {
-  TF_CHECK_OK(NameRangesForNode(*node_def, op_def, &input_name_map_,
-                                &output_name_map_));
+  construction_status_ =
+      NameRangesForNode(*node_def, op_def, &input_name_map_, &output_name_map_);
+  if (!construction_status_.ok()) return;
+
   int num_outputs = 0;
   for (const auto& e : output_name_map_) {
     num_outputs = std::max(num_outputs, e.second.second);
+  }
+  int num_inputs_from_node_def = 0;
+  for (const auto& e : input_name_map_) {
+    num_inputs_from_node_def =
+        std::max(num_inputs_from_node_def, e.second.second);
   }
 
   for (const string& spec : input_shapes) {
@@ -60,13 +69,21 @@ InferenceContext::InferenceContext(
 
         if (scanner.Peek() == ',') {
           scanner.OneLiteral(",");
-        } else {
-          CHECK_EQ(scanner.Peek(), ']');
+        } else if (scanner.Peek() != ']') {
+          construction_status_ = errors::InvalidArgument(
+              "Invalid input spec (] not found in dim shape): ", spec);
+          return;
         }
       }
-      CHECK(scanner.OneLiteral("]").Eos().GetResult()) << spec;
+      CHECK(scanner.OneLiteral("]").Eos().GetResult());
       inputs_.push_back(MakeShape(dims));
     }
+  }
+  if (inputs_.size() != num_inputs_from_node_def) {
+    construction_status_ = errors::InvalidArgument(
+        "Wrong number of arguments passed: ", inputs_.size(), " while ",
+        num_inputs_from_node_def, " expected based on NodeDef");
+    return;
   }
 
   CHECK_LE(input_tensors_.size(), input_shapes.size());
@@ -80,6 +97,18 @@ InferenceContext::InferenceContext(
 InferenceContext::~InferenceContext() {
   for (auto* s : all_shapes_) delete s;
   for (auto* d : all_dims_) delete d;
+}
+
+const Dimension* InferenceContext::NumElements(const Shape* s) {
+  const auto rank = Rank(s);
+  if (rank == kUnknownRank) return UnknownDim();
+  int64 size = 1;
+  for (int i = 0; i < rank; ++i) {
+    int64 dim_val = Value(Dim(s, i));
+    if (dim_val == kUnknownDim) return UnknownDim();
+    size *= dim_val;
+  }
+  return MakeDim(size);
 }
 
 string InferenceContext::DebugString(const Shape* s) {
@@ -329,15 +358,25 @@ Status InferenceContext::Concatenate(const Shape* s1, const Shape* s2,
   return ReturnCreatedShape(dims, out);
 }
 
-const Shape* InferenceContext::MakeShape(
-    const std::vector<const Dimension*>& dims) {
-  all_shapes_.push_back(new Shape(dims));
-  return all_shapes_.back();
-}
-
-const Shape* InferenceContext::UnknownShape() {
-  all_shapes_.push_back(new Shape());
-  return all_shapes_.back();
+Status InferenceContext::ReplaceDim(const Shape* s, int dim_index_in,
+                                    const Dimension* new_dim,
+                                    const Shape** out) {
+  if (!RankKnown(s)) {
+    return ReturnUnknownShape(out);
+  }
+  int dim_index = dim_index_in;
+  if (dim_index < 0) {
+    dim_index = s->dims_.size() + dim_index;
+  }
+  if (!FastBoundsCheck(dim_index, s->dims_.size())) {
+    *out = nullptr;
+    return errors::InvalidArgument("Out of range dim_index ", dim_index_in,
+                                   " for shape with ", s->dims_.size(),
+                                   " dimensions");
+  }
+  std::vector<const Dimension*> dims(s->dims_);
+  dims[dim_index] = new_dim;
+  return ReturnCreatedShape(dims, out);
 }
 
 const Dimension* InferenceContext::GetDimension(const DimensionOrConstant& d) {
@@ -346,15 +385,35 @@ const Dimension* InferenceContext::GetDimension(const DimensionOrConstant& d) {
   return MakeDim(d.val);
 }
 
+const Shape* InferenceContext::MakeShape(
+    const std::vector<const Dimension*>& dims) {
+  all_shapes_.push_back(new Shape(dims));
+  return all_shapes_.back();
+}
+
+const Shape* InferenceContext::MakeShape(
+    std::initializer_list<DimensionOrConstant> dims) {
+  std::vector<const Dimension*> dims_actual;
+  dims_actual.reserve(dims.size());
+  for (const DimensionOrConstant& d : dims) {
+    dims_actual.push_back(GetDimension(d));
+  }
+  return MakeShape(dims_actual);
+}
+
+const Shape* InferenceContext::UnknownShape() {
+  all_shapes_.push_back(new Shape());
+  return all_shapes_.back();
+}
 const Shape* InferenceContext::Scalar() { return MakeShape({}); }
 
 const Shape* InferenceContext::Vector(DimensionOrConstant dim) {
-  return MakeShape({GetDimension(dim)});
+  return MakeShape({dim});
 }
 
 const Shape* InferenceContext::Matrix(DimensionOrConstant dim1,
                                       DimensionOrConstant dim2) {
-  return MakeShape({GetDimension(dim1), GetDimension(dim2)});
+  return MakeShape({dim1, dim2});
 }
 
 Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
@@ -364,8 +423,18 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
 
   const Tensor* t = input_tensor(input_idx);
   if (t == nullptr) {
-    return ReturnUnknownShape(out);
+    // Shape tensor is not known, but if the shape of the shape tensor is then
+    // the right number of unknown dims can be created.
+    const Dimension* shape_dim = Dim(input_shape, 0);
+    if (!ValueKnown(shape_dim)) {
+      return ReturnUnknownShape(out);
+    }
+    const auto num_dims = Value(shape_dim);
+    std::vector<const Dimension*> dims;
+    for (int i = 0; i < num_dims; i++) dims.push_back(UnknownDim());
+    return ReturnCreatedShape(dims, out);
   }
+
   if (t->shape().dims() != 1) {
     *out = nullptr;
     return errors::InvalidArgument("Input tensor must be rank 1, but was rank ",
@@ -463,24 +532,89 @@ Status InferenceContext::Divide(const Dimension* dividend, int64 divisor,
   return Status::OK();
 }
 
-Status InferenceContext::Add(const Dimension* first, int64 second,
+Status InferenceContext::Add(const Dimension* first, DimensionOrConstant second,
                              const Dimension** out) {
-  if (second == 0) {
+  const int64 second_value =
+      second.dim == nullptr ? second.val : Value(second.dim);
+  if (second.dim != nullptr && !ValueKnown(second.dim)) {
+    *out = UnknownDim();
+  } else if (second_value == 0) {
     *out = first;
   } else if (!ValueKnown(first)) {
     *out = UnknownDim();
   } else {
     const int64 v = Value(first);
-    const int64 sum = v + second;
-    if (second > 0 && sum < 0) {
+    const int64 sum = v + second_value;
+    if (second_value > 0 && sum < 0) {
       return errors::InvalidArgument("Dimension size overflow from adding ", v,
-                                     " and ", second);
-    } else if (second < 0 && sum < 0) {
+                                     " and ", second_value);
+    } else if (second_value < 0 && sum < 0) {
       return errors::InvalidArgument("Negative dimension size from adding ", v,
-                                     " and ", second);
+                                     " and ", second_value);
     }
     *out = MakeDim(sum);
   }
+  return Status::OK();
+}
+
+Status InferenceContext::Multiply(const Dimension* first,
+                                  DimensionOrConstant second,
+                                  const Dimension** out) {
+  int64 first_value = -1;
+  // Special cases for multiply are when the values are 0 or 1.
+  if (ValueKnown(first)) {
+    first_value = Value(first);
+    if (first_value == 0) {
+      *out = MakeDim(0);
+      return Status::OK();
+    }
+
+    // Output is whatever the second value is.
+    if (first_value == 1) {
+      *out = GetDimension(second);
+      return Status::OK();
+    }
+  }
+
+  // Same check for when the second argument is a known value.
+  // First find out if the value is known from DimOrConstant.
+  int64 second_value;
+  if (second.dim == nullptr) {
+    second_value = second.val;
+  } else {
+    if (!ValueKnown(second.dim)) {
+      // Second value is not known and first is not a special caase
+      *out = UnknownDim();
+      return Status::OK();
+    }
+    second_value = Value(second.dim);
+  }
+
+  // Now that we know whether the value is known, apply the special
+  // casing.
+  if (second_value == 0) {
+    *out = MakeDim(0);
+    return Status::OK();
+  }
+
+  // Output is whatever the first value is.
+  if (second_value == 1) {
+    *out = first;
+    return Status::OK();
+  }
+
+  if (!ValueKnown(first)) {
+    // First value is not known and second is not a special caase
+    *out = UnknownDim();
+    return Status::OK();
+  }
+
+  const int64 product = first_value * second_value;
+  if (product < 0) {
+    return errors::InvalidArgument("Negative dimension size from multiplying ",
+                                   first_value, " and ", second_value);
+  }
+  *out = MakeDim(product);
   return Status::OK();
 }
 

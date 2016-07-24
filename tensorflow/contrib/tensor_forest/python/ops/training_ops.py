@@ -46,8 +46,8 @@ def _CountExtremelyRandomStatsShape(op):
   regression = op.get_attr('regression')
   num_points = op.inputs[0].get_shape()[0].value
   sparse_shape = op.inputs[3].get_shape()
-  if sparse_shape.ndims == 2:
-    num_points = sparse_shape[0].value
+  if sparse_shape.ndims > 0:
+    num_points = None
   num_nodes = op.inputs[6].get_shape()[0].value
   num_classes = op.get_attr('num_classes')
   # The output of TraverseTree is [leaf_node_index(x) for x in input_data].
@@ -82,7 +82,7 @@ def _BestSplitsShape(op):
 @ops.RegisterShape('GrowTree')
 def _GrowTreeShape(unused_op):
   """Shape function for GrowTree Op."""
-  return [[None], [None, 2], [None], [None], [1]]
+  return [[None], [None, 2], [None], [1]]
 
 
 @ops.RegisterShape('FinishedNodes')
@@ -100,7 +100,7 @@ def _ScatterAddNdimShape(unused_op):
 @ops.RegisterShape('UpdateFertileSlots')
 def _UpdateFertileSlotsShape(unused_op):
   """Shape function for UpdateFertileSlots Op."""
-  return [[None, 2], [None], [None]]
+  return [[2, None], [None], [None]]
 
 
 # Workaround for the fact that importing tensorflow imports contrib

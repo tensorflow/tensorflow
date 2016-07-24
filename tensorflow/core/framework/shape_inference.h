@@ -130,6 +130,10 @@ class InferenceContext {
   int64 Value(const Dimension* d) { return d->value_; }
   bool ValueKnown(const Dimension* d) { return Value(d) != kUnknownDim; }
 
+  // Returns the total number of elements, or an unknown dimension for an
+  // incomplete shape.
+  const Dimension* NumElements(const Shape* s);
+
   string DebugString(const Shape* s);
   string DebugString(const Dimension* d);
 
@@ -192,9 +196,15 @@ class InferenceContext {
   Status Concatenate(const Shape* s1, const Shape* s2,
                      const Shape** out) TF_MUST_USE_RESULT;
 
+  // Returns in <out> the shape from replacing <s.dim[dim_index]> with
+  // <new_dim>.
+  Status ReplaceDim(const Shape* s, int dim_index, const Dimension* new_dim,
+                    const Shape** out) TF_MUST_USE_RESULT;
+
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
   const Shape* MakeShape(const std::vector<const Dimension*>& dims);
+  const Shape* MakeShape(std::initializer_list<DimensionOrConstant> dims);
 
   // Returns a new unknown shape.
   const Shape* UnknownShape();
@@ -239,7 +249,14 @@ class InferenceContext {
                 const Dimension** out);
 
   // Returns in <out> the sum of <first> and <second>.
-  Status Add(const Dimension* first, int64 second, const Dimension** out);
+  Status Add(const Dimension* first, DimensionOrConstant second,
+             const Dimension** out);
+
+  // Returns in <out> the product of <first> and <second>.
+  Status Multiply(const Dimension* first, DimensionOrConstant second,
+                  const Dimension** out);
+
+  Status construction_status() const { return construction_status_; }
 
  private:
   const Dimension* GetDimension(const DimensionOrConstant& d);
@@ -265,6 +282,10 @@ class InferenceContext {
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+
+  // An error set during construction. TODO(cwhipkey): remove when test
+  // constructor is removed.
+  Status construction_status_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
 };

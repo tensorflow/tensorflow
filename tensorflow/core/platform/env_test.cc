@@ -83,6 +83,47 @@ TEST(EnvTest, FileToReadonlyMemoryRegion) {
   }
 }
 
+TEST(EnvTest, DeleteRecursively) {
+  Env* env = Env::Default();
+  // Build a directory structure rooted at root_dir.
+  // root_dir -> dirs: child_dir1, child_dir2; files: root_file1, root_file2
+  // child_dir1 -> files: child1_file1
+  // child_dir2 -> empty
+  const string parent_dir = io::JoinPath(testing::TmpDir(), "root_dir");
+  const string child_dir1 = io::JoinPath(parent_dir, "child_dir1");
+  const string child_dir2 = io::JoinPath(parent_dir, "child_dir2");
+  TF_EXPECT_OK(env->CreateDir(parent_dir));
+  const string root_file1 = io::JoinPath(parent_dir, "root_file1");
+  const string root_file2 = io::JoinPath(parent_dir, "root_file2");
+  CreateTestFile(env, root_file1, 100);
+  CreateTestFile(env, root_file2, 100);
+  TF_EXPECT_OK(env->CreateDir(child_dir1));
+  const string child1_file1 = io::JoinPath(child_dir1, "child1_file1");
+  CreateTestFile(env, child1_file1, 100);
+  TF_EXPECT_OK(env->CreateDir(child_dir2));
+
+  int64 undeleted_files, undeleted_dirs;
+  TF_EXPECT_OK(
+      env->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
+  EXPECT_EQ(0, undeleted_files);
+  EXPECT_EQ(0, undeleted_dirs);
+  EXPECT_FALSE(env->FileExists(io::JoinPath(parent_dir, "root_file1")));
+  EXPECT_FALSE(env->FileExists(io::JoinPath(child_dir1, "child1_file1")));
+}
+
+TEST(EnvTest, DeleteRecursivelyFail) {
+  // Try to delete a non-existent directory.
+  Env* env = Env::Default();
+  const string parent_dir = io::JoinPath(testing::TmpDir(), "root_dir");
+
+  int64 undeleted_files, undeleted_dirs;
+  Status s =
+      env->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs);
+  EXPECT_EQ("Not found: Directory doesn't exist", s.ToString());
+  EXPECT_EQ(0, undeleted_files);
+  EXPECT_EQ(1, undeleted_dirs);
+}
+
 TEST(EnvTest, LocalFileSystem) {
   // Test filename with file:// syntax.
   Env* env = Env::Default();

@@ -286,7 +286,7 @@ bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
     const char c = *p;
     if (c < '0' || c > '9') break;
     uint64 new_v = (v * 10) + (c - '0');
-    if (new_v < v) {
+    if (new_v / 8 < v) {
       // Overflow occurred
       return false;
     }

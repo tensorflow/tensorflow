@@ -24,9 +24,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-DebugNodeInserter::DebugNodeInserter(
-    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches)
-    : tensor_watches_() {
+// static
+Status DebugNodeInserter::InsertNodes(
+    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,
+    Device* device) {
+  if (watches.empty()) {
+    // Nothing to do: Return OK right away.
+    return Status::OK();
+  }
+
+  // A map from tensor name (e.g., "node_a:0") to list of debug op names
+  // (e.g., {"DebugIdentity", "DebugNanCount"})
+  std::unordered_map<string, std::vector<string>> tensor_watches;
+
   // Cache the proto content for fast lookup later
   for (const DebugTensorWatch& watch : watches) {
     if (watch.output_slot() < 0) {
@@ -36,9 +46,6 @@ DebugNodeInserter::DebugNodeInserter(
       continue;
     }
     if (watch.debug_ops().empty()) {
-      // The semantics of debug_ops being an empty list is that the tensor
-      // value _itself_ is watched, i.e., watched without any transformation,
-      // not even identity transformation.
       continue;
     }
 
@@ -50,11 +57,13 @@ DebugNodeInserter::DebugNodeInserter(
       debug_ops.push_back(debug_op);
     }
 
-    tensor_watches_[tensor_name] = debug_ops;
+    tensor_watches[tensor_name] = debug_ops;
   }
-}
 
-Status DebugNodeInserter::InsertNodes(Graph* graph, Device* device) {
+  if (tensor_watches.empty()) {
+    return Status::OK();
+  }
+
   DeviceType device_type = DeviceType{device->device_type()};
   // 1. Record existing edges in the graph.
   std::vector<const Edge*> existing_edges;
@@ -86,7 +95,7 @@ Status DebugNodeInserter::InsertNodes(Graph* graph, Device* device) {
 
     const string tensor_name =
         strings::StrCat(src_node->name(), ":", edge->src_output());
-    if (tensor_watches_.find(tensor_name) == tensor_watches_.end()) {
+    if (tensor_watches.find(tensor_name) == tensor_watches.end()) {
       // Add debug nodes only for edges with matching source node and source
       // output slot.
       continue;
@@ -137,8 +146,8 @@ Status DebugNodeInserter::InsertNodes(Graph* graph, Device* device) {
 
       // Create all requested debug nodes and their edges to the Copy node.
       std::vector<Node*> node_added_debug_nodes;
-      for (int i = 0; i < tensor_watches_[tensor_name].size(); ++i) {
-        const string& debug_op_name = tensor_watches_[tensor_name][i];
+      for (int i = 0; i < tensor_watches[tensor_name].size(); ++i) {
+        const string& debug_op_name = tensor_watches[tensor_name][i];
 
         Node* debug_node;
         Status debug_s =
@@ -186,7 +195,7 @@ Status DebugNodeInserter::InsertNodes(Graph* graph, Device* device) {
     }
   }
 
-  // Remove all edges marked for removal
+  // Remove all edges marked for removal.
   for (auto it : edges_to_remove) {
     std::vector<const Edge*> edges = it.second;
 
@@ -198,6 +207,7 @@ Status DebugNodeInserter::InsertNodes(Graph* graph, Device* device) {
   return Status::OK();
 }
 
+// static
 const string DebugNodeInserter::GetCopyNodeName(const string& node_name,
                                                 const int output_slot) {
   // For example, if the watched node is named "node1" and the output slot
@@ -205,6 +215,7 @@ const string DebugNodeInserter::GetCopyNodeName(const string& node_name,
   return strings::StrCat("__copy_", node_name, "_", output_slot);
 }
 
+// static
 const string DebugNodeInserter::GetDebugNodeName(const string& tensor_name,
                                                  const int debug_op_num,
                                                  const string& debug_op_name) {
@@ -215,6 +226,7 @@ const string DebugNodeInserter::GetDebugNodeName(const string& tensor_name,
                          debug_op_name);
 }
 
+// static
 Status DebugNodeInserter::CreateCopyNode(
     Graph* graph, const DeviceType device_type, const bool is_host_memory,
     const string& src_node_name, const int src_output, const DataType src_dt,
@@ -251,6 +263,7 @@ Status DebugNodeInserter::CreateCopyNode(
   return Status::OK();
 }
 
+// static
 Status DebugNodeInserter::CreateDebugNode(
     Graph* graph, const DeviceType device_type,
     const string& src_copy_node_name, const DataType src_dt,

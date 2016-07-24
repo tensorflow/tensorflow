@@ -336,7 +336,6 @@ string DeviceNameUtils::LocalName(StringPiece fullname) {
 
 /* static */
 bool DeviceNameUtils::ParseLocalName(StringPiece name, ParsedName* p) {
-  ParsedName x;
   if (!ConsumeDeviceType(&name, &p->type)) {
     return false;
   }

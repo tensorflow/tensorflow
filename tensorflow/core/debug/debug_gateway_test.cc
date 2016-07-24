@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 namespace {
@@ -323,6 +324,114 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetworkWithTwoDebugNodesInserted) {
   // one NaN.
   ASSERT_EQ(1, debug_nan_count_tensor_vals.size());
   ASSERT_EQ(1, debug_nan_count_tensor_vals[0].scalar<int64>()());
+}
+
+TEST_F(SessionDebugMinusAXTest,
+       RunSimpleNetworkConcurrentlyWithDebugNodesInserted) {
+  Initialize({3, 2, -1, 0});
+  std::unique_ptr<DirectSession> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Number of concurrent Run() calls to launch.
+  const int kConcurrentRuns = 3;
+  thread::ThreadPool* tp =
+      new thread::ThreadPool(Env::Default(), "test", kConcurrentRuns);
+
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+
+  mutex mu;
+  DebugGateway debug_gateway(session.get());
+  std::vector<Tensor> debug_identity_tensor_vals;
+
+  const string debug_identity = "DebugIdentity";
+  const string debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(
+      strings::StrCat(y_, ":", 0), 0, debug_identity);
+
+  Notification callbacks_done;
+  int comp_callback_count = 0;
+  int val_callback_count = 0;
+  debug_gateway.SetNodeCompletionCallback(
+      [&mu, &callbacks_done, &comp_callback_count, &debug_identity_node_name](
+          const string& node_name, const bool any_output) {
+        mutex_lock l(mu);
+        if (node_name == debug_identity_node_name) {
+          comp_callback_count++;
+        }
+      });
+
+  debug_gateway.SetNodeValueCallback(
+      [this, &mu, &val_callback_count, &debug_identity_node_name,
+       &debug_identity_tensor_vals,
+       &callbacks_done](const string& node_name, const int output_slot,
+                        const Tensor& tensor_value, const bool is_ref) {
+        mutex_lock l(mu);
+        if (node_name == debug_identity_node_name && output_slot == 0) {
+          // output_slot == 0 carries the debug signal.
+          debug_identity_tensor_vals.push_back(tensor_value);
+          val_callback_count++;
+        }
+
+        // Set the notification once we have the value from the callbacks from
+        // all the concurrent Run() calls.
+        if (val_callback_count == kConcurrentRuns &&
+            !callbacks_done.HasBeenNotified()) {
+          callbacks_done.Notify();
+        }
+      });
+
+  // Function to be executed concurrently.
+  auto fn = [this, &session, output_names, target_nodes, &debug_identity]() {
+    // Create unique debug tensor watch options for each of the two concurrent
+    // run calls.
+    RunOptions run_opts;
+    DebugTensorWatch* tensor_watch_opts =
+        run_opts.add_debug_tensor_watch_opts();
+
+    tensor_watch_opts->set_node_name(y_);
+    tensor_watch_opts->set_output_slot(0);
+    tensor_watch_opts->add_debug_ops(debug_identity);
+
+    // Run the graph.
+    RunMetadata run_metadata;
+    std::vector<std::pair<string, Tensor>> inputs;
+    std::vector<Tensor> outputs;
+    Status s = session->Run(run_opts, inputs, output_names, target_nodes,
+                            &outputs, &run_metadata);
+
+    TF_ASSERT_OK(s);
+
+    ASSERT_EQ(1, outputs.size());
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    ASSERT_EQ(TensorShape({2, 1}), outputs[0].shape());
+    auto mat = outputs[0].matrix<float>();
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+    EXPECT_FLOAT_EQ(-1.0, mat(1, 0));
+  };
+
+  for (int i = 0; i < kConcurrentRuns; ++i) {
+    tp->Schedule(fn);
+  }
+
+  // Wait for the debug callbacks to finish.
+  callbacks_done.WaitForNotification();
+
+  // Wait for the concurrent functions with Run() calls to finish.
+  delete tp;
+
+  {
+    mutex_lock l(mu);
+    ASSERT_EQ(kConcurrentRuns, comp_callback_count);
+    ASSERT_EQ(kConcurrentRuns, val_callback_count);
+    ASSERT_EQ(kConcurrentRuns, debug_identity_tensor_vals.size());
+    for (int i = 0; i < kConcurrentRuns; ++i) {
+      ASSERT_EQ(TensorShape({2, 1}), debug_identity_tensor_vals[i].shape());
+      auto mat_identity = debug_identity_tensor_vals[i].matrix<float>();
+      ASSERT_EQ(5.0, mat_identity(0, 0));
+      ASSERT_EQ(-1.0, mat_identity(1, 0));
+    }
+  }
 }
 
 class SessionDebugGPUVariableTest : public ::testing::Test {
