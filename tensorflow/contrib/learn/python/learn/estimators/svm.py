@@ -74,7 +74,9 @@ class SVM(linear.LinearClassifier):
     weight_column_name: A string defining feature column name representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
-    model_dir: Directory to save model parameters, graph and etc.
+    model_dir: Directory to save model parameters, graph and etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
     l1_regularization: L1-regularization parameter
     l2_regularization: L2-regularization parameter
     kernels: A list of kernels for the SVM. Currently, no kernels are supported.

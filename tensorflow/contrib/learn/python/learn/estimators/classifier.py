@@ -47,7 +47,9 @@ class Classifier(estimator.Estimator):
     Args:
       model_fn: (targets, predictions, mode) -> logits, loss, train_op
       n_classes: Number of classes
-      model_dir: Base directory for output data
+      model_dir: Directory to save model parameters, graph and etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
       config: Configuration object (optional)
     """
     self._n_classes = n_classes

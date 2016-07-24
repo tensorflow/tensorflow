@@ -158,7 +158,9 @@ class BaseEstimator(sklearn.BaseEstimator):
     """Initializes a BaseEstimator instance.
 
     Args:
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
       config: A RunConfig instance.
     """
     # Model directory.
@@ -724,7 +726,9 @@ class Estimator(BaseEstimator):
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tunning.
 
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
