@@ -480,7 +480,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "example_parsing_ops_test",
-    size = "small",
+    size = "large",
     deps = [
         ":example_parsing_ops",
         ":ops_testutil",
