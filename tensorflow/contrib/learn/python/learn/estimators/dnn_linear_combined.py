@@ -413,35 +413,48 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         target_column=target_column,
         config=config)
 
-  def predict(self, x=None, input_fn=None, batch_size=None):
-    """Returns predictions for given features.
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+    """Returns predicted classes for given features.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
     Returns:
-      Numpy array of predicted classes or regression values.
+      Numpy array of predicted classes (or an iterable of predicted classes if
+      as_iterable is True).
     """
-    predictions = super(DNNLinearCombinedClassifier, self).predict(
-        x=x, input_fn=input_fn, batch_size=batch_size)
-    predictions = np.argmax(predictions, axis=1)
-    return predictions
+    predictions = self.predict_proba(
+        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
+    if as_iterable:
+      return (np.argmax(p, axis=0) for p in predictions)
+    else:
+      return np.argmax(predictions, axis=1)
 
-  def predict_proba(self, x=None, input_fn=None, batch_size=None):
+  def predict_proba(
+      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns prediction probabilities for given features.
 
     Args:
       x: features.
       input_fn: Input function. If set, x and y must be None.
       batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
     Returns:
-      Numpy array of predicted probabilities.
+      Numpy array of predicted probabilities (or an iterable of predicted
+      probabilities if as_iterable is True).
     """
     return super(DNNLinearCombinedClassifier, self).predict(
-        x=x, input_fn=input_fn, batch_size=batch_size)
+        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
 
   def _get_eval_ops(self, features, targets, metrics=None):
     """See base class."""

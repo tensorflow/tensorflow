@@ -4,8 +4,8 @@
 <link rel="import" href="tf-x-type-selector.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
-<link rel="import" href="tf-chart-scaffold.html">
-<link rel="import" href="tf-line-chart.html">
+<link rel="import" href="../tf-chart-scaffold/tf-chart-scaffold.html">
+<link rel="import" href="../vz-line-chart/vz-line-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
@@ -90,7 +90,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                       data-provider="[[dataProvider]]"
                       visible-series="[[validRuns(tag, selectedRuns.*, run2tag.*)]]"
                       >
-                      <tf-line-chart
+                      <vz-line-chart
                         id="chart"
                         x-type="[[xType]]"
                         color-scale="[[colorScale]]"
@@ -98,7 +98,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                         smoothing-enabled="[[_smoothingEnabled]]"
                         on-keyup="toggleSelected"
                         tabindex="2"
-                      ></tf-line-chart>
+                      ></vz-line-chart>
                     </tf-chart-scaffold>
                     <paper-icon-button
                       class="expand-button"

@@ -114,6 +114,13 @@ def tf_copts():
                   "//tensorflow:darwin": [],
                   "//conditions:default": ["-pthread"]}))
 
+def tf_opts_nortti_if_android():
+  return if_android([
+      "-fno-rtti",
+      "-DGOOGLE_PROTOBUF_NO_RTTI",
+      "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
+  ])
+
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
 def tf_gen_op_libs(op_lib_names):

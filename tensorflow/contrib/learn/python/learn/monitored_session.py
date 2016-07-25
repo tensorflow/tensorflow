@@ -68,7 +68,7 @@ class MonitoredSession(WrappedSession):
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """See base class."""
     if self.should_stop():
-      raise RuntimeError('run called even after should_stop requested.')
+      raise RuntimeError('Run called even after should_stop requested.')
 
     if self._last_step is None:
       self._last_step = WrappedSession.run(self, self._global_step_tensor)
@@ -76,7 +76,12 @@ class MonitoredSession(WrappedSession):
     monitors_step = self._last_step + 1
     monitor_fetches = []
     for monitor in self._monitors:
-      monitor_fetches.extend(monitor.step_begin(monitors_step))
+      monitor_requests = monitor.step_begin(monitors_step)
+      if monitor_requests:
+        # TODO(ispir): remove following restriction after b/30136815 fixed
+        if not isinstance(monitor_requests, list):
+          raise ValueError('Monitor.step_begin should return a list.')
+        monitor_fetches.extend(monitor_requests)
 
     actual_fetches = {
         'caller': fetches,

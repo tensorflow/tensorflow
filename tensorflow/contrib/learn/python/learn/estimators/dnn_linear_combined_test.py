@@ -301,7 +301,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
       return features, target
 
     def _input_fn_predict():
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      y = tf.train.limit_epochs(
+          tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=1)
+      features = {'x': y}
       return features
 
     classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
@@ -310,9 +312,17 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3])
 
     classifier.fit(input_fn=_input_fn_train, steps=100)
+
     probs = classifier.predict_proba(input_fn=_input_fn_predict)
     self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.05)
     classes = classifier.predict(input_fn=_input_fn_predict)
+    self.assertListEqual([0] * 4, list(classes))
+
+    probs = classifier.predict_proba(
+        input_fn=_input_fn_predict, as_iterable=True)
+    self.assertAllClose([[0.75, 0.25]] * 4, list(probs), 0.05)
+    classes = classifier.predict(
+        input_fn=_input_fn_predict, as_iterable=True)
     self.assertListEqual([0] * 4, list(classes))
 
   def testCustomMetrics(self):

@@ -38,9 +38,10 @@ class TransformedDistributionTest(tf.test.TestCase):
           log_det_jacobian=(lambda x: tf.reduce_sum(x)))
 
       # sample
-      self.assertAllClose([stats.lognorm.mean(s=sigma, scale=np.exp(mu))],
-                          [np.mean(log_normal.sample(100000, seed=235).eval())],
-                          atol=1e-2)
+      self.assertAllClose(
+          [stats.lognorm.mean(s=sigma, scale=np.exp(mu))],
+          [np.mean(log_normal.sample_n(100000, seed=235).eval())],
+          atol=1e-2)
 
       # pdf, log_pdf
       test_vals = np.linspace(0.00001, 10.).astype(np.float32)
@@ -62,7 +63,7 @@ class TransformedDistributionTest(tf.test.TestCase):
           inverse=None,
           log_det_jacobian=(lambda x: tf.reduce_sum(x)))
 
-      sample = log_normal.sample(1)
+      sample = log_normal.sample_n(1)
       sample_val, log_pdf_val = sess.run([sample, log_normal.log_pdf(sample)])
       self.assertAllClose(
           stats.lognorm.logpdf(sample_val, s=sigma,

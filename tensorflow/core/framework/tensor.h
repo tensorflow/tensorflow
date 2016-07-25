@@ -652,10 +652,13 @@ inline Tensor::Tensor(Tensor&& other)
 }
 
 inline Tensor& Tensor::operator=(Tensor&& other) {
-  shape_ = std::move(other.shape_);
-  if (buf_) buf_->Unref();
-  buf_ = other.buf_;
-  other.buf_ = nullptr;
+  // Avoid self-assignment, since we might destroy our underlying buffer.
+  if (&other != this) {
+    shape_ = std::move(other.shape_);
+    if (buf_) buf_->Unref();
+    buf_ = other.buf_;
+    other.buf_ = nullptr;
+  }
   return *this;
 }
 

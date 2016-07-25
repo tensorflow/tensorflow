@@ -24,6 +24,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 
@@ -31,7 +32,6 @@ from tensorflow.python.ops import sparse_ops
 class SparseXentTest(tf.test.TestCase):
 
   def _npXent(self, features, labels):
-    is_higher_dim = len(features.shape) > 2
     features = np.reshape(features, [-1, features.shape[-1]])
     labels = np.reshape(labels, [-1])
     batch_dim = 0
@@ -44,15 +44,13 @@ class SparseXentTest(tf.test.TestCase):
     labels_mat[np.arange(batch_size), labels] = 1.0
     bp = (probs - labels_mat)
     l = -np.sum(labels_mat * np.log(probs + 1.0e-20), axis=1)
-    return l, bp, is_higher_dim
+    return l, bp
 
   def _testXent(self, np_features, np_labels, use_gpu=False):
-    np_loss, np_backprop, is_higher_dim = self._npXent(np_features, np_labels)
+    np_loss, np_backprop = self._npXent(np_features, np_labels)
     with self.test_session(use_gpu=use_gpu) as sess:
-      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+      loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
           np_features, np_labels)
-      backprop = (loss.op.inputs[0].op.outputs[1] if is_higher_dim
-                  else loss.op.outputs[1])
       tf_loss, tf_backprop = sess.run([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
     self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
@@ -64,10 +62,9 @@ class SparseXentTest(tf.test.TestCase):
   def _testSingleClass(self, use_gpu=False):
     for label_dtype in np.int32, np.int64:
       with self.test_session(use_gpu=use_gpu) as sess:
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(np.float32),
             np.array([0, 0, 0]).astype(label_dtype))
-        backprop = loss.op.outputs[1]
         tf_loss, tf_backprop = sess.run([loss, backprop])
       self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
       self.assertAllClose([[0.0], [0.0], [0.0]], tf_backprop)
@@ -101,7 +98,7 @@ class SparseXentTest(tf.test.TestCase):
     # With a hard 1, the backprop is [0.032 - 1.0 = -0.968, 0.087, 0.237, 0.644]
     # The loss for this batch is [1.0 * -log(0.25), 1.0 * -log(0.032)]
     # = [1.3862, 3.4420]
-    np_loss, np_backprop, _ = self._npXent(np.array(features), np.array(labels))
+    np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     self.assertAllClose(np.array([[0.25, 0.25, 0.25, -0.75],
                                   [-0.968, 0.087, 0.237, 0.6439]]),
                         np_backprop,
@@ -169,7 +166,7 @@ class SparseXentTest(tf.test.TestCase):
     self.assertLess(err, 5e-8)
 
   def _testHighDim(self, use_gpu, features, labels):
-    np_loss, np_backprop, _ = self._npXent(np.array(features), np.array(labels))
+    np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     # manually reshape loss
     np_loss = np.reshape(np_loss, np.array(labels).shape)
     with self.test_session(use_gpu=use_gpu) as sess:

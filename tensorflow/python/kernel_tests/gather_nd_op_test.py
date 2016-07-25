@@ -45,6 +45,113 @@ class GatherNdTest(tf.test.TestCase):
     self._testSimpleDtype(np.complex64)
     self._testSimpleDtype("|S")  # byte strings in python2 + 3
 
+  def testEmptyIndicesAndParamsOKButJustEmptyParamsFails(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      params = np.ones((3, 3), dtype=np.float32)
+
+      indices_empty = np.empty((0, 2), dtype=np.int32)
+      gather_nd_ok_t = tf.gather_nd(params, indices_empty)
+      gather_nd_ok_val = gather_nd_ok_t.eval()
+      self.assertEqual([0], gather_nd_ok_t.get_shape())
+      self.assertAllEqual(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
+
+      indices_empty = np.empty((0, 1), dtype=np.int32)
+      gather_nd_ok_t = tf.gather_nd(params, indices_empty)
+      gather_nd_ok_val = gather_nd_ok_t.eval()
+      self.assertEqual([0, 3], gather_nd_ok_t.get_shape())
+      self.assertAllEqual(np.empty((0, 3), dtype=np.float32), gather_nd_ok_val)
+
+      params_empty = np.empty((0, 3), dtype=np.float32)
+      indices_empty = np.empty((0, 2), dtype=np.int32)
+      gather_nd_ok_t = tf.gather_nd(params_empty, indices_empty)
+      gather_nd_ok_val = gather_nd_ok_t.eval()
+      self.assertEqual([0], gather_nd_ok_t.get_shape())
+      self.assertAllEqual(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
+
+      params_empty = np.empty((0, 3), dtype=np.float32)
+      indices_nonempty = np.zeros((1, 2), dtype=np.int32)
+      gather_nd_break_t = tf.gather_nd(params_empty, indices_nonempty)
+      with self.assertRaisesOpError(
+          r"Requested more than 0 entries, but params is empty."):
+        gather_nd_break_t.eval()
+      self.assertAllEqual(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
+
+  def testIndexScalar(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      params = np.array([[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
+                        dtype=np.float32).T
+      indices = tf.constant([4, 1])
+      gather_nd_t = tf.gather_nd(params, indices)
+      gather_nd_val = gather_nd_t.eval()
+      self.assertEqual([], gather_nd_t.get_shape())
+      self.assertAllEqual(np.array(7), gather_nd_val)
+
+  def testParamsRankLargerThanIndexIndexScalarSlices(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      params = np.array([[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
+                        dtype=np.float32).T
+      indices = tf.constant([4])
+      gather_nd_t = tf.gather_nd(params, indices)
+      gather_nd_val = gather_nd_t.eval()
+      self.assertEqual([2], gather_nd_t.get_shape())
+      self.assertAllEqual(np.array([-7, 7]), gather_nd_val)
+
+  def testParamsRankLargerThanIndexSlices(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      params = np.array([[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
+                        dtype=np.float32).T
+      indices = tf.constant([[4], [4], [0]])
+      gather_nd_t = tf.gather_nd(params, indices)
+      gather_nd_val = gather_nd_t.eval()
+
+    self.assertEqual([3, 2], gather_nd_t.get_shape())
+    self.assertAllEqual(np.array([[-7, 7], [-7, 7], [-8, 8]]), gather_nd_val)
+
+  def testHigherRankParamsLargerThanIndexSlices(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      params = np.array(
+          [[[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
+           [[-80, -10, -20, -30, -70, -50], [80, 10, 20, 30, 70, 50]]],
+          dtype=np.float32).T
+      params_t = tf.constant(params)
+      indices = tf.constant([[4], [4], [0]])
+      gather_nd_t = tf.gather_nd(params_t, indices)
+      gather_nd_val = gather_nd_t.eval()
+
+    self.assertEqual([3, 2, 2], gather_nd_t.get_shape())
+    self.assertAllEqual(params[[4, 4, 0]], gather_nd_val)
+
+  def testEmptyIndicesLastRankMeansCopyEntireTensor(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      params = np.array(
+          [[[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
+           [[-80, -10, -20, -30, -70, -50], [80, 10, 20, 30, 70, 50]]],
+          dtype=np.float32).T
+      params_t = tf.constant(params)
+      indices = tf.constant([[], []], dtype=tf.int32)  # Size (2, 0)
+      gather_nd_t = tf.gather_nd(params_t, indices)
+      gather_nd_val = gather_nd_t.eval()
+
+    self.assertEqual([2, 6, 2, 2], gather_nd_t.get_shape())
+    self.assertAllEqual(
+        np.vstack((params[np.newaxis, :], params[np.newaxis, :])),
+        gather_nd_val)
+
+  def testHigherRankParamsAndIndicesLargerThanIndexSlices(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      params = np.array(
+          [[[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]],
+           [[-80, -10, -20, -30, -70, -50], [80, 10, 20, 30, 70, 50]]],
+          dtype=np.float32).T
+      params_t = tf.constant(params)
+      indices = tf.constant([[[3], [2], [1]], [[4], [4], [0]]])
+      gather_nd_t = tf.gather_nd(params_t, indices)
+      gather_nd_val = gather_nd_t.eval()
+
+    self.assertEqual([2, 3, 2, 2], gather_nd_t.get_shape())
+    self.assertAllEqual(params[[3, 2, 1, 4, 4, 0]].reshape(2, 3, 2, 2),
+                        gather_nd_val)
+
   def testHigherRankParams(self):
     with self.test_session(use_gpu=self.use_gpu):
       shape = (10, 20, 5, 1, 17)
@@ -88,6 +195,16 @@ class GatherNdTest(tf.test.TestCase):
       with self.assertRaisesOpError(
           r"flat indices\[1, :\] = \[7\] does not index into param "
           r"\(shape: \[3\]\)"):
+        gather_nd.eval()
+
+  def testBadIndicesWithSlices(self):
+    with self.test_session(use_gpu=False):
+      params = [[0, 1, 2]]
+      indices = [[[0], [0], [1]]]  # Make this one higher rank
+      gather_nd = tf.gather_nd(params, indices)
+      with self.assertRaisesOpError(
+          r"flat indices\[2, :\] = \[1\] does not index into param "
+          r"\(shape: \[1,3\]\)"):
         gather_nd.eval()
 
 

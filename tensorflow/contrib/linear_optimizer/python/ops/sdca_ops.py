@@ -170,6 +170,97 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
     return math_ops.add_n(sums)
 
 
+class SparseFeatureColumn(object):
+  """Represents a sparse feature column.
+
+  Contains three tensors representing a sparse feature column, they are
+  example indices (int64), feature indices (int64), and feature values (float).
+  Feature weights are optional, and are treated as 1.0f if missing.
+
+  For example, consider a batch of 4 examples, which contains the following
+  features in a particular SparseFeatureColumn:
+   Example 0: feature 5, value 1
+   Example 1: feature 6, value 1 and feature 10, value 0.5
+   Example 2: no features
+   Example 3: two copies of feature 2, value 1
+
+  This SparseFeatureColumn will be represented as follows:
+   <0, 5,  1>
+   <1, 6,  1>
+   <1, 10, 0.5>
+   <3, 2,  1>
+   <3, 2,  1>
+
+  For a batch of 2 examples below:
+   Example 0: feature 5
+   Example 1: feature 6
+
+  is represented by SparseFeatureColumn as:
+   <0, 5,  1>
+   <1, 6,  1>
+
+  ```
+
+  @@__init__
+  @@example_indices
+  @@feature_indices
+  @@feature_values
+  """
+
+  def __init__(self, example_indices, feature_indices, feature_values):
+    """Creates a `SparseFeatureColumn` representation.
+
+    Args:
+      example_indices: A 1-D int64 tensor of shape `[N]`. Also, accepts
+      python lists, or numpy arrays.
+      feature_indices: A 1-D int64 tensor of shape `[N]`. Also, accepts
+      python lists, or numpy arrays.
+      feature_values: An optional 1-D tensor float tensor of shape `[N]`. Also,
+      accepts python lists, or numpy arrays.
+
+    Returns:
+      A `SparseFeatureColumn`
+    """
+    with op_scope([example_indices, feature_indices], None,
+                  'SparseFeatureColumn'):
+      self._example_indices = convert_to_tensor(example_indices,
+                                                name='example_indices',
+                                                dtype=dtypes.int64)
+      self._feature_indices = convert_to_tensor(feature_indices,
+                                                name='feature_indices',
+                                                dtype=dtypes.int64)
+    self._feature_values = None
+    if feature_values is not None:
+      with op_scope([feature_values], None, 'SparseFeatureColumn'):
+        self._feature_values = convert_to_tensor(feature_values,
+                                                 name='feature_values',
+                                                 dtype=dtypes.float32)
+
+  @property
+  def example_indices(self):
+    """The example indices represented as a dense tensor.
+    Returns:
+      A 1-D Tensor of int64 with shape `[N]`.
+    """
+    return self._example_indices
+
+  @property
+  def feature_indices(self):
+    """The feature indices represented as a dense tensor.
+    Returns:
+      A 1-D Tensor of int64 with shape `[N]`.
+    """
+    return self._feature_indices
+
+  @property
+  def feature_values(self):
+    """The feature values represented as a dense tensor.
+    Returns:
+      May return None, or a 1-D Tensor of float32 with shape `[N]`.
+    """
+    return self._feature_values
+
+
 # TODO(sibyl-Aix6ihai): add op_scope to appropriate methods.
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
@@ -202,7 +293,7 @@ class SdcaModel(object):
       state of the optimizer can be stored. The container can be safely shared
       across many models.
     examples: {
-      sparse_features: list of SparseTensors of value type float32.
+      sparse_features: list of SparseFeatureColumn.
       dense_features: list of dense tensors of type float32.
       example_labels: a tensor of type float32 and shape [Num examples]
       example_weights: a tensor of type float32 and shape [Num examples]
@@ -334,15 +425,12 @@ class SdcaModel(object):
       sparse_variables = self._convert_n_to_tensor(self._variables[
           'sparse_features_weights'])
       result = 0.0
-      for st_i, sv in zip(examples['sparse_features'], sparse_variables):
-        ei, fi = array_ops.split(1, 2, st_i.indices)
-        ei = array_ops.reshape(ei, [-1])
-        fi = array_ops.reshape(fi, [-1])
-        fv = array_ops.reshape(st_i.values, [-1])
-        # TODO(sibyl-Aix6ihai): This does not work if examples have empty features.
+      for sfc, sv in zip(examples['sparse_features'], sparse_variables):
+        # TODO(sibyl-Aix6ihai): following does not take care of missing features.
         result += math_ops.segment_sum(
             math_ops.mul(
-                array_ops.gather(sv, fi), fv), ei)
+                array_ops.gather(sv, sfc.feature_indices), sfc.feature_values),
+            sfc.example_indices)
       dense_features = self._convert_n_to_tensor(examples['dense_features'])
       dense_variables = self._convert_n_to_tensor(self._variables[
           'dense_features_weights'])
@@ -393,58 +481,77 @@ class SdcaModel(object):
     # Technically, the op depends on a lot more than the variables,
     # but we'll keep the list short.
     with op_scope([], name, 'sdca/minimize'):
-      sparse_features_indices = []
+      sparse_example_indices = []
+      sparse_feature_indices = []
       sparse_features_values = []
       for sf in self._examples['sparse_features']:
-        sparse_features_indices.append(convert_to_tensor(sf.indices))
-        sparse_features_values.append(convert_to_tensor(sf.values))
+        sparse_example_indices.append(sf.example_indices)
+        sparse_feature_indices.append(sf.feature_indices)
+        # If feature values are missing, sdca assumes a value of 1.0f.
+        if sf.feature_values is not None:
+          sparse_features_values.append(sf.feature_values)
 
       example_ids_hashed = _sdca_ops.sdca_fprint(convert_to_tensor(
           self._examples['example_ids']))
       example_state_data = self._hashtable.lookup(example_ids_hashed)
-
-      example_state_data_updated = _sdca_ops.sdca_solver(
-          sparse_features_indices,
+      # Solver returns example_state_update, new delta sparse_feature_weights
+      # and delta dense_feature_weights.
+      esu, sfw, dfw = _sdca_ops.distributed_sdca_large_batch_solver(
+          sparse_example_indices,
+          sparse_feature_indices,
           sparse_features_values,
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
-          self._convert_n_to_tensor(
-              self._slots['unshrinked_sparse_features_weights'],
-              as_ref=True),
-          self._convert_n_to_tensor(
-              self._slots['unshrinked_dense_features_weights'],
-              as_ref=True),
+          self._convert_n_to_tensor(self._slots[
+              'unshrinked_sparse_features_weights']),
+          self._convert_n_to_tensor(self._slots[
+              'unshrinked_dense_features_weights']),
           example_state_data,
+          loss_type=self._options['loss_type'],
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
+          num_partitions=1,
           # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
           # to run more than one iteration on single mini-batch as we want to
           # spend more time in compute. SDCA works better with larger
           # mini-batches and there is also recent work that shows its better to
           # reuse old samples than train on new samples.
           # See: http://arxiv.org/abs/1602.02136.
-          num_inner_iterations=2,
-          loss_type=self._options['loss_type'])
-      with ops.control_dependencies([example_state_data_updated]):
-        insert_op = self._hashtable.insert(example_ids_hashed,
-                                           example_state_data_updated)
-        update_ops = [insert_op]
-        for name in ['sparse_features_weights', 'dense_features_weights']:
-          for var, slot_var in zip(self._variables[name],
-                                   self._slots['unshrinked_' + name]):
-            update_ops.append(var.assign(slot_var))
-        update_group = control_flow_ops.group(*update_ops)
-        with ops.control_dependencies([update_group]):
-          shrink_l1 = _sdca_ops.sdca_shrink_l1(
-              self._convert_n_to_tensor(
-                  self._variables['sparse_features_weights'],
-                  as_ref=True),
-              self._convert_n_to_tensor(
-                  self._variables['dense_features_weights'],
-                  as_ref=True),
-              l1=self._options['symmetric_l1_regularization'],
-              l2=self._symmetric_l2_regularization())
+          num_inner_iterations=2)
+
+      out_fws = [sfw, dfw]
+      with ops.control_dependencies([esu]):
+        update_ops = [self._hashtable.insert(example_ids_hashed, esu)]
+        # Update the weights before the proximal step.
+        for i, name in enumerate(
+            ['sparse_features_weights', 'dense_features_weights']):
+          for slot_var, out_fw in zip(self._slots['unshrinked_' + name],
+                                      out_fws[i]):
+            update_ops.append(slot_var.assign_add(out_fw))
+
+        with ops.control_dependencies(update_ops):
+          update_ops = []
+          # Copy over unshrinked weights to user provided variables.
+          for i, name in enumerate(
+              ['sparse_features_weights', 'dense_features_weights']):
+            for var, slot_var in zip(self._variables[name],
+                                     self._slots['unshrinked_' + name]):
+              update_ops.append(var.assign(slot_var))
+
+          update_group = control_flow_ops.group(*update_ops)
+
+          # Apply proximal step.
+          with ops.control_dependencies([update_group]):
+            shrink_l1 = _sdca_ops.sdca_shrink_l1(
+                self._convert_n_to_tensor(
+                    self._variables['sparse_features_weights'],
+                    as_ref=True),
+                self._convert_n_to_tensor(
+                    self._variables['dense_features_weights'],
+                    as_ref=True),
+                l1=self._options['symmetric_l1_regularization'],
+                l2=self._symmetric_l2_regularization())
       if not global_step:
         return shrink_l1
       with ops.control_dependencies([shrink_l1]):

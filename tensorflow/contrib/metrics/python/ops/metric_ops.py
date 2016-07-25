@@ -304,6 +304,82 @@ def streaming_mean(values, weights=None, metrics_collections=None,
     return mean, update_op
 
 
+def streaming_mean_tensor(values, weights=None, metrics_collections=None,
+                          updates_collections=None, name=None):
+  """Computes the element-wise (weighted) mean of the given tensors.
+
+  In contrast to the `streaming_mean` function which returns a scalar with the
+  mean,  this function returns an average tensor with the same shape as the
+  input tensors.
+
+  The `streaming_mean_tensor` function creates two local variables,
+  `total_tensor` and `count_tensor` that are used to compute the average of
+  `values`. This average is ultimately returned as `mean` which is an idempotent
+  operation that simply divides `total` by `count`. To facilitate the estimation
+  of a mean over a stream of data, the function creates an `update_op` operation
+  whose behavior is dependent on the value of `weights`. If `weights` is None,
+  then `update_op` increments `total` with the reduced sum of `values` and
+  increments `count` with the number of elements in `values`. If `weights` is
+  not `None`, then `update_op` increments `total` with the reduced sum of the
+  product of `values` and `weights` and increments `count` with the reduced sum
+  of weights. In addition to performing the updates, `update_op` also returns
+  the `mean`.
+
+  Args:
+    values: A `Tensor` of arbitrary dimensions.
+    weights: An optional set of weights of the same shape as `values`. If
+      `weights` is not None, the function computes a weighted mean.
+    metrics_collections: An optional list of collections that `mean`
+      should be added to.
+    updates_collections: An optional list of collections that `update_op`
+      should be added to.
+    name: An optional variable_op_scope name.
+
+  Returns:
+    mean: A float tensor representing the current mean, the value of `total`
+      divided by `count`.
+    update_op: An operation that increments the `total` and `count` variables
+      appropriately and whose value matches `mean_value`.
+
+  Raises:
+    ValueError: If `weights` is not `None` and its shape doesn't match `values`
+      or if either `metrics_collections` or `updates_collections` are not a list
+      or tuple.
+  """
+  with variable_scope.variable_op_scope([values, weights], name, 'mean'):
+    total = _create_local('total_tensor', shape=values.get_shape())
+    count = _create_local('count_tensor', shape=values.get_shape())
+
+    if weights is not None:
+      values.get_shape().assert_is_compatible_with(weights.get_shape())
+      weights = math_ops.to_float(weights)
+      values = math_ops.mul(values, weights)
+      num_values = weights
+    else:
+      num_values = array_ops.ones_like(values)
+
+    total_compute_op = state_ops.assign_add(total, values)
+    count_compute_op = state_ops.assign_add(count, num_values)
+
+    def compute_mean(total, count, name):
+      non_zero_count = math_ops.maximum(count,
+                                        array_ops.ones_like(count),
+                                        name=name)
+      return math_ops.truediv(total, non_zero_count, name=name)
+
+    mean = compute_mean(total, count, 'value')
+    with ops.control_dependencies([total_compute_op, count_compute_op]):
+      update_op = compute_mean(total, count, 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, mean)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return mean, update_op
+
+
 def streaming_accuracy(predictions, labels, weights=None,
                        metrics_collections=None, updates_collections=None,
                        name=None):

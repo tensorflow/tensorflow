@@ -26,11 +26,15 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/logging.h"
 
-
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 using tensorforest::CHILDREN_INDEX;
 using tensorforest::FEATURE_INDEX;
@@ -39,19 +43,24 @@ using tensorforest::LEAF_NODE;
 using tensorforest::CheckTensorBounds;
 
 REGISTER_OP("GrowTree")
-  .Input("end_of_tree: int32")
-  .Input("tree_depths: int32")
-  .Input("node_to_accumulator: int32")
-  .Input("finished_nodes: int32")
-  .Input("best_splits: int32")
-  .Input("candidate_split_features: int32")
-  .Input("candidate_split_thresholds: float")
-  .Output("nodes_to_update: int32")
-  .Output("tree_updates: int32")
-  .Output("threshold_updates: float")
-  .Output("depth_updates: int32")
-  .Output("new_end_of_tree: int32")
-  .Doc(R"doc(
+    .Input("end_of_tree: int32")
+    .Input("node_to_accumulator: int32")
+    .Input("finished_nodes: int32")
+    .Input("best_splits: int32")
+    .Input("candidate_split_features: int32")
+    .Input("candidate_split_thresholds: float")
+    .Output("nodes_to_update: int32")
+    .Output("tree_updates: int32")
+    .Output("threshold_updates: float")
+    .Output("new_end_of_tree: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->Matrix(InferenceContext::kUnknownDim, 2));
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(3, c->Vector(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
   Output the tree changes needed to resolve fertile nodes.
 
   Previous Ops have already decided which fertile nodes want to stop being
@@ -59,11 +68,10 @@ REGISTER_OP("GrowTree")
   information to this Op in `finished_nodes` and `best_splits`.  This Op
   merely checks that there is still space in tree to add new nodes, and if
   so, writes out the sparse updates needed for the fertile nodes to be
-  resolved to the tree, threshold and depth tensors.
+  resolved to the tree and threshold tensors.
 
   end_of_tree: `end_of_tree[0]` is the number of allocated nodes, or
     equivalently the index of the first free node in the tree tensor.
-  tree_depths: `tree_depths[i]` is the depth in the tree of node i.
   node_to_accumulator: `node_to_accumulator[i]` is the accumulator slot used by
     fertile node i, or -1 if node i isn't fertile.
   finished_nodes:= A 1-d int32 tensor containing the indices of finished nodes.
@@ -82,8 +90,6 @@ REGISTER_OP("GrowTree")
   threshold_updates: The updates to apply to the 1-d thresholds tensor.
     Intended to be used with
     `tf.scatter_update(thresholds, nodes_to_update, threshold_updates)`.
-  depth_updates: The updates to apply to the 1-d depths tensor.  Intended to
-    be used with `tf.scatter_update(depths, nodes_to_update, depth_updates)`.
   new_end_of_tree: `new_end_of_tree[0]` is the new size of the tree.
 )doc");
 
@@ -93,19 +99,15 @@ class GrowTree : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& end_of_tree = context->input(0);
-    const Tensor& tree_depths = context->input(1);
-    const Tensor& node_to_accumulator = context->input(2);
-    const Tensor& finished = context->input(3);
-    const Tensor& best_splits = context->input(4);
-    const Tensor& candidate_split_features = context->input(5);
-    const Tensor& candidate_split_thresholds = context->input(6);
+    const Tensor& node_to_accumulator = context->input(1);
+    const Tensor& finished = context->input(2);
+    const Tensor& best_splits = context->input(3);
+    const Tensor& candidate_split_features = context->input(4);
+    const Tensor& candidate_split_thresholds = context->input(5);
 
     OP_REQUIRES(context, end_of_tree.shape().dims() == 1,
                 errors::InvalidArgument(
                     "end_of_tree should be one-dimensional"));
-    OP_REQUIRES(context, tree_depths.shape().dims() == 1,
-                errors::InvalidArgument(
-                    "tree_depths should be one-dimensional"));
     OP_REQUIRES(context, node_to_accumulator.shape().dims() == 1,
                 errors::InvalidArgument(
                     "node_to_accumulator should be one-dimensional"));
@@ -131,13 +133,6 @@ class GrowTree : public OpKernel {
             "best_splits."));
     OP_REQUIRES(
         context,
-        tree_depths.shape().dim_size(0) ==
-        node_to_accumulator.shape().dim_size(0),
-        errors::InvalidArgument(
-            "Number of nodes should be the same in tree_depths and "
-            "node_to_accumulator."));
-    OP_REQUIRES(
-        context,
         candidate_split_features.shape().dim_size(0) ==
         candidate_split_thresholds.shape().dim_size(0),
         errors::InvalidArgument(
@@ -153,7 +148,6 @@ class GrowTree : public OpKernel {
 
     // Check tensor bounds.
     if (!CheckTensorBounds(context, end_of_tree)) return;
-    if (!CheckTensorBounds(context, tree_depths)) return;
     if (!CheckTensorBounds(context, node_to_accumulator)) return;
     if (!CheckTensorBounds(context, finished)) return;
     if (!CheckTensorBounds(context, best_splits)) return;
@@ -161,7 +155,6 @@ class GrowTree : public OpKernel {
     if (!CheckTensorBounds(context, candidate_split_thresholds)) return;
 
     int32 current_end_of_tree = end_of_tree.unaligned_flat<int32>()(0);
-    const auto depths = tree_depths.unaligned_flat<int32>();
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
     const auto finished_vec = finished.unaligned_flat<int32>();
     const auto best_vec = best_splits.unaligned_flat<int32>();
@@ -209,19 +202,10 @@ class GrowTree : public OpKernel {
                                             &threshold_updates_tensor));
     auto threshold_updates_flat = threshold_updates_tensor->tensor<float, 1>();
 
-    Tensor* depth_updates_tensor = nullptr;
-    TensorShape depth_updates_shape;
-    depth_updates_shape.AddDim(num_updates);
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(3, depth_updates_shape,
-                                            &depth_updates_tensor));
-    auto depth_updates_flat = depth_updates_tensor->tensor<int32, 1>();
-
     int output_slot = 0;
     for (int32 i = 0; i < nodes_we_can_allocate; i++) {
       const int32 node = internal::SubtleMustCopy(finished_vec(i));
-      OP_REQUIRES(context, FastBoundsCheck(node, std::min(node_map.size(),
-                                                          depths.size())),
+      OP_REQUIRES(context, FastBoundsCheck(node, node_map.size()),
                   errors::InvalidArgument("finished node not in valid range."))
       const int32 best = internal::SubtleMustCopy(best_vec(i));
       const int32 accumulator = internal::SubtleMustCopy(node_map(node));
@@ -246,21 +230,18 @@ class GrowTree : public OpKernel {
       tree_updates_flat(output_slot, FEATURE_INDEX) =
           split_features(accumulator, best);
       threshold_updates_flat(output_slot) = split_thresholds(accumulator, best);
-      depth_updates_flat(output_slot) = depths(node);
       output_slot++;
 
       nodes_to_update_flat(output_slot) = left;
       tree_updates_flat(output_slot, CHILDREN_INDEX) = LEAF_NODE;
       tree_updates_flat(output_slot, FEATURE_INDEX) = -1;
       threshold_updates_flat(output_slot) = 0.0;
-      depth_updates_flat(output_slot) = depths(node) + 1;
       output_slot++;
 
       nodes_to_update_flat(output_slot) = left + 1;
       tree_updates_flat(output_slot, CHILDREN_INDEX) = LEAF_NODE;
       tree_updates_flat(output_slot, FEATURE_INDEX) = -1;
       threshold_updates_flat(output_slot) = 0.0;
-      depth_updates_flat(output_slot) = depths(node) + 1;
       output_slot++;
 
       current_end_of_tree += 2;
@@ -269,9 +250,8 @@ class GrowTree : public OpKernel {
     Tensor* new_end_of_tree_tensor = nullptr;
     TensorShape new_end_of_tree_shape;
     new_end_of_tree_shape.AddDim(1);
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(4, new_end_of_tree_shape,
-                                            &new_end_of_tree_tensor));
+    OP_REQUIRES_OK(context, context->allocate_output(3, new_end_of_tree_shape,
+                                                     &new_end_of_tree_tensor));
     auto new_end_of_tree_flat = new_end_of_tree_tensor->tensor<int32, 1>();
     new_end_of_tree_flat(0) = current_end_of_tree;
   }

@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
@@ -86,6 +91,7 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
     .Doc(R"doc(
 Joins a string Tensor across the given dimensions.
 
@@ -154,6 +160,30 @@ REGISTER_OP("StringJoin")
     .Attr("N: int")
     .Attr("separator: string = ''")
     .Output("output: string")
+    .SetShapeFn([](InferenceContext* c) {
+      // If all inputs are scalars, then return a scalar.
+      bool all_scalar = true;
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        if (c->Rank(c->input(i)) != 0) all_scalar = false;
+      }
+      if (all_scalar) {
+        c->set_output(0, c->Scalar());
+        return Status::OK();
+      }
+
+      // At least one input is unknown or a scalar.
+      // Merge the non-scalars to find the output shape.
+      // Don't merge inputs with unknown rank, as they can actually be scalars
+      // or the output shape.
+      const Shape* out = c->UnknownShape();
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        if (c->RankKnown(c->input(i)) && c->Rank(c->input(i)) != 0) {
+          TF_RETURN_IF_ERROR(c->Merge(out, c->input(i), &out));
+        }
+      }
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Joins the strings in the given list of string tensors into one tensor;
 with the given separator (default is an empty separator).

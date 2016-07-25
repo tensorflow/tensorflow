@@ -274,6 +274,15 @@ Use `get_slot_names()` to get the list of slot names created by the
 
 
 
+#### Other Methods
+- - -
+
+#### `tf.train.Optimizer.get_name()` {#Optimizer.get_name}
+
+
+
+
+
 
 - - -
 
@@ -1009,7 +1018,7 @@ variables.
 
 
 *  <b>`var_list`</b>: A list of Variable or Tensor objects. The variables
-    and Tensors must be of types float32 or float64.
+    and Tensors must be of types float16, float32, or float64.
 
 ##### Returns:
 
@@ -1018,7 +1027,7 @@ variables.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: If the arguments are not all float32 or float64.
+*  <b>`TypeError`</b>: If the arguments are not all float16, float32, or float64.
 *  <b>`ValueError`</b>: If the moving average of one of the variables is already
     being computed.
 

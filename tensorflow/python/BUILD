@@ -407,6 +407,20 @@ py_test(
 )
 
 py_test(
+    name = "framework_random_seed_test",
+    size = "small",
+    srcs = ["framework/random_seed_test.py"],
+    main = "framework/random_seed_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":ops",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
     name = "framework_tensor_shape_div_test",
     size = "small",
     srcs = ["framework/tensor_shape_div_test.py"],
@@ -646,6 +660,7 @@ tf_gen_op_wrapper_py(
         "MergeSummary",
         "Print",
         "ScalarSummary",
+        "TensorSummary",
     ],
     require_shape_functions = True,
 )
@@ -840,6 +855,7 @@ py_library(
         "ops/state_grad.py",
         "ops/state_ops.py",
         "ops/string_ops.py",
+        "ops/summary_ops.py",
         "ops/template.py",
         "ops/tensor_array_grad.py",
         "ops/tensor_array_ops.py",
@@ -1202,12 +1218,19 @@ cuda_py_tests(
         exclude = [
             "ops/image_ops_test.py",
             "ops/nn_batchnorm_test.py",
-            "ops/nn_conv_test.py",
             "ops/nn_test.py",
             "ops/nn_xent_test.py",
             "ops/op_def_library_test.py",
+            "ops/special_math_ops_test.py",
         ],
     ),
+)
+
+cuda_py_test(
+    name = "special_math_ops_test",
+    size = "small",
+    srcs = ["ops/special_math_ops_test.py"],
+    tags = ["notsan"],
 )
 
 cuda_py_tests(
@@ -1215,7 +1238,6 @@ cuda_py_tests(
     size = "medium",
     srcs = [
         "ops/nn_batchnorm_test.py",
-        "ops/nn_conv_test.py",
         "ops/nn_test.py",
         "ops/nn_xent_test.py",
     ],
@@ -1231,6 +1253,7 @@ cuda_py_tests(
         "//tensorflow/core:image_testdata",
     ],
     shard_count = 5,
+    tags = ["notsan"],
 )
 
 cuda_py_tests(
@@ -1292,6 +1315,7 @@ py_library(
     deps = [
         ":client",
         ":framework",
+        ":ops",
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":util",

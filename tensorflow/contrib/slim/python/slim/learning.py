@@ -252,6 +252,7 @@ import time
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -551,7 +552,8 @@ def train(
   Args:
     train_op: A `Tensor` that, when executed, will apply the gradients and
       return the loss value.
-    logdir: The directory where training logs are written to.
+    logdir: The directory where training logs are written to. If None, model
+      checkpoints and summaries will not be written.
     train_step_fn: The function to call in order to execute a single gradient
       step. The function must have take exactly four arguments: the current
       session, the `train_op` `Tensor`, a global step `Tensor` and a dictionary.
@@ -581,7 +583,7 @@ def train(
     save_summaries_secs: How often, in seconds, to save summaries.
     startup_delay_steps: The number of steps to wait for before beginning. Note
       that this must be 0 if a sync_optimizer is supplied.
-    saver: Saver to save checkpoints. If none, a default one will be created
+    saver: Saver to save checkpoints. If None, a default one will be created
       and used.
     save_interval_secs: How often, in seconds, to save the model to `logdir`.
     sync_optimizer: an instance of tf.train.SyncReplicasOptimizer. If the
@@ -599,6 +601,12 @@ def train(
   if train_op is None:
     raise ValueError('train_op cannot be None.')
 
+  if logdir is None:
+    if summary_op != _USE_DEFAULT:
+      raise ValueError('Cannot provide summary_op because logdir=None')
+    if saver is not None:
+      raise ValueError('Cannot provide saver because logdir=None')
+
   if sync_optimizer and startup_delay_steps > 0:
     raise ValueError(
         'startup_delay_steps must be zero when sync_optimizer is supplied.')
@@ -613,37 +621,37 @@ def train(
       global_step = variables.get_or_create_global_step()
     saver = saver or tf_saver.Saver()
 
-  if init_op == _USE_DEFAULT:
-    init_op = tf_variables.initialize_all_variables()
+    if init_op == _USE_DEFAULT:
+      init_op = tf_variables.initialize_all_variables()
 
-  if summary_op == _USE_DEFAULT:
-    summary_op = logging_ops.merge_all_summaries()
+    if summary_op == _USE_DEFAULT:
+      summary_op = logging_ops.merge_all_summaries()
 
-  cleanup_op = None
+    cleanup_op = None
 
-  if is_chief and sync_optimizer:
-    if not isinstance(sync_optimizer,
-                      sync_replicas_optimizer.SyncReplicasOptimizer):
-      raise ValueError(
-          '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer')
+    if is_chief and sync_optimizer:
+      if not isinstance(sync_optimizer,
+                        sync_replicas_optimizer.SyncReplicasOptimizer):
+        raise ValueError(
+            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer')
 
-    # Need to create these BEFORE the supervisor finalizes the graph:
-    with ops.control_dependencies([init_op]):
-      init_tokens_op = sync_optimizer.get_init_tokens_op()
-    init_op = init_tokens_op
-    chief_queue_runner = sync_optimizer.get_chief_queue_runner()
-    cleanup_op = sync_optimizer.get_clean_up_op()
+      # Need to create these BEFORE the supervisor finalizes the graph:
+      with ops.control_dependencies([init_op]):
+        init_tokens_op = sync_optimizer.get_init_tokens_op()
+      init_op = init_tokens_op
+      chief_queue_runner = sync_optimizer.get_chief_queue_runner()
+      cleanup_op = sync_optimizer.get_clean_up_op()
 
-  if train_step_kwargs == _USE_DEFAULT:
-    train_step_kwargs = {}
+    if train_step_kwargs == _USE_DEFAULT:
+      train_step_kwargs = {}
 
-    if number_of_steps:
-      should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
-    else:
-      should_stop_op = constant_op.constant(False)
-    train_step_kwargs['should_stop'] = should_stop_op
-    train_step_kwargs['should_log'] = math_ops.equal(
-        math_ops.mod(global_step, log_every_n_steps), 0)
+      if number_of_steps:
+        should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
+      else:
+        should_stop_op = constant_op.constant(False)
+      train_step_kwargs['should_stop'] = should_stop_op
+      train_step_kwargs['should_log'] = math_ops.equal(
+          math_ops.mod(global_step, log_every_n_steps), 0)
 
   sv = supervisor.Supervisor(
       graph=graph,
@@ -659,31 +667,42 @@ def train(
       save_model_secs=save_interval_secs,
       init_fn=init_fn)
 
-  with sv.managed_session(master, start_standard_services=False) as sess:
-    if is_chief:
-      sv.start_standard_services(sess)
-    elif not is_chief and startup_delay_steps > 0:
-      _wait_for_step(sess, global_step,
-                     min(startup_delay_steps, number_of_steps or sys.maxint))
-    sv.start_queue_runners(sess)
-    if is_chief and sync_optimizer:
-      sv.start_queue_runners(sess, [chief_queue_runner])
-
+  should_retry = True
+  while should_retry:
     try:
-      while not sv.should_stop():
-        total_loss, should_stop = train_step_fn(
-            sess, train_op, global_step, train_step_kwargs)
-        if should_stop:
-          break
-    finally:
-      if sv.is_chief and cleanup_op is not None:
-        sess.run(cleanup_op)
+      should_retry = False
+      with sv.managed_session(master, start_standard_services=False) as sess:
+        logging.info('Starting Session.')
+        if is_chief:
+          if logdir:
+            sv.start_standard_services(sess)
+        elif startup_delay_steps > 0:
+          _wait_for_step(sess, global_step,
+                         min(startup_delay_steps,
+                             number_of_steps or sys.maxint))
+        sv.start_queue_runners(sess)
+        logging.info('Starting Queues.')
+        if is_chief and sync_optimizer:
+          sv.start_queue_runners(sess, [chief_queue_runner])
+        try:
+          while not sv.should_stop():
+            total_loss, should_stop = train_step_fn(
+                sess, train_op, global_step, train_step_kwargs)
+            if should_stop:
+              logging.info('Stopping Training.')
+              break
+          if logdir and sv.is_chief:
+            logging.info('Finished training! Saving model to disk.')
+            sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
+        finally:
+          if sv.is_chief and cleanup_op is not None:
+            logging.info('About to execute sync_clean_up_op!')
+            sess.run(cleanup_op)
 
-    # This waits for service threads to finish.
-    sv.Stop()
+    except errors.AbortedError:
+      # Always re-run on AbortedError as it indicates a restart of one of the
+      # distributed tensorflow servers.
+      logging.info('Retrying training!')
+      should_retry = True
 
-    if sv.is_chief:
-      logging.info('Finished training! Saving model to disk.')
-      sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-
-    return total_loss
+  return total_loss

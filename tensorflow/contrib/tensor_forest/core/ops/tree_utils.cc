@@ -21,6 +21,13 @@ namespace tensorforest {
 
 using tensorflow::Tensor;
 
+DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec) {
+  const int32 spec_feature =
+      (input_feature + 1 < spec.NumElements()) ? input_feature : 0;
+  return static_cast<DataColumnTypes>(
+      spec.unaligned_flat<int32>()(spec_feature));
+}
+
 void GetTwoBest(int max, std::function<float(int)> score_fn, float* best_score,
                 int* best_index, float* second_best_score,
                 int* second_best_index) {

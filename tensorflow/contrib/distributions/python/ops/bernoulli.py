@@ -42,8 +42,13 @@ class Bernoulli(distribution.Distribution):
     * log_cdf
   """
 
-  def __init__(self, logits=None, p=None, dtype=dtypes.int32, strict=True,
-               strict_statistics=True, name="Bernoulli"):
+  def __init__(self,
+               logits=None,
+               p=None,
+               dtype=dtypes.int32,
+               validate_args=True,
+               allow_nan_stats=False,
+               name="Bernoulli"):
     """Construct Bernoulli distributions.
 
     Args:
@@ -55,21 +60,21 @@ class Bernoulli(distribution.Distribution):
           event. Each entry in the `Tensor` parameterizes an independent
           Bernoulli distribution.
       dtype: dtype for samples.
-      strict: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
-        return nans.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      validate_args: Whether to assert that `0 <= p <= 1`. If not validate_args,
+       `log_pmf` may return nans.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: A name for this distribution.
 
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
     """
-    self._strict_statistics = strict_statistics
+    self._allow_nan_stats = allow_nan_stats
     self._name = name
     self._dtype = dtype
-    self._strict = strict
+    self._validate_args = validate_args
     check_op = check_ops.assert_less_equal
     if p is None and logits is None:
       raise ValueError("Must pass p or logits.")
@@ -84,8 +89,8 @@ class Bernoulli(distribution.Distribution):
     elif logits is None:
       with ops.name_scope(name):
         with ops.name_scope("p"):
-          with ops.control_dependencies(
-              [check_op(p, 1.), check_op(0., p)] if strict else []):
+          with ops.control_dependencies([check_op(p, 1.), check_op(0., p)] if
+                                        validate_args else []):
             self._p = array_ops.identity(p)
         with ops.name_scope("logits"):
           self._logits = math_ops.log(self._p) - math_ops.log(1. - self._p)
@@ -96,14 +101,14 @@ class Bernoulli(distribution.Distribution):
     self._event_shape = array_ops.constant([], dtype=dtypes.int32)
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):
@@ -182,7 +187,7 @@ class Bernoulli(distribution.Distribution):
           event = array_ops.ones_like(logits) * event
         return -nn.sigmoid_cross_entropy_with_logits(logits, event)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Generate `n` samples.
 
     Args:

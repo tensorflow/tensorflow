@@ -56,22 +56,23 @@ class SigmoidCrossEntropyWithLogitsTest(tf.test.TestCase):
 
   def testLogisticOutput(self):
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, losses = self._Inputs(dtype=tf.float32)
-        loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
+      for dtype in [tf.float32, tf.float16]:
+        with self.test_session(use_gpu=use_gpu):
+          logits, targets, losses = self._Inputs(dtype=dtype)
+          loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
+          np_loss = np.array(losses).astype(np.float32)
+          tf_loss = loss.eval()
+        self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testLogisticOutputMultiDim(self):
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, losses = self._Inputs(dtype=tf.float32,
-                                               sizes=[2, 2, 2])
-        loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
+      for dtype in [tf.float32, tf.float16]:
+        with self.test_session(use_gpu=use_gpu):
+          logits, targets, losses = self._Inputs(dtype=dtype, sizes=[2, 2, 2])
+          loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
+          np_loss = np.array(losses).astype(np.float32)
+          tf_loss = loss.eval()
+        self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testGradient(self):
     sizes = [4, 2]

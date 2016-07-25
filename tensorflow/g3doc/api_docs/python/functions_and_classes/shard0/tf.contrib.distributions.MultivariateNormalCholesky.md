@@ -23,6 +23,7 @@ Extra leading dimensions, if provided, allow for batches.
 
 ```python
 # Initialize a single 3-variate Gaussian with diagonal covariance.
+# Note, this would be more efficient with MultivariateNormalDiag.
 mu = [1, 2, 3.]
 chol = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
 dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)
@@ -45,7 +46,7 @@ Trainable (batch) Choesky matrices can be created with
 `tf.contrib.distributions.batch_matrix_diag_transform()`
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, strict=True, strict_statistics=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=True, allow_nan_stats=False, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -59,11 +60,12 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
     `b >= 0`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`,
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -71,6 +73,13 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
 
 
 *  <b>`TypeError`</b>: If `mu` and `chol` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.allow_nan_stats` {#MultivariateNormalCholesky.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -272,7 +281,31 @@ OR
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.sample(n, seed=None, name='sample')` {#MultivariateNormalCholesky.sample}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalCholesky.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sample_n(n, seed=None, name='sample_n')` {#MultivariateNormalCholesky.sample_n}
 
 Sample `n` observations from the Multivariate Normal Distributions.
 
@@ -313,16 +346,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.strict` {#MultivariateNormalCholesky.strict}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.validate_args` {#MultivariateNormalCholesky.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalCholesky.strict_statistics` {#MultivariateNormalCholesky.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

@@ -114,6 +114,10 @@ class NonMaxSuppressionOp : public OpKernel {
 
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, scores, &num_boxes);
+    if (!context->status().ok()) {
+      return;
+    }
+
     const int output_size =
         std::min(max_output_size.scalar<int>()(), num_boxes);
     typename TTypes<float, 2>::ConstTensor boxes_data =

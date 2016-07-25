@@ -80,6 +80,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+from tensorflow.python.summary import summary
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -127,7 +128,7 @@ __all__ = make_all(__name__, [framework_lib, array_ops, client_lib, check_ops,
                               constant_op, control_flow_ops, functional_ops,
                               histogram_ops, io_ops, math_ops, nn, script_ops,
                               session_ops, sparse_ops, state_ops, string_ops,
-                              tensor_array_ops, train])
+                              summary, tensor_array_ops, train])
 
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
@@ -239,6 +240,7 @@ __all__.extend([
     'nn',
     'python_io',
     'resource_loader',
+    'summary',
     'sysconfig',
     'test',
     'train',

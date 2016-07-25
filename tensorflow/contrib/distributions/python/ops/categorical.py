@@ -45,8 +45,8 @@ class Categorical(distribution.Distribution):
       self,
       logits,
       dtype=dtypes.int32,
-      strict=True,
-      strict_statistics=True,
+      validate_args=True,
+      allow_nan_stats=False,
       name="Categorical"):
     """Initialize Categorical distributions using class log-probabilities.
 
@@ -56,17 +56,17 @@ class Categorical(distribution.Distribution):
           index into a batch of independent distributions and the last dimension
           indexes into the classes.
       dtype: The type of the event samples (default: int32).
-      strict: Unused in this distribution.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      validate_args: Unused in this distribution.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
-    self._strict_statistics = strict_statistics
+    self._allow_nan_stats = allow_nan_stats
     self._name = name
     self._dtype = dtype
-    self._strict = strict
+    self._validate_args = validate_args
     with ops.op_scope([logits], name):
       self._logits = ops.convert_to_tensor(logits, name="logits")
       logits_shape = array_ops.shape(self._logits)
@@ -76,14 +76,14 @@ class Categorical(distribution.Distribution):
       self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):
@@ -123,33 +123,41 @@ class Categorical(distribution.Distribution):
     """Log-probability of class `k`.
 
     Args:
-      k: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+      k: `int32` or `int64` Tensor. Must be broadcastable with a `batch_shape`
+        `Tensor`.
       name: A name for this operation (optional).
 
     Returns:
       The log-probabilities of the classes indexed by `k`
     """
     with ops.name_scope(self.name):
-      k = ops.convert_to_tensor(k, name="k")
-      k.set_shape(self.get_batch_shape())
-      return -nn_ops.sparse_softmax_cross_entropy_with_logits(
-          self.logits, k, name=name)
+      with ops.op_scope([k, self.logits], name):
+        k = ops.convert_to_tensor(k, name="k")
+
+        logits = self.logits * array_ops.ones_like(
+            array_ops.expand_dims(k, -1),
+            dtype=self.logits.dtype)
+        k *= array_ops.ones(
+            array_ops.slice(
+                array_ops.shape(logits), [0], [array_ops.rank(logits) - 1]),
+            dtype=k.dtype)
+        k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
+
+        return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
 
   def prob(self, k, name="prob"):
     """Probability of class `k`.
 
     Args:
-      k: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+      k: `int32` or `int64` Tensor. Must be broadcastable with logits.
       name: A name for this operation (optional).
 
     Returns:
       The probabilities of the classes indexed by `k`
     """
-    with ops.name_scope(self.name):
-      with ops.op_scope([self.logits, k], name):
-        return math_ops.exp(self.log_prob(k))
+    return super(Categorical, self).prob(k, name)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Categorical distribution.
 
     Args:

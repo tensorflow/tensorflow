@@ -209,6 +209,9 @@ def _add_scaled_noise_to_gradients(grads_and_vars, gradient_noise_scale):
   gradients, variables = zip(*grads_and_vars)
   noisy_gradients = []
   for gradient in gradients:
+    if gradient is None:
+      noisy_gradients.append(None)
+      continue
     if isinstance(gradient, ops.IndexedSlices):
       gradient_shape = gradient.dense_shape
     else:
@@ -222,9 +225,15 @@ def _multiply_gradients(grads_and_vars, gradient_multipliers):
   """Multiply specified gradients."""
   multiplied_grads_and_vars = []
   for grad, var in grads_and_vars:
-    if var in gradient_multipliers or var.name in gradient_multipliers:
+    if (grad is not None and
+        (var in gradient_multipliers or var.name in gradient_multipliers)):
       key = var if var in gradient_multipliers else var.name
-      grad *= constant_op.constant(
+      multiplier = constant_op.constant(
           gradient_multipliers[key], dtype=dtypes.float32)
+      if isinstance(grad, ops.IndexedSlices):
+        grad_values = grad.values * multiplier
+        grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
+      else:
+        grad *= multiplier
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars

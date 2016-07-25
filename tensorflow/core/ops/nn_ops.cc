@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -21,9 +22,31 @@ limitations under the License.
 
 namespace tensorflow {
 
-typedef shape_inference::Dimension Dimension;
-typedef shape_inference::InferenceContext InferenceContext;
-typedef shape_inference::Shape Shape;
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
+
+namespace {
+
+// A shape function that uses the tensor value at <input_idx> as a shape for
+// output 0. If the tensor value is not available, it uses a shape with <ndims>
+// unknown dims.
+Status InputTensorShapeOrUnknown(InferenceContext* c, int input_idx,
+                                 int ndims) {
+  const Shape* out;
+  const Tensor* input = c->input_tensor(input_idx);
+  if (input == nullptr) {
+    std::vector<const Dimension*> dims;
+    for (int i = 0; i < ndims; ++i) dims.push_back(c->UnknownDim());
+    out = c->MakeShape(dims);
+  } else {
+    TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(input_idx, &out));
+  }
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+}  // namespace
 
 // --------------------------------------------------------------------------
 
@@ -35,6 +58,7 @@ REGISTER_OP("AvgPool")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {float, half, double}")
+    .SetShapeFn(shape_inference::AvgPoolShape)
     .Doc(R"doc(
 Performs average pooling on the input.
 
@@ -62,6 +86,13 @@ REGISTER_OP("AvgPoolGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {float, half, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      // NOTE(mrry): We could in principle work out the shape from the
+      // gradients and the attrs, but if we do not know orig_input_shape
+      // statically, then we are unlikely to know the shape of the
+      // gradients either.
+      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+    })
     .Doc(R"doc(
 Computes gradients of the average pooling function.
 
@@ -92,6 +123,22 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
     .Attr("variance_epsilon: float")
     .Attr("scale_after_normalization: bool")
     .Deprecated(9, "Use tf.nn.batch_normalization()")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      const Dimension* last_dim = c->Dim(input, 3);
+      for (int i = 1; i < 5; ++i) {  // covers m, v, beta, gamma
+        const Shape* vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(last_dim, c->Dim(vec, 0), &last_dim));
+      }
+
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Batch normalization.
 
@@ -129,6 +176,30 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
     .Attr("variance_epsilon: float")
     .Attr("scale_after_normalization: bool")
     .Deprecated(9, "Use tf.nn.batch_normalization()")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      TF_RETURN_IF_ERROR(
+          c->Merge(input, c->input(4), &input));  // with backprop
+
+      const Dimension* last_dim = c->Dim(input, 3);
+      for (int i = 1; i < 4; ++i) {  // covers m, v, gamma
+        const Shape* vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(last_dim, c->Dim(vec, 0), &last_dim));
+      }
+
+      const Shape* dx;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &dx));
+      c->set_output(0, dx);
+
+      const Shape* vector_shape = c->Vector(last_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
+      c->set_output(3, vector_shape);
+      c->set_output(4, vector_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Gradients for batch normalization.
 
@@ -235,6 +306,7 @@ REGISTER_OP("Conv2D")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
 
@@ -280,6 +352,13 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      // NOTE(mrry): We could in principle work out the shape from the
+      // gradients and the attrs, but if we do not know orig_input_shape
+      // statically, then we are unlikely to know the shape of the
+      // gradients either.
+      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+    })
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the input.
 
@@ -315,6 +394,13 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      // NOTE(mrry): We could in principle work out the shape from the
+      // gradients and the attrs, but if we do not know orig_input_shape
+      // statically, then we are unlikely to know the shape of the
+      // gradients either.
+      return InputTensorShapeOrUnknown(c, 1 /* input_idx */, 4 /* ndims */);
+    })
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the filter.
 
@@ -347,6 +433,7 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Attr("T: {float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape)
     .Doc(R"doc(
 Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
 
@@ -380,6 +467,13 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Attr("T: {float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      // NOTE(mrry): We could in principle work out the shape from the
+      // gradients and the attrs, but if we do not know orig_input_shape
+      // statically, then we are unlikely to know the shape of the
+      // gradients either.
+      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+    })
     .Doc(R"doc(
 Computes the gradients of depthwise convolution with respect to the input.
 
@@ -404,6 +498,13 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Attr("T: {float, double}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      // NOTE(mrry): We could in principle work out the shape from the
+      // gradients and the attrs, but if we do not know orig_input_shape
+      // statically, then we are unlikely to know the shape of the
+      // gradients either.
+      return InputTensorShapeOrUnknown(c, 1 /* input_idx */, 4 /* ndims */);
+    })
     .Doc(R"doc(
 Computes the gradients of depthwise convolution with respect to the filter.
 
@@ -456,6 +557,9 @@ REGISTER_OP("Conv3DBackpropInput")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropInputV2")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 5);
+    })
     .Doc(R"doc(
 Computes the gradients of 3-D convolution with respect to the input.
 
@@ -479,6 +583,12 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropFilterV2")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradients of 3-D convolution with respect to the filter.
 
@@ -501,6 +611,13 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradients of 3-D convolution with respect to the input.
 
@@ -525,6 +642,13 @@ REGISTER_OP("Conv3DBackpropFilterV2")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradients of 3-D convolution with respect to the filter.
 
@@ -570,6 +694,13 @@ REGISTER_OP("AvgPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr("T: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes gradients of average pooling function.
 
@@ -613,6 +744,9 @@ REGISTER_OP("MaxPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr("T: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 5);
+    })
     .Doc(R"doc(
 Computes gradients of max pooling function.
 
@@ -686,6 +820,14 @@ REGISTER_OP("LRNGrad")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
     .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* s;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &s));  // input_grads
+      TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
+      TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
+      c->set_output(0, s);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Gradients for Local Response Normalization.
 
@@ -735,6 +877,9 @@ REGISTER_OP("MaxPoolGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
     .Doc(R"doc(
 Computes gradients of the maxpooling function.
 
@@ -788,6 +933,9 @@ REGISTER_OP("MaxPoolGradWithArgmax")
     .Input("argmax: Targmax")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
     .Doc(R"doc(
 Computes gradients of the maxpooling function.
 
@@ -858,6 +1006,7 @@ REGISTER_OP("Dilation2DBackpropInput")
     .Attr("strides: list(int) >= 4")
     .Attr("rates: list(int) >= 4")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes the gradient of morphological 2-D dilation with respect to the input.
 
@@ -881,6 +1030,10 @@ REGISTER_OP("Dilation2DBackpropFilter")
     .Attr("strides: list(int) >= 4")
     .Attr("rates: list(int) >= 4")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradient of morphological 2-D dilation with respect to the filter.
 
@@ -910,6 +1063,7 @@ REGISTER_OP("ReluGrad")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes rectified linear gradients for a Relu operation.
 
@@ -932,6 +1086,7 @@ REGISTER_OP("Relu6Grad")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes rectified linear 6 gradients for a Relu6 operation.
 
@@ -957,6 +1112,7 @@ REGISTER_OP("EluGrad")
     .Input("outputs: T")
     .Output("backprops: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes gradients for the exponential linear (Elu) operation.
 
@@ -979,6 +1135,7 @@ REGISTER_OP("SoftplusGrad")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes softplus gradients for a softplus operation.
 
@@ -1000,6 +1157,7 @@ REGISTER_OP("SoftsignGrad")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes softsign gradients for a softsign operation.
 
@@ -1050,6 +1208,16 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Output("loss: T")
     .Output("backprop: T")
     .Attr("T: {half, float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
+      TF_RETURN_IF_ERROR(c->Merge(input, c->input(1), &input));
+
+      const Dimension* batch_size = c->Dim(input, 0);
+      c->set_output(0, c->Vector(batch_size));
+      c->set_output(1, input);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes softmax cross entropy cost and gradients to backpropagate.
 
@@ -1070,6 +1238,21 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
     .Output("backprop: T")
     .Attr("T: {half, float, double}")
     .Attr("Tlabels: {int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* features;
+      const Shape* labels;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &features));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &labels));
+
+      const Dimension* batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(features, 0), c->Dim(labels, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->ReplaceDim(features, 0, batch_size, &features));
+
+      c->set_output(0, c->Vector(batch_size));
+      c->set_output(1, features);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes softmax cross entropy cost and gradients to backpropagate.
 
@@ -1095,6 +1278,17 @@ REGISTER_OP("InTopK")
     .Output("precision: bool")
     .Attr("k: int")
     .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* predictions;
+      const Shape* targets;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &predictions));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &targets));
+      const Dimension* batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
+      c->set_output(0, c->Vector(batch_size));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Says whether the targets are in the top `K` predictions.
 
@@ -1150,7 +1344,7 @@ Status TopKShapeFn(InferenceContext* c) {
   // Replace last_dim with k_dim.
   const Shape* s;
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
-  TF_RETURN_IF_ERROR(c->Concatenate(s, c->MakeShape({k_dim}), &s));
+  TF_RETURN_IF_ERROR(c->Concatenate(s, c->Vector(k_dim), &s));
   c->set_output(0, s);
   c->set_output(1, s);
   return Status::OK();
@@ -1166,7 +1360,7 @@ REGISTER_OP("TopK")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
     .Deprecated(7, "Use TopKV2 instead")
-    .SetShapeFn(OpShapeInferenceFn(TopKShapeFn))
+    .SetShapeFn(TopKShapeFn)
     .Doc(R"doc(
 Finds values and indices of the `k` largest elements for the last dimension.
 
@@ -1199,7 +1393,7 @@ REGISTER_OP("TopKV2")
     .Output("indices: int32")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
-    .SetShapeFn(OpShapeInferenceFn(TopKShapeFn))
+    .SetShapeFn(TopKShapeFn)
     .Doc(R"doc(
 Finds values and indices of the `k` largest elements for the last dimension.
 

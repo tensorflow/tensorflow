@@ -33,8 +33,6 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         split_after_samples=25, num_features=60).fill()
     self.assertEquals(2, hparams.num_classes)
     self.assertEquals(3, hparams.num_output_columns)
-    # 2 * ceil(log_2(1000)) = 20
-    self.assertEquals(20, hparams.max_depth)
     # sqrt(num_features) < 10, so num_splits_to_consider should be 10.
     self.assertEquals(10, hparams.num_splits_to_consider)
     # Don't have more fertile nodes than max # leaves, which is 500.
@@ -50,7 +48,6 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         num_classes=2, num_trees=100, max_nodes=1000000,
         split_after_samples=25,
         num_features=1000).fill()
-    self.assertEquals(40, hparams.max_depth)
     # sqrt(1000) = 31.63...
     self.assertEquals(32, hparams.num_splits_to_consider)
     # 1000000 / 32 = 31250

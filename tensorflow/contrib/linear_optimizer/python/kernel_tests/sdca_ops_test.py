@@ -25,6 +25,7 @@ import tensorflow as tf
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _ShardedMutableHashTable
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
+from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SparseFeatureColumn
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.platform import googletest
 
@@ -61,12 +62,17 @@ def make_example_dict(example_protos, example_weights):
     return tf.parse_example(
         [e.SerializeToString() for e in example_protos], features)
 
-  sparse_merge = lambda ids, values: tf.sparse_merge(ids, values, ids.shape[1])
-
   parsed = parse_examples(example_protos)
   sparse_features = [
-      sparse_merge(parsed['age_indices'], parsed['age_values']),
-      sparse_merge(parsed['gender_indices'], parsed['gender_values'])
+      SparseFeatureColumn(
+          tf.reshape(
+              tf.split(1, 2, parsed['age_indices'].indices)[0], [-1]),
+          tf.reshape(parsed['age_indices'].values, [-1]),
+          tf.reshape(parsed['age_values'].values, [-1])), SparseFeatureColumn(
+              tf.reshape(
+                  tf.split(1, 2, parsed['gender_indices'].indices)[0], [-1]),
+              tf.reshape(parsed['gender_indices'].values, [-1]),
+              tf.reshape(parsed['gender_values'].values, [-1]))
   ]
   return dict(sparse_features=sparse_features,
               dense_features=[],
@@ -77,8 +83,9 @@ def make_example_dict(example_protos, example_weights):
 
 def make_dense_examples_dict(dense_feature_values, weights, labels):
   dense_feature_tensors = ([
-      tf.convert_to_tensor(values,
-                           dtype=tf.float32) for values in dense_feature_values
+      tf.reshape(
+          tf.convert_to_tensor(values, dtype=tf.float32), [-1, 1])
+      for values in dense_feature_values
   ])
   return dict(sparse_features=[],
               dense_features=dense_feature_tensors,
@@ -182,6 +189,7 @@ class SdcaWithLogisticLossTest(SdcaOptimizerTest):
                             lr.approximate_duality_gap().eval(),
                             rtol=1e-2,
                             atol=1e-2)
+
 
   def testSimpleNoL2(self):
     # Same as test above (so comments from above apply) but without an L2.
@@ -667,7 +675,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
              'gender': [1]}, 1),
     ]
     example_weights = [1.0, 1.0]
-    with self.test_session(use_gpu=False):
+    with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
       options = dict(symmetric_l2_regularization=1.0,
@@ -794,7 +802,28 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
       self.assertAllClose(0.4, regularized_loss.eval(), atol=0.02)
 
 
-class SdcaFprintTest(TensorFlowTestCase):
+class SparseFeatureColumnTest(SdcaOptimizerTest):
+  """Tests for SparseFeatureColumn.
+  """
+
+  def testBasic(self):
+    expected_example_indices = [1, 1, 1, 2]
+    expected_feature_indices = [0, 1, 2, 0]
+    sfc = SparseFeatureColumn(expected_example_indices,
+                              expected_feature_indices, None)
+    self.assertTrue(isinstance(sfc.example_indices, tf.Tensor))
+    self.assertTrue(isinstance(sfc.feature_indices, tf.Tensor))
+    self.assertEqual(sfc.feature_values, None)
+    with self._single_threaded_test_session():
+      self.assertAllEqual(expected_example_indices, sfc.example_indices.eval())
+      self.assertAllEqual(expected_feature_indices, sfc.feature_indices.eval())
+    expected_feature_values = [1.0, 2.0, 3.0, 4.0]
+    sfc = SparseFeatureColumn([1, 1, 1, 2], [0, 1, 2, 0],
+                              expected_feature_values)
+    with self._single_threaded_test_session():
+      self.assertAllEqual(expected_feature_values, sfc.feature_values.eval())
+
+class SdcaFprintTest(SdcaOptimizerTest):
   """Tests for the SdcaFprint op.
 
   This is one way of enforcing the platform-agnostic nature of SdcaFprint.
@@ -805,7 +834,7 @@ class SdcaFprintTest(TensorFlowTestCase):
   """
 
   def testFprint(self):
-    with self.test_session():
+    with self._single_threaded_test_session():
       in_data = tf.constant(['abc', 'very looooooong string', 'def'])
       out_data = _sdca_ops.sdca_fprint(in_data)
       self.assertAllEqual([b'a085f09013029e45-3980b2afd2126c04',
@@ -814,12 +843,12 @@ class SdcaFprintTest(TensorFlowTestCase):
                           out_data.eval())
 
 
-class ShardedMutableHashTableTest(TensorFlowTestCase):
+class ShardedMutableHashTableTest(SdcaOptimizerTest):
   """Tests for the _ShardedMutableHashTable class."""
 
   def testShardedMutableHashTable(self):
     for num_shards in [1, 3, 10]:
-      with self.test_session():
+      with self._single_threaded_test_session():
         default_val = -1
         keys = tf.constant(['brain', 'salad', 'surgery'])
         values = tf.constant([0, 1, 2], tf.int64)

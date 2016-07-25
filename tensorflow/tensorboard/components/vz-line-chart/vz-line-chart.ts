@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
 
-module TF {
+module VZ {
   export class LineChart {
     private name2datasets: {[name: string]: Plottable.Dataset};
     private seriesNames: string[];
@@ -69,15 +69,15 @@ module TF {
       if (this.outer) {
         this.outer.destroy();
       }
-      let xComponents = TF.ChartHelpers.getXComponents(xType);
+      let xComponents = VZ.ChartHelpers.getXComponents(xType);
       this.xAccessor = xComponents.accessor;
       this.xScale = xComponents.scale;
       this.xAxis = xComponents.axis;
       this.xAxis.margin(0).tickLabelPadding(3);
       this.yScale = new Plottable.Scales.Linear();
       this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
-      let yFormatter = TF.ChartHelpers.multiscaleFormatter(
-          TF.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
+      let yFormatter = VZ.ChartHelpers.multiscaleFormatter(
+          VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
       this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
       this.yAxis.usesTextWidthApproximation(true);
 
@@ -97,12 +97,13 @@ module TF {
     }
 
     private buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      this.yAccessor = (d: Backend.ScalarDatum) => d.scalar;
+      this.yAccessor = (d: VZ.ChartHelpers.ScalarDatum) => d.scalar;
       let linePlot = new Plottable.Plots.Line<number|Date>();
       linePlot.x(xAccessor, xScale);
       linePlot.y(this.yAccessor, yScale);
       linePlot.attr(
-          'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
+          'stroke', (d: VZ.ChartHelpers.Datum, i: number,
+                     dataset: Plottable.Dataset) =>
                         this.colorScale.scale(dataset.metadata().name));
       this.linePlot = linePlot;
       let group = this.setupTooltips(linePlot);
@@ -111,7 +112,8 @@ module TF {
       smoothLinePlot.x(xAccessor, xScale);
       smoothLinePlot.y(this.yAccessor, yScale);
       smoothLinePlot.attr(
-          'stroke', (d: Backend.Datum, i: number, dataset: Plottable.Dataset) =>
+          'stroke', (d: VZ.ChartHelpers.Datum, i: number,
+                     dataset: Plottable.Dataset) =>
                         this.colorScale.scale(dataset.metadata().name));
       this.smoothLinePlot = smoothLinePlot;
 
@@ -123,7 +125,7 @@ module TF {
       scatterPlot.y(this.yAccessor, yScale);
       scatterPlot.attr('fill', (d: any) => this.colorScale.scale(d.name));
       scatterPlot.attr('opacity', 1);
-      scatterPlot.size(TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
+      scatterPlot.size(VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
       scatterPlot.datasets([this.lastPointsDataset]);
       this.scatterPlot = scatterPlot;
 
@@ -132,7 +134,7 @@ module TF {
       nanDisplay.y((x) => x.displayY, yScale);
       nanDisplay.attr('fill', (d: any) => this.colorScale.scale(d.name));
       nanDisplay.attr('opacity', 1);
-      nanDisplay.size(TF.ChartHelpers.NAN_SYMBOL_SIZE * 2);
+      nanDisplay.size(VZ.ChartHelpers.NAN_SYMBOL_SIZE * 2);
       nanDisplay.datasets([this.nanDataset]);
       nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
       this.nanDisplay = nanDisplay;
@@ -146,7 +148,7 @@ module TF {
      */
     private _onDatasetChanged(dataset: Plottable.Dataset) {
       if (this.smoothingEnabled) {
-        this.smoothDataset(this.getSmoothDataset(dataset.metadata().name));
+        this.resmoothDataset(this.getSmoothDataset(dataset.metadata().name));
         this.updateSpecialDatasets(this.smoothDatasets);
       } else {
         this.updateSpecialDatasets(this.datasets);
@@ -170,7 +172,7 @@ module TF {
                   datum = nonNanData[idx];
                   datum.name = d.metadata().name;
                   datum.relative =
-                      TF.ChartHelpers.relativeAccessor(datum, -1, d);
+                      VZ.ChartHelpers.relativeAccessor(datum, -1, d);
                 }
                 return datum;
               })
@@ -200,7 +202,7 @@ module TF {
           } else {
             data[i].name = d.metadata().name;
             data[i].displayY = displayY;
-            data[i].relative = TF.ChartHelpers.relativeAccessor(data[i], -1, d);
+            data[i].relative = VZ.ChartHelpers.relativeAccessor(data[i], -1, d);
             nanData.push(data[i]);
           }
         }
@@ -239,7 +241,7 @@ module TF {
         if (!enabled) {
           return;
         }
-        let target: TF.ChartHelpers.Point = {
+        let target: VZ.ChartHelpers.Point = {
           x: p.x,
           y: p.y,
           datum: null,
@@ -257,10 +259,10 @@ module TF {
                 Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
         let pts: any = pointsComponent.content().selectAll('.point').data(
             pointsToCircle,
-            (p: TF.ChartHelpers.Point) => p.dataset.metadata().name);
+            (p: VZ.ChartHelpers.Point) => p.dataset.metadata().name);
         if (points.length !== 0) {
           pts.enter().append('circle').classed('point', true);
-          pts.attr('r', TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
+          pts.attr('r', VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
               .attr('cx', (p) => p.x)
               .attr('cy', (p) => p.y)
               .style('stroke', 'none')
@@ -280,13 +282,13 @@ module TF {
     }
 
     private drawTooltips(
-        points: TF.ChartHelpers.Point[], target: TF.ChartHelpers.Point) {
+        points: VZ.ChartHelpers.Point[], target: VZ.ChartHelpers.Point) {
       // Formatters for value, step, and wall_time
       this.scatterPlot.attr('opacity', 0);
-      let valueFormatter = TF.ChartHelpers.multiscaleFormatter(
-          TF.ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION);
+      let valueFormatter = VZ.ChartHelpers.multiscaleFormatter(
+          VZ.ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION);
 
-      let dist = (p: TF.ChartHelpers.Point) =>
+      let dist = (p: VZ.ChartHelpers.Point) =>
           Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
       let closestDist = _.min(points.map(dist));
       points = _.sortBy(points, (d) => d.dataset.metadata().name);
@@ -332,12 +334,12 @@ module TF {
           (d) =>
               isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar));
       rows.append('td').text(
-          (d) => TF.ChartHelpers.stepFormatter(d.datum.step));
+          (d) => VZ.ChartHelpers.stepFormatter(d.datum.step));
       rows.append('td').text(
-          (d) => TF.ChartHelpers.timeFormatter(d.datum.wall_time));
+          (d) => VZ.ChartHelpers.timeFormatter(d.datum.wall_time));
       rows.append('td').text(
-          (d) => TF.ChartHelpers.relativeFormatter(
-              TF.ChartHelpers.relativeAccessor(d.datum, -1, d.dataset)));
+          (d) => VZ.ChartHelpers.relativeFormatter(
+              VZ.ChartHelpers.relativeAccessor(d.datum, -1, d.dataset)));
 
       // compute left position
       let documentWidth = document.body.clientWidth;
@@ -350,22 +352,22 @@ module TF {
       this.tooltip.style('left', left + 'px');
       // compute top position
       if (parentRect.bottom + nodeRect.height +
-              TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET <
+              VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET <
           document.body.clientHeight) {
         this.tooltip.style(
-            'top', parentRect.bottom + TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
+            'top', parentRect.bottom + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
       } else {
         this.tooltip.style(
-            'bottom', parentRect.top - TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
+            'bottom', parentRect.top - VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
       }
 
       this.tooltip.style('opacity', 1);
     }
 
     private findClosestPoint(
-        target: TF.ChartHelpers.Point,
-        dataset: Plottable.Dataset): TF.ChartHelpers.Point {
-      let points: TF.ChartHelpers.Point[] = dataset.data().map((d, i) => {
+        target: VZ.ChartHelpers.Point,
+        dataset: Plottable.Dataset): VZ.ChartHelpers.Point {
+      let points: VZ.ChartHelpers.Point[] = dataset.data().map((d, i) => {
         let x = this.xAccessor(d, i, dataset);
         let y = this.yAccessor(d, i, dataset);
         return {
@@ -376,7 +378,7 @@ module TF {
         };
       });
       let idx: number =
-          _.sortedIndex(points, target, (p: TF.ChartHelpers.Point) => p.x);
+          _.sortedIndex(points, target, (p: VZ.ChartHelpers.Point) => p.x);
       if (idx === points.length) {
         return points[points.length - 1];
       } else if (idx === 0) {
@@ -398,11 +400,11 @@ module TF {
       return this.name2smoothDatasets[name];
     }
 
-    private smoothDataset(dataset: Plottable.Dataset) {
-      let data = this.getDataset(dataset.metadata().name).data();
+    private resmoothDataset(dataset: Plottable.Dataset) {
+      let unsmoothedData = this.getDataset(dataset.metadata().name).data();
 
       // EMA with first step initialized to first element.
-      let smoothedData = _.cloneDeep(data);
+      let smoothedData = _.cloneDeep(unsmoothedData);
       smoothedData.forEach((d, i) => {
         if (i === 0) {
           return;
@@ -442,7 +444,7 @@ module TF {
     /**
      * Set the data of a series on the chart.
      */
-    public setSeriesData(name: string, data: TF.Backend.ScalarDatum[]) {
+    public setSeriesData(name: string, data: VZ.ChartHelpers.ScalarDatum[]) {
       this.getDataset(name).data(data);
     }
 
@@ -456,7 +458,7 @@ module TF {
       }
 
       this.smoothingDecay = decay;
-      this.smoothDatasets.forEach((d) => this.smoothDataset(d));
+      this.smoothDatasets.forEach((d) => this.resmoothDataset(d));
       this.updateSpecialDatasets(this.smoothDatasets);
     }
 

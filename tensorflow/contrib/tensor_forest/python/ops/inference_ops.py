@@ -40,8 +40,8 @@ def TreePredictions(op):
   """Shape function for TreePredictions Op."""
   num_points = op.inputs[0].get_shape()[0].value
   sparse_shape = op.inputs[3].get_shape()
-  if sparse_shape.ndims == 2:
-    num_points = sparse_shape[0].value
+  if sparse_shape.ndims > 0:
+    num_points = None
   num_classes = op.inputs[7].get_shape()[1].value
 
   # The output of TreePredictions is

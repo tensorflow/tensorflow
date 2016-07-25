@@ -80,8 +80,12 @@ class Normal(distribution.Distribution):
 
   """
 
-  def __init__(
-      self, mu, sigma, strict=True, strict_statistics=True, name="Normal"):
+  def __init__(self,
+               mu,
+               sigma,
+               validate_args=True,
+               allow_nan_stats=False,
+               name="Normal"):
     """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
     The parameters `mu` and `sigma` must be shaped in a way that supports
@@ -91,24 +95,24 @@ class Normal(distribution.Distribution):
       mu: `float` or `double` tensor, the means of the distribution(s).
       sigma: `float` or `double` tensor, the stddevs of the distribution(s).
         sigma must contain only positive values.
-      strict: Whether to assert that `sigma > 0`. If `strict` is False,
-        correct output is not guaranteed when input is invalid.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      validate_args: Whether to assert that `sigma > 0`. If `validate_args` is
+        False, correct output is not guaranteed when input is invalid.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to give Ops created by the initializer.
 
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
+    self._allow_nan_stats = allow_nan_stats
+    self._validate_args = validate_args
     with ops.op_scope([mu, sigma], name):
       mu = ops.convert_to_tensor(mu)
       sigma = ops.convert_to_tensor(sigma)
-      with ops.control_dependencies(
-          [check_ops.assert_positive(sigma)] if strict else []):
+      with ops.control_dependencies([check_ops.assert_positive(sigma)] if
+                                    validate_args else []):
         self._name = name
         self._mu = array_ops.identity(mu, name="mu")
         self._sigma = array_ops.identity(sigma, name="sigma")
@@ -118,14 +122,14 @@ class Normal(distribution.Distribution):
     contrib_tensor_util.assert_same_float_dtype((mu, sigma))
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):
@@ -301,7 +305,7 @@ class Normal(distribution.Distribution):
         sigma = self._sigma * array_ops.ones_like(self._mu)
         return 0.5 * math_ops.log(two_pi_e1 * math_ops.square(sigma))
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Normal Distributions.
 
     Args:

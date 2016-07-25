@@ -21,12 +21,17 @@
 #include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
@@ -45,6 +50,16 @@ REGISTER_OP("SampleInputs")
     .Output("accumulators_to_update: int32")
     .Output("new_split_feature_rows: int32")
     .Output("new_split_threshold_rows: float")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* candidate_split_features;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(6), 2, &candidate_split_features));
+      const Dimension* split_dim = c->Dim(candidate_split_features, 1);
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->Matrix(InferenceContext::kUnknownDim, split_dim));
+      c->set_output(2, c->Matrix(InferenceContext::kUnknownDim, split_dim));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Initializes candidate splits for newly fertile nodes.
 
@@ -113,15 +128,18 @@ class SampleInputs : public OpKernel {
         new random::SimplePhilox(single_rand_.get()));
   }
 
+  // Returns true if index and val were successfully set.
   template <typename T>
-  void GetRandomFeatureDense(const T& inputs, int32 num_features,
+  bool GetRandomFeatureDense(const T& inputs, int32 num_features,
                              int32 input_index, int32* index, float* val) {
     *index = rng_->Uniform(num_features);
     *val = inputs(input_index, *index);
+    return true;
   }
 
+  // Returns true if index and val were successfully set.
   template <typename T1, typename T2>
-  void GetRandomFeatureSparse(const T1& sparse_indices, const T2& sparse_values,
+  bool GetRandomFeatureSparse(const T1& sparse_indices, const T2& sparse_values,
                               int32 input_index, int32* index, float* val) {
     int32 low = 0;
     int32 high = sparse_values.dimension(0);
@@ -129,9 +147,10 @@ class SampleInputs : public OpKernel {
       int32 vi = low + rng_->Uniform(high - low);
       int64 i = internal::SubtleMustCopy(sparse_indices(vi, 0));
       if (i == input_index) {
-        *index = internal::SubtleMustCopy(sparse_indices(vi, 1));
+        *index =
+            static_cast<int32>(internal::SubtleMustCopy(sparse_indices(vi, 1)));
         *val = sparse_values(vi);
-        return;
+        return true;
       }
       if (i < input_index) {
         low = vi + 1;
@@ -139,8 +158,12 @@ class SampleInputs : public OpKernel {
         high = vi;
       }
     }
-    LOG(FATAL) << "Could not find any values for input " << input_index
-               << " inside sparse_input_indices";
+
+    // If we get here, an example was empty.  That's unfortunate, but we try
+    // to continue anyway by trying to look at another example.
+    LOG(WARNING) << "Could not find any values for input " << input_index
+                 << " inside sparse_input_indices";
+    return false;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -211,24 +234,25 @@ class SampleInputs : public OpKernel {
     if (!CheckTensorBounds(context, split_thresholds)) return;
 
     int32 num_features;
-    std::function<void(int32, int32*, float*)> get_random_feature;
+    std::function<bool(int32, int32*, float*)> get_random_feature;
     // TODO(thomaswc): Figure out a way to avoid calling .vec, etc. over and
     // over again
     if (sparse_input) {
       num_features = sparse_input_shape.unaligned_flat<int64>()(1);
       get_random_feature = [&sparse_input_indices, &sparse_input_values, this](
-          int32 input_index, int32* index, float* val) {
+          int32 input_index, int32* index, float* val) -> bool {
         const auto sparse_indices = sparse_input_indices.matrix<int64>();
         const auto sparse_values = sparse_input_values.vec<float>();
-        GetRandomFeatureSparse(sparse_indices, sparse_values, input_index,
-                               index, val);
+        return GetRandomFeatureSparse(sparse_indices, sparse_values,
+                                      input_index, index, val);
       };
     } else {
       num_features = static_cast<int32>(input_data.shape().dim_size(1));
       get_random_feature = [&input_data, num_features, this](
-          int32 input_index, int32* index, float* val) {
+          int32 input_index, int32* index, float* val) -> bool {
         const auto inputs = input_data.tensor<float, 2>();
-        GetRandomFeatureDense(inputs, num_features, input_index, index, val);
+        return GetRandomFeatureDense(inputs, num_features, input_index, index,
+                                     val);
       };
     }
 
@@ -323,10 +347,14 @@ class SampleInputs : public OpKernel {
             VLOG(1) << "Over-writing @ " << output_slot << "," << split;
             int32 index;
             float val;
-            get_random_feature(i, &index, &val);
-            new_split_feature_rows_flat(output_slot, split) = index;
-            new_split_threshold_rows_flat(output_slot, split) = val;
-            --num_inits;
+            const bool success = get_random_feature(i, &index, &val);
+            if (success) {
+              new_split_feature_rows_flat(output_slot, split) = index;
+              new_split_threshold_rows_flat(output_slot, split) = val;
+              --num_inits;
+            } else {
+              break;
+            }
           }
         }
       }

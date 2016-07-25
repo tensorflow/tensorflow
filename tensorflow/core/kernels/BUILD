@@ -512,6 +512,23 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "gather_nd_op_test",
+    size = "small",
+    deps = [
+        ":gather_nd_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "identity_op_test",
     size = "small",
@@ -1046,6 +1063,7 @@ tf_kernel_libraries(
         "summary_audio_op",
         "summary_image_op",
         "summary_op",
+        "summary_tensor_op",
     ],
     deps = [
         "//tensorflow/core:framework",
@@ -2016,7 +2034,6 @@ filegroup(
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
-            "strided_slice_op.*",
             "tf_record_reader_op.*",
             "string_to_hash_bucket_op.*",
             "text_line_reader_op.*",
@@ -2032,6 +2049,8 @@ filegroup(
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
+            # Excluded due to experimental status:
+            "debug_ops.*",
             # Ops excluded because they do not build correctly for Android.
             # See b/29213790
             "sparse_matmul_op.*",

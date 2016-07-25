@@ -18,9 +18,14 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::Sum;
@@ -42,6 +47,11 @@ REGISTER_OP("FinishedNodes")
     .Input("current_epoch: int32")
     .Output("finished: int32")
     .Output("stale: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Determines which of the given leaf nodes are done accumulating.
 

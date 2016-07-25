@@ -215,10 +215,13 @@ def batch_norm(inputs,
         trainable=False,
         collections=moving_variance_collections)
 
+    # If `is_training` doesn't have a constant value, because it is a `Tensor`,
+    # a `Variable` or `Placeholder` then is_training_value will be None and
+    # `needs_moments` will be true.
     is_training_value = utils.constant_value(is_training)
-    # Calculate the moments based on the individual batch.
     need_moments = is_training_value is None or is_training_value
     if need_moments:
+    # Calculate the moments based on the individual batch.
       mean, variance = nn.moments(inputs, axis, shift=moving_mean)
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:

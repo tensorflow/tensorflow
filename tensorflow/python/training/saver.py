@@ -23,6 +23,7 @@ import collections
 import os.path
 import re
 import time
+import uuid
 
 import numpy as np
 import six
@@ -621,8 +622,14 @@ def update_checkpoint_state(save_dir,
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
-  file_io.write_string_to_file(
-      coord_checkpoint_filename, text_format.MessageToString(ckpt))
+
+  # Saves to a tmp file first.  On success, *atomically* renames it back.
+  # This prevents a potential read/write race between this function and
+  # get_checkpoint_state().
+  temp_pathname = coord_checkpoint_filename + ".tmp." + uuid.uuid4().hex
+  file_io.write_string_to_file(temp_pathname,
+                               text_format.MessageToString(ckpt))
+  file_io.rename(temp_pathname, coord_checkpoint_filename, overwrite=True)
 
 
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
@@ -1037,7 +1044,8 @@ class Saver(object):
 
     Raises:
       TypeError: If `sess` is not a `Session`.
-      ValueError: If `latest_filename` contains path components.
+      ValueError: If `latest_filename` contains path components, or if it
+        collides with `save_path`.
     """
     if latest_filename is None:
       latest_filename = "checkpoint"
@@ -1051,6 +1059,13 @@ class Saver(object):
       checkpoint_file = "%s-%d" % (save_path, global_step)
     else:
       checkpoint_file = save_path
+      if os.path.basename(
+          save_path) == latest_filename and not self.saver_def.sharded:
+        # Guard against collision between data file and checkpoint state file.
+        raise ValueError(
+            "'latest_filename' collides with 'save_path': '%s' and '%s'" %
+            (latest_filename, save_path))
+
     save_path = os.path.dirname(save_path)
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)

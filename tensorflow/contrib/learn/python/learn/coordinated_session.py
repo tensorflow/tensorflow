@@ -50,6 +50,17 @@ class CoordinatedSession(WrappedSession):
     # Check with the coordinator if we should stop.
     return self._coord.should_stop()
 
+  def close(self):
+    try:
+      if not self._coord.should_stop():
+        self._coord.request_stop()
+        self._coord.join(self._coordinated_threads_to_join)
+    except Exception:  # pylint: disable=broad-except
+      # Don't raise exception at close
+      pass
+    finally:
+      WrappedSession.close(self)
+
   def run(self, *args, **kwargs):
     try:
       return self._sess.run(*args, **kwargs)
@@ -57,8 +68,3 @@ class CoordinatedSession(WrappedSession):
       self._coord.request_stop(e)
     if self._coord.should_stop():
       self._coord.join(self._coordinated_threads_to_join)
-
-  # TODO(touts): Add a close() method that also joins the coordinator
-  # but does not raise exceptions.  This can only be done reliably when the
-  # Coordinator keeps a pointer to the coordinated threads, otherwise we do not
-  # know which threads to join.
