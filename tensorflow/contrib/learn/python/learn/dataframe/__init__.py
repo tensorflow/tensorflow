@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.dataframe.dataframe import DataFrame
+from tensorflow.contrib.learn.python.learn.dataframe.series import PredefinedSeries
 from tensorflow.contrib.learn.python.learn.dataframe.series import Series
 from tensorflow.contrib.learn.python.learn.dataframe.series import TransformedSeries
 from tensorflow.contrib.learn.python.learn.dataframe.tensorflow_dataframe import TensorFlowDataFrame
@@ -45,5 +46,5 @@ from tensorflow.contrib.learn.python.learn.dataframe.transforms import  compare 
 for ct_def in _cmp.COMPARISON_TRANSFORMS:
   _cmp.register_comparison_ops(*ct_def)
 
-__all__ = ['DataFrame', 'Series', 'TransformedSeries', 'TensorFlowDataFrame',
-           'parameter', 'Transform']
+__all__ = ['DataFrame', 'Series', 'PredefinedSeries', 'TransformedSeries',
+           'TensorFlowDataFrame', 'parameter', 'Transform']

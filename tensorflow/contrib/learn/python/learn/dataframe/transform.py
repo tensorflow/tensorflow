@@ -223,7 +223,7 @@ class Transform(object):
     # pylint: disable=not-callable
     return self.return_type(*output_series)
 
-  def apply_transform(self, input_series, cache=None):
+  def build_transitive(self, input_series, cache=None):
     """Apply this `Transform` to the provided `Series`, producing 'Tensor's.
 
     Args:
@@ -244,14 +244,12 @@ class Transform(object):
     if len(input_series) != self.input_valency:
       raise ValueError("Expected %s input Series but received %s." %
                        (self.input_valency, len(input_series)))
-    input_tensors = [series.build(cache)
-                     for series in input_series]
+    input_tensors = [series.build(cache) for series in input_series]
 
     # Note we cache each output individually, not just the entire output
     # tuple.  This allows using the graph as the cache, since it can sensibly
     # cache only individual Tensors.
-    output_reprs = [TransformedSeries.make_repr(input_series, self,
-                                                output_name)
+    output_reprs = [TransformedSeries.make_repr(input_series, self, output_name)
                     for output_name in self.output_names]
     output_tensors = [cache.get(output_repr) for output_repr in output_reprs]
 
