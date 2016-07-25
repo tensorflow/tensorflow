@@ -12,6 +12,13 @@ Alias for field number 0
 
 - - -
 
+#### `tf.nn.rnn_cell.LSTMStateTuple.dtype` {#LSTMStateTuple.dtype}
+
+
+
+
+- - -
+
 #### `tf.nn.rnn_cell.LSTMStateTuple.h` {#LSTMStateTuple.h}
 
 Alias for field number 1
