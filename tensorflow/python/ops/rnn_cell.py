@@ -648,7 +648,7 @@ class DropoutWrapper(RNNCell):
                        % input_keep_prob)
     if (isinstance(output_keep_prob, float) and
         not (output_keep_prob >= 0.0 and output_keep_prob <= 1.0)):
-      raise ValueError("Parameter input_keep_prob must be between 0 and 1: %d"
+      raise ValueError("Parameter output_keep_prob must be between 0 and 1: %d"
                        % output_keep_prob)
     self._cell = cell
     self._input_keep_prob = input_keep_prob

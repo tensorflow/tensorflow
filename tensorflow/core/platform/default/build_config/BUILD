@@ -47,13 +47,13 @@ cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:protos_cc",
         "@farmhash_archive//:farmhash",
-        "@jpeg_archive//:jpeg",
-        "@png_archive//:png",
         "@gif_archive//:gif",
         "@highwayhash//:sip_hash",
+        "@jpeg_archive//:jpeg",
+        "@png_archive//:png",
         "@re2//:re2",
-        "//tensorflow/core:protos_cc",
     ],
 )
 
