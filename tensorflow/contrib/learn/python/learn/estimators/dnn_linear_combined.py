@@ -72,7 +72,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     Args:
       target_column: A _TargetColumn object.
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
       linear_feature_columns: An iterable containing all the feature columns
         used by linear part of the model. All items in the set should be
         instances of classes derived from `FeatureColumn`.
@@ -354,7 +356,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     """Constructs a DNNLinearCombinedClassifier instance.
 
     Args:
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
       n_classes: number of target classes. Default is binary classification.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training.
@@ -537,7 +541,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.

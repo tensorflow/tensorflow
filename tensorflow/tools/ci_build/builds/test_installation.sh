@@ -243,6 +243,8 @@ rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/jpeg
 cp -r tensorflow/core/lib/jpeg ${PY_TEST_DIR}/tensorflow/core/lib
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/png
 cp -r tensorflow/core/lib/png ${PY_TEST_DIR}/tensorflow/core/lib
+rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/gif
+cp -r tensorflow/core/lib/gif ${PY_TEST_DIR}/tensorflow/core/lib
 
 # Copy test data from tensorflow/contrib/ffmpeg
 

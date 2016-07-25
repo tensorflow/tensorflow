@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
@@ -50,7 +52,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
       # Decayed learning rate
       assign_100.op.run()
-      expected = .1 * 0.96**(100 // 3)
+      expected = .1 * 0.96 ** (100 // 3)
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
   def testVariables(self):
@@ -69,7 +71,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
       # Decayed learning rate
       assign_100.op.run()
-      expected = .1 * 0.96**(100 // 3)
+      expected = .1 * 0.96 ** (100 // 3)
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
   def testPiecewiseConstant(self):
@@ -213,6 +215,84 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
                                                         power=power, cycle=True)
       expected = (lr - end_lr) * 0.25 ** power + end_lr
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+
+class ExponentialDecayTest(test_util.TensorFlowTestCase):
+
+  def testDecay(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.natural_exp_decay(initial_lr, step,
+                                                       k, decay_rate)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr * math.exp(-i / k * decay_rate)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
+
+  def testStaircase(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.natural_exp_decay(initial_lr,
+                                                       step,
+                                                       k,
+                                                       decay_rate,
+                                                       staircase=True)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr * math.exp(-decay_rate * (i // k))
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
+
+
+class InverseDecayTest(test_util.TensorFlowTestCase):
+
+  def testDecay(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.inverse_time_decay(initial_lr,
+                                                        step,
+                                                        k,
+                                                        decay_rate)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr / (1 + i / k * decay_rate)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
+
+  def testStaircase(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.inverse_time_decay(initial_lr,
+                                                        step,
+                                                        k,
+                                                        decay_rate,
+                                                        staircase=True)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr / (1 + decay_rate * (i // k))
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
 
 
 if __name__ == "__main__":

@@ -69,8 +69,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
                master='', accuracy_metric=None,
-               tf_random_seed=None, continue_training=False, verbose=1,
-               max_to_keep=5, save_checkpoint_secs=300):
+               tf_random_seed=None, config=None):
     self.params = params.fill()
     self.accuracy_metric = (accuracy_metric or
                             ('r2' if self.params.regression else 'accuracy'))
@@ -80,12 +79,6 @@ class TensorForestEstimator(estimator.BaseEstimator):
     self.graph_builder_class = graph_builder_class
     self.training_args = {}
     self.construction_args = {}
-
-    config = run_config.RunConfig(
-        master=master,
-        tf_random_seed=(tf_random_seed or int((time.time() * 1000) % 1000)),
-        save_checkpoints_secs=save_checkpoint_secs,
-        keep_checkpoint_max=max_to_keep)
 
     super(TensorForestEstimator, self).__init__(model_dir=model_dir,
                                                 config=config)

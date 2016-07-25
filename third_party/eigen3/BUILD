@@ -13,7 +13,6 @@ cc_library(
         "unsupported/Eigen/CXX11/FixedPoint",
         "unsupported/Eigen/CXX11/src/FixedPoint/*.h",
     ]),
-    includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
         "@eigen_archive//:eigen",

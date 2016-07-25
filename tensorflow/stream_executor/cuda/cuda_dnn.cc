@@ -54,6 +54,15 @@ NarrowT CheckedNarrowing(const WideT& wide) {
   return narrow;
 }
 
+// Returns the "Compatibility" version number from the CuDNN version number.
+// This is the number that tries to indicate ABI compatibility.
+//
+// For example, if cudnn_version is 5107, the compatibility version
+// number will be 5100.
+size_t cudnnCompatibilityVersion(size_t cudnn_version) {
+  return (cudnn_version / 100) * 100;
+}
+
 }  // namespace
 
 namespace perftools {
@@ -139,13 +148,6 @@ size_t cudnnGetVersion() {
   return callable();
 }
 
-// Returns whether the currently loaded cuDNN version is R2.
-bool IsCudnnR2() {
-  static auto version = cudnnGetVersion();
-  DCHECK_GE(version, 2000);
-  return version < 3000;
-}
-
 #define PERFTOOLS_GPUTOOLS_CUDNN_WRAP(__name)                        \
   struct DynLoadShim__##__name {                                     \
     static const char* kName;                                        \
@@ -197,26 +199,13 @@ bool IsCudnnR2() {
   __macro(cudnnPoolingForward)                            \
   __macro(cudnnPoolingBackward)                           \
   __macro(cudnnLRNCrossChannelForward)                    \
-  __macro(cudnnLRNCrossChannelBackward)
-// clang-format on
-
-CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
-
-// clang-format off
-#if CUDNN_VERSION >= 4000 && CUDNN_VERSION < 5000
-#define CUDNN_DNN_ROUTINE_EACH_R2(__macro)                \
-  __macro(cudnnAddTensor_v2)                              \
-  __macro(cudnnConvolutionBackwardData_v2)                \
-  __macro(cudnnConvolutionBackwardFilter_v2)
-#else
-#define CUDNN_DNN_ROUTINE_EACH_R2(__macro)                \
+  __macro(cudnnLRNCrossChannelBackward)                   \
   __macro(cudnnAddTensor)                                 \
   __macro(cudnnConvolutionBackwardData)                   \
   __macro(cudnnConvolutionBackwardFilter)
-#endif
 // clang-format on
 
-CUDNN_DNN_ROUTINE_EACH_R2(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
+CUDNN_DNN_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUDNN_WRAP)
 
 // APIs available after R3:
 #if CUDNN_VERSION >= 3000
@@ -340,15 +329,21 @@ port::Status CudnnSupport::Init() {
     // Check whether loaded version of CuDNN matches what the source
     // was built with.
     size_t loaded_version = dynload::cudnnGetVersion();
-    bool library_loaded_matches_source = (loaded_version == CUDNN_VERSION);
+    size_t loaded_compat_version = cudnnCompatibilityVersion(loaded_version);
+    size_t compiled_compat_version = cudnnCompatibilityVersion(CUDNN_VERSION);
+    bool library_loaded_matches_source =
+        (loaded_compat_version == compiled_compat_version);
     if (!library_loaded_matches_source) {
       const string error =
-          port::StrCat("Loaded cudnn library: ", loaded_version,
-                       " but source was compiled against ", CUDNN_VERSION,
-                       ".  If using a binary install, upgrade your cudnn "
+          port::StrCat("Loaded runtime CuDNN library: ", loaded_version,
+                       " (compatibility version ", loaded_compat_version,
+                       ") but source was compiled with ", CUDNN_VERSION,
+                       " (compatibility version ", compiled_compat_version,
+                       ").  If using a binary install, upgrade your CuDNN "
                        "library to match.  If building from sources, "
-                       "make sure the library loaded matches the "
-                       "version you specified during compile configuration.");
+                       "make sure the library loaded at runtime matches a "
+                       "compatible version specified during compile "
+                       "configuration.");
       LOG(ERROR) << error;
       return port::Status{port::error::INTERNAL, error};
     }
@@ -1109,31 +1104,6 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
                                    CUDNN_DATA_FLOAT};
 
-#if CUDNN_VERSION < 5000
-#if CUDNN_VERSION >= 3000
-  if (dynload::IsCudnnR2()) {
-#endif
-#if CUDNN_VERSION >= 4000
-    status = dynload::cudnnConvolutionBackwardData_v2(
-#else
-  status = dynload::cudnnConvolutionBackwardData(
-#endif
-        parent_, ToHandle(dnn_handle_), &alpha, filter.handle(),
-        filter_data.opaque(), out_back_nd.handle(),
-        backward_output_data.opaque(), conv.handle(), &beta,
-        in_back_nd.handle(), backward_input_data->opaque());
-    if (status != CUDNN_STATUS_SUCCESS) {
-      LOG(FATAL) << "failed to enqueue convolution on stream: "
-                 << ToString(status);
-      return false;
-    }
-    return true;
-#if CUDNN_VERSION >= 3000
-  }
-#endif
-#endif
-
-#if CUDNN_VERSION >= 3000
   const bool is_profiling = output_profile_result != nullptr;
   cudnnConvolutionBwdDataAlgo_t algo;
   DeviceMemory<uint8> scratch;
@@ -1284,7 +1254,6 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
     return false;
   }
   return true;
-#endif
 }
 
 bool CudnnSupport::DoConvolveBackwardData(
@@ -1369,31 +1338,6 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
       CUDNN_DATA_FLOAT};
 
-#if CUDNN_VERSION < 5000
-#if CUDNN_VERSION >= 3000
-  if (dynload::IsCudnnR2()) {
-#endif
-#if CUDNN_VERSION >= 4000
-    status = dynload::cudnnConvolutionBackwardFilter_v2(
-#else
-  status = dynload::cudnnConvolutionBackwardFilter(
-#endif
-        parent_, ToHandle(dnn_handle_), &alpha, input_nd.handle(),
-        input_data.opaque(), out_back_nd.handle(),
-        backward_output_data.opaque(), conv.handle(), &beta, filter.handle(),
-        backward_filter_data->opaque());
-    if (status != CUDNN_STATUS_SUCCESS) {
-      LOG(FATAL) << "failed to enqueue convolution on stream: "
-                 << ToString(status);
-      return false;
-    }
-    return true;
-#if CUDNN_VERSION >= 3000
-  }
-#endif
-#endif
-
-#if CUDNN_VERSION >= 3000
   const bool is_profiling = output_profile_result != nullptr;
   cudnnConvolutionBwdFilterAlgo_t algo;
   DeviceMemory<uint8> scratch;
@@ -1544,7 +1488,6 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
     return false;
   }
   return true;
-#endif
 }
 
 bool CudnnSupport::DoConvolveBackwardFilter(
@@ -1824,33 +1767,15 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
 
   const float alpha = 1.0f;
   const float beta = 1.0f;
-#if CUDNN_VERSION >= 3000
-  if (dynload::IsCudnnR2()) {
-#endif
 
-#if CUDNN_VERSION < 5000
-#if CUDNN_VERSION >= 4000
-    status = dynload::cudnnAddTensor_v2(
-#else
-    status = dynload::cudnnAddTensor(
-#endif
-        parent_, ToHandle(dnn_handle_), CUDNN_ADD_SAME_C, &alpha,
-        bias_descriptor.handle(), biases.opaque(), &beta,
-        input_descriptor.handle(), output_data->opaque());
-#endif  // CUDNN_VERSION < 5000
-
-#if CUDNN_VERSION >= 3000
-  } else {
 #if CUDNN_VERSION >= 5000
-    status = dynload::cudnnAddTensor(
+  status = dynload::cudnnAddTensor(
 #else
-    status = dynload::cudnnAddTensor_v3(
+  status = dynload::cudnnAddTensor_v3(
 #endif
-        parent_, ToHandle(dnn_handle_), &alpha, bias_descriptor.handle(),
-        biases.opaque(), &beta, input_descriptor.handle(),
-        output_data->opaque());
-  }
-#endif
+      parent_, ToHandle(dnn_handle_), &alpha, bias_descriptor.handle(),
+      biases.opaque(), &beta, input_descriptor.handle(),
+      output_data->opaque());
 
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "stream " << stream << " could not enqueue bias addition.";

@@ -603,6 +603,7 @@ filegroup(
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
+            "lib/gif/**/*",
             "util/checkpoint_reader.*",
             "util/events_writer.*",
             "util/reporter.*",
@@ -613,6 +614,7 @@ filegroup(
             "platform/google/**/*",
             "platform/jpeg.*",
             "platform/png.*",
+            "platform/gif.*",
             "platform/stream_executor.*",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/**/*",
@@ -843,6 +845,7 @@ cc_library(
     hdrs = [
         "lib/core/blocking_counter.h",
         "lib/core/refcount.h",
+        "lib/gif/gif_io.h",
         "lib/gtl/edit_distance.h",
         "lib/gtl/int_type.h",
         "lib/gtl/iterator_range.h",
@@ -1967,6 +1970,10 @@ filegroup(
         "lib/jpeg/testdata/corrupt34_3.jpg",
         # -- hand-edited variant: stops after a restart marker
         "lib/jpeg/testdata/corrupt34_4.jpg",
+        # GIF data
+        "lib/gif/testdata/scan.gif",
+        # GIF data with optimization
+        "lib/gif/testdata/optimized.gif",
     ],
 )
 

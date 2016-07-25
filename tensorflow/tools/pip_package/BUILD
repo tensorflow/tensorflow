@@ -8,8 +8,8 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 transitive_hdrs(
     name = "other_headers",
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 

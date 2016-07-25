@@ -4,10 +4,17 @@
 # within the workspace (e.g. "tensorflow/"), and tf_repo_name is the name of the
 # local_repository rule (e.g. "@tf").
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+
+  # These lines need to be changed when updating Eigen. They are parsed from
+  # this file by the cmake and make builds to determine the eigen version and hash.
+  eigen_version = "b4fa9622b809"
+  eigen_sha256 = "2862840c2de9c0473a4ef20f8678949ae89ab25965352ee53329e63ba46cec62"
+
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/b4fa9622b809.tar.gz",
-    sha256 = "2862840c2de9c0473a4ef20f8678949ae89ab25965352ee53329e63ba46cec62",
+    url = "https://bitbucket.org/eigen/eigen/get/" + eigen_version + ".tar.gz",
+    sha256 = eigen_sha256,
+    strip_prefix = "eigen-eigen-" + eigen_version,
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -57,6 +64,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
+    name = "gif_archive",
+    url = "http://ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
+    sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
+    build_file = path_prefix + "gif.BUILD",
+  )
+
+  native.new_http_archive(
     name = "six_archive",
     url = "https://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz#md5=34eed507548117b2ab523ab14b2f8b55",
     sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
@@ -92,8 +106,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.bind(
-      name = "python_headers",
-      actual = tf_repo_name + "//util/python:python_headers",
+    name = "python_headers",
+    actual = tf_repo_name + "//util/python:python_headers",
   )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
@@ -141,9 +155,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.git_repository(
-      name = "boringssl_git",
-      remote = "https://github.com/google/boringssl.git",
-      commit = "bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",  # 2016-07-11
+    name = "boringssl_git",
+    remote = "https://github.com/google/boringssl.git",
+    commit = "bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",  # 2016-07-11
   )
 
   native.new_git_repository(

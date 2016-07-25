@@ -65,7 +65,7 @@ class BinaryOpShared : public OpKernel {
 
 // Coefficient-wise binary operations:
 //   Device: E.g., CPUDevice, GPUDevice.
-//   Functor: defined in cwise_functors.h. E.g., functor::add2.
+//   Functor: defined in cwise_ops.h. E.g., functor::add.
 template <typename Device, typename Functor>
 class BinaryOp : public BinaryOpShared {
  public:
@@ -162,7 +162,7 @@ class SimpleBinaryOp : public OpKernel {
 
 // Coefficient-wise unary operations:
 //   Device: E.g., CPUDevice, GPUDevice.
-//   Functor: defined in cwise_functors.h. E.g., functor::sqrt.
+//   Functor: defined in cwise_ops.h. E.g., functor::sqrt.
 template <typename Device, typename Functor>
 class UnaryOp : public OpKernel {
  public:
