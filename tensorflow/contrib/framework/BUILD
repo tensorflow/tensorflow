@@ -38,7 +38,7 @@ py_test(
 py_test(
     name = "ops_test",
     size = "small",
-    srcs = glob(["python/ops/ops_test.py"]),
+    srcs = ["python/ops/ops_test.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -52,8 +52,15 @@ py_test(
 )
 
 py_test(
+    name = "deprecation_test",
+    srcs = ["python/framework/deprecation_test.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_test(
     name = "tensor_util_test",
-    srcs = glob(["python/framework/tensor_util_test.py"]),
+    srcs = ["python/framework/tensor_util_test.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -61,7 +68,7 @@ py_test(
 py_test(
     name = "variables_test",
     size = "small",
-    srcs = glob(["python/ops/variables_test.py"]),
+    srcs = ["python/ops/variables_test.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
