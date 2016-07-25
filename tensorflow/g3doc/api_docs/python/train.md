@@ -1281,6 +1281,13 @@ that `RuntimeError`.
 
 - - -
 
+#### `tf.train.Coordinator.joined` {#Coordinator.joined}
+
+
+
+
+- - -
+
 #### `tf.train.Coordinator.request_stop(ex=None)` {#Coordinator.request_stop}
 
 Request that the threads stop.
