@@ -196,7 +196,7 @@ def zeros_initializer(shape, dtype=dtypes.float32):
   return zeros(shape, dtype)
 
 
-def _SliceHelper(tensor, slice_spec):
+def _NewSliceHelper(tensor, slice_spec):
   """Overload for Tensor.__getitem__.
 
   This operation extracts the specified region from the tensor.
@@ -275,6 +275,73 @@ def _SliceHelper(tensor, slice_spec):
 
 
 # pylint: disable=undefined-variable,protected-access
+def _SliceHelper(tensor, slice_spec):
+  """Overload for Tensor.__getitem__.
+
+  Currently the size of the slice must be statically known in each dimension,
+  i.e. the "stop" of the slice must not be omitted.
+
+  TODO(mrry): Support slices where the sizes are not specified.
+  TODO(mrry): Support negative indices in slices with numpy/Python semantics.
+
+  Args:
+    tensor: An ops.Tensor object.
+    slice_spec: The arguments to Tensor.__getitem__.
+
+  Returns:
+    The appropriate slice of "tensor", based on "slice_spec".
+
+  Raises:
+    ValueError: If a slice range is negative size.
+    TypeError: If the slice indices aren't int, slice, or Ellipsis.
+  """
+  if not isinstance(slice_spec, (list, tuple)):
+    slice_spec = [slice_spec]
+  indices = []
+  sizes = []
+  squeeze_dims = []
+  for dim, s in enumerate(slice_spec):
+    if isinstance(s, _baseslice):
+      if s.step not in (None, 1):
+        raise NotImplementedError(
+            "Steps other than 1 are not currently supported")
+      start = s.start if s.start is not None else 0
+      if start < 0:
+        raise NotImplementedError(
+            "Negative start indices are not currently supported")
+      indices.append(start)
+      if s.stop is not None and s.stop < 0:
+        raise NotImplementedError(
+            "Negative stop indices are not currently supported")
+      # NOTE(mrry): If the stop is not specified, Python substitutes
+      #   sys.maxsize, which is typically (2 ** 63) - 1. Since Slice currently
+      #   supports signed DT_INT32 arguments, we use -1 to specify that all
+      #   elements should be captured.
+      if s.stop is None or s.stop == sys.maxsize:
+        sizes.append(-1)
+      else:
+        if start > s.stop:
+          raise ValueError("Stop must be at least start")
+        sizes.append(s.stop - start)
+    elif s is Ellipsis:
+      raise NotImplementedError("Ellipsis is not currently supported")
+    else:
+      try:
+        s = int(s)
+      except TypeError:
+        raise TypeError("Bad slice index %s of type %s" % (s, type(s)))
+      if s < 0:
+        raise NotImplementedError("Negative indices are currently unsupported")
+      indices.append(s)
+      sizes.append(1)
+      squeeze_dims.append(dim)
+  sliced = slice(tensor, indices, sizes)
+  if squeeze_dims:
+    return squeeze(sliced, squeeze_dims=squeeze_dims)
+  else:
+    return sliced
+
+
 def slice(input_, begin, size, name=None):
   """Extracts a slice from a tensor.
 
@@ -423,6 +490,8 @@ def strided_slice(input_,
                                      new_axis_mask=new_axis_mask,
                                      shrink_axis_mask=shrink_axis_mask)
 
+# TODO(aselle): When gradient is added and performance verified switch
+# ops.Tensor._override_operator("__getitem__", _NewSliceHelper)
 ops.Tensor._override_operator("__getitem__", _SliceHelper)
 
 
@@ -1526,9 +1595,8 @@ def _StridedSliceShape(op):
 
   sparse_dims = begin_shape.merge_with(end_shape).merge_with(strides_shape)[
       0].value
-  if (sparse_dims is None or begin_value is None or end_value is None or
-      strides_value is None):
-    return [tensor_shape.unknown_shape()]
+  if sparse_dims is None:
+    return [input_shape.unknown_shape()]
 
   begin_mask = op.get_attr("begin_mask")
   end_mask = op.get_attr("end_mask")
