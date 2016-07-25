@@ -364,7 +364,7 @@ new_git_repository(
   name = "paper_styles",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-styles.git",
-  tag = "v1.1.1",
+  tag = "v1.1.4",
 )
 
 new_git_repository(
