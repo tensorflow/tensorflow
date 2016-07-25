@@ -16,7 +16,9 @@ Initializes a BaseEstimator instance.
 ##### Args:
 
 
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
+    be used to load checkpoints from the directory into a estimator to continue
+    training a previously saved model.
 *  <b>`config`</b>: A RunConfig instance.
 
 
