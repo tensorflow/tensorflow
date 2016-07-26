@@ -230,7 +230,7 @@ class TensorFlowTestCase(googletest.TestCase):
       config: An optional config_pb2.ConfigProto to use to configure the
         session.
       use_gpu: If True, attempt to run as many ops as possible on GPU.
-      force_gpu: If True, pin all ops to `/gpu:0`.
+      force_gpu: If True and built with GPU, pin all ops to `/gpu:0`.
 
     Returns:
       A Session object that should be used as a context manager to surround
@@ -257,7 +257,7 @@ class TensorFlowTestCase(googletest.TestCase):
                                                config=prepare_config(config))
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
-        if force_gpu:
+        if force_gpu and test.is_built_with_gpu():
           with sess.graph.device("/gpu:0"):
             yield sess
         elif use_gpu:
@@ -267,7 +267,7 @@ class TensorFlowTestCase(googletest.TestCase):
             yield sess
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
-        if force_gpu:
+        if force_gpu and test.is_built_with_gpu():
           with sess.graph.device("/gpu:0"):
             yield sess
         elif use_gpu:

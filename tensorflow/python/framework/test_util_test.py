@@ -24,6 +24,7 @@ import threading
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+import warnings
 
 from google.protobuf import text_format
 
@@ -181,14 +182,17 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertArrayNear(a, b, 0.001)
 
   def testForceGPU(self):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Cannot assign a device to node"):
-      with self.test_session(force_gpu=True):
-        # this relies on us not having a GPU implementation for assert, which
-        # seems sensible
-        x = [True]
-        y = [15]
-        logging_ops.Assert(x, y).run()
+    if tf.test.is_built_with_gpu():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Cannot assign a device to node"):
+        with self.test_session(force_gpu=True):
+          # this relies on us not having a GPU implementation for assert, which
+          # seems sensible
+          x = [True]
+          y = [15]
+          logging_ops.Assert(x, y).run()
+    else:
+      warnings.warn("GPU is not configured to be used on this system.")
 
   def testRandomSeed(self):
     a = random.randint(1, 1000)
