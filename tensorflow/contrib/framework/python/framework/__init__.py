@@ -19,5 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.framework.python.framework.checkpoint_utils import *
 from tensorflow.contrib.framework.python.framework.deprecation import deprecated
 from tensorflow.contrib.framework.python.framework.tensor_util import *

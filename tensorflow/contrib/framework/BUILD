@@ -14,6 +14,7 @@ py_library(
     srcs = [
         "__init__.py",
         "python/framework/__init__.py",
+        "python/framework/checkpoint_utils.py",
         "python/framework/deprecation.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
@@ -31,6 +32,14 @@ py_test(
     name = "arg_scope_test",
     size = "small",
     srcs = ["python/ops/arg_scope_test.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_test(
+    name = "checkpoint_utils_test",
+    size = "small",
+    srcs = ["python/framework/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
