@@ -271,26 +271,46 @@ class SupervisedSessionTest(tf.test.TestCase):
         self.assertEqual(4, session.run(do_step))
         self.assertFalse(session.should_stop())
 
-  def test_stop_cleanly_on_out_of_range_exception(self):
+  def test_exit_cleanly_on_out_of_range_exception(self):
     # Tests that we stop cleanly when OutOfRange is raised.
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
-      monitor = RaiseOnceAtStepN(
-          3, tf.errors.OutOfRangeError(None, None, 'EOI'))
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                monitors=[monitor]) as session:
+      monitor = RaiseOnceAtStepN(1,
+                                 tf.errors.OutOfRangeError(None, None, 'EOI'))
+      session = supervised_session.SupervisedSession(
+          '', scaffold=scaffold, monitors=[monitor])
+      # session should cleanly exit from the context.
+      with session:
         self.assertEqual(0, session.run(gstep))
-        self.assertEqual(1, session.run(do_step))
-        self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
-        # Here at step 3, the monitor triggers and raises OutOfRange.  The
-        # session should go into should_stop() mode.  We do not get a result
-        # in that case.
-        self.assertEqual(None, session.run(do_step))
-        self.assertTrue(monitor.raised)
-        self.assertTrue(session.should_stop())
+        # Here at step 1, the monitor triggers and raises OutOfRange. The
+        # session should go into should_stop() mode. It should raise the
+        # exception. So next step should not be executed.
+        session.run(do_step)
+        self.assertTrue(False)
+      self.assertTrue(session.should_stop())
+
+  def test_exit_cleanly_on_stop_iteration_exception(self):
+    # Tests that we stop cleanly when OutOfRange is raised.
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      scaffold = supervised_session.Scaffold()
+      monitor = RaiseOnceAtStepN(1, StopIteration)
+      session = supervised_session.SupervisedSession(
+          '', scaffold=scaffold, monitors=[monitor])
+      # session should cleanly exit from the context.
+      with session:
+        self.assertEqual(0, session.run(gstep))
+        self.assertFalse(session.should_stop())
+        # Here at step 1, the monitor triggers and raises StopIteration. The
+        # session should go into should_stop() mode. It should raise the
+        # exception. So next step should not be executed.
+        session.run(do_step)
+        self.assertTrue(False)
+      self.assertTrue(session.should_stop())
 
   def test_regular_exception_pass_through_run(self):
     # Tests that regular exceptions just pass through a "with
