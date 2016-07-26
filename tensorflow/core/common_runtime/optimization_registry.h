@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
-class SessionOptions;
+struct SessionOptions;
 
 // All the parameters used by an optimization pass are packaged in
 // this struct. They should be enough for the optimization pass to use
