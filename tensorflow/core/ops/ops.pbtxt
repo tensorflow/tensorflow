@@ -9636,7 +9636,35 @@ op {
     minimum: 1
   }
   summary: "Invokes a python function to compute func(input)->output."
+  description: "This operation is considered stateful. For a stateless version, see\nPyFuncStateless."
   is_stateful: true
+}
+op {
+  name: "PyFuncStateless"
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "token"
+    type: "string"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "A stateless version of PyFunc."
 }
 op {
   name: "QuantizeAndDequantize"
