@@ -14,7 +14,7 @@ argument tensors can be computed in parallel, but the values of any tensor
 returned by `tuple` are only available after all the parallel computations
 are done.
 
-See also `group` and `with_dependencies`.
+See also [`tf.group()`](#group) and [`tf.control_dependencies()`](../../api_docs/python/framework.md#control_dependencies).
 
 ##### Args:
 
