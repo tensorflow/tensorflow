@@ -24,3 +24,12 @@ ENV LD_LIBRARY_PATH /usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64
 ENV CUDA_TOOLKIT_PATH /usr/local/cuda
 ENV CUDNN_INSTALL_PATH /usr/local/cuda
 ENV TF_NEED_CUDA 1
+
+# Script for (optional) test on install
+COPY builds/test_on_install.sh /builds/test_on_install.sh
+RUN chmod a+rx /builds/test_on_install.sh
+
+# Grant users installation permission on Python package directory
+RUN chmod -R a+rw /usr/local/lib/python2.7/dist-packages
+RUN chmod -R a+rw /usr/local/bin
+

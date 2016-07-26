@@ -16,3 +16,11 @@ RUN /install/install_proto3.sh
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc
 ENV BAZELRC /root/.bazelrc
+
+# Script for (optional) test on install
+COPY builds/test_on_install.sh /builds/test_on_install.sh
+RUN chmod a+rx /builds/test_on_install.sh
+
+# Grant users installation permission on Python package directory
+RUN chmod -R a+rw /usr/local/lib/python2.7/dist-packages
+RUN chmod -R a+rw /usr/local/bin
