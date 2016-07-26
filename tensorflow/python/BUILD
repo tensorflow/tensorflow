@@ -745,6 +745,7 @@ tf_gen_op_wrapper_py(
     name = "script_ops",
     hidden = [
         "PyFunc",
+        "PyFuncStateless",
     ],
     require_shape_functions = True,
 )
