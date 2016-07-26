@@ -107,7 +107,7 @@ class EstimatorUtilsTest(tf.test.TestCase):
     }
     self.assertEqual(expected_base_features, base_features)
 
-    expected_targets = {"g": mocks.MockTensor("Out iue", tf.int32)}
+    expected_targets = mocks.MockTensor("Out iue", tf.int32)
     self.assertEqual(expected_targets, targets)
 
     self.assertEqual(3, len(feature_columns))
