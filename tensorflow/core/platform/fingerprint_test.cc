@@ -43,7 +43,7 @@ TEST(Fingerprint128, IsForeverFrozen) {
 
 TEST(Fingerprint128, Fprint128Hasher) {
   // Tests that this compiles:
-  const std::unordered_set<Fprint128> map = {{1, 2}, {3, 4}};
+  const std::unordered_set<Fprint128, Fprint128Hasher> map = {{1, 2}, {3, 4}};
 }
 
 }  // namespace
