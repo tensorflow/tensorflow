@@ -5,7 +5,7 @@ Create an op that groups multiple operations.
 When this op finishes, all ops in `input` have finished. This op has no
 output.
 
-See also `tuple` and `with_dependencies`.
+See also [`tf.tuple()`](#tuple) and [`tf.control_dependencies()`](../../api_docs/python/framework.md#control_dependencies).
 
 ##### Args:
 
