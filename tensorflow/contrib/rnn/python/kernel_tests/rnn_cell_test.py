@@ -25,6 +25,38 @@ import tensorflow as tf
 
 class RNNCellTest(tf.test.TestCase):
 
+  def testCoupledInputForgetGateLSTMCell(self):
+    with self.test_session() as sess:
+      num_units = 2
+      state_size = num_units * 2
+      batch_size = 3
+      input_size = 4
+      expected_output = np.array(
+          [[0.121753, 0.121753],
+           [0.103349, 0.103349],
+           [0.100178, 0.100178]],
+          dtype=np.float32)
+      expected_state = np.array(
+          [[0.137523, 0.137523, 0.121753, 0.121753],
+           [0.105450, 0.105450, 0.103349, 0.103349],
+           [0.100742, 0.100742, 0.100178, 0.100178]],
+          dtype=np.float32)
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        x = tf.zeros([batch_size, input_size])
+        m = tf.zeros([batch_size, state_size])
+        output, state = tf.contrib.rnn.CoupledInputForgetGateLSTMCell(
+            num_units=num_units, forget_bias=1.0)(x, m)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run([output, state],
+                       {x.name: np.array([[1., 1., 1., 1.],
+                                          [2., 2., 2., 2.],
+                                          [3., 3., 3., 3.]]),
+                        m.name: 0.1 * np.ones((batch_size, state_size))})
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        self.assertAllClose(res[1], expected_state)
+
   def testTimeFreqLSTMCell(self):
     with self.test_session() as sess:
       num_units = 8
@@ -42,8 +74,9 @@ class RNNCellTest(tf.test.TestCase):
             frequency_skip=frequency_skip, forget_bias=1.0)(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([output, state],
-                       {x.name: np.array([[1., 1., 1., 1.,],
-                                          [2., 2., 2., 2.], [3., 3., 3., 3.]]),
+                       {x.name: np.array([[1., 1., 1., 1.],
+                                          [2., 2., 2., 2.],
+                                          [3., 3., 3., 3.]]),
                         m.name: 0.1 * np.ones((batch_size, state_size*(
                             num_shifts)))})
         self.assertEqual(len(res), 2)
@@ -75,8 +108,9 @@ class RNNCellTest(tf.test.TestCase):
             frequency_skip=frequency_skip, forget_bias=1.0)(x, m)
         sess.run([tf.initialize_all_variables()])
         res = sess.run([output, state],
-                       {x.name: np.array([[1., 1., 1., 1.,],
-                                          [2., 2., 2., 2.], [3., 3., 3., 3.]]),
+                       {x.name: np.array([[1., 1., 1., 1.],
+                                          [2., 2., 2., 2.],
+                                          [3., 3., 3., 3.]]),
                         m.name: 0.1 * np.ones((batch_size, state_size*(
                             num_shifts)))})
         self.assertEqual(len(res), 2)
@@ -189,9 +223,10 @@ class RNNCellTest(tf.test.TestCase):
                   0.1 * np.ones([batch_size, num_units * 2 + num_units
                                  + attn_length * num_units],
                                 dtype=np.float32), dtype=tf.float32)
-            inputs = tf.constant(np.array(
-                [[1., 1., 1., 1.,], [2., 2., 2., 2.], [3., 3., 3., 3.]],
-                dtype=np.float32), dtype=tf.float32)
+            inputs = tf.constant(np.array([[1., 1., 1., 1.],
+                                           [2., 2., 2., 2.],
+                                           [3., 3., 3., 3.]],
+                                          dtype=np.float32), dtype=tf.float32)
             output, state = cell(inputs, zero_state)
             if state_is_tuple:
               concat_state = tf.concat(

@@ -192,6 +192,11 @@ def read_keyed_batch_examples(
 
     enqueue_many = read_batch_size > 1
 
+    if num_epochs is not None:
+      allow_smaller_final_batch = True
+    else:
+      allow_smaller_final_batch = False
+
     # Setup batching queue given list of read example tensors.
     if randomize_input:
       if isinstance(batch_size, ops.Tensor):
@@ -201,11 +206,13 @@ def read_keyed_batch_examples(
       queued_examples_with_keys = input_ops.shuffle_batch_join(
           example_list, batch_size, capacity=queue_capacity,
           min_after_dequeue=min_after_dequeue,
-          enqueue_many=enqueue_many, name=scope)
+          enqueue_many=enqueue_many, name=scope,
+          allow_smaller_final_batch=allow_smaller_final_batch)
     else:
       queued_examples_with_keys = input_ops.batch_join(
           example_list, batch_size, capacity=queue_capacity,
-          enqueue_many=enqueue_many, name=scope)
+          enqueue_many=enqueue_many, name=scope,
+          allow_smaller_final_batch=allow_smaller_final_batch)
     if parse_fn and isinstance(queued_examples_with_keys, dict):
       queued_keys = queued_examples_with_keys.pop(KEY_FEATURE_NAME)
       return queued_keys, queued_examples_with_keys

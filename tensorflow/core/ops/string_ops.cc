@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -26,6 +27,7 @@ REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to its hash mod by a number of buckets.
 
@@ -46,6 +48,7 @@ REGISTER_OP("StringToHashBucketStrong")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
     .Attr("key: list(int)")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to its hash mod by a number of buckets.
 
@@ -71,6 +74,7 @@ REGISTER_OP("StringToHashBucket")
     .Input("string_tensor: string")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to its hash mod by a number of buckets.
 
@@ -139,6 +143,7 @@ REGISTER_OP("AsString")
     .Attr("shortest: bool = false")
     .Attr("width: int = -1")
     .Attr("fill: string = ''")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each entry in the given tensor to strings.  Supports many numeric
 types and boolean.

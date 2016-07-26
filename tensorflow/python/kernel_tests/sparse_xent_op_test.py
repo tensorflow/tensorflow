@@ -73,6 +73,30 @@ class SparseXentTest(tf.test.TestCase):
     self._testSingleClass(use_gpu=True)
     self._testSingleClass(use_gpu=False)
 
+  def _testInvalidLabel(self, use_gpu):
+    features = [
+        [1., 1., 1., 1.],
+        [1., 1., 1., 1.],
+        [1., 2., 3., 4.],
+        [1., 2., 3., 4.]]
+    labels = [4, 3, 0, -1]
+    with self.test_session(use_gpu=use_gpu) as sess:
+      loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+          features, labels)
+      tf_loss, tf_backprop = sess.run([loss, backprop])
+      self.assertAllClose(
+          [[np.nan] * 4,
+           [0.25, 0.25, 0.25, -0.75],
+           [-0.968, 0.087, 0.237, 0.6439],
+           [np.nan] * 4],
+          tf_backprop, rtol=1e-3, atol=1e-3)
+      self.assertAllClose(
+          [np.nan, 1.3862, 3.4420, np.nan], tf_loss, rtol=1e-3, atol=1e-3)
+
+  def testInvalidLabel(self):
+    self._testInvalidLabel(use_gpu=True)
+    self._testInvalidLabel(use_gpu=False)
+
   def testNpXent(self):
     # We create 2 batches of logits for testing.
     # batch 0 is the boring uniform distribution: 1, 1, 1, 1, with target 3.

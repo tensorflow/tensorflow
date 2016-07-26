@@ -20,13 +20,13 @@ source (SSTable, TFRecord, CNS directory, etc). The most basic function of a
 data provider is the `Get` operation where one requests one or more types of
 data, or 'items':
 
-  provider.Get(items=['image', 'sentence', 'class'])
+  provider.get(items=['image', 'sentence', 'class'])
 
 More concretely, a data provider (a subclass of BaseDataProvider) returns a
 single tensor for each requested item (data type):
 
   provider = MyDataProvider(...)
-  image, sentence, clazz = provider.Get(['image', 'sentence', 'class'])
+  image, sentence, clazz = provider.get(['image', 'sentence', 'class'])
 
 In this example, the provider `MyDataProvider` must know how to load each item.
 A data provider may be written in a way that the logic necessary to map from

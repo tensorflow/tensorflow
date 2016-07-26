@@ -80,7 +80,7 @@
     "paper-radio-group": "PolymerElements/paper-radio-group#1.0.9",
     "paper-ripple": "PolymerElements/paper-ripple#1.0.5",
     "paper-slider": "PolymerElements/paper-slider#1.0.10",
-    "paper-styles": "PolymerElements/paper-styles#1.1.1",
+    "paper-styles": "PolymerElements/paper-styles#1.1.4",
     "paper-tabs": "PolymerElements/paper-tabs#1.6.2",
     "paper-toggle-button": "PolymerElements/paper-toggle-button#1.1.2",
     "paper-toolbar": "PolymerElements/paper-toolbar#1.1.4",
@@ -93,6 +93,7 @@
   },
   "description": "TensorBoard: Visualizations for TensorFlow",
   "devDependencies": {
+    "iron-component-page": "PolymerElements/iron-component-page#^1.1.4",
     "iron-demo-helpers": "PolymerElements/iron-demo-helpers#^1.2.3",
     "web-component-tester": "Polymer/web-component-tester"
   },
@@ -155,7 +156,7 @@
     "paper-radio-group": "1.0.9",
     "paper-ripple": "1.0.5",
     "paper-slider": "1.0.10",
-    "paper-styles": "1.1.1",
+    "paper-styles": "1.1.4",
     "paper-tabs": "1.6.2",
     "paper-toggle-button": "1.1.2",
     "paper-toolbar": "1.1.4",

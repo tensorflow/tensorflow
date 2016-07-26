@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A Series represents a deferred Tensor computation in a DataFrame."""
 
 from __future__ import absolute_import
@@ -104,6 +103,44 @@ class Series(object):
     raise NotImplementedError()
 
 
+class PredefinedSeries(Series):
+  """A `Series` that requires the cache to already map a given name."""
+
+  def __init__(self, name, feature_spec):
+    super(PredefinedSeries, self).__init__()
+    self._name = name
+    self._feature_spec = feature_spec
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def feature_spec(self):
+    return self._feature_spec
+
+  def required_base_features(self):
+    return {self.name: self.feature_spec}
+
+  def build(self, cache):
+    try:
+      return cache[self.name]
+    except KeyError:
+      raise KeyError("Expected base feature not found: %s" % self._name)
+
+  def __repr__(self):
+    return "Predefined: %s" % self.name
+
+  def __eq__(self, other):
+    if isinstance(other, self.__class__):
+      return self.__dict__ == other.__dict__
+    else:
+      return False
+
+  def __ne__(self, other):
+    return not self.__eq__(other)
+
+
 class TransformedSeries(Series):
   """A `Series` that results from applying a `Transform` to a list of inputs."""
 
@@ -123,10 +160,21 @@ class TransformedSeries(Series):
     self._repr = TransformedSeries.make_repr(
         self._input_series, self._transform, self._output_name)
 
+  def required_base_features(self):
+    # Note the only items in the result are those that can be traced to a
+    # PredefinedSeries.
+    result = {}
+    for s in self._input_series:
+      # It's OK to overwrite keys since we only want one copy of each anyway.
+      # We assume (but don't bother checking) that the spec is the same in each
+      # case.
+      result.update(s.required_base_features)
+    return result
+
   def build(self, cache=None):
     if cache is None:
       cache = {}
-    all_outputs = self._transform.apply_transform(self._input_series, cache)
+    all_outputs = self._transform.build_transitive(self._input_series, cache)
     return getattr(all_outputs, self._output_name)
 
   def __repr__(self):
@@ -157,5 +205,4 @@ class TransformedSeries(Series):
 
     return "%s(%s)[%s]" % (
         repr(transform), input_series_keys_joined, output_name)
-
 
