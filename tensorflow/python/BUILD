@@ -1266,11 +1266,22 @@ cuda_py_tests(
             "training/server_lib_test.py",
             "training/session_manager_test.py",
             "training/supervisor_test.py",
+            "training/saver_test.py",
         ],
     ),
     additional_deps = [
         ":training",
     ],
+)
+
+cuda_py_test(
+    name = "saver_test",
+    size = "small",
+    srcs = ["training/saver_test.py"],
+    additional_deps = [
+        ":training",
+    ],
+    tags = ["notsan"],  # http://b/30379628
 )
 
 cuda_py_test(
