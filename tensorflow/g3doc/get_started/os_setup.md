@@ -352,7 +352,7 @@ code.
 * `gcr.io/tensorflow/tensorflow:latest-devel-gpu`: GPU Binary image plus source
 code.
 
-We also have tags with `latest` replaced by a released version (e.g., `0.9.0-gpu`).
+We also have tags with `latest` replaced by a released version (e.g., `0.10.0rc0-gpu`).
 
 With Docker the installation is as follows:
 
@@ -719,7 +719,7 @@ $ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_pack
 $ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg
 
 # The name of the .whl file will depend on your platform.
-$ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.9.0-py2-none-any.whl
+$ sudo pip install /tmp/tensorflow_pkg/tensorflow-0.10.0rc0-py2-none-any.whl
 ```
 
 ## Setting up TensorFlow for Development
