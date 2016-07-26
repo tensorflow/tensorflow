@@ -617,6 +617,10 @@ TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
   return lib_handle;
 }
 
+void TF_DeleteLibrary(TF_Library* library) {
+  delete library;
+}
+
 TF_Buffer TF_GetOpList(TF_Library* lib_handle) { return lib_handle->op_list; }
 
 }  // end extern "C"
