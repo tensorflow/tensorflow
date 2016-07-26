@@ -149,6 +149,7 @@ class DeviceBase {
   // attributes requested.  See allocator.h for more details.
   virtual Allocator* GetAllocator(AllocatorAttributes /*attr*/) {
     LOG(FATAL) << "GetAllocator() is not implemented.";
+    return nullptr;
   }
 
   // Return the Allocator implementation to use based on the allocator
@@ -178,9 +179,7 @@ class DeviceBase {
                                      DeviceContext* /*dc*/,
                                      Allocator* /*allocator*/) {}
 
-  virtual const DeviceAttributes& attributes() const {
-    LOG(FATAL) << "Device does not implement attributes()";
-  }
+  virtual const DeviceAttributes& attributes() const = 0;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.
