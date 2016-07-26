@@ -165,7 +165,7 @@ def to_feature_columns_and_input_fn(dataframe,
 
     # TODO(soergel): Remove this special case when b/30367437 is fixed.
     if len(targets) == 1:
-      targets = targets.values()[0]
+      targets = list(targets.values())[0]
 
     return base_input_features, targets
 
