@@ -225,7 +225,6 @@ class BaseMonitor(object):
 
     In addition, the callback has the opportunity to stop training by returning
     `True`. This is useful for early stopping, for example.
-
     Note that this method is not called if the call to `Session.run()` that
     followed the last call to `step_begin()` failed.
 

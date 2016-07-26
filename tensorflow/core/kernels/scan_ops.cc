@@ -39,7 +39,6 @@ template <typename Device, class T, typename Reducer>
 class ScanOp : public OpKernel {
 public:
   explicit ScanOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("reverse", &reverse_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("exclusive", &exclusive_));
   }
 
