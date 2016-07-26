@@ -59,7 +59,7 @@ class ArgOp : public OpKernel {
 
     OP_REQUIRES(context, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
     OP_REQUIRES(context, dim < input_dims,
-                errors::InvalidArgument("Minimum tensor rank: ", dim,
+                errors::InvalidArgument("Minimum tensor rank: ", dim + 1,
                                         " but got: ", input_dims));
     OP_REQUIRES(
         context, input.dim_size(dim) > 0,
