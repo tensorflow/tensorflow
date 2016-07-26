@@ -18,6 +18,7 @@ Some examples use the `pandas` library for data processing (`sudo pip install pa
 * [Building A Model Using Different GPU Configurations](iris_run_config.py)
 * [Example of Saving and Restoring Models](iris_save_restore.py)
 * [Multi-output Deep Neural Network regression](multioutput_regression.py)
+* [Recurrent Neural Networks regression](lstm_regression.py)
 
 
 ## Techniques
