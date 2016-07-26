@@ -1,0 +1,2 @@
+model_checkpoint_path: "convolutional-0"
+all_model_checkpoint_paths: "convolutional-0"
