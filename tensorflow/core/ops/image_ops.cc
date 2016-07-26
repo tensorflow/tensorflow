@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -358,6 +359,9 @@ REGISTER_OP("AdjustContrast")
     .Output("output: float")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Deprecated(2, "Use AdjustContrastv2 instead")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    })
     .Doc(R"Doc(
 Deprecated. Disallowed in GraphDef version >= 2.
 )Doc");
@@ -367,6 +371,9 @@ REGISTER_OP("AdjustContrastv2")
     .Input("images: float")
     .Input("contrast_factor: float")
     .Output("output: float")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    })
     .Doc(R"Doc(
 Adjust the contrast of one or more images.
 
@@ -502,6 +509,9 @@ REGISTER_OP("DrawBoundingBoxes")
     .Input("boxes: float")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    })
     .Doc(R"doc(
 Draw bounding boxes on a batch of images.
 

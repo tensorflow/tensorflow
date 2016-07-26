@@ -353,5 +353,6 @@ class PyFuncOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(PyFuncOp);
 };
 REGISTER_KERNEL_BUILDER(Name("PyFunc").Device(DEVICE_CPU), PyFuncOp);
+REGISTER_KERNEL_BUILDER(Name("PyFuncStateless").Device(DEVICE_CPU), PyFuncOp);
 
 }  // end namespace tensorflow

@@ -72,6 +72,183 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
   return shards
 
 
+class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
+  """Long short-term memory unit (LSTM) recurrent network cell.
+
+  The default non-peephole implementation is based on:
+
+    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+
+  S. Hochreiter and J. Schmidhuber.
+  "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
+
+  The peephole implementation is based on:
+
+    https://research.google.com/pubs/archive/43905.pdf
+
+  Hasim Sak, Andrew Senior, and Francoise Beaufays.
+  "Long short-term memory recurrent neural network architectures for
+   large scale acoustic modeling." INTERSPEECH, 2014.
+
+  The coupling of input and forget gate is based on:
+
+    http://arxiv.org/pdf/1503.04069.pdf
+
+  Greff et al. "LSTM: A Search Space Odyssey"
+
+  The class uses optional peep-hole connections, and an optional projection
+  layer.
+  """
+
+  def __init__(self, num_units, use_peepholes=False,
+               initializer=None, num_proj=None, proj_clip=None,
+               num_unit_shards=1, num_proj_shards=1,
+               forget_bias=1.0, state_is_tuple=False,
+               activation=tanh):
+    """Initialize the parameters for an LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the LSTM cell
+      use_peepholes: bool, set True to enable diagonal/peephole connections.
+      initializer: (optional) The initializer to use for the weight and
+        projection matrices.
+      num_proj: (optional) int, The output dimensionality for the projection
+        matrices.  If None, no projection is performed.
+      proj_clip: (optional) A float value.  If `num_proj > 0` and `proj_clip` is
+      provided, then the projected values are clipped elementwise to within
+      `[-proj_clip, proj_clip]`.
+      num_unit_shards: How to split the weight matrix.  If >1, the weight
+        matrix is stored across num_unit_shards.
+      num_proj_shards: How to split the projection matrix.  If >1, the
+        projection matrix is stored across num_proj_shards.
+      forget_bias: Biases of the forget gate are initialized by default to 1
+        in order to reduce the scale of forgetting at the beginning of
+        the training.
+      state_is_tuple: If True, accepted and returned states are 2-tuples of
+        the `c_state` and `m_state`.  By default (False), they are concatenated
+        along the column axis.  This default behavior will soon be deprecated.
+      activation: Activation function of the inner states.
+    """
+    if not state_is_tuple:
+      logging.warn(
+          "%s: Using a concatenated state is slower and will soon be "
+          "deprecated.  Use state_is_tuple=True." % self)
+    self._num_units = num_units
+    self._use_peepholes = use_peepholes
+    self._initializer = initializer
+    self._num_proj = num_proj
+    self._proj_clip = proj_clip
+    self._num_unit_shards = num_unit_shards
+    self._num_proj_shards = num_proj_shards
+    self._forget_bias = forget_bias
+    self._state_is_tuple = state_is_tuple
+    self._activation = activation
+
+    if num_proj:
+      self._state_size = (
+          rnn_cell.LSTMStateTuple(num_units, num_proj)
+          if state_is_tuple else num_units + num_proj)
+      self._output_size = num_proj
+    else:
+      self._state_size = (
+          rnn_cell.LSTMStateTuple(num_units, num_units)
+          if state_is_tuple else 2 * num_units)
+      self._output_size = num_units
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  @property
+  def output_size(self):
+    return self._output_size
+
+  def __call__(self, inputs, state, scope=None):
+    """Run one step of LSTM.
+
+    Args:
+      inputs: input Tensor, 2D, batch x num_units.
+      state: if `state_is_tuple` is False, this must be a state Tensor,
+        `2-D, batch x state_size`.  If `state_is_tuple` is True, this must be a
+        tuple of state Tensors, both `2-D`, with column sizes `c_state` and
+        `m_state`.
+      scope: VariableScope for the created subgraph; defaults to "LSTMCell".
+
+    Returns:
+      A tuple containing:
+      - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+        LSTM after reading `inputs` when previous state was `state`.
+        Here output_dim is:
+           num_proj if num_proj was set,
+           num_units otherwise.
+      - Tensor(s) representing the new state of LSTM after reading `inputs` when
+        the previous state was `state`.  Same type and shape(s) as `state`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
+    """
+    num_proj = self._num_units if self._num_proj is None else self._num_proj
+
+    if self._state_is_tuple:
+      (c_prev, m_prev) = state
+    else:
+      c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
+      m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
+
+    dtype = inputs.dtype
+    input_size = inputs.get_shape().with_rank(2)[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+    with vs.variable_scope(scope or type(self).__name__,
+                           initializer=self._initializer):  # "LSTMCell"
+      concat_w = _get_concat_variable(
+          "W", [input_size.value + num_proj, 3 * self._num_units],
+          dtype, self._num_unit_shards)
+
+      b = vs.get_variable(
+          "B", shape=[3 * self._num_units],
+          initializer=array_ops.zeros_initializer, dtype=dtype)
+
+      # j = new_input, f = forget_gate, o = output_gate
+      cell_inputs = array_ops.concat(1, [inputs, m_prev])
+      lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
+      j, f, o = array_ops.split(1, 3, lstm_matrix)
+
+      # Diagonal connections
+      if self._use_peepholes:
+        w_f_diag = vs.get_variable(
+            "W_F_diag", shape=[self._num_units], dtype=dtype)
+        w_o_diag = vs.get_variable(
+            "W_O_diag", shape=[self._num_units], dtype=dtype)
+
+      if self._use_peepholes:
+        f_act = sigmoid(f + self._forget_bias + w_f_diag * c_prev)
+      else:
+        f_act = sigmoid(f + self._forget_bias)
+      c = (f_act * c_prev + (1 - f_act) * self._activation(j))
+
+      if self._use_peepholes:
+        m = sigmoid(o + w_o_diag * c) * self._activation(c)
+      else:
+        m = sigmoid(o) * self._activation(c)
+
+      if self._num_proj is not None:
+        concat_w_proj = _get_concat_variable(
+            "W_P", [self._num_units, self._num_proj],
+            dtype, self._num_proj_shards)
+
+        m = math_ops.matmul(m, concat_w_proj)
+        if self._proj_clip is not None:
+          # pylint: disable=invalid-unary-operand-type
+          m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
+          # pylint: enable=invalid-unary-operand-type
+
+    new_state = (rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple
+                 else array_ops.concat(1, [c, m]))
+    return m, new_state
+
+
 class TimeFreqLSTMCell(rnn_cell.RNNCell):
   """Time-Frequency Long short-term memory unit (LSTM) recurrent network cell.
 

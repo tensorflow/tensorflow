@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Switch")
@@ -128,6 +131,7 @@ REGISTER_OP("Enter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Creates or finds a child frame, and makes `data` available to the child frame.
 
@@ -152,6 +156,7 @@ REGISTER_OP("RefEnter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Creates or finds a child frame, and makes `data` available to the child frame.
 
@@ -172,6 +177,7 @@ REGISTER_OP("Exit")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Exits the current frame to its parent frame.
 
@@ -185,6 +191,7 @@ REGISTER_OP("RefExit")
     .Input("data: Ref(T)")
     .Output("output: Ref(T)")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Exits the current frame to its parent frame.
 
@@ -199,6 +206,7 @@ REGISTER_OP("NextIteration")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Makes its input available to the next iteration.
 
@@ -210,6 +218,7 @@ REGISTER_OP("RefNextIteration")
     .Input("data: Ref(T)")
     .Output("output: Ref(T)")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Makes its input available to the next iteration.
 
@@ -221,6 +230,9 @@ output: The same tensor as `data`.
 REGISTER_OP("LoopCond")
     .Input("input: bool")
     .Output("output: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRank(c, 0);
+    })
     .Doc(R"doc(
 Forwards the input to the output.
 
@@ -233,6 +245,7 @@ output: The same tensor as `input`.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ControlTrigger")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Does nothing. Serves as a control trigger for scheduling. Only useful as a
 placeholder for control edges.

@@ -176,7 +176,7 @@ class BasicRNNCell(RNNCell):
 
   def __init__(self, num_units, input_size=None, activation=tanh):
     if input_size is not None:
-      logging.warn("%s: The input_size parameter is deprecated." % self)
+      logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
 
@@ -200,7 +200,7 @@ class GRUCell(RNNCell):
 
   def __init__(self, num_units, input_size=None, activation=tanh):
     if input_size is not None:
-      logging.warn("%s: The input_size parameter is deprecated." % self)
+      logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
 
@@ -239,6 +239,14 @@ class LSTMStateTuple(_LSTMStateTuple):
   """
   __slots__ = ()
 
+  @property
+  def dtype(self):
+    (c, h) = self
+    if not c.dtype == h.dtype:
+      raise TypeError("Inconsistent internal state: %s vs %s" %
+                      (str(c.dtype), str(h.dtype)))
+    return c.dtype
+
 
 class BasicLSTMCell(RNNCell):
   """Basic LSTM recurrent network cell.
@@ -268,11 +276,10 @@ class BasicLSTMCell(RNNCell):
       activation: Activation function of the inner states.
     """
     if not state_is_tuple:
-      logging.warn(
-          "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True." % self)
+      logging.warn("%s: Using a concatenated state is slower and will soon be "
+                   "deprecated.  Use state_is_tuple=True.", self)
     if input_size is not None:
-      logging.warn("%s: The input_size parameter is deprecated." % self)
+      logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
@@ -403,11 +410,10 @@ class LSTMCell(RNNCell):
       activation: Activation function of the inner states.
     """
     if not state_is_tuple:
-      logging.warn(
-          "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True." % self)
+      logging.warn("%s: Using a concatenated state is slower and will soon be "
+                   "deprecated.  Use state_is_tuple=True.", self)
     if input_size is not None:
-      logging.warn("%s: The input_size parameter is deprecated." % self)
+      logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._use_peepholes = use_peepholes
     self._cell_clip = cell_clip
@@ -597,7 +603,7 @@ class InputProjectionWrapper(RNNCell):
       TypeError: if cell is not an RNNCell.
     """
     if input_size is not None:
-      logging.warn("%s: The input_size parameter is deprecated." % self)
+      logging.warn("%s: The input_size parameter is deprecated.", self)
     if not isinstance(cell, RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
     self._cell = cell
@@ -728,9 +734,16 @@ class EmbeddingWrapper(RNNCell):
           # Default initializer for embeddings should have variance=1.
           sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
           initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
-        embedding = vs.get_variable("embedding", [self._embedding_classes,
-                                                  self._embedding_size],
-                                    initializer=initializer)
+
+        if type(state) is tuple:
+          data_type = state[0].dtype
+        else:
+          data_type = state.dtype
+
+        embedding = vs.get_variable(
+            "embedding", [self._embedding_classes, self._embedding_size],
+            initializer=initializer,
+            dtype=data_type)
         embedded = embedding_ops.embedding_lookup(
             embedding, array_ops.reshape(inputs, [-1]))
     return self._cell(embedded, state)
@@ -876,9 +889,12 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
     else:
       total_arg_size += shape[1]
 
+  dtype = [a.dtype for a in args][0]
+
   # Now the computation.
   with vs.variable_scope(scope or "Linear"):
-    matrix = vs.get_variable("Matrix", [total_arg_size, output_size])
+    matrix = vs.get_variable(
+        "Matrix", [total_arg_size, output_size], dtype=dtype)
     if len(args) == 1:
       res = math_ops.matmul(args[0], matrix)
     else:
@@ -887,5 +903,7 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
       return res
     bias_term = vs.get_variable(
         "Bias", [output_size],
-        initializer=init_ops.constant_initializer(bias_start))
+        dtype=dtype,
+        initializer=init_ops.constant_initializer(
+            bias_start, dtype=dtype))
   return res + bias_term

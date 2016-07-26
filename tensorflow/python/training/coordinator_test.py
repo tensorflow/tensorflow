@@ -174,6 +174,49 @@ class CoordinatorTest(tf.test.TestCase):
     with self.assertRaisesRegexp(RuntimeError, "Second"):
       coord.join(threads)
 
+  def testRequestStopRaisesIfJoined(self):
+    coord = tf.train.Coordinator()
+    # Join the coordinator right away.
+    coord.join([])
+    reported = False
+    with self.assertRaisesRegexp(RuntimeError, "Too late"):
+      try:
+        raise RuntimeError("Too late")
+      except RuntimeError as e:
+        reported = True
+        coord.request_stop(e)
+    self.assertTrue(reported)
+    # If we clear_stop the exceptions are handled normally.
+    coord.clear_stop()
+    try:
+      raise RuntimeError("After clear")
+    except RuntimeError as e:
+      coord.request_stop(e)
+    with self.assertRaisesRegexp(RuntimeError, "After clear"):
+      coord.join([])
+
+  def testRequestStopRaisesIfJoined_ExcInfo(self):
+    # Same as testRequestStopRaisesIfJoined but using syc.exc_info().
+    coord = tf.train.Coordinator()
+    # Join the coordinator right away.
+    coord.join([])
+    reported = False
+    with self.assertRaisesRegexp(RuntimeError, "Too late"):
+      try:
+        raise RuntimeError("Too late")
+      except RuntimeError:
+        reported = True
+        coord.request_stop(sys.exc_info())
+    self.assertTrue(reported)
+    # If we clear_stop the exceptions are handled normally.
+    coord.clear_stop()
+    try:
+      raise RuntimeError("After clear")
+    except RuntimeError:
+      coord.request_stop(sys.exc_info())
+    with self.assertRaisesRegexp(RuntimeError, "After clear"):
+      coord.join([])
+
 
 def _StopAt0(coord, n):
   if n[0] == 0:

@@ -28,6 +28,7 @@ from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import recoverable_session
 from tensorflow.contrib.learn.python.learn import summary_writer_cache
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -179,6 +180,8 @@ def _call_monitor_end(monitor, sess):
     monitor.end()
 
 
+# TODO(ispir): Document this class after interface is finalized.
+# mention StopIteration and OutOfRangeError
 class SupervisedSession(object):
   """Session-like object that supports recovery and monitors.
 
@@ -232,7 +235,8 @@ class SupervisedSession(object):
           self._master, config=self._config)
     # Keep the tf_sess for quick runs of global step when needed.
     self._tf_sess = tf_sess
-    coord = coordinator.Coordinator()
+    # We don't want coordinator to suppress any exception.
+    coord = coordinator.Coordinator(clean_stop_exception_types=[])
     coordinated_threads_to_join = queue_runner.start_queue_runners(sess=tf_sess,
                                                                    coord=coord)
     return coordinated_session.CoordinatedSession(
@@ -295,7 +299,12 @@ class SupervisedSession(object):
     return self
 
   def __exit__(self, exception_type, exception_value, traceback):
+    if exception_type in [errors.OutOfRangeError, StopIteration]:
+      # TODO(ispir): log error if Coordinator hasn't done already.
+      exception_type = None
     self._close_internal(exception_type)
+    # __exit__ should return True to suppress an exception.
+    return exception_type is None
 
   def write_graph(self):
     """Saves current graph."""

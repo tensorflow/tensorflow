@@ -786,9 +786,7 @@ void Generator::Generate(const FileDescriptor& fd) {
     }
     headers.push_back(GetProtoHeaderName(*d));
   }
-  for (const auto& h : headers) {
-    Print("#include \"", h, "\"");
-  }
+  AddHeadersToCurrentSection(headers);
   AddNamespaceToCurrentSection(package, true /* is_open */);
   SetOutput(&header_impl_).Print().Print("namespace internal {");
 

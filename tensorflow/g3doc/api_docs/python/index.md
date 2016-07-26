@@ -193,6 +193,8 @@
   * [`conj`](../../api_docs/python/math_ops.md#conj)
   * [`cos`](../../api_docs/python/math_ops.md#cos)
   * [`cross`](../../api_docs/python/math_ops.md#cross)
+  * [`cumprod`](../../api_docs/python/math_ops.md#cumprod)
+  * [`cumsum`](../../api_docs/python/math_ops.md#cumsum)
   * [`diag`](../../api_docs/python/math_ops.md#diag)
   * [`diag_part`](../../api_docs/python/math_ops.md#diag_part)
   * [`digamma`](../../api_docs/python/math_ops.md#digamma)

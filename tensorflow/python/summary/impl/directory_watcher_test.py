@@ -154,6 +154,13 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self._LoadAllEvents()
     self.assertTrue(self._watcher.OutOfOrderWritesDetected())
 
+  def testDoesntCrashWhenFileIsDeleted(self):
+    self._WriteToFile('a', 'a')
+    self._LoadAllEvents()
+    os.remove(os.path.join(self._directory, 'a'))
+    self._WriteToFile('b', 'b')
+    self.assertWatcherYields(['b'])
+
 
 if __name__ == '__main__':
   googletest.main()

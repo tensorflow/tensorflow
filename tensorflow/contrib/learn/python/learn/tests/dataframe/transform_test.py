@@ -43,7 +43,7 @@ class TransformTest(tf.test.TestCase):
     z = mocks.MockSeries("foobar", [])
     t = mocks.MockTwoOutputTransform("thb", "nth", "snt")
     cache = {}
-    t.apply_transform([z], cache)
+    t.build_transitive([z], cache)
     self.assertEqual(2, len(cache))
 
     expected_keys = [
