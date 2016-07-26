@@ -228,6 +228,7 @@ packages needed by TensorFlow.
 *  Activate the conda environment and install TensorFlow in it.
 *  After the install you will activate the conda environment each time you
    want to use TensorFlow.
+*  Optionally install ipython and other packages into the conda environment 
 
 Install Anaconda:
 
@@ -247,6 +248,7 @@ $ conda create -n tensorflow python=3.5
 ```
 
 Activate the environment and use conda or pip to install TensorFlow inside it.
+
 
 ### Using conda
 
@@ -335,6 +337,19 @@ $ source activate tensorflow
 # When you are done using TensorFlow, deactivate the environment.
 (tensorflow)$ source deactivate
 ```
+
+### Install IPython
+
+To use tensorflow with IPython it may be necessary to install IPython into the tensorflow environment: 
+
+```bash
+$ source activate tensorflow
+(tensorflow)$ conda install ipython
+```
+
+Similarly, other Python packages like pandas may need to get installed into the tensorflow environment
+before they can be used together with tensorflow.  
+
 
 ## Docker installation
 
