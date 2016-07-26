@@ -1170,7 +1170,7 @@ For each batch `i` and class `j` we have
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+  A `Tensor`. Has the same type as `logits`.
 
 
 - - -
