@@ -93,6 +93,8 @@ typedef std::vector<DeviceContext*> DeviceContextMap;
 class DeviceBase {
  public:
   explicit DeviceBase(Env* env) : env_(env) {}
+  explicit DeviceBase(Env* env, const DeviceAttributes& device_attributes)
+      : env_(env), device_attributes_(device_attributes) {}
   virtual ~DeviceBase();
 
   Env* env() const { return env_; }
@@ -149,6 +151,7 @@ class DeviceBase {
   // attributes requested.  See allocator.h for more details.
   virtual Allocator* GetAllocator(AllocatorAttributes /*attr*/) {
     LOG(FATAL) << "GetAllocator() is not implemented.";
+    return nullptr;
   }
 
   // Return the Allocator implementation to use based on the allocator
@@ -180,6 +183,7 @@ class DeviceBase {
 
   virtual const DeviceAttributes& attributes() const {
     LOG(FATAL) << "Device does not implement attributes()";
+    return device_attributes_;
   }
 
   // Materializes the given TensorProto into 'tensor' stored in Device
@@ -195,7 +199,10 @@ class DeviceBase {
     return errors::Internal("Device does not implement MakeTensorFromProto()");
   }
 
- private:
+protected:
+  const DeviceAttributes device_attributes_;
+
+private:
   Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
   GpuDeviceInfo* gpu_device_info_ = nullptr;

@@ -152,7 +152,6 @@ class Device : public DeviceBase {
   }
 
  private:
-  const DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
 
   // op_seg_ maps session handle and op name to OpKernel objects.
