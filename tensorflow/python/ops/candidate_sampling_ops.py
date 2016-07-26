@@ -391,3 +391,10 @@ def _ComputeAccidentalHitsShape(op):
       tensor_shape.matrix(None, num_true))
   output_shape = tensor_shape.vector(None)
   return [output_shape] * 3
+
+
+
+@ops.RegisterGradient("LogUniformCandidateSampler")
+def _LogUniformCandidateSamplerGrad(op, *grads): 
+  # input: true_classes grad
+  return [tf.cast(tf.zeros_like(grads[1]), tf.int64)]
