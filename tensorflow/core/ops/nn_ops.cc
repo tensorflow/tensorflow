@@ -235,6 +235,7 @@ REGISTER_OP("BiasAdd")
     .Input("bias: T")
     .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
+    .SetShapeFn(shape_inference::BiasAddShape)
     .Doc(R"doc(
 Adds `bias` to `value`.
 
@@ -259,6 +260,7 @@ REGISTER_OP("BiasAddGrad")
     .Input("out_backprop: T")
     .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
+    .SetShapeFn(shape_inference::BiasAddGradShape)
     .Doc(R"doc(
 The backward operation for "BiasAdd" on the "bias" tensor.
 
@@ -283,6 +285,7 @@ REGISTER_OP("BiasAddV1")
     .Input("value: T")
     .Input("bias: T")
     .Output("output: T")
+    .SetShapeFn(shape_inference::BiasAddShape)
     .Doc(R"doc(
 Adds `bias` to `value`.
 
