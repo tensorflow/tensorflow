@@ -22,6 +22,7 @@ for context.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import itertools
 
 import collections
 
@@ -253,11 +254,30 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
   Raises:
     ValueError: if `slice_input_producer` produces nothing from `tensor_list`.
   """
-  with ops.op_scope(tensor_list, name, "input_producer"):
+  with ops.op_scope(tensor_list, name, "input_producer") as name:
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensor_list)
     if not tensor_list:
       raise ValueError(
           "Expected at least one tensor in slice_input_producer().")
+    if not shuffle:
+      # using FIFOQueue is sufficient and faster in this case
+      tensor_list[0] = limit_epochs(tensor_list[0], num_epochs)
+      q = data_flow_ops.FIFOQueue(capacity=capacity,
+                                  dtypes=[x.dtype for x in tensor_list],
+                                  name=name)
+      enq = q.enqueue_many(tensor_list)
+      queue_runner.add_queue_runner(queue_runner.QueueRunner(q, [enq]))
+      summary_ops.scalar_summary("queue/%s/%s" %
+                                 (q.name, "fraction_of_%d_full" % capacity),
+                                math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
+      if len(tensor_list) == 1:
+        output = [q.dequeue()]
+      else:
+        output = q.dequeue()
+      for in_var, out_var in itertools.izip(tensor_list, output):
+        out_var.set_shape(in_var.get_shape().as_list()[1:])
+      return output
+
     range_size = array_ops.shape(tensor_list[0])[0]
     # TODO(josh11b): Add an assertion that the first dimension of
     # everything in TensorList matches. Maybe just check the inferred shapes?
