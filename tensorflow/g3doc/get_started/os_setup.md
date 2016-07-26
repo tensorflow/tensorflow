@@ -982,3 +982,158 @@ installed, such as:
 ```bash
 $ pip install --upgrade protobuf
 ```
+
+#### Build package in format of tar.gz for Python2.7
+
+On `OS X Yoesmite 10.10.4`
+
+Dependencies
+
+- [JDK 1.8](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html)
+- Python 2.7
+- GCC >= 4.8.3 (or >=Apple LLVM version 7.0.0)
+- [bazel](https://github.com/bazelbuild/bazel/releases): bazel-0.2.3-installer-darwin-x86_64.sh
+
+```bash
+$ chmod +x bazel-0.2.3-installer-darwin-x86_64.sh
+$ ./bazel-0.2.3-installer-darwin-x86_64.sh --user
+
+add the following to ~/.bashrc
+
+export HOME_BAZEL=~/.bazel/
+export PATH=$PATH:$HOME_BAZEL/bin
+
+$source ~/.bashrc
+
+$ brew install swig
+```
+
+On `Debian 7 64-bit`
+
+Dependencies
+
+- [JDK 1.8](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html)
+- Python 2.7
+- GCC >= 4.8.3 # for GLIBCXX_3.4.19
+- [bazel](https://github.com/bazelbuild/bazel/releases): bazel-0.2.3-installer-linux-x86_64.sh
+
+```bash
+$ vi /etc/apt/source.list
+deb http://http.us.debian.org/debian/ testing non-free contrib main
+
+$ apt-get remove libssl1.0.0
+$ apt-get install libc6-dev g++
+
+$ chmod +x bazel-0.2.3-installer-darwin-x86_64.sh
+$ ./bazel-0.2.3-installer-darwin-x86_64.sh --user
+
+add the following to ~/.bashrc
+
+export HOME_BAZEL=~/.bazel/
+export PATH=$PATH:$HOME_BAZEL/bin
+
+$source ~/.bashrc
+
+$ pip install numpy
+$ apt-get install swig
+```
+
+
+On `CentOS 6.5 64-bit`
+
+- [JDK 1.8](http://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html)
+- Python 2.7
+- GCC >= 4.8.3
+- [bazel](https://github.com/bazelbuild/bazel/releases): bazel-0.2.3-installer-linux-x86_64.sh
+
+```bash
+$ wget -O /etc/yum.repos.d/slc6-devtoolset.repo http://linuxsoft.cern.ch/cern/devtoolset/slc6-devtoolset.repo
+$ yum install devtoolset-2-gcc devtoolset-2-binutils devtoolset-2-gcc-c++ unzip devtoolset-2-git
+
+$ vi /etc/profile
+source /opt/rh/devtoolset-2/enable
+
+$source /etc/profile
+
+$ chmod +x bazel-0.2.3-installer-darwin-x86_64.sh
+$ ./bazel-0.2.3-installer-darwin-x86_64.sh --user
+
+$ vi ~/.bashrc
+export HOME_BAZEL=~/.bazel/
+export PATH=$PATH:$HOME_BAZEL/bin
+
+$ source ~/.bashrc
+
+$ wget http://ftp.gnu.org/gnu/glibc/glibc-2.14.tar.gz
+$ tar -xzvf glibc-2.14.tar.gz
+$ cd glibc-2.14
+$ mkdir build
+$ ../configure --prefix=/opt/glibc-2.14
+$ make -j4 && make install
+$ vi /etc/profile
+export LD_LIBRARY_PATH=/opt/glibc-2.14:$LD_LIBRARY_PATH
+
+$ pip install numpy
+$ yum install swig
+```
+
+
+Build
+
+```bash
+$ git clone --recurse-submodules https://github.com/tensorflow/tensorflow
+
+$ cd tensorflow
+$ ./configure
+
+$ vi tensorflow/tools/pip_package/build_pip_package.sh
+
+    change
+
+    ${PYTHON_BIN_PATH:-python} setup.py bdist_wheel >/dev/null
+
+    to
+
+    ${PYTHON_BIN_PATH:-python} setup.py sdist #upload
+
+# To build pip package
+$ bazel build -c opt //tensorflow/tools/pip_package:build_pip_package
+
+# To build with GPU support:
+$ bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+
+$ bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tf_pkg
+```
+
+
+Use In Setup.py
+```python
+
+import platform
+
+from setuptools import find_packages, setup
+
+from content_assess import __version__
+
+_tensorflow_version = "0.8.0"
+tensorflow_version = {
+    "": _tensorflow_version,
+    "darwin": _tensorflow_version + "b1",
+    "debian": _tensorflow_version + "b2",
+    "centos": _tensorflow_version + "b3"
+}
+
+os_distribution = ""
+
+platform_dist = platform.dist()[0].lower()
+
+if len(platform_dist) > 0:
+    os_distribution = platform_dist
+else:
+    os_distribution = platform.system().lower()
+
+
+install_requires = [
+    "tensorflow == %s" % tensorflow_version[os_distribution]
+]
+```
