@@ -42,13 +42,15 @@ sequences and large batches.
 
 ##### Returns:
 
-  The output tensors for the loop variables after the loop.
+  The output tensors for the loop variables after the loop. When the length
+  of `loop_vars` is 1 this is a Tensor, TensorArry or IndexedSlice and when
+  the length of `loop_vars` is greater than 1 it returns a list.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if `cond` or `body` is not callable.
-*  <b>`ValueError`</b>: if `loop_var` is empty.
+*  <b>`ValueError`</b>: if `loop_vars` is empty.
 
 
 *  <b>`Example`</b>: 

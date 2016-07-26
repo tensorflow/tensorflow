@@ -181,11 +181,16 @@ class EventMultiplexer(object):
   def Reload(self):
     """Call `Reload` on every `EventAccumulator`."""
     self._reload_called = True
+    # Build a list so we're safe even if the list of accumulators is modified
+    # even while we're reloading.
     with self._accumulators_mutex:
-      loaders = list(self._accumulators.values())
+      items = list(self._accumulators.items())
 
-    for l in loaders:
-      l.Reload()
+    for name, accumulator in items:
+      try:
+        accumulator.Reload()
+      except (OSError, IOError) as e:
+        logging.error("Unable to reload accumulator '%s': %s", name, e)
     return self
 
   def FirstEventTimestamp(self, run):

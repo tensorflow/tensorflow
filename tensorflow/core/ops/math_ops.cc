@@ -881,6 +881,7 @@ REGISTER_OP("MatMul")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
     .Attr("T: {half, float, double, int32, complex64, complex128}")
+    .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
 Multiply the matrix "a" by the matrix "b".
 
@@ -906,6 +907,7 @@ REGISTER_OP("SparseMatMul")
     .Attr("b_is_sparse: bool = false")
     .Attr("Ta: {float, bfloat16} = DT_FLOAT")
     .Attr("Tb: {float, bfloat16} = DT_FLOAT")
+    .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
 Multiply matrix "a" by matrix "b".
 

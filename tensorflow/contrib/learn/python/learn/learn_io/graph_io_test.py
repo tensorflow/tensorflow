@@ -164,7 +164,7 @@ class GraphIOTest(tf.test.TestCase):
           file_name_queue_name: "FIFOQueue",
           "%s/read/TFRecordReader" % name: "TFRecordReader",
           example_queue_name: "RandomShuffleQueue",
-          name: "QueueDequeueMany",
+          name: "QueueDequeueUpTo",
           file_name_queue_limit_name: "Variable"
       }, g)
       self.assertEqual(
@@ -249,6 +249,7 @@ class GraphIOTest(tf.test.TestCase):
       tf.train.start_queue_runners(session, coord=coord)
 
       self.assertAllEqual(session.run(inputs), [b"A", b"B", b"C"])
+      self.assertAllEqual(session.run(inputs), [b"D", b"E"])
       with self.assertRaises(errors.OutOfRangeError):
         session.run(inputs)
 
