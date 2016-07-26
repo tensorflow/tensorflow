@@ -97,7 +97,7 @@ dimensions, and 1 in a single dimension. In this case, the \\(n\\)th digit will
 be represented as a vector which is 1 in the \\(n\\)th dimensions. For example,
 3 would be \\([0,0,0,1,0,0,0,0,0,0]\\).
 Consequently, `mnist.train.labels` is a
-`[55000, 10]` array of floats.
+`[55000, 10]` array of bits.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../../images/mnist-train-ys.png">
@@ -315,8 +315,8 @@ cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=
 ```
 
 First, `tf.log` computes the logarithm of each element of `y`. Next, we multiply
-each element of `y_` with the corresponding element of `tf.log(y)`. Then 
-`tf.reduce_sum` adds the elements in the second dimension of y, due to the 
+each element of `y_` with the corresponding element of `tf.log(y)`. Then
+`tf.reduce_sum` adds the elements in the second dimension of y, due to the
 `reduction_indices=[1]` parameter. Finally,  `tf.reduce_mean` computes the mean
 over all the examples in the batch.
 
