@@ -3292,8 +3292,8 @@ op {
 }
 op {
   name: "ControlTrigger"
-  summary: "Does nothing. Serves as a control trigger for scheduling. Only useful as a"
-  description: "placeholder for control edges."
+  summary: "Does nothing. Serves as a control trigger for scheduling."
+  description: "Only useful as a placeholder for control edges."
 }
 op {
   name: "Conv2D"
