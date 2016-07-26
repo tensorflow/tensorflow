@@ -26,6 +26,7 @@ from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
+from tensorflow.contrib import immediate
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
 from tensorflow.contrib import linear_optimizer
