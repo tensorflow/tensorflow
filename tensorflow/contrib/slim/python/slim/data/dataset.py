@@ -20,6 +20,15 @@ A Dataset is a collection of several components: (1) a list of data sources
 samples of data (3) a decoder that decodes each sample of data provided by the
 reader (4) the total number of samples and (5) an optional dictionary mapping
 the list of items returns to a description of those items.
+
+Data can be loaded from a dataset specification using a dataset_data_provider:
+
+  dataset = CreateMyDataset(...)
+  provider = dataset_data_provider.DatasetDataProvider(
+      dataset, shuffle=False)
+  image, label = provider.get(['image', 'label'])
+
+See slim.data.dataset_data_provider for additional examples.
 """
 
 from __future__ import absolute_import
