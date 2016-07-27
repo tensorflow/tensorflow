@@ -36,9 +36,11 @@ def _get_qualified_name(function):
 
 def _add_deprecation_to_docstring(doc, date, instructions):
   """Adds a deprecation notice to a docstring."""
-  lines = doc.splitlines()
-
-  lines[0] += ' (deprecated)'
+  if not doc:
+    lines = ['DEPRECATED FUNCTION']
+  else:
+    lines = doc.splitlines()
+    lines[0] += ' (deprecated)'
 
   notice = [
       '',
@@ -97,11 +99,15 @@ def deprecated(date, instructions):
 
   def deprecated_wrapper(func):
     """Deprecation wrapper."""
+    if not hasattr(func, '__call__'):
+      raise ValueError(
+          '%s is not a function.'
+          'If this is a property, apply @deprecated after @property.' % func)
     def new_func(*args, **kwargs):
-      logging.warn('%s (from %s) is deprecated and will be removed after %s.\n'
-                   'Instructions for updating:\n%s',
-                   _get_qualified_name(func), func.__module__,
-                   date, instructions)
+      logging.warning('%s (from %s) is deprecated and will be removed after %s.'
+                      '\nInstructions for updating:\n%s',
+                      _get_qualified_name(func), func.__module__,
+                      date, instructions)
       return func(*args, **kwargs)
     new_func.__name__ = func.__name__
     new_func.__doc__ = _add_deprecation_to_docstring(func.__doc__, date,
