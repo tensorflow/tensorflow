@@ -2427,11 +2427,11 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       tf.contrib.metrics.streaming_mean_iou(
           predictions, labels, num_classes=2, ignore_mask=ignore_mask)
 
-  def testIgnoreMaskIsNotBooleanRaisesValueError(self):
+  def testIgnoreMaskIsNotBooleanRaisesTypeError(self):
     predictions = tf.ones([10])
     labels = tf.ones([10])
     ignore_mask = tf.ones([10])
-    with self.assertRaises(ValueError):
+    with self.assertRaises(TypeError):
       tf.contrib.metrics.streaming_mean_iou(
           predictions, labels, num_classes=2, ignore_mask=ignore_mask)
 
