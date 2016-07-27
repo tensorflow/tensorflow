@@ -102,6 +102,7 @@ class Exponential(gamma.Gamma):
           shape, minval=np.nextafter(
               self.dtype.as_numpy_dtype(0.), self.dtype.as_numpy_dtype(1.)),
           maxval=constant_op.constant(1.0, dtype=self.dtype),
+          seed=seed,
           dtype=self.dtype)
 
       n_val = tensor_util.constant_value(n)

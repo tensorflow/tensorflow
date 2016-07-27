@@ -27,49 +27,36 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperationT>
-class DeterminantOp
-    : public UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT> {
+template <class Scalar, bool SupportsBatchOperation>
+class DeterminantOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
  public:
-  explicit DeterminantOp(OpKernelConstruction* context)
-      : UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>(context) {}
-  ~DeterminantOp() override {}
+  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
 
-  TensorShape GetOutputMatrixShape(
-      const TensorShape& input_matrix_shape) override {
-    return TensorShape({});
+  explicit DeterminantOp(OpKernelConstruction* context) : Base(context) {}
+
+  using TensorShapes = typename Base::TensorShapes;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shape) const final {
+    return TensorShapes({TensorShape({})});
   }
 
-  int64 GetCostPerUnit(const TensorShape& input_matrix_shape) override {
-    const int64 rows = input_matrix_shape.dim_size(0);
-    if (rows > (1LL << 20)) {
-      // A big number to cap the cost in case overflow.
-      return kint64max;
-    } else {
-      return rows * rows * rows;
-    }
-  }
-
-  using
-      typename UnaryLinearAlgebraOp<Scalar, SupportsBatchOperationT>::MatrixMap;
-  using typename UnaryLinearAlgebraOp<Scalar,
-                                      SupportsBatchOperationT>::ConstMatrixMap;
-
-  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMap& input,
-                     MatrixMap* output) override {
-    OP_REQUIRES(context, input.rows() == input.cols(),
-                errors::InvalidArgument("Input matrix must be square."));
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
     Scalar determinant;
-    if (input.rows() == 0) {
-      // An empty matrix' determinant is defined to be 1.  See
-      // wikipedia.
+    if (inputs[0].rows() == 0) {
+      // An empty matrix' determinant is defined to be 1.  See wikipedia.
       determinant = 1;
     } else {
-      determinant = input.determinant();
+      determinant = inputs[0].determinant();
     }
-    OP_REQUIRES(context, std::isfinite(determinant),
-                errors::Internal("The determinant is not finite."));
-    (*output)(0, 0) = determinant;
+    // TODO(rmlarsen): Don't fail on infinite determinants, since that could
+    // be a valid result and the user should check for it instead.
+    OP_REQUIRES(context, Eigen::numext::isfinite(determinant),
+                errors::InvalidArgument("The determinant is not finite."));
+    outputs->at(0)(0, 0) = determinant;
   }
 };
 

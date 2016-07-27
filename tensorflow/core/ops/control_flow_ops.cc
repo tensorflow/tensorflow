@@ -245,15 +245,17 @@ output: The same tensor as `input`.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ControlTrigger")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Does nothing. Serves as a control trigger for scheduling. Only useful as a
-placeholder for control edges.
-)doc");
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"docstring(
+Does nothing. Serves as a control trigger for scheduling.
+
+Only useful as a placeholder for control edges.
+)docstring");
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Abort")
     .Attr("error_msg: string = ''")
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Raise a exception to abort the process when called.
 

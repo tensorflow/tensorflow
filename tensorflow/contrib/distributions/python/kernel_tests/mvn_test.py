@@ -117,6 +117,61 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
 
 
+class MultivariateNormalDiagPlusVDVTTest(tf.test.TestCase):
+  """Well tested because this is a simple override of the base class."""
+
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
+  def testMean(self):
+    mu = [-1.0, 1.0]
+    diag_large = [1.0, 5.0]
+    v = [[2.0], [3.0]]
+    diag_small = [3.0]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiagPlusVDVT(
+          mu, diag_large, v, diag_small=diag_small)
+      self.assertAllEqual(mu, dist.mean().eval())
+
+  def testNonmatchingMuAndSigmaDimensionFailsStatic(self):
+    mu = self._rng.rand(2)
+    # With this diag_large and v, the covariance is 3 x 3
+    diag_large = self._rng.rand(3)
+    v = self._rng.rand(3, 2)  # v works with diag_large.
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "shape.*should match"):
+        distributions.MultivariateNormalDiagPlusVDVT(
+            mu, diag_large, v)
+
+  def testNonmatchingMuDiagDimensionsFailsDynamic(self):
+    mu = self._rng.rand(2)
+    # With this diag_large and v, the covariance is 3 x 3
+    diag_large = self._rng.rand(3)
+    v = self._rng.rand(3, 2)  # v works with diag_large.
+
+    with self.test_session():
+      mu_ph = tf.placeholder(tf.float32, name="mu_ph")
+      v_ph = tf.placeholder(tf.float32, name="v_ph")
+      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
+      dist = distributions.MultivariateNormalDiagPlusVDVT(
+          mu_ph, diag_ph, v_ph)
+      with self.assertRaisesOpError("mu.*cov.*shape"):
+        dist.mean().eval(feed_dict={mu_ph: mu, diag_ph: diag_large, v_ph: v})
+
+  def testSample(self):
+    mu = [-1.0, 1.0]
+    diag_large = [1.0, 0.5]
+    v = [[0.2], [0.3]]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiagPlusVDVT(mu, diag_large, v)
+
+      samps = dist.sample_n(1000, seed=0).eval()
+      cov_mat = dist.sigma.eval()
+
+      self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
+      self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
+
+
 class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
   def setUp(self):

@@ -853,9 +853,6 @@ class ExecutorState {
   bool NodeDone(const Status& s, const Node* node, const TaggedNodeSeq& ready,
                 NodeExecStats* stats, TaggedNodeReadyQueue* inline_ready);
 
-  // Call Process() on all nodes in 'inline_ready'.
-  void ProcessInline(const TaggedNodeReadyQueue& inline_ready);
-
   // Schedule all the expensive nodes in 'ready', and put all the inexpensive
   // nodes in 'ready' into 'inline_ready'.
   void ScheduleReady(const TaggedNodeSeq& ready,
@@ -1652,17 +1649,6 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     ScheduleReady(ready, inline_ready);
   }
   return completed;
-}
-
-void ExecutorState::ProcessInline(const TaggedNodeReadyQueue& inline_ready) {
-  if (inline_ready.empty()) return;
-  int64 scheduled_usec = 0;
-  if (stats_collector_) {
-    scheduled_usec = nodestats::NowInUsec();
-  }
-  for (auto& tagged_node : inline_ready) {
-    Process(tagged_node, scheduled_usec);
-  }
 }
 
 void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,

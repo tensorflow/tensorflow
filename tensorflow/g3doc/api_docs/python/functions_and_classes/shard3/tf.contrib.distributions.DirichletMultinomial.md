@@ -67,25 +67,22 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
 ##### Args:
 
 
-*  <b>`n`</b>: Non-negative `float` or `double` tensor with shape
-    broadcastable to `[N1,..., Nm]` with `m >= 0`.  Defines this as a batch
-    of `N1 x ... x Nm` different Dirichlet multinomial distributions. Its
-    components should be equal to integral values.
-*  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
-    `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-     different `k` class Dirichlet multinomial distributions.
-*  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
-    allows for the `counts` tensor to be non-integral values.
-    The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.  If
-    `validate_args` is `False`, this assertion is turned off.
+*  <b>`n`</b>: Non-negative `float` or `double` tensor, whose dtype is the same as
+    `alpha`. The shape is broadcastable to `[N1,..., Nm]` with `m >= 0`.
+    Defines this as a batch of `N1 x ... x Nm` different Dirichlet
+    multinomial distributions. Its components should be equal to integral
+    values.
+*  <b>`alpha`</b>: Positive `float` or `double` tensor, whose dtype is the same as
+    `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
+    this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
+    multinomial distributions.
 *  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
     `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
     not guaranteed.
@@ -254,12 +251,12 @@ probability includes a combinatorial coefficient.
 ##### Args:
 
 
-*  <b>`counts`</b>: Non-negative `float` or `double` tensor whose shape can
-    be broadcast with `self.alpha`.  For fixed leading dimensions, the last
-    dimension represents counts for the corresponding Dirichlet Multinomial
-    distribution in `self.alpha`. `counts` is only legal if it sums up to
-    `n` and its components are equal to integral values. The second
-    condition is relaxed if `allow_arbitrary_counts` is set.
+*  <b>`counts`</b>: Non-negative `float` or `double` tensor whose dtype is the same
+    `self` and whose shape can be broadcast with `self.alpha`.  For fixed
+    leading dimensions, the last dimension represents counts for the
+    corresponding Dirichlet Multinomial distribution in `self.alpha`.
+    `counts` is only legal if it sums up to `n` and its components are
+    equal to integral values.
 *  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
 
 ##### Returns:
@@ -324,12 +321,12 @@ probability includes a combinatorial coefficient.
 ##### Args:
 
 
-*  <b>`counts`</b>: Non-negative `float`, `double` tensor whose shape can
-    be broadcast with `self.alpha`.  For fixed leading dimensions, the last
-    dimension represents counts for the corresponding Dirichlet Multinomial
-    distribution in `self.alpha`. `counts` is only legal if it sums up to
-    `n` and its components are equal to integral values. The second
-    condition is relaxed if `allow_arbitrary_counts` is set.
+*  <b>`counts`</b>: Non-negative `float` or `double` tensor whose dtype is the same
+    `self` and whose shape can be broadcast with `self.alpha`.  For fixed
+    leading dimensions, the last dimension represents counts for the
+    corresponding Dirichlet Multinomial distribution in `self.alpha`.
+    `counts` is only legal if it sums up to `n` and its components are
+    equal to integral values.
 *  <b>`name`</b>: Name to give this Op, defaults to "prob".
 
 ##### Returns:

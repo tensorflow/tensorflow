@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import tensorflow as tf
 
 
@@ -322,6 +324,107 @@ class FeatureColumnTest(tf.test.TestCase):
     self.assertTrue(placeholder.name.startswith(u"Placeholder"))
     self.assertEqual(tf.float32, placeholder.dtype)
     self.assertEqual([None, 1], placeholder.get_shape().as_list())
+
+  def testInitEmbeddingColumnWeightsFromCkpt(self):
+    sparse_col = tf.contrib.layers.sparse_column_with_hash_bucket(
+        column_name="object_in_image",
+        hash_bucket_size=4)
+    # Create _EmbeddingColumn which randomly initializes embedding of size
+    # [4, 16].
+    embedding_col = tf.contrib.layers.embedding_column(sparse_col, dimension=16)
+
+    # Creating a SparseTensor which has all the ids possible for the given
+    # vocab.
+    input_tensor = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2], [3, 3]],
+                                   values=[0, 1, 2, 3],
+                                   shape=[4, 4])
+
+    # Invoking 'embedding_column.to_dnn_input_layer' will create the embedding
+    # variable. Creating under scope 'run_1' so as to prevent name conflicts
+    # when creating embedding variable for 'embedding_column_pretrained'.
+    with tf.variable_scope("run_1"):
+      # This will return a [4, 16] tensor which is same as embedding variable.
+      embeddings = embedding_col.to_dnn_input_layer(input_tensor)
+
+    save = tf.train.Saver()
+    checkpoint_path = os.path.join(self.get_temp_dir(), "model.ckpt")
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      saved_embedding = embeddings.eval()
+      save.save(sess, checkpoint_path)
+
+    embedding_col_initialized = tf.contrib.layers.embedding_column(
+        sparse_id_column=sparse_col,
+        dimension=16,
+        ckpt_to_load_from=checkpoint_path,
+        tensor_name_in_ckpt="run_1/object_in_image_embedding_weights")
+
+    with tf.variable_scope("run_2"):
+      # This will initialize the embedding from provided checkpoint and return a
+      # [4, 16] tensor which is same as embedding variable. Since we didn't
+      # modify embeddings, this should be same as 'saved_embedding'.
+      pretrained_embeddings = embedding_col_initialized.to_dnn_input_layer(
+          input_tensor)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      loaded_embedding = pretrained_embeddings.eval()
+
+    self.assertAllClose(saved_embedding, loaded_embedding)
+
+  def testInitCrossedColumnWeightsFromCkpt(self):
+    sparse_col_1 = tf.contrib.layers.sparse_column_with_hash_bucket(
+        column_name="col_1", hash_bucket_size=4)
+    sparse_col_2 = tf.contrib.layers.sparse_column_with_hash_bucket(
+        column_name="col_2", hash_bucket_size=4)
+
+    crossed_col = tf.contrib.layers.crossed_column(
+        columns=[sparse_col_1, sparse_col_2],
+        hash_bucket_size=4)
+
+    input_tensor = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2], [3, 3]],
+                                   values=[0, 1, 2, 3],
+                                   shape=[4, 4])
+
+    # Invoking 'crossed_col.to_weighted_sum' will create the crossed column
+    # weights variable.
+    with tf.variable_scope("run_1"):
+      # Returns looked up column weights which is same as crossed column weights
+      # as well as actual references to weights variables.
+      col_weights, weights = crossed_col.to_weighted_sum(input_tensor)
+      # Update the weights since default initializer initializes all weights to
+      # 0.0.
+      for weight in weights:
+        assign_op = tf.assign(weight, weight + 0.5)
+
+    save = tf.train.Saver()
+    checkpoint_path = os.path.join(self.get_temp_dir(), "model.ckpt")
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      sess.run(assign_op)
+      saved_col_weights = col_weights.eval()
+      save.save(sess, checkpoint_path)
+
+    crossed_col_initialized = tf.contrib.layers.crossed_column(
+        columns=[sparse_col_1, sparse_col_2],
+        hash_bucket_size=4,
+        ckpt_to_load_from=checkpoint_path,
+        tensor_name_in_ckpt="run_1/col_1_X_col_2_weights")
+
+    with tf.variable_scope("run_2"):
+      # This will initialize the crossed column weights from provided checkpoint
+      # and return a [4, 1] tensor which is same as weights variable. Since we
+      # won't modify weights, this should be same as 'saved_col_weights'.
+      col_weights_from_ckpt, _ = crossed_col_initialized.to_weighted_sum(
+          input_tensor)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      loaded_col_weights = col_weights_from_ckpt.eval()
+
+    self.assertAllClose(saved_col_weights, loaded_col_weights)
 
 
 if __name__ == "__main__":

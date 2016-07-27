@@ -422,7 +422,8 @@ def scalar_mul(scalar, x):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
-  scalar = ops.convert_to_tensor(scalar, dtype=x.dtype, name="scalar")
+  scalar = ops.convert_to_tensor(scalar, dtype=x.dtype.base_dtype,
+                                 name="scalar")
   shape = scalar.get_shape()
   if shape.ndims == 0:
     if isinstance(x, ops.IndexedSlices):

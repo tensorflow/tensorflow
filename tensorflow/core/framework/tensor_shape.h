@@ -259,6 +259,10 @@ class TensorShapeUtils {
 
   static bool IsMatrix(const TensorShape& shape) { return shape.dims() == 2; }
 
+  static bool IsSquareMatrix(const TensorShape& shape) {
+    return shape.dims() == 2 && shape.dim_size(0) == shape.dim_size(1);
+  }
+
   static bool IsMatrixOrHigher(const TensorShape& shape) {
     return shape.dims() >= 2;
   }
