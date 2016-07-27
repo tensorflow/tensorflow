@@ -13,7 +13,7 @@ The PDF of this distribution is defined in terms of the diagonal covariance
 determined by `diag_stdev`: `C_{ii} = diag_stdev[i]**2`.
 
 ```
-f(x) = (2*pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 * (x - mu)^T C^{-1} (x - mu))
+f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
 ```
 
 #### Examples
@@ -59,14 +59,14 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 *  <b>`mu`</b>: Rank `N + 1` `float` or `double` tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
 *  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
-    representing the standard deviations.
+    representing the standard deviations.  Must be positive.
 *  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
     is `False`,
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -79,7 +79,7 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.allow_nan_stats` {#MultivariateNormalDiag.allow_nan_stats}
 
-Boolean describing behavior when a stat is undefined for batch member.
+`Boolean` describing behavior when stats are undefined.
 
 
 - - -
@@ -348,7 +348,7 @@ Standard deviation of the distribution.
 
 #### `tf.contrib.distributions.MultivariateNormalDiag.validate_args` {#MultivariateNormalDiag.validate_args}
 
-Boolean describing behavior on invalid input.
+`Boolean` describing behavior on invalid input.
 
 
 - - -

@@ -132,25 +132,21 @@ class DirichletMultinomial(distribution.Distribution):
   def __init__(self,
                n,
                alpha,
-               allow_arbitrary_counts=False,
                validate_args=True,
                allow_nan_stats=False,
                name='DirichletMultinomial'):
     """Initialize a batch of DirichletMultinomial distributions.
 
     Args:
-      n:  Non-negative `float` or `double` tensor with shape
-        broadcastable to `[N1,..., Nm]` with `m >= 0`.  Defines this as a batch
-        of `N1 x ... x Nm` different Dirichlet multinomial distributions. Its
-        components should be equal to integral values.
-      alpha:  Positive `float` or `double` tensor with shape broadcastable to
-        `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
-         different `k` class Dirichlet multinomial distributions.
-      allow_arbitrary_counts: Boolean. This represents whether the pmf/cdf
-        allows for the `counts` tensor to be non-integral values.
-        The pmf/cdf are functions that can be evaluated at non-integral values,
-        but are only a distribution over non-negative integers.  If
-        `validate_args` is `False`, this assertion is turned off.
+      n:  Non-negative `float` or `double` tensor, whose dtype is the same as
+        `alpha`. The shape is broadcastable to `[N1,..., Nm]` with `m >= 0`.
+        Defines this as a batch of `N1 x ... x Nm` different Dirichlet
+        multinomial distributions. Its components should be equal to integral
+        values.
+      alpha:  Positive `float` or `double` tensor, whose dtype is the same as
+        `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
+        this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
+        multinomial distributions.
       validate_args: Whether to assert valid values for parameters `alpha` and
         `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
         not guaranteed.
@@ -174,7 +170,6 @@ class DirichletMultinomial(distribution.Distribution):
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     self._name = name
-    self._allow_arbitrary_counts = allow_arbitrary_counts
     with ops.op_scope([n, alpha], name):
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
@@ -186,8 +181,7 @@ class DirichletMultinomial(distribution.Distribution):
       #   * All calls involving `counts` eventually require a broadcast between
       #   `counts` and alpha.
       self._alpha = self._check_alpha(alpha)
-      n = self._check_n(n)
-      self._n = math_ops.cast(n, self._alpha.dtype)
+      self._n = self._check_n(n)
 
       self._alpha_sum = math_ops.reduce_sum(
           self._alpha, reduction_indices=[-1], keep_dims=False)
@@ -346,12 +340,12 @@ class DirichletMultinomial(distribution.Distribution):
     probability includes a combinatorial coefficient.
 
     Args:
-      counts:  Non-negative `float` or `double` tensor whose shape can
-        be broadcast with `self.alpha`.  For fixed leading dimensions, the last
-        dimension represents counts for the corresponding Dirichlet Multinomial
-        distribution in `self.alpha`. `counts` is only legal if it sums up to
-        `n` and its components are equal to integral values. The second
-        condition is relaxed if `allow_arbitrary_counts` is set.
+      counts:  Non-negative `float` or `double` tensor whose dtype is the same
+        `self` and whose shape can be broadcast with `self.alpha`.  For fixed
+        leading dimensions, the last dimension represents counts for the
+        corresponding Dirichlet Multinomial distribution in `self.alpha`.
+        `counts` is only legal if it sums up to `n` and its components are
+        equal to integral values.
       name:  Name to give this Op, defaults to "log_prob".
 
     Returns:
@@ -362,8 +356,6 @@ class DirichletMultinomial(distribution.Distribution):
     with ops.name_scope(self.name):
       with ops.op_scope([n, alpha, counts], name):
         counts = self._check_counts(counts)
-        # Use the same dtype as alpha for computations.
-        counts = math_ops.cast(counts, self.dtype)
 
         ordered_prob = (special_math_ops.lbeta(alpha + counts) -
                         special_math_ops.lbeta(alpha))
@@ -390,12 +382,12 @@ class DirichletMultinomial(distribution.Distribution):
     probability includes a combinatorial coefficient.
 
     Args:
-      counts:  Non-negative `float`, `double` tensor whose shape can
-        be broadcast with `self.alpha`.  For fixed leading dimensions, the last
-        dimension represents counts for the corresponding Dirichlet Multinomial
-        distribution in `self.alpha`. `counts` is only legal if it sums up to
-        `n` and its components are equal to integral values. The second
-        condition is relaxed if `allow_arbitrary_counts` is set.
+      counts:  Non-negative `float` or `double` tensor whose dtype is the same
+        `self` and whose shape can be broadcast with `self.alpha`.  For fixed
+        leading dimensions, the last dimension represents counts for the
+        corresponding Dirichlet Multinomial distribution in `self.alpha`.
+        `counts` is only legal if it sums up to `n` and its components are
+        equal to integral values.
       name:  Name to give this Op, defaults to "prob".
 
     Returns:
@@ -409,14 +401,11 @@ class DirichletMultinomial(distribution.Distribution):
     if not self.validate_args:
       return counts
     candidate_n = math_ops.reduce_sum(counts, reduction_indices=[-1])
-    dependencies = [check_ops.assert_non_negative(counts),
-                    check_ops.assert_equal(self._n,
-                                           math_ops.cast(candidate_n,
-                                                         self._n.dtype))]
-    if not self._allow_arbitrary_counts:
-      dependencies += [_assert_integer_form(counts)]
 
-    return control_flow_ops.with_dependencies(dependencies, counts)
+    return control_flow_ops.with_dependencies([
+        check_ops.assert_non_negative(counts),
+        check_ops.assert_equal(self._n, candidate_n),
+        _assert_integer_form(counts)], counts)
 
   def _check_alpha(self, alpha):
     alpha = ops.convert_to_tensor(alpha, name='alpha')

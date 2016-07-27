@@ -173,8 +173,10 @@ class BaseEstimator(sklearn.BaseEstimator):
     # Create a run configuration
     if config is None:
       self._config = BaseEstimator._Config()
+      logging.warning('Using default config.')
     else:
       self._config = config
+    logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
     if self._config.num_ps_replicas > 0:

@@ -46,6 +46,7 @@ TensorFlow provides several operations to slice or extract parts of a tensor,
 or join multiple tensors together.
 
 @@slice
+@@strided_slice
 @@split
 @@tile
 @@pad

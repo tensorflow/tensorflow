@@ -6,13 +6,13 @@ and requires `O(k^2)` storage.
 
 #### Mathematical details
 
-The PDF of this distribution is:
+The Cholesky factor `chol` defines the covariance matrix: `C = chol chol^T`.
+
+The PDF of this distribution is then:
 
 ```
-f(x) = (2*pi)^(-k/2) |det(sigma)|^(-1/2) exp(-1/2*(x-mu)^*.sigma^{-1}.(x-mu))
+f(x) = (2 pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 (x - mu)^T C^{-1} (x - mu))
 ```
-
-where `.` denotes the inner product on `R^k` and `^*` denotes transpose.
 
 #### Examples
 
@@ -51,7 +51,7 @@ Trainable (batch) Choesky matrices can be created with
 Multivariate Normal distributions on `R^k`.
 
 User must provide means `mu` and `chol` which holds the (batch) Cholesky
-factors `S`, such that the covariance of each batch member is `S S^*`.
+factors, such that the covariance of each batch member is `chol chol^T`.
 
 ##### Args:
 
@@ -59,14 +59,15 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
 *  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
-    `[N1,...,Nb, k, k]`.
+    `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as
+    though it is zero), and the diagonal must be positive.
 *  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -79,7 +80,7 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
 
 #### `tf.contrib.distributions.MultivariateNormalCholesky.allow_nan_stats` {#MultivariateNormalCholesky.allow_nan_stats}
 
-Boolean describing behavior when a stat is undefined for batch member.
+`Boolean` describing behavior when stats are undefined.
 
 
 - - -
@@ -348,7 +349,7 @@ Standard deviation of the distribution.
 
 #### `tf.contrib.distributions.MultivariateNormalCholesky.validate_args` {#MultivariateNormalCholesky.validate_args}
 
-Boolean describing behavior on invalid input.
+`Boolean` describing behavior on invalid input.
 
 
 - - -

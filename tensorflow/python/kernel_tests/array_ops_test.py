@@ -296,9 +296,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
                         tf.float64]:
       for use_gpu in [False, True]:
         with self.test_session(use_gpu=use_gpu):
-          checker = StridedSliceChecker(self,
-                                        StridedSliceChecker.REF_TENSOR,
-                                        tensor_type=tensor_type)
+          checker = StridedSliceChecker(
+              self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
           _ = checker[:, :, :]
           # Various ways of representing identity slice
           _ = checker[:, :, :]
@@ -490,6 +489,52 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[3:0:-2, 1:3, 1:3]
         _ = grad[3:0:-2, tf.newaxis, 1:3, 2, tf.newaxis]
         _ = grad[3:0:-2, 1:3, 2]
+
+
+class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
+  """Test varied index types and host located memory."""
+
+  def testHostVsDevice(self):
+    with self.test_session(use_gpu=True) as sess:
+      var2 = tf.Variable(
+          tf.reshape(
+              tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1)))
+      varshape = tf.Variable([6, 4, 4], dtype=tf.int32)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0])
+      end = tf.constant([4, 1, 1])
+      strides = tf.constant([1, 1, 1])
+      foo = array_ops.strided_slice_grad(varshape, begin, end, strides, var2)
+      sess.run(foo)
+
+  def testInt64Shape(self):
+    with self.test_session(use_gpu=True) as sess:
+      original_dy = tf.reshape(
+          tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
+      original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0], dtype=tf.int64)
+      end = tf.constant([4, 1, 1], dtype=tf.int64)
+      strides = tf.constant([1, 1, 1], dtype=tf.int64)
+      dx = array_ops.strided_slice_grad(original_shape, begin, end, strides,
+                                        original_dy)
+      sess.run(dx)
+
+  def testMixedIndexTypes(self):
+    with self.test_session(use_gpu=True) as sess:
+      original_dy = tf.reshape(
+          tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
+      original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0], dtype=tf.int32)
+      end = tf.constant([4, 1, 1], dtype=tf.int64)
+      strides = tf.constant([1, 1, 1], dtype=tf.int64)
+      with self.assertRaisesRegexp(
+          TypeError, "Input 'begin' of 'StridedSliceGrad' Op has type int32"
+          " that does not match type int64 of argument 'shape'"):
+        dx = array_ops.strided_slice_grad(original_shape, begin, end, strides,
+                                          original_dy)
+        sess.run(dx)
 
 
 class BenchmarkSlice(object):

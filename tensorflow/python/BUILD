@@ -157,10 +157,8 @@ py_test(
 
 cc_library(
     name = "python_op_gen",
-    srcs = [
-        "framework/python_op_gen.cc",
-        "framework/python_op_gen.h",
-    ],
+    srcs = ["framework/python_op_gen.cc"],
+    hdrs = ["framework/python_op_gen.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",

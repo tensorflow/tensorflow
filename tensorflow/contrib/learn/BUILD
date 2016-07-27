@@ -626,19 +626,6 @@ py_test(
 )
 
 py_test(
-    name = "checkpoints_test",
-    size = "small",
-    srcs = ["python/learn/utils/checkpoints_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "graph_io_test",
     size = "small",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
