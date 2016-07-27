@@ -37,6 +37,18 @@ py_test(
 )
 
 py_test(
+    name = "load_csv_test",
+    size = "small",
+    srcs = ["python/learn/tests/load_csv_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "data_feeder_test",
     size = "small",
     srcs = ["python/learn/tests/data_feeder_test.py"],

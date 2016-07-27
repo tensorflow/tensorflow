@@ -216,5 +216,5 @@ def read_data_sets(train_dir,
   return base.Datasets(train=train, validation=validation, test=test)
 
 
-def load_mnist():
-  return read_data_sets('MNIST_data')
+def load_mnist(train_dir='MNIST-data'):
+  return read_data_sets(train_dir)
