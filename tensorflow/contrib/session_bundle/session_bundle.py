@@ -30,7 +30,6 @@ from tensorflow.contrib.session_bundle import constants
 from tensorflow.contrib.session_bundle import manifest_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import gfile
 
 
 def LoadSessionBundleFromPath(export_dir, target="", config=None):
@@ -55,15 +54,15 @@ def LoadSessionBundleFromPath(export_dir, target="", config=None):
   """
   meta_graph_filename = os.path.join(export_dir,
                                      constants.META_GRAPH_DEF_FILENAME)
-  if not gfile.Exists(meta_graph_filename):
+  if not file_io.file_exists(meta_graph_filename):
     raise RuntimeError("Expected meta graph file missing %s" %
                        meta_graph_filename)
   variables_filename = os.path.join(export_dir,
                                     constants.VARIABLES_FILENAME)
-  if not gfile.Exists(variables_filename):
+  if not file_io.file_exists(variables_filename):
     variables_filename = os.path.join(
         export_dir, constants.VARIABLES_FILENAME_PATTERN)
-    if not gfile.Glob(variables_filename):
+    if not file_io.get_matching_files(variables_filename):
       raise RuntimeError("Expected variables file missing %s" %
                          variables_filename)
   assets_dir = os.path.join(export_dir, constants.ASSETS_DIRECTORY)
