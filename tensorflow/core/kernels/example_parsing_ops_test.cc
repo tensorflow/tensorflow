@@ -170,6 +170,7 @@ typedef BenchmarkOptions<ExampleStore<FloatFiller>, true> DenseFloat;
 #define BM_ParseExample(TYPE, B, K)                                      \
   static void BM_ParseExample##_##TYPE##_##B##_##K(int iters) {          \
     int64 items_per_iter = static_cast<int64>(B) * K;                    \
+    testing::UseRealTime();                                              \
     testing::ItemsProcessed(static_cast<int64>(iters) * items_per_iter); \
     test::Benchmark("cpu", ParseExample<TYPE>(B, K)).Run(iters);         \
   }                                                                      \
