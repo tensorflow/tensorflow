@@ -29,19 +29,12 @@ Base Class for Tensor-like objects that emit stochastic values.
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.name` {#StochasticTensor.name}
+#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.loss(sample_losses)` {#StochasticTensor.loss}
 
+Returns the term to add to the surrogate loss.
 
-
-
-- - -
-
-#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.surrogate_loss(sample_losses)` {#StochasticTensor.surrogate_loss}
-
-Returns the surrogate loss given the list of sample_losses.
-
-This method is called by `surrogate_losses`.  The input `sample_losses`
-presumably have already had `stop_gradient` applied to them.  This is
+This method is called by `surrogate_loss`.  The input `sample_losses`
+should have already had `stop_gradient` applied to them.  This is
 because the surrogate_loss usually provides a monte carlo sample term
 of the form `differentiable_surrogate * sum(sample_losses)` where
 `sample_losses` is considered constant with respect to the input
@@ -55,8 +48,14 @@ for purposes of the gradient.
 
 ##### Returns:
 
-  Either either `None` or a `Tensor` whose gradient is the
-   score function.
+  Either `None` or a `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_graph.StochasticTensor.name` {#StochasticTensor.name}
+
+
 
 
 - - -

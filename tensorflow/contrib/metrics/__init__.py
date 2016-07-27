@@ -151,6 +151,7 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_cosi
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_iou
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_relative_error
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_squared_error
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean_tensor
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_percentage_less
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_precision
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_precision_at_thresholds

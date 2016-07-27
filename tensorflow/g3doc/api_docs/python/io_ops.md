@@ -2181,7 +2181,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 ##### Args:
 
 
-*  <b>`input_tensor`</b>: A tensor with the rows to produce. Must be at
+*  <b>`input_tensor`</b>: A tensor with the rows to produce. Must be at least
     one-dimensional. Must either have a fully-defined shape, or
     `element_shape` must be defined.
 *  <b>`element_shape`</b>: (Optional.) A `TensorShape` representing the shape of a

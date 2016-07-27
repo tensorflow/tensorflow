@@ -42,8 +42,9 @@ class AvgPool2DTest(tf.test.TestCase):
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.avg_pool2d(images, [3, 3],
                                             outputs_collections='outputs')
-      self.assertEquals(('AvgPool2D', output),
-                        tf.get_collection('outputs')[0])
+      c_output = tf.get_collection('outputs')[0]
+      self.assertEquals(c_output.name, 'AvgPool2D')
+      self.assertEquals(c_output.outputs, output)
 
   def testCreateSquareAvgPool(self):
     height, width = 3, 3
@@ -860,8 +861,9 @@ class DropoutTest(tf.test.TestCase):
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, outputs_collections='outputs')
-      self.assertEquals(('Dropout', output),
-                        tf.get_collection('outputs')[0])
+      c_output = tf.get_collection('outputs')[0]
+      self.assertEquals(c_output.name, 'Dropout')
+      self.assertEquals(c_output.outputs, output)
 
   def testDropout(self):
     height, width = 10, 10
@@ -936,8 +938,9 @@ class FlattenTest(tf.test.TestCase):
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.flatten(images, outputs_collections='outputs')
-      self.assertEquals(('Flatten', output),
-                        tf.get_collection('outputs')[0])
+      c_output = tf.get_collection('outputs')[0]
+      self.assertEquals(c_output.name, 'Flatten')
+      self.assertEquals(c_output.outputs, output)
 
   def testFlatten4D(self):
     height, width = 3, 3
@@ -1511,8 +1514,9 @@ class MaxPool2DTest(tf.test.TestCase):
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.max_pool2d(images, [3, 3],
                                             outputs_collections='outputs')
-      self.assertEquals(('MaxPool2D', output),
-                        tf.get_collection('outputs')[0])
+      c_output = tf.get_collection('outputs')[0]
+      self.assertEquals(c_output.name, 'MaxPool2D')
+      self.assertEquals(c_output.outputs, output)
 
   def testCreateSquareMaxPool(self):
     height, width = 3, 3
@@ -1567,8 +1571,9 @@ class OneHotEncodingTest(tf.test.TestCase):
       labels = tf.constant([0, 1, 2])
       output = tf.contrib.layers.one_hot_encoding(labels, num_classes=3,
                                                   outputs_collections='outputs')
-      self.assertEquals(('OneHotEncoding', output),
-                        tf.get_collection('outputs')[0])
+      c_output = tf.get_collection('outputs')[0]
+      self.assertEquals(c_output.name, 'OneHotEncoding')
+      self.assertEquals(c_output.outputs, output)
 
   def testOneHotEncoding(self):
     with self.test_session():

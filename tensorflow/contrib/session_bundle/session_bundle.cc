@@ -127,6 +127,7 @@ tensorflow::Status LoadSessionBundleFromPath(
     const tensorflow::SessionOptions& options, const StringPiece export_dir,
     SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
+  const int64 start_seconds = Env::Default()->NowSeconds();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
 
@@ -195,12 +196,13 @@ tensorflow::Status LoadSessionBundleFromPath(
           strings::StrCat("Expected exactly one serving init op in : ",
                           bundle->meta_graph_def.DebugString()));
     }
-    return RunInitOp(export_dir, asset_files,
-                     init_op_it->second.node_list().value(0),
-                     bundle->session.get());
+    TF_RETURN_IF_ERROR(RunInitOp(export_dir, asset_files,
+                                 init_op_it->second.node_list().value(0),
+                                 bundle->session.get()));
   }
 
-  LOG(INFO) << "Done loading SessionBundle";
+  LOG(INFO) << "Done loading SessionBundle. Took "
+            << Env::Default()->NowSeconds() - start_seconds << " seconds.";
   return Status::OK();
 }
 

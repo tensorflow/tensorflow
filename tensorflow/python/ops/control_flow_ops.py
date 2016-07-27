@@ -1935,11 +1935,13 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     name: Optional name prefix for the returned tensors.
 
   Returns:
-    The output tensors for the loop variables after the loop.
+    The output tensors for the loop variables after the loop. When the length
+    of `loop_vars` is 1 this is a Tensor, TensorArry or IndexedSlice and when
+    the length of `loop_vars` is greater than 1 it returns a list.
 
   Raises:
     TypeError: if `cond` or `body` is not callable.
-    ValueError: if `loop_var` is empty.
+    ValueError: if `loop_vars` is empty.
 
   Example:
 

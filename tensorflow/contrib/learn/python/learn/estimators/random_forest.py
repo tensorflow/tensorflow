@@ -83,24 +83,32 @@ class TensorForestEstimator(estimator.BaseEstimator):
     super(TensorForestEstimator, self).__init__(model_dir=model_dir,
                                                 config=config)
 
-  def predict_proba(self, x=None, input_fn=None, batch_size=None):
+  def predict_proba(
+      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns prediction probabilities for given features (classification).
 
     Args:
       x: features.
       input_fn: Input function. If set, x and y must be None.
       batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
     Returns:
-      Numpy array of predicted probabilities.
+      Numpy array of predicted probabilities (or an iterable of predicted
+      probabilities if as_iterable is True).
 
     Raises:
       ValueError: If both or neither of x and input_fn were given.
     """
     return super(TensorForestEstimator, self).predict(
-        x=x, input_fn=input_fn, batch_size=batch_size)
+        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
 
-  def predict(self, x=None, input_fn=None, axis=None, batch_size=None):
+  def predict(
+      self, x=None, input_fn=None, axis=None, batch_size=None,
+      as_iterable=False):
     """Returns predictions for given features.
 
     Args:
@@ -109,15 +117,24 @@ class TensorForestEstimator(estimator.BaseEstimator):
       axis: Axis on which to argmax (for classification).
             Last axis is used by default.
       batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
     Returns:
-      Numpy array of predicted classes or regression values.
+      Numpy array of predicted classes or regression values (or an iterable of
+      predictions if as_iterable is True).
     """
-    probabilities = self.predict_proba(x, input_fn, batch_size)
+    probabilities = self.predict_proba(
+        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
     if self.params.regression:
       return probabilities
     else:
-      return np.argmax(probabilities, axis=1)
+      if as_iterable:
+        return (np.argmax(p, axis=0) for p in probabilities)
+      else:
+        return np.argmax(probabilities, axis=1)
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.

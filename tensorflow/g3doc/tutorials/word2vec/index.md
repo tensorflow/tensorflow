@@ -346,9 +346,10 @@ training a full-blown part-of-speech model or named-entity model, one simple way
 to evaluate embeddings is to directly use them to predict syntactic and semantic
 relationships like `king is to queen as father is to ?`. This is called
 *analogical reasoning* and the task was introduced by
-[Mikolov and colleagues](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf),
-and the dataset can be downloaded from here:
-https://word2vec.googlecode.com/svn/trunk/questions-words.txt.
+[Mikolov and colleagues
+](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf).
+Download the dataset for this task from
+[download.tensorflow.org](http://download.tensorflow.org/data/questions-words.txt).
 
 To see how we do this evaluation, have a look at the `build_eval_graph()` and
 `eval()` functions in

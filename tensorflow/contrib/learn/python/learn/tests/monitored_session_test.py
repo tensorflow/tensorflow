@@ -67,7 +67,6 @@ class FakeMonitor(monitors.BaseMonitor):
     self.last_post_step = step
     self.session = session
 
-
 class MonitoredSessionTest(tf.test.TestCase):
 
   def testRunPassesAllArguments(self):

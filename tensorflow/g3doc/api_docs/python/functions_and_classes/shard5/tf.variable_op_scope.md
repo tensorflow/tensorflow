@@ -1,4 +1,4 @@
-### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, reuse=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None)` {#variable_op_scope}
 
 Returns a context manager for defining an op that creates variables.
 
@@ -39,6 +39,7 @@ def my_op_with_vars(a, b, scope=None):
 *  <b>`regularizer`</b>: The default regularizer for variables within this scope.
 *  <b>`caching_device`</b>: The default caching device for variables within this scope.
 *  <b>`partitioner`</b>: The default partitioner for variables within this scope.
+*  <b>`custom_getter`</b>: The default custom getter for variables within this scope.
 *  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 

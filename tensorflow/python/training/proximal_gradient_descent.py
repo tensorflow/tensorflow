@@ -68,9 +68,14 @@ class ProximalGradientDescentOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
-    delta = ops.IndexedSlices(grad.values * self._learning_rate_tensor,
-                              grad.indices, grad.dense_shape)
-    return var.scatter_sub(delta, use_locking=self._use_locking)
+    return training_ops.sparse_apply_proximal_gradient_descent(
+        var,
+        self._learning_rate_tensor,
+        self._l1_regularization_strength_tensor,
+        self._l2_regularization_strength_tensor,
+        grad.values,
+        grad.indices,
+        use_locking=self._use_locking).op
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,

@@ -46,28 +46,10 @@ Rendezvous::ParsedKey MakeKey(const string& s) {
   return key;
 }
 
-namespace {
-// Fake cache implementation for WorkerEnv.
-class DummyWorkerCache : public WorkerCacheInterface {
-  void ListWorkers(std::vector<string>* workers) override {}
-  WorkerInterface* CreateWorker(const string& target) override {
-    return nullptr;
-  }
-  bool GetDeviceBusNonBlocking(const string& device,
-                               BusAdjacency* ba) override {
-    return false;
-  }
-  void GetDeviceBusAsync(const string& device, BusAdjacency* ba,
-                         StatusCallback done) override {}
-};
-}  // namespace
-
 TEST(RpcRendezvousMgrTest, LocalSendRecv) {
-  DummyWorkerCache cache;
   WorkerEnv env;
   env.env = Env::Default();
   env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
   RpcRendezvousMgr rmgr(&env);
   const int64 step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
@@ -89,11 +71,9 @@ TEST(RpcRendezvousMgrTest, LocalSendRecv) {
 }
 
 TEST(RpcRendezvousMgrTest, LocalAbort) {
-  DummyWorkerCache cache;
   WorkerEnv env;
   env.env = Env::Default();
   env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
   RpcRendezvousMgr rmgr(&env);
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
@@ -127,11 +107,9 @@ TEST(RpcRendezvousMgrTest, LocalAbort) {
 }
 
 TEST(RpcRendezvousMgrTest, CleanupAll) {
-  DummyWorkerCache cache;
   WorkerEnv env;
   env.env = Env::Default();
   env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
   RpcRendezvousMgr rmgr(&env);
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
@@ -162,11 +140,9 @@ class DummyDeviceContext : public DeviceContext {
 TEST(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
   DummyDeviceContext* dc = new DummyDeviceContext(123);
 
-  DummyWorkerCache cache;
   WorkerEnv env;
   env.env = Env::Default();
   env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
   RpcRendezvousMgr rmgr(&env);
   const int64 step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(

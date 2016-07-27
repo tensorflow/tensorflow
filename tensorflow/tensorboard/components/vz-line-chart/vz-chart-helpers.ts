@@ -13,9 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
-module TF.ChartHelpers {
+module VZ.ChartHelpers {
+  export interface Datum {
+    wall_time: Date;
+    step: number;
+  }
+
+  export interface Scalar {
+    scalar: number;
+  }
+
+  export type ScalarDatum = Datum & Scalar;
+
   export type DataFn = (run: string, tag: string) =>
-      Promise<Array<Backend.Datum>>;
+      Promise<Array<Datum>>;
 
   export let Y_TOOLTIP_FORMATTER_PRECISION = 4;
   export let STEP_FORMATTER_PRECISION = 4;
@@ -27,7 +38,7 @@ module TF.ChartHelpers {
   export interface Point {
     x: number;  // pixel space
     y: number;  // pixel space
-    datum: TF.Backend.ScalarDatum;
+    datum: ScalarDatum;
     dataset: Plottable.Dataset;
   }
 
@@ -75,7 +86,7 @@ module TF.ChartHelpers {
     return {
       scale: scale,
       axis: axis,
-      accessor: (d: Backend.Datum) => d.step,
+      accessor: (d: Datum) => d.step,
     };
   }
 
@@ -86,7 +97,7 @@ module TF.ChartHelpers {
     return {
       scale: scale,
       axis: new Plottable.Axes.Time(scale, 'bottom'),
-      accessor: (d: Backend.Datum) => d.wall_time,
+      accessor: (d: Datum) => d.wall_time,
     };
   }
   export let relativeAccessor =

@@ -37,8 +37,12 @@ class Uniform(distribution.Distribution):
   The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
   """
 
-  def __init__(
-      self, a=0.0, b=1.0, strict=True, strict_statistics=True, name="Uniform"):
+  def __init__(self,
+               a=0.0,
+               b=1.0,
+               validate_args=True,
+               allow_nan_stats=False,
+               name="Uniform"):
     """Construct Uniform distributions with `a` and `b`.
 
     The parameters `a` and `b` must be shaped in a way that supports
@@ -65,22 +69,22 @@ class Uniform(distribution.Distribution):
     Args:
       a: `float` or `double` tensor, the minimum endpoint.
       b: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-      strict: Whether to assert that `a > b`. If `strict` is False and inputs
-        are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      validate_args: Whether to assert that `a > b`. If `validate_args` is False
+        and inputs are invalid, correct behavior is not guaranteed.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Raises:
-      InvalidArgumentError: if `a >= b` and `strict=True`.
+      InvalidArgumentError: if `a >= b` and `validate_args=True`.
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
+    self._allow_nan_stats = allow_nan_stats
+    self._validate_args = validate_args
     with ops.op_scope([a, b], name):
-      with ops.control_dependencies(
-          [check_ops.assert_less(a, b)] if strict else []):
+      with ops.control_dependencies([check_ops.assert_less(a, b)] if
+                                    validate_args else []):
         a = array_ops.identity(a, name="a")
         b = array_ops.identity(b, name="b")
 
@@ -93,14 +97,14 @@ class Uniform(distribution.Distribution):
     contrib_tensor_util.assert_same_float_dtype((a, b))
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):
@@ -207,7 +211,7 @@ class Uniform(distribution.Distribution):
       with ops.op_scope([self.a, self.b, self.range()], name):
         return math_ops.log(self.range())
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Uniform Distributions.
 
     Args:

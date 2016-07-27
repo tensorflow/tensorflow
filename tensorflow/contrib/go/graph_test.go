@@ -103,7 +103,7 @@ func TestGraphScalarConstant(t *testing.T) {
 		t.Error("Error reading the output:", err)
 	} else {
 		if string(outStr[0]) != testString {
-			t.Error("Expected: '%s', got: '%s'", outStr[0], testString)
+			t.Errorf("Expected: '%s', got: '%s'", outStr[0], testString)
 		}
 	}
 
@@ -112,7 +112,7 @@ func TestGraphScalarConstant(t *testing.T) {
 		t.Error("Error reading the output:", err)
 	} else {
 		if outFloat[0] != testFloat {
-			t.Error("Expected input 1: '%f', got: '%f'", testFloat, outFloat[0])
+			t.Errorf("Expected input 1: '%f', got: '%f'", testFloat, outFloat[0])
 		}
 	}
 }

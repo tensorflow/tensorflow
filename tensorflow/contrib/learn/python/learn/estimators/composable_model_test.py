@@ -111,9 +111,9 @@ class ComposableModelTest(tf.test.TestCase):
     classifier = LinearEstimator(target_column,
                                  feature_columns=[age, language])
 
-    classifier.fit(input_fn=input_fn, steps=100)
+    classifier.fit(input_fn=input_fn, steps=1000)
     loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
-    classifier.fit(input_fn=input_fn, steps=200)
+    classifier.fit(input_fn=input_fn, steps=2000)
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)

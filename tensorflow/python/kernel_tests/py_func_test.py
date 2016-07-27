@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import script_ops
 
 
@@ -40,7 +41,7 @@ class PyOpTest(tf.test.TestCase):
       z = tf.py_func(my_func, [x, y], [tf.float32])
       self.assertEqual(z[0].eval(), my_func(1.0, 2.0).astype(np.float32))
 
-        # array
+    # array
     with self.test_session():
       x = tf.constant([1.0, 2.0], tf.float64)
       y = tf.constant([2.0, 3.0], tf.float64)
@@ -165,6 +166,24 @@ class PyOpTest(tf.test.TestCase):
       self.assertEqual(sess.run(x), 0)
       self.assertEqual(sess.run(x), 1)
       self.assertEqual(sess.run(x), 2)
+
+  def testStateless(self):
+    # Not using self.test_session(), which disables optimization.
+    with tf.Session() as sess:
+      producer = iter(range(3))
+      x, = tf.py_func(lambda: next(producer), [], [tf.int64], stateful=False)
+      self.assertEqual(sess.run(x), 0)
+      self.assertEqual(sess.run(x), 0)
+      self.assertEqual(sess.run(x), 0)
+
+  def testGradientFunction(self):
+    # Input to tf.py_func is necessary, otherwise get_gradient_function()
+    # returns None per default.
+    a = tf.constant(0)
+    x, = tf.py_func(lambda a: 0, [a], [tf.int64])
+    y, = tf.py_func(lambda a: 0, [a], [tf.int64], stateful=False)
+    self.assertEqual(None, ops.get_gradient_function(x.op))
+    self.assertEqual(None, ops.get_gradient_function(y.op))
 
   def testCOrder(self):
     with self.test_session():

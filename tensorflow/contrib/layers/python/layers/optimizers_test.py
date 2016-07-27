@@ -130,7 +130,10 @@ class OptimizersTest(tf.test.TestCase):
     unused_variable = tf.get_variable("ignore_me", [])
 
     tf.contrib.layers.optimize_loss(
-        loss, global_step, learning_rate=0.1, optimizer="SGD")
+        loss, global_step, learning_rate=0.1, optimizer="SGD",
+        gradient_noise_scale=10.0,
+        gradient_multipliers={unused_variable: 1.},
+        clip_gradients=10.0)
 
   def testUpdateOp(self):
     optimizers = ["SGD", tf.train.GradientDescentOptimizer,

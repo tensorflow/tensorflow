@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -162,6 +163,7 @@ REGISTER_OP("RandomShuffle")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Randomly shuffles a tensor along its first dimension.
 

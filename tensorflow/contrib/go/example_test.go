@@ -31,7 +31,7 @@ func ExampleGraph_Op() {
 
 	for i := 0; i < len(inputSlice1); i++ {
 		val, _ := out[0].GetVal(int64(i))
-		fmt.Println("The result of: %d + (%d*%d) is: %d", inputSlice1[i], inputSlice2[i], additions, val)
+		fmt.Printf("The result of: %d + (%d*%d) is: %d", inputSlice1[i], inputSlice2[i], additions, val)
 	}
 }
 
@@ -64,7 +64,7 @@ func ExampleNewGraphFromText() {
 						dtype: DT_FLOAT
 						tensor_shape {
 						}
-						float_val: 1.5 
+						float_val: 1.5
 					}
 				}
 			}

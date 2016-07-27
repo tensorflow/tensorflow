@@ -30,7 +30,7 @@ class TreePredictionsTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self.ops = inference_ops.Load()
-    self.data_spec = [constants.DATA_FLOAT] * 2
+    self.data_spec = [constants.DATA_FLOAT]
 
   def testSimple(self):
     input_data = [[-1., 0.], [-1., 2.],  # node 1
@@ -58,7 +58,7 @@ class TreePredictionsTest(test_util.TensorFlowTestCase):
     sparse_values = [3.0, -1.0, 0.5,
                      1.5, 6.0,
                      -2.0]
-    sparse_data_spec = [constants.DATA_FLOAT] * 10
+    sparse_data_spec = [constants.DATA_FLOAT]
 
     tree = [[1, 0], [-1, 0], [-1, 0]]
     tree_thresholds = [0., 0., 0.]

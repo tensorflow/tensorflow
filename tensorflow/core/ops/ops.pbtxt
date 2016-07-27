@@ -764,8 +764,16 @@ op {
     }
     description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
-  summary: "Update \'*var\' according to the momentum scheme."
-  description: "accum = accum * momentum + grad\nvar -= lr * accum"
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, the tensor passed to compute grad will be\nvar - lr * momentum * accum, so in the end, the var you get is actually\nvar - lr * momentum * accum."
+  }
+  summary: "Update \'*var\' according to the momentum scheme. Set use_nesterov = True if you"
+  description: "want to use Nesterov momentum.\n\naccum = accum * momentum + grad\nvar -= lr * accum"
 }
 op {
   name: "ApplyProximalAdagrad"
@@ -2103,7 +2111,7 @@ op {
     }
   }
   summary: "Calculates the determinants for a batch of square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a 1-D tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
   name: "BatchMatrixDiag"
@@ -4141,6 +4149,112 @@ op {
   description: "`a` and `b` must be the same shape; they can either be simple 3-element vectors,\nor any shape where the innermost dimension is 3. In the latter case, each pair\nof corresponding 3-element vectors is cross-multiplied independently."
 }
 op {
+  name: "Cumprod"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "exclusive"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "reverse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Compute the cumulative product of the tensor `x` along `axis`."
+  description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n```prettyprint\ntf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]\n```"
+}
+op {
+  name: "Cumsum"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "exclusive"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "reverse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Compute the cumulative sum of the tensor `x` along `axis`."
+  description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n```prettyprint\ntf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n```prettyprint\ntf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]\n```"
+}
+op {
   name: "DebugIdentity"
   input_arg {
     name: "input"
@@ -4235,6 +4349,21 @@ op {
   }
   summary: "Convert CSV records to tensors. Each column maps to one tensor."
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
+}
+op {
+  name: "DecodeGif"
+  input_arg {
+    name: "contents"
+    description: "0-D.  The GIF-encoded image."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "image"
+    description: "4-D with shape `[num_frames, height, width, 3]`. RGB order"
+    type: DT_UINT8
+  }
+  summary: "Decode the first frame of a GIF-encoded image to a uint8 tensor."
+  description: "GIF with frame or transparency compression are not supported\nconvert animated GIF from compressed to uncompressed by:\n\nconvert $src.gif -coalesce $dst.gif"
 }
 op {
   name: "DecodeJSONExample"
@@ -4980,7 +5109,7 @@ op {
     }
   }
   summary: "Draw bounding boxes on a batch of images."
-  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"
@@ -5940,17 +6069,17 @@ op {
   name: "GatherNd"
   input_arg {
     name: "params"
-    description: "R-D.  The tensor from which to gather values."
+    description: "`M-D`.  The tensor from which to gather values."
     type_attr: "Tparams"
   }
   input_arg {
     name: "indices"
-    description: "(N+1)-D.  Index tensor having shape `[d_0, ..., d_N, R]`."
+    description: "`(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`."
     type_attr: "Tindices"
   }
   output_arg {
     name: "output"
-    description: "N-D.  Values from `params` gathered from indices given by `indices`."
+    description: "`(N+M-R)-D`.  Values from `params` gathered from indices given by\n`indices`."
     type_attr: "Tparams"
   }
   attr {
@@ -5967,8 +6096,8 @@ op {
       }
     }
   }
-  summary: "Gather values from `params` according to `indices`."
-  description: "`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `R` is the rank of `params`.\nThe innermost dimension of `indices` (with length `R`) corresponds to the\nindices of `params`.\n\nProduces an output tensor with shape `[d_0, ..., d_{n-1}]` where:\n\n    output[i, j, k, ...] = params[indices[i, j, k, ..., :]]\n\ne.g. for `indices` a matrix:\n\n    output[i] = params[indices[i, :]]"
+  summary: "Gather values or slices from `params` according to `indices`."
+  description: "`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.\n\n`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.\n\nThe innermost dimension of `indices` (with length `R`) corresponds to\nindices into elements (if `R = M`) or slices (if `R < M`) along the `N`th\ndimension of `params`.\n\nProduces an output tensor with shape\n\n    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n\nSlice indexing into a matrix:\n\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n\nIndexing into a 3-tensor:\n\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n\nBatched indexing into a matrix:\n\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n\nBatched slice indexing into a matrix:\n\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n\nBatched indexing into a 3-tensor:\n\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]"
 }
 op {
   name: "GetSessionHandle"
@@ -6078,12 +6207,25 @@ op {
   input_arg {
     name: "images"
     description: "1-D or higher rank. HSV data to convert. Last dimension must be size 3."
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
     name: "output"
     description: "`images` converted to RGB."
-    type: DT_FLOAT
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
   summary: "Convert one or more images from HSV to RGB."
   description: "Outputs a tensor of the same shape as the `images` tensor, containing the RGB\nvalue of the pixels. The output is only well defined if the value in `images`\nare in `[0,1]`.\n\nSee `rgb_to_hsv` for a description of the HSV encoding."
@@ -8752,6 +8894,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_UINT8
         type: DT_INT32
         type: DT_INT64
       }
@@ -9529,7 +9672,35 @@ op {
     minimum: 1
   }
   summary: "Invokes a python function to compute func(input)->output."
+  description: "This operation is considered stateful. For a stateless version, see\nPyFuncStateless."
   is_stateful: true
+}
+op {
+  name: "PyFuncStateless"
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "token"
+    type: "string"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "A stateless version of PyFunc."
 }
 op {
   name: "QuantizeAndDequantize"
@@ -9797,12 +9968,25 @@ op {
   input_arg {
     name: "images"
     description: "1-D or higher rank. RGB data to convert. Last dimension must be size 3."
-    type: DT_FLOAT
+    type_attr: "T"
   }
   output_arg {
     name: "output"
     description: "`images` converted to HSV."
-    type: DT_FLOAT
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
   summary: "Converts one or more images from RGB to HSV."
   description: "Outputs a tensor of the same shape as the `images` tensor, containing the HSV\nvalue of the pixels. The output is only well defined if the value in `images`\nare in `[0,1]`.\n\n`output[..., 0]` contains hue, `output[..., 1]` contains saturation, and\n`output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0\ncorresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue."
@@ -11167,6 +11351,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -13025,8 +13211,16 @@ op {
     }
     description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, the tensor passed to compute grad will be\nvar - lr * momentum * accum, so in the end, the var you get is actually\nvar - lr * momentum * accum."
+  }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the momentum scheme."
-  description: "That is for rows we have grad for, we update var and accum as follows:\n\naccum = accum * momentum + grad\nvar -= lr * accum"
+  description: "Set use_nesterov = True if you want to use Nesterov momentum.\n\nThat is for rows we have grad for, we update var and accum as follows:\n\naccum = accum * momentum + grad\nvar -= lr * accum"
 }
 op {
   name: "SparseApplyProximalAdagrad"
@@ -15448,6 +15642,45 @@ op {
     type: "type"
   }
   summary: "Push an element onto the tensor_array."
+}
+op {
+  name: "TensorSummary"
+  input_arg {
+    name: "tensor"
+    description: "A tensor to serialize."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "display_name"
+    type: "string"
+    description: "A name to associate with the data series."
+  }
+  attr {
+    name: "description"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "An optional long description of the data being output."
+  }
+  attr {
+    name: "labels"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "a list of strings used to specify how the data can be interpreted, e.g.\na string tensor containing jpg images should have \'encoding:image/jpg\'; a\nstring tensor with foo protos should have \'encoding:proto/X/Y/foo.proto\';\na numeric tensor containing bounding boxes may have\n\'bounding_box:x1,y1,x2,y2,\'. If the tensor is a part of a group of related\noutputs, that can be encoded through a \'group:$groupName/$roleInGroup\' label.\nLabels may be formatted as \'prefix:value\'. The prefix may be re-used."
+  }
+  summary: "Outputs a `Summary` protocol buffer with a tensor."
 }
 op {
   name: "TextLineReader"

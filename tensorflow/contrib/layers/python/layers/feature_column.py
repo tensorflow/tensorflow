@@ -1257,6 +1257,87 @@ def crossed_column(columns, hash_bucket_size, combiner="sum"):
   return _CrossedColumn(columns, hash_bucket_size, combiner=combiner)
 
 
+class DataFrameColumn(_FeatureColumn,
+                      collections.namedtuple("DataFrameColumn",
+                                             ["name", "series"])):
+  """Represents a feature column produced from a `DataFrame`.
+
+  Instances of this class are immutable.  A `DataFrame` column may be dense or
+  sparse, and may have any shape, with the constraint that dimension 0 is
+  batch_size.
+
+  Args:
+    name: a name for this column
+    series: a `Series` to be wrapped, which has already had its base features
+      substituted with `PredefinedSeries`.
+  """
+
+  def __new__(cls, name, series):
+    return super(DataFrameColumn, cls).__new__(cls, name, series)
+
+  @property
+  def config(self):
+    return self.series.required_base_features()
+
+  @property
+  def key(self):
+    """Returns a string which will be used as a key when we do sorting."""
+    return self.name
+
+  def insert_transformed_feature(self, columns_to_tensors):
+    # The cache must already contain mappings from the expected base feature
+    # names to Tensors.
+
+    # Passing columns_to_tensors as the cache here means that multiple outputs
+    # of the transform will be cached, keyed by the repr of their associated
+    # TransformedSeries.
+    # The specific requested output ends up in columns_to_tensors twice: once
+    # keyed by the TransformedSeries repr, and once keyed by this
+    # DataFrameColumn instance.
+    columns_to_tensors[self] = self.series.build(columns_to_tensors)
+
+  # pylint: disable=unused-argument
+  def to_dnn_input_layer(self,
+                         input_tensor,
+                         weight_collections=None,
+                         trainable=True):
+    return input_tensor
+
+  # TODO(soergel): This mirrors RealValuedColumn for now, but should become
+  # better abstracted with less code duplication when we add other kinds.
+  def to_weighted_sum(self,
+                      input_tensor,
+                      num_outputs=1,
+                      weight_collections=None,
+                      trainable=True):
+    def _weight(name):
+      return variable_scope.get_variable(
+          name,
+          shape=[self.dimension, num_outputs],
+          initializer=array_ops.zeros_initializer,
+          collections=_add_variable_collection(weight_collections))
+
+    if self.name:
+      with variable_scope.variable_op_scope([input_tensor], None, self.name):
+        weight = _weight("weight")
+    else:
+      # Old behavior to support a subset of old checkpoints.
+      weight = _weight("_weight")
+
+    # The _RealValuedColumn has the shape of [batch_size, column.dimension].
+    log_odds_by_dim = math_ops.matmul(input_tensor, weight)
+    return log_odds_by_dim, [weight]
+
+  def __eq__(self, other):
+    if isinstance(other, self.__class__):
+      return self.__dict__ == other.__dict__
+    else:
+      return False
+
+  def __ne__(self, other):
+    return not self.__eq__(other)
+
+
 def _get_feature_config(feature_column):
   """Returns configuration for the base feature defined in feature_column."""
   if not isinstance(feature_column, _FeatureColumn):

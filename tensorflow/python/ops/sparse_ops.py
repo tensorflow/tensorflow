@@ -274,11 +274,10 @@ def sparse_add(a, b, thresh=0):
 @ops.RegisterShape("SparseAdd")
 def _SparseAddShape(op):  # pylint: disable=invalid-name
   input_shape_shape = op.inputs[2].get_shape()
-  dim = input_shape_shape.num_elements()
+  input_shape_shape.assert_has_rank(1)
   return [
-      tensor_shape.TensorShape([None, dim]),
-      tensor_shape.unknown_shape(1),
-      input_shape_shape
+      tensor_shape.TensorShape([None, input_shape_shape[0]]),
+      tensor_shape.unknown_shape(1), input_shape_shape
   ]
 
 

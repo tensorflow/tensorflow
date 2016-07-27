@@ -60,8 +60,8 @@ class InverseGamma(distribution.Distribution):
   def __init__(self,
                alpha,
                beta,
-               strict=True,
-               strict_statistics=True,
+               validate_args=True,
+               allow_nan_stats=False,
                name="InverseGamma"):
     """Construct InverseGamma distributions with parameters `alpha` and `beta`.
 
@@ -74,24 +74,24 @@ class InverseGamma(distribution.Distribution):
         alpha must contain only positive values.
       beta: `float` or `double` tensor, the scale params of the distribution(s).
         beta must contain only positive values.
-      strict: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+      validate_args: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
+        the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
         and the inputs are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
 
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
+    self._allow_nan_stats = allow_nan_stats
+    self._validate_args = validate_args
     with ops.op_scope([alpha, beta], name) as scope:
       self._name = scope
       with ops.control_dependencies([check_ops.assert_positive(
-          alpha), check_ops.assert_positive(beta)] if strict else []):
+          alpha), check_ops.assert_positive(beta)] if validate_args else []):
         alpha = array_ops.identity(alpha, name="alpha")
         beta = array_ops.identity(beta, name="beta")
 
@@ -105,14 +105,14 @@ class InverseGamma(distribution.Distribution):
     self._beta = beta
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):
@@ -187,8 +187,8 @@ class InverseGamma(distribution.Distribution):
     """Mean of each batch member.
 
     The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-    when `alpha > 1`, and `NaN` otherwise.  If `self.strict_statistics` is
-    `True`, an exception will be raised rather than returning `NaN`
+    when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
+    `False`, an exception will be raised rather than returning `NaN`
 
     Args:
       name: A name to give this op.
@@ -201,14 +201,14 @@ class InverseGamma(distribution.Distribution):
     with ops.name_scope(self.name):
       with ops.op_scope([alpha, beta], name):
         mean_if_defined = beta / (alpha - 1.0)
-        if self.strict_statistics:
-          one = ops.convert_to_tensor(1.0, dtype=self.dtype)
-          return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(one, alpha)], mean_if_defined)
-        else:
+        if self.allow_nan_stats:
           alpha_gt_1 = alpha > 1.0
           nan = np.nan * self._ones()
           return math_ops.select(alpha_gt_1, mean_if_defined, nan)
+        else:
+          one = ops.convert_to_tensor(1.0, dtype=self.dtype)
+          return control_flow_ops.with_dependencies(
+              [check_ops.assert_less(one, alpha)], mean_if_defined)
 
   def mode(self, name="mode"):
     """Mode of each batch member.
@@ -229,7 +229,7 @@ class InverseGamma(distribution.Distribution):
     """Variance of each batch member.
 
     Variance for inverse gamma is defined only for `alpha > 2`. If
-    `self.strict_statistics` is `True`, an exception will be raised rather
+    `self.allow_nan_stats` is `False`, an exception will be raised rather
     than returning `NaN`.
 
     Args:
@@ -245,14 +245,14 @@ class InverseGamma(distribution.Distribution):
         var_if_defined = (math_ops.square(self._beta) /
                           (math_ops.square(self._alpha - 1.0) *
                            (self._alpha - 2.0)))
-        if self.strict_statistics:
-          two = ops.convert_to_tensor(2.0, dtype=self.dtype)
-          return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(two, alpha)], var_if_defined)
-        else:
+        if self.allow_nan_stats:
           alpha_gt_2 = alpha > 2.0
           nan = np.nan * self._ones()
           return math_ops.select(alpha_gt_2, var_if_defined, nan)
+        else:
+          two = ops.convert_to_tensor(2.0, dtype=self.dtype)
+          return control_flow_ops.with_dependencies(
+              [check_ops.assert_less(two, alpha)], var_if_defined)
 
   def log_prob(self, x, name="log_prob"):
     """Log prob of observations in `x` under these InverseGamma distribution(s).
@@ -273,7 +273,7 @@ class InverseGamma(distribution.Distribution):
         beta = self._beta
         x = ops.convert_to_tensor(x)
         x = control_flow_ops.with_dependencies([check_ops.assert_positive(x)] if
-                                               self.strict else [], x)
+                                               self.validate_args else [], x)
         contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
                                                     dtype=self.dtype)
 
@@ -309,7 +309,7 @@ class InverseGamma(distribution.Distribution):
       with ops.op_scope([self._alpha, self._beta, x], name):
         x = ops.convert_to_tensor(x)
         x = control_flow_ops.with_dependencies([check_ops.assert_positive(x)] if
-                                               self.strict else [], x)
+                                               self.validate_args else [], x)
         contrib_tensor_util.assert_same_float_dtype(tensors=[x,],
                                                     dtype=self.dtype)
         # Note that igammac returns the upper regularized incomplete gamma
@@ -355,7 +355,7 @@ class InverseGamma(distribution.Distribution):
         return (alpha + math_ops.log(beta) + math_ops.lgamma(alpha) -
                 (1 + alpha) * math_ops.digamma(alpha))
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Draws `n` samples from these InverseGamma distribution(s).
 
     See the doc for tf.random_gamma for further details on sampling strategy.

@@ -8,7 +8,7 @@ Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, strict_statistics=True, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, validate_args=True, allow_nan_stats=False, name='Chi2')` {#Chi2.__init__}
 
 Construct Chi2 distributions with parameter `df`.
 
@@ -17,14 +17,21 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`. If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
+    methods `prob(x)` and `log_prob(x)`. If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.allow_nan_stats` {#Chi2.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -243,7 +250,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -302,7 +309,31 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample(n, seed=None, name='sample')` {#Chi2.sample}
+#### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample')` {#Chi2.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n')` {#Chi2.sample_n}
 
 Draws `n` samples from the Gamma distribution(s).
 
@@ -332,16 +363,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.strict` {#Chi2.strict}
+#### `tf.contrib.distributions.Chi2.validate_args` {#Chi2.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.strict_statistics` {#Chi2.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

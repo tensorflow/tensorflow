@@ -83,7 +83,7 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
     feed_dict: The feed dictionary mapping from placeholders to values.
   """
   # Create the feed_dict for the placeholders filled with the next
-  # `batch size ` examples.
+  # `batch size` examples.
   images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size,
                                                  FLAGS.fake_data)
   feed_dict = {

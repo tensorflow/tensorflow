@@ -14,8 +14,7 @@
 // =============================================================================
 // UpdateFertileSlots manages accumulator slots.  It assigns free or newly
 // finished accumulator slots to waiting non-fertile nodes and new leaves
-// according to their existing split scores (based on node pcws).  It does not
-// allocate slots to leaves that are beyond max depth.
+// according to their existing split scores (based on node pcws).
 #include <unordered_map>
 #include <set>
 
@@ -23,6 +22,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
@@ -30,30 +30,35 @@
 
 namespace tensorflow {
 
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
+
 using gtl::TopN;
 using tensorforest::CheckTensorBounds;
 using tensorforest::Initialize;
 using tensorforest::WeightedGiniImpurity;
 
 REGISTER_OP("UpdateFertileSlots")
-  .Attr("max_depth: int")
     .Attr("regression: bool = False")
     .Input("finished: int32")
     .Input("non_fertile_leaves: int32")
     .Input("non_fertile_leaf_scores: float")
     .Input("end_of_tree: int32")
-    .Input("tree_depths: int32")
     .Input("accumulator_sums: float")
     .Input("node_to_accumulator: int32")
     .Input("stale_leaves: int32")
     .Output("node_map_updates: int32")
     .Output("accumulators_cleared: int32")
     .Output("accumulators_allocated: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->MakeDim(2), InferenceContext::kUnknownDim));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Updates accumulator slots to reflect finished or newly fertile nodes.
-
-Leaves at the depth of the attribute `max_depth` won't be made fertile
-(i.e., won't be given an accumulator slot.)
 
 finished:= A 1-d int32 tensor containing the indices of fertile nodes that
   are ready to decide on a split.
@@ -67,7 +72,6 @@ end_of_tree: The end of tree tensor from the previous training iteration, used
   with the finished input to calculate a list of new leaf indices created by
   GrowTree, which will be considered to become fertile if there are free
   slots.
-tree_depths: `tree_depths[i]` is the depth in the tree of node i.
 accumulator_sums: For classification, `accumulator_sums[a][c]` records how
   many training examples have class c and have ended up in the fertile node
   associated with accumulator slot a.  It has the total sum in entry 0 for
@@ -95,8 +99,6 @@ class UpdateFertileSlots : public OpKernel {
   explicit UpdateFertileSlots(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr(
-      "max_depth", &max_depth_));
-    OP_REQUIRES_OK(context, context->GetAttr(
       "regression", &regression_));
   }
 
@@ -106,11 +108,10 @@ class UpdateFertileSlots : public OpKernel {
     const Tensor& non_fertile_leaves =  context->input(1);
     const Tensor& non_fertile_leaf_scores =  context->input(2);
     const Tensor& end_of_tree = context->input(3);
-    const Tensor& tree_depths = context->input(4);
 
-    const Tensor& accumulator_sums = context->input(5);
-    const Tensor& node_to_accumulator = context->input(6);
-    const Tensor& stale_leaves = context->input(7);
+    const Tensor& accumulator_sums = context->input(4);
+    const Tensor& node_to_accumulator = context->input(5);
+    const Tensor& stale_leaves = context->input(6);
 
     OP_REQUIRES(context, finished.shape().dims() == 1,
                 errors::InvalidArgument(
@@ -124,9 +125,6 @@ class UpdateFertileSlots : public OpKernel {
     OP_REQUIRES(context, end_of_tree.shape().dims() == 1,
                 errors::InvalidArgument(
                     "end_of_tree should be one-dimensional"));
-    OP_REQUIRES(context, tree_depths.shape().dims() == 1,
-                errors::InvalidArgument(
-                    "tree_depths should be one-dimensional"));
     OP_REQUIRES(context, accumulator_sums.shape().dims() == 2,
                 errors::InvalidArgument(
                     "accumulator_sums should be two-dimensional"));
@@ -150,7 +148,6 @@ class UpdateFertileSlots : public OpKernel {
     if (!CheckTensorBounds(context, non_fertile_leaves)) return;
     if (!CheckTensorBounds(context, non_fertile_leaf_scores)) return;
     if (!CheckTensorBounds(context, end_of_tree)) return;
-    if (!CheckTensorBounds(context, tree_depths)) return;
     if (!CheckTensorBounds(context, accumulator_sums)) return;
     if (!CheckTensorBounds(context, node_to_accumulator)) return;
     if (!CheckTensorBounds(context, stale_leaves)) return;
@@ -179,7 +176,8 @@ class UpdateFertileSlots : public OpKernel {
     }
 
     // Construct leaf heap to sort leaves to allocate accumulators to.
-    const int32 num_nodes = static_cast<int32>(tree_depths.shape().dim_size(0));
+    const int32 num_nodes =
+        static_cast<int32>(node_to_accumulator.shape().dim_size(0));
     const int32 eot = internal::SubtleMustCopy(
         end_of_tree.unaligned_flat<int32>()(0));
     // end-of-tree points to one beyond the last node, so it's allowed to go
@@ -194,10 +192,8 @@ class UpdateFertileSlots : public OpKernel {
         static_cast<int32>(non_fertile_leaves.shape().dim_size(0)) +
         num_new_leaves, OrderBySecondGreater());
     ConstructLeafHeap(
-        non_fertile_leaves, non_fertile_leaf_scores, tree_depths,
-        eot, num_new_leaves,
-        static_cast<int32>(accumulator_sums.shape().dim_size(1)),
-        &leaf_heap);
+        non_fertile_leaves, non_fertile_leaf_scores, eot, num_new_leaves,
+        static_cast<int32>(accumulator_sums.shape().dim_size(1)), &leaf_heap);
 
     // Allocate leaves.
     std::unique_ptr<HeapValuesType> values(
@@ -338,19 +334,16 @@ class UpdateFertileSlots : public OpKernel {
 
   void ConstructLeafHeap(const Tensor& non_fertile_leaves,
                          const Tensor& non_fertile_leaf_scores,
-                         const Tensor& tree_depths, int32 end_of_tree,
-                         int32 num_new_leaves, int32 num_classes,
-                         LeafHeapType* leaf_heap) {
+                         int32 end_of_tree, int32 num_new_leaves,
+                         int32 num_classes, LeafHeapType* leaf_heap) {
     const auto leaf_vec = non_fertile_leaves.unaligned_flat<int32>();
     const auto leaf_score_vec = non_fertile_leaf_scores.unaligned_flat<float>();
-    const auto depths = tree_depths.unaligned_flat<int32>();
 
     for (int32 i = 0; i < leaf_vec.size(); i++) {
       const int32 leaf = internal::SubtleMustCopy(leaf_vec(i));
-      CHECK_LT(leaf, depths.size());
       // Filter out leaves < 0, non_fertile_nodes can contain garbage at
       // startup.
-      if (leaf >= 0 && depths(leaf) < max_depth_) {
+      if (leaf >= 0) {
         leaf_heap->push(std::make_pair(leaf, leaf_score_vec(i)));
       }
     }
@@ -363,9 +356,7 @@ class UpdateFertileSlots : public OpKernel {
     const float zero_score = regression_ ? 0.0 : WeightedGiniImpurity(zeros);
     for (int32 leaf = end_of_tree; leaf < end_of_tree + num_new_leaves;
          leaf++) {
-      if (depths(leaf) < max_depth_) {
-        leaf_heap->push(std::make_pair(leaf, zero_score));
-      }
+      leaf_heap->push(std::make_pair(leaf, zero_score));
     }
   }
 
@@ -384,7 +375,6 @@ class UpdateFertileSlots : public OpKernel {
     *current = -1;
   }
 
-  int32 max_depth_;
   bool regression_;
 };
 

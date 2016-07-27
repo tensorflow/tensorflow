@@ -1,4 +1,4 @@
-### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None, caching_device=None, partitioner=None)` {#variable_scope}
+### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None)` {#variable_scope}
 
 Returns a context for variable scope.
 
@@ -68,6 +68,7 @@ then all its sub-scopes become reusing as well.
 *  <b>`regularizer`</b>: default regularizer for variables within this scope.
 *  <b>`caching_device`</b>: default caching device for variables within this scope.
 *  <b>`partitioner`</b>: default partitioner for variables within this scope.
+*  <b>`custom_getter`</b>: default custom getter for variables within this scope.
 
 ##### Returns:
 

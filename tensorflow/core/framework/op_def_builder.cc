@@ -553,12 +553,13 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, StringPiece explanation) {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetShapeFn(const OpShapeInferenceFn& fn) {
+OpDefBuilder& OpDefBuilder::SetShapeFn(
+    Status (*fn)(shape_inference::InferenceContext*)) {
   if (op_reg_data_.shape_inference_fn != nullptr) {
     errors_.push_back(
         strings::StrCat("SetShapeFn called twice for Op ", op_def()->name()));
   } else {
-    op_reg_data_.shape_inference_fn = fn;
+    op_reg_data_.shape_inference_fn = OpShapeInferenceFn(fn);
   }
   return *this;
 }
