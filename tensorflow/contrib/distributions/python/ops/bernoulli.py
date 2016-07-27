@@ -20,12 +20,14 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler  # pylint: disable=line-too-long
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -89,9 +91,11 @@ class Bernoulli(distribution.Distribution):
     elif logits is None:
       with ops.name_scope(name):
         with ops.name_scope("p"):
-          with ops.control_dependencies([check_op(p, 1.), check_op(0., p)] if
-                                        validate_args else []):
-            self._p = array_ops.identity(p)
+          p = array_ops.identity(p)
+          one = constant_op.constant(1., p.dtype)
+          zero = constant_op.constant(0., p.dtype)
+          self._p = control_flow_ops.with_dependencies(
+              [check_op(p, one), check_op(zero, p)] if validate_args else [], p)
         with ops.name_scope("logits"):
           self._logits = math_ops.log(self._p) - math_ops.log(1. - self._p)
     with ops.name_scope(name):
