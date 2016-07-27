@@ -189,6 +189,7 @@ These can be used for measuring accuracy of a network in a regression task
 or for regularization purposes (weight decay).
 
 @@l2_loss
+@@log_poisson_loss
 
 ## Classification
 
@@ -273,6 +274,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
@@ -305,7 +307,72 @@ from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *
 from tensorflow.python.ops.rnn import *
+
 # pylint: enable=wildcard-import
+
+
+def log_poisson_loss(log_input, targets, compute_full_loss=False, name=None):
+  """Computes log poisson loss given `log_input`.
+
+  Gives the log-likelihood loss between the prediction and the target under the
+  assumption that the target has a poisson distribution.
+  Caveat: By default, this is not the exact loss, but the loss minus a
+    constant term [log(z!)]. That has no effect for optimization, but
+    does not play well with relative loss comparisons. To compute an
+    approximation of the log factorial term, specify
+    compute_full_loss=True to enable Stirling's Approximation.
+
+  For brevity, let `c = log(x) = log_input`, `z = targets`.  The log poisson
+  loss is
+
+        -log(exp(-x) * (x^z) / z!)
+      = -log(exp(-x) * (x^z)) + log(z!)
+      ~ -log(exp(-x)) - log(x^z) [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
+          [ Note the second term is the Stirling's Approximation for log(z!).
+            It is invariant to x and does not affect optimization, though
+            important for correct relative loss comparisons. It is only
+            computed when compute_full_loss == True. ]
+      = x - z * log(x) [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
+      = exp(c) - z * c [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
+
+  Args:
+    log_input: A `Tensor` of type `float32` or `float64`.
+    targets: A `Tensor` of the same type and shape as `log_input`.
+    compute_full_loss: whether to compute the full loss. If false, a constant
+      term is dropped in favor of more efficient optimization.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of the same shape as `log_input` with the componentwise
+    logistic losses.
+
+  Raises:
+    ValueError: If `log_input` and `targets` do not have the same shape.
+  """
+  with ops.op_scope([log_input, targets], name, "log_poisson_loss") as name:
+    log_input = ops.convert_to_tensor(log_input, name="log_input")
+    targets = ops.convert_to_tensor(targets, name="targets")
+    try:
+      targets.get_shape().merge_with(log_input.get_shape())
+    except ValueError:
+      raise ValueError(
+          "log_input and targets must have the same shape (%s vs %s)" %
+          (log_input.get_shape(), targets.get_shape()))
+
+    result = math_ops.exp(log_input) - log_input * targets
+    if compute_full_loss:
+      # need to create constant tensors here so that their dtypes can be matched
+      # to that of the targets.
+      point_five = constant_op.constant(0.5, dtype=targets.dtype)
+      two_pi = constant_op.constant(2 * math.pi, dtype=targets.dtype)
+
+      stirling_approx = (targets * math_ops.log(targets)) - targets + (
+          point_five * math_ops.log(two_pi * targets))
+      zeros = array_ops.zeros_like(targets, dtype=targets.dtype)
+      ones = array_ops.ones_like(targets, dtype=targets.dtype)
+      cond = math_ops.logical_and(targets >= zeros, targets <= ones)
+      result += math_ops.select(cond, zeros, stirling_approx)
+    return result
 
 
 def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
@@ -356,9 +423,8 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
     try:
       targets.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError(
-          "logits and targets must have the same shape (%s vs %s)"
-          % (logits.get_shape(), targets.get_shape()))
+      raise ValueError("logits and targets must have the same shape (%s vs %s)"
+                       % (logits.get_shape(), targets.get_shape()))
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -377,8 +443,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
                         name=name)
 
 
-def weighted_cross_entropy_with_logits(logits, targets, pos_weight,
-                                       name=None):
+def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
   """Computes a weighted cross entropy.
 
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
@@ -430,9 +495,8 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight,
     try:
       targets.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError(
-          "logits and targets must have the same shape (%s vs %s)"
-          % (logits.get_shape(), targets.get_shape()))
+      raise ValueError("logits and targets must have the same shape (%s vs %s)"
+                       % (logits.get_shape(), targets.get_shape()))
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -517,8 +581,8 @@ def zero_fraction(value, name=None):
   with ops.op_scope([value], name, "zero_fraction"):
     value = ops.convert_to_tensor(value, name="value")
     zero = constant_op.constant(0, dtype=value.dtype, name="zero")
-    return math_ops.reduce_mean(math_ops.cast(math_ops.equal(value, zero),
-                                              dtypes.float32))
+    return math_ops.reduce_mean(
+        math_ops.cast(math_ops.equal(value, zero), dtypes.float32))
 
 
 # pylint: disable=redefined-builtin,line-too-long
@@ -549,7 +613,8 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the [comment
+        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
@@ -567,8 +632,8 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
       if input.get_shape().ndims is not None:
         assert len(input.get_shape()) == 4
         assert input.get_shape()[3] == in_channels, (
-            "Mismatched input depth %d and number of depthwise filters %d." % (
-                input.get_shape()[3].value, in_channels))
+            "Mismatched input depth %d and number of depthwise filters %d." %
+            (input.get_shape()[3].value, in_channels))
     else:
       assert input.get_shape().ndims is not None, (
           "Either tensor must provide static shape information.")
@@ -578,8 +643,8 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     if in_channels == 1:
       return nn_ops.conv2d(input, filter, strides, padding, name=name)
     else:
-      return nn_ops.depthwise_conv2d_native(input, filter, strides, padding,
-                                            name=name)
+      return nn_ops.depthwise_conv2d_native(
+          input, filter, strides, padding, name=name)
 # pylint: enable=redefined-builtin,line-too-long
 
 
@@ -617,7 +682,8 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the [comment
+        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
     name: A name for this operation (optional).
 
   Returns:
@@ -630,10 +696,10 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
   with ops.op_scope([input, depthwise_filter, pointwise_filter],
                     name, "separable_conv2d") as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
-    depthwise_filter = ops.convert_to_tensor(depthwise_filter,
-                                             name="depthwise_filter")
-    pointwise_filter = ops.convert_to_tensor(pointwise_filter,
-                                             name="pointwise_filter")
+    depthwise_filter = ops.convert_to_tensor(
+        depthwise_filter, name="depthwise_filter")
+    pointwise_filter = ops.convert_to_tensor(
+        pointwise_filter, name="pointwise_filter")
 
     if pointwise_filter.get_shape().ndims is not None:
       assert len(pointwise_filter.get_shape()) == 4
@@ -653,10 +719,10 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
-    depthwise = nn_ops.depthwise_conv2d_native(input, depthwise_filter, strides,
-                                               padding, name="depthwise")
-    return nn_ops.conv2d(depthwise, pointwise_filter, [1, 1, 1, 1],
-                         padding="VALID", name=name)
+    depthwise = nn_ops.depthwise_conv2d_native(
+        input, depthwise_filter, strides, padding, name="depthwise")
+    return nn_ops.conv2d(
+        depthwise, pointwise_filter, [1, 1, 1, 1], padding="VALID", name=name)
 # pylint: enable=redefined-builtin,line-too-long
 
 
@@ -703,9 +769,7 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
       m_shape = math_ops.select(select_axes, array_ops.ones_like(x_shape),
                                 x_shape)
       counts = math_ops.cast(
-          math_ops.reduce_prod(x_shape / m_shape),
-          x.dtype,
-          name="count")
+          math_ops.reduce_prod(x_shape / m_shape), x.dtype, name="count")
     if shift is not None:
       shift = ops.convert_to_tensor(shift, name="shift")
       m_ss = math_ops.sub(x, shift)
@@ -742,10 +806,9 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
     else:  # no shift.
       shifted_mean = math_ops.mul(mean_ss, divisor, name="mean")
       mean = shifted_mean
-    variance = math_ops.sub(
-        math_ops.mul(variance_ss, divisor),
-        math_ops.square(shifted_mean),
-        name="variance")
+    variance = math_ops.sub(math_ops.mul(variance_ss, divisor),
+                            math_ops.square(shifted_mean),
+                            name="variance")
   return (mean, variance)
 
 
@@ -782,16 +845,13 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
     shift = math_ops.cast(shift, dtypes.float32) if (
         shift is not None and x.dtype == dtypes.float16) else shift
-    counts, m_ss, v_ss, shift = sufficient_statistics(y,
-                                                      axes,
-                                                      shift=shift,
-                                                      keep_dims=keep_dims,
-                                                      name=name)
+    counts, m_ss, v_ss, shift = sufficient_statistics(
+        y, axes, shift=shift, keep_dims=keep_dims, name=name)
     with ops.control_dependencies([counts, m_ss, v_ss]):
       mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
       if x.dtype == dtypes.float16:
-        return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
-            variance, dtypes.float16))
+        return (math_ops.cast(mean, dtypes.float16),
+                math_ops.cast(variance, dtypes.float16))
       else:
         return (mean, variance)
 
@@ -848,8 +908,8 @@ def batch_normalization(x,
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    return x * inv + (
-        offset - mean * inv if offset is not None else -mean * inv)
+    return x * inv + (offset - mean * inv
+                      if offset is not None else -mean * inv)
 
 
 def batch_norm_with_global_normalization(t,
@@ -902,8 +962,13 @@ def _sum_rows(x):
   return array_ops.reshape(math_ops.matmul(x, ones), [-1])
 
 
-def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
-                            num_classes, num_true=1,
+def _compute_sampled_logits(weights,
+                            biases,
+                            inputs,
+                            labels,
+                            num_sampled,
+                            num_classes,
+                            num_true=1,
                             sampled_values=None,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
@@ -955,8 +1020,8 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
   if not isinstance(weights, list):
     weights = [weights]
 
-  with ops.op_scope(
-      weights + [biases, inputs, labels], name, "compute_sampled_logits"):
+  with ops.op_scope(weights + [biases, inputs, labels], name,
+                    "compute_sampled_logits"):
     if labels.dtype != dtypes.int64:
       labels = math_ops.cast(labels, dtypes.int64)
     labels_flat = array_ops.reshape(labels, [-1])
@@ -1018,9 +1083,8 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
     # sampled_w has shape [num_sampled, dim]
     # sampled_b has shape [num_sampled]
     # Apply X*W'+B, which yields [batch_size, num_sampled]
-    sampled_logits = math_ops.matmul(inputs,
-                                     sampled_w,
-                                     transpose_b=True) + sampled_b
+    sampled_logits = math_ops.matmul(
+        inputs, sampled_w, transpose_b=True) + sampled_b
 
     if remove_accidental_hits:
       acc_hits = candidate_sampling_ops.compute_accidental_hits(
@@ -1029,10 +1093,10 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
 
       # This is how SparseToDense expects the indices.
       acc_indices_2d = array_ops.reshape(acc_indices, [-1, 1])
-      acc_ids_2d_int32 = array_ops.reshape(math_ops.cast(
-          acc_ids, dtypes.int32), [-1, 1])
-      sparse_indices = array_ops.concat(
-          1, [acc_indices_2d, acc_ids_2d_int32], "sparse_indices")
+      acc_ids_2d_int32 = array_ops.reshape(
+          math_ops.cast(acc_ids, dtypes.int32), [-1, 1])
+      sparse_indices = array_ops.concat(1, [acc_indices_2d, acc_ids_2d_int32],
+                                        "sparse_indices")
       # Create sampled_logits_shape = [batch_size, num_sampled]
       sampled_logits_shape = array_ops.concat(
           0,
@@ -1040,8 +1104,11 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
       if sampled_logits.dtype != acc_weights.dtype:
         acc_weights = math_ops.cast(acc_weights, sampled_logits.dtype)
       sampled_logits += sparse_ops.sparse_to_dense(
-          sparse_indices, sampled_logits_shape, acc_weights,
-          default_value=0.0, validate_indices=False)
+          sparse_indices,
+          sampled_logits_shape,
+          acc_weights,
+          default_value=0.0,
+          validate_indices=False)
 
     if subtract_log_q:
       # Subtract log of Q(l), prior probability that l appears in sampled.
@@ -1053,14 +1120,19 @@ def _compute_sampled_logits(weights, biases, inputs, labels, num_sampled,
     # true_logits is a float tensor, ones_like(true_logits) is a float tensor
     # of ones. We then divide by num_true to ensure the per-example labels sum
     # to 1.0, i.e. form a proper probability distribution.
-    out_labels = array_ops.concat(
-        1, [array_ops.ones_like(true_logits) / num_true,
-            array_ops.zeros_like(sampled_logits)])
+    out_labels = array_ops.concat(1,
+                                  [array_ops.ones_like(true_logits) / num_true,
+                                   array_ops.zeros_like(sampled_logits)])
 
   return out_logits, out_labels
 
 
-def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
+def nce_loss(weights,
+             biases,
+             inputs,
+             labels,
+             num_sampled,
+             num_classes,
              num_true=1,
              sampled_values=None,
              remove_accidental_hits=False,
@@ -1115,23 +1187,32 @@ def nce_loss(weights, biases, inputs, labels, num_sampled, num_classes,
     A `batch_size` 1-D tensor of per-example NCE losses.
   """
   logits, labels = _compute_sampled_logits(
-      weights, biases, inputs, labels, num_sampled, num_classes,
+      weights,
+      biases,
+      inputs,
+      labels,
+      num_sampled,
+      num_classes,
       num_true=num_true,
       sampled_values=sampled_values,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
       name=name)
-  sampled_losses = sigmoid_cross_entropy_with_logits(logits,
-                                                     labels,
-                                                     name="sampled_losses")
+  sampled_losses = sigmoid_cross_entropy_with_logits(
+      logits, labels, name="sampled_losses")
   # sampled_losses is batch_size x {true_loss, sampled_losses...}
   # We sum out true and sampled losses.
   return _sum_rows(sampled_losses)
 
 
-def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
-                         num_classes, num_true=1,
+def sampled_softmax_loss(weights,
+                         biases,
+                         inputs,
+                         labels,
+                         num_sampled,
+                         num_classes,
+                         num_true=1,
                          sampled_values=None,
                          remove_accidental_hits=True,
                          partition_strategy="mod",
@@ -1182,7 +1263,12 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
 
   """
   logits, labels = _compute_sampled_logits(
-      weights, biases, inputs, labels, num_sampled, num_classes,
+      weights,
+      biases,
+      inputs,
+      labels,
+      num_sampled,
+      num_classes,
       num_true=num_true,
       sampled_values=sampled_values,
       subtract_log_q=True,
@@ -1192,7 +1278,6 @@ def sampled_softmax_loss(weights, biases, inputs, labels, num_sampled,
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(logits, labels)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses
-
 
 # TODO(cwhipkey): sigmoid and tanh should not be exposed from tf.nn.
 __all__ = make_all(__name__)
