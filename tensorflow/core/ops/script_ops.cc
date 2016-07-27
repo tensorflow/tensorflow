@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -24,6 +25,7 @@ REGISTER_OP("PyFunc")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type)")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Invokes a python function to compute func(input)->output.
 

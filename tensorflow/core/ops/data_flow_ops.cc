@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -248,6 +249,7 @@ REGISTER_OP("QueueEnqueue")
     .Input("components: Tcomponents")
     .Attr("Tcomponents: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Enqueues a tuple of one or more tensors in the given queue.
 
@@ -269,6 +271,7 @@ REGISTER_OP("QueueEnqueueMany")
     .Input("components: Tcomponents")
     .Attr("Tcomponents: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Enqueues zero or more tuples of one or more tensors in the given queue.
 
@@ -295,6 +298,7 @@ REGISTER_OP("QueueDequeue")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Dequeues a tuple of one or more tensors from the given queue.
 
@@ -319,6 +323,7 @@ REGISTER_OP("QueueDequeueMany")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Dequeues n tuples of one or more tensors from the given queue.
 
@@ -351,6 +356,7 @@ REGISTER_OP("QueueDequeueUpTo")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Dequeues n tuples of one or more tensors from the given queue.
 
@@ -430,6 +436,7 @@ REGISTER_OP("StackPush")
     .Output("output: T")
     .Attr("T: type")
     .Attr("swap_memory: bool = false")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Push an element onto the stack.
 
@@ -443,6 +450,7 @@ REGISTER_OP("StackPop")
     .Input("handle: Ref(string)")
     .Output("elem: elem_type")
     .Attr("elem_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Pop the element at the top of the stack.
 
@@ -765,6 +773,7 @@ REGISTER_OP("BarrierTakeMany")
     .Attr("allow_small_batch: bool = false")
     .Attr("wait_for_incomplete: bool = false")
     .Attr("timeout_ms: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Takes the given number of completed elements from a barrier.
 
@@ -1072,6 +1081,7 @@ REGISTER_OP("GetSessionTensor")
     .Input("handle: string")
     .Output("value: dtype")
     .Attr("dtype: type")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Get the value of the tensor specified by its handle.
 
