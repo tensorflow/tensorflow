@@ -209,46 +209,6 @@ class GatherNdSliceGenerator {
   std::atomic<Index>* error_loc_;
 };
 
-template <typename T, typename Index, int IXDIM>
-class GatherNdElementGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  GatherNdElementGenerator(typename TTypes<Index>::ConstMatrix Tindices,
-                           typename TTypes<T, IXDIM + 1>::ConstTensor Tparams,
-                           std::atomic<Index>* error_loc)
-      : Tindices_(Tindices), Tparams_(Tparams), error_loc_(error_loc) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool GenerateIndices(
-      const Index loc, Eigen::array<Eigen::DenseIndex, IXDIM + 1>* ix) const {
-    (*ix)[IXDIM] = 0;
-    bool out_of_bounds = false;
-    for (int i = 0; i < IXDIM; ++i) {
-      const Index ix_i = internal::SubtleMustCopy(Tindices_(loc, i));
-      (*ix)[i] = ix_i;
-      out_of_bounds |= !FastBoundsCheck(ix_i, Tparams_.dimension(i));
-    }
-    return out_of_bounds;
-  }
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<Eigen::DenseIndex, 2>& loc_array) const {
-    const Index loc = loc_array[0];
-    Eigen::array<Eigen::DenseIndex, IXDIM + 1> ix;
-    const bool out_of_bounds = GenerateIndices(loc, &ix);
-    if (TF_PREDICT_FALSE(out_of_bounds)) {
-      error_loc_->store(loc);
-      return T();
-    } else {
-      return Tparams_(ix);
-    }
-  }
-
- private:
-  const typename TTypes<Index>::ConstMatrix Tindices_;
-  const typename TTypes<T, IXDIM + 1>::ConstTensor Tparams_;
-  std::atomic<Index>* error_loc_;
-};
-
 }  // namespace generator
 
 namespace functor {
@@ -262,30 +222,21 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
                    typename TTypes<T>::Matrix Tout) {
     std::atomic<Index> error_loc(-1);
 
-    switch (Tout.dimension(1)) {
-      case IXDIM: {
-        generator::GatherNdElementGenerator<T, Index, IXDIM>
-            gather_element_generator(Tindices, Tparams, &error_loc);
-        Tout.device(d) = Tout.generate(gather_element_generator);
-      } break;
-      default: {
-        const Eigen::DenseIndex batch_size = Tindices.dimension(0);
+    const Eigen::DenseIndex batch_size = Tindices.dimension(0);
 #if !defined(EIGEN_HAS_INDEX_LIST)
-        Eigen::Tensor<Eigen::DenseIndex, 1>::Dimensions reshape_dims{{ 1 }};
-        Eigen::array<Eigen::DenseIndex, 1> broadcast_dims{{ batch_size }};
+    Eigen::Tensor<Eigen::DenseIndex, 1>::Dimensions reshape_dims{{ 1 }};
+    Eigen::array<Eigen::DenseIndex, 1> broadcast_dims{{ batch_size }};
 #else
-        Eigen::IndexList<Eigen::type2index<1> > reshape_dims;
-        Eigen::IndexList<Eigen::DenseIndex> broadcast_dims;
-        broadcast_dims.set(0, batch_size);
+    Eigen::IndexList<Eigen::type2index<1> > reshape_dims;
+    Eigen::IndexList<Eigen::DenseIndex> broadcast_dims;
+    broadcast_dims.set(0, batch_size);
 #endif
-        generator::GatherNdSliceGenerator<T, Index, IXDIM> gather_nd_generator(
-            slice_size, Tindices, Tparams, Tout, &error_loc);
-        Tscratch.device(d) = Tscratch.reshape(reshape_dims)
-                                 .broadcast(broadcast_dims)
-                                 .generate(gather_nd_generator)
-                                 .sum();
-      }
-    }
+    generator::GatherNdSliceGenerator<T, Index, IXDIM> gather_nd_generator(
+        slice_size, Tindices, Tparams, Tout, &error_loc);
+    Tscratch.device(d) = Tscratch.reshape(reshape_dims)
+                             .broadcast(broadcast_dims)
+                             .generate(gather_nd_generator)
+                             .sum();
 
     // error_loc() returns -1 if there's no out-of-bounds index,
     // otherwise it returns the location of an OOB index in Tindices.

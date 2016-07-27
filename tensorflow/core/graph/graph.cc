@@ -29,9 +29,6 @@ namespace tensorflow {
 // Node
 
 string Node::DebugString() const {
-  if (this == nullptr) {
-    return "{nullptr}";
-  }
   string ret = strings::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
     strings::StrAppend(&ret, " source}");

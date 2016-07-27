@@ -42,6 +42,18 @@ rm -rf tensorflow/contrib/makefile/downloads
 # Pull down the required versions of the frameworks we need.
 tensorflow/contrib/makefile/download_dependencies.sh
 
+# TODO(petewarden) - Some new code in Eigen triggers a clang bug, so work
+# around it by patching the source.
+sed -e 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
+-i '' \
+tensorflow/contrib/makefile/downloads/eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+sed -e 's#static uint32x2_t p2ui_CONJ_XOR = vld1_u32( conj_XOR_DATA );#static uint32x2_t p2ui_CONJ_XOR;// = vld1_u32( conj_XOR_DATA ); - Removed by scripts#' \
+-i '' \
+tensorflow/contrib/makefile/downloads/eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+sed -e 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DATA );#static uint64x2_t p2ul_CONJ_XOR;// = vld1q_u64( p2ul_conj_XOR_DATA ); - Removed by script#' \
+-i '' \
+tensorflow/contrib/makefile/downloads/eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+
 # Compile protobuf for the target iOS device architectures.
 tensorflow/contrib/makefile/compile_ios_protobuf.sh ${JOBS_COUNT}
 

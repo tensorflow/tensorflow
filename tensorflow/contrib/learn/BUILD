@@ -89,6 +89,18 @@ py_test(
 )
 
 py_test(
+    name = "estimator_utils_test",
+    size = "medium",
+    srcs = ["python/learn/tests/dataframe/estimator_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "series_test",
     size = "small",
     srcs = ["python/learn/tests/dataframe/series_test.py"],

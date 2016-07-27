@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
@@ -23,6 +25,7 @@ REGISTER_OP("Assert")
     .SetIsStateful()
     .Attr("T: list(type)")
     .Attr("summarize: int = 3")
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Asserts that the given condition is true.
 
@@ -44,6 +47,7 @@ REGISTER_OP("Print")
     .Attr("message: string = ''")
     .Attr("first_n: int = -1")
     .Attr("summarize: int = 3")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Prints a list of tensors.
 

@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
@@ -275,14 +274,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       return nn.bias_add(logits, self._centered_bias())
     else:
       return logits
-
-  def _get_optimizer(self, optimizer, default_optimizer, default_learning_rate):
-    if optimizer is None:
-      optimizer = default_optimizer
-    if isinstance(optimizer, six.string_types):
-      optimizer = layers.OPTIMIZER_CLS_NAMES[optimizer](
-          learning_rate=default_learning_rate)
-    return optimizer
 
 
 class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):

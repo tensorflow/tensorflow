@@ -235,6 +235,7 @@ REGISTER_OP("BiasAdd")
     .Input("bias: T")
     .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
+    .SetShapeFn(shape_inference::BiasAddShape)
     .Doc(R"doc(
 Adds `bias` to `value`.
 
@@ -259,6 +260,7 @@ REGISTER_OP("BiasAddGrad")
     .Input("out_backprop: T")
     .Attr(GetConvnetDataFormatAttrString())
     .Output("output: T")
+    .SetShapeFn(shape_inference::BiasAddGradShape)
     .Doc(R"doc(
 The backward operation for "BiasAdd" on the "bias" tensor.
 
@@ -283,6 +285,7 @@ REGISTER_OP("BiasAddV1")
     .Input("value: T")
     .Input("bias: T")
     .Output("output: T")
+    .SetShapeFn(shape_inference::BiasAddShape)
     .Doc(R"doc(
 Adds `bias` to `value`.
 
@@ -787,6 +790,9 @@ REGISTER_OP("LRN")
     .Attr("alpha: float = 1.0")
     .Attr("beta: float = 0.5")
     .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
     .Doc(R"doc(
 Local Response Normalization.
 
@@ -1054,6 +1060,7 @@ REGISTER_OP("Relu")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes rectified linear: `max(features, 0)`.
 )doc");
@@ -1077,6 +1084,7 @@ REGISTER_OP("Relu6")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes rectified linear 6: `min(max(features, 0), 6)`.
 )doc");
@@ -1100,6 +1108,7 @@ REGISTER_OP("Elu")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
 
@@ -1126,6 +1135,7 @@ REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes softplus: `log(exp(features) + 1)`.
 )doc");
@@ -1148,6 +1158,7 @@ REGISTER_OP("Softsign")
     .Input("features: T")
     .Output("activations: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes softsign: `features / (abs(features) + 1)`.
 )doc");
@@ -1172,6 +1183,9 @@ REGISTER_OP("Softmax")
     .Input("logits: T")
     .Output("softmax: T")
     .Attr("T: {half, float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
+    })
     .Doc(R"doc(
 Computes softmax activations.
 
@@ -1189,6 +1203,9 @@ REGISTER_OP("LogSoftmax")
     .Input("logits: T")
     .Output("logsoftmax: T")
     .Attr("T: {half, float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
+    })
     .Doc(R"doc(
 Computes log softmax activations.
 

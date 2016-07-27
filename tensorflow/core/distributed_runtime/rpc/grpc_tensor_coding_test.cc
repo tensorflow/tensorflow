@@ -35,7 +35,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
 
     // Make a string
     std::vector<::grpc::Slice> slices;
-    buf.Dump(&slices);
+    (void)buf.Dump(&slices);
     string tmp;
     for (const auto& s : slices) {
       tmp.append(reinterpret_cast<const char*>(s.begin()), s.size());
