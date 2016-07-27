@@ -255,6 +255,12 @@ def _GatherNdGrad(unused_op, unused_grad):
   raise NotImplementedError("Gradient for gather_nd is not implemented.")
 
 
+@ops.RegisterGradient("CheckNumerics")
+def _CheckNumericsGrad(_, grad):
+  """Gradient for check_numerics op."""
+  return grad
+
+
 @ops.RegisterGradient("Identity")
 def _IdGrad(_, grad):
   return grad
