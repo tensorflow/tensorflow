@@ -23,8 +23,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Creates a Graph which applies a unary "func" on a 3D float tensor
-// of "num" elements.
+// Creates a Graph which applies a unary "func" on a 3D tensor of
+// type T with "num" elements.
 template <typename T>
 static Graph* Unary(const string& func, int num, DataType dtype) {
   Graph* g = new Graph(OpRegistry::Global());
