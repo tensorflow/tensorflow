@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 # Import gradients to register _IndexedSlicesToTensor.
+from tensorflow.python.ops import control_flow_ops
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -278,6 +279,14 @@ class OperationTest(test_util.TensorFlowTestCase):
                        output_types = [dtypes.float32])
     self.assertEqual(tensor_shape.unknown_shape(),
                      _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
+
+  def testNoConvert(self):
+    # Operation cannot be converted to Tensor
+    op = control_flow_ops.no_op()
+    with self.assertRaisesRegexp(TypeError,
+                                 r"Can't convert Operation '.*' to Tensor"):
+      ops.convert_to_tensor(op)
+
 
 class CreateOpTest(test_util.TensorFlowTestCase):
 

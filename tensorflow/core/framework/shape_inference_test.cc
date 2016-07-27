@@ -76,6 +76,19 @@ TEST(ShapeInferenceTest, RankAndDimInspection) {
   EXPECT_EQ(0, c.Rank(in2));
 }
 
+TEST(ShapeInferenceTest, NumElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 2), {"?", "[1,?,3]", "[5,4,3,2]"}, {});
+
+  EXPECT_EQ("?", c.DebugString(c.NumElements(c.input(0))));
+  EXPECT_EQ("?", c.DebugString(c.NumElements(c.input(1))));
+
+  // Different pointers (not the same unknown value).
+  EXPECT_TRUE(c.Dim(c.input(1), 1) != c.NumElements(c.input(1)));
+
+  EXPECT_EQ("120", c.DebugString(c.NumElements(c.input(2))));
+}
+
 TEST(ShapeInferenceTest, WithRank) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(2, 2), {"?", "[1,?,3]"}, {});
@@ -225,7 +238,7 @@ TEST(ShapeInferenceTest, WithValue) {
 
 TEST(ShapeInferenceTest, MergeDim) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(4, 2), {"[2,?,2,1,?]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[2,?,2,1,?]"}, {});
 
   auto d2 = c.Dim(c.input(0), 0);
   auto d_unknown = c.Dim(c.input(0), 1);
@@ -465,6 +478,37 @@ TEST(ShapeInferenceTest, Concatenate) {
   }
 }
 
+TEST(ShapeInferenceTest, ReplaceDim) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(2, 0), {"[1,2,3]", "?"}, {});
+
+  auto in = c.input(0);
+  auto unknown = c.input(1);
+
+  const Shape* replaced;
+  EXPECT_TRUE(c.ReplaceDim(in, 0, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("[2,2,3]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(in, 2, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("[1,2,2]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(in, 1, c.Dim(in, 2), &replaced).ok());
+  EXPECT_EQ("[1,3,3]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(unknown, 0, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("?", c.DebugString(replaced));
+
+  // Negative indexing.
+  EXPECT_TRUE(c.ReplaceDim(in, -1, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("[1,2,2]", c.DebugString(replaced));
+  EXPECT_TRUE(c.ReplaceDim(unknown, -1, c.Dim(in, 1), &replaced).ok());
+  EXPECT_EQ("?", c.DebugString(replaced));
+
+  // out of range indexing.
+  EXPECT_FALSE(c.ReplaceDim(in, 3, c.Dim(in, 1), &replaced).ok());
+  EXPECT_TRUE(replaced == nullptr);
+  replaced = in;
+  EXPECT_FALSE(c.ReplaceDim(in, -4, c.Dim(in, 1), &replaced).ok());
+  EXPECT_TRUE(replaced == nullptr);
+}
+
 TEST(ShapeInferenceTest, MakeShape) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,3,?,5]"}, {});
@@ -483,6 +527,10 @@ TEST(ShapeInferenceTest, MakeShape) {
   auto s2 = c.MakeShape(dims);
   EXPECT_TRUE(s != s2);  // different pointers
   EXPECT_TRUE(c.Dim(s2, 0) == c.Dim(in0, rank - 1));
+
+  auto s3 = c.MakeShape({1, 2, dims[2]});
+  EXPECT_TRUE(s != s3);  // different pointers
+  EXPECT_EQ("[1,2,3]", c.DebugString(s3));
 }
 
 TEST(ShapeInferenceTest, UnknownShape) {
@@ -729,18 +777,25 @@ TEST(ShapeInferenceTest, Add) {
   auto d_6 = c.Dim(s, 0);
   auto d_unknown = c.Dim(s, 1);
 
-  // Adding non-zero to known gives new unknown.
+  // Adding non-zero to unknown gives new unknown.
   const Dimension* out;
   EXPECT_TRUE(c.Add(d_unknown, 1, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out != d_unknown);
 
   // Adding 0 to anything gives input.
-  EXPECT_TRUE(c.Add(d_unknown, 0, &out).ok());
+  EXPECT_TRUE(c.Add(d_unknown, static_cast<int64>(0), &out).ok());
   EXPECT_TRUE(out == d_unknown);
-  EXPECT_TRUE(c.Add(d_6, 0, &out).ok());
+  EXPECT_TRUE(c.Add(d_6, static_cast<int64>(0), &out).ok());
   EXPECT_TRUE(out == d_6);
 
+  // Adding dimension with value 0 to anything gives input.
+  EXPECT_TRUE(c.Add(d_unknown, c.MakeDim(0), &out).ok());
+  EXPECT_TRUE(out == d_unknown);
+  EXPECT_TRUE(c.Add(d_6, c.MakeDim(0), &out).ok());
+  EXPECT_TRUE(out == d_6);
+
+  // Test addition.
   EXPECT_TRUE(c.Add(d_6, 2, &out).ok());
   EXPECT_EQ("8", c.DebugString(out));
   EXPECT_TRUE(c.Add(d_6, -6, &out).ok());
@@ -748,11 +803,75 @@ TEST(ShapeInferenceTest, Add) {
   EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64>::max() - 6, &out).ok());
   EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
 
+  // Test addition using dimension as second value.
+  EXPECT_TRUE(c.Add(d_6, c.MakeDim(2), &out).ok());
+  EXPECT_EQ("8", c.DebugString(out));
+  EXPECT_TRUE(
+      c.Add(d_6, c.MakeDim(std::numeric_limits<int64>::max() - 6), &out).ok());
+  EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+  EXPECT_TRUE(c.Add(d_6, c.UnknownDim(), &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+
   EXPECT_EQ("Negative dimension size from adding 6 and -7",
             c.Add(d_6, -7, &out).error_message());
   EXPECT_EQ(
       "Dimension size overflow from adding 6 and 9223372036854775802",
       c.Add(d_6, std::numeric_limits<int64>::max() - 5, &out).error_message());
+}
+
+TEST(ShapeInferenceTest, Multiply) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?,0,1]"}, {});
+
+  auto s = c.input(0);
+  auto d_6 = c.Dim(s, 0);
+  auto d_unknown = c.Dim(s, 1);
+  auto d_0 = c.Dim(s, 2);
+  auto d_1 = c.Dim(s, 3);
+
+  // Multiplying non-zero to unknown gives new unknown.
+  const Dimension* out;
+  EXPECT_TRUE(c.Multiply(d_unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+
+  // Multiplying 0 to anything gives 0.
+  EXPECT_TRUE(c.Multiply(d_unknown, static_cast<int64>(0), &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_unknown, d_0, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_0, d_unknown, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+
+  // Multiplying 1 to anything gives the original.
+  // (unknown -> unknown)
+  EXPECT_TRUE(c.Multiply(d_unknown, static_cast<int64>(1), &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_unknown, d_1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_1, d_unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  // (known -> known)
+  EXPECT_TRUE(c.Multiply(d_6, static_cast<int64>(1), &out).ok());
+  EXPECT_EQ("6", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_6, d_1, &out).ok());
+  EXPECT_EQ("6", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_1, d_6, &out).ok());
+  EXPECT_EQ("6", c.DebugString(out));
+
+  // Test multiplication.
+  EXPECT_TRUE(c.Multiply(d_6, 2, &out).ok());
+  EXPECT_EQ("12", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_6, 6, &out).ok());
+  EXPECT_EQ("36", c.DebugString(out));
+
+  // Test multiplication using dimension as second value.
+  EXPECT_TRUE(c.Multiply(d_6, c.MakeDim(2), &out).ok());
+  EXPECT_EQ("12", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_6, c.UnknownDim(), &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+
+  EXPECT_EQ("Negative dimension size from multiplying 6 and -7",
+            c.Multiply(d_6, -7, &out).error_message());
 }
 
 }  // namespace shape_inference

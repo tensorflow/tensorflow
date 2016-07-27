@@ -141,6 +141,7 @@ class DirectSession : public Session {
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
+    protobuf::RepeatedPtrField<DebugTensorWatch> debug_tensor_watches;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -256,7 +257,6 @@ class DirectSession : public Session {
 
   // EXPERIMENTAL: debugger (tfdb) related
   friend class DebugGateway;
-  std::unique_ptr<DebugNodeInserter> debug_node_inserter_;
 };
 
 }  // end namespace tensorflow

@@ -124,18 +124,18 @@ class InverseGammaTest(tf.test.TestCase):
       alpha_v = np.array([5.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(
-          alpha=alpha_v, beta=beta_v)  # strict_statistics=True is the default.
+          alpha=alpha_v, beta=beta_v)
       expected_means = stats.invgamma.mean(alpha_v, scale=beta_v)
       self.assertEqual(inv_gamma.mean().get_shape(), (3,))
       self.assertAllClose(inv_gamma.mean().eval(), expected_means)
 
-  def testInverseGammaMeanStrictStats(self):
+  def testInverseGammaMeanAllowNanStats(self):
     with self.test_session():
       # Mean will not be defined for the first entry.
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(
-          alpha=alpha_v, beta=beta_v)  # strict_statistics=True is the default.
+          alpha=alpha_v, beta=beta_v)
       with self.assertRaisesOpError('x < y'):
         inv_gamma.mean().eval()
 
@@ -146,7 +146,7 @@ class InverseGammaTest(tf.test.TestCase):
       beta_v = np.array([1.0, 2.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
                                                         beta=beta_v,
-                                                        strict_statistics=False)
+                                                        allow_nan_stats=True)
       expected_means = beta_v / (alpha_v - 1)
       expected_means[0] = np.nan
       expected_means[1] = np.nan
@@ -163,7 +163,7 @@ class InverseGammaTest(tf.test.TestCase):
       self.assertEqual(inv_gamma.variance().get_shape(), (3,))
       self.assertAllClose(inv_gamma.variance().eval(), expected_variances)
 
-  def testInverseGammaVarianceStrictStats(self):
+  def testInverseGammaVarianceAllowNanStats(self):
     with self.test_session():
       alpha_v = np.array([1.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
@@ -178,7 +178,7 @@ class InverseGammaTest(tf.test.TestCase):
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
                                                         beta=beta_v,
-                                                        strict_statistics=False)
+                                                        allow_nan_stats=True)
       expected_variances = stats.invgamma.var(alpha_v, scale=beta_v)
       expected_variances[0] = np.nan
       self.assertEqual(inv_gamma.variance().get_shape(), (3,))
@@ -202,7 +202,7 @@ class InverseGammaTest(tf.test.TestCase):
       beta = tf.constant(beta_v)
       n = 100000
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha, beta=beta)
-      samples = inv_gamma.sample(n, seed=137)
+      samples = inv_gamma.sample_n(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
@@ -221,7 +221,7 @@ class InverseGammaTest(tf.test.TestCase):
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
                                                         beta=beta_v)
       n = 10000
-      samples = inv_gamma.sample(n, seed=137)
+      samples = inv_gamma.sample_n(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n, 10, 100))
       self.assertEqual(sample_values.shape, (n, 10, 100))
@@ -256,7 +256,7 @@ class InverseGammaTest(tf.test.TestCase):
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=[7., 11.],
                                                         beta=[[5.], [6.]])
       num = 50000
-      samples = inv_gamma.sample(num, seed=137)
+      samples = inv_gamma.sample_n(num, seed=137)
       pdfs = inv_gamma.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))

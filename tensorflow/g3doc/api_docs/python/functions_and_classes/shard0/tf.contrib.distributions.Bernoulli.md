@@ -8,7 +8,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
@@ -23,11 +23,11 @@ Construct Bernoulli distributions.
       event. Each entry in the `Tensor` parameterizes an independent
       Bernoulli distribution.
 *  <b>`dtype`</b>: dtype for samples.
-*  <b>`strict`</b>: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
-    return nans.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `0 <= p <= 1`. If not validate_args,
+   `log_pmf` may return nans.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution.
 
@@ -35,6 +35,13 @@ Construct Bernoulli distributions.
 
 
 *  <b>`ValueError`</b>: If p and logits are passed, or if neither are passed.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.allow_nan_stats` {#Bernoulli.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -245,7 +252,31 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.sample(n, seed=None, name='sample')` {#Bernoulli.sample}
+#### `tf.contrib.distributions.Bernoulli.sample(sample_shape=(), seed=None, name='sample')` {#Bernoulli.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.sample_n(n, seed=None, name='sample_n')` {#Bernoulli.sample_n}
 
 Generate `n` samples.
 
@@ -282,16 +313,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.strict` {#Bernoulli.strict}
+#### `tf.contrib.distributions.Bernoulli.validate_args` {#Bernoulli.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Bernoulli.strict_statistics` {#Bernoulli.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

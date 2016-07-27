@@ -42,7 +42,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, strict=True, strict_statistics=True, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -55,11 +55,11 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 *  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
 *  <b>`sigma`</b>: `float` or `double` tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `sigma > 0`. If `strict` is False,
-    correct output is not guaranteed when input is invalid.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `sigma > 0`. If `validate_args` is
+    False, correct output is not guaranteed when input is invalid.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -67,6 +67,13 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.allow_nan_stats` {#Normal.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -298,7 +305,31 @@ The PDF of observations in `x` under these Normal distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sample(n, seed=None, name='sample')` {#Normal.sample}
+#### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample')` {#Normal.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.sample_n(n, seed=None, name='sample_n')` {#Normal.sample_n}
 
 Sample `n` observations from the Normal Distributions.
 
@@ -332,16 +363,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.strict` {#Normal.strict}
+#### `tf.contrib.distributions.Normal.validate_args` {#Normal.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.strict_statistics` {#Normal.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -

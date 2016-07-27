@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -89,21 +89,17 @@ def build_split_apply_merge_model():
   # flatten routing_loss to a row vector (from a column vector)
   routing_loss = tf.reshape(tf.square(outputs - targets), shape=[-1])
 
-  # returns
+  # Total loss: score function loss + routing loss.
+  # The score function loss (through `route_selection.loss(routing_loss)`)
+  # returns:
   #  [stop_gradient(routing_loss) *
-  #   route_selection.log_pmf(stop_gradients(route_selection.value()))],
+  #   route_selection.log_pmf(stop_gradient(route_selection.value()))],
   # where log_pmf has gradients going all the way back to weights and bias.
-
-  # REINFORCE loss
-  score_function_losses = sg.surrogate_losses([routing_loss])
-
-  # calculate the entire loss:
-  #   routing_loss, and the score function loss.
-  # in this case, the routing_loss depends on the variables only through
-  # "route_selection", which has a stop_gradients on it.  so the
+  # In this case, the routing_loss depends on the variables only through
+  # "route_selection", which has a stop_gradient on it.  So the
   # gradient of the loss really come through the score function
-  all_loss = score_function_losses + [routing_loss]
-  final_loss = tf.reduce_sum(tf.add_n(all_loss))
+  surrogate_loss = sg.surrogate_loss([routing_loss])
+  final_loss = tf.reduce_sum(surrogate_loss)
 
   return (route_selection, routing_loss, final_loss)
 

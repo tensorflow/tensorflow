@@ -11,11 +11,11 @@ See `rgb_to_hsv` for a description of the HSV encoding.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor` of type `float32`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     1-D or higher rank. HSV data to convert. Last dimension must be size 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`. `images` converted to RGB.
+  A `Tensor`. Has the same type as `images`. `images` converted to RGB.
 

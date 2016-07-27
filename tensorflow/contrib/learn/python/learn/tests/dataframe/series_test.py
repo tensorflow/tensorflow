@@ -53,7 +53,7 @@ class TransformedSeriesTest(tf.test.TestCase):
         mocks.MockOneOutputTransform("thb", "nth"), "out1")
 
     result = col.build()
-    expected = "Fake Tensor 1"
+    expected = mocks.MockTensor("Mock Tensor 1", tf.int32)
     self.assertEqual(expected, result)
 
   def test_build_multiple_output(self):
@@ -62,7 +62,7 @@ class TransformedSeriesTest(tf.test.TestCase):
         mocks.MockTwoOutputTransform("thb", "nth", "snt"), "out2")
 
     result = col.build()
-    expected = "Fake Tensor 2"
+    expected = mocks.MockTensor("Mock Tensor 2", tf.int32)
     self.assertEqual(expected, result)
 
 

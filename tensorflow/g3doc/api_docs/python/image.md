@@ -855,13 +855,13 @@ See `rgb_to_hsv` for a description of the HSV encoding.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor` of type `float32`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     1-D or higher rank. HSV data to convert. Last dimension must be size 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`. `images` converted to RGB.
+  A `Tensor`. Has the same type as `images`. `images` converted to RGB.
 
 
 - - -
@@ -881,13 +881,13 @@ corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor` of type `float32`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     1-D or higher rank. RGB data to convert. Last dimension must be size 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`. `images` converted to HSV.
+  A `Tensor`. Has the same type as `images`. `images` converted to HSV.
 
 
 
@@ -1220,7 +1220,7 @@ Draw bounding boxes on a batch of images.
 
 Outputs a copy of `images` but draws on top of the pixels zero or more bounding
 boxes specified by the locations in `boxes`. The coordinates of the each
-bounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The
+bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
 bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 

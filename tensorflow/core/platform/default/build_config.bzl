@@ -97,6 +97,12 @@ def tf_additional_lib_srcs():
       "platform/posix/*.cc",
   ]
 
+def tf_additional_proto_srcs():
+  return ["platform/default/integral_types.h",
+          "platform/default/logging.h",
+          "platform/default/logging.cc",
+          "platform/default/protobuf.h",]
+
 def tf_additional_stream_executor_srcs():
   return ["platform/default/stream_executor.h"]
 

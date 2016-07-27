@@ -249,7 +249,8 @@ class OpDefBuilderWrapper<true> {
     builder_.Doc(text);
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetShapeFn(const OpShapeInferenceFn& fn) {
+  OpDefBuilderWrapper<true>& SetShapeFn(
+      Status (*fn)(shape_inference::InferenceContext*)) {
     builder_.SetShapeFn(fn);
     return *this;
   }
@@ -273,7 +274,8 @@ class OpDefBuilderWrapper<false> {
   OpDefBuilderWrapper<false>& SetAllowsUninitializedInput() { return *this; }
   OpDefBuilderWrapper<false>& Deprecated(int, StringPiece) { return *this; }
   OpDefBuilderWrapper<false>& Doc(StringPiece text) { return *this; }
-  OpDefBuilderWrapper<false>& SetShapeFn(const OpShapeInferenceFn& fn) {
+  OpDefBuilderWrapper<false>& SetShapeFn(
+      Status (*fn)(shape_inference::InferenceContext*)) {
     return *this;
   }
 };

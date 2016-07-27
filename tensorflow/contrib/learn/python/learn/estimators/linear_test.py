@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 import numpy as np
 import tensorflow as tf
 
@@ -48,6 +50,54 @@ class LinearClassifierTest(tf.test.TestCase):
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
+  def testTrainSaveLoad(self):
+    """Tests that insures you can save and reload a trained model."""
+
+    def input_fn():
+      return {
+          'age': tf.constant([1]),
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
+    age = tf.contrib.layers.real_valued_column('age')
+
+    model_dir = tempfile.mkdtemp()
+    classifier = tf.contrib.learn.LinearClassifier(
+        model_dir=model_dir,
+        feature_columns=[age, language])
+    classifier.fit(input_fn=input_fn, steps=100)
+    out1 = classifier.predict(input_fn=input_fn)
+    del classifier
+
+    classifier2 = tf.contrib.learn.LinearClassifier(
+        model_dir=model_dir,
+        feature_columns=[age, language])
+    out2 = classifier2.predict(input_fn=input_fn)
+    self.assertEqual(out1, out2)
+
+  def testExport(self):
+    """Tests that export model for servo works."""
+
+    def input_fn():
+      return {
+          'age': tf.constant([1]),
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
+    age = tf.contrib.layers.real_valued_column('age')
+
+    export_dir = tempfile.mkdtemp()
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[age, language])
+    classifier.fit(input_fn=input_fn, steps=100)
+    tf.contrib.learn.utils.export.export_estimator(classifier, export_dir)
 
   def testDisableCenteredBias(self):
     """Tests that we can disable centered bias."""

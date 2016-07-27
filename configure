@@ -90,7 +90,7 @@ while true; do
   fromuser=""
   if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
     default_gcc_host_compiler_path=$(which gcc)
-    read -p "Please specify which gcc nvcc should use as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
+    read -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
     fromuser="1"
     if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
       GCC_HOST_COMPILER_PATH=$default_gcc_host_compiler_path

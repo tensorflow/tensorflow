@@ -760,6 +760,40 @@ class LatestCheckpointWithRelativePaths(tf.test.TestCase):
     finally:
       shutil.rmtree(tempdir)
 
+  def testNameCollision(self):
+    # Make sure we have a clean directory to work in.
+    with self.tempDir() as tempdir:
+      # Jump to that directory until this test is done.
+      with self.tempWorkingDir(tempdir):
+        # Save training snapshots to a relative path.
+        traindir = "train/"
+        os.mkdir(traindir)
+        # Collides with the default name of the checkpoint state file.
+        filepath = os.path.join(traindir, "checkpoint")
+
+        with self.test_session() as sess:
+          unused_a = tf.Variable(0.0)  # So that Saver saves something.
+          tf.initialize_all_variables().run()
+
+          # Should fail.
+          saver = tf.train.Saver(sharded=False)
+          with self.assertRaisesRegexp(ValueError, "collides with"):
+            saver.save(sess, filepath)
+
+          # Succeeds: the file will be named "checkpoint-<step>".
+          saver.save(sess, filepath, global_step=1)
+          self.assertIsNotNone(tf.train.latest_checkpoint(traindir))
+
+          # Succeeds: the file will be named "checkpoint-<i>-of-<n>".
+          saver = tf.train.Saver(sharded=True)
+          saver.save(sess, filepath)
+          self.assertIsNotNone(tf.train.latest_checkpoint(traindir))
+
+          # Succeeds: the file will be named "checkpoint-<step>-<i>-of-<n>".
+          saver = tf.train.Saver(sharded=True)
+          saver.save(sess, filepath, global_step=1)
+          self.assertIsNotNone(tf.train.latest_checkpoint(traindir))
+
   def testRelativePath(self):
     # Make sure we have a clean directory to work in.
     with self.tempDir() as tempdir:

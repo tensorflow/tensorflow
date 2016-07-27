@@ -120,6 +120,7 @@ def _compute_weighted_loss(losses, weight):
     ValueError: If the weight shape is not compatible with the losses shape or
       if the number of dimensions (rank) of either losses or weight is missing.
   """
+  input_dtype = losses.dtype
   losses = math_ops.to_float(losses)
   weight = math_ops.to_float(ops.convert_to_tensor(weight))
 
@@ -131,6 +132,8 @@ def _compute_weighted_loss(losses, weight):
   total_loss = _scale_losses(losses, weight)
   num_present = _num_present(losses, weight)
   mean_loss = _safe_mean(total_loss, num_present)
+  # convert the result back to the input type
+  mean_loss = math_ops.cast(mean_loss, input_dtype)
   add_loss(mean_loss)
   return mean_loss
 
@@ -356,7 +359,8 @@ def softmax_cross_entropy(logits, onehot_labels, weight=1.0,
     onehot_labels = math_ops.cast(onehot_labels, logits.dtype)
 
     if label_smoothing > 0:
-      num_classes = math_ops.to_float(array_ops.shape(onehot_labels)[1])
+      num_classes = math_ops.cast(
+          array_ops.shape(onehot_labels)[1], logits.dtype)
       smooth_positives = 1.0 - label_smoothing
       smooth_negatives = label_smoothing / num_classes
       onehot_labels = onehot_labels * smooth_positives + smooth_negatives
@@ -556,4 +560,3 @@ def cosine_distance(predictions, targets, dim, weight=1.0, scope=None):
     radial_diffs = math_ops.mul(predictions, targets)
     losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
     return _compute_weighted_loss(losses, weight)
-

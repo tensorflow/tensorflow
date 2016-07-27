@@ -40,7 +40,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
     self.ops = training_ops.Load()
     self.epochs = [0, 1, 1]
     self.current_epoch = [1]
-    self.data_spec = [constants.DATA_FLOAT] * 2
+    self.data_spec = [constants.DATA_FLOAT]
 
   def testSimple(self):
     with self.test_session():
@@ -55,6 +55,34 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(
           [[4., 1., 1., 1., 1.], [2., 1., 1., 0., 0.], [2., 0., 0., 1., 1.]],
+          pcw_node_sums.eval())
+      self.assertAllEqual([[0, 0, 0], [0, 0, 1]], pcw_splits_indices.eval())
+      self.assertAllEqual([1., 1.], pcw_splits_sums.eval())
+      self.assertAllEqual([[0, 2], [0, 0], [0, 1]], pcw_totals_indices.eval())
+      self.assertAllEqual([1., 2., 1.], pcw_totals_sums.eval())
+      self.assertAllEqual([1, 1, 2, 2], leaves.eval())
+
+  def testMissingLabel(self):
+    labels = [0, 1, -1, 3]
+    with self.test_session():
+      (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
+       pcw_totals_indices, pcw_totals_sums, _,
+       leaves) = (self.ops.count_extremely_random_stats(self.input_data, [], [],
+                                                        [],
+                                                        self.data_spec,
+                                                        labels,
+                                                        self.tree,
+                                                        self.tree_thresholds,
+                                                        self.node_map,
+                                                        self.split_features,
+                                                        self.split_thresholds,
+                                                        self.epochs,
+                                                        self.current_epoch,
+                                                        num_classes=5,
+                                                        regression=False))
+
+      self.assertAllEqual(
+          [[3., 1., 1., 0., 1.], [2., 1., 1., 0., 0.], [1., 0., 0., 0., 1.]],
           pcw_node_sums.eval())
       self.assertAllEqual([[0, 0, 0], [0, 0, 1]], pcw_splits_indices.eval())
       self.assertAllEqual([1., 1.], pcw_splits_sums.eval())

@@ -16,7 +16,7 @@ initialized with parameters that define the distributions.
 
 ### `class tf.contrib.distributions.Distribution` {#Distribution}
 
-Abstract base class for probability distributions.
+Fully-featured abstract base class for probability distributions.
 
 This class defines the API for probability distributions. Users will only ever
 instantiate subclasses of `Distribution`.
@@ -39,15 +39,16 @@ All distributions support batches of independent distributions of that type.
 The batch shape is determined by broadcasting together the parameters.
 
 The shape of arguments to `__init__`, `cdf`, `log_cdf`, `prob`, and
-`log_prob` reflect this broadcasting, as does the return value of `sample`.
+`log_prob` reflect this broadcasting, as does the return value of `sample` and
+`sample_n`.
 
-`sample_shape = (n,) + batch_shape + event_shape`, where `sample_shape` is the
-shape of the `Tensor` returned from `sample`, `n` is the number of samples,
-`batch_shape` defines how many independent distributions there are, and
-`event_shape` defines the shape of samples from each of those independent
-distributions. Samples are independent along the `batch_shape` dimensions,
-but not necessarily so along the `event_shape` dimensions (dependending on
-the particulars of the underlying distribution).
+`sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
+the shape of the `Tensor` returned from `sample_n`, `n` is the number of
+samples, `batch_shape` defines how many independent distributions there are,
+and `event_shape` defines the shape of samples from each of those independent
+distributions. Samples are independent along the `batch_shape` dimensions, but
+not necessarily so along the `event_shape` dimensions (dependending on the
+particulars of the underlying distribution).
 
 Using the `Uniform` distribution as an example:
 
@@ -69,7 +70,7 @@ event_shape_t = u.event_shape
 # Sampling returns a sample per distribution.  `samples` has shape
 # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
 # batch_shape=(2, 2), and event_shape=().
-samples = u.sample(5)
+samples = u.sample_n(5)
 
 # The broadcasting holds across methods. Here we use `cdf` as an example. The
 # same holds for `log_cdf` and the likelihood functions.
@@ -101,11 +102,11 @@ a = tf.exp(tf.matmul(logits, weights_a))
 b = tf.exp(tf.matmul(logits, weights_b))
 
 # Will raise exception if ANY batch member has a < 1 or b < 1.
-dist = distributions.beta(a, b, strict_statistics=True)  # default is True
+dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
 mode = dist.mode().eval()
 
 # Will return NaN for batch members with either a < 1 or b < 1.
-dist = distributions.beta(a, b, strict_statistics=False)
+dist = distributions.beta(a, b, allow_nan_stats=True)
 mode = dist.mode().eval()
 ```
 
@@ -114,9 +115,16 @@ In all cases, an exception is raised if *invalid* parameters are passed, e.g.
 ```python
 # Will raise an exception if any Op is run.
 negative_a = -1.0 * a  # beta distribution by definition has a > 0.
-dist = distributions.beta(negative_a, b, strict_statistics=False)
+dist = distributions.beta(negative_a, b, allow_nan_stats=True)
 dist.mean().eval()
 ```
+- - -
+
+#### `tf.contrib.distributions.Distribution.allow_nan_stats` {#Distribution.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
 - - -
 
 #### `tf.contrib.distributions.Distribution.batch_shape(name='batch_shape')` {#Distribution.batch_shape}
@@ -277,7 +285,31 @@ Probability density/mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.sample(n, seed=None, name='sample')` {#Distribution.sample}
+#### `tf.contrib.distributions.Distribution.sample(sample_shape=(), seed=None, name='sample')` {#Distribution.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.sample_n(n, seed=None, name='sample_n')` {#Distribution.sample_n}
 
 Generate `n` samples.
 
@@ -304,16 +336,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Distribution.strict` {#Distribution.strict}
+#### `tf.contrib.distributions.Distribution.validate_args` {#Distribution.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Distribution.strict_statistics` {#Distribution.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -341,7 +366,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, strict=True, strict_statistics=True, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
@@ -356,11 +381,11 @@ Construct Bernoulli distributions.
       event. Each entry in the `Tensor` parameterizes an independent
       Bernoulli distribution.
 *  <b>`dtype`</b>: dtype for samples.
-*  <b>`strict`</b>: Whether to assert that `0 <= p <= 1`. If not strict, `log_pmf` may
-    return nans.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `0 <= p <= 1`. If not validate_args,
+   `log_pmf` may return nans.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution.
 
@@ -368,6 +393,13 @@ Construct Bernoulli distributions.
 
 
 *  <b>`ValueError`</b>: If p and logits are passed, or if neither are passed.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.allow_nan_stats` {#Bernoulli.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -578,7 +610,31 @@ Probability mass function.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.sample(n, seed=None, name='sample')` {#Bernoulli.sample}
+#### `tf.contrib.distributions.Bernoulli.sample(sample_shape=(), seed=None, name='sample')` {#Bernoulli.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.sample_n(n, seed=None, name='sample_n')` {#Bernoulli.sample_n}
 
 Generate `n` samples.
 
@@ -615,16 +671,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.strict` {#Bernoulli.strict}
+#### `tf.contrib.distributions.Bernoulli.validate_args` {#Bernoulli.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Bernoulli.strict_statistics` {#Bernoulli.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -647,6 +696,402 @@ Variance of the distribution.
 
 - - -
 
+### `class tf.contrib.distributions.Beta` {#Beta}
+
+Beta distribution.
+
+This distribution is parameterized by `a` and `b` which are shape
+parameters.
+
+#### Mathematical details
+
+The Beta is a distribution over the interval (0, 1).
+The distribution has hyperparameters `a` and `b` and
+probability mass function (pdf):
+
+```pdf(x) = 1 / Beta(a, b) * x^(a - 1) * (1 - x)^(b - 1)```
+
+where `Beta(a, b) = Gamma(a) * Gamma(b) / Gamma(a + b)`
+is the beta function.
+
+
+This class provides methods to create indexed batches of Beta
+distributions. One entry of the broacasted
+shape represents of `a` and `b` represents one single Beta distribution.
+When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
+and `x` are broadcast to the same shape (if possible).
+Every entry in a/b/x corresponds to a single Beta distribution.
+
+#### Examples
+
+Creates 3 distributions.
+The distribution functions can be evaluated on x.
+
+```python
+a = [1, 2, 3]
+b = [1, 2, 3]
+dist = Beta(a, b)
+```
+
+```python
+# x same shape as a.
+x = [.2, .3, .7]
+dist.pdf(x)  # Shape [3]
+
+# a/b will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
+x = [[.1, .4, .5], [.2, .3, .5]]
+dist.pdf(x)  # Shape [2, 3]
+
+# a/b will be broadcast to shape [5, 7, 3] to match x.
+x = [[...]]  # Shape [5, 7, 3]
+dist.pdf(x)  # Shape [5, 7, 3]
+```
+
+Creates a 2-batch of 3-class distributions.
+
+```python
+a = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
+b = 5  # Shape []
+dist = Beta(a, b)
+
+# x will be broadcast to [[.2, .3, .9], [.2, .3, .9]] to match a/b.
+x = [.2, .3, .9]
+dist.pdf(x)  # Shape [2]
+```
+- - -
+
+#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=True, allow_nan_stats=False, name='Beta')` {#Beta.__init__}
+
+Initialize a batch of Beta distributions.
+
+##### Args:
+
+
+*  <b>`a`</b>: Positive `float` or `double` tensor with shape broadcastable to
+    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
+     different Beta distributions. This also defines the
+     dtype of the distribution.
+*  <b>`b`</b>: Positive `float` or `double` tensor with shape broadcastable to
+    `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
+     different Beta distributions.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `a` and `b`,
+    and `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If True, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+
+
+*  <b>`Examples`</b>: 
+
+```python
+# Define 1-batch.
+dist = Beta(1.1, 2.0)
+
+# Define a 2-batch.
+dist = Beta([1.0, 2.0], [4.0, 5.0])
+```
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.a` {#Beta.a}
+
+Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.allow_nan_stats` {#Beta.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.b` {#Beta.b}
+
+Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.batch_shape(name='batch_shape')` {#Beta.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.cdf(x, name='cdf')` {#Beta.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.dtype` {#Beta.dtype}
+
+dtype of samples from this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.entropy(name='entropy')` {#Beta.entropy}
+
+Entropy of the distribution in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.event_shape(name='event_shape')` {#Beta.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.get_batch_shape()` {#Beta.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  batch shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.get_event_shape()` {#Beta.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  event shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_continuous` {#Beta.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.is_reparameterized` {#Beta.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_cdf(x, name='log_cdf')` {#Beta.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_pdf(value, name='log_pdf')` {#Beta.log_pdf}
+
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_pmf(value, name='log_pmf')` {#Beta.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_prob(x, name='log_prob')` {#Beta.log_prob}
+
+`Log(P[counts])`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+    be broadcast with `self.a` and `self.b`.  For fixed leading
+    dimensions, the last dimension represents counts for the corresponding
+    Beta distribution in `self.a` and `self.b`. `x` is only legal if
+    0 < x < 1.
+*  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
+
+##### Returns:
+
+  Log probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.mean(name='mean')` {#Beta.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.mode(name='mode')` {#Beta.mode}
+
+Mode of the distribution.
+
+Note that the mode for the Beta distribution is only defined
+when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name for this op.
+
+##### Returns:
+
+  Mode of the Beta distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.name` {#Beta.name}
+
+Name to prepend to all ops.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.pdf(value, name='pdf')` {#Beta.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.pmf(value, name='pmf')` {#Beta.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.prob(x, name='prob')` {#Beta.prob}
+
+`P[x]`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+    be broadcast with `self.a` and `self.b`.  For fixed leading
+    dimensions, the last dimension represents x for the corresponding Beta
+    distribution in `self.a` and `self.b`. `x` is only legal if is
+    between 0 and 1.
+*  <b>`name`</b>: Name to give this Op, defaults to "pdf".
+
+##### Returns:
+
+  Probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.sample(sample_shape=(), seed=None, name='sample')` {#Beta.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.sample_n(n, seed=None, name='sample_n')` {#Beta.sample_n}
+
+Sample `n` observations from the Beta Distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by broadcasting the hyperparameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.std(name='std')` {#Beta.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.validate_args` {#Beta.validate_args}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.variance(name='variance')` {#Beta.variance}
+
+Variance of the distribution.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.Categorical` {#Categorical}
 
 Categorical distribution.
@@ -660,7 +1105,7 @@ Note, the following methods of the base class aren't implemented:
   * log_cdf
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, strict=True, strict_statistics=True, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -672,12 +1117,19 @@ Initialize Categorical distributions using class log-probabilities.
       index into a batch of independent distributions and the last dimension
       indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
-*  <b>`strict`</b>: Unused in this distribution.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Unused in this distribution.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.allow_nan_stats` {#Categorical.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -773,7 +1225,8 @@ Log-probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+*  <b>`k`</b>: `int32` or `int64` Tensor. Must be broadcastable with a `batch_shape`
+    `Tensor`.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -839,7 +1292,7 @@ Probability of class `k`.
 ##### Args:
 
 
-*  <b>`k`</b>: `int32` or `int64` Tensor with shape = `self.batch_shape()`.
+*  <b>`k`</b>: `int32` or `int64` Tensor. Must be broadcastable with logits.
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
@@ -849,7 +1302,31 @@ Probability of class `k`.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.sample(n, seed=None, name='sample')` {#Categorical.sample}
+#### `tf.contrib.distributions.Categorical.sample(sample_shape=(), seed=None, name='sample')` {#Categorical.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.sample_n(n, seed=None, name='sample_n')` {#Categorical.sample_n}
 
 Sample `n` observations from the Categorical distribution.
 
@@ -874,16 +1351,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Categorical.strict` {#Categorical.strict}
+#### `tf.contrib.distributions.Categorical.validate_args` {#Categorical.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Categorical.strict_statistics` {#Categorical.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -908,7 +1378,7 @@ Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, strict=True, strict_statistics=True, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, validate_args=True, allow_nan_stats=False, name='Chi2')` {#Chi2.__init__}
 
 Construct Chi2 distributions with parameter `df`.
 
@@ -917,14 +1387,21 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`. If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
+    methods `prob(x)` and `log_prob(x)`. If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.allow_nan_stats` {#Chi2.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1143,7 +1620,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -1202,7 +1679,31 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.sample(n, seed=None, name='sample')` {#Chi2.sample}
+#### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample')` {#Chi2.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n')` {#Chi2.sample_n}
 
 Draws `n` samples from the Gamma distribution(s).
 
@@ -1232,16 +1733,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.strict` {#Chi2.strict}
+#### `tf.contrib.distributions.Chi2.validate_args` {#Chi2.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.strict_statistics` {#Chi2.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1266,7 +1760,7 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, strict=True, strict_statistics=True, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=True, allow_nan_stats=False, name='Exponential')` {#Exponential.__init__}
 
 Construct Exponential distribution with parameter `lam`.
 
@@ -1275,14 +1769,21 @@ Construct Exponential distribution with parameter `lam`.
 
 *  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
     `lam` must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
+    methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.allow_nan_stats` {#Exponential.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1501,7 +2002,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -1560,7 +2061,31 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.sample(n, seed=None, name=None)` {#Exponential.sample}
+#### `tf.contrib.distributions.Exponential.sample(sample_shape=(), seed=None, name='sample')` {#Exponential.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.sample_n(n, seed=None, name='sample_n')` {#Exponential.sample_n}
 
 Sample `n` observations from the Exponential Distributions.
 
@@ -1587,16 +2112,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Exponential.strict` {#Exponential.strict}
+#### `tf.contrib.distributions.Exponential.validate_args` {#Exponential.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Exponential.strict_statistics` {#Exponential.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1633,7 +2151,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, strict=True, strict_statistics=True, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -1649,12 +2167,12 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
@@ -1662,6 +2180,13 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.allow_nan_stats` {#Gamma.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -1873,7 +2398,7 @@ Mean of each batch member.
 Mode of each batch member.
 
 The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.strict_statistics` is `True`, an exception
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
 will be raised rather than returning `NaN`.
 
 ##### Args:
@@ -1932,7 +2457,31 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.sample(n, seed=None, name='sample')` {#Gamma.sample}
+#### `tf.contrib.distributions.Gamma.sample(sample_shape=(), seed=None, name='sample')` {#Gamma.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.sample_n(n, seed=None, name='sample_n')` {#Gamma.sample_n}
 
 Draws `n` samples from the Gamma distribution(s).
 
@@ -1962,16 +2511,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.strict` {#Gamma.strict}
+#### `tf.contrib.distributions.Gamma.validate_args` {#Gamma.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Gamma.strict_statistics` {#Gamma.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2008,7 +2550,7 @@ dist2 = InverseGamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, strict=True, strict_statistics=True, name='InverseGamma')` {#InverseGamma.__init__}
+#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='InverseGamma')` {#InverseGamma.__init__}
 
 Construct InverseGamma distributions with parameters `alpha` and `beta`.
 
@@ -2023,12 +2565,12 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
     alpha must contain only positive values.
 *  <b>`beta`</b>: `float` or `double` tensor, the scale params of the distribution(s).
     beta must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `strict` is False
+*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
@@ -2036,6 +2578,13 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.allow_nan_stats` {#InverseGamma.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2240,8 +2789,8 @@ Log prob of observations in `x` under these InverseGamma distribution(s).
 Mean of each batch member.
 
 The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-when `alpha > 1`, and `NaN` otherwise.  If `self.strict_statistics` is
-`True`, an exception will be raised rather than returning `NaN`
+when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
+`False`, an exception will be raised rather than returning `NaN`
 
 ##### Args:
 
@@ -2317,7 +2866,31 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.sample(n, seed=None, name='sample')` {#InverseGamma.sample}
+#### `tf.contrib.distributions.InverseGamma.sample(sample_shape=(), seed=None, name='sample')` {#InverseGamma.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.sample_n(n, seed=None, name='sample_n')` {#InverseGamma.sample_n}
 
 Draws `n` samples from these InverseGamma distribution(s).
 
@@ -2347,16 +2920,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.strict` {#InverseGamma.strict}
+#### `tf.contrib.distributions.InverseGamma.validate_args` {#InverseGamma.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.InverseGamma.strict_statistics` {#InverseGamma.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2366,7 +2932,7 @@ Boolean describing behavior when a stat is undefined for batch member.
 Variance of each batch member.
 
 Variance for inverse gamma is defined only for `alpha > 2`. If
-`self.strict_statistics` is `True`, an exception will be raised rather
+`self.allow_nan_stats` is `False`, an exception will be raised rather
 than returning `NaN`.
 
 ##### Args:
@@ -2396,7 +2962,7 @@ Note that the Laplace distribution can be thought of two exponential
 distributions spliced together "back-to-back."
 - - -
 
-#### `tf.contrib.distributions.Laplace.__init__(loc, scale, strict=True, strict_statistics=True, name='Laplace')` {#Laplace.__init__}
+#### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=True, allow_nan_stats=False, name='Laplace')` {#Laplace.__init__}
 
 Construct Laplace distribution with parameters `loc` and `scale`.
 
@@ -2410,11 +2976,12 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: `float` or `double`, positive-valued tensor which characterzes the
     spread of the distribution.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -2422,6 +2989,13 @@ broadcasting (e.g., `loc / scale` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if `loc` and `scale` are of different dtype.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.allow_nan_stats` {#Laplace.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2660,7 +3234,31 @@ The prob of observations in `x` under the Laplace distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.sample(n, seed=None, name='sample')` {#Laplace.sample}
+#### `tf.contrib.distributions.Laplace.sample(sample_shape=(), seed=None, name='sample')` {#Laplace.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.sample_n(n, seed=None, name='sample_n')` {#Laplace.sample_n}
 
 Sample `n` observations from the Laplace Distributions.
 
@@ -2694,16 +3292,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Laplace.strict` {#Laplace.strict}
+#### `tf.contrib.distributions.Laplace.validate_args` {#Laplace.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Laplace.strict_statistics` {#Laplace.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -2762,7 +3353,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, strict=True, strict_statistics=True, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -2775,11 +3366,11 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 *  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
 *  <b>`sigma`</b>: `float` or `double` tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
-*  <b>`strict`</b>: Whether to assert that `sigma > 0`. If `strict` is False,
-    correct output is not guaranteed when input is invalid.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `sigma > 0`. If `validate_args` is
+    False, correct output is not guaranteed when input is invalid.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -2787,6 +3378,13 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.allow_nan_stats` {#Normal.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3018,7 +3616,31 @@ The PDF of observations in `x` under these Normal distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Normal.sample(n, seed=None, name='sample')` {#Normal.sample}
+#### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample')` {#Normal.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.sample_n(n, seed=None, name='sample_n')` {#Normal.sample_n}
 
 Sample `n` observations from the Normal Distributions.
 
@@ -3052,16 +3674,9 @@ Standard deviation of this distribution.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.strict` {#Normal.strict}
+#### `tf.contrib.distributions.Normal.validate_args` {#Normal.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.strict_statistics` {#Normal.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3123,7 +3738,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, strict=True, strict_statistics=True, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=True, allow_nan_stats=False, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -3141,11 +3756,12 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
-*  <b>`strict`</b>: Whether to assert that `df > 0, sigma > 0`. If `strict` is False
-    and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
+    `validate_args` is False and inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -3153,6 +3769,13 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 
 
 *  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.allow_nan_stats` {#StudentT.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3281,7 +3904,7 @@ Log prob of observations in `x` under these Student's t-distribution(s).
 Mean of the distribution.
 
 The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
-`self.strict_statistics=True`, then an exception will be raised rather than
+`self.allow_nan_stats=False`, then an exception will be raised rather than
 returning `NaN`.
 
 ##### Args:
@@ -3350,7 +3973,31 @@ The PDF of observations in `x` under these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.sample(n, seed=None, name='sample')` {#StudentT.sample}
+#### `tf.contrib.distributions.StudentT.sample(sample_shape=(), seed=None, name='sample')` {#StudentT.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.sample_n(n, seed=None, name='sample_n')` {#StudentT.sample_n}
 
 Sample `n` observations from the Student t Distributions.
 
@@ -3384,16 +4031,9 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.strict` {#StudentT.strict}
+#### `tf.contrib.distributions.StudentT.validate_args` {#StudentT.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.strict_statistics` {#StudentT.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3411,7 +4051,7 @@ NaN, when df <= 1
 ```
 
 The NaN state occurs because mean is undefined for `df <= 1`, and if
-`self.strict_statistics` is `True`, an exception will be raised if any batch
+`self.allow_nan_stats` is `False`, an exception will be raised if any batch
 members fall into this state.
 
 ##### Args:
@@ -3434,7 +4074,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, strict=True, strict_statistics=True, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=True, allow_nan_stats=False, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -3464,18 +4104,18 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
 *  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-*  <b>`strict`</b>: Whether to assert that `a > b`. If `strict` is False and inputs
-    are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is False
+    and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `strict=True`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=True`.
 
 
 - - -
@@ -3483,6 +4123,13 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 #### `tf.contrib.distributions.Uniform.a` {#Uniform.a}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.allow_nan_stats` {#Uniform.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3668,7 +4315,31 @@ The PDF of observations in `x` under these Uniform distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.sample(n, seed=None, name='sample')` {#Uniform.sample}
+#### `tf.contrib.distributions.Uniform.sample(sample_shape=(), seed=None, name='sample')` {#Uniform.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.sample_n(n, seed=None, name='sample_n')` {#Uniform.sample_n}
 
 Sample `n` observations from the Uniform Distributions.
 
@@ -3695,16 +4366,9 @@ Sample `n` observations from the Uniform Distributions.
 
 - - -
 
-#### `tf.contrib.distributions.Uniform.strict` {#Uniform.strict}
+#### `tf.contrib.distributions.Uniform.validate_args` {#Uniform.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.Uniform.strict_statistics` {#Uniform.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3719,6 +4383,371 @@ Boolean describing behavior when a stat is undefined for batch member.
 ### Multivariate distributions
 
 #### Multivariate normal
+
+- - -
+
+### `class tf.contrib.distributions.MultivariateNormalDiag` {#MultivariateNormalDiag}
+
+The multivariate normal distribution on `R^k`.
+
+This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
+`diag_stdev`, representing the standard deviations.  This distribution
+assumes the random variables, `(X_1,...,X_k)` are independent, thus no
+non-diagonal terms of the covariance matrix are needed.
+
+This allows for `O(k)` pdf evaluation, sampling, and storage.
+
+#### Mathematical details
+
+The PDF of this distribution is defined in terms of the diagonal covariance
+determined by `diag_stdev`: `C_{ii} = diag_stdev[i]**2`.
+
+```
+f(x) = (2*pi)^(-k/2) |det(C)|^(-1/2) exp(-1/2 * (x - mu)^T C^{-1} (x - mu))
+```
+
+#### Examples
+
+A single multi-variate Gaussian distribution is defined by a vector of means
+of length `k`, and the square roots of the (independent) random variables.
+
+Extra leading dimensions, if provided, allow for batches.
+
+```python
+# Initialize a single 3-variate Gaussian with diagonal standard deviation.
+mu = [1, 2, 3.]
+diag_stdev = [4, 5, 6.]
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+
+# Evaluate this on an observation in R^3, returning a scalar.
+dist.pdf([-1, 0, 1])
+
+# Initialize a batch of two 3-variate Gaussians.
+mu = [[1, 2, 3], [11, 22, 33]]  # shape 2 x 3
+diag_stdev = ...  # shape 2 x 3, positive.
+dist = tf.contrib.distributions.MultivariateNormalDiag(mu, diag_stdev)
+
+# Evaluate this on a two observations, each in R^3, returning a length two
+# tensor.
+x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
+dist.pdf(x)
+```
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stdev, validate_args=True, allow_nan_stats=False, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
+
+Multivariate Normal distributions on `R^k`.
+
+User must provide means `mu` and standard deviations `diag_stdev`.
+Each batch member represents a random vector `(X_1,...,X_k)` of independent
+random normals.
+The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
+
+##### Args:
+
+
+*  <b>`mu`</b>: Rank `N + 1` `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+    `b >= 0`.
+*  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
+    representing the standard deviations.
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`,
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If True, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to give Ops created by the initializer.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `mu` and `diag_stdev` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.allow_nan_stats` {#MultivariateNormalDiag.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.batch_shape(name='batch_shape')` {#MultivariateNormalDiag.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.cdf(value, name='cdf')` {#MultivariateNormalDiag.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.dtype` {#MultivariateNormalDiag.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.entropy(name='entropy')` {#MultivariateNormalDiag.entropy}
+
+The entropies of these Multivariate Normals.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`entropy`</b>: tensor of dtype `dtype`, the entropies.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.event_shape(name='event_shape')` {#MultivariateNormalDiag.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.get_batch_shape()` {#MultivariateNormalDiag.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.get_event_shape()` {#MultivariateNormalDiag.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_continuous` {#MultivariateNormalDiag.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.is_reparameterized` {#MultivariateNormalDiag.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_cdf(value, name='log_cdf')` {#MultivariateNormalDiag.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_pdf(value, name='log_pdf')` {#MultivariateNormalDiag.log_pdf}
+
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_pmf(value, name='log_pmf')` {#MultivariateNormalDiag.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_prob(x, name='log_prob')` {#MultivariateNormalDiag.log_prob}
+
+Log prob of observations `x` given these Multivariate Normals.
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalDiag.log_sigma_det}
+
+Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.mean(name='mean')` {#MultivariateNormalDiag.mean}
+
+Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.mode(name='mode')` {#MultivariateNormalDiag.mode}
+
+Mode of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.mu` {#MultivariateNormalDiag.mu}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.name` {#MultivariateNormalDiag.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.pdf(value, name='pdf')` {#MultivariateNormalDiag.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.pmf(value, name='pmf')` {#MultivariateNormalDiag.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.prob(x, name='prob')` {#MultivariateNormalDiag.prob}
+
+The PDF of observations `x` under these Multivariate Normals.
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+````
+self.batch_shape + self.event_shape
+OR
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: Compatible batch vector with same `dtype` as this distribution.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalDiag.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.sample_n(n, seed=None, name='sample_n')` {#MultivariateNormalDiag.sample_n}
+
+Sample `n` observations from the Multivariate Normal Distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by broadcasting the hyperparameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.sigma` {#MultivariateNormalDiag.sigma}
+
+Dense (batch) covariance matrix, if available.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.sigma_det(name='sigma_det')` {#MultivariateNormalDiag.sigma_det}
+
+Determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.std(name='std')` {#MultivariateNormalDiag.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.validate_args` {#MultivariateNormalDiag.validate_args}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.variance(name='variance')` {#MultivariateNormalDiag.variance}
+
+Variance of each batch member.
+
+
 
 - - -
 
@@ -3767,7 +4796,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, strict=True, strict_statistics=True, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
+#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -3780,11 +4809,12 @@ User must provide means `mu` and `sigma`, the mean and covariance.
     `b >= 0`.
 *  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -3792,6 +4822,13 @@ User must provide means `mu` and `sigma`, the mean and covariance.
 
 
 *  <b>`TypeError`</b>: If `mu` and `sigma` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.allow_nan_stats` {#MultivariateNormalFull.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -3993,7 +5030,31 @@ OR
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.sample(n, seed=None, name='sample')` {#MultivariateNormalFull.sample}
+#### `tf.contrib.distributions.MultivariateNormalFull.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalFull.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.sample_n(n, seed=None, name='sample_n')` {#MultivariateNormalFull.sample_n}
 
 Sample `n` observations from the Multivariate Normal Distributions.
 
@@ -4034,16 +5095,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.strict` {#MultivariateNormalFull.strict}
+#### `tf.contrib.distributions.MultivariateNormalFull.validate_args` {#MultivariateNormalFull.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalFull.strict_statistics` {#MultivariateNormalFull.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4083,6 +5137,7 @@ Extra leading dimensions, if provided, allow for batches.
 
 ```python
 # Initialize a single 3-variate Gaussian with diagonal covariance.
+# Note, this would be more efficient with MultivariateNormalDiag.
 mu = [1, 2, 3.]
 chol = [[1, 0, 0], [0, 3, 0], [0, 0, 2]]
 dist = tf.contrib.distributions.MultivariateNormalCholesky(mu, chol)
@@ -4105,7 +5160,7 @@ Trainable (batch) Choesky matrices can be created with
 `tf.contrib.distributions.batch_matrix_diag_transform()`
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, strict=True, strict_statistics=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=True, allow_nan_stats=False, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -4119,11 +5174,12 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
     `b >= 0`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.
-*  <b>`strict`</b>: Whether to validate input with asserts.  If `strict` is `False`,
+*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
+    is `False`,
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
@@ -4131,6 +5187,13 @@ factors `S`, such that the covariance of each batch member is `S S^*`.
 
 
 *  <b>`TypeError`</b>: If `mu` and `chol` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.allow_nan_stats` {#MultivariateNormalCholesky.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4332,7 +5395,31 @@ OR
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.sample(n, seed=None, name='sample')` {#MultivariateNormalCholesky.sample}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sample(sample_shape=(), seed=None, name='sample')` {#MultivariateNormalCholesky.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.sample_n(n, seed=None, name='sample_n')` {#MultivariateNormalCholesky.sample_n}
 
 Sample `n` observations from the Multivariate Normal Distributions.
 
@@ -4373,16 +5460,9 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.strict` {#MultivariateNormalCholesky.strict}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.validate_args` {#MultivariateNormalCholesky.validate_args}
 
 Boolean describing behavior on invalid input.
-
-
-- - -
-
-#### `tf.contrib.distributions.MultivariateNormalCholesky.strict_statistics` {#MultivariateNormalCholesky.strict_statistics}
-
-Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4451,6 +5531,391 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
 
 
 #### Other multivariate distributions
+
+- - -
+
+### `class tf.contrib.distributions.Dirichlet` {#Dirichlet}
+
+Dirichlet distribution.
+
+This distribution is parameterized by a vector `alpha` of concentration
+parameters for `k` classes.
+
+#### Mathematical details
+
+The Dirichlet is a distribution over the standard n-simplex, where the
+standard n-simplex is defined by:
+```{ (x_1, ..., x_n) in R^(n+1) | sum_j x_j = 1 and x_j >= 0 for all j }```.
+The distribution has hyperparameters `alpha = (alpha_1,...,alpha_k)`,
+and probability mass function (prob):
+
+```prob(x) = 1 / Beta(alpha) * prod_j x_j^(alpha_j - 1)```
+
+where `Beta(x) = prod_j Gamma(x_j) / Gamma(sum_j x_j)` is the multivariate
+beta function.
+
+
+This class provides methods to create indexed batches of Dirichlet
+distributions.  If the provided `alpha` is rank 2 or higher, for
+every fixed set of leading dimensions, the last dimension represents one
+single Dirichlet distribution.  When calling distribution
+functions (e.g. `dist.prob(x)`), `alpha` and `x` are broadcast to the
+same shape (if possible).  In all cases, the last dimension of alpha/x
+represents single Dirichlet distributions.
+
+#### Examples
+
+```python
+alpha = [1, 2, 3]
+dist = Dirichlet(alpha)
+```
+
+Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+The distribution functions can be evaluated on x.
+
+```python
+# x same shape as alpha.
+x = [.2, .3, .5]
+dist.prob(x)  # Shape []
+
+# alpha will be broadcast to [[1, 2, 3], [1, 2, 3]] to match x.
+x = [[.1, .4, .5], [.2, .3, .5]]
+dist.prob(x)  # Shape [2]
+
+# alpha will be broadcast to shape [5, 7, 3] to match x.
+x = [[...]]  # Shape [5, 7, 3]
+dist.prob(x)  # Shape [5, 7]
+```
+
+Creates a 2-batch of 3-class distributions.
+
+```python
+alpha = [[1, 2, 3], [4, 5, 6]]  # Shape [2, 3]
+dist = Dirichlet(alpha)
+
+# x will be broadcast to [[2, 1, 0], [2, 1, 0]] to match alpha.
+x = [.2, .3, .5]
+dist.prob(x)  # Shape [2]
+```
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.__init__(alpha, validate_args=True, allow_nan_stats=False, name='Dirichlet')` {#Dirichlet.__init__}
+
+Initialize a batch of Dirichlet distributions.
+
+##### Args:
+
+
+*  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
+    `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
+     different `k` class Dirichlet distributions.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
+    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
+    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+    If True, batch members with valid parameters leading to undefined
+    statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+
+
+*  <b>`Examples`</b>: 
+
+```python
+# Define 1-batch of 2-class Dirichlet distributions,
+# also known as a Beta distribution.
+dist = Dirichlet([1.1, 2.0])
+
+# Define a 2-batch of 3-class distributions.
+dist = Dirichlet([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+```
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.allow_nan_stats` {#Dirichlet.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.alpha` {#Dirichlet.alpha}
+
+Shape parameter.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.batch_shape(name='batch_shape')` {#Dirichlet.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.cdf(x, name='cdf')` {#Dirichlet.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.dtype` {#Dirichlet.dtype}
+
+dtype of samples from this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.entropy(name='entropy')` {#Dirichlet.entropy}
+
+Entropy of the distribution in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.event_shape(name='event_shape')` {#Dirichlet.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.get_batch_shape()` {#Dirichlet.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  batch shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.get_event_shape()` {#Dirichlet.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  event shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_continuous` {#Dirichlet.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.is_reparameterized` {#Dirichlet.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_cdf(x, name='log_cdf')` {#Dirichlet.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_pdf(value, name='log_pdf')` {#Dirichlet.log_pdf}
+
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_pmf(value, name='log_pmf')` {#Dirichlet.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_prob(x, name='log_prob')` {#Dirichlet.log_prob}
+
+`Log(P[counts])`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+    be broadcast with `self.alpha`.  For fixed leading dimensions, the last
+    dimension represents counts for the corresponding Dirichlet distribution
+    in `self.alpha`. `x` is only legal if it sums up to one.
+*  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
+
+##### Returns:
+
+  Log probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.mean(name='mean')` {#Dirichlet.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.mode(name='mode')` {#Dirichlet.mode}
+
+Mode of the distribution.
+
+Note that the mode for the Beta distribution is only defined
+when `alpha > 1`. This returns the mode when `alpha > 1`,
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name for this op.
+
+##### Returns:
+
+  Mode of the Dirichlet distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.name` {#Dirichlet.name}
+
+Name to prepend to all ops.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.pdf(value, name='pdf')` {#Dirichlet.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.pmf(value, name='pmf')` {#Dirichlet.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.prob(x, name='prob')` {#Dirichlet.prob}
+
+`P[x]`, computed for every batch member.
+
+##### Args:
+
+
+*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+    be broadcast with `self.alpha`.  For fixed leading dimensions, the last
+    dimension represents x for the corresponding Dirichlet distribution in
+    `self.alpha` and `self.beta`. `x` is only legal if it sums up to one.
+*  <b>`name`</b>: Name to give this Op, defaults to "prob".
+
+##### Returns:
+
+  Probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.sample(sample_shape=(), seed=None, name='sample')` {#Dirichlet.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.sample_n(n, seed=None, name='sample_n')` {#Dirichlet.sample_n}
+
+Sample `n` observations from the distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`seed`</b>: Python integer, the random seed.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
+    of the distributions determined by broadcasting the hyperparameters.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.std(name='std')` {#Dirichlet.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.validate_args` {#Dirichlet.validate_args}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.variance(name='variance')` {#Dirichlet.variance}
+
+Variance of the distribution.
+
+
 
 - - -
 
@@ -4525,7 +5990,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, strict=True, strict_statistics=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, allow_arbitrary_counts=False, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -4542,14 +6007,14 @@ Initialize a batch of DirichletMultinomial distributions.
 *  <b>`allow_arbitrary_counts`</b>: Boolean. This represents whether the pmf/cdf
     allows for the `counts` tensor to be non-integral values.
     The pmf/cdf are functions that can be evaluated at non-integral values,
-    but are only a distribution over non-negative integers.  If `strict` is
-    `False`, this assertion is turned off.
-*  <b>`strict`</b>: Whether to assert valid values for parameters `alpha` and `n`, and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
-    guaranteed.
-*  <b>`strict_statistics`</b>: Boolean, default True.  If True, raise an exception if
+    but are only a distribution over non-negative integers.  If
+    `validate_args` is `False`, this assertion is turned off.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
+    `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
+    not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
     a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If False, batch members with valid parameters leading to undefined
+    If True, batch members with valid parameters leading to undefined
     statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
@@ -4564,6 +6029,13 @@ dist = DirichletMultinomial(2.0, [1.1, 2.0])
 # Define a 2-batch of 3-class distributions.
 dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 ```
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.allow_nan_stats` {#DirichletMultinomial.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -4790,7 +6262,31 @@ probability includes a combinatorial coefficient.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.sample(n, seed=None, name='sample')` {#DirichletMultinomial.sample}
+#### `tf.contrib.distributions.DirichletMultinomial.sample(sample_shape=(), seed=None, name='sample')` {#DirichletMultinomial.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.sample_n(n, seed=None, name='sample_n')` {#DirichletMultinomial.sample_n}
 
 Generate `n` samples.
 
@@ -4817,23 +6313,41 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.strict` {#DirichletMultinomial.strict}
+#### `tf.contrib.distributions.DirichletMultinomial.validate_args` {#DirichletMultinomial.validate_args}
 
 Boolean describing behavior on invalid input.
 
 
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.strict_statistics` {#DirichletMultinomial.strict_statistics}
+#### `tf.contrib.distributions.DirichletMultinomial.variance(name='mean')` {#DirichletMultinomial.variance}
 
-Boolean describing behavior when a stat is undefined for batch member.
+Class variances for every batch member.
+
+The variance for each batch member is defined as the following:
+
+```
+Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+  (n + alpha_0) / (1 + alpha_0)
+```
+
+where `alpha_0 = sum_j alpha_j`.
+
+The covariance between elements in a batch is defined as:
+
+```
+Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+  (n + alpha_0) / (1 + alpha_0)
+```
+
+##### Args:
 
 
-- - -
+*  <b>`name`</b>: The name for this op.
 
-#### `tf.contrib.distributions.DirichletMultinomial.variance(name='variance')` {#DirichletMultinomial.variance}
+##### Returns:
 
-Variance of the distribution.
+  A `Tensor` representing the variances for each batch member.
 
 
 
@@ -4904,6 +6418,13 @@ Construct a Transformed Distribution.
 
 *  <b>`TypeError`</b>: if `base_dist_cls` is not a subclass of
       `Distribution`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.allow_nan_stats` {#TransformedDistribution.allow_nan_stats}
+
+
 
 
 - - -
@@ -5127,7 +6648,31 @@ The prob of observations in `y`.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.sample(n, seed=None, name='sample')` {#TransformedDistribution.sample}
+#### `tf.contrib.distributions.TransformedDistribution.sample(sample_shape=(), seed=None, name='sample')` {#TransformedDistribution.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n')` {#TransformedDistribution.sample_n}
 
 Sample `n` observations.
 
@@ -5155,23 +6700,16 @@ Standard deviation of the distribution.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.strict` {#TransformedDistribution.strict}
-
-
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.strict_statistics` {#TransformedDistribution.strict_statistics}
-
-
-
-
-- - -
-
 #### `tf.contrib.distributions.TransformedDistribution.transform` {#TransformedDistribution.transform}
 
 Function transforming x => y.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.validate_args` {#TransformedDistribution.validate_args}
+
+
 
 
 - - -
@@ -5358,6 +6896,81 @@ Initialize the KL registrar.
 
 *  <b>`TypeError`</b>: if dist_cls_a or dist_cls_b are not subclasses of
     Distribution.
+
+
+
+
+## Other Functions and Classes
+- - -
+
+### `class tf.contrib.distributions.BaseDistribution` {#BaseDistribution}
+
+Simple abstract base class for probability distributions.
+
+Implementations of core distributions to be included in the `distributions`
+module should subclass `Distribution`. This base class may be useful to users
+that want to fulfill a simpler distribution contract.
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.log_prob(value, name='log_prob')` {#BaseDistribution.log_prob}
+
+Log of the probability density/mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.name` {#BaseDistribution.name}
+
+Name to prepend to all ops.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.prob(value, name='prob')` {#BaseDistribution.prob}
+
+Probability density/mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.sample(sample_shape=(), seed=None, name='sample')` {#BaseDistribution.sample}
+
+Generate samples of the specified shape.
+
+Note that a call to `sample()` without arguments will generate a single
+sample.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: int32 `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.BaseDistribution.sample_n(n, seed=None, name='sample_n')` {#BaseDistribution.sample_n}
+
+Generate `n` samples.
+
+##### Args:
+
+
+*  <b>`n`</b>: scalar. Number of samples to draw.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
 
 
 

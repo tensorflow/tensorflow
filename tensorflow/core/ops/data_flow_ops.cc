@@ -14,8 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 // --------------------------------------------------------------------------
 
@@ -837,6 +843,13 @@ REGISTER_OP("LookupTableFind")
     .Output("values: Tout")
     .Attr("Tin: type")
     .Attr("Tout: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Looks up keys in a table, outputs the corresponding values.
 
@@ -858,6 +871,12 @@ REGISTER_OP("LookupTableInsert")
     .Input("values: Tout")
     .Attr("Tin: type")
     .Attr("Tout: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->input(2), &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Updates the table to associates keys with values.
 
@@ -872,6 +891,12 @@ values: Same shape as `keys`.  Values to associate with keys.
 REGISTER_OP("LookupTableSize")
     .Input("table_handle: Ref(string)")
     .Output("size: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the number of elements in the given table.
 
@@ -885,6 +910,17 @@ REGISTER_OP("LookupTableExport")
     .Output("values: Tvalues")
     .Attr("Tkeys: type")
     .Attr("Tvalues: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+
+      const Shape* values = c->UnknownShape();
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(values, 1, &values));
+      const Shape* keys = c->Vector(c->Dim(values, 0));
+      c->set_output(0, keys);
+      c->set_output(1, values);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Outputs all keys and values in the table.
 
@@ -969,6 +1005,14 @@ REGISTER_OP("InitializeTable")
     .Input("values: Tval")
     .Attr("Tkey: type")
     .Attr("Tval: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      const Shape* keys;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &keys));
+      TF_RETURN_IF_ERROR(c->Merge(keys, c->input(2), &keys));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Table initializer that takes two tensors for keys and values respectively.
 
@@ -984,6 +1028,12 @@ REGISTER_OP("InitializeTableFromTextFile")
     .Attr("value_index: int >= -2")
     .Attr("vocab_size: int >= -1 = -1")
     .Attr("delimiter: string = '\t'")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Initializes a table from a text file.
 

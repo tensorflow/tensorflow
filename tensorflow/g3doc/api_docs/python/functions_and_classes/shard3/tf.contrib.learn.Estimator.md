@@ -20,16 +20,21 @@ Constructs an Estimator instance.
 
       * `features` are single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
-      * `targets` are `Tensor` or
-             `dict` of `Tensor`s (for multi-head model).
+      * `targets` are `Tensor` or `dict` of `Tensor`s (for multi-head
+             models). If mode is `ModeKeys.INFER`, `targets=None` will be
+             passed. If the `model_fn`'s signature does not accept
+             `mode`, the `model_fn` must still be able to handle
+             `targets=None`.
       * `mode` represents if this training, evaluation or
-             prediction. See `ModeKeys` for example keys.
+             prediction. See `ModeKeys`.
       * `params` is a `dict` of hyperparameters. Will receive what
              is passed to Estimator in `params` parameter. This allows
              to configure Estimators from hyper parameter tunning.
 
 
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
+    be used to load checkpoints from the directory into a estimator to continue
+    training a previously saved model.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
@@ -245,7 +250,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#Estimator.predict}
+#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#Estimator.predict}
 
 Returns predictions for given features.
 
@@ -260,10 +265,17 @@ Returns predictions for given features.
     'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
     If `None`, returns all.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
 
 ##### Raises:
 

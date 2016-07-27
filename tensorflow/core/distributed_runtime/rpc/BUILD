@@ -28,6 +28,7 @@ filegroup(
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cuda_library",
+    "tf_cc_test",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
@@ -96,6 +97,21 @@ cc_library(
 )
 
 cc_library(
+    name = "grpc_tensor_coding",
+    srcs = ["grpc_tensor_coding.cc"],
+    hdrs = ["grpc_tensor_coding.h"],
+    deps = [
+        ":grpc_util",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:worker_proto_cc",
+        "@grpc//:grpc++_unsecure",
+    ],
+)
+
+cc_library(
     name = "grpc_call",
     srcs = [],
     hdrs = ["grpc_call.h"],
@@ -135,6 +151,7 @@ cc_library(
     deps = [
         ":async_service_interface",
         ":grpc_call",
+        ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
         "//tensorflow/core:core_cpu_internal",
@@ -378,6 +395,25 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime:server_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "grpc_tensor_coding_test",
+    size = "small",
+    deps = [
+        ":grpc_tensor_coding",
+        ":grpc_testlib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core:worker_proto_cc",
+        "@grpc//:grpc++_unsecure",
     ],
 )
 

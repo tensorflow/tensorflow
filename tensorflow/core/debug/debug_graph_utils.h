@@ -29,10 +29,6 @@ namespace tensorflow {
 
 class DebugNodeInserter {
  public:
-  DebugNodeInserter(
-      const protobuf::RepeatedPtrField<DebugTensorWatch>& watches);
-  virtual ~DebugNodeInserter() {}
-
   // EXPERIMENTAL: Insert special debug ops (e.g., DebugIdentity) to graph for
   // debugging. Currently, such ops need to take exactly one input and has the
   // string attribute "tensor_name" to indicate what tensor it watches.
@@ -74,7 +70,9 @@ class DebugNodeInserter {
   //
   // If the nodes (A, B and C) are located on GPU and the edges from A to B or C
   // is HOST_MEMORY, then the CopyHost op will be used instead of the Copy op.
-  Status InsertNodes(Graph* graph, Device* device);
+  static Status InsertNodes(
+      const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,
+      Device* device);
 
   // Get canonical name of the copy node.
   static const string GetCopyNodeName(const string& node_name,
@@ -86,20 +84,18 @@ class DebugNodeInserter {
                                        const string& debug_op_name);
 
  private:
-  // A map from tensor name (e.g., "node_a:0") to list of debug op names
-  // (e.g., {"DebugIdentity", "DebugNanCount"})
-  std::unordered_map<string, std::vector<string>> tensor_watches_;
+  static Status CreateCopyNode(Graph* graph, const DeviceType device_type,
+                               const bool is_host_memory,
+                               const string& src_node_name,
+                               const int src_output, const DataType src_dt,
+                               const string& tensor_name, Node** copy_node);
 
-  Status CreateCopyNode(Graph* graph, const DeviceType device_type,
-                        const bool is_host_memory, const string& src_node_name,
-                        const int src_output, const DataType src_dt,
-                        const string& tensor_name, Node** copy_node);
-
-  Status CreateDebugNode(Graph* graph, const DeviceType device_type,
-                         const string& src_copy_node_name,
-                         const DataType src_dt, const string& tensor_name,
-                         const int debug_op_num, const string& debug_op_name,
-                         Node** debug_node);
+  static Status CreateDebugNode(Graph* graph, const DeviceType device_type,
+                                const string& src_copy_node_name,
+                                const DataType src_dt,
+                                const string& tensor_name,
+                                const int debug_op_num,
+                                const string& debug_op_name, Node** debug_node);
 };
 }  // namespace tensorflow
 

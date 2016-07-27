@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -33,13 +34,16 @@ __all__ = ['collect_named_outputs',
            'last_dimension',
            'first_dimension']
 
+NamedOutputs = namedtuple('NamedOutputs', ['name', 'outputs'])
+
 
 def collect_named_outputs(collections, name, outputs):
-  """Add tuple (name, outputs) to collections.
+  """Add `Tensor` outputs tagged with name to collections.
 
   It is useful to collect end-points or tags for summaries. Example of usage:
 
   logits = collect_named_outputs('end_points', 'inception_v3/logits', logits)
+  assert logits.tag == 'inception_v3/logits'
 
   Args:
     collections: A collection or list of collections. If None skip collection.
@@ -49,11 +53,11 @@ def collect_named_outputs(collections, name, outputs):
   Returns:
     The outputs Tensor to allow inline call.
   """
+  # Remove ending '/' if present.
+  if name[-1] == '/':
+    name = name[:-1]
   if collections:
-    # Remove ending '/' if present.
-    if name[-1] == '/':
-      name = name[:-1]
-    ops.add_to_collections(collections, (name, outputs))
+    ops.add_to_collections(collections, NamedOutputs(name, outputs))
   return outputs
 
 

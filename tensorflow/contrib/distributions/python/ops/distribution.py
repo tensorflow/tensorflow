@@ -21,13 +21,90 @@ from __future__ import print_function
 import abc
 import six
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
 @six.add_metaclass(abc.ABCMeta)
-class Distribution(object):
-  """Abstract base class for probability distributions.
+class BaseDistribution(object):
+  """Simple abstract base class for probability distributions.
+
+  Implementations of core distributions to be included in the `distributions`
+  module should subclass `Distribution`. This base class may be useful to users
+  that want to fulfill a simpler distribution contract.
+  """
+
+  @abc.abstractproperty
+  def name(self):
+    """Name to prepend to all ops."""
+    # return self._name.
+    pass
+
+  @abc.abstractmethod
+  def prob(self, value, name="prob"):
+    """Probability density/mass function."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
+        return math_ops.exp(self.log_prob(value))
+
+  @abc.abstractmethod
+  def log_prob(self, value, name="log_prob"):
+    """Log of the probability density/mass function."""
+    with ops.name_scope(self.name):
+      with ops.op_scope([value], name):
+        value = ops.convert_to_tensor(value)
+        return math_ops.log(self.prob(value))
+
+  def sample_n(self, n, seed=None, name="sample_n"):
+    """Generate `n` samples.
+
+    Args:
+      n: scalar. Number of samples to draw.
+      seed: Python integer seed for RNG
+      name: name to give to the op.
+
+    Returns:
+      samples: a `Tensor` with a prepended dimension (n,).
+    """
+    raise NotImplementedError("sample_n not implemented")
+
+  def sample(self, sample_shape=(), seed=None, name="sample"):
+    """Generate samples of the specified shape.
+
+    Note that a call to `sample()` without arguments will generate a single
+    sample.
+
+    Args:
+      sample_shape: int32 `Tensor` or tuple or list. Shape of the generated
+        samples.
+      seed: Python integer seed for RNG
+      name: name to give to the op.
+
+    Returns:
+      samples: a `Tensor` with prepended dimensions `sample_shape`.
+    """
+    with ops.name_scope(self.name):
+      with ops.op_scope([sample_shape], name):
+        sample_shape = ops.convert_to_tensor(sample_shape,
+                                             dtype=dtypes.int32,
+                                             name="sample_shape")
+        total = math_ops.reduce_prod(sample_shape)
+        samples = self.sample_n(total, seed)
+        output_shape = array_ops.concat(0, [sample_shape, array_ops.slice(
+            array_ops.shape(samples), [1], [-1])])
+        output = array_ops.reshape(samples, output_shape, name=name)
+        output.set_shape(tensor_util.constant_value_as_shape(
+            sample_shape).concatenate(samples.get_shape()[1:]))
+    return output
+
+
+@six.add_metaclass(abc.ABCMeta)
+class Distribution(BaseDistribution):
+  """Fully-featured abstract base class for probability distributions.
 
   This class defines the API for probability distributions. Users will only ever
   instantiate subclasses of `Distribution`.
@@ -50,15 +127,16 @@ class Distribution(object):
   The batch shape is determined by broadcasting together the parameters.
 
   The shape of arguments to `__init__`, `cdf`, `log_cdf`, `prob`, and
-  `log_prob` reflect this broadcasting, as does the return value of `sample`.
+  `log_prob` reflect this broadcasting, as does the return value of `sample` and
+  `sample_n`.
 
-  `sample_shape = (n,) + batch_shape + event_shape`, where `sample_shape` is the
-  shape of the `Tensor` returned from `sample`, `n` is the number of samples,
-  `batch_shape` defines how many independent distributions there are, and
-  `event_shape` defines the shape of samples from each of those independent
-  distributions. Samples are independent along the `batch_shape` dimensions,
-  but not necessarily so along the `event_shape` dimensions (dependending on
-  the particulars of the underlying distribution).
+  `sample_n_shape = (n,) + batch_shape + event_shape`, where `sample_n_shape` is
+  the shape of the `Tensor` returned from `sample_n`, `n` is the number of
+  samples, `batch_shape` defines how many independent distributions there are,
+  and `event_shape` defines the shape of samples from each of those independent
+  distributions. Samples are independent along the `batch_shape` dimensions, but
+  not necessarily so along the `event_shape` dimensions (dependending on the
+  particulars of the underlying distribution).
 
   Using the `Uniform` distribution as an example:
 
@@ -80,7 +158,7 @@ class Distribution(object):
   # Sampling returns a sample per distribution.  `samples` has shape
   # (5, 2, 2), which is (n,) + batch_shape + event_shape, where n=5,
   # batch_shape=(2, 2), and event_shape=().
-  samples = u.sample(5)
+  samples = u.sample_n(5)
 
   # The broadcasting holds across methods. Here we use `cdf` as an example. The
   # same holds for `log_cdf` and the likelihood functions.
@@ -112,11 +190,11 @@ class Distribution(object):
   b = tf.exp(tf.matmul(logits, weights_b))
 
   # Will raise exception if ANY batch member has a < 1 or b < 1.
-  dist = distributions.beta(a, b, strict_statistics=True)  # default is True
+  dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
   mode = dist.mode().eval()
 
   # Will return NaN for batch members with either a < 1 or b < 1.
-  dist = distributions.beta(a, b, strict_statistics=False)
+  dist = distributions.beta(a, b, allow_nan_stats=True)
   mode = dist.mode().eval()
   ```
 
@@ -125,16 +203,16 @@ class Distribution(object):
   ```python
   # Will raise an exception if any Op is run.
   negative_a = -1.0 * a  # beta distribution by definition has a > 0.
-  dist = distributions.beta(negative_a, b, strict_statistics=False)
+  dist = distributions.beta(negative_a, b, allow_nan_stats=True)
   dist.mean().eval()
   ```
 
   """
 
   @abc.abstractproperty
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    # return self._strict_statistics
+    # return self._allow_nan_stats
     # Notes:
     #
     # When it makes sense, return +- infinity for statistics.  E.g. the variance
@@ -146,25 +224,19 @@ class Distribution(object):
     # it is either + or - infinity), so the variance = E[(X - mean)^2] is also
     # undefined.
     #
-    # Distributions should be initialized with a kwarg "strict_statistics" with
+    # Distributions should be initialized with a kwarg "allow_nan_stats" with
     # the following docstring (refer to above docstring note on undefined
     # statistics for more detail).
-    # strict_statistics:  Boolean, default True.  If True, raise an exception if
+    # allow_nan_stats:  Boolean, default False.  If False, raise an exception if
     #   a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    #   If False, batch members with valid parameters leading to undefined
+    #   If True, batch members with valid parameters leading to undefined
     #   statistics will return NaN for this statistic.
     pass
 
   @abc.abstractproperty
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    # return self._strict.
-    pass
-
-  @abc.abstractproperty
-  def name(self):
-    """Name to prepend to all ops."""
-    # return self._name.
+    # return self._validate_args.
     pass
 
   @abc.abstractproperty
@@ -224,7 +296,7 @@ class Distribution(object):
     """
     pass
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Generate `n` samples.
 
     Args:
@@ -236,7 +308,25 @@ class Distribution(object):
       samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
           with values of type `self.dtype`.
     """
-    raise NotImplementedError("sample not implemented")
+    return super(Distribution, self).sample_n(n, seed, name)
+
+  def sample(self, sample_shape=(), seed=None, name="sample"):
+    """Generate samples of the specified shape for each batched distribution.
+
+    Note that a call to `sample()` without arguments will generate a single
+    sample per batched distribution.
+
+    Args:
+      sample_shape: `int32` `Tensor` or tuple or list. Shape of the generated
+        samples.
+      seed: Python integer seed for RNG
+      name: name to give to the op.
+
+    Returns:
+      samples: a `Tensor` of dtype `self.dtype` and shape
+          `sample_shape + self.batch_shape + self.event_shape`.
+    """
+    return super(Distribution, self).sample(sample_shape, seed, name)
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function."""
@@ -276,22 +366,6 @@ class Distribution(object):
   @abc.abstractproperty
   def is_reparameterized(self):
     pass
-
-  @abc.abstractmethod
-  def prob(self, value, name="prob"):
-    """Probability density/mass function."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([value], name):
-        value = ops.convert_to_tensor(value)
-        return math_ops.exp(self.log_prob(value))
-
-  @abc.abstractmethod
-  def log_prob(self, value, name="log_prob"):
-    """Log of the probability density/mass function."""
-    with ops.name_scope(self.name):
-      with ops.op_scope([value], name):
-        value = ops.convert_to_tensor(value)
-        return math_ops.log(self.prob(value))
 
   def log_pdf(self, value, name="log_pdf"):
     """Log of the probability density function."""

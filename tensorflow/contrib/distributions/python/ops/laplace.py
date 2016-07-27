@@ -48,13 +48,12 @@ class Laplace(distribution.Distribution):
   distributions spliced together "back-to-back."
   """
 
-  def __init__(
-      self,
-      loc,
-      scale,
-      strict=True,
-      strict_statistics=True,
-      name="Laplace"):
+  def __init__(self,
+               loc,
+               scale,
+               validate_args=True,
+               allow_nan_stats=False,
+               name="Laplace"):
     """Construct Laplace distribution with parameters `loc` and `scale`.
 
     The parameters `loc` and `scale` must be shaped in a way that supports
@@ -65,24 +64,25 @@ class Laplace(distribution.Distribution):
         of the distribution.
       scale: `float` or `double`, positive-valued tensor which characterzes the
         spread of the distribution.
-      strict: Whether to validate input with asserts.  If `strict` is `False`,
-        and the inputs are invalid, correct behavior is not guaranteed.
-      strict_statistics:  Boolean, default True.  If True, raise an exception if
+      validate_args: Whether to validate input with asserts.  If `validate_args`
+        is `False`, and the inputs are invalid, correct behavior is not
+        guaranteed.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
         a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If False, batch members with valid parameters leading to undefined
+        If True, batch members with valid parameters leading to undefined
         statistics will return NaN for this statistic.
       name: The name to give Ops created by the initializer.
 
     Raises:
       TypeError: if `loc` and `scale` are of different dtype.
     """
-    self._strict_statistics = strict_statistics
-    self._strict = strict
+    self._allow_nan_stats = allow_nan_stats
+    self._validate_args = validate_args
     with ops.op_scope([loc, scale], name):
       loc = ops.convert_to_tensor(loc)
       scale = ops.convert_to_tensor(scale)
-      with ops.control_dependencies(
-          [check_ops.assert_positive(scale)] if strict else []):
+      with ops.control_dependencies([check_ops.assert_positive(scale)] if
+                                    validate_args else []):
         self._name = name
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
@@ -92,14 +92,14 @@ class Laplace(distribution.Distribution):
     contrib_tensor_util.assert_same_float_dtype((loc, scale))
 
   @property
-  def strict_statistics(self):
+  def allow_nan_stats(self):
     """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._strict_statistics
+    return self._allow_nan_stats
 
   @property
-  def strict(self):
+  def validate_args(self):
     """Boolean describing behavior on invalid input."""
-    return self._strict
+    return self._validate_args
 
   @property
   def name(self):
@@ -278,7 +278,7 @@ class Laplace(distribution.Distribution):
         scale = self._scale + array_ops.zeros_like(self._loc)
         return log_2_e + math_ops.log(scale)
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Laplace Distributions.
 
     Args:

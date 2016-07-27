@@ -25,9 +25,9 @@ namespace tensorflow {
 
 // Creates a Graph which applies a unary "func" on a 3D float tensor
 // of "num" elements.
-static Graph* Unary(const string& func, int num) {
+static Graph* Unary(const string& func, int num, DataType dtype) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor data(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
+  Tensor data(dtype, TensorShape({64, 64, num / (64 * 64)}));
   CHECK_GT(data.NumElements(), 0);
   data.flat<float>().setRandom();
   test::graph::Unary(g, func, test::graph::Constant(g, data), 0);
@@ -40,17 +40,21 @@ static int RowsAndColsArg(int r, int c) { return r * kRows + c; }
 static int RowsFromArg(int arg) { return (arg / kRows); }
 static int ColsFromArg(int arg) { return (arg % kRows); }
 
-#define BM_UNARY(DEVICE, FUNC)                              \
-  static void BM_##DEVICE##_##FUNC(int iters, int num) {    \
-    const int64 tot = static_cast<int64>(iters) * num;      \
-    testing::ItemsProcessed(tot);                           \
-    testing::BytesProcessed(tot * sizeof(float));           \
-    test::Benchmark(#DEVICE, Unary(#FUNC, num)).Run(iters); \
-  }                                                         \
-  BENCHMARK(BM_##DEVICE##_##FUNC)->Range(4 << 10, 1 << 20);
+#define BM_UNARY(DEVICE, FUNC, TYPE)                              \
+  static void BM_##DEVICE##_##FUNC_##TYPE(int iters, int num) {   \
+    const int64 tot = static_cast<int64>(iters) * num;            \
+    testing::ItemsProcessed(tot);                                 \
+    testing::BytesProcessed(tot * sizeof(float));                 \
+    test::Benchmark(#DEVICE, Unary(#FUNC, num, TYPE)).Run(iters); \
+  }                                                               \
+  BENCHMARK(BM_##DEVICE##_##FUNC_##TYPE)->Range(4 << 10, 1 << 20);
 
-BM_UNARY(cpu, Floor);
-BM_UNARY(gpu, Floor);
+BM_UNARY(cpu, Floor, DT_FLOAT);
+BM_UNARY(gpu, Floor, DT_FLOAT);
+BM_UNARY(cpu, Conj, DT_COMPLEX64);
+BM_UNARY(gpu, Conj, DT_COMPLEX64);
+BM_UNARY(cpu, Conj, DT_COMPLEX128);
+BM_UNARY(gpu, Conj, DT_COMPLEX128);
 
 // data func scalar.
 static Graph* BinaryScalar(int num, const string& func) {

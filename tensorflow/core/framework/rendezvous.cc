@@ -81,8 +81,16 @@ static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
 }
 
 /* static */
-Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
-  out->buf_ = key;  // Make a copy that our StringPieces can point at
+Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
+  if (key.data() == out->buf_.data()) {
+    // Caller used our buf_ string directly, so we don't need to copy.  (The
+    // SendOp and RecvOp implementations do this, for example).
+    DCHECK_EQ(key.size(), out->buf_.size());
+  } else {
+    // Make a copy that our StringPieces can point at a copy that will persist
+    // for the lifetime of the ParsedKey object.
+    out->buf_.assign(key.data(), key.size());
+  }
   StringPiece s(out->buf_);
   StringPiece parts[5];
   for (int i = 0; i < 5; i++) {
@@ -99,7 +107,7 @@ Status Rendezvous::ParseKey(const string& key, ParsedKey* out) {
     out->edge_name.set(parts[3].data(), parts[3].size());
     return Status::OK();
   }
-  return errors::InvalidArgument("Invalid rendezvous key: ", key);
+  return errors::InvalidArgument("Invalid  rendezvous key: ", key);
 }
 
 Rendezvous::~Rendezvous() {}

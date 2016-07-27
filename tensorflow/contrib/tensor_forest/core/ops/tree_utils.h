@@ -42,8 +42,6 @@ enum DataColumnTypes {
   kDataCategorical = 1
 };
 
-
-
 // Calculates the sum of a tensor.
 template<typename T>
 T Sum(Tensor counts) {
@@ -51,6 +49,10 @@ T Sum(Tensor counts) {
       counts.unaligned_flat<T>().sum();
   return count_sum(0);
 }
+
+// Get the DataColumnTypes number for the given feature.  The default type
+// is stored in index 0, individual feature types start at index 1.
+DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec);
 
 // Given an Eigen::Tensor type, calculate the Gini impurity, which we use
 // to determine the best split (lowest) and which nodes to allocate first

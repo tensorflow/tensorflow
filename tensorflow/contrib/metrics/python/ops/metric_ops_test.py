@@ -216,6 +216,135 @@ class StreamingMeanTest(tf.test.TestCase):
       self.assertAlmostEqual(-0.8, sess.run(mean), 5)
 
 
+class StreamingMeanTensorTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.reset_default_graph()
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    mean, _ = tf.contrib.metrics.streaming_mean_tensor(
+        tf.ones([4, 3]),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [mean])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = tf.contrib.metrics.streaming_mean_tensor(
+        tf.ones([4, 3]),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [update_op])
+
+  def testAllValuesPresent(self):
+    with self.test_session() as sess:
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      mean, update_op = tf.contrib.metrics.streaming_mean_tensor(values)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[-0.9/4., 3.525]], sess.run(mean))
+
+  def testAllValuesPresentMultiDimensional(self):
+    with self.test_session() as sess:
+      values_queue = tf.FIFOQueue(2, dtypes=tf.float32, shapes=(2, 2, 2))
+      _enqueue_vector(sess,
+                      values_queue,
+                      [[[1, 2], [1, 2]], [[1, 2], [1, 2]]],
+                      shape=(2, 2, 2))
+      _enqueue_vector(sess,
+                      values_queue,
+                      [[[1, 2], [1, 2]], [[3, 4], [9, 10]]],
+                      shape=(2, 2, 2))
+      values = values_queue.dequeue()
+
+      mean, update_op = tf.contrib.metrics.streaming_mean_tensor(values)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(2):
+        sess.run(update_op)
+      self.assertAllClose([[[1, 2], [1, 2]], [[2, 3], [5, 6]]],
+                          sess.run(mean))
+
+  def testUpdateOpsReturnsCurrentValue(self):
+    with self.test_session() as sess:
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      mean, update_op = tf.contrib.metrics.streaming_mean_tensor(values)
+
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAllClose([[0, 1]], sess.run(update_op), 5)
+      self.assertAllClose([[-2.1, 5.05]], sess.run(update_op), 5)
+      self.assertAllClose([[2.3/3., 10.1/3.]], sess.run(update_op), 5)
+      self.assertAllClose([[-0.9/4., 3.525]], sess.run(update_op), 5)
+
+      self.assertAllClose([[-0.9/4., 3.525]], sess.run(mean), 5)
+
+  def testMissingValues(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the missing labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, weights_queue, [1, 1])
+      _enqueue_vector(sess, weights_queue, [1, 0])
+      _enqueue_vector(sess, weights_queue, [0, 1])
+      _enqueue_vector(sess, weights_queue, [0, 0])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = tf.contrib.metrics.streaming_mean_tensor(values,
+                                                                 weights)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[-2.1, 0.5]], sess.run(mean), 5)
+
+  def testMissingValuesAllMissing(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the missing labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, weights_queue, [0, 1])
+      _enqueue_vector(sess, weights_queue, [0, 0])
+      _enqueue_vector(sess, weights_queue, [0, 1])
+      _enqueue_vector(sess, weights_queue, [0, 0])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = tf.contrib.metrics.streaming_mean_tensor(values,
+                                                                 weights)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[0, 0.5]], sess.run(mean), 5)
+
+
 class StreamingAccuracyTest(tf.test.TestCase):
 
   def setUp(self):

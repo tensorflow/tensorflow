@@ -165,15 +165,19 @@ class NormalTest(tf.test.TestCase):
   def testNormalSample(self):
     with self.test_session():
       mu = tf.constant(3.0)
-      sigma = tf.constant(math.sqrt(10.0))
+      sigma = tf.constant(math.sqrt(3.0))
       mu_v = 3.0
-      sigma_v = np.sqrt(10.0)
+      sigma_v = np.sqrt(3.0)
       n = tf.constant(100000)
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      samples = normal.sample(n, seed=137)
+      samples = normal.sample_n(n)
       sample_values = samples.eval()
+      # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
+      # The sample variance similarly is dependent on sigma and n.
+      # Thus, the tolerances below are very sensitive to number of samples
+      # as well as the variances chosen.
       self.assertEqual(sample_values.shape, (100000,))
-      self.assertAllClose(sample_values.mean(), mu_v, atol=1e-2)
+      self.assertAllClose(sample_values.mean(), mu_v, atol=1e-1)
       self.assertAllClose(sample_values.std(), sigma_v, atol=1e-1)
 
       expected_samples_shape = (
@@ -194,17 +198,21 @@ class NormalTest(tf.test.TestCase):
     with self.test_session():
       batch_size = 2
       mu = tf.constant([[3.0, -3.0]] * batch_size)
-      sigma = tf.constant([[math.sqrt(10.0), math.sqrt(15.0)]] * batch_size)
+      sigma = tf.constant([[math.sqrt(2.0), math.sqrt(3.0)]] * batch_size)
       mu_v = [3.0, -3.0]
-      sigma_v = [np.sqrt(10.0), np.sqrt(15.0)]
+      sigma_v = [np.sqrt(2.0), np.sqrt(3.0)]
       n = tf.constant(100000)
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      samples = normal.sample(n, seed=137)
+      samples = normal.sample_n(n)
       sample_values = samples.eval()
+      # Note that the standard error for the sample mean is ~ sigma / sqrt(n).
+      # The sample variance similarly is dependent on sigma and n.
+      # Thus, the tolerances below are very sensitive to number of samples
+      # as well as the variances chosen.
       self.assertEqual(samples.get_shape(), (100000, batch_size, 2))
-      self.assertAllClose(sample_values[:, 0, 0].mean(), mu_v[0], atol=1e-2)
+      self.assertAllClose(sample_values[:, 0, 0].mean(), mu_v[0], atol=1e-1)
       self.assertAllClose(sample_values[:, 0, 0].std(), sigma_v[0], atol=1e-1)
-      self.assertAllClose(sample_values[:, 0, 1].mean(), mu_v[1], atol=1e-2)
+      self.assertAllClose(sample_values[:, 0, 1].mean(), mu_v[1], atol=1e-1)
       self.assertAllClose(sample_values[:, 0, 1].std(), sigma_v[1], atol=1e-1)
 
       expected_samples_shape = (

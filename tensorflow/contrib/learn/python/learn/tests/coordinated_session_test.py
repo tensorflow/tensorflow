@@ -109,6 +109,20 @@ class CoordinatedSessionTest(tf.test.TestCase):
       self.assertTrue(coord.should_stop())
       self.assertTrue(coord_sess.should_stop())
 
+  def test_stop_threads_on_close(self):
+    with self.test_session() as sess:
+      coord = tf.train.Coordinator()
+      threads = [threading.Thread(target=BusyWaitForCoordStop,
+                                  args=(coord,)) for _ in range(3)]
+      for t in threads:
+        t.start()
+      coord_sess = coordinated_session.CoordinatedSession(sess, coord, threads)
+      coord_sess.close()
+      for t in threads:
+        self.assertFalse(t.is_alive())
+      self.assertTrue(coord.should_stop())
+      self.assertTrue(coord_sess.should_stop())
+
 
 if __name__ == '__main__':
   tf.test.main()

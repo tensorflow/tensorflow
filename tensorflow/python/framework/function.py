@@ -288,7 +288,8 @@ def _get_func_name(func):
     raise ValueError("Argument must be callable")
 
 
-def define_function(func, input_types, func_name=None, grad_func=None):
+def define_function(func, input_types, func_name=None, grad_func=None,
+                    python_grad_func=None):
   """Creates a `FunctionDef` for a python function.
 
   `func` is a Python function that receives zero or more tensors and returns at
@@ -345,6 +346,11 @@ def define_function(func, input_types, func_name=None, grad_func=None):
     grad_func: If not None, specifies the gradient function. The
                gradient function must satisify the criterion defined in
                function.proto:GradientDef.
+    python_grad_func: If not None, specifies the gradient function with the same
+               interface as that expected by `tf.RegisterGradient`. This
+               will be called by tf.gradients to add the gradient ops to the
+               graph. No more than one of {grad_func, python_grad_func} may be
+               specified.
 
   Returns:
     A FunctionDef protocol buffer.
@@ -413,7 +419,9 @@ def define_function(func, input_types, func_name=None, grad_func=None):
   # Build the FunctionDef
   func_def = graph_to_function_def(temp_graph, func_name, inputs, outputs)
   g = ops.get_default_graph()
-  g._add_function(func_def, grad_func_name)  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  g._add_function(func_def, grad_func_name, python_grad_func=python_grad_func)
+  # pylint: enable=protected-access
   return func_def
 
 
@@ -462,16 +470,23 @@ class Defun(object):
       **input_types: Dict mapping string with `tf.DType`
         One key for each argument of the function to decorate.
 
-       Note that two optional keyword arguments are also accepted:
+       Note that these optional keyword arguments are also accepted:
          func_name - (optional).  A python string, the name to use to declare
            this `Function` in the graph.
 
          grad_func - (optional).  A function implementing the gradient of the
            function-to-register.  This is usually a previously
            `Defun`-registered Python callable.
+
+         python_grad_func - (optional).  A function implementing the gradient of
+           the function python-side. This function must take the current op and
+           the gradients w.r.t. its outputs, and return the gradients w.r.t. the
+           inputs (identical to the interface expected by
+           `tf.RegisterGradient`).
     """
     self._func_name = input_types.pop("func_name", None)
     self._grad_func = input_types.pop("grad_func", None)
+    self._python_grad_func = input_types.pop("python_grad_func", None)
     assert not input_type_list or not input_types, (
         "Can't specify both *input_type_list and **input_types")
     self._input_types = input_types
@@ -481,11 +496,13 @@ class Defun(object):
     if self._input_types:
       func_def = define_function(
           f, self._input_types,
-          func_name=self._func_name, grad_func=self._grad_func)
+          func_name=self._func_name, grad_func=self._grad_func,
+          python_grad_func=self._python_grad_func)
     else:
       func_def = define_function(
           f, self._input_type_list,
-          func_name=self._func_name, grad_func=self._grad_func)
+          func_name=self._func_name, grad_func=self._grad_func,
+          python_grad_func=self._python_grad_func)
 
     return _DefinedFunction(definition=func_def)
 

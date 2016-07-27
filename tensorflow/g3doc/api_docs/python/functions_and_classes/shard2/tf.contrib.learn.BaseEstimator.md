@@ -16,7 +16,9 @@ Initializes a BaseEstimator instance.
 ##### Args:
 
 
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
+    be used to load checkpoints from the directory into a estimator to continue
+    training a previously saved model.
 *  <b>`config`</b>: A RunConfig instance.
 
 
@@ -225,7 +227,7 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None, outputs=None)` {#BaseEstimator.predict}
+#### `tf.contrib.learn.BaseEstimator.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#BaseEstimator.predict}
 
 Returns predictions for given features.
 
@@ -240,10 +242,17 @@ Returns predictions for given features.
     'None'.
 *  <b>`outputs`</b>: list of `str`, name of the output to predict.
     If `None`, returns all.
+*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
+    for each example until inputs are exhausted. Note: The inputs must
+    terminate if you want the iterable to terminate (e.g. be sure to pass
+    num_epochs=1 if you are using something like read_batch_features).
 
 ##### Returns:
 
-  Numpy array of predicted classes or regression values.
+  A numpy array of predicted classes or regression values if the
+  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+  predictions if as_iterable is True.
 
 ##### Raises:
 
