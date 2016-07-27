@@ -28,7 +28,8 @@ same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 *  <b>`strides`</b>: 1-D of size 4.  The stride of the sliding window for each
     dimension of `input`.
 *  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    See the [comment
+      here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
 *  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
