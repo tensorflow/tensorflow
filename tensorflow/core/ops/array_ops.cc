@@ -739,7 +739,9 @@ REGISTER_OP("Reverse")
     .Input("tensor: T")
     .Input("dims: bool")
     .Output("output: T")
-    .Attr("T: {uint8, int8, int32, bool, half, float, double, complex64, complex128}")
+    .Attr(
+        "T: {uint8, int8, int32, bool, half, float, double, complex64, "
+        "complex128}")
     .SetShapeFn([](InferenceContext* c) {
       const Shape* input = c->input(0);
       const Shape* dims;
@@ -1146,6 +1148,58 @@ REGISTER_OP("Reshape")
     .Input("shape: int32")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* in = c->input(0);
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
+
+      // If the rank and all dimensions of the input tensor are known, we may
+      // infer missing shape information or perform shape checks.
+      // NumElements conveniently returns kUnknownDim upon missing rank or
+      // dimension information.
+      // Additionally, if the rank of the out shape is unknown we have no shape
+      // information to go off of.
+      const Dimension* num_in_elems = c->NumElements(in);
+      const Dimension* num_out_elems = c->NumElements(out);
+      if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
+        // Do nothing. We have no shape information to infer from so we directly
+        // return out as our shape.
+      } else if (c->ValueKnown(num_out_elems)) {
+        // If we know the number of output elements, we ensure that they
+        // are equal to the number of input elements.
+        if (c->Value(num_in_elems) != c->Value(num_out_elems)) {
+          return errors::InvalidArgument(
+              "Cannot reshape a tensor with ", c->DebugString(num_in_elems),
+              " elements to shape ", c->DebugString(out), " (",
+              c->DebugString(num_out_elems), " elements)");
+        }
+      } else {
+        // If we don't know the number of output elements, we can infer
+        // the missing dimension.
+        int32 unknown_idx = -1;
+        const Dimension* known_elems = c->MakeDim(1);
+        for (int32 i = 0; i < c->Rank(out); ++i) {
+          const Dimension* dim = c->Dim(out, i);
+          if (!c->ValueKnown(dim)) {
+            if (unknown_idx >= 0) {
+              return errors::InvalidArgument(
+                  "Cannot infer multiple unknown dimensions in shape ",
+                  c->DebugString(out));
+            }
+            unknown_idx = i;
+          } else {
+            TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
+          }
+        }
+        const Dimension* inferred_dim;
+        TF_RETURN_IF_ERROR(
+            c->Divide(num_in_elems, c->Value(known_elems), &inferred_dim));
+        TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
+      }
+
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"Doc(
 Reshapes a tensor.
 
