@@ -42,13 +42,13 @@ static int RowsFromArg(int arg) { return (arg / kRows); }
 static int ColsFromArg(int arg) { return (arg % kRows); }
 
 #define BM_UNARY(DEVICE, FUNC, T, TYPE)                              \
-  static void BM_##DEVICE##_##FUNC_##TYPE(int iters, int num) {      \
+  static void BM_##DEVICE##_##FUNC##_##TYPE(int iters, int num) {    \
     const int64 tot = static_cast<int64>(iters) * num;               \
     testing::ItemsProcessed(tot);                                    \
     testing::BytesProcessed(tot * sizeof(T));                        \
     test::Benchmark(#DEVICE, Unary<T>(#FUNC, num, TYPE)).Run(iters); \
   }                                                                  \
-  BENCHMARK(BM_##DEVICE##_##FUNC_##TYPE)->Range(4 << 10, 1 << 20);
+  BENCHMARK(BM_##DEVICE##_##FUNC##_##TYPE)->Range(4 << 10, 1 << 20);
 
 BM_UNARY(cpu, Floor, float, DT_FLOAT);
 BM_UNARY(gpu, Floor, float, DT_FLOAT);
