@@ -106,7 +106,8 @@ fi
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
-if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
+if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
+   [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
   bazel build -c opt ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
       die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then

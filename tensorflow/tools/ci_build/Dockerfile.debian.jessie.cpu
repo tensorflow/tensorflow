@@ -10,6 +10,9 @@ RUN /install/install_deb_packages.sh
 RUN /install/install_pip_packages.sh
 RUN /install/install_bazel.sh
 
+# Fix a virtualenv install issue specific to Debian Jessie.
+RUN pip install --upgrade virtualenv
+
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc
 ENV BAZELRC /root/.bazelrc
