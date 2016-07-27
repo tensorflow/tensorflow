@@ -29,7 +29,16 @@ static Graph* Unary(const string& func, int num, DataType dtype) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor data(dtype, TensorShape({64, 64, num / (64 * 64)}));
   CHECK_GT(data.NumElements(), 0);
-  data.flat<float>().setRandom();
+  switch (dtype) {
+    case DT_DOUBLE:
+      data.flat<double>().setRandom();
+    case DT_COMPLEX64:
+      data.flat<complex64>().setRandom();
+    case DT_COMPLEX128:
+      data.flat<complex128>().setRandom();
+    default:
+      data.flat<float>().setRandom();
+  }
   test::graph::Unary(g, func, test::graph::Constant(g, data), 0);
   return g;
 }
