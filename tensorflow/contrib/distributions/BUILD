@@ -74,6 +74,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["noasan"],
 )
 
 py_library(
