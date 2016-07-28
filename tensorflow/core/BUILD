@@ -135,6 +135,7 @@ cc_library(
         "lib/core/coding.h",
         "lib/core/errors.h",
         "lib/core/notification.h",
+        "lib/core/raw_coding.h",
         "lib/core/status.h",
         "lib/core/stringpiece.h",
         "lib/core/threadpool.h",
