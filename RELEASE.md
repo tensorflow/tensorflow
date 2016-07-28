@@ -1,16 +1,40 @@
-# Changes Since Last Release
 
-## Features and Improvements
-* Connectionist Temporal Classification ops are now "official" (see, e.g.,
-  `tf.nn.ctc_loss`)
-* Preliminary graph-construction C API, for use by language bindings.
-* Major revision to the graph-construction C++ API. Scoping mechanism to make op
-  naming, specifying control dependencies etc. more consistent. C++ values can
-  be used directly as operands, making op construction more concise.
+# Release 0.10.0
 
-## Breaking Changes to the API
-* `env.h` replaces use of `New*File()` functions to use `std::unique_ptr`
-  return arguments, removing the old raw pointer returns.
+## Major Features and Improvements
+
+* Added support for C++ shape inference
+* Added graph-construction C API
+* Major revision to the graph-construction C++ API
+* Support makefile build for iOS
+* Added Mac GPU support
+* Full version of TF-Slim available as `tf.contrib.slim`
+* Added k-Means clustering and WALS matrix factorization
+
+## Big Fixes and Other Changes
+
+* Allow gradient computation for scalar values.
+* Performance improvements for gRPC
+* Improved support for fp16
+* New high-level ops in tf.contrib.{layers,metrics}
+* New features for TensorBoard, such as shape display, exponential smoothing
+* Faster and more stable Google Cloud Storage (GCS) filesystem support
+* Support for zlib compression and decompression for TFRecordReader and TFRecordWriter
+* Support for reading (animated) GIFs
+* Improved support for SparseTensor
+* Added support for more probability distributions (Dirichlet, Beta, Bernoulli, etc.)
+* Added Python interfaces to reset resource containers.
+* Many bugfixes and performance improvements
+* Many documentation fixes
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Alex Rothberg, Andrew Royer, Austin Marshall, @BlackCoal, Bob Adolf, Brian Diesel, Charles-Emmanuel Dias, @chemelnucfin, Chris Lesniewski, Daeyun Shin, Daniel Rodriguez, Danijar Hafner, Darcy Liu, Kristinn R. Thórisson, Daniel Castro, Dmitry Savintsev, Kashif Rasul, Dylan Paiton, Emmanuel T. Odeke, Ernest Grzybowski, Gavin Sherry, Gideon Dresdner, Gregory King, Harold Cooper, @heinzbeinz, Henry Saputra, Huarong Huo, Huazuo Gao, Igor Babuschkin, Igor Macedo Quintanilha, Ivan Ukhov, James Fysh, Jan Wilken Dörrie, Jihun Choi, Johnny Lim, Jonathan Raiman, Justin Francis, @lilac, Li Yi, Marc Khoury, Marco Marchesi, Max Melnick, Micael Carvalho, @mikowals, Mostafa Gazar, Nico Galoppo, Nishant Agrawal, Petr Janda, Yuncheng Li, @raix852, Robert Rose, @Robin-des-Bois, Rohit Girdhar, Sam Abrahams, satok16, Sergey Kishchenko, Sharkd Tu, @shotat, Siddharth Agrawal, Simon Denel, @sono-bfio, SunYeop Lee, Thijs Vogels, @tobegit3hub, @Undo1, Wang Yang, Wenjian Huang, Yaroslav Bulatov, Yunfeng Wang, Ziming Dong
+
+We are also grateful to all who filed issues or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
 
 # Release 0.9.0
 
