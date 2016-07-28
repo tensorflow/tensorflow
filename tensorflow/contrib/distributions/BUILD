@@ -74,7 +74,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["noasan"],
+    tags = ["notap"],  # http://b/30441813
 )
 
 py_library(
