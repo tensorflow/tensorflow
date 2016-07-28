@@ -467,7 +467,7 @@ REGISTER_OP("Add")
     .Doc(R"doc(
 Returns x + y element-wise.
 
-*NOTE*: Add supports broadcasting. AddN does not. More about broadcasting
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -477,7 +477,7 @@ REGISTER_OP("Sub")
     .Doc(R"doc(
 Returns x - y element-wise.
 
-*NOTE*: Sub supports broadcasting. More about broadcasting
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -488,7 +488,7 @@ REGISTER_OP("Mul")
     .Doc(R"doc(
 Returns x * y element-wise.
 
-*NOTE*: Mul supports broadcasting. More about broadcasting
+*NOTE*: `Mul` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -498,7 +498,7 @@ REGISTER_OP("Div")
     .Doc(R"doc(
 Returns x / y element-wise.
 
-*NOTE*: Div supports broadcasting. More about broadcasting
+*NOTE*: `Div` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -509,7 +509,7 @@ REGISTER_OP("SquaredDifference")
     .Doc(R"doc(
 Returns (x - y)(x - y) element-wise.
 
-*NOTE*: SquaredDifference supports broadcasting. More about broadcasting
+*NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -526,7 +526,7 @@ REGISTER_OP("Maximum")
     .Doc(R"doc(
 Returns the max of x and y (i.e. x > y ? x : y) element-wise.
 
-*NOTE*: Maximum supports broadcasting. More about broadcasting
+*NOTE*: `Maximum` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -540,7 +540,7 @@ REGISTER_OP("Minimum")
     .Doc(R"doc(
 Returns the min of x and y (i.e. x < y ? x : y) element-wise.
 
-*NOTE*: Minimum supports broadcasting. More about broadcasting
+*NOTE*: `Minimum` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -553,7 +553,7 @@ REGISTER_OP("Mod")
     .Doc(R"doc(
 Returns element-wise remainder of division.
 
-*NOTE*: Mod supports broadcasting. More about broadcasting
+*NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -673,7 +673,7 @@ REGISTER_OP("Less")
     .Doc(R"doc(
 Returns the truth value of (x < y) element-wise.
 
-*NOTE*: Less supports broadcasting. More about broadcasting
+*NOTE*: `Less` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -682,7 +682,7 @@ REGISTER_OP("LessEqual")
     .Doc(R"doc(
 Returns the truth value of (x <= y) element-wise.
 
-*NOTE*: Less supports broadcasting. More about broadcasting
+*NOTE*: `LessEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -691,7 +691,7 @@ REGISTER_OP("Greater")
     .Doc(R"doc(
 Returns the truth value of (x > y) element-wise.
 
-*NOTE*: Greater supports broadcasting. More about broadcasting
+*NOTE*: `Greater` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -700,7 +700,7 @@ REGISTER_OP("GreaterEqual")
     .Doc(R"doc(
 Returns the truth value of (x >= y) element-wise.
 
-*NOTE*: GreaterEqual supports broadcasting. More about broadcasting
+*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -724,7 +724,7 @@ REGISTER_OP("Equal")
     .Doc(R"doc(
 Returns the truth value of (x == y) element-wise.
 
-*NOTE*: Equal supports broadcasting. More about broadcasting
+*NOTE*: `Equal` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -733,7 +733,7 @@ REGISTER_OP("NotEqual")
     .Doc(R"doc(
 Returns the truth value of (x != y) element-wise.
 
-*NOTE*: NotEqual supports broadcasting. More about broadcasting
+*NOTE*: `NotEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -761,7 +761,7 @@ REGISTER_OP("LogicalAnd")
     .Doc(R"doc(
 Returns the truth value of x AND y element-wise.
 
-*NOTE*: LogicalAnd supports broadcasting. More about broadcasting
+*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -770,7 +770,7 @@ REGISTER_OP("LogicalOr")
     .Doc(R"doc(
 Returns the truth value of x OR y element-wise.
 
-*NOTE*: LogicalOr supports broadcasting. More about broadcasting
+*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
