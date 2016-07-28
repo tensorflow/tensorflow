@@ -1874,6 +1874,25 @@ REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("shape: shape = {}")
+    .SetShapeFn([](InferenceContext* c) {
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+
+      // Placeholder has a legacy bug where we cannot tell
+      // the difference between a scalar shape attribute and
+      // 'unknown shape'.  So if the shape is a scalar, we return
+      // an unknown shape.
+      if (shape.dims() == 0) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      TensorShapeProto shape_proto;
+      shape.AsProto(&shape_proto);
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 
@@ -1893,6 +1912,22 @@ REGISTER_OP("PlaceholderWithDefault")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("shape: shape")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input = c->input(0);
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      TensorShapeProto shape_proto;
+      shape.AsProto(&shape_proto);
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+
+      // We merge for compatibility checking, but return the output,
+      // since output_shape may be less precise than input_shape.
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->Merge(input, out, &unused));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 A placeholder op that passes though `input` when its output is not fed.
 
