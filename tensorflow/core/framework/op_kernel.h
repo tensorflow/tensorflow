@@ -104,7 +104,7 @@ class OpKernel {
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
-  virtual bool IsExpensive() { return true; }
+  virtual bool IsExpensive() { return expensive_; }
 
   // Accessors.
   const NodeDef& def() const { return def_; }
@@ -160,6 +160,7 @@ class OpKernel {
   const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+  bool expensive_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -179,6 +180,8 @@ class AsyncOpKernel : public OpKernel {
   AsyncOpKernel* AsAsync() final { return this; }
 
   void Compute(OpKernelContext* context) final;
+
+  bool IsExpensive() override { return true; }
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For
