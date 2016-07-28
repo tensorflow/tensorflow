@@ -102,7 +102,6 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                     </tf-chart-scaffold>
                     <paper-icon-button
                       class="expand-button"
-                      shift$="[[_showDownloadLinks]]"
                       icon="fullscreen"
                       on-tap="toggleSelected"
                     ></paper-icon-button>
@@ -166,13 +165,6 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
         this.async(function() {
           this.fire("rendered");
         });
-      },
-      observers: ['redraw(_showDownloadLinks)'],
-      redraw: function(_showDownloadLinks) {
-        var els = this.getElementsByTagName("tf-line-chart");
-        for (var i=0; i<els.length; i++) {
-          els[i].redraw();
-        }
       },
       _getVisibleTags: function() {
         var keys = this.selectedRuns;
