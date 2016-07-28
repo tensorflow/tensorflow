@@ -67,7 +67,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_vdvt_update_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/operator_pd_vdvt_update_test.py"],
     additional_deps = [
         ":distributions_py",
