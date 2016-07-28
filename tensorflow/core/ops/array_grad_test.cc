@@ -478,9 +478,57 @@ std::vector<Tensor> StridedSliceGrad(const Tensor& x, const Tensor& begin,
   return out;
 }
 
+std::vector<Tensor> StridedSliceGradGrad(
+    const Tensor& shape, const Tensor& begin, const Tensor& end,
+    const Tensor& strides, const Tensor& dy, const Tensor& grad,
+    int32 begin_mask, int32 end_mask, int32 ellipsis_mask, int32 new_axis_mask,
+    int32 shrink_axis_mask) {
+  auto T = DT_FLOAT;
+  auto gdef = test::function::GDef(
+      {f::NDef("shape", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("begin", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("end", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("strides", "Placeholder", {}, {{"dtype", DT_INT32}}),
+       f::NDef("dy", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef("grad", "Placeholder", {}, {{"dtype", T}}),
+       f::NDef(
+           "dx", "SymbolicGradient",
+           {"shape", "begin", "end", "strides", "dy", "grad"},
+           {{"f", FDH::FunctionRef("StridedSliceGrad",
+                                   {
+                                       {"T", T},
+                                       {"Index", DT_INT32},
+                                       {"begin_mask", begin_mask},
+                                       {"end_mask", end_mask},
+                                       {"new_axis_mask", new_axis_mask},
+                                       {"shrink_axis_mask", shrink_axis_mask},
+                                       {"ellipsis_mask", ellipsis_mask},
+                                   })},
+            {"Tin",
+             DataTypeSlice{DT_INT32, DT_INT32, DT_INT32, DT_INT32, T, T}},
+            {"Tout",
+             DataTypeSlice{DT_INT32, DT_INT32, DT_INT32, DT_INT32, T}}})});
+  VLOG(1) << DebugStringWhole(gdef);
+  auto sess = NewSession();
+  TF_CHECK_OK(sess->Create(gdef));
+  std::vector<Tensor> out;
+  TF_CHECK_OK(sess->Run({{"shape:0", shape},
+                         {"begin:0", begin},
+                         {"end:0", end},
+                         {"strides:0", strides},
+                         {"dy:0", dy},
+                         {"grad:0", grad}},
+                        {"dx:0", "dx:1", "dx:2", "dx:3", "dx:4"}, {}, &out));
+  CHECK_EQ(out.size(), 5);
+  TF_CHECK_OK(sess->Close());
+  delete sess;
+  return out;
+}
+
 TEST_F(ArrayGradTest, StridedSliceGrad) {
   Tensor x(DT_FLOAT, {2, 3, 4});
   x.flat<float>().setZero();
+  Tensor x_shape = test::AsTensor<int32>({2, 3, 4}, {3});
 
   {
     auto start = test::AsTensor<int32>({1, 1, 1});
@@ -502,6 +550,10 @@ TEST_F(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0, 0, 0}));
     test::ExpectTensorEqual<int32>(dx[2], test::AsTensor<int32>({0, 0, 0}));
+    auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
+                                    begin_mask, end_mask, ellipsis_mask,
+                                    new_axis_mask, shrink_axis_mask);
+    test::ExpectClose(ddx[4], dy);
   }
 
   // test equivalent of python tf.gradients(foo[1:2, 1:3, 1:3])
@@ -525,6 +577,10 @@ TEST_F(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0, 0, 0}));
     test::ExpectTensorEqual<int32>(dx[2], test::AsTensor<int32>({0, 0, 0}));
+    auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
+                                    begin_mask, end_mask, ellipsis_mask,
+                                    new_axis_mask, shrink_axis_mask);
+    test::ExpectClose(ddx[4], dy);
   }
 
   // test equivalent of python tf.gradients(foo[1, 1:, :-2, None])
@@ -549,6 +605,10 @@ TEST_F(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0, 0, 0, 0}));
     test::ExpectTensorEqual<int32>(dx[2], test::AsTensor<int32>({0, 0, 0, 0}));
+    auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
+                                    begin_mask, end_mask, ellipsis_mask,
+                                    new_axis_mask, shrink_axis_mask);
+    test::ExpectClose(ddx[4], dy);
   }
 
   // test equivalent of tf.gradients(foo[1, ...]) i.e. foo[1, 0:3, 0:4]
@@ -573,6 +633,10 @@ TEST_F(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32>(dx[1], test::AsTensor<int32>({0, 0}));
     test::ExpectTensorEqual<int32>(dx[2], test::AsTensor<int32>({0, 0}));
+    auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
+                                    begin_mask, end_mask, ellipsis_mask,
+                                    new_axis_mask, shrink_axis_mask);
+    test::ExpectClose(ddx[4], dy);
   }
 }
 

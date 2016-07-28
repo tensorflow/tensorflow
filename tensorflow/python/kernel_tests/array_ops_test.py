@@ -455,22 +455,28 @@ class GradSliceChecker(object):
     self.varnp = varnp
 
   def __getitem__(self, spec):
-    val_grad_op = tf.gradients(self.val, self.var)
-    sliceval_grad_op = tf.gradients(
-        array_ops._NewSliceHelper(self.val, spec), self.var)
-    slice1_op = array_ops._NewSliceHelper(val_grad_op, spec)
-    slice2_op = array_ops._NewSliceHelper(sliceval_grad_op, spec)
-    val_grad, sliceval_grad, slice1, slice2 = self.sess.run(
-        [val_grad_op, sliceval_grad_op, slice1_op, slice2_op])
-    np_val_grad = (2 * self.varnp)
+    slice_var = array_ops._NewSliceHelper(self.var, spec)
+    slice_val = array_ops._NewSliceHelper(self.val, spec)
+
+    # compute analytic 2nd derivative
+    analytic_grad2 = 2 * slice_val
+
+    dy = tf.Variable(tf.ones(shape=slice_var.get_shape(), dtype=tf.int32))
+    assign = dy.assign(slice_var)
+    slice_val_grad, = tf.gradients(slice_val, self.var, grad_ys=dy)
+    slice_val_grad2, = tf.gradients(slice_val_grad, dy, grad_ys=self.var)
+    self.sess.run(assign)
+    slice_val_grad_evaled, slice_val_grad2_evaled = (
+        self.sess.run([slice_val_grad, slice_val_grad2]))
+    analytic_grad2_evaled = analytic_grad2.eval()
+    self.test.assertAllEqual(slice_val_grad2_evaled, analytic_grad2_evaled)
+
+    # compute analytic gradient for slice
+    np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
-    np_sliceval_grad[spec] = np.array(val_grad[0])[spec]
-    # make sure np val grad is correct
-    self.test.assertAllEqual(np_val_grad, val_grad[0])
-    # make sure slice gradient is correct
-    self.test.assertAllEqual(np_sliceval_grad, sliceval_grad[0])
-    # make sure val grad and sliceval grad are the same in sliced area
-    self.test.assertAllEqual(slice1, slice2)
+    np_sliceval_grad[spec] = np_val_grad[spec]
+    # verify gradient
+    self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
 
 
 class StridedSliceGradTest(test_util.TensorFlowTestCase):

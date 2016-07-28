@@ -422,6 +422,13 @@ class StridedSliceGradOp : public OpKernel {
                      &final_shape, &is_identity, &is_simple_slice, &slice_dim0,
                      &begin, &end, &strides);
 
+    // Check to make sure dy is consistent with the original slice
+    TensorShape dy_shape = context->input(4).shape();
+    OP_REQUIRES(
+        context, final_shape == dy_shape,
+        errors::InvalidArgument("shape of dy was ", dy_shape.DebugString(),
+                                " instead of ", final_shape.DebugString()));
+
     if (!context->status().ok()) return;
 
     // const int input_dims = input.dims();
