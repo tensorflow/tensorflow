@@ -43,10 +43,11 @@ shared_name: If non-empty, this variable is named in the given bucket
 )doc");
 
 REGISTER_OP("IsVariableInitialized")
-    .Output("is_initialized: bool")
     .Input("ref: Ref(dtype)")
+    .Output("is_initialized: bool")
     .Attr("dtype: type")
     .SetAllowsUninitializedInput()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Checks whether a tensor has been initialized.
 

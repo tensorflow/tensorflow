@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
-REGISTER_OP("KernelLabel").Output("result: string");
+REGISTER_OP("KernelLabel")
+    .Output("result: string")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("GraphDefVersion").Output("version: int32").SetIsStateful();
 

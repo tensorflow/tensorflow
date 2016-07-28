@@ -132,6 +132,7 @@ REGISTER_OP("RandomShuffleQueue")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A queue that randomizes the order of elements.
 
@@ -163,6 +164,7 @@ REGISTER_OP("FIFOQueue")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A queue that produces elements in first-in first-out order.
 
@@ -188,6 +190,7 @@ REGISTER_OP("PaddingFIFOQueue")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A queue that produces elements in first-in first-out order.
 
@@ -221,6 +224,7 @@ REGISTER_OP("PriorityQueue")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A queue that produces elements sorted by the first component value.
 
@@ -407,6 +411,7 @@ cancel_pending_enqueues: If true, all pending enqueue requests that are
 REGISTER_OP("QueueSize")
     .Input("handle: Ref(string)")
     .Output("size: int32")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Computes the number of elements in the given queue.
 
@@ -421,6 +426,7 @@ REGISTER_OP("Stack")
     .Attr("elem_type: type")
     .Attr("stack_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A stack that produces elements in first-in last-out order.
 
@@ -717,6 +723,7 @@ REGISTER_OP("Barrier")
     .Attr("capacity: int = -1")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Defines a barrier that persists across different graph executions.
 
@@ -824,6 +831,7 @@ cancel_pending_enqueues: If true, all pending enqueue requests that are
 REGISTER_OP("BarrierReadySize")
     .Input("handle: Ref(string)")
     .Output("size: int32")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Computes the number of complete elements in the given barrier.
 
@@ -835,6 +843,7 @@ size: The number of complete elements (i.e. those with all of their value
 REGISTER_OP("BarrierIncompleteSize")
     .Input("handle: Ref(string)")
     .Output("size: int32")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Computes the number of incomplete elements in the given barrier.
 
@@ -1070,6 +1079,7 @@ REGISTER_OP("GetSessionHandle")
     .Input("value: T")
     .Output("handle: string")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Store the input tensor in the state of the current session.
 
