@@ -130,7 +130,7 @@ def _supervised_train(graph,
                       log_every_steps=10,
                       supervisor_is_chief=True,
                       supervisor_master='',
-                      supervisor_save_model_secs=600,
+                      supervisor_save_model_steps=1000,
                       keep_checkpoint_max=5,
                       supervisor_save_summaries_steps=100,
                       feed_fn=None,
@@ -171,8 +171,8 @@ def _supervised_train(graph,
     supervisor_is_chief: Whether the current process is the chief supervisor in
       charge of restoring the model and running standard services.
     supervisor_master: The master string to use when preparing the session.
-    supervisor_save_model_secs: Save a checkpoint every
-      `supervisor_save_model_secs` seconds when training.
+    supervisor_save_model_steps: Save a checkpoint every
+      `supervisor_save_model_steps` steps when training.
     keep_checkpoint_max: The maximum number of recent checkpoint files to
       keep. As new files are created, older files are deleted. If None or 0,
       all checkpoint files are kept. This is simply passed as the max_to_keep
@@ -256,12 +256,10 @@ def _supervised_train(graph,
             scaffold.summary_op,
             save_steps=supervisor_save_summaries_steps,
             summary_writer=summary_writer))
-      if supervisor_save_model_secs:
-        monitors.append(monitors_lib.CheckpointSaver(
-            # Make CheckpointSaver use a timer or change arg to be steps.
-            3 * supervisor_save_summaries_steps,
-            scaffold.saver,
-            output_dir))
+      if supervisor_save_model_steps > 0:
+        monitors.append(
+            monitors_lib.CheckpointSaver(supervisor_save_model_steps,
+                                         scaffold.saver, output_dir))
 
     if steps is not None or max_steps is not None:
       monitors.append(monitors_lib.StopAtStep(steps, max_steps))
