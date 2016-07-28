@@ -64,6 +64,11 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
         TypeError,
         'Cannot create initializer for non-floating point type.'):
       tf.contrib.layers.variance_scaling_initializer(dtype=tf.int32)
+    initializer = tf.contrib.layers.variance_scaling_initializer()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Cannot create initializer for non-floating point type.'):
+      initializer([], dtype=tf.int32)
 
   def _test_variance(self, initializer, shape, variance, factor, mode, uniform):
     with tf.Graph().as_default() as g:
