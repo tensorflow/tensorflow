@@ -247,9 +247,9 @@ py_test(
 )
 
 py_test(
-    name = "compare_test",
+    name = "binary_transform_test",
     size = "small",
-    srcs = ["python/learn/tests/dataframe/compare_test.py"],
+    srcs = ["python/learn/tests/dataframe/binary_transform_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
