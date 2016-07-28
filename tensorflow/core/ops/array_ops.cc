@@ -2067,6 +2067,67 @@ REGISTER_OP("Squeeze")
     .Output("output: T")
     .Attr("T: type")
     .Attr("squeeze_dims: list(int) >= 0 = []")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input = c->input(0);
+      if (!c->RankKnown(input)) {
+        // Input shape unknown.
+        return shape_inference::UnknownShape(c);
+      }
+
+      const int32 input_rank = c->Rank(input);
+
+      // Validate and wrap squeeze dimensions.
+      std::vector<int32> squeeze_dims;
+      TF_RETURN_IF_ERROR(c->GetAttr("squeeze_dims", &squeeze_dims));
+      for (int i = 0; i < squeeze_dims.size(); ++i) {
+        if (squeeze_dims[i] < -input_rank || squeeze_dims[i] >= input_rank) {
+          return errors::InvalidArgument("squeeze_dims[", i, "] not in [",
+                                         -input_rank, ",", input_rank, ").");
+        }
+
+        if (squeeze_dims[i] < 0) {
+          squeeze_dims[i] += input_rank;
+        }
+      }
+
+      std::vector<const Dimension*> result_shape;
+      for (int i = 0; i < input_rank; ++i) {
+        // True if squeeze_dims contains an entry to squeeze this
+        // dimension.
+        bool is_explicit_match =
+            std::find(squeeze_dims.begin(), squeeze_dims.end(), i) !=
+            squeeze_dims.end();
+
+        const Dimension* dim = c->Dim(input, i);
+
+        if (!c->ValueKnown(dim)) {
+          // Assume that the squeezed dimension will be 1 at runtime.
+          if (is_explicit_match) continue;
+
+          // If squeezing all 1 dimensions, and we see an unknown value,
+          // give up and return Unknown Shape.
+          if (squeeze_dims.empty()) {
+            c->set_output(0, c->UnknownShape());
+            return Status::OK();
+          }
+        } else if (c->Value(dim) == 1) {
+          if (is_explicit_match || squeeze_dims.empty()) {
+            // If explicitly squeezing, or squeezing all 1s, remove
+            // this dimension.
+            continue;
+          }
+        } else if (is_explicit_match) {
+          return errors::InvalidArgument("Can not squeeze dim[", i,
+                                         "], expected a dimension of 1, got ",
+                                         c->Value(c->Dim(input, i)));
+        }
+
+        result_shape.emplace_back(dim);
+      }
+
+      c->set_output(0, c->MakeShape(result_shape));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Removes dimensions of size 1 from the shape of a tensor.
 
@@ -2561,6 +2622,55 @@ REGISTER_OP("Bitcast")
     .Output("output: type")
     .Attr("T: numbertype")
     .Attr("type: numbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input = c->input(0);
+      if (!c->RankKnown(input)) {
+        // Input shape unknown.
+        return shape_inference::UnknownShape(c);
+      }
+
+      // Find the size of the input and output data types.
+      DataType input_type;
+      DataType output_type;
+      TF_RETURN_IF_ERROR(c->GetAttr("T", &input_type));
+      TF_RETURN_IF_ERROR(c->GetAttr("type", &output_type));
+      const int input_type_size = DataTypeSize(input_type);
+      const int output_type_size = DataTypeSize(output_type);
+
+      if (input_type_size == 0 || output_type_size == 0) {
+        return errors::InvalidArgument("Cannot bitcast types ",
+                                       DataTypeString(input_type), " to ",
+                                       DataTypeString(output_type),
+                                       " because "
+                                       "one of the type sizes is zero.");
+      }
+
+      const Shape* new_shape;
+      if (input_type_size == output_type_size) {
+        // No change in size.
+        new_shape = input;
+      } else if (input_type_size < output_type_size) {
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 1, &new_shape));
+
+        int64 divisor_val = output_type_size / input_type_size;
+        const Dimension* last_dim = c->Dim(new_shape, -1);
+        if (!c->ValueKnown(last_dim) || c->Value(last_dim) == divisor_val) {
+          TF_RETURN_IF_ERROR(c->Subshape(new_shape, 0, -1, &new_shape));
+        } else {
+          return errors::InvalidArgument("Cannot bitcast due to shape. ",
+                                         c->Value(last_dim), " does not match ",
+                                         divisor_val);
+        }
+      } else {
+        // Input type size is larger than output type size.
+        int64 divisor_val = input_type_size / output_type_size;
+        const Shape* extension = c->Vector(divisor_val);
+        TF_RETURN_IF_ERROR(c->Concatenate(input, extension, &new_shape));
+      }
+
+      c->set_output(0, new_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Bitcasts a tensor from one type to another without copying data.
 

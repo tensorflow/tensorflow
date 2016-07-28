@@ -606,4 +606,94 @@ TEST(ArrayOpsTest, Transpose_ShapeFn) {
   INFER_OK(op, "[0,?,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
 }
 
+TEST(ArrayOpsTest, Bitcast_ShapeFn) {
+  ShapeInferenceTestOp op("Bitcast");
+  auto rebuild_node_def = [&op](DataType input_type, DataType output_type) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Bitcast")
+                    .Input("input", 0, input_type)
+                    .Attr("type", output_type)
+                    .Finalize(&op.node_def));
+  };
+
+  rebuild_node_def(DT_FLOAT, DT_INT32);
+  // No valid shape provided, so output is unknown.
+  INFER_OK(op, "?", "?");
+
+  // Bitcasting from two equal sizes propagates shape.
+  INFER_OK(op, "[1,2]", "in0");
+
+  // Bitcasting from smaller to larger reduces the size of the last dimension.
+  rebuild_node_def(DT_INT32, DT_INT64);
+  INFER_OK(op, "[1,2]", "[d0_0]");  // last dimension matches divisor.
+  // TODO(vrv): Seems like a bug, or at least, too lenient.
+  INFER_OK(op, "[1,?]", "[d0_0]");
+  // 4 is divisible by 2, but the shape function signature requires
+  // that the last dimension matches the last value exactly.
+  INFER_ERROR("does not match", op, "[1,4]");
+  INFER_ERROR("does not match", op, "[1,3]");
+
+  // Bitcasting from a larger type to a smaller type extends the dimension
+  rebuild_node_def(DT_INT64, DT_INT32);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,2]");
+  rebuild_node_def(DT_COMPLEX128, DT_INT32);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,4]");
+  rebuild_node_def(DT_COMPLEX128, DT_HALF);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,8]");
+  rebuild_node_def(DT_COMPLEX128, DT_INT8);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,16]");
+
+  // Bitcasting from a POD or quantized datatype is not allowed.
+  rebuild_node_def(DT_STRING, DT_INT32);
+  INFER_ERROR("one of the type sizes is zero", op, "[1,2,3]");
+  rebuild_node_def(DT_INT32, DT_STRING);
+  INFER_ERROR("one of the type sizes is zero", op, "[1,2,3]");
+}
+
+TEST(ArrayOpsTest, Squeeze_ShapeFn) {
+  ShapeInferenceTestOp op("Squeeze");
+
+  auto rebuild_node_def = [&op](const std::vector<int32>& squeeze_dims) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Squeeze")
+                    .Input("input", 0, DT_FLOAT)
+                    .Attr("squeeze_dims", squeeze_dims)
+                    .Finalize(&op.node_def));
+  };
+
+  // Default squeeze_dims = []
+  rebuild_node_def({});
+
+  // No valid shape provided, so output is unknown.
+  INFER_OK(op, "?", "?");
+
+  INFER_OK(op, "[1,4,1,5,1]", "[d0_1,d0_3]");
+
+  // Squeezing all dimensions, but see some unknown values.
+  INFER_OK(op, "[1,?,1,?,1]", "?");
+
+  // Test simple squeeze of an explicit dimension
+  rebuild_node_def({1});
+  INFER_OK(op, "[4,1,5]", "[d0_0,d0_2]");
+  // Squeezing unknown dim explicitly, assumes it's 1 at runtime.
+  INFER_OK(op, "[4,?,5]", "[d0_0,d0_2]");
+
+  // Attempt to squeeze non-one dimension
+  INFER_ERROR("Can not squeeze dim[1]", op, "[4,6,5]");
+
+  // Squeeze multiple dimensions
+  rebuild_node_def({1, 2});
+  INFER_OK(op, "[4,1,1,5]", "[d0_0,d0_3]");
+  rebuild_node_def({1, -2});
+  INFER_OK(op, "[4,1,1,5]", "[d0_0,d0_3]");
+
+  // Negative squeeze dim
+  rebuild_node_def({-2});
+  INFER_OK(op, "[4,1,5]", "[d0_0,d0_2]");
+
+  // Test validation of squeeze dimensions
+  rebuild_node_def({-4});
+  INFER_ERROR("not in [-3,3)", op, "[1,2,3]");
+  rebuild_node_def({3});
+  INFER_ERROR("not in [-3,3)", op, "[1,2,3]");
+}
+
 }  // end namespace tensorflow
