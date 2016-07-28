@@ -30,59 +30,52 @@ class AvgPool2DTest(tf.test.TestCase):
 
   def testCreateAvgPool(self):
     height, width = 3, 3
-    with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3))
-      output = tf.contrib.layers.avg_pool2d(images, [3, 3])
-      self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
-      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    images = np.random.uniform(size=(5, height, width, 3))
+    output = tf.contrib.layers.avg_pool2d(images, [3, 3])
+    self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
   def testCollectOutputs(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.avg_pool2d(images, [3, 3],
-                                            outputs_collections='outputs')
-      c_output = tf.get_collection('outputs')[0]
-      self.assertEquals(c_output.name, 'AvgPool2D')
-      self.assertEquals(c_output.outputs, output)
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.avg_pool2d(images, [3, 3],
+                                          outputs_collections='outputs')
+    output_collection = tf.get_collection('outputs')[0]
+    self.assertEquals(output_collection.name, 'AvgPool2D')
+    self.assertEquals(output_collection.outputs, output)
 
   def testCreateSquareAvgPool(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.avg_pool2d(images, 3)
-      self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
-      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.avg_pool2d(images, 3)
+    self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
   def testCreateAvgPoolWithScope(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.avg_pool2d(images, [3, 3], scope='pool1')
-      self.assertEquals(output.op.name, 'pool1/AvgPool')
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.avg_pool2d(images, [3, 3], scope='pool1')
+    self.assertEquals(output.op.name, 'pool1/AvgPool')
 
-  def testCreateAvgPoolSAME(self):
+  def testCreateAvgPoolWithSamePadding(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.avg_pool2d(images, [3, 3], padding='SAME')
-      self.assertListEqual(output.get_shape().as_list(), [5, 2, 2, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.avg_pool2d(images, [3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 2, 3])
 
-  def testCreateAvgPoolStrideSAME(self):
+  def testCreateAvgPoolStrideWithSamePadding(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.avg_pool2d(images, [3, 3], stride=1,
-                                            padding='SAME')
-      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.avg_pool2d(images, [3, 3], stride=1,
+                                          padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
 
   def testGlobalAvgPool(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.avg_pool2d(images, images.get_shape()[1:3],
-                                            stride=1)
-      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.avg_pool2d(images, images.get_shape()[1:3],
+                                          stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
 
 class BiasAddTest(tf.test.TestCase):
@@ -1502,59 +1495,52 @@ class MaxPool2DTest(tf.test.TestCase):
 
   def testCreateMaxPool(self):
     height, width = 3, 3
-    with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
-      output = tf.contrib.layers.max_pool2d(images, [3, 3])
-      self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
-      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
+    output = tf.contrib.layers.max_pool2d(images, [3, 3])
+    self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
   def testCollectOutputs(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.max_pool2d(images, [3, 3],
-                                            outputs_collections='outputs')
-      c_output = tf.get_collection('outputs')[0]
-      self.assertEquals(c_output.name, 'MaxPool2D')
-      self.assertEquals(c_output.outputs, output)
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.max_pool2d(images, [3, 3],
+                                          outputs_collections='outputs')
+    outputs_collection = tf.get_collection('outputs')[0]
+    self.assertEquals(outputs_collection.name, 'MaxPool2D')
+    self.assertEquals(outputs_collection.outputs, output)
 
   def testCreateSquareMaxPool(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.max_pool2d(images, 3)
-      self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
-      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.max_pool2d(images, 3)
+    self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
   def testCreateMaxPoolWithScope(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.max_pool2d(images, [3, 3], scope='pool1')
-      self.assertEquals(output.op.name, 'pool1/MaxPool')
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.max_pool2d(images, [3, 3], scope='pool1')
+    self.assertEquals(output.op.name, 'pool1/MaxPool')
 
-  def testCreateMaxPoolSAME(self):
+  def testCreateMaxPoolWithSamePadding(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.max_pool2d(images, [3, 3], padding='SAME')
-      self.assertListEqual(output.get_shape().as_list(), [5, 2, 2, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.max_pool2d(images, [3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 2, 3])
 
-  def testCreateMaxPoolStrideSAME(self):
+  def testCreateMaxPoolStrideWithSamePadding(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.max_pool2d(images, [3, 3], stride=1,
-                                            padding='SAME')
-      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.max_pool2d(images, [3, 3], stride=1,
+                                          padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
 
   def testGlobalMaxPool(self):
     height, width = 3, 3
-    with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
-      output = tf.contrib.layers.max_pool2d(images, images.get_shape()[1:3],
-                                            stride=1)
-      self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    output = tf.contrib.layers.max_pool2d(images, images.get_shape()[1:3],
+                                          stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
 
 class OneHotEncodingTest(tf.test.TestCase):
