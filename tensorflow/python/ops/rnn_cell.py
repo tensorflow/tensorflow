@@ -87,6 +87,11 @@ def _state_size_with_prefix(state_size, prefix=None):
 class RNNCell(object):
   """Abstract object representing an RNN cell.
 
+  The definition of cell in this package differs from the definition used in the
+  literature. In the literature, cell refers to an object with a single scalar
+  output. The definition in this package refers to a horizontal array of such
+  units.
+
   An RNN cell, in the most abstract setting, is anything that has
   a state and performs some operation that takes a matrix of inputs.
   This operation results in an output matrix with `self.output_size` columns.
