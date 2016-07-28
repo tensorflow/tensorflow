@@ -499,12 +499,10 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Unknown dimensions.
   // Flatten:
   new_shape = test::AsTensor<int32>({-1});
-  op.input_tensors[1] = &new_shape;
   INFER_OK(op, "[?];[1]", "[?]");
   INFER_OK(op, "[2,2];[1]", "[4]");
   // The first dimension is inferred:
   new_shape = test::AsTensor<int32>({2, -1});
-  op.input_tensors[1] = &new_shape;
   INFER_OK(op, "[3,4];[2]", "[2,6]");
   // The total number of elements must be divisible by the known dimensions.
   INFER_ERROR("Dimension size must be divisible by 2 but is 7", op, "[7];[2]");
@@ -515,7 +513,6 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
 
   // Reshaping to a scalar.
   new_shape = test::AsTensor<int32>({});
-  op.input_tensors[1] = &new_shape;
   INFER_OK(op, "[1];[0]", "[]");
   INFER_ERROR(
       "Cannot reshape a tensor with 2 elements to shape [] (1 elements)", op,
@@ -576,6 +573,37 @@ TEST(ArrayOpsTest, Placeholder_ShapeFn) {
     // Wrong rank
     INFER_ERROR("Shapes must be equal rank, but are 3 and 2", op, "[1,3,10]");
   }
+}
+
+TEST(ArrayOpsTest, Transpose_ShapeFn) {
+  ShapeInferenceTestOp op("Transpose");
+  op.input_tensors.resize(2);
+
+  // Missing shape information.
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "?;[?]", "?");
+  INFER_OK(op, "?;[2]", "[?,?]");
+  INFER_OK(op, "[?];?", "[?]");
+  INFER_OK(op, "[?,?];[2]", "[?,?]");
+  INFER_ERROR("Dimension must be 3 but is 2", op, "[1,2,3];[2]");
+  Tensor perm = test::AsTensor<int32>({0});
+  op.input_tensors[1] = &perm;
+  INFER_OK(op, "[?];[?]", "[d0_0]");
+  perm = test::AsTensor<int32>({1, 0});
+  INFER_OK(op, "?;[2]", "[?,?]");
+  INFER_OK(op, "[?,?];[2]", "[d0_1,d0_0]");
+  INFER_OK(op, "[1,?];[2]", "[d0_1,d0_0]");
+
+  // Invalid arguments.
+  perm = test::AsTensor<int32>({1, 2});
+  INFER_ERROR("perm dim 2 is out of range of input rank 2", op, "[1,2];[2]");
+  perm = test::AsTensor<int32>({0});
+  INFER_ERROR("Dimension must be 2 but is 1", op, "[1,2];[1]");
+
+  // Larger valid cases.
+  perm = test::AsTensor<int32>({1, 0, 3, 4, 2});
+  INFER_OK(op, "[0,1,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
+  INFER_OK(op, "[0,?,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
 }
 
 }  // end namespace tensorflow
