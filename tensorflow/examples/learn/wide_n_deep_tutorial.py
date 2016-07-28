@@ -59,7 +59,7 @@ def maybe_download():
     urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)  # pylint: disable=line-too-long
     train_file_name = train_file.name
     train_file.close()
-    print("Training data is downlaoded to %s" % train_file_name)
+    print("Training data is downloaded to %s" % train_file_name)
 
   if FLAGS.test_data:
     test_file_name = FLAGS.test_data
@@ -68,7 +68,7 @@ def maybe_download():
     urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)  # pylint: disable=line-too-long
     test_file_name = test_file.name
     test_file.close()
-    print("Test data is downlaoded to %s" % test_file_name)
+    print("Test data is downloaded to %s" % test_file_name)
 
   return train_file_name, test_file_name
 
