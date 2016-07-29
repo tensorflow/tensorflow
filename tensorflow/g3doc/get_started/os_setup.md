@@ -612,6 +612,8 @@ which you can install as follows:
 $ sudo easy_install ipython
 ```
 
+#### Optional: Setup GPU for Mac
+
 If you plan to  build with GPU support you will need to make sure you have
 GNU coreutils installed via homebrew:
 
@@ -651,6 +653,26 @@ $ sudo mv include/cudnn.h /Developer/NVIDIA/CUDA-7.5/include/
 $ sudo mv lib/libcudnn* /Developer/NVIDIA/CUDA-7.5/lib
 $ sudo ln -s /Developer/NVIDIA/CUDA-7.5/lib/libcudnn* /usr/local/cuda/lib/
 ```
+
+To verify the CUDA installation, you can build and run deviceQuery to make sure
+it passes.
+
+```bash
+$ cp -r /usr/local/cuda/samples ~/cuda-samples
+$ pushd ~/cuda-samples
+$ make
+$ popd
+$ ~/cuda-samples/bin/x86_64/darwin/release/deviceQuery
+```
+
+If you want to compile tensorflow and have the XCode 7.3 installed, note that
+Xcode 7.3 is not yet compatible with CUDA 7.5. You will need to download Xcode
+7.2 and select it as your default:
+
+```bash
+$ sudo xcode-select -s /Application/Xcode-7.2/Xcode.app
+```
+
 
 ### Configure the installation
 
