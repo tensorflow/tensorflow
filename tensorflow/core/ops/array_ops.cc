@@ -1443,7 +1443,7 @@ Status ShapeShapeFn(InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     const Dimension* dim;
     if (c->RankKnown(c->input(i))) {
-      dim = c->MakeDim(c->Rank(c->input(0)));
+      dim = c->MakeDim(c->Rank(c->input(i)));
     } else {
       dim = c->UnknownDim();
     }
@@ -1479,6 +1479,7 @@ REGISTER_OP("ShapeN")
     .Output("output: N * int32")
     .Attr("N: int")
     .Attr("T: type")
+    .SetShapeFn(ShapeShapeFn)
     .Doc(R"doc(
 Returns shape of tensors.
 
@@ -1600,6 +1601,7 @@ REGISTER_OP("Rank")
     .Input("input: T")
     .Output("output: int32")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Returns the rank of a tensor.
 
@@ -1623,6 +1625,7 @@ REGISTER_OP("Size")
     .Input("input: T")
     .Output("output: int32")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Returns the size of a tensor.
 
@@ -1705,7 +1708,7 @@ begin_mask: a bitmask where a bit i being 1 means to ignore the begin
   begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
   `[-1, n-1]` if `stride[i] < 0`
 end_mask: analogous to `begin_mask`
-ellipsis_mask: a bitmask where bit `i` being 1 means the `i`th 
+ellipsis_mask: a bitmask where bit `i` being 1 means the `i`th
   position is actually an ellipsis. One bit at most can be 1.
 new_axis_mask: a bitmask where bit `i` being 1 means the `i`th
   position creates a dimension in the tensor of length 1. Thus
@@ -1714,7 +1717,7 @@ new_axis_mask: a bitmask where bit `i` being 1 means the `i`th
 shrink_axis_mask: a bitmask where bit `i` implies that the `i`th
   position should shrink the dimensionality. begin and end
   must imply a slice of size 1 in the dimension. For example in
-  python one might do `foo[:,3,:]` which would result in 
+  python one might do `foo[:,3,:]` which would result in
   `shrink_axis_mask` being 2.
 )doc");
 
@@ -1741,7 +1744,7 @@ as `shape`). The gradient will be zero in any element that the slice
 does not select.
 
 Arguments are the same as StridedSliceGrad with the exception that
-`dy` is the input gradient to be propagated and `shape` is the 
+`dy` is the input gradient to be propagated and `shape` is the
 shape of `StridedSlice`'s `input`.
 )doc");
 
@@ -1780,7 +1783,14 @@ each repeated tile of `input` into `output`.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("Where").Input("input: bool").Output("index: int64").Doc(R"doc(
+REGISTER_OP("Where")
+    .Input("input: bool")
+    .Output("index: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), c->Rank(c->input(0))));
+      return Status::OK();
+    })
+    .Doc(R"doc(
 Returns locations of true values in a boolean tensor.
 
 This operation returns the coordinates of true elements in `input`. The
