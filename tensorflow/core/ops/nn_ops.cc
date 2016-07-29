@@ -858,6 +858,7 @@ REGISTER_OP("MaxPool")
     .Attr(GetConvnetDataFormatAttrString())
     .Input("input: T")
     .Output("output: T")
+    .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
 Performs max pooling on the input.
 
@@ -914,6 +915,11 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("output: T")
     .Output("argmax: Targmax")
     .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      c->set_output(1, c->output(0));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Performs max pooling on the input and outputs both max values and indices.
 
