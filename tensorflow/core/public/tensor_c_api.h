@@ -181,7 +181,7 @@ typedef struct TF_Tensor TF_Tensor;
 //      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
-extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
+extern TF_Tensor* TF_NewTensor(TF_DataType, const long long* dims, int num_dims,
                                void* data, size_t len,
                                void (*deallocator)(void* data, size_t len,
                                                    void* arg),
@@ -317,9 +317,9 @@ extern void TF_SetAttrStringList(TF_NodeDescription* desc,
                                  const void* const* values, const int* lengths,
                                  int num_values);
 extern void TF_SetAttrInt(TF_NodeDescription* desc, const char* attr_name,
-                          int64_t value);
+                          long long value);
 extern void TF_SetAttrIntList(TF_NodeDescription* desc, const char* attr_name,
-                              const int64_t* values, int num_values);
+                              const long long* values, int num_values);
 extern void TF_SetAttrFloat(TF_NodeDescription* desc, const char* attr_name,
                             float value);
 extern void TF_SetAttrFloatList(TF_NodeDescription* desc, const char* attr_name,
@@ -337,13 +337,13 @@ extern void TF_SetAttrTypeList(TF_NodeDescription* desc, const char* attr_name,
 // `dims` points to an array of length `num_dims`.  `dims[i]` must be
 // >= -1, with -1 meaning "unknown dimension".
 extern void TF_SetAttrShape(TF_NodeDescription* desc, const char* attr_name,
-                            const int64_t* dims, int num_dims);
+                            const long long* dims, int num_dims);
 // `dims` and `num_dims` must point to arrays of length `num_shapes`.
 // Set `num_dims[i]` to -1 to represent "unknown rank".  Otherwise,
 // `dims[i]` points to an array of length `num_dims[i]`.  `dims[i][j]`
 // must be >= -1, with -1 meaning "unknown dimension".
 extern void TF_SetAttrShapeList(TF_NodeDescription* desc, const char* attr_name,
-                                const int64_t* const* dims, const int* num_dims,
+                                const long long* const* dims, const int* num_dims,
                                 int num_shapes);
 // `proto` must point to an array of `proto_len` bytes representing a
 // binary-serialized TensorShapeProto.
