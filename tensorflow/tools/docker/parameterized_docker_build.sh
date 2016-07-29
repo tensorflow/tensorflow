@@ -179,8 +179,10 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
   export TF_BUILD_IS_OPT="OPT"
   export TF_BUILD_IS_PIP="PIP"
 
-  export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
-"-e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+  if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
+    export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+  fi
 
   pushd "${SCRIPT_DIR}/../../../"
   rm -rf pip_test/whl &&
