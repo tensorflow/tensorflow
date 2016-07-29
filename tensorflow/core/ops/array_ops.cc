@@ -1493,6 +1493,42 @@ REGISTER_OP("ReverseSequence")
     .Attr("seq_dim: int")
     .Attr("batch_dim: int = 0")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input = c->input(0);
+      const Shape* seq_lens_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &seq_lens_shape));
+
+      int64 seq_dim;
+      TF_RETURN_IF_ERROR(c->GetAttr("seq_dim", &seq_dim));
+      int64 batch_dim;
+      TF_RETURN_IF_ERROR(c->GetAttr("batch_dim", &batch_dim));
+
+      if (!c->RankKnown(input)) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      // Validate batch_dim and seq_dim against input.
+      const int32 input_rank = c->Rank(input);
+      if (batch_dim >= input_rank) {
+        return errors::InvalidArgument("batch_dim must be < input rank: ",
+                                       batch_dim, " vs. ", input_rank);
+      }
+      if (seq_dim >= input_rank) {
+        return errors::InvalidArgument("seq_dim must be < input rank: ",
+                                       seq_dim, " vs. ", input_rank);
+      }
+
+      const Dimension* batch_dim_dim = c->Dim(input, batch_dim);
+      TF_RETURN_IF_ERROR(
+          c->Merge(batch_dim_dim, c->Dim(seq_lens_shape, 0), &batch_dim_dim));
+
+      // Replace batch_dim of input with batch_size
+      const Shape* output_shape;
+      TF_RETURN_IF_ERROR(
+          c->ReplaceDim(input, batch_dim, batch_dim_dim, &output_shape));
+      c->set_output(0, output_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Reverses variable length slices.
 
