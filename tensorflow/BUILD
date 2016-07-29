@@ -63,6 +63,7 @@ filegroup(
     name = "all_opensource_files",
     data = [
         ":all_files",
+        "//tensorflow/c:all_files",
         "//tensorflow/cc:all_files",
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
