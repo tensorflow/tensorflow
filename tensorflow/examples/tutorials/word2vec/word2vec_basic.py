@@ -19,13 +19,14 @@ from __future__ import print_function
 
 import collections
 import math
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 import random
 import zipfile
-
-import numpy as np
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 import tensorflow as tf
 
 # Step 1: Download the data.
@@ -234,7 +235,6 @@ def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
 
 try:
   from sklearn.manifold import TSNE
-  import matplotlib.pyplot as plt
 
   tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000)
   plot_only = 500
