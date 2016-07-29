@@ -38,7 +38,7 @@ Returns the file system schemes registered for this Env .
 
 
 
-#### `Status tensorflow::Env::NewRandomAccessFile(const string &fname, RandomAccessFile **result)` {#Status_tensorflow_Env_NewRandomAccessFile}
+#### `Status tensorflow::Env::NewRandomAccessFile(const string &fname, std::unique_ptr< RandomAccessFile > *result)` {#Status_tensorflow_Env_NewRandomAccessFile}
 
 Creates a brand new random access read-only file with the specified name.
 
@@ -48,7 +48,7 @@ The returned file may be concurrently accessed by multiple threads.
 
 The ownership of the returned RandomAccessFile is passed to the caller and the object should be deleted when is not used. The file object shouldn&apos;t live longer than the Env object.
 
-#### `Status tensorflow::Env::NewWritableFile(const string &fname, WritableFile **result)` {#Status_tensorflow_Env_NewWritableFile}
+#### `Status tensorflow::Env::NewWritableFile(const string &fname, std::unique_ptr< WritableFile > *result)` {#Status_tensorflow_Env_NewWritableFile}
 
 Creates an object that writes to a new file with the specified name.
 
@@ -58,7 +58,7 @@ The returned file will only be accessed by one thread at a time.
 
 The ownership of the returned WritableFile is passed to the caller and the object should be deleted when is not used. The file object shouldn&apos;t live longer than the Env object.
 
-#### `Status tensorflow::Env::NewAppendableFile(const string &fname, WritableFile **result)` {#Status_tensorflow_Env_NewAppendableFile}
+#### `Status tensorflow::Env::NewAppendableFile(const string &fname, std::unique_ptr< WritableFile > *result)` {#Status_tensorflow_Env_NewAppendableFile}
 
 Creates an object that either appends to an existing file, or writes to a new file (if the file does not exist to begin with).
 
@@ -68,7 +68,7 @@ The returned file will only be accessed by one thread at a time.
 
 The ownership of the returned WritableFile is passed to the caller and the object should be deleted when is not used. The file object shouldn&apos;t live longer than the Env object.
 
-#### `Status tensorflow::Env::NewReadOnlyMemoryRegionFromFile(const string &fname, ReadOnlyMemoryRegion **result)` {#Status_tensorflow_Env_NewReadOnlyMemoryRegionFromFile}
+#### `Status tensorflow::Env::NewReadOnlyMemoryRegionFromFile(const string &fname, std::unique_ptr< ReadOnlyMemoryRegion > *result)` {#Status_tensorflow_Env_NewReadOnlyMemoryRegionFromFile}
 
 Creates a readonly region of memory with the file context.
 
@@ -96,6 +96,20 @@ Deletes the named file.
 
 
 
+#### `Status tensorflow::Env::DeleteRecursively(const string &dirname, int64 *undeleted_files, int64 *undeleted_dirs)` {#Status_tensorflow_Env_DeleteRecursively}
+
+Deletes the specified directory and all subdirectories and files underneath it. undeleted_files and undeleted_dirs stores the number of files and directories that weren&apos;t deleted (unspecified if the return status is not OK). REQUIRES: undeleted_files, undeleted_dirs to be not null. Typical return codes.
+
+
+
+OK - dirname exists and we were able to delete everything underneath.
+
+NOT_FOUND - dirname doesn&apos;t exist
+
+PERMISSION_DENIED - dirname or some descendant is not writable
+
+UNIMPLEMENTED - Some underlying functions (like Delete) are not implemented
+
 #### `Status tensorflow::Env::CreateDir(const string &dirname)` {#Status_tensorflow_Env_CreateDir}
 
 Creates the specified directory.
@@ -107,6 +121,28 @@ Creates the specified directory.
 Deletes the specified directory.
 
 
+
+#### `Status tensorflow::Env::Stat(const string &fname, FileStatistics *stat)` {#Status_tensorflow_Env_Stat}
+
+Obtains statistics for the given path.
+
+
+
+#### `Status tensorflow::Env::IsDirectory(const string &fname)` {#Status_tensorflow_Env_IsDirectory}
+
+Returns whether the given path is a directory or not. Typical return codes (not guaranteed exhaustive):
+
+
+
+OK - The path exists and is a directory.
+
+FAILED_PRECONDITION - The path exists and is not a directory.
+
+NOT_FOUND - The path entry does not exist.
+
+PERMISSION_DENIED - Insufficient permissions.
+
+UNIMPLEMENTED - The file factory doesn&apos;t support directories.
 
 #### `Status tensorflow::Env::GetFileSize(const string &fname, uint64 *file_size)` {#Status_tensorflow_Env_GetFileSize}
 
@@ -126,7 +162,13 @@ Returns the number of micro-seconds since some fixed point in time. Only useful 
 
 
 
-#### `virtual void tensorflow::Env::SleepForMicroseconds(int micros)=0` {#virtual_void_tensorflow_Env_SleepForMicroseconds}
+#### `virtual uint64 tensorflow::Env::NowSeconds()` {#virtual_uint64_tensorflow_Env_NowSeconds}
+
+Returns the number of seconds since some fixed point in time. Only useful for computing deltas of time.
+
+
+
+#### `virtual void tensorflow::Env::SleepForMicroseconds(int64 micros)=0` {#virtual_void_tensorflow_Env_SleepForMicroseconds}
 
 Sleeps/delays the thread for the prescribed number of micro-seconds.
 
@@ -144,7 +186,7 @@ Caller takes ownership of the result and must delete it eventually (the deletion
 
 
 
-#### `virtual void tensorflow::Env::SchedClosureAfter(int micros, std::function< void()> closure)=0` {#virtual_void_tensorflow_Env_SchedClosureAfter}
+#### `virtual void tensorflow::Env::SchedClosureAfter(int64 micros, std::function< void()> closure)=0` {#virtual_void_tensorflow_Env_SchedClosureAfter}
 
 
 
