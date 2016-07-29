@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
-// --------------------------------------------------------------------------
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 REGISTER_OP("QuantizeV2")
     .Input("input: float")
@@ -28,6 +31,15 @@ REGISTER_OP("QuantizeV2")
     .Output("output_max: float")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Quantize the 'input' tensor of type float to 'output' tensor of type 'T'.
 
@@ -96,6 +108,13 @@ REGISTER_OP("Dequantize")
     .Output("output: float")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Dequantize the 'input' tensor into a float Tensor.
 
