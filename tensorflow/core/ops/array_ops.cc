@@ -344,6 +344,34 @@ REGISTER_OP("Split")
     .Output("output: num_split * T")
     .Attr("num_split: int >= 1")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Dimension* split_dimension;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(0, &split_dimension));
+      int num_split = c->num_outputs();
+      const Shape* input = c->input(1);
+      const Shape* out;
+      if (!c->ValueKnown(split_dimension)) {
+        if (c->RankKnown(input)) {
+          std::vector<const Dimension*> dims;
+          dims.resize(c->Rank(input));
+          for (int i = 0; i < dims.size(); ++i) dims[i] = c->UnknownDim();
+          out = c->MakeShape(dims);
+        } else {
+          out = c->UnknownShape();
+        }
+      } else {
+        int64 split_dim = c->Value(split_dimension);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
+        const Dimension* split_dim_size;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            c->Divide(c->Dim(input, split_dim), num_split, &split_dim_size),
+            "Number of ways to split should evenly divide the split dimension");
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(input, split_dim, split_dim_size, &out));
+      }
+      for (int i = 0; i < num_split; ++i) c->set_output(i, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Splits a tensor into `num_split` tensors along one dimension.
 

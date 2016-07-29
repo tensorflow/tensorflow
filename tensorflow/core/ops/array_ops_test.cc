@@ -741,4 +741,30 @@ TEST(ArrayOpsTest, ReverseSequence_ShapeFn) {
   INFER_OK(op, "[1,2,3];[?]", "[d0_0,d0_1,d0_2]");
 }
 
+TEST(ArrayOpsTest, Split_ShapeFn) {
+  ShapeInferenceTestOp op("Split");
+  op.input_tensors.resize(2);
+
+  // No value for split_dim and no input.
+  TF_CHECK_OK(NodeDefBuilder("test", "Split")
+                  .Input("split_dim", 0, DT_INT32)
+                  .Input("value", 1, DT_FLOAT)
+                  .Attr("num_split", 2)
+                  .Finalize(&op.node_def));
+  INFER_OK(op, "?;?", "?;?");
+  // If the rank is known, we know the rank of each output.
+  INFER_OK(op, "?;[?,?]", "[?,?];[?,?]");
+
+  // split_dim is known.
+  Tensor split_dim = test::AsTensor<int32>({1, 2});
+  op.input_tensors[0] = &split_dim;
+  INFER_ERROR("Input must be scalar but has rank 1", op, "[?];[?,?]");
+  split_dim = test::AsScalar<int32>(1);
+  INFER_OK(op, "?;?", "?;?");
+  INFER_OK(op, "?;[?,?]", "[d1_0,?];[d1_0,?]");
+  INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
+  INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
+  INFER_ERROR("Dimension size must be divisible by 2 but is 5", op, "?;[1,5]");
+}
+
 }  // end namespace tensorflow

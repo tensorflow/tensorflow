@@ -492,6 +492,10 @@ Status InferenceContext::MakeDimForScalarInput(int idx, const Dimension** out) {
     *out = UnknownDim();
     return Status::OK();
   }
+  const int rank = t->dims();
+  if (rank != 0) {
+    return errors::InvalidArgument("Input must be scalar but has rank ", rank);
+  }
 
   int64 val;
   if (t->dtype() == DT_INT32) {
