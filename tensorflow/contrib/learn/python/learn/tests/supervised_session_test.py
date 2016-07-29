@@ -57,6 +57,14 @@ class ScaffoldTest(tf.test.TestCase):
       self.assertEqual(scaffold1.local_init_op, scaffold2.local_init_op)
       self.assertEqual(scaffold1.saver, scaffold2.saver)
 
+  def test_raise_error_if_more_than_one_cached_item(self):
+    with tf.Graph().as_default():
+      tf.Variable([1])
+      tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
+      tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
+      with self.assertRaisesRegexp(RuntimeError, 'More than one item'):
+        supervised_session.Scaffold()
+
   def test_uses_passed_values(self):
     with tf.Graph().as_default():
       scaffold = supervised_session.Scaffold(global_step_tensor=1,
