@@ -393,10 +393,8 @@ $(wildcard tensorflow/core/graph/dot.*) \
 $(wildcard tensorflow/core/lib/gif/*) \
 $(wildcard tensorflow/core/lib/jpeg/*) \
 $(wildcard tensorflow/core/lib/png/*) \
-$(wildcard tensorflow/core/util/checkpoint_reader.*) \
 $(wildcard tensorflow/core/util/events_writer.*) \
 $(wildcard tensorflow/core/util/reporter.*) \
-$(wildcard tensorflow/core/util/tf_status_helper.*) \
 $(wildcard tensorflow/core/platform/default/stream_executor.*) \
 $(wildcard tensorflow/core/platform/default/test_benchmark.*) \
 $(wildcard tensorflow/core/platform/cuda.h) \

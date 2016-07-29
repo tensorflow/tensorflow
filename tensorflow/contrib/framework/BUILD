@@ -41,6 +41,7 @@ py_test(
     size = "small",
     srcs = ["python/framework/checkpoint_utils_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/30468735
     deps = ["//tensorflow:tensorflow_py"],
 )
 

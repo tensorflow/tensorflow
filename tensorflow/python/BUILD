@@ -1065,6 +1065,8 @@ tf_cuda_library(
         ":construction_fails_op",
         ":numpy_lib",
         ":test_ops_kernels",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:direct_session",
@@ -1104,6 +1106,9 @@ tf_py_wrap_cc(
         ":tf_session_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//util/python:python_headers",
@@ -1265,7 +1270,7 @@ cuda_py_tests(
             "training/server_lib_test.py",
             "training/session_manager_test.py",
             "training/supervisor_test.py",
-            "training/saver_test.py",
+            "training/saver_large_variable_test.py",
         ],
     ),
     additional_deps = [
@@ -1273,14 +1278,15 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_test(
-    name = "saver_test",
+py_test(
+    name = "saver_large_variable_test",
     size = "small",
-    srcs = ["training/saver_test.py"],
-    additional_deps = [
-        ":training",
-    ],
+    srcs = ["training/saver_large_variable_test.py"],
+    srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/30379628
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 cuda_py_test(
@@ -1311,6 +1317,7 @@ py_tests(
         ["training/input_test.py"],
     ),
     additional_deps = [
+        "//tensorflow:tensorflow_py",
         ":training",
     ],
 )

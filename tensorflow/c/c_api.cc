@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/tensor_c_api.h"
+#include "tensorflow/c/c_api.h"
 
 #include <memory>
 #include <vector>

@@ -721,6 +721,15 @@ class ControlFlowTest(tf.test.TestCase):
         c = tf.while_loop(lambda x: x < 10, lambda x: x + 1, [c])
       self.assertEqual(10, sess.run(c, {b: True}))
 
+  def testWhileWithControl_4(self):
+    with self.test_session() as sess:
+      b = tf.placeholder(tf.bool)
+      c = tf.constant(1)
+      x0 = tf.constant(0)
+      with tf.control_dependencies([b]):
+        r = tf.while_loop(lambda x: x < 10, lambda x: x + tf.identity(c), [x0])
+      self.assertEqual(10, sess.run(r, {b: True}))
+
   def testCondWhile_1(self):
     with self.test_session():
       n = tf.convert_to_tensor(0, name="n")

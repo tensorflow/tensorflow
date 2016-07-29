@@ -118,16 +118,23 @@ class LinSpaceOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU_KERNEL(T)                        \
+#define REGISTER_KERNEL(DEV, T)                       \
   REGISTER_KERNEL_BUILDER(Name("LinSpace")            \
-                              .Device(DEVICE_CPU)     \
+                              .Device(DEV)            \
                               .TypeConstraint<T>("T") \
                               .HostMemory("start")    \
                               .HostMemory("stop")     \
                               .HostMemory("num")      \
                               .HostMemory("output"),  \
                           LinSpaceOp<T>);
+#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
+
+// NOTE(touts): We register the op on GPU but it still runs on CPU
+// because its inputs and outputs are tagged as HostMemory.
+#define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, T)
+TF_CALL_float(REGISTER_GPU_KERNEL);
+TF_CALL_double(REGISTER_GPU_KERNEL);
 
 }  // namespace tensorflow
