@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/distributed_runtime/worker_interface.h"  // for CallOptions
+#include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"  // for BusAdjacency
 #include "tensorflow/core/lib/core/status.h"
 
@@ -28,7 +28,6 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 class ChannelCache;
 class StepStats;
-class WorkerInterface;
 
 class WorkerCacheInterface {
  public:
@@ -45,6 +44,17 @@ class WorkerCacheInterface {
   // makes it more obvious this is a constructor that transfers
   // ownership, not a cache lookup.
   virtual WorkerInterface* CreateWorker(const string& target) = 0;
+
+  // Release a worker previously returned by this->CreateWorker(target).
+  //
+  // TODO(jeff,sanjay): Consider moving target into WorkerInterface.
+  // TODO(jeff,sanjay): Consider disallowing direct deletion of WorkerInterface.
+  // TODO(jeff,sanjay): Unify all worker-cache impls and factor out a
+  //                    per-rpc-subsystem WorkerInterface creator.
+  virtual void ReleaseWorker(const string& target, WorkerInterface* worker) {
+    // Subclasses may override to reuse worker objects.
+    delete worker;
+  }
 
   // Set *ba with the BusAdjacency of the specified remote device
   // within its local environment.  Returns true if the device bus
