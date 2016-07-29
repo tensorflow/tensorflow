@@ -1125,7 +1125,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
                                                dtype=x.dtype)
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = x * math_ops.inv(keep_prob) * binary_tensor
+    ret = math_ops.div(x, keep_prob) * binary_tensor
     ret.set_shape(x.get_shape())
     return ret
 
