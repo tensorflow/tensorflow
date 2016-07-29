@@ -67,7 +67,8 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
   Returns:
     A rank 2 tensor that has time along dimension 0 and channels along
     dimension 1. Dimension 0 will be `samples_per_second * length` wide, and
-    dimension 1 will be `channel_count` wide.
+    dimension 1 will be `channel_count` wide. If ffmpeg fails to decode the
+    audio then an empty tensor will be returned.
   """
   return gen_decode_audio_op_py.decode_audio(
       contents, file_format=file_format, samples_per_second=samples_per_second,

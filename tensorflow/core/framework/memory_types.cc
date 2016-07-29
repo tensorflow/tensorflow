@@ -40,10 +40,6 @@ int GetTotal(const NameRangeMap& name_map) {
 void MemoryTypesHelper(const NameRangeMap& name_map,
                        std::vector<string>* host_memory_args,
                        MemoryTypeVector* memory_types) {
-  // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
-  memory_types->clear();
-  memory_types->resize(GetTotal(name_map), DEVICE_MEMORY);
-
   // Update args that have been marked as in "HOST_MEMORY".
   size_t keep = 0;
   for (size_t i = 0; i < host_memory_args->size(); ++i) {
@@ -65,15 +61,27 @@ MemoryType MTypeFromDType(const DataType dtype) {
   return (dtype == DT_INT32) ? HOST_MEMORY : DEVICE_MEMORY;
 }
 
-// Returns true if an arg of op_def's input/output is a type list.
-bool HasTypeList(const OpDef& op_def) {
-  for (const auto& a : op_def.input_arg()) {
-    if (!a.type_list_attr().empty()) return true;
+// Initialize the default memory types for type list arguments from the data
+// types. (The default can be overridden by an explicit HostMemory()
+// declaration.)
+Status SetTypeListMTypesFromDTypes(
+    const NameRangeMap& name_ranges,
+    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+    const DataTypeVector& dtypes, MemoryTypeVector* mtypes) {
+  for (const auto& a : args) {
+    if (!a.type_list_attr().empty()) {
+      auto it = name_ranges.find(a.name());
+      if (it == name_ranges.end()) {
+        return errors::InvalidArgument("Name range for argument ", a.name(),
+                                       " not found.");
+      }
+
+      for (int i = it->second.first; i < it->second.second; ++i) {
+        (*mtypes)[i] = MTypeFromDType(dtypes[i]);
+      }
+    }
   }
-  for (const auto& a : op_def.output_arg()) {
-    if (!a.type_list_attr().empty()) return true;
-  }
-  return false;
+  return Status::OK();
 }
 
 }  // namespace
@@ -91,20 +99,21 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   Status status =
       FindKernelDef(device_type, ndef, &kdef, nullptr /* kernel_class_name */);
 
-  if (!status.ok() || HasTypeList(*op_def)) {
-    // When there is no kernel def for this op or the op's arg is a
-    // type list, we can only best-effort derive the memory type from
-    // the data type.  For now, we assume int32 is always on host
-    // memory and other types are always on device memory. We should
+  DataTypeVector inp_dtypes;
+  DataTypeVector out_dtypes;
+  TF_RETURN_IF_ERROR(
+      InOutTypesForNode(ndef, *op_def, &inp_dtypes, &out_dtypes));
+
+  inp_mtypes->clear();
+  out_mtypes->clear();
+
+  if (!status.ok()) {
+    // When there is no kernel def for this op, we can only best-effort derive
+    // the memory type from the data type.  For now, we assume int32 is always
+    // on host memory and other types are always on device memory. We should
     // do type inference over function body to derive the correct
     // input/output memory types.
-    DataTypeVector inp_dtypes;
-    DataTypeVector out_dtypes;
-    TF_RETURN_IF_ERROR(
-        InOutTypesForNode(ndef, *op_def, &inp_dtypes, &out_dtypes));
-    inp_mtypes->clear();
     for (const auto& t : inp_dtypes) inp_mtypes->push_back(MTypeFromDType(t));
-    out_mtypes->clear();
     for (const auto& t : out_dtypes) out_mtypes->push_back(MTypeFromDType(t));
     return Status::OK();
   }
@@ -113,6 +122,16 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   NameRangeMap inp_names;
   NameRangeMap out_names;
   TF_RETURN_IF_ERROR(NameRangesForNode(ndef, *op_def, &inp_names, &out_names));
+
+  // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
+  inp_mtypes->resize(GetTotal(inp_names), DEVICE_MEMORY);
+  out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
+
+  // For type list arguments, mark int32 arguments as host memory.
+  TF_RETURN_IF_ERROR(SetTypeListMTypesFromDTypes(inp_names, op_def->input_arg(),
+                                                 inp_dtypes, inp_mtypes));
+  TF_RETURN_IF_ERROR(SetTypeListMTypesFromDTypes(
+      out_names, op_def->output_arg(), out_dtypes, out_mtypes));
 
   // Fills in host memory types based on the kernel def.
   const auto& from_proto = kdef->host_memory_arg();
@@ -124,6 +143,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
         "HostMemory args '", str_util::Join(host_memory_args, "', '"),
         "' not found in OpDef: ", SummarizeOpDef(*op_def));
   }
+
   return Status::OK();
 }
 

@@ -485,5 +485,27 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   INFER_ERROR("must be rank 4", op, "[4,4]");
 }
 
+TEST(CommonShapeFnsTest, UnknownShapeTest) {
+  {
+    // Single output
+    ShapeInferenceTestOp op("QueueDequeue");
+    TF_CHECK_OK(NodeDefBuilder("test", "QueueDequeue")
+                    .Input("handle", 0, DT_STRING_REF)
+                    .Attr("component_types", {DT_FLOAT})
+                    .Finalize(&op.node_def));
+    INFER_OK(op, "[1]", "?");
+  }
+
+  {
+    // Multiple outputs
+    ShapeInferenceTestOp op("QueueDequeue");
+    TF_CHECK_OK(NodeDefBuilder("test", "QueueDequeue")
+                    .Input("handle", 0, DT_STRING_REF)
+                    .Attr("component_types", {DT_FLOAT, DT_FLOAT, DT_STRING})
+                    .Finalize(&op.node_def));
+    INFER_OK(op, "[1]", "?;?;?");
+  }
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

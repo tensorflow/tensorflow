@@ -163,6 +163,9 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);
 
+// Shape function for use with ops whose output shapes are unknown.
+Status UnknownShape(shape_inference::InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow

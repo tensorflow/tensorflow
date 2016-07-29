@@ -67,13 +67,14 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_vdvt_update_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/operator_pd_vdvt_update_test.py"],
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["notap"],  # http://b/30441813
 )
 
 py_library(

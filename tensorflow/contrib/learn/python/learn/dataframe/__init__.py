@@ -29,10 +29,12 @@ from tensorflow.contrib.learn.python.learn.dataframe.transform import Transform
 
 # Transforms
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.boolean_mask import BooleanMask
+from tensorflow.contrib.learn.python.learn.dataframe.transforms.difference import Difference
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import NumpySource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import PandasSource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source import ReaderSource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.sum import Sum
+
 
 # pylint: disable=g-import-not-at-top,g-bad-import-order
 
@@ -42,9 +44,9 @@ for ut_def in _ut.UNARY_TRANSFORMS:
   _ut.register_unary_op(*ut_def)
 
 # Comparison Transform registration
-from tensorflow.contrib.learn.python.learn.dataframe.transforms import  compare as _cmp
-for ct_def in _cmp.COMPARISON_TRANSFORMS:
-  _cmp.register_comparison_ops(*ct_def)
+from tensorflow.contrib.learn.python.learn.dataframe.transforms import binary_transforms as _bt
+for bt_def in _bt.BINARY_TRANSFORMS:
+  _bt.register_binary_op(*bt_def)
 
 __all__ = ['DataFrame', 'Series', 'PredefinedSeries', 'TransformedSeries',
            'TensorFlowDataFrame', 'parameter', 'Transform']

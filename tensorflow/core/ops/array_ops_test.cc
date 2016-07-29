@@ -476,4 +476,224 @@ TEST(ArrayOpsTest, ConcatOffset_ShapeFn) {
   INFER_OK(op, "?;?;?;?;?", "in1;in2;in3;in4");
 }
 
+TEST(ArrayOpsTest, Reshape_ShapeFn) {
+  ShapeInferenceTestOp op("Reshape");
+  op.input_tensors.resize(2);
+
+  // No valid shape provided.
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "[?];?", "?");
+  INFER_OK(op, "[?];[?]", "?");
+  INFER_OK(op, "[4];[?]", "?");
+
+  // All dimensions provided.
+  Tensor new_shape = test::AsTensor<int32>({1, 2, 3});
+  op.input_tensors[1] = &new_shape;
+  INFER_OK(op, "[?];[3]", "[1,2,3]");
+  INFER_OK(op, "[6];[3]", "[1,2,3]");
+  // The number of elements should match for the reshape to succeed.
+  INFER_ERROR(
+      "Cannot reshape a tensor with 12 elements to shape [1,2,3] (6 elements)",
+      op, "[3,4];[3]");
+
+  // Unknown dimensions.
+  // Flatten:
+  new_shape = test::AsTensor<int32>({-1});
+  INFER_OK(op, "[?];[1]", "[?]");
+  INFER_OK(op, "[2,2];[1]", "[4]");
+  // The first dimension is inferred:
+  new_shape = test::AsTensor<int32>({2, -1});
+  INFER_OK(op, "[3,4];[2]", "[2,6]");
+  // The total number of elements must be divisible by the known dimensions.
+  INFER_ERROR("Dimension size must be divisible by 2 but is 7", op, "[7];[2]");
+  // Multiple missing dimensions cannot be inferred.
+  new_shape = test::AsTensor<int32>({-1, -1, 2});
+  INFER_ERROR("Cannot infer multiple unknown dimensions in shape [?,?,2]", op,
+              "[8];[3]");
+
+  // Reshaping to a scalar.
+  new_shape = test::AsTensor<int32>({});
+  INFER_OK(op, "[1];[0]", "[]");
+  INFER_ERROR(
+      "Cannot reshape a tensor with 2 elements to shape [] (1 elements)", op,
+      "[1,2];[0]");
+}
+
+TEST(ArrayOpsTest, Placeholder_ShapeFn) {
+  {
+    // 2D shape
+    ShapeInferenceTestOp op("Placeholder");
+    TensorShape shape({1, 2});
+    TF_CHECK_OK(NodeDefBuilder("test", "Placeholder")
+                    .Attr("shape", shape)
+                    .Attr("dtype", DT_FLOAT)
+                    .Finalize(&op.node_def));
+    INFER_OK(op, "", "[1,2]");
+  }
+
+  {
+    // Scalar shapes are unknown shapes due to legacy.
+    ShapeInferenceTestOp op("Placeholder");
+    TensorShape shape({});
+    TF_CHECK_OK(NodeDefBuilder("test", "Placeholder")
+                    .Attr("shape", shape)
+                    .Attr("dtype", DT_FLOAT)
+                    .Finalize(&op.node_def));
+    INFER_OK(op, "", "?");
+  }
+
+  {
+    // Partial shape
+    ShapeInferenceTestOp op("Placeholder");
+    const int64 dims[2] = {1, -1};
+    PartialTensorShape shape;
+    TF_CHECK_OK(PartialTensorShape::MakePartialShape(dims, 2, &shape));
+    TF_CHECK_OK(NodeDefBuilder("test", "Placeholder")
+                    .Attr("shape", shape)
+                    .Attr("dtype", DT_FLOAT)
+                    .Finalize(&op.node_def));
+    INFER_OK(op, "", "[1,?]");
+  }
+
+  {
+    ShapeInferenceTestOp op("PlaceholderWithDefault");
+    const int64 dims[2] = {1, -1};
+    PartialTensorShape shape;
+    TF_CHECK_OK(PartialTensorShape::MakePartialShape(dims, 2, &shape));
+    TF_CHECK_OK(NodeDefBuilder("test", "PlaceholderWithDefault")
+                    .Input("input", 0, DT_FLOAT)
+                    .Attr("shape", shape)
+                    .Attr("dtype", DT_FLOAT)
+                    .Finalize(&op.node_def));
+    INFER_OK(op, "[1,2]", "[1,?]");
+
+    // input shape is not compatible with output shape.
+    INFER_ERROR("Dimension 0 in both shapes must be equal, but are 2 and 1", op,
+                "[2,3]");
+    // Wrong rank
+    INFER_ERROR("Shapes must be equal rank, but are 3 and 2", op, "[1,3,10]");
+  }
+}
+
+TEST(ArrayOpsTest, Transpose_ShapeFn) {
+  ShapeInferenceTestOp op("Transpose");
+  op.input_tensors.resize(2);
+
+  // Missing shape information.
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "?;[?]", "?");
+  INFER_OK(op, "?;[2]", "[?,?]");
+  INFER_OK(op, "[?];?", "[?]");
+  INFER_OK(op, "[?,?];[2]", "[?,?]");
+  INFER_ERROR("Dimension must be 3 but is 2", op, "[1,2,3];[2]");
+  Tensor perm = test::AsTensor<int32>({0});
+  op.input_tensors[1] = &perm;
+  INFER_OK(op, "[?];[?]", "[d0_0]");
+  perm = test::AsTensor<int32>({1, 0});
+  INFER_OK(op, "?;[2]", "[?,?]");
+  INFER_OK(op, "[?,?];[2]", "[d0_1,d0_0]");
+  INFER_OK(op, "[1,?];[2]", "[d0_1,d0_0]");
+
+  // Invalid arguments.
+  perm = test::AsTensor<int32>({1, 2});
+  INFER_ERROR("perm dim 2 is out of range of input rank 2", op, "[1,2];[2]");
+  perm = test::AsTensor<int32>({0});
+  INFER_ERROR("Dimension must be 2 but is 1", op, "[1,2];[1]");
+
+  // Larger valid cases.
+  perm = test::AsTensor<int32>({1, 0, 3, 4, 2});
+  INFER_OK(op, "[0,1,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
+  INFER_OK(op, "[0,?,2,3,4];[5]", "[d0_1,d0_0,d0_3,d0_4,d0_2]");
+}
+
+TEST(ArrayOpsTest, Bitcast_ShapeFn) {
+  ShapeInferenceTestOp op("Bitcast");
+  auto rebuild_node_def = [&op](DataType input_type, DataType output_type) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Bitcast")
+                    .Input("input", 0, input_type)
+                    .Attr("type", output_type)
+                    .Finalize(&op.node_def));
+  };
+
+  rebuild_node_def(DT_FLOAT, DT_INT32);
+  // No valid shape provided, so output is unknown.
+  INFER_OK(op, "?", "?");
+
+  // Bitcasting from two equal sizes propagates shape.
+  INFER_OK(op, "[1,2]", "in0");
+
+  // Bitcasting from smaller to larger reduces the size of the last dimension.
+  rebuild_node_def(DT_INT32, DT_INT64);
+  INFER_OK(op, "[1,2]", "[d0_0]");  // last dimension matches divisor.
+  // TODO(vrv): Seems like a bug, or at least, too lenient.
+  INFER_OK(op, "[1,?]", "[d0_0]");
+  // 4 is divisible by 2, but the shape function signature requires
+  // that the last dimension matches the last value exactly.
+  INFER_ERROR("does not match", op, "[1,4]");
+  INFER_ERROR("does not match", op, "[1,3]");
+
+  // Bitcasting from a larger type to a smaller type extends the dimension
+  rebuild_node_def(DT_INT64, DT_INT32);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,2]");
+  rebuild_node_def(DT_COMPLEX128, DT_INT32);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,4]");
+  rebuild_node_def(DT_COMPLEX128, DT_HALF);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,8]");
+  rebuild_node_def(DT_COMPLEX128, DT_INT8);
+  INFER_OK(op, "[4,5]", "[d0_0,d0_1,16]");
+
+  // Bitcasting from a POD or quantized datatype is not allowed.
+  rebuild_node_def(DT_STRING, DT_INT32);
+  INFER_ERROR("one of the type sizes is zero", op, "[1,2,3]");
+  rebuild_node_def(DT_INT32, DT_STRING);
+  INFER_ERROR("one of the type sizes is zero", op, "[1,2,3]");
+}
+
+TEST(ArrayOpsTest, Squeeze_ShapeFn) {
+  ShapeInferenceTestOp op("Squeeze");
+
+  auto rebuild_node_def = [&op](const std::vector<int32>& squeeze_dims) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Squeeze")
+                    .Input("input", 0, DT_FLOAT)
+                    .Attr("squeeze_dims", squeeze_dims)
+                    .Finalize(&op.node_def));
+  };
+
+  // Default squeeze_dims = []
+  rebuild_node_def({});
+
+  // No valid shape provided, so output is unknown.
+  INFER_OK(op, "?", "?");
+
+  INFER_OK(op, "[1,4,1,5,1]", "[d0_1,d0_3]");
+
+  // Squeezing all dimensions, but see some unknown values.
+  INFER_OK(op, "[1,?,1,?,1]", "?");
+
+  // Test simple squeeze of an explicit dimension
+  rebuild_node_def({1});
+  INFER_OK(op, "[4,1,5]", "[d0_0,d0_2]");
+  // Squeezing unknown dim explicitly, assumes it's 1 at runtime.
+  INFER_OK(op, "[4,?,5]", "[d0_0,d0_2]");
+
+  // Attempt to squeeze non-one dimension
+  INFER_ERROR("Can not squeeze dim[1]", op, "[4,6,5]");
+
+  // Squeeze multiple dimensions
+  rebuild_node_def({1, 2});
+  INFER_OK(op, "[4,1,1,5]", "[d0_0,d0_3]");
+  rebuild_node_def({1, -2});
+  INFER_OK(op, "[4,1,1,5]", "[d0_0,d0_3]");
+
+  // Negative squeeze dim
+  rebuild_node_def({-2});
+  INFER_OK(op, "[4,1,5]", "[d0_0,d0_2]");
+
+  // Test validation of squeeze dimensions
+  rebuild_node_def({-4});
+  INFER_ERROR("not in [-3,3)", op, "[1,2,3]");
+  rebuild_node_def({3});
+  INFER_ERROR("not in [-3,3)", op, "[1,2,3]");
+}
+
 }  // end namespace tensorflow

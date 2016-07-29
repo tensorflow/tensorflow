@@ -75,25 +75,24 @@ def avg_pool2d(inputs,
                padding='VALID',
                outputs_collections=None,
                scope=None):
-  """Adds a Avg Pooling op.
+  """Adds a 2D average pooling op.
 
-  It is assumed by the wrapper that the pooling is only done per image and not
-  in depth or batch.
+  It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: a tensor of size [batch_size, height, width, depth].
-    kernel_size: a list of length 2: [kernel_height, kernel_width] of the
+    inputs: A `Tensor` of size [batch_size, height, width, channels].
+    kernel_size: A list of length 2: [kernel_height, kernel_width] of the
       pooling kernel over which the op is computed. Can be an int if both
       values are the same.
-    stride: a list of length 2: [stride_height, stride_width].
-      Can be an int if both strides are the same.  Note that presently
+    stride: A list of length 2: [stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
-    padding: the padding method, either 'VALID' or 'SAME'.
-    outputs_collections: collection to add the outputs.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    outputs_collections: The collections to which the outputs are added.
     scope: Optional scope for op_scope.
 
   Returns:
-    a tensor representing the results of the pooling operation.
+    A `Tensor` representing the results of the pooling operation.
   """
   with ops.op_scope([inputs], scope, 'AvgPool2D') as sc:
     inputs = ops.convert_to_tensor(inputs)
@@ -843,27 +842,27 @@ def max_pool2d(inputs,
                padding='VALID',
                outputs_collections=None,
                scope=None):
-  """Adds a Max Pooling op.
+  """Adds a 2D Max Pooling op.
 
-  It is assumed by the wrapper that the pooling is only done per image and not
-  in depth or batch.
+  It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: a tensor of size [batch_size, height, width, depth].
-    kernel_size: a list of length 2: [kernel_height, kernel_width] of the
+    inputs: A `Tensor` of size [batch_size, height, width, channels].
+    kernel_size: A list of length 2: [kernel_height, kernel_width] of the
       pooling kernel over which the op is computed. Can be an int if both
       values are the same.
-    stride: a list of length 2: [stride_height, stride_width].
-      Can be an int if both strides are the same.  Note that presently
+    stride: A list of length 2: [stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
-    padding: the padding method, either 'VALID' or 'SAME'.
-    outputs_collections: collection to add the outputs.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    outputs_collections: The collections to which the outputs are added.
     scope: Optional scope for op_scope.
 
   Returns:
-    a tensor representing the results of the pooling operation.
+    A `Tensor` representing the results of the pooling operation.
+
   Raises:
-    ValueError: if 'kernel_size' is not a 2-D list
+    ValueError: If 'kernel_size' is not a 2-D list
   """
   with ops.op_scope([inputs], scope, 'MaxPool2D') as sc:
     inputs = ops.convert_to_tensor(inputs)

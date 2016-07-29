@@ -15,28 +15,27 @@ common machine learning algorithms.
 
 ### `tf.contrib.layers.avg_pool2d(*args, **kwargs)` {#avg_pool2d}
 
-Adds a Avg Pooling op.
+Adds a 2D average pooling op.
 
-It is assumed by the wrapper that the pooling is only done per image and not
-in depth or batch.
+It is assumed that the pooling is done per image but not in batch or channels.
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, depth].
-*  <b>`kernel_size`</b>: a list of length 2: [kernel_height, kernel_width] of the
+*  <b>`inputs`</b>: A `Tensor` of size [batch_size, height, width, channels].
+*  <b>`kernel_size`</b>: A list of length 2: [kernel_height, kernel_width] of the
     pooling kernel over which the op is computed. Can be an int if both
     values are the same.
-*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width].
-    Can be an int if both strides are the same.  Note that presently
+*  <b>`stride`</b>: A list of length 2: [stride_height, stride_width].
+    Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
-*  <b>`padding`</b>: the padding method, either 'VALID' or 'SAME'.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
+*  <b>`outputs_collections`</b>: The collections to which the outputs are added.
 *  <b>`scope`</b>: Optional scope for op_scope.
 
 ##### Returns:
 
-  a tensor representing the results of the pooling operation.
+  A `Tensor` representing the results of the pooling operation.
 
 
 - - -
@@ -327,33 +326,32 @@ prior to the initial matrix multiply by `weights`.
 
 ### `tf.contrib.layers.max_pool2d(*args, **kwargs)` {#max_pool2d}
 
-Adds a Max Pooling op.
+Adds a 2D Max Pooling op.
 
-It is assumed by the wrapper that the pooling is only done per image and not
-in depth or batch.
+It is assumed that the pooling is done per image but not in batch or channels.
 
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size [batch_size, height, width, depth].
-*  <b>`kernel_size`</b>: a list of length 2: [kernel_height, kernel_width] of the
+*  <b>`inputs`</b>: A `Tensor` of size [batch_size, height, width, channels].
+*  <b>`kernel_size`</b>: A list of length 2: [kernel_height, kernel_width] of the
     pooling kernel over which the op is computed. Can be an int if both
     values are the same.
-*  <b>`stride`</b>: a list of length 2: [stride_height, stride_width].
-    Can be an int if both strides are the same.  Note that presently
+*  <b>`stride`</b>: A list of length 2: [stride_height, stride_width].
+    Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
-*  <b>`padding`</b>: the padding method, either 'VALID' or 'SAME'.
-*  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
+*  <b>`outputs_collections`</b>: The collections to which the outputs are added.
 *  <b>`scope`</b>: Optional scope for op_scope.
 
 ##### Returns:
 
-  a tensor representing the results of the pooling operation.
+  A `Tensor` representing the results of the pooling operation.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if 'kernel_size' is not a 2-D list
+*  <b>`ValueError`</b>: If 'kernel_size' is not a 2-D list
 
 
 - - -
@@ -767,7 +765,7 @@ Optimize weights given a loss.
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -790,8 +788,8 @@ Given loss and parameters for optimizer, returns a training op.
                         If present, gradients for specified
                         variables will be multiplied by given constant.
 *  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
-*  <b>`moving_average_decay`</b>: float or None, takes into account previous loss
-                        to make learning smoother due to outliers.
+*  <b>`moving_average_decay`</b>: Deprecated. float or None, takes into account previous
+                        loss to make learning smoother due to outliers.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
@@ -802,6 +800,9 @@ Given loss and parameters for optimizer, returns a training op.
 *  <b>`variables`</b>: list of variables to optimize or
              `None` to use all trainable variables.
 *  <b>`name`</b>: The name for this operation is used to scope operations and summaries.
+*  <b>`summaries`</b>: List of internal quantities to visualize on tensorboard. If not
+             set only the loss and the learning rate will be reported. The
+             complete list is in OPTIMIZER_SUMMARIES.
 
 ##### Returns:
 

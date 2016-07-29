@@ -23,7 +23,6 @@ import re
 import threading
 
 import numpy as np
-import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
@@ -71,30 +70,363 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
                   [feed.values, feed.indices, feed.dense_shape], feed_val))
 
 
-def _unflatten_fetches(fetches, flat_values):
-  """Creates a dictionary mapping fetched keys to values.
+# List of extensions supported to convert run arguments into actual fetches and
+# feeds.
+#
+# Each element in the list is a tuple of (Type, fetch_fn, feed_fn1, feed_fn2),
+# where the function signatures are:
+#   fetch_fn : Type -> (list of Tensors,
+#                       lambda: list of fetched np.ndarray -> TypeVal)
+#   feed_fn1 : Type, TypeVal -> list of (Tensor, value)
+#   feed_fn2 : Type -> list of Tensors
+#
+# `fetch_fn` describes how to expand fetch into its
+# component Tensors and how to contract the fetched results back into
+# a single return value.
+#
+# Each feed function describes how to unpack a single fed value and map it to
+# feeds of one or more tensors and their corresponding values: `feed_fn1` is
+# used to feed a run, `feed_fn2` to set up a partial run.
+#
+# TODO(touts): We could reimplement these as specialized _FeedMapper
+# implementations after we refactor the feed handling code to use them.
+#
+# Eventually, this registration could be opened up to support custom Tensor
+# expansions.
+# pylint: disable=g-long-lambda
+_REGISTERED_EXPANSIONS = [
+    # SparseTensors are fetched as SparseTensorValues. They can be fed
+    # SparseTensorValues or normal tuples.
+    (ops.SparseTensor,
+     lambda fetch: (
+         [fetch.indices, fetch.values, fetch.shape],
+         lambda fetched_vals: ops.SparseTensorValue(*fetched_vals)),
+     lambda feed, feed_val: list(zip(
+         [feed.indices, feed.values, feed.shape], feed_val)),
+     lambda feed: [feed.indices, feed.values, feed.shape]),
+    # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
+    # IndexedSlicesValues or normal tuples.
+    (ops.IndexedSlices,
+     lambda fetch: (
+         [fetch.values, fetch.indices] if fetch.dense_shape is None
+         else [fetch.values, fetch.indices, fetch.dense_shape],
+         _get_indexed_slices_value_from_fetches),
+     _get_feeds_for_indexed_slices,
+     lambda feed: [feed.values, feed.indices] if feed.dense_shape is None
+                  else [feed.values, feed.indices, feed.dense_shape]),
+    # The default catches all other types and performs no expansions.
+    (object,
+     lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
+     lambda feed, feed_val: [(feed, feed_val)],
+     lambda feed: [feed])]
+# pylint: enable=g-long-lambda
+
+
+class _FetchMapper(object):
+  """Definition of the interface provided by fetch mappers.
+
+  Fetch mappers are utility classes used by the _FetchHandler to handle
+  arbitrary structures for the `fetch` argument to `Session.run()`.
+
+  The `fetch` argument can be of various shapes: single tensor or op, list of
+  fetches, tuple of fetches, namedtuple of fetches, or dict of fetches.  The
+  structures can be arbitrarily nested.
+
+  The low level run() API only wants a list of tensor or op names.  The various
+  `_FetchMapper` subclasses below take care of handling the different shapes:
+  uniquifying the fetches, and constructing results with the original shape.
+  """
+
+  def unique_fetches(self):
+    """Return the list of unique tensors or ops needed by this fetch mapper.
+
+    Returns:
+      A list of tensors or ops.
+    """
+    raise NotImplementedError('Must be implemented by subclasses')
+
+  def build_results(self, values):
+    """Build results that match the original shape of the fetch.
+
+    Args:
+      values: List of values returned by run(). The values correspond
+        exactly to the list tensors or ops returned by unique_fetches().
+
+    Returns:
+      A struct of the same shape as the original fetch object handled by
+      this fetch mapper.  In the returned struct, the original fetches are
+      replaced by their fetched values.
+    """
+    raise NotImplementedError('Must be implemented by subclasses')
+
+  @staticmethod
+  def for_fetch(fetch):
+    """Creates fetch mapper that handles the structure of `fetch`.
+
+    The default graph must be the one from which we want to fetch values when
+    this function is called.
+
+    Args:
+      fetch: An arbitrary fetch structure: singleton, list, tuple,
+        namedtuple, or dict.
+
+    Returns:
+      An instance of a subclass of `_FetchMapper` that handles the shape.
+    """
+    if fetch is None:
+      raise TypeError('Fetch argument %r has invalid type %r' %
+                      (fetch, type(fetch)))
+    elif isinstance(fetch, (list, tuple)):
+      # NOTE(touts): This is also the code path for namedtuples.
+      return _ListFetchMapper(fetch)
+    elif isinstance(fetch, dict):
+      return _DictFetchMapper(fetch)
+    else:
+      # Look for a handler in the registered expansions.
+      for tensor_type, fetch_fn, _, _ in _REGISTERED_EXPANSIONS:
+        if isinstance(fetch, tensor_type):
+          fetches, contraction_fn = fetch_fn(fetch)
+          return _ElementFetchMapper(fetches, contraction_fn)
+    # Did not find anything.
+    raise TypeError('Fetch argument %r has invalid type %r' %
+                    (fetch, type(fetch)))
+
+
+class _ElementFetchMapper(_FetchMapper):
+  """Fetch mapper for singleton tensors and ops."""
+
+  def __init__(self, fetches, contraction_fn):
+    """Creates an _ElementFetchMapper.
+
+    This is the fetch mapper used for leaves in the fetch struct.  Because of
+    the expansions mechanism, a leaf can actually fetch more than one tensor.
+
+    Also note that the fetches here can be just strings (tensor or op names) or
+    any other object that the graph knows how to convert to a tensor, such as a
+    Variable.  So we have to run each fetch through `as_graph_element()` to get
+    the corresponding tensor or op.
+
+    Args:
+      fetches: List of objects, as returned by a fetch_fn defined
+        in _REGISTERED_EXPANSIONS.
+      contraction_fn: Callable as returned by a fetch_fn.
+    """
+    self._unique_fetches = []
+    for fetch in fetches:
+      try:
+        self._unique_fetches.append(ops.get_default_graph().as_graph_element(
+            fetch, allow_tensor=True, allow_operation=True))
+      except TypeError as e:
+        raise TypeError('Fetch argument %r has invalid type %r, '
+                        'must be a string or Tensor. (%s)'
+                        % (fetch, type(fetch), str(e)))
+      except ValueError as e:
+        raise ValueError('Fetch argument %r cannot be interpreted as a '
+                         'Tensor. (%s)' % (fetch, str(e)))
+      except KeyError as e:
+        raise ValueError('Fetch argument %r cannot be interpreted as a '
+                         'Tensor. (%s)' % (fetch, str(e)))
+    self._contraction_fn = contraction_fn
+
+  def unique_fetches(self):
+    return self._unique_fetches
+
+  def build_results(self, values):
+    if not values:
+      # 'Operation' case
+      return None
+    else:
+      return self._contraction_fn(values)
+
+
+def _uniquify_fetches(fetch_mappers):
+  """Uniquifies fetches from a list of fetch_mappers.
+
+  This is a utility function used by _ListFetchMapper and _DictFetchMapper.  It
+  gathers all the unique fetches from a list of mappers and builds a list
+  containing all of them but without duplicates (unique_fetches).
+
+  It also returns a 2-D list of integers (values_indices) indicating at which
+  index in unique_fetches the fetches of the mappers are located.
+
+  This list is as follows:
+    values_indices[mapper_index][mapper_fetch_index] = unique_fetches_index
 
   Args:
-    fetches: A dictionary of either graph elements or lists/tuples
-      of graph elements.
-    flat_values: A flat list of fetched values.
+    fetch_mappers: list of fetch mappers.
 
   Returns:
-    A dictionary with the same keys as `fetches`, mapping to the fetched value
-    (or list of values) in `flat_values`.
+    A list of fetches.
+    A 2-D list of integers.
   """
-  used = 0
-  ret = {}
-  for key, fetch in six.iteritems(fetches):
-    if isinstance(fetch, (list, tuple)):
-      flat_fetch_values = nest.flatten(fetch)
-      start, used = used, used + len(flat_fetch_values)
-      ret[key] = nest.pack_sequence_as(fetch, flat_values[start:used])
+  unique_fetches = []
+  value_indices = []
+  seen_fetches = {}
+  for m in fetch_mappers:
+    m_value_indices = []
+    for f in m.unique_fetches():
+      j = seen_fetches.get(f)
+      if j is None:
+        j = len(seen_fetches)
+        seen_fetches[f] = j
+        unique_fetches.append(f)
+      m_value_indices.append(j)
+    value_indices.append(m_value_indices)
+  return unique_fetches, value_indices
+
+
+class _ListFetchMapper(_FetchMapper):
+  """Fetch mapper for lists, tuples, and namedtuples."""
+
+  def __init__(self, fetches):
+    """Creates a _ListFetchMapper.
+
+    Args:
+      fetches: List, tuple, or namedtuple of fetches.
+    """
+    self._fetch_type = type(fetches)
+    self._mappers = [_FetchMapper.for_fetch(fetch) for fetch in fetches]
+    self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
+
+  def unique_fetches(self):
+    return self._unique_fetches
+
+  def build_results(self, values):
+    # Create the list of results for each mapper.
+    results = []
+    for m, vi in zip(self._mappers, self._value_indices):
+      results.append(m.build_results([values[j] for j in vi]))
+    # Return a value of the original type of the fetches.
+    if self._fetch_type == list:
+      return results
+    elif self._fetch_type == tuple:
+      return tuple(results)
     else:
-      ret[key] = flat_values[used]
-      used += 1
-  assert used == len(flat_values)
-  return ret
+      # This is the code path for namedtuple.
+      return self._fetch_type(*results)
+
+
+class _DictFetchMapper(_FetchMapper):
+  """Fetch mapper for dicts."""
+
+  def __init__(self, fetches):
+    """Creates a _DictFetchMapper.
+
+    Args:
+      fetches: Dict of fetches.
+    """
+    self._keys = fetches.keys()
+    self._mappers = [_FetchMapper.for_fetch(fetch)
+                     for fetch in fetches.values()]
+    self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
+
+  def unique_fetches(self):
+    return self._unique_fetches
+
+  def build_results(self, values):
+    results = {}
+    for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
+      results[k] = m.build_results([values[j] for j in vi])
+    return results
+
+
+class _FetchHandler(object):
+  """Handler for structured fetches.
+
+  Given a graph and a user-provided structure for fetches, this class takes
+  care of generating a list of tensor names to fetch and op names to run for a
+  low level `run()` call.
+
+  Given the results of the low level run call, this class can also rebuild a
+  result structure matching the user-provided structure for fetches, but
+  containing the corresponding results.
+  """
+
+  def __init__(self, graph, fetches):
+    """Creates a fetch handler.
+
+    Args:
+      graph: Graph of the fetches.   Used to check for fetchability
+        and to convert all fetches to tensors or ops as needed.
+      fetches: An arbitrary fetch structure: singleton, list, tuple,
+        namedtuple, or dict.
+    """
+    with graph.as_default():
+      self._fetch_mapper = _FetchMapper.for_fetch(fetches)
+    self._fetches = []
+    self._targets = []
+    self._ops = []
+    self._fetch_handles = {}
+    for fetch in self._fetch_mapper.unique_fetches():
+      fetch_name = compat.as_bytes(fetch.name)
+      if isinstance(fetch, ops.Operation):
+        self._assert_fetchable(graph, fetch)
+        self._targets.append(fetch_name)
+        self._ops.append(True)
+      else:
+        self._assert_fetchable(graph, fetch.op)
+        self._fetches.append(fetch_name)
+        self._ops.append(False)
+      # Remember the fetch if it is for a tensor handle.
+      if isinstance(fetch, ops.Tensor) and fetch.op.type == 'GetSessionHandle':
+        self._fetch_handles[fetch_name] = fetch.op.inputs[0].dtype
+
+  def _assert_fetchable(self, graph, op):
+    if not graph.is_fetchable(op):
+      raise ValueError(
+          'Operation %r has been marked as not fetchable.' % op.name)
+
+  def fetches(self):
+    """Return the unique names of tensors to fetch.
+
+    Returns:
+      A list of strings.
+    """
+    return self._fetches
+
+  def targets(self):
+    """Return the unique names of ops to run.
+
+    Returns:
+      A list of strings.
+    """
+    return self._targets
+
+  def build_results(self, session, tensor_values):
+    """Build results matching the original fetch shape.
+
+    `tensor_values` must be a list of the same length as
+    the one returned by `fetches()`, and holding the requested
+    fetch values.
+
+    This method builds a struct with the same shape as the original `fetches`
+    passed to the constructor, in which the fetches are replaced by their
+    fetched value.
+
+    Args:
+      session: The enclosing session.  Used for tensor handles.
+      tensor_values: List of values matching the list returned
+        by fetches().
+
+    Returns:
+      A structure of the same shape as the original `fetches` argument but
+        containing tensors or None (for fetched ops).
+    """
+    full_values = []
+    assert len(self._fetches) == len(tensor_values)
+    i = 0
+    for is_op in self._ops:
+      if is_op:
+        full_values.append(None)
+      else:
+        dtype = self._fetch_handles.get(self._fetches[i])
+        if dtype:
+          full_values.append(session_ops.TensorHandle(
+              tensor_values[i], dtype, session))
+        else:
+          full_values.append(tensor_values[i])
+        i += 1
+    return self._fetch_mapper.build_results(full_values)
 
 
 class BaseSession(SessionInterface):
@@ -252,72 +584,56 @@ class BaseSession(SessionInterface):
     """
     return ops.default_session(self)
 
-  # Eventually, this registration could be opened up to support custom
-  # Tensor expansions. Expects tuples of (Type, fetch_fn, feed_fn1, feed_fn2),
-  # where the signatures are:
-  #   fetch_fn : Type -> (list of Tensors,
-  #                       lambda: list of fetched np.ndarray -> TypeVal)
-  #   feed_fn1 : Type, TypeVal -> list of (Tensor, value)
-  #   feed_fn2 : Type -> list of Tensors
-  # Conceptually, fetch_fn describes how to expand fetch into its
-  # component Tensors and how to contracting the fetched results back into
-  # a single return value. feed_fn describes how to unpack a single fed
-  # value and map it to feeds of a Tensor and its corresponding value.
-  # pylint: disable=g-long-lambda
-  _REGISTERED_EXPANSIONS = [
-      # SparseTensors are fetched as SparseTensorValues. They can be fed
-      # SparseTensorValues or normal tuples.
-      (ops.SparseTensor,
-       lambda fetch: (
-           [fetch.indices, fetch.values, fetch.shape],
-           lambda fetched_vals: ops.SparseTensorValue(*fetched_vals)),
-       lambda feed, feed_val: list(zip(
-           [feed.indices, feed.values, feed.shape], feed_val)),
-       lambda feed: [feed.indices, feed.values, feed.shape]),
-      # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
-      # IndexedSlicesValues or normal tuples.
-      (ops.IndexedSlices,
-       lambda fetch: (
-           [fetch.values, fetch.indices] if fetch.dense_shape is None
-           else [fetch.values, fetch.indices, fetch.dense_shape],
-           _get_indexed_slices_value_from_fetches),
-       _get_feeds_for_indexed_slices,
-       lambda feed: [feed.values, feed.indices] if feed.dense_shape is None
-                    else [feed.values, feed.indices, feed.dense_shape]),
-      # The default catches all types and performs no expansions.
-      (object,
-       lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
-       lambda feed, feed_val: [(feed, feed_val)],
-       lambda feed: [feed])]
-  # pylint: enable=g-long-lambda
-
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
-    """Runs the operations and evaluates the tensors in `fetches`.
+    """Runs operations and evaluates tensors in `fetches`.
 
     This method runs one "step" of TensorFlow computation, by
     running the necessary graph fragment to execute every `Operation`
     and evaluate every `Tensor` in `fetches`, substituting the values in
     `feed_dict` for the corresponding input values.
 
-    The `fetches` argument may be a single graph element, an arbitrarily nested
-    list of graph elements, or a dictionary whose values are the above. The type
-    of `fetches` determines the return value of this method. A graph element can
-    be one of the following types:
+    The `fetches` argument may be a single graph element, or an arbitrarily
+    nested list, tuple, namedtuple, or dict containing graph elements at its
+    leaves.  A graph element can be one of the following types:
 
-    * If an element of `fetches` is an
-      [`Operation`](../../api_docs/python/framework.md#Operation), the
-      corresponding fetched value will be `None`.
-    * If an element of `fetches` is a
-      [`Tensor`](../../api_docs/python/framework.md#Tensor), the corresponding
-      fetched value will be a numpy ndarray containing the value of that tensor.
-    * If an element of `fetches` is a
-      [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
-      the corresponding fetched value will be a
+    * An [`Operation`](../../api_docs/python/framework.md#Operation).
+      The corresponding fetched value will be `None`.
+    * A [`Tensor`](../../api_docs/python/framework.md#Tensor).
+      The corresponding fetched value will be a numpy ndarray containing the
+      value of that tensor.
+    * A [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor).
+      The corresponding fetched value will be a
       [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
       containing the value of that sparse tensor.
-    * If an element of `fetches` is produced by a `get_tensor_handle` op,
-      the corresponding fetched value will be a numpy ndarray containing the
-      handle of that tensor.
+    * A `get_tensor_handle` op.  The corresponding fetched value will be a
+      numpy ndarray containing the handle of that tensor.
+    * A `string` which is the name of a tensor or operation in the graph.
+
+    The value returned by `run()` has the same shape as the `fetches` argument,
+    where the leaves are replaced by the corresponding values returned by
+    TensorFlow.
+
+    Example:
+
+    ```python
+       a = tf.constant([10, 20])
+       b = tf.constant([1.0, 2.0])
+       # 'fetches' can be a singleton
+       v = session.run(a)
+       # v is the numpy array [10, 20]
+       # 'fetches' can be a list.
+       v = session.run([a, b])
+       # v a Python list with 2 numpy arrays: the numpy array [10, 20] and the
+       # 1-D array [1.0, 2.0]
+       # 'fetches' can be arbitrary lists, tuples, namedtuple, dicts:
+       MyData = collections.namedtuple('MyData', ['a', 'b'])
+       v = session.run({'k1': MyData(a, b), 'k2': [b, a]})
+       # v is a dict with
+       # v['k1'] is a MyData namedtuple with 'a' the numpy array [10, 20] and
+       # 'b' the numpy array [1.0, 2.0]
+       # v['k2'] is a list with the numpy array [1.0, 2.0] and the numpy array
+       # [10, 20].
+    ```
 
     The optional `feed_dict` argument allows the caller to override
     the value of tensors in the graph. Each key in `feed_dict` can be
@@ -457,7 +773,7 @@ class BaseSession(SessionInterface):
       tf.errors.OpError: Or one of its subclasses if a TensorFlow error happens.
     """
     def _feed_fn(feed):
-      for tensor_type, _, _, feed_fn in BaseSession._REGISTERED_EXPANSIONS:
+      for tensor_type, _, _, feed_fn in _REGISTERED_EXPANSIONS:
         if isinstance(feed, tensor_type):
           return feed_fn(feed)
       raise TypeError('Feed argument %r has invalid type %r'
@@ -471,7 +787,7 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Validate and process fetches.
-    unique_fetches, target_list, _, _ = self._process_fetches(fetches)
+    fetch_handler = _FetchHandler(self._graph, fetches)
 
     # Create request.
     feed_list = []
@@ -499,71 +815,13 @@ class BaseSession(SessionInterface):
         return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
                                        target_list, status)
 
-    return self._do_call(_setup_fn, self._session, feed_list, unique_fetches,
-                         target_list)
-
-  def _assert_fetchable(self, op):
-    if not self.graph.is_fetchable(op):
-      raise ValueError(
-          'Operation %r has been marked as not fetchable.' % op.name)
-
-  def _process_fetches(self, fetches):
-    """Validate and process fetches."""
-    def _fetch_fn(fetch):
-      for tensor_type, fetch_fn, _, _ in BaseSession._REGISTERED_EXPANSIONS:
-        if isinstance(fetch, tensor_type):
-          return fetch_fn(fetch)
-      raise TypeError('Fetch argument %r has invalid type %r'
-                      % (fetch, type(fetch)))
-
-    # Validate and process fetches.
-    is_list_fetch = isinstance(fetches, (list, tuple))
-    if not is_list_fetch:
-      fetches = [fetches]
-
-    unique_fetch_targets = set()
-    unique_fetch_handles = {}
-    target_list = []
-
-    fetch_info = []
-    for fetch in fetches:
-      subfetches, fetch_contraction_fn = _fetch_fn(fetch)
-      subfetch_names = []
-      for subfetch in subfetches:
-        try:
-          fetch_t = self.graph.as_graph_element(subfetch, allow_tensor=True,
-                                                allow_operation=True)
-          fetch_name = compat.as_bytes(fetch_t.name)
-          if isinstance(fetch_t, ops.Operation):
-            self._assert_fetchable(fetch_t)
-            target_list.append(fetch_name)
-          else:
-            self._assert_fetchable(fetch_t.op)
-            subfetch_names.append(fetch_name)
-          # Remember the fetch if it is for a tensor handle.
-          if (isinstance(fetch_t, ops.Tensor) and
-              fetch_t.op.type == 'GetSessionHandle'):
-            unique_fetch_handles[fetch_name] = fetch_t.op.inputs[0].dtype
-        except TypeError as e:
-          raise TypeError('Fetch argument %r of %r has invalid type %r, '
-                          'must be a string or Tensor. (%s)'
-                          % (subfetch, fetch, type(subfetch), str(e)))
-        except ValueError as e:
-          raise ValueError('Fetch argument %r of %r cannot be interpreted as a '
-                           'Tensor. (%s)' % (subfetch, fetch, str(e)))
-        except KeyError as e:
-          raise ValueError('Fetch argument %r of %r cannot be interpreted as a '
-                           'Tensor. (%s)' % (subfetch, fetch, str(e)))
-      unique_fetch_targets.update(subfetch_names)
-      fetch_info.append((subfetch_names, fetch_contraction_fn))
-
-    unique_fetch_targets = list(unique_fetch_targets)
-    return unique_fetch_targets, target_list, fetch_info, unique_fetch_handles
+    return self._do_call(_setup_fn, self._session, feed_list,
+                         fetch_handler.fetches(), fetch_handler.targets())
 
   def _run(self, handle, fetches, feed_dict, options, run_metadata):
-    """Perform either run or partial_run, depending the exitence of `handle`."""
+    """Perform either run or partial_run, depending the presence of `handle`."""
     def _feed_fn(feed, feed_val):
-      for tensor_type, _, feed_fn, _ in BaseSession._REGISTERED_EXPANSIONS:
+      for tensor_type, _, feed_fn, _ in _REGISTERED_EXPANSIONS:
         if isinstance(feed, tensor_type):
           return feed_fn(feed, feed_val)
       raise TypeError('Feed argument %r has invalid type %r'
@@ -576,30 +834,8 @@ class BaseSession(SessionInterface):
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
 
-    # Flatten/unflatten fetched values.
-    if isinstance(fetches, (list, tuple)):
-      # fetches is already a list or tuple; nothing to do.
-      orig_fetches, fetches = fetches, nest.flatten(fetches)
-      unflatten = lambda fetched: nest.pack_sequence_as(orig_fetches, fetched)
-    elif isinstance(fetches, dict):
-      # fetches is a dictionary; flatten the values and map fetched
-      # values back into to a dictionary.
-      # nest.flatten does not accept iterators, next line is for python3
-      # compatibility.
-      fetches_values = list(fetches.values())
-      orig_fetches, fetches = fetches, nest.flatten(fetches_values)
-      unflatten = lambda fetched: _unflatten_fetches(orig_fetches, fetched)
-    else:
-      # fetches is a singleton.
-      fetches = [fetches]
-      unflatten = lambda fetched: fetched[0]
-
-    # Validate and process fetches.
-    processed_fetches = self._process_fetches(fetches)
-    unique_fetches = processed_fetches[0]
-    target_list = processed_fetches[1]
-    fetch_info = processed_fetches[2]
-    unique_handles = processed_fetches[3]
+    # Create a fetch handler to take care of the structure of fetches.
+    fetch_handler = _FetchHandler(self._graph, fetches)
 
     # Create request.
     feed_dict_string = {}
@@ -651,29 +887,10 @@ class BaseSession(SessionInterface):
     # TODO(yuanbyu, keveman): Revisit whether we should just treat feeding
     # of a handle from a different device as an error.
     movers = self._update_with_movers(feed_dict_string, feed_map)
-    results = self._do_run(handle, target_list, unique_fetches,
-                           feed_dict_string, options, run_metadata)
-
-    # User may have fetched the same tensor multiple times, but we
-    # only fetch them from the runtime once.  Furthermore, they may
-    # be wrapped as a tuple of tensors.  Here we map the results back
-    # to what the client asked for.
-    # TODO(yuanbyu): Use the contraction_fn in _REGISTERED_EXPANSIONS.
-    fetched_results = {}
-    for fetch, result in zip(unique_fetches, results):
-      dtype = unique_handles.get(fetch)
-      if dtype:
-        result = session_ops.TensorHandle(result, dtype, self)
-      fetched_results[fetch] = result
-    ret = []
-    for fetch_names, fetch_contraction_fn in fetch_info:
-      if fetch_names:
-        fetched_vals = [fetched_results[name] for name in fetch_names]
-        ret.append(fetch_contraction_fn(fetched_vals))
-      else:
-        ret.append(None)
-
-    return unflatten(ret)
+    results = self._do_run(handle, fetch_handler.targets(),
+                           fetch_handler.fetches(), feed_dict_string, options,
+                           run_metadata)
+    return fetch_handler.build_results(self, results)
 
   # Captures the name of a node in an error status.
   _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')

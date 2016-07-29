@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for comparison transforms."""
+"""Tests for binary transforms."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,14 +23,15 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.dataframe import tensorflow_dataframe as df
-from tensorflow.contrib.learn.python.learn.dataframe.transforms.compare import COMPARISON_TRANSFORMS
+from tensorflow.contrib.learn.python.learn.dataframe.transforms.binary_transforms import BINARY_TRANSFORMS
 
 NUMPY_ARRAY_SIZE = 100
-SCALAR = 50
+SCALAR = 50.0
+TEST_NAME_PREFIX = "testBinaryOp_"
 
 
-class CompareTestCase(tf.test.TestCase):
-  """Test class for comparison transforms."""
+class BinaryTransformTestCase(tf.test.TestCase):
+  """Test class for binary transforms."""
 
   @classmethod
   def add_test_case(cls, fn_name, op):
@@ -69,10 +70,15 @@ class CompareTestCase(tf.test.TestCase):
       coord.join(threads)
       np.testing.assert_almost_equal(expected_series, actual_series)
       np.testing.assert_almost_equal(expected_scalar, actual_scalar)
-    setattr(cls, "test{}".format(op.__name__), _test)
+    setattr(cls, "{}{}".format(TEST_NAME_PREFIX, op.__name__), _test)
 
-for ct in COMPARISON_TRANSFORMS:
-  CompareTestCase.add_test_case(*ct)
+for bt in BINARY_TRANSFORMS:
+  BinaryTransformTestCase.add_test_case(*bt)
+
+# Check that the number of test methods matches the number of binary transforms.
+test_methods = [test for test in dir(BinaryTransformTestCase)
+                if test.startswith(TEST_NAME_PREFIX)]
+assert len(test_methods) == len(BINARY_TRANSFORMS)
 
 if __name__ == "__main__":
   tf.test.main()

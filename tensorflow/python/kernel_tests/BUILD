@@ -177,7 +177,6 @@ cuda_py_tests(
     name = "medium_kernel_tests",
     size = "medium",
     srcs = [
-        "concat_op_test.py",
         "conv3d_transpose_test.py",
         "conv_ops_test.py",
         "division_future_test.py",
@@ -192,6 +191,13 @@ cuda_py_tests(
         "sparse_ops_test.py",
         "sparse_tensor_dense_matmul_op_test.py",
     ],
+)
+
+cuda_py_test(
+    name = "concat_op_test",
+    size = "medium",
+    srcs = ["concat_op_test.py"],
+    tags = ["notsan"],  # http://b/30445083
 )
 
 cuda_py_tests(

@@ -38,7 +38,8 @@ class RunConfig(object):
                save_summary_steps=100,
                save_checkpoints_secs=60,
                keep_checkpoint_max=5,
-               keep_checkpoint_every_n_hours=10000):
+               keep_checkpoint_every_n_hours=10000,
+               save_checkpoints_steps=1000):
     """Constructor.
 
     Args:
@@ -60,6 +61,7 @@ class RunConfig(object):
       keep_checkpoint_every_n_hours: Number of hours between each checkpoint
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
+      save_checkpoints_steps: Number of steps between each checkpoint saving.
     """
     self.master = master
     self.task = task
@@ -75,3 +77,4 @@ class RunConfig(object):
     self.save_checkpoints_secs = save_checkpoints_secs
     self.keep_checkpoint_max = keep_checkpoint_max
     self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self.save_checkpoints_steps = save_checkpoints_steps
