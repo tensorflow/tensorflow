@@ -15,8 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
+
+namespace {
+
+Status RandomShape(InferenceContext* c) {
+  const Shape* out;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+}  // namepsace
 
 REGISTER_OP("RandomUniform")
     .Input("shape: T")
@@ -26,6 +42,7 @@ REGISTER_OP("RandomUniform")
     .Attr("seed2: int = 0")
     .Attr("dtype: {half,float,double}")
     .Attr("T: {int32, int64}")
+    .SetShapeFn(RandomShape)
     .Doc(R"doc(
 Outputs random values from a uniform distribution.
 
@@ -52,6 +69,7 @@ REGISTER_OP("RandomUniformInt")
     .Attr("seed2: int = 0")
     .Attr("Tout: {int32, int64}")
     .Attr("T: {int32, int64}")
+    .SetShapeFn(RandomShape)
     .Doc(R"doc(
 Outputs random integers from a uniform distribution.
 
@@ -82,6 +100,7 @@ REGISTER_OP("RandomStandardNormal")
     .Attr("seed2: int = 0")
     .Attr("dtype: {half,float,double}")
     .Attr("T: {int32, int64}")
+    .SetShapeFn(RandomShape)
     .Doc(R"doc(
 Outputs random values from a normal distribution.
 
@@ -109,6 +128,7 @@ REGISTER_OP("ParameterizedTruncatedNormal")
     .Attr("seed2: int = 0")
     .Attr("dtype: {half,float,double}")
     .Attr("T: {int32, int64}")
+    .SetShapeFn(RandomShape)
     .Doc(R"doc(
 Outputs random values from a normal distribution. The parameters may each be a
 scalar which applies to the entire output, or a vector of length shape[0] which
@@ -138,6 +158,7 @@ REGISTER_OP("TruncatedNormal")
     .Attr("seed2: int = 0")
     .Attr("dtype: {half,float,double}")
     .Attr("T: {int32, int64}")
+    .SetShapeFn(RandomShape)
     .Doc(R"doc(
 Outputs random values from a truncated normal distribution.
 
@@ -195,6 +216,16 @@ REGISTER_OP("Multinomial")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* logits_shape;
+      const Shape* unused;
+      const Dimension* num_samples;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &logits_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &num_samples));
+      c->set_output(0, c->Matrix(c->Dim(logits_shape, 0), num_samples));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Draws samples from a multinomial distribution.
 
@@ -217,6 +248,13 @@ REGISTER_OP("RandomGamma")
     .Attr("seed2: int = 0")
     .Attr("S: {int32, int64}")
     .Attr("T: {half, float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      TF_RETURN_IF_ERROR(c->Concatenate(out, c->input(1), &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Outputs random values from the Gamma distribution(s) described by alpha.
 

@@ -75,7 +75,8 @@ class OptimizersTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       session.run(train, feed_dict={x: 5})
       var_value, global_step_value = session.run([var, global_step])
-      self.assertAlmostEqual(var_value, 8.58150, 4)
+      # Due to randomness the following number may change if graph is different.
+      self.assertAlmostEqual(var_value, 8.5591021, 4)
       self.assertEqual(global_step_value, 1)
 
   def testGradientNoiseWithClipping(self):

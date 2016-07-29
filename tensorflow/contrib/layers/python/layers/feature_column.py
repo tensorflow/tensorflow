@@ -704,7 +704,8 @@ def embedding_column(sparse_id_column,
 
   Args:
     sparse_id_column: A _SparseColumn which is created by `sparse_column_with_*`
-      functions. Note that `combiner` defined in `sparse_id_column` is ignored.
+      or crossed_column functions. Note that `combiner` defined in
+      `sparse_id_column` is ignored.
     dimension: An integer specifying dimension of the embedding.
     combiner: A string specifying how to reduce if there are multiple entries
       in a single row. Currently "mean", "sqrtn" and "sum" are supported. Each
@@ -1230,6 +1231,15 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
   def key(self):
     """Returns a string which will be used as a key when we do sorting."""
     return "{}".format(self)
+
+  def id_tensor(self, input_tensor):
+    """Returns the id tensor from the given transformed input_tensor."""
+    return input_tensor
+
+  # pylint: disable=unused-argument
+  def weight_tensor(self, input_tensor):
+    """Returns the weight tensor from the given transformed input_tensor."""
+    return None
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles cross transformation."""

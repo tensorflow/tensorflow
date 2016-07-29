@@ -25,6 +25,7 @@
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace ffmpeg {
@@ -112,6 +113,13 @@ class DecodeAudioOp : public OpKernel {
           context, result.ok(),
           errors::Unavailable("FFmpeg must be installed to run this op. FFmpeg "
                               "can be found at http://www.ffmpeg.org."));
+    } else if (result.code() == error::UNKNOWN) {
+      LOG(ERROR) << "Ffmpeg failed with error '" << result.error_message()
+                 << "'. Returning empty tensor.";
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(
+          context, context->allocate_output(0, TensorShape({0, 0}), &output));
+      return;
     } else {
       OP_REQUIRES_OK(context, result);
     }
@@ -162,7 +170,8 @@ different from the contents of the file, channels will be merged or created.
 
 contents: The binary audio file contents.
 sampled_audio: A rank 2 tensor containing all tracks of the audio. Dimension 0
-    is time and dimension 1 is the channel.
+    is time and dimension 1 is the channel. If ffmpeg fails to decode the audio
+    then an empty tensor will be returned.
 file_format: A string describing the audio file format. This can be "wav" or
     "mp3".
 samples_per_second: The number of samples per second that the audio should have.

@@ -769,6 +769,7 @@ REGISTER_OP("L2Loss")
     .Input("t: T")
     .Output("output: T")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 L2 Loss.
 

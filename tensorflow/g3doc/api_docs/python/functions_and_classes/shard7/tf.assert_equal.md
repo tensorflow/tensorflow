@@ -1,4 +1,4 @@
-### `tf.assert_equal(x, y, data=None, summarize=None, name=None)` {#assert_equal}
+### `tf.assert_equal(x, y, data=None, summarize=None, message=None, name=None)` {#assert_equal}
 
 Assert the condition `x == y` holds element-wise.
 
@@ -27,6 +27,7 @@ If both `x` and `y` are empty, this is trivially satisfied.
 *  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
     error message and first few entries of `x`, `y`.
 *  <b>`summarize`</b>: Print this many entries of each tensor.
+*  <b>`message`</b>: A string to prefix to the default message.
 *  <b>`name`</b>: A name for this operation (optional).  Defaults to "assert_equal".
 
 ##### Returns:

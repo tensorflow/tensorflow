@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import threading
 import time
 
@@ -179,6 +180,172 @@ class SessionTest(test_util.TensorFlowTestCase):
         s.run({'b': None})
       with self.assertRaises(TypeError):
         s.run({'a': a, 'b': None})
+
+  def testFetchSingleton(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      res = sess.run(a)
+      self.assertEqual(42.0, res)
+      res = sess.run(a.op)  # An op, not a tensor.
+      self.assertEqual(None, res)
+
+  def testFetchSingletonByName(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      res = sess.run(a.name)
+      self.assertEqual(42.0, res)
+      res = sess.run(a.op)  # An op, not a tensor.
+      self.assertEqual(None, res)
+
+  def testFetchList(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(44.0)
+      v = variables.Variable([54.0])
+      assign = v.assign([63.0])
+      res = sess.run([a, b, c, a.name, assign.op])
+      self.assertTrue(isinstance(res, list))
+      self.assertEqual(42.0, res[0])
+      self.assertEqual(None, res[1])
+      self.assertEqual(44.0, res[2])
+      self.assertEqual(42.0, res[3])
+      self.assertEqual(None, res[4])
+      self.assertEqual(63.0, sess.run(v))
+
+  def testFetchTuple(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(44.0)
+      res = sess.run((a, b, c, a.name))
+      self.assertTrue(isinstance(res, tuple))
+      self.assertEqual(42.0, res[0])
+      self.assertEqual(None, res[1])
+      self.assertEqual(44.0, res[2])
+      self.assertEqual(42.0, res[3])
+
+  def testFetchNamedTuple(self):
+    # pylint: disable=invalid-name
+    ABC = collections.namedtuple('ABC', ['a', 'b', 'c'])
+    # pylint: enable=invalid-name
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(44.0)
+      res = sess.run(ABC(a, b, c))
+      self.assertTrue(isinstance(res, ABC))
+      self.assertEqual(42.0, res.a)
+      self.assertEqual(None, res.b)
+      self.assertEqual(44.0, res.c)
+
+  def testFetchDict(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(44.0)
+      res = sess.run({'a': a, 'b': b, 'c': c})
+      self.assertTrue(isinstance(res, dict))
+      self.assertEqual(42.0, res['a'])
+      self.assertEqual(None, res['b'])
+      self.assertEqual(44.0, res['c'])
+
+  def testFetchNestingOneLevel(self):
+    with session.Session() as sess:
+      # pylint: disable=invalid-name
+      ABC = collections.namedtuple('ABC', ['a', 'b', 'c'])
+      DEFG = collections.namedtuple('DEFG', ['d', 'e', 'f', 'g'])
+      # pylint: enable=invalid-name
+      a_val = 42.0
+      b_val = None
+      c_val = 44.0
+      a = constant_op.constant(a_val)
+      b = control_flow_ops.no_op()  # An op, not a tensor.
+      c = constant_op.constant(c_val)
+      # List of lists, tuples, namedtuple, and  dict
+      res = sess.run([[a, b, c], (a, b, c), ABC(a=a, b=b, c=c),
+                      {'a': a.name, 'c': c, 'b': b}])
+      self.assertTrue(isinstance(res, list))
+      self.assertTrue(isinstance(res[0], list))
+      self.assertEqual(a_val, res[0][0])
+      self.assertEqual(b_val, res[0][1])
+      self.assertEqual(c_val, res[0][2])
+      self.assertTrue(isinstance(res[1], tuple))
+      self.assertEqual(a_val, res[1][0])
+      self.assertEqual(b_val, res[1][1])
+      self.assertEqual(c_val, res[1][2])
+      self.assertTrue(isinstance(res[2], ABC))
+      self.assertEqual(a_val, res[2].a)
+      self.assertEqual(b_val, res[2].b)
+      self.assertEqual(c_val, res[2].c)
+      self.assertTrue(isinstance(res[3], dict))
+      self.assertEqual(a_val, res[3]['a'])
+      self.assertEqual(b_val, res[3]['b'])
+      self.assertEqual(c_val, res[3]['c'])
+      # Tuple of lists, tuples, namedtuple, and  dict
+      res = sess.run(([a, b, c], (a.name, b, c), ABC(a=a, b=b, c=c),
+                      {'a': a, 'c': c, 'b': b}))
+      self.assertTrue(isinstance(res, tuple))
+      self.assertTrue(isinstance(res[0], list))
+      self.assertEqual(a_val, res[0][0])
+      self.assertEqual(b_val, res[0][1])
+      self.assertEqual(c_val, res[0][2])
+      self.assertTrue(isinstance(res[1], tuple))
+      self.assertEqual(a_val, res[1][0])
+      self.assertEqual(b_val, res[1][1])
+      self.assertEqual(c_val, res[1][2])
+      self.assertTrue(isinstance(res[2], ABC))
+      self.assertEqual(a_val, res[2].a)
+      self.assertEqual(b_val, res[2].b)
+      self.assertEqual(c_val, res[2].c)
+      self.assertTrue(isinstance(res[3], dict))
+      self.assertEqual(a_val, res[3]['a'])
+      self.assertEqual(b_val, res[3]['b'])
+      self.assertEqual(c_val, res[3]['c'])
+      # Namedtuple of lists, tuples, namedtuples, and dict
+      res = sess.run(DEFG(d=[a, b, c],
+                          e=(a, b, c),
+                          f=ABC(a=a.name, b=b, c=c),
+                          g={'a': a, 'c': c, 'b': b}))
+      self.assertTrue(isinstance(res, DEFG))
+      self.assertTrue(isinstance(res.d, list))
+      self.assertEqual(a_val, res.d[0])
+      self.assertEqual(b_val, res.d[1])
+      self.assertEqual(c_val, res.d[2])
+      self.assertTrue(isinstance(res.e, tuple))
+      self.assertEqual(a_val, res.e[0])
+      self.assertEqual(b_val, res.e[1])
+      self.assertEqual(c_val, res.e[2])
+      self.assertTrue(isinstance(res.f, ABC))
+      self.assertEqual(a_val, res.f.a)
+      self.assertEqual(b_val, res.f.b)
+      self.assertEqual(c_val, res.f.c)
+      self.assertTrue(isinstance(res.g, dict))
+      self.assertEqual(a_val, res.g['a'])
+      self.assertEqual(b_val, res.g['b'])
+      self.assertEqual(c_val, res.g['c'])
+      # Dict of lists, tuples, namedtuples, and dict
+      res = sess.run({'d': [a, b, c],
+                      'e': (a, b, c),
+                      'f': ABC(a=a, b=b, c=c),
+                      'g': {'a': a.name, 'c': c, 'b': b}})
+      self.assertTrue(isinstance(res, dict))
+      self.assertTrue(isinstance(res['d'], list))
+      self.assertEqual(a_val, res['d'][0])
+      self.assertEqual(b_val, res['d'][1])
+      self.assertEqual(c_val, res['d'][2])
+      self.assertTrue(isinstance(res['e'], tuple))
+      self.assertEqual(a_val, res['e'][0])
+      self.assertEqual(b_val, res['e'][1])
+      self.assertEqual(c_val, res['e'][2])
+      self.assertTrue(isinstance(res['f'], ABC))
+      self.assertEqual(a_val, res['f'].a)
+      self.assertEqual(b_val, res['f'].b)
+      self.assertEqual(c_val, res['f'].c)
+      self.assertTrue(isinstance(res['g'], dict))
+      self.assertEqual(a_val, res['g']['a'])
+      self.assertEqual(b_val, res['g']['b'])
+      self.assertEqual(c_val, res['g']['c'])
 
   def testFetchTensorObject(self):
     with session.Session() as s:

@@ -393,6 +393,24 @@ class InputLayerTest(tf.test.TestCase):
       tf.initialize_all_tables().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
+  def testEmbeddingColumnWitCrossedColumn(self):
+    a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
+                                                         hash_bucket_size=100)
+    b = tf.contrib.layers.sparse_column_with_hash_bucket("bbb",
+                                                         hash_bucket_size=100)
+    crossed = tf.contrib.layers.crossed_column(
+        set([a, b]), hash_bucket_size=10000)
+    wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
+                                  indices=[[0, 0], [1, 0], [1, 1]],
+                                  shape=[2, 2])
+    features = {"aaa": wire_tensor, "bbb": wire_tensor}
+    embeded_sparse = tf.contrib.layers.embedding_column(crossed, 10)
+    output = tf.contrib.layers.input_from_feature_columns(features,
+                                                          [embeded_sparse])
+    with self.test_session():
+      tf.initialize_all_variables().run()
+      self.assertAllEqual(output.eval().shape, [2, 10])
+
   def testSparseColumn(self):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],

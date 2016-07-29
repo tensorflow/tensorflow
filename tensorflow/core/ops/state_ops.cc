@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -24,6 +25,7 @@ REGISTER_OP("Variable")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Holds state in the form of a tensor that persists across steps.
 
@@ -41,10 +43,11 @@ shared_name: If non-empty, this variable is named in the given bucket
 )doc");
 
 REGISTER_OP("IsVariableInitialized")
-    .Output("is_initialized: bool")
     .Input("ref: Ref(dtype)")
+    .Output("is_initialized: bool")
     .Attr("dtype: type")
     .SetAllowsUninitializedInput()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Checks whether a tensor has been initialized.
 

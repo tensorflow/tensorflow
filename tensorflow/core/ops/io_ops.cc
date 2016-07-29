@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -237,6 +238,7 @@ REGISTER_OP("WholeFileReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A Reader that outputs the entire contents of a file as a value.
 
@@ -256,6 +258,7 @@ REGISTER_OP("TextLineReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A Reader that outputs the lines of a file delimited by '\n'.
 
@@ -275,6 +278,7 @@ REGISTER_OP("FixedLengthRecordReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A Reader that outputs fixed-length records from a file.
 
@@ -291,6 +295,7 @@ REGISTER_OP("TFRecordReader")
     .Attr("shared_name: string = ''")
     .Attr("compression_type: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A Reader that outputs the records from a TensorFlow Records file.
 
@@ -306,6 +311,7 @@ REGISTER_OP("IdentityReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 A Reader that outputs the queued work as both the key and value.
 

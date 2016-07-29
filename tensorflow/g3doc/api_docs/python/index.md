@@ -460,6 +460,7 @@
   * [`l2_normalize`](../../api_docs/python/nn.md#l2_normalize)
   * [`learned_unigram_candidate_sampler`](../../api_docs/python/nn.md#learned_unigram_candidate_sampler)
   * [`local_response_normalization`](../../api_docs/python/nn.md#local_response_normalization)
+  * [`log_poisson_loss`](../../api_docs/python/nn.md#log_poisson_loss)
   * [`log_softmax`](../../api_docs/python/nn.md#log_softmax)
   * [`log_uniform_candidate_sampler`](../../api_docs/python/nn.md#log_uniform_candidate_sampler)
   * [`max_pool`](../../api_docs/python/nn.md#max_pool)

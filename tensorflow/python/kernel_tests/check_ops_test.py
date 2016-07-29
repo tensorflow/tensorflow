@@ -70,9 +70,10 @@ class AssertEqualTest(tf.test.TestCase):
     with self.test_session():
       small = tf.constant([1, 2], name="small")
       big = tf.constant([3, 4], name="big")
-      with tf.control_dependencies([tf.assert_equal(big, small)]):
+      with tf.control_dependencies(
+          [tf.assert_equal(big, small, message="fail")]):
         out = tf.identity(small)
-      with self.assertRaisesOpError("big.*small"):
+      with self.assertRaisesOpError("fail.*big.*small"):
         out.eval()
 
   def test_raises_when_less(self):
@@ -115,9 +116,10 @@ class AssertLessTest(tf.test.TestCase):
   def test_raises_when_equal(self):
     with self.test_session():
       small = tf.constant([1, 2], name="small")
-      with tf.control_dependencies([tf.assert_less(small, small)]):
+      with tf.control_dependencies(
+          [tf.assert_less(small, small, message="fail")]):
         out = tf.identity(small)
-      with self.assertRaisesOpError("small.*small"):
+      with self.assertRaisesOpError("fail.*small.*small"):
         out.eval()
 
   def test_raises_when_greater(self):
@@ -176,9 +178,10 @@ class AssertLessEqualTest(tf.test.TestCase):
     with self.test_session():
       small = tf.constant([1, 2], name="small")
       big = tf.constant([3, 4], name="big")
-      with tf.control_dependencies([tf.assert_less_equal(big, small)]):
+      with tf.control_dependencies(
+          [tf.assert_less_equal(big, small, message="fail")]):
         out = tf.identity(small)
-      with self.assertRaisesOpError("big.*small"):
+      with self.assertRaisesOpError("fail.*big.*small"):
         out.eval()
 
   def test_doesnt_raise_when_less_equal(self):
@@ -227,9 +230,9 @@ class AssertNegativeTest(tf.test.TestCase):
   def test_raises_when_positive(self):
     with self.test_session():
       doug = tf.constant([1, 2], name="doug")
-      with tf.control_dependencies([tf.assert_negative(doug)]):
+      with tf.control_dependencies([tf.assert_negative(doug, message="fail")]):
         out = tf.identity(doug)
-      with self.assertRaisesOpError("doug"):
+      with self.assertRaisesOpError("fail.*doug"):
         out.eval()
 
   def test_raises_when_zero(self):
@@ -257,9 +260,10 @@ class AssertPositiveTest(tf.test.TestCase):
   def test_raises_when_negative(self):
     with self.test_session():
       freddie = tf.constant([-1, -2], name="freddie")
-      with tf.control_dependencies([tf.assert_positive(freddie)]):
+      with tf.control_dependencies(
+          [tf.assert_positive(freddie, message="fail")]):
         out = tf.identity(freddie)
-      with self.assertRaisesOpError("freddie"):
+      with self.assertRaisesOpError("fail.*freddie"):
         out.eval()
 
   def test_doesnt_raise_when_positive(self):
@@ -295,16 +299,19 @@ class AssertRankTest(tf.test.TestCase):
     with self.test_session():
       tensor = tf.constant(1, name="my_tensor")
       desired_rank = 1
-      with self.assertRaisesRegexp(ValueError, "my_tensor.*must have rank 1"):
-        with tf.control_dependencies([tf.assert_rank(tensor, desired_rank)]):
+      with self.assertRaisesRegexp(
+          ValueError, "fail.*my_tensor.*must have rank 1"):
+        with tf.control_dependencies(
+            [tf.assert_rank(tensor, desired_rank, message="fail")]):
           tf.identity(tensor).eval()
 
   def test_rank_zero_tensor_raises_if_rank_too_small_dynamic_rank(self):
     with self.test_session():
       tensor = tf.placeholder(tf.float32, name="my_tensor")
       desired_rank = 1
-      with tf.control_dependencies([tf.assert_rank(tensor, desired_rank)]):
-        with self.assertRaisesOpError("my_tensor.*rank"):
+      with tf.control_dependencies(
+          [tf.assert_rank(tensor, desired_rank, message="fail")]):
+        with self.assertRaisesOpError("fail.*my_tensor.*rank"):
           tf.identity(tensor).eval(feed_dict={tensor: 0})
 
   def test_rank_zero_tensor_doesnt_raise_if_rank_just_right_static_rank(self):
@@ -384,7 +391,7 @@ class AssertRankTest(tf.test.TestCase):
   def test_raises_if_rank_is_not_integer_static(self):
     with self.test_session():
       tensor = tf.constant([1, 2], name="my_tensor")
-      with self.assertRaisesRegexp(ValueError,
+      with self.assertRaisesRegexp(TypeError,
                                    "must be of type <dtype: 'int32'>"):
         tf.assert_rank(tensor, .5)
 
@@ -392,7 +399,7 @@ class AssertRankTest(tf.test.TestCase):
     with self.test_session():
       tensor = tf.constant([1, 2], dtype=tf.float32, name="my_tensor")
       rank_tensor = tf.placeholder(tf.float32, name="rank_tensor")
-      with self.assertRaisesRegexp(ValueError,
+      with self.assertRaisesRegexp(TypeError,
                                    "must be of type <dtype: 'int32'>"):
         with tf.control_dependencies([tf.assert_rank(tensor, rank_tensor)]):
           tf.identity(tensor).eval(feed_dict={rank_tensor: .5})
@@ -555,10 +562,8 @@ class AssertIntegerTest(tf.test.TestCase):
   def test_raises_when_float(self):
     with self.test_session():
       floats = tf.constant([1.0, 2.0], name="floats")
-      with tf.control_dependencies([tf.assert_integer(floats)]):
-        out = tf.identity(floats)
-      with self.assertRaisesOpError("x is not of integer dtype.*"):
-        out.eval()
+      with self.assertRaisesRegexp(TypeError, "Expected.*integer"):
+        tf.assert_integer(floats)
 
 
 class IsStrictlyIncreasingTest(tf.test.TestCase):
