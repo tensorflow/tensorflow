@@ -123,8 +123,8 @@ class Scaffold(object):
       global_step_tensor = contrib_variables.get_or_create_global_step()
     self.global_step_tensor = global_step_tensor
     if init_op is None:
-      init_op = Scaffold._get_or_default(
-          ops.GraphKeys.INIT_OP, variables.initialize_all_variables)
+      init_op = Scaffold._get_or_default('init_op', ops.GraphKeys.INIT_OP,
+                                         variables.initialize_all_variables)
     self.init_op = init_op
     self.init_feed_dict = init_feed_dict
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -135,19 +135,23 @@ class Scaffold(object):
       self.init_fn = None
     if ready_op is None:
       ready_op = Scaffold._get_or_default(
-          ops.GraphKeys.READY_OP, variables.report_uninitialized_variables)
+          'ready_op', ops.GraphKeys.READY_OP,
+          variables.report_uninitialized_variables)
     self.ready_op = ready_op
     if local_init_op is None:
-      local_init_op = Scaffold._get_or_default(
-          ops.GraphKeys.LOCAL_INIT_OP, Scaffold._default_local_init_op)
+      local_init_op = Scaffold._get_or_default('local_init_op',
+                                               ops.GraphKeys.LOCAL_INIT_OP,
+                                               Scaffold._default_local_init_op)
     self.local_init_op = local_init_op
     if summary_op is None:
-      summary_op = Scaffold._get_or_default(
-          ops.GraphKeys.SUMMARY_OP, logging_ops.merge_all_summaries)
+      summary_op = Scaffold._get_or_default('summary_op',
+                                            ops.GraphKeys.SUMMARY_OP,
+                                            logging_ops.merge_all_summaries)
     self.summary_op = summary_op
     # pylint: disable=g-long-lambda
     if saver is None:
       saver = Scaffold._get_or_default(
+          'saver',
           ops.GraphKeys.SAVERS,
           lambda: training_saver.Saver(sharded=True,
                                        max_to_keep=keep_checkpoint_max))
@@ -157,9 +161,16 @@ class Scaffold(object):
     ops.get_default_graph().finalize()
 
   @staticmethod
-  def _get_or_default(collection_key, default_constructor):
+  def _get_or_default(arg_name, collection_key, default_constructor):
+    """Get from cache or create a default operation."""
     elements = ops.get_collection(collection_key)
     if elements:
+      if len(elements) > 1:
+        raise RuntimeError('More than one item in the collection "%s". '
+                           'Please indicate which one to use by passing it to '
+                           'the tf.Scaffold constructor as:  '
+                           'tf.Scaffold(%s=item to use)', collection_key,
+                           arg_name)
       return elements[0]
     op = default_constructor()
     if op is not None:

@@ -2,7 +2,6 @@
 mnist/beginners/index.md
 mnist/pros/index.md
 mnist/tf/index.md
-mnist/download/index.md
 ### Easy ML with tf.contrib.learn
 tflearn/index.md
 linear/overview.md

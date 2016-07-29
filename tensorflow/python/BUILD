@@ -1265,7 +1265,7 @@ cuda_py_tests(
             "training/server_lib_test.py",
             "training/session_manager_test.py",
             "training/supervisor_test.py",
-            "training/saver_test.py",
+            "training/saver_large_variable_test.py",
         ],
     ),
     additional_deps = [
@@ -1273,14 +1273,15 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_test(
-    name = "saver_test",
+py_test(
+    name = "saver_large_variable_test",
     size = "small",
-    srcs = ["training/saver_test.py"],
-    additional_deps = [
-        ":training",
-    ],
+    srcs = ["training/saver_large_variable_test.py"],
+    srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/30379628
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 cuda_py_test(
@@ -1311,6 +1312,7 @@ py_tests(
         ["training/input_test.py"],
     ),
     additional_deps = [
+        "//tensorflow:tensorflow_py",
         ":training",
     ],
 )

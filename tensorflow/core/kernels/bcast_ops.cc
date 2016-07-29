@@ -58,6 +58,8 @@ class BCastGradArgsOp : public OpKernel {
     Output(ctx, 1, bcast.grad_y_reduce_idx());
   }
 
+  bool IsExpensive() override { return false; }
+
  private:
   void Output(OpKernelContext* ctx, int idx, const BCast::Vec& v) {
     const int64 len = v.size();

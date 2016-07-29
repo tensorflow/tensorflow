@@ -344,6 +344,34 @@ REGISTER_OP("Split")
     .Output("output: num_split * T")
     .Attr("num_split: int >= 1")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Dimension* split_dimension;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(0, &split_dimension));
+      int num_split = c->num_outputs();
+      const Shape* input = c->input(1);
+      const Shape* out;
+      if (!c->ValueKnown(split_dimension)) {
+        if (c->RankKnown(input)) {
+          std::vector<const Dimension*> dims;
+          dims.resize(c->Rank(input));
+          for (int i = 0; i < dims.size(); ++i) dims[i] = c->UnknownDim();
+          out = c->MakeShape(dims);
+        } else {
+          out = c->UnknownShape();
+        }
+      } else {
+        int64 split_dim = c->Value(split_dimension);
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
+        const Dimension* split_dim_size;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            c->Divide(c->Dim(input, split_dim), num_split, &split_dim_size),
+            "Number of ways to split should evenly divide the split dimension");
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(input, split_dim, split_dim_size, &out));
+      }
+      for (int i = 0; i < num_split; ++i) c->set_output(i, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Splits a tensor into `num_split` tensors along one dimension.
 
@@ -1443,7 +1471,7 @@ Status ShapeShapeFn(InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     const Dimension* dim;
     if (c->RankKnown(c->input(i))) {
-      dim = c->MakeDim(c->Rank(c->input(0)));
+      dim = c->MakeDim(c->Rank(c->input(i)));
     } else {
       dim = c->UnknownDim();
     }
@@ -1479,6 +1507,7 @@ REGISTER_OP("ShapeN")
     .Output("output: N * int32")
     .Attr("N: int")
     .Attr("T: type")
+    .SetShapeFn(ShapeShapeFn)
     .Doc(R"doc(
 Returns shape of tensors.
 
@@ -1493,6 +1522,42 @@ REGISTER_OP("ReverseSequence")
     .Attr("seq_dim: int")
     .Attr("batch_dim: int = 0")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input = c->input(0);
+      const Shape* seq_lens_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &seq_lens_shape));
+
+      int64 seq_dim;
+      TF_RETURN_IF_ERROR(c->GetAttr("seq_dim", &seq_dim));
+      int64 batch_dim;
+      TF_RETURN_IF_ERROR(c->GetAttr("batch_dim", &batch_dim));
+
+      if (!c->RankKnown(input)) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      // Validate batch_dim and seq_dim against input.
+      const int32 input_rank = c->Rank(input);
+      if (batch_dim >= input_rank) {
+        return errors::InvalidArgument("batch_dim must be < input rank: ",
+                                       batch_dim, " vs. ", input_rank);
+      }
+      if (seq_dim >= input_rank) {
+        return errors::InvalidArgument("seq_dim must be < input rank: ",
+                                       seq_dim, " vs. ", input_rank);
+      }
+
+      const Dimension* batch_dim_dim = c->Dim(input, batch_dim);
+      TF_RETURN_IF_ERROR(
+          c->Merge(batch_dim_dim, c->Dim(seq_lens_shape, 0), &batch_dim_dim));
+
+      // Replace batch_dim of input with batch_size
+      const Shape* output_shape;
+      TF_RETURN_IF_ERROR(
+          c->ReplaceDim(input, batch_dim, batch_dim_dim, &output_shape));
+      c->set_output(0, output_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Reverses variable length slices.
 
@@ -1564,6 +1629,7 @@ REGISTER_OP("Rank")
     .Input("input: T")
     .Output("output: int32")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Returns the rank of a tensor.
 
@@ -1587,6 +1653,7 @@ REGISTER_OP("Size")
     .Input("input: T")
     .Output("output: int32")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Returns the size of a tensor.
 
@@ -1669,7 +1736,7 @@ begin_mask: a bitmask where a bit i being 1 means to ignore the begin
   begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
   `[-1, n-1]` if `stride[i] < 0`
 end_mask: analogous to `begin_mask`
-ellipsis_mask: a bitmask where bit `i` being 1 means the `i`th 
+ellipsis_mask: a bitmask where bit `i` being 1 means the `i`th
   position is actually an ellipsis. One bit at most can be 1.
 new_axis_mask: a bitmask where bit `i` being 1 means the `i`th
   position creates a dimension in the tensor of length 1. Thus
@@ -1678,7 +1745,7 @@ new_axis_mask: a bitmask where bit `i` being 1 means the `i`th
 shrink_axis_mask: a bitmask where bit `i` implies that the `i`th
   position should shrink the dimensionality. begin and end
   must imply a slice of size 1 in the dimension. For example in
-  python one might do `foo[:,3,:]` which would result in 
+  python one might do `foo[:,3,:]` which would result in
   `shrink_axis_mask` being 2.
 )doc");
 
@@ -1705,7 +1772,7 @@ as `shape`). The gradient will be zero in any element that the slice
 does not select.
 
 Arguments are the same as StridedSliceGrad with the exception that
-`dy` is the input gradient to be propagated and `shape` is the 
+`dy` is the input gradient to be propagated and `shape` is the
 shape of `StridedSlice`'s `input`.
 )doc");
 
@@ -1744,7 +1811,14 @@ each repeated tile of `input` into `output`.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("Where").Input("input: bool").Output("index: int64").Doc(R"doc(
+REGISTER_OP("Where")
+    .Input("input: bool")
+    .Output("index: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), c->Rank(c->input(0))));
+      return Status::OK();
+    })
+    .Doc(R"doc(
 Returns locations of true values in a boolean tensor.
 
 This operation returns the coordinates of true elements in `input`. The
