@@ -237,6 +237,20 @@ TEST(ArrayOpsTest, Shape_ShapeFn) {
   INFER_OK(op, "[?,2,3,4,5]", "[5]");
 }
 
+TEST(ArrayOpsTest, ShapeN_ShapeFn) {
+  ShapeInferenceTestOp op("ShapeN");
+  int n = 3;
+  std::vector<NodeDefBuilder::NodeOut> src_list;
+  for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
+  TF_CHECK_OK(NodeDefBuilder("test", "ShapeN")
+                  .Input(src_list)
+                  .Attr("N", n)
+                  .Finalize(&op.node_def));
+  INFER_OK(op, "?;?;?", "[?];[?];[?]");
+  INFER_OK(op, "[?];[?];[?]", "[1];[1];[1]");
+  INFER_OK(op, "[?,2,3,4,5];?;[1,?,3]", "[5];[?];[3]");
+}
+
 TEST(ArrayOpsTest, Unique_ShapeFn) {
   ShapeInferenceTestOp op("Unique");
   INFER_OK(op, "?", "[?];in0");
@@ -694,6 +708,63 @@ TEST(ArrayOpsTest, Squeeze_ShapeFn) {
   INFER_ERROR("not in [-3,3)", op, "[1,2,3]");
   rebuild_node_def({3});
   INFER_ERROR("not in [-3,3)", op, "[1,2,3]");
+}
+
+TEST(ArrayOpsTest, ReverseSequence_ShapeFn) {
+  ShapeInferenceTestOp op("ReverseSequence");
+  auto rebuild_node_def = [&op](const int32 seq_dim, const int32 batch_dim) {
+    TF_CHECK_OK(NodeDefBuilder("test", "ReverseSequence")
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("seq_lengths", 1, DT_INT64)
+                    .Attr("seq_dim", seq_dim)
+                    .Attr("batch_dim", batch_dim)
+                    .Finalize(&op.node_def));
+  };
+
+  rebuild_node_def(1, 2);
+  // No valid shape provided, so output is unknown.
+  INFER_OK(op, "?;[10]", "?");
+
+  // Bad rank for seq_lengths
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[10,10]");
+
+  // Validate seq_dim and batch_dim
+  rebuild_node_def(1, 4);
+  INFER_ERROR("batch_dim must be < input rank", op, "[1,2,3];[3]");
+  rebuild_node_def(4, 1);
+  INFER_ERROR("seq_dim must be < input rank", op, "[1,2,3];[3]");
+
+  rebuild_node_def(1, 2);
+  INFER_OK(op, "[1,2,3];[3]", "[d0_0,d0_1,d0_2]");
+  // Resolves uncertainty on batch dimension by merging.
+  INFER_OK(op, "[1,2,?];[3]", "[d0_0,d0_1,d1_0]");
+  INFER_OK(op, "[1,2,3];[?]", "[d0_0,d0_1,d0_2]");
+}
+
+TEST(ArrayOpsTest, Split_ShapeFn) {
+  ShapeInferenceTestOp op("Split");
+  op.input_tensors.resize(2);
+
+  // No value for split_dim and no input.
+  TF_CHECK_OK(NodeDefBuilder("test", "Split")
+                  .Input("split_dim", 0, DT_INT32)
+                  .Input("value", 1, DT_FLOAT)
+                  .Attr("num_split", 2)
+                  .Finalize(&op.node_def));
+  INFER_OK(op, "?;?", "?;?");
+  // If the rank is known, we know the rank of each output.
+  INFER_OK(op, "?;[?,?]", "[?,?];[?,?]");
+
+  // split_dim is known.
+  Tensor split_dim = test::AsTensor<int32>({1, 2});
+  op.input_tensors[0] = &split_dim;
+  INFER_ERROR("Input must be scalar but has rank 1", op, "[?];[?,?]");
+  split_dim = test::AsScalar<int32>(1);
+  INFER_OK(op, "?;?", "?;?");
+  INFER_OK(op, "?;[?,?]", "[d1_0,?];[d1_0,?]");
+  INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
+  INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
+  INFER_ERROR("Dimension size must be divisible by 2 but is 5", op, "?;[1,5]");
 }
 
 }  // end namespace tensorflow

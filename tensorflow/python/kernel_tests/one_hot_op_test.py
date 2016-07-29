@@ -233,27 +233,54 @@ class OneHotTest(tf.test.TestCase):
             dtype=dtype,
             truth=[truth[0].T, truth[1].T])  # Do not transpose the batch
 
+  def _testEmpty(self, dtype):
+    indices = np.zeros((0, 16), dtype=np.int64)
+    depth = 3
+    on_value = np.asarray(1.0, dtype=dtype)
+    off_value = np.asarray(-1.0, dtype=dtype)
+    truth = np.empty((0, 16, 3), dtype=dtype)
+
+    # axis == -1
+    self._testBothOneHot(
+        indices=indices,
+        depth=depth,
+        on_value=on_value,
+        off_value=off_value,
+        dtype=dtype,
+        truth=truth)
+
+  def testHalfBatch(self):
+    self._testEmpty(np.float16)
+    self._testBatch(np.float16)
+    self._testDefaultValuesBatch(np.float16)
+    self._testValueTypeBatch(np.float16)
+
   def testFloatBatch(self):
+    self._testEmpty(np.float32)
     self._testBatch(np.float32)
     self._testDefaultValuesBatch(np.float32)
     self._testValueTypeBatch(np.float32)
 
   def testDoubleBatch(self):
+    self._testEmpty(np.float64)
     self._testBatch(np.float64)
     self._testDefaultValuesBatch(np.float64)
     self._testValueTypeBatch(np.float64)
 
   def testInt32Batch(self):
+    self._testEmpty(np.int32)
     self._testBatch(np.int32)
     self._testDefaultValuesBatch(np.int32)
     self._testValueTypeBatch(np.int32)
 
   def testInt64Batch(self):
+    self._testEmpty(np.int64)
     self._testBatch(np.int64)
     self._testDefaultValuesBatch(np.int64)
     self._testValueTypeBatch(np.int64)
 
   def testComplexBatch(self):
+    self._testEmpty(np.complex64)
     self._testBatch(np.complex64)
     # self._testDefaultValuesBatch(np.complex64)
     self._testValueTypeBatch(np.complex64)

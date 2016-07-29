@@ -1036,6 +1036,7 @@ def separable_convolution2d(
     depthwise_weights = variables.model_variable(
         'depthwise_weights',
         shape=depthwise_shape,
+        dtype=dtype,
         initializer=weights_initializer,
         regularizer=weights_regularizer,
         trainable=trainable,
@@ -1048,6 +1049,7 @@ def separable_convolution2d(
       pointwise_weights = variables.model_variable(
           'pointwise_weights',
           shape=pointwise_shape,
+          dtype=dtype,
           initializer=weights_initializer,
           regularizer=weights_regularizer,
           trainable=trainable,
