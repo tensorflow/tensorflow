@@ -156,6 +156,7 @@ cc_library(
         "lib/io/table_options.h",
         "lib/jpeg/jpeg_mem.h",
         "lib/monitoring/counter.h",
+        "lib/monitoring/metric_def.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
         "lib/random/simple_philox.h",  # TODO(josh11b): make internal
