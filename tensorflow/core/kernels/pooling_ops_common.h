@@ -113,12 +113,12 @@ class MaxPoolingOp : public OpKernel {
     if (params.depth_window > 1) {
       // Validate spec against the current implementation.  A
       // relaxation of these requirements would be ideal.
-      OP_REQUIRES(context, params.out_depth % params.depth_window > 0,
+      OP_REQUIRES(context, params.depth % params.depth_window == 0,
                   errors::Unimplemented(
                       "Depthwise max pooling requires "
                       "the depth window to evenly divide the input depth."));
       OP_REQUIRES(
-          context, params.out_depth == params.depth_stride,
+          context, params.depth_window == params.depth_stride,
           errors::Unimplemented("Depthwise max pooling requires "
                                 "the depth window to equal the depth stride."));
 
