@@ -18,12 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import tensorflow as tf
 
 from tensorflow.examples.image_retraining import retrain
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
 
 
 class ImageRetrainingTest(test_util.TensorFlowTestCase):
