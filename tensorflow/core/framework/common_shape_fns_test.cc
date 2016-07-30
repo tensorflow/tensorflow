@@ -485,6 +485,33 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   INFER_ERROR("must be rank 4", op, "[4,4]");
 }
 
+TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
+  ShapeInferenceTestOp op("MaxPool");
+  auto set_op = [&op](const std::vector<int32>& strides,
+                      const std::vector<int32>& ksizes, const string& padding,
+                      const string& data_format) {
+    TF_CHECK_OK(NodeDefBuilder("test", "MaxPool")
+                    .Input("input", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("ksize", ksizes)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format)
+                    .Finalize(&op.node_def));
+  };
+
+  // Most of the functionality is tested by conv-like shapes,
+  // so we check the very-specific maxpooling features here,
+  // namely depthwise kernel and striding.
+
+  // all 1 strides, depth 2 filter
+  set_op({1, 1, 1, 1}, {1, 1, 1, 2}, "VALID", "NHWC");
+  INFER_OK(op, "[1,2,2,2]", "[d0_0,2,2,1]");
+
+  // depth 3 stride, 1x1x1 filter, NCHW
+  set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
+  INFER_OK(op, "[1,7,5,5]", "[d0_0,3,5,5]");
+}
+
 TEST(CommonShapeFnsTest, UnknownShapeTest) {
   {
     // Single output

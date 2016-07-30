@@ -13,19 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/monitoring/counter.h"
+#ifndef TENSORFLOW_C_TF_STATUS_HELPER_H
+#define TENSORFLOW_C_TF_STATUS_HELPER_H
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-namespace monitoring {
 
-void CounterCell::IncrementBy(const int64 step) {
-  DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
-  value_ += step;
-}
+// Set the attribute of "tf_status" from the attributes of "status".
+void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status);
 
-int64 CounterCell::value() const { return value_; }
-
-}  // namespace monitoring
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_C_TF_STATUS_HELPER_H

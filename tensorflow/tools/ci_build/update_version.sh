@@ -101,7 +101,7 @@ OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"
 check_existence file "${OS_SETUP}"
 
 sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
-
+sed -i -r -e "s/(.*export TF_BINARY_URL.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[[:alnum:]]+)(-gpu.*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 
 

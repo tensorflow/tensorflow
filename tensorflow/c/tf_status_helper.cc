@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/tf_status_helper.h"
+#include "tensorflow/c/tf_status_helper.h"
 
 namespace tensorflow {
 

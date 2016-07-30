@@ -17,13 +17,13 @@ limitations under the License.
 %include "tensorflow/python/platform/base.i"
 
 %{
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/util/tf_status_helper.h"
 %}
 
 %{

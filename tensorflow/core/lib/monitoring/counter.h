@@ -20,6 +20,8 @@ limitations under the License.
 #include <atomic>
 #include <map>
 
+#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -71,8 +73,11 @@ class CounterCell {
 template <int NumLabels>
 class Counter {
  public:
-  Counter() {}
   ~Counter() {}
+
+  explicit Counter(
+      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def)
+      : metric_def_(metric_def) {}
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -81,6 +86,10 @@ class Counter {
 
  private:
   mutable mutex mu_;
+
+  // The metric definition. This will be used to identify the metric when we
+  // register it for exporting.
+  const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels> metric_def_;
 
   using LabelArray = std::array<string, NumLabels>;
   std::map<LabelArray, CounterCell> cells_ GUARDED_BY(mu_);
@@ -91,6 +100,13 @@ class Counter {
 ////
 //  Implementation details follow. API readers may skip.
 ////
+
+inline void CounterCell::IncrementBy(const int64 step) {
+  DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
+  value_ += step;
+}
+
+inline int64 CounterCell::value() const { return value_; }
 
 template <int NumLabels>
 template <typename... Labels>

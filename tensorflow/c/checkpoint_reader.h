@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_CHECKPOINT_READER_H
-#define TENSORFLOW_CORE_UTIL_CHECKPOINT_READER_H
+#ifndef TENSORFLOW_C_CHECKPOINT_READER_H
+#define TENSORFLOW_C_CHECKPOINT_READER_H
 
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
-#include "tensorflow/core/util/tf_status_helper.h"
 
 namespace tensorflow {
 
@@ -60,4 +60,4 @@ class CheckpointReader {
 }  // namespace checkpoint
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_CHECKPOINT_READER_H
+#endif  // TENSORFLOW_C_CHECKPOINT_READER_H

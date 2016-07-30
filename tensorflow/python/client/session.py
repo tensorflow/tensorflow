@@ -1217,8 +1217,7 @@ class InteractiveSession(BaseSession):
 
     Args:
       target: (Optional.) The execution engine to connect to.
-        Defaults to using an in-process engine. At present, no value
-        other than the empty string is supported.
+        Defaults to using an in-process engine.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional) `ConfigProto` proto used to configure the session.
     """

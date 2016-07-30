@@ -58,9 +58,6 @@ Dataset | Purpose
 `data_sets.validation` | 5000 images and labels, for iterative validation of training accuracy.
 `data_sets.test` | 10000 images and labels, for final testing of trained accuracy.
 
-For more information about the data, please read the [Download](../../../tutorials/mnist/download/index.md)
-tutorial.
-
 ### Inputs and Placeholders
 
 The `placeholder_inputs()` function creates two [`tf.placeholder`](../../../api_docs/python/io_ops.md#placeholder)

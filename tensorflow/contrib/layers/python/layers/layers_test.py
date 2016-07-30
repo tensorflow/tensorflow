@@ -1604,10 +1604,28 @@ class RepeatTests(tf.test.TestCase):
 
 class SeparableConv2dTest(tf.test.TestCase):
 
-  def testCreateConv(self):
+  def testCreateConvInt32(self):
     height, width = 3, 3
     with self.test_session():
-      images = tf.random_uniform((5, height, width, 3), seed=1)
+      images = tf.random_uniform(
+          (5, height, width, 3), seed=1, dtype=tf.int32, maxval=12345)
+      with self.assertRaisesRegexp(TypeError, 'non-floating point type'):
+        tf.contrib.layers.separable_conv2d(images, 32, [3, 3], 2)
+
+  def testCreateConvFloat32(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform(
+          (5, height, width, 3), seed=1, dtype=tf.float32)
+      output = tf.contrib.layers.separable_conv2d(images, 32, [3, 3], 2)
+      self.assertEquals(output.op.name, 'SeparableConv2d/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
+
+  def testCreateConvFloat64(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform(
+          (5, height, width, 3), seed=1, dtype=tf.float64)
       output = tf.contrib.layers.separable_conv2d(images, 32, [3, 3], 2)
       self.assertEquals(output.op.name, 'SeparableConv2d/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])

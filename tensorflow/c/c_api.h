@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(jeff,sanjay): Rename to tensorflow/public/c_api.h
-#ifndef TENSORFLOW_PUBLIC_TENSOR_C_API_H_
-#define TENSORFLOW_PUBLIC_TENSOR_C_API_H_
+#ifndef TENSORFLOW_C_C_API_H_
+#define TENSORFLOW_C_C_API_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -699,4 +698,4 @@ extern TF_Buffer TF_GetOpList(TF_Library* lib_handle);
 } /* end extern "C" */
 #endif
 
-#endif  // TENSORFLOW_PUBLIC_TENSOR_C_API_H_
+#endif  // TENSORFLOW_C_C_API_H_
