@@ -751,6 +751,13 @@
   * [`sum_of_pairwise_squares`](../../api_docs/python/contrib.losses.md#sum_of_pairwise_squares)
   * [`sum_of_squares`](../../api_docs/python/contrib.losses.md#sum_of_squares)
 
+* **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
+  * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
+  * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
+  * [`GridLSTMCell`](../../api_docs/python/contrib.rnn.md#GridLSTMCell)
+  * [`LSTMFusedCell`](../../api_docs/python/contrib.rnn.md#LSTMFusedCell)
+  * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
+
 * **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
   * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
   * [`aggregate_metric_map`](../../api_docs/python/contrib.metrics.md#aggregate_metric_map)
