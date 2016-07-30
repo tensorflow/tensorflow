@@ -1105,7 +1105,10 @@ DEPRECATED: Use outputs.
 
 ### `class tf.Tensor` {#Tensor}
 
-Represents a value produced by an `Operation`.
+Represents one of the outputs of an `Operation`.
+
+*Note:* the `Tensor` class will be replaced by `Output` in the future.
+Currently these two are aliases for each other.
 
 A `Tensor` is a symbolic handle to one of the outputs of an
 `Operation`. It does not hold the values of that operation's output,
