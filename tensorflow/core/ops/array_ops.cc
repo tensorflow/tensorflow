@@ -2985,6 +2985,7 @@ REGISTER_OP("DebugIdentity")
     .Output("output: T")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .Attr("debug_urls: list(string) = []")
     .Doc(R"doc(
 Debug Identity Op.
 
@@ -2993,6 +2994,8 @@ Provides an identity mapping of the non-Ref type input tensor for debugging.
 input: Input tensor, non-Reference type.
 output: Output tensor that equals the input tensor.
 tensor_name: Name of the input tensor.
+debug_urls: List of URLs to debug targets, e.g.,
+            file:///foo/tfdbg_dump, grpc:://localhost:11011
 )doc");
 
 REGISTER_OP("DebugNanCount")
@@ -3000,6 +3003,7 @@ REGISTER_OP("DebugNanCount")
     .Output("output: int64")  // The debug signal (nan count) is int64
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .Attr("debug_urls: list(string) = []")
     .Doc(R"doc(
 Debug NaN Value Counter Op
 
@@ -3008,6 +3012,8 @@ Counts number of NaNs in the input tensor, for debugging.
 input: Input tensor, non-Reference type.
 output: An integer output tensor that is the number of NaNs in the input.
 tensor_name: Name of the input tensor.
+debug_urls: List of URLs to debug targets, e.g.,
+            file:///foo/tfdbg_dump, grpc:://localhost:11011
 )doc");
 
 }  // namespace tensorflow
