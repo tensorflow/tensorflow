@@ -662,13 +662,19 @@ keep_dims: If true, retain reduced dimensions with length 1.
 output: `R-K`-D.  The reduced Tensor.
 )doc");
 
-#define SPARSE_DENSE_CWISE_SIGNATURE() \
-  Input("sp_indices: int64")           \
-      .Input("sp_values: T")           \
-      .Input("sp_shape: int64")        \
-      .Input("dense: T")               \
-      .Output("output: T")             \
-      .Attr("T: numbertype")
+#define SPARSE_DENSE_CWISE_SIGNATURE()                           \
+  Input("sp_indices: int64")                                     \
+      .Input("sp_values: T")                                     \
+      .Input("sp_shape: int64")                                  \
+      .Input("dense: T")                                         \
+      .Output("output: T")                                       \
+      .Attr("T: numbertype")                                     \
+      .SetShapeFn([](InferenceContext* c) {                      \
+        const Shape* input;                                      \
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &input)); \
+        c->set_output(0, c->Vector(c->Dim(input, 0)));           \
+        return Status::OK();                                     \
+      })
 
 REGISTER_OP("SparseDenseCwiseMul").SPARSE_DENSE_CWISE_SIGNATURE().Doc(R"doc(
 Component-wise multiplies a SparseTensor by a dense Tensor.
@@ -721,6 +727,8 @@ sp_shape: 1-D.  Shape of the input SparseTensor.
 dense: `R`-D.  The dense Tensor operand.
 output: 1-D.  The `N` values that are operated on.
 )doc");
+
+#undef SPARSE_DENSE_CWISE_SIGNATURE
 
 REGISTER_OP("SparseSoftmax")
     .Input("sp_indices: int64")

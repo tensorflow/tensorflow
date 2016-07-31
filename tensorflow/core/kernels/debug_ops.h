@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_DEBUG_OP_H_
 
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -73,10 +74,16 @@ class DebugIdentityOp : public OpKernel {
  public:
   explicit DebugIdentityOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
-    // TODO(cais): Add debug_url
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
   }
 
   void Compute(OpKernelContext* context) override {
+    if (!debug_urls_.empty()) {
+      DebugIO::PublishDebugTensor(tensor_name_, "DebugIdentity",
+                                  context->input(0),
+                                  Env::Default()->NowMicros(), debug_urls_);
+    }
+
     context->set_output(0, context->input(0));
   }
 
@@ -84,6 +91,7 @@ class DebugIdentityOp : public OpKernel {
 
  private:
   string tensor_name_;
+  std::vector<string> debug_urls_;
 };
 
 // NaN-counter op for debugging.
@@ -92,6 +100,7 @@ class DebugNanCountOp : public OpKernel {
  public:
   explicit DebugNanCountOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -120,6 +129,7 @@ class DebugNanCountOp : public OpKernel {
 
  private:
   string tensor_name_;
+  std::vector<string> debug_urls_;
 };
 
 // TODO(cais): Add DebugInfinityCount

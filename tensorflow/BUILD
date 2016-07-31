@@ -104,6 +104,7 @@ filegroup(
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/core:all_files",
+        "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
         "//tensorflow/core/kernels:all_files",

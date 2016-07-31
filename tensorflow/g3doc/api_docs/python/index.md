@@ -745,11 +745,19 @@
   * [`get_losses`](../../api_docs/python/contrib.losses.md#get_losses)
   * [`get_regularization_losses`](../../api_docs/python/contrib.losses.md#get_regularization_losses)
   * [`get_total_loss`](../../api_docs/python/contrib.losses.md#get_total_loss)
+  * [`hinge_loss`](../../api_docs/python/contrib.losses.md#hinge_loss)
   * [`log_loss`](../../api_docs/python/contrib.losses.md#log_loss)
   * [`sigmoid_cross_entropy`](../../api_docs/python/contrib.losses.md#sigmoid_cross_entropy)
   * [`softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#softmax_cross_entropy)
   * [`sum_of_pairwise_squares`](../../api_docs/python/contrib.losses.md#sum_of_pairwise_squares)
   * [`sum_of_squares`](../../api_docs/python/contrib.losses.md#sum_of_squares)
+
+* **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
+  * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
+  * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
+  * [`GridLSTMCell`](../../api_docs/python/contrib.rnn.md#GridLSTMCell)
+  * [`LSTMFusedCell`](../../api_docs/python/contrib.rnn.md#LSTMFusedCell)
+  * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
 
 * **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
   * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)

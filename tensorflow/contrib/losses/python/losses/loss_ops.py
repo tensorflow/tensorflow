@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 
 
 __all__ = ["absolute_difference",
@@ -33,6 +34,7 @@ __all__ = ["absolute_difference",
            "get_losses",
            "get_regularization_losses",
            "get_total_loss",
+           "hinge_loss",
            "log_loss",
            "sigmoid_cross_entropy",
            "softmax_cross_entropy",
@@ -408,6 +410,31 @@ def log_loss(predictions, targets, weight=1.0, epsilon=1e-7, scope=None):
         math_ops.log(predictions + epsilon)) - math_ops.mul(
             (1 - targets), math_ops.log(1 - predictions + epsilon))
     return _compute_weighted_loss(losses, weight)
+
+
+def hinge_loss(logits, target, scope=None):
+  """Method that returns the loss tensor for hinge loss.
+
+  Args:
+    logits: The logits, a float tensor.
+    target: The ground truth output tensor. Its shape should match the shape of
+      logits. The values of the tensor are expected to be 0.0 or 1.0.
+    scope: The scope for the operations performed in computing the loss.
+
+  Returns:
+    A `Tensor` of same shape as logits and target representing the loss values
+      across the batch.
+
+  Raises:
+    ValueError: If the shapes of `logits` and `target` don't match.
+  """
+  with ops.op_scope([logits, target], scope, "hinge_loss") as scope:
+    logits.get_shape().assert_is_compatible_with(target.get_shape())
+    # We first need to convert binary labels to -1/1 labels (as floats).
+    target = math_ops.to_float(target)
+    all_ones = array_ops.ones_like(target)
+    labels = math_ops.sub(2 * target, all_ones)
+    return nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(labels, logits)))
 
 
 def sum_of_squares(predictions, targets, weight=1.0, scope=None):

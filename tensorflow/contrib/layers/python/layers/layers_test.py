@@ -818,7 +818,7 @@ class DropoutTest(tf.test.TestCase):
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.dropout(images)
-      self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
+      self.assertEquals(output.op.name, 'Dropout/dropout/mul')
       output.get_shape().assert_is_compatible_with(
           tf.convert_to_tensor(images).get_shape())
 
@@ -828,7 +828,7 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(True)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEquals(output.op.name, 'Dropout/dropout/mul_1')
+      self.assertEquals(output.op.name, 'Dropout/dropout/mul')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithConstantFalse(self):

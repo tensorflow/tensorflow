@@ -846,8 +846,7 @@ def per_image_whitening(image):
   stddev = math_ops.sqrt(variance)
 
   # Apply a minimum normalization that protects us against uniform images.
-  min_stddev = math_ops.inv(
-      math_ops.sqrt(math_ops.cast(num_pixels, dtypes.float32)))
+  min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
   pixel_value_scale = math_ops.maximum(stddev, min_stddev)
   pixel_value_offset = image_mean
 
