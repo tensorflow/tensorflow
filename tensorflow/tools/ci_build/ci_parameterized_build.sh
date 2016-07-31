@@ -191,7 +191,7 @@ if [[ -z "$(which docker)" ]]; then
 fi
 
 # Process container type
-if [[ ${CTYPE} == "cpu" ]]; then
+if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
 elif [[ ${CTYPE} == "gpu" ]]; then
   OPT_FLAG="${OPT_FLAG} --config=cuda"
@@ -298,7 +298,9 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
   fi
 
-  if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "gpu" ]]; then
+  if [[ ${CTYPE} == "cpu" ]] || \
+     [[ ${CTYPE} == "debian.jessie.cpu" ]] || \
+     [[ ${CTYPE} == "gpu" ]]; then
     # Run Bazel
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
 "${EXTRA_ARGS} ${BAZEL_TARGET}"
