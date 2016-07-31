@@ -29,8 +29,6 @@ from __future__ import print_function
 
 import os.path
 import time
-
-import numpy
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import mnist

@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import datasets
 from sklearn.metrics import mean_squared_error
 
 from tensorflow.contrib import learn
