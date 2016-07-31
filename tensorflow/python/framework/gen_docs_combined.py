@@ -65,6 +65,7 @@ def get_module_to_name():
       tf.contrib.learn.monitors: (
           "tf.contrib.learn.monitors"),
       tf.contrib.losses: "tf.contrib.losses",
+      tf.contrib.rnn: "tf.contrib.rnn",
       tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
   }
@@ -171,6 +172,7 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.learn.monitors", "Monitors (contrib)",
               tf.contrib.learn.monitors),
       library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
+      library("contrib.rnn", "RNN (contrib)", tf.contrib.rnn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",

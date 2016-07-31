@@ -27,12 +27,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops.math_ops import reduce_sum
-from tensorflow.python.ops.math_ops import sigmoid
-from tensorflow.python.ops.math_ops import tanh
-from tensorflow.python.ops.nn_ops import conv2d
-from tensorflow.python.ops.nn_ops import softmax
-
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -104,7 +98,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=1, num_proj_shards=1,
                forget_bias=1.0, state_is_tuple=False,
-               activation=tanh):
+               activation=math_ops.tanh):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -188,6 +182,8 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
       ValueError: If input size cannot be inferred from inputs via
         static shape inference.
     """
+    sigmoid = math_ops.sigmoid
+
     num_proj = self._num_units if self._num_proj is None else self._num_proj
 
     if self._state_is_tuple:
@@ -322,6 +318,8 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
+    sigmoid = math_ops.sigmoid
+    tanh = math_ops.tanh
 
     freq_inputs = self._make_tf_features(inputs)
     dtype = inputs.dtype
@@ -489,6 +487,8 @@ class GridLSTMCell(rnn_cell.RNNCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
+    sigmoid = math_ops.sigmoid
+    tanh = math_ops.tanh
 
     freq_inputs = self._make_tf_features(inputs)
     dtype = inputs.dtype
@@ -771,6 +771,11 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       return output, new_state
 
   def _attention(self, query, attn_states):
+    conv2d = nn_ops.conv2d
+    reduce_sum = math_ops.reduce_sum
+    softmax = nn_ops.softmax
+    tanh = math_ops.tanh
+
     with vs.variable_scope("Attention"):
       k = vs.get_variable("AttnW", [1, 1, self._attn_size, self._attn_vec_size])
       v = vs.get_variable("AttnV", [self._attn_vec_size])

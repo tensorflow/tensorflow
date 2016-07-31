@@ -106,6 +106,7 @@ weighted average over the individual prediction errors:
 
 @@absolute_difference
 @@add_loss
+@@hinge_loss
 @@cosine_distance
 @@get_losses
 @@get_regularization_losses

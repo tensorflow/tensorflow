@@ -570,6 +570,7 @@ filegroup(
     name = "android_srcs",
     srcs = [
         ":proto_text_srcs_all",
+        "//tensorflow/core/debug:android_srcs",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -580,8 +581,6 @@ filegroup(
             "client/**/*.cc",
             "common_runtime/**/*.h",
             "common_runtime/**/*.cc",
-            "debug/**/*.h",
-            "debug/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
             "graph/**/*.h",
@@ -1103,49 +1102,13 @@ tf_cuda_library(
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
-        ":debug_graph_utils",
         ":framework",
         ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "debug_gateway_internal",
-    srcs = ["debug/debug_gateway.cc"],
-    hdrs = ["debug/debug_gateway.h"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":gpu_tracer",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "debug_graph_utils",
-    srcs = ["debug/debug_graph_utils.cc"],
-    hdrs = ["debug/debug_graph_utils.h"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_internal",
-        ":framework",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
+        "//tensorflow/core/debug:debug_graph_utils",
     ],
     alwayslink = 1,
 )
@@ -1601,35 +1564,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "debug/debug_gateway_test",
-    size = "small",
-    args = ["--heap_check=local"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":debug_gateway_internal",
-        ":debug_graph_utils",
-        ":direct_session",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:debug_ops",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

@@ -4278,6 +4278,15 @@ op {
     }
     description: "Name of the input tensor."
   }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
   summary: "Debug Identity Op."
   description: "Provides an identity mapping of the non-Ref type input tensor for debugging."
 }
@@ -4304,6 +4313,15 @@ op {
       s: ""
     }
     description: "Name of the input tensor."
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
   }
   summary: "Debug NaN Value Counter Op"
   description: "Counts number of NaNs in the input tensor, for debugging."

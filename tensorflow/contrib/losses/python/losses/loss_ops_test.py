@@ -499,6 +499,42 @@ class LogLossTest(tf.test.TestCase):
       self.assertAlmostEqual(0.0, loss.eval(), 3)
 
 
+class HingeLossTest(tf.test.TestCase):
+
+  def testIncompatibleShapes(self):
+    with self.test_session():
+      logits = tf.constant([[-1.0], [2.1]])
+      target = tf.constant([0.0, 1.0])
+      with self.assertRaises(ValueError):
+        _ = tf.contrib.losses.hinge_loss(logits, target).eval()
+
+  def testAllOutsideMargin(self):
+    with self.test_session():
+      logits = tf.constant([1.2, -1.4, -1.0, 2.1])
+      target = tf.constant([1.0, 0.0, 0.0, 1.0])
+      loss = tf.contrib.losses.hinge_loss(logits, target)
+      self.assertAllClose(loss.eval(), [0.0, 0.0, 0.0, 0.0], atol=1e-3)
+
+  def testSomeInsideMargin(self):
+    with self.test_session():
+      logits = tf.constant([[-0.7], [-1.4], [1.4], [0.6]])
+      target = tf.constant([[0.0], [0.0], [1.0], [1.0]])
+      loss = tf.contrib.losses.hinge_loss(logits, target)
+      # Examples 1 and 4 are on the correct side of the hyperplane but within
+      # the margin so they incur some (small) loss.
+      self.assertAllClose(loss.eval(), [[0.3], [0.0], [0.0], [0.4]], atol=1e-3)
+
+  def testSomeMisclassified(self):
+    with self.test_session():
+      logits = tf.constant([[[1.2], [0.4], [-1.0], [-1.1]]])
+      target = tf.constant([[[1.0], [0.0], [0.0], [1.0]]])
+      loss = tf.contrib.losses.hinge_loss(logits, target)
+      # Examples 2 and 4 are on the wrong side of the hyperplane so they incur
+      # some (fairly large) loss.
+      self.assertAllClose(
+          loss.eval(), [[[0.0], [1.4], [0.0], [2.1]]], atol=1e-3)
+
+
 class SumOfSquaresLossTest(tf.test.TestCase):
 
   def setUp(self):

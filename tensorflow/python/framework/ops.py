@@ -185,7 +185,10 @@ def register_dense_tensor_like_type(tensor_type):
 
 
 class Tensor(object):
-  """Represents a value produced by an `Operation`.
+  """Represents one of the outputs of an `Operation`.
+
+  *Note:* the `Tensor` class will be replaced by `Output` in the future.
+  Currently these two are aliases for each other.
 
   A `Tensor` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
@@ -554,6 +557,10 @@ class Tensor(object):
 
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
+
+
+# TODO(josh11b): Switch everyone from "Tensor" to "Output" to match C++ API.
+Output = Tensor
 
 
 def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):

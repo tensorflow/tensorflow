@@ -36,6 +36,8 @@ Status DebugNodeInserter::InsertNodes(
   // A map from tensor name (e.g., "node_a:0") to list of debug op names
   // (e.g., {"DebugIdentity", "DebugNanCount"})
   std::unordered_map<string, std::vector<string>> tensor_watches;
+  // A map from tensor name to debug_url.
+  std::unordered_map<string, std::vector<string>> tensor_watch_urls;
 
   // Cache the proto content for fast lookup later
   for (const DebugTensorWatch& watch : watches) {
@@ -58,6 +60,12 @@ Status DebugNodeInserter::InsertNodes(
     }
 
     tensor_watches[tensor_name] = debug_ops;
+
+    std::vector<string> urls;
+    for (const string& url : watch.debug_urls()) {
+      urls.push_back(url);
+    }
+    tensor_watch_urls[tensor_name] = urls;
   }
 
   if (tensor_watches.empty()) {
@@ -150,9 +158,9 @@ Status DebugNodeInserter::InsertNodes(
         const string& debug_op_name = tensor_watches[tensor_name][i];
 
         Node* debug_node;
-        Status debug_s =
-            CreateDebugNode(graph, device_type, copy_node->name(), src_dt,
-                            tensor_name, i, debug_op_name, &debug_node);
+        Status debug_s = CreateDebugNode(
+            graph, device_type, copy_node->name(), src_dt, tensor_name,
+            tensor_watch_urls[tensor_name], i, debug_op_name, &debug_node);
         if (!debug_s.ok()) {
           return Status(
               error::FAILED_PRECONDITION,
@@ -267,17 +275,17 @@ Status DebugNodeInserter::CreateCopyNode(
 Status DebugNodeInserter::CreateDebugNode(
     Graph* graph, const DeviceType device_type,
     const string& src_copy_node_name, const DataType src_dt,
-    const string& tensor_name, const int debug_op_num,
-    const string& debug_op_name, Node** debug_node) {
+    const string& tensor_name, const std::vector<string>& debug_urls,
+    const int debug_op_num, const string& debug_op_name, Node** debug_node) {
   NodeDef node_def;
   const KernelDef* kdef;
 
   const string debug_node_name =
       GetDebugNodeName(tensor_name, debug_op_num, debug_op_name);
-  // TODO(cais): Hook up with DebugTensorWatch proto
   auto builder = NodeDefBuilder(debug_node_name, debug_op_name)
                      .Input(src_copy_node_name, 0, src_dt)
-                     .Attr("tensor_name", tensor_name);
+                     .Attr("tensor_name", tensor_name)
+                     .Attr("debug_urls", debug_urls);
 
   if (!builder.Finalize(&node_def).ok()) {
     return Status(

@@ -72,6 +72,7 @@ from tensorflow.python.framework.device import DeviceSpec
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
+from tensorflow.python.framework.ops import Output
 from tensorflow.python.framework.ops import SparseTensor
 from tensorflow.python.framework.ops import SparseTensorValue
 from tensorflow.python.framework.ops import IndexedSlices
