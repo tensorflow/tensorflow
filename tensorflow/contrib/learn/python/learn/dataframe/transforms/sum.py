@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ class Sum(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     pair_sparsity = (isinstance(input_tensors[0], ops.SparseTensor),
                      isinstance(input_tensors[1], ops.SparseTensor))
 

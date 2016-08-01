@@ -208,10 +208,9 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
     tensorflow_df = df.TensorFlowDataFrame.from_csv(
         [data_path],
         batch_size=batch_size,
-        num_epochs=num_epochs,
         shuffle=False,
         default_values=default_values)
-    actual_num_batches = len(list(tensorflow_df.run()))
+    actual_num_batches = len(list(tensorflow_df.run(num_epochs=num_epochs)))
     self.assertEqual(expected_num_batches, actual_num_batches)
 
   def testFromCSVWithFeatureSpec(self):

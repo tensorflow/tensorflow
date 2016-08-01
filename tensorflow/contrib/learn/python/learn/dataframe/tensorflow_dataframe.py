@@ -83,7 +83,8 @@ class TensorFlowDataFrame(df.DataFrame):
           graph=None,
           session=None,
           start_queues=True,
-          initialize_variables=True):
+          initialize_variables=True,
+          **kwargs):
     """Builds and runs the columns of the `DataFrame` and yields batches.
 
     This is a generator that yields a dictionary mapping column names to
@@ -97,6 +98,7 @@ class TensorFlowDataFrame(df.DataFrame):
       start_queues: if true, queues will be started before running and halted
         after producting `n` batches.
       initialize_variables: if true, variables will be initialized.
+      **kwargs: Additional keyword arguments, unused here.
 
     Yields:
       A dictionary, mapping column names to the values resulting from running
@@ -107,7 +109,7 @@ class TensorFlowDataFrame(df.DataFrame):
     with graph.as_default():
       if session is None:
         session = sess.Session()
-      self_built = self.build()
+      self_built = self.build(**kwargs)
       keys = list(self_built.keys())
       cols = list(self_built.values())
       if initialize_variables:
@@ -208,7 +210,7 @@ class TensorFlowDataFrame(df.DataFrame):
 
   @classmethod
   def _from_csv_base(cls, filepatterns, get_default_values, has_header,
-                     column_names, num_epochs, num_threads, enqueue_size,
+                     column_names, num_threads, enqueue_size,
                      batch_size, queue_capacity, min_after_dequeue, shuffle,
                      seed):
     """Create a `DataFrame` from CSV files.
@@ -223,9 +225,6 @@ class TensorFlowDataFrame(df.DataFrame):
         each column, given the column names.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -265,7 +264,6 @@ class TensorFlowDataFrame(df.DataFrame):
         reader_kwargs=reader_kwargs,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
-        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,
@@ -287,7 +285,6 @@ class TensorFlowDataFrame(df.DataFrame):
                default_values,
                has_header=True,
                column_names=None,
-               num_epochs=None,
                num_threads=1,
                enqueue_size=None,
                batch_size=32,
@@ -306,9 +303,6 @@ class TensorFlowDataFrame(df.DataFrame):
       default_values: a list of default values for each column.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -332,7 +326,7 @@ class TensorFlowDataFrame(df.DataFrame):
       return default_values
 
     return cls._from_csv_base(filepatterns, get_default_values, has_header,
-                              column_names, num_epochs, num_threads,
+                              column_names, num_threads,
                               enqueue_size, batch_size, queue_capacity,
                               min_after_dequeue, shuffle, seed)
 
@@ -342,7 +336,6 @@ class TensorFlowDataFrame(df.DataFrame):
                                  feature_spec,
                                  has_header=True,
                                  column_names=None,
-                                 num_epochs=None,
                                  num_threads=1,
                                  enqueue_size=None,
                                  batch_size=32,
@@ -362,9 +355,6 @@ class TensorFlowDataFrame(df.DataFrame):
           `VarLenFeature`.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -387,7 +377,7 @@ class TensorFlowDataFrame(df.DataFrame):
       return [_get_default_value(feature_spec[name]) for name in column_names]
 
     dataframe = cls._from_csv_base(filepatterns, get_default_values, has_header,
-                                   column_names, num_epochs, num_threads,
+                                   column_names, num_threads,
                                    enqueue_size, batch_size, queue_capacity,
                                    min_after_dequeue, shuffle, seed)
 
@@ -405,7 +395,6 @@ class TensorFlowDataFrame(df.DataFrame):
                     filepatterns,
                     features,
                     reader_cls=io_ops.TFRecordReader,
-                    num_epochs=None,
                     num_threads=1,
                     enqueue_size=None,
                     batch_size=32,
@@ -421,9 +410,6 @@ class TensorFlowDataFrame(df.DataFrame):
         `FixedLenFeature`.
       reader_cls: a subclass of `tensorflow.ReaderBase` that will be used to
         read the `Example`s.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -454,7 +440,6 @@ class TensorFlowDataFrame(df.DataFrame):
         filenames,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
-        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,

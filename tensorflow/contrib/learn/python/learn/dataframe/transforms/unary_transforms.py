@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -78,7 +78,7 @@ def register_unary_op(registered_name, operation):
   def _output_names(self):
     return "output"
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     input_tensor = input_tensors[0]
     if isinstance(input_tensor, ops.SparseTensor):
       result = ops.SparseTensor(input_tensor.indices,
