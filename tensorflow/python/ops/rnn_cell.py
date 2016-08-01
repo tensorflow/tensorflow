@@ -235,9 +235,9 @@ class GRUCell(RNNCell):
 
 
 class ESNCell(RNNCell):
-  """Echo State Network Cell.""" #
+  """Echo State Network Cell."""
 
-  def __init__(self, num_units, input_size, wr2_scale=0.7, connectivity=0.1, leaky=1.0, activation=tanh,
+  def __init__(self, num_units, wr2_scale=0.7, connectivity=0.1, leaky=1.0, activation=tanh,
                win_init=random_ops.random_normal,
                wr_init=random_ops.random_normal,
                bias_init=random_ops.random_normal):
@@ -245,7 +245,6 @@ class ESNCell(RNNCell):
 
     Args:
       num_units: number of units in the reservoir
-      input_size: input size
       wr2_scale: desired norm2 of reservoir weight matrix.
         `wr2_scale < 1` is a sufficient condition for echo state property.
       connectivity: connection probability between two reservoir units
@@ -258,7 +257,6 @@ class ESNCell(RNNCell):
     The necessary condition for the Echo State Property is `max(eig(wr)) < 1`
     however can't find a way to compute the spectral radius in tensorflow
     """
-    self._input_size = input_size
     self._num_units = num_units
     self._leaky = leaky
     self._activation = activation
@@ -273,7 +271,7 @@ class ESNCell(RNNCell):
             connectivity),
         dtype)
 
-      wr = math_ops.mul(wr, connectivity_mask)  # todo consider sparse tensor for low connectivities
+      wr = math_ops.mul(wr, connectivity_mask)
 
       wr_norm2 = math_ops.sqrt(nn_ops.l2_loss(wr) * 2.0)
       wr = wr * wr2_scale / wr_norm2
@@ -285,10 +283,6 @@ class ESNCell(RNNCell):
     self._wr_initializer = _wr_initializer
 
   @property
-  def input_size(self):
-    return self._input_size
-
-  @property
   def output_size(self):
     return self._num_units
 
@@ -298,17 +292,20 @@ class ESNCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Echo State Network Cell:
-        output = new_state = (1 - leaky) * state + leaky * tanh(Win * input + Wr * state + B)."""
+        output = new_state = (1 - leaky) * state + leaky * activation(Win * input + Wr * state + B)."""
+
+    (total_arg_size, dtype, res) = _prepare_input(inputs)
+
     with vs.variable_scope(scope or type(self).__name__):  # "ESNCell"
 
-      win = vs.get_variable("InputMatrix", [self._input_size, self._num_units],
+      win = vs.get_variable("InputMatrix", [total_arg_size, self._num_units], dtype=dtype,
                             trainable=False, initializer=self._win_initializer)
-      wr = vs.get_variable("ReservoirMatrix", [self._num_units, self._num_units],
+      wr = vs.get_variable("ReservoirMatrix", [self._num_units, self._num_units], dtype=dtype,
                            trainable=False, initializer=self._wr_initializer)
-      b = vs.get_variable("Bias", [self._num_units], trainable=False, initializer=self._bias_initializer)
+      b = vs.get_variable("Bias", [self._num_units], dtype=dtype, trainable=False, initializer=self._bias_initializer)
 
       output = (1 - self._leaky) * state + self._leaky * self._activation(
-        math_ops.matmul(inputs, win) + math_ops.matmul(state, wr) + b)
+        math_ops.matmul(res, win) + math_ops.matmul(state, wr) + b)
 
     return output, output
 
@@ -942,6 +939,47 @@ class _SlimRNNCell(RNNCell):
     return output, state
 
 
+def _prepare_input(args):
+  """Prepare the input
+
+  Args:
+    args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+
+  Returns:
+    a 3-tuple
+    total_arg_size: total size of the argument on dimension 1;
+    dtype: type of the arguments;
+    res: 2D Tensor concatenation of the input list.
+
+  Raises:
+    ValueError: if some of the arguments has unspecified or wrong shape.
+  """
+  if args is None or (nest.is_sequence(args) and not args):
+    raise ValueError("`args` must be specified")
+  if not nest.is_sequence(args):
+    args = [args]
+
+  # Calculate the total size of arguments on dimension 1.
+  total_arg_size = 0
+  shapes = [a.get_shape().as_list() for a in args]
+  for shape in shapes:
+    if len(shape) != 2:
+      raise ValueError("PrepareInput is expecting 2D arguments: %s" % str(shapes))
+    if not shape[1]:
+      raise ValueError("PrepareInput expects shape[1] of arguments: %s" % str(shapes))
+    else:
+      total_arg_size += shape[1]
+
+  dtype = [a.dtype for a in args][0]
+
+  if len(args) == 1:
+    res = args[0]
+  else:
+    res = array_ops.concat(1, args)
+
+  return total_arg_size, dtype, res
+
+
 def _linear(args, output_size, bias, bias_start=0.0, scope=None):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
@@ -959,25 +997,8 @@ def _linear(args, output_size, bias, bias_start=0.0, scope=None):
   Raises:
     ValueError: if some of the arguments has unspecified or wrong shape.
   """
-  if args is None or (nest.is_sequence(args) and not args):
-    raise ValueError("`args` must be specified")
-  if not nest.is_sequence(args):
-    args = [args]
+  (total_arg_size, dtype, res) = _prepare_input(args)
 
-  # Calculate the total size of arguments on dimension 1.
-  total_arg_size = 0
-  shapes = [a.get_shape().as_list() for a in args]
-  for shape in shapes:
-    if len(shape) != 2:
-      raise ValueError("Linear is expecting 2D arguments: %s" % str(shapes))
-    if not shape[1]:
-      raise ValueError("Linear expects shape[1] of arguments: %s" % str(shapes))
-    else:
-      total_arg_size += shape[1]
-
-  dtype = [a.dtype for a in args][0]
-
-  # Now the computation.
   with vs.variable_scope(scope or "Linear"):
     matrix = vs.get_variable(
         "Matrix", [total_arg_size, output_size], dtype=dtype)
