@@ -98,7 +98,7 @@ op {
     }
   }
   summary: "Returns x + y element-wise."
-  description: "*NOTE*: Add supports broadcasting. AddN does not."
+  description: "*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "AddN"
@@ -4490,42 +4490,6 @@ op {
   description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the PNG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n*   4: output an RGBA image.\n\nIf needed, the PNG-encoded image is transformed to match the requested number\nof color channels."
 }
 op {
-  name: "DecodeGif"
-  input_arg {
-    name: "contents"
-    description: "0-D.  The GIF-encoded image."
-    type: DT_STRING
-  }
-  output_arg {
-    name: "image"
-    description: "3-D with shape `[height, width, channels]`."
-    type_attr: "dtype"
-  }
-  attr {
-    name: "channels"
-    type: "int"
-    default_value {
-      i: 0
-    }
-    description: "Number of color channels for the decoded image."
-  }
-  attr {
-    name: "dtype"
-    type: "type"
-    default_value {
-      type: DT_UINT8
-    }
-    allowed_values {
-      list {
-        type: DT_UINT8
-        type: DT_UINT16
-      }
-    }
-  }
-  summary: "Decode a GIF-encoded image to a uint8 or uint16 tensor."
-  description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the GIF-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n*   4: output an RGBA image.\n\nIf needed, the GIF-encoded image is transformed to match the requested number\nof color channels."
-}
-op {
   name: "DecodeRaw"
   input_arg {
     name: "bytes"
@@ -5095,6 +5059,7 @@ op {
     }
   }
   summary: "Returns x / y element-wise."
+  description: "*NOTE*: `Div` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "DrawBoundingBoxes"
@@ -5506,6 +5471,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x == y) element-wise."
+  description: "*NOTE*: `Equal` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -6186,6 +6152,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x > y) element-wise."
+  description: "*NOTE*: `Greater` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "GreaterEqual"
@@ -6219,6 +6186,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x >= y) element-wise."
+  description: "*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "HSVToRGB"
@@ -7104,6 +7072,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x < y) element-wise."
+  description: "*NOTE*: `Less` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "LessEqual"
@@ -7137,6 +7106,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x <= y) element-wise."
+  description: "*NOTE*: `LessEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Lgamma"
@@ -7359,6 +7329,7 @@ op {
     type: DT_BOOL
   }
   summary: "Returns the truth value of x AND y element-wise."
+  description: "*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -7388,6 +7359,7 @@ op {
     type: DT_BOOL
   }
   summary: "Returns the truth value of x OR y element-wise."
+  description: "*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -8245,7 +8217,8 @@ op {
       }
     }
   }
-  summary: "Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts."
+  summary: "Returns the max of x and y (i.e. x > y ? x : y) element-wise."
+  description: "*NOTE*: `Maximum` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -8428,7 +8401,8 @@ op {
       }
     }
   }
-  summary: "Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts."
+  summary: "Returns the min of x and y (i.e. x < y ? x : y) element-wise."
+  description: "*NOTE*: `Minimum` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -8528,6 +8502,7 @@ op {
     }
   }
   summary: "Returns element-wise remainder of division."
+  description: "*NOTE*: `Mod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Mul"
@@ -8562,6 +8537,7 @@ op {
     }
   }
   summary: "Returns x * y element-wise."
+  description: "*NOTE*: `Mul` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -8863,6 +8839,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x != y) element-wise."
+  description: "*NOTE*: `NotEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -14643,6 +14620,7 @@ op {
     }
   }
   summary: "Returns (x - y)(x - y) element-wise."
+  description: "*NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -15094,6 +15072,7 @@ op {
     }
   }
   summary: "Returns x - y element-wise."
+  description: "*NOTE*: `Sub` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Sum"
