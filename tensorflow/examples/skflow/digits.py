@@ -45,7 +45,7 @@ X_train, X_val, y_train, y_val = cross_validation.train_test_split(X_train,
 
 def conv_model(X, y):
     X = tf.expand_dims(X, 3)
-    features = tf.reduce_max(learn.ops.conv2d(X, 12, [3, 3]), [1, 2])
+    features = tf.reduce_max(tf.contrib.layers.conv2d(X, 12, [3, 3]), [1, 2])
     features = tf.reshape(features, [-1, 12])
     return learn.models.logistic_regression(features, y)
 
