@@ -21,7 +21,8 @@ operators to your graph.
 
 Returns x + y element-wise.
 
-*NOTE*: Add supports broadcasting. AddN does not.
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -41,6 +42,9 @@ Returns x + y element-wise.
 
 Returns x - y element-wise.
 
+*NOTE*: `Sub` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -59,6 +63,9 @@ Returns x - y element-wise.
 
 Returns x * y element-wise.
 
+*NOTE*: `Mul` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -76,6 +83,9 @@ Returns x * y element-wise.
 ### `tf.div(x, y, name=None)` {#div}
 
 Returns x / y element-wise.
+
+*NOTE*: `Div` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -163,6 +173,9 @@ as well.
 ### `tf.mod(x, y, name=None)` {#mod}
 
 Returns element-wise remainder of division.
+
+*NOTE*: `Mod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -504,7 +517,10 @@ Returns element-wise largest integer not greater than x.
 
 ### `tf.maximum(x, y, name=None)` {#maximum}
 
-Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
+Returns the max of x and y (i.e. x > y ? x : y) element-wise.
+
+*NOTE*: `Maximum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -522,7 +538,10 @@ Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts.
 
 ### `tf.minimum(x, y, name=None)` {#minimum}
 
-Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts.
+Returns the min of x and y (i.e. x < y ? x : y) element-wise.
+
+*NOTE*: `Minimum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -748,6 +767,9 @@ Computes the complementary error function of `x` element-wise.
 ### `tf.squared_difference(x, y, name=None)` {#squared_difference}
 
 Returns (x - y)(x - y) element-wise.
+
+*NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 

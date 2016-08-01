@@ -361,6 +361,9 @@ to your graph.
 
 Returns the truth value of x AND y element-wise.
 
+*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -396,6 +399,9 @@ Returns the truth value of NOT x element-wise.
 
 Returns the truth value of x OR y element-wise.
 
+*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -427,6 +433,9 @@ operators to your graph.
 
 Returns the truth value of (x == y) element-wise.
 
+*NOTE*: `Equal` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -444,6 +453,9 @@ Returns the truth value of (x == y) element-wise.
 ### `tf.not_equal(x, y, name=None)` {#not_equal}
 
 Returns the truth value of (x != y) element-wise.
+
+*NOTE*: `NotEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -463,6 +475,9 @@ Returns the truth value of (x != y) element-wise.
 
 Returns the truth value of (x < y) element-wise.
 
+*NOTE*: `Less` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -480,6 +495,9 @@ Returns the truth value of (x < y) element-wise.
 ### `tf.less_equal(x, y, name=None)` {#less_equal}
 
 Returns the truth value of (x <= y) element-wise.
+
+*NOTE*: `LessEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -499,6 +517,9 @@ Returns the truth value of (x <= y) element-wise.
 
 Returns the truth value of (x > y) element-wise.
 
+*NOTE*: `Greater` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -516,6 +537,9 @@ Returns the truth value of (x > y) element-wise.
 ### `tf.greater_equal(x, y, name=None)` {#greater_equal}
 
 Returns the truth value of (x >= y) element-wise.
+
+*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
