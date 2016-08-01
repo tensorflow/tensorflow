@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -82,7 +83,7 @@ void CreateDir(const string& dirname, TF_Status* out_status) {
 
 void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
               TF_Status* out_status) {
-  // If overwrite is false and the newpath file exists then its an error.
+  // If overwrite is false and the newpath file exists then it's an error.
   if (!overwrite && FileExists(newpath)) {
     TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
     return;
@@ -159,3 +160,5 @@ void RenameFile(const string& oldname, const string& newname, bool overwrite,
                 TF_Status* out_status);
 void DeleteRecursively(const string& dirname, TF_Status* out_status);
 bool IsDirectory(const string& dirname, TF_Status* out_status);
+
+%include "tensorflow/core/lib/io/path.h"
