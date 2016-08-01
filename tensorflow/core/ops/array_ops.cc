@@ -1966,6 +1966,48 @@ REGISTER_OP("MirrorPadGrad")
     .Output("output: T")
     .Attr("T: type")
     .Attr(GetMirrorPadModeAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* paddings;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &paddings));
+      const Dimension* pad_0 = c->Dim(paddings, 0);
+      if (!c->ValueKnown(pad_0)) {
+        // We don't know the rank of the output since the first
+        // padding dimension is unknown.
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+
+      int64 input_rank = c->Value(pad_0);
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), input_rank, &input));
+      TF_RETURN_IF_ERROR(
+          c->Merge(paddings, c->Matrix(input_rank, 2), &paddings));
+
+      const Tensor* paddings_t = c->input_tensor(1);
+      if (paddings_t == nullptr) {
+        // Values of 'paddings' is not available, but we know the
+        // input rank, so return the rank of the output with unknown
+        // dimensions.
+        std::vector<const Dimension*> dims;
+        for (int64 i = 0; i < input_rank; ++i) dims.push_back(c->UnknownDim());
+        c->set_output(0, c->MakeShape(dims));
+        return Status::OK();
+      }
+
+      auto paddings_data = paddings_t->matrix<int32>();
+      std::vector<const Dimension*> dims(input_rank);
+      for (int i = 0; i < input_rank; ++i) {
+        const int32 pad0 = paddings_data(i, 0);
+        const int32 pad1 = paddings_data(i, 1);
+        if (pad0 < 0 || pad1 < 0) {
+          return errors::InvalidArgument("Paddings must be non-negative");
+        }
+
+        TF_RETURN_IF_ERROR(c->Add(c->Dim(input, i), -(pad0 + pad1), &dims[i]));
+      }
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
 
