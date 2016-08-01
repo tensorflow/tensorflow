@@ -151,3 +151,10 @@ def walk(top, in_order=True):
 
   if not in_order:
     yield here
+
+
+def stat(filename):
+  file_statistics = pywrap_tensorflow.FileStatistics()
+  with errors.raise_exception_on_not_ok_status() as status:
+    pywrap_tensorflow.Stat(compat.as_bytes(filename), file_statistics, status)
+    return file_statistics

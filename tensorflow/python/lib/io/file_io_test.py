@@ -247,5 +247,14 @@ class FileIoTest(tf.test.TestCase):
     self.assertItemsEqual(all_subdirs, [])
     self.assertItemsEqual(all_files, [])
 
+  def testStat(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.write_string_to_file(file_path, "testing")
+    file_statistics = file_io.stat(file_path)
+    os_statistics = os.stat(file_path)
+    self.assertEquals(7, file_statistics.length)
+    self.assertEqual(
+        int(os_statistics.st_mtime), int(file_statistics.mtime_nsec / 1e9))
+
 if __name__ == "__main__":
   tf.test.main()

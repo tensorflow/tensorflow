@@ -1010,6 +1010,7 @@ filegroup(
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/env.h",
+        "platform/file_statistics.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
         "platform/host_info.h",

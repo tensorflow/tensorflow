@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 %}
 
@@ -143,6 +144,17 @@ bool IsDirectory(const string& dirname, TF_Status* out_status) {
   }
   return false;
 }
+
+using tensorflow::FileStatistics;
+
+void Stat(const string& filename, FileStatistics* stats,
+          TF_Status* out_status) {
+  tensorflow::Status status = tensorflow::Env::Default()->Stat(filename,
+                                                               stats);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
 %}
 
 // Wrap the above functions.
@@ -160,5 +172,8 @@ void RenameFile(const string& oldname, const string& newname, bool overwrite,
                 TF_Status* out_status);
 void DeleteRecursively(const string& dirname, TF_Status* out_status);
 bool IsDirectory(const string& dirname, TF_Status* out_status);
+void Stat(const string& filename, tensorflow::FileStatistics* stats,
+          TF_Status* out_status);
 
 %include "tensorflow/core/lib/io/path.h"
+%include "tensorflow/core/platform/file_statistics.h"
