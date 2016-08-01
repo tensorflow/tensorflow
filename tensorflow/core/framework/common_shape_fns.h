@@ -157,6 +157,9 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c);
 // Shape function for Conv2D-like operations.
 Status Conv2DShape(shape_inference::InferenceContext* c);
 
+// Shape function for Conv3D-like operations.
+Status Conv3DShape(shape_inference::InferenceContext* c);
+
 // Shape function for DepthwiseConv2D-like operations.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 
@@ -165,6 +168,9 @@ Status AvgPoolShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool-like operations.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
+
+// Shape function for 3D Pooling operations.
+Status Pool3DShape(shape_inference::InferenceContext* c);
 
 // Shape function for use with ops whose output shapes are unknown.
 Status UnknownShape(shape_inference::InferenceContext* c);

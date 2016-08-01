@@ -533,6 +533,7 @@ REGISTER_OP("Conv3D")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn(shape_inference::Conv3DShape)
     .Doc(R"doc(
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
 
@@ -677,6 +678,7 @@ REGISTER_OP("AvgPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 Performs 3D average pooling on the input.
 
@@ -726,6 +728,7 @@ REGISTER_OP("MaxPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 Performs 3D max pooling on the input.
 
