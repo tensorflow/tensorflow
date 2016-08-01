@@ -32,6 +32,10 @@ from tensorflow.python.ops import math_ops
 
 ops.NoGradient("CholeskyGrad")
 ops.NoGradient("BatchCholeskyGrad")
+ops.NoGradient("SelfAdjointEig")
+ops.NoGradient("BatchSelfAdjointEig")
+ops.NoGradient("Svd")
+ops.NoGradient("BatchSvd")
 
 
 @ops.RegisterGradient("MatrixInverse")

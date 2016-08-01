@@ -43,7 +43,7 @@ template <typename Scalar, bool SupportsBatchOperationT>
 class LinearAlgebraOp : public OpKernel {
  public:
   explicit LinearAlgebraOp(OpKernelConstruction* context) : OpKernel(context) {}
-  ~LinearAlgebraOp() override {}
+
   void Compute(OpKernelContext* context) override;
 
  protected:
@@ -80,19 +80,26 @@ class LinearAlgebraOp : public OpKernel {
                                    const TensorShapes& input_matrix_shapes);
 
   // Returns the output shapes of each individual matrix operation. Output
-  // matrices shapes must be rank 0, 1, or 2.  Scalar outputs are rank 0.
-  // For many ops the output dimensions are the same as the input dimensions,
+  // matrices shapes must be rank 0, 1, or 2. Scalar outputs are rank 0.
+  //
+  // The derived class may return a number of shapes (N) less than
+  // context->num_outputs() (M) to indicate that a only leading subset of
+  // the outputs will be populated. In this case, a dummy scalar tensor with
+  // value zero will be return for the last M-N outputs.
+  //
+  // For many ops, the output dimensions are the same as the input dimensions,
   // so we provide that as a default implementation for convenience.
   virtual TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const {
     return input_matrix_shapes;
   }
 
-  // Returns the cost per matrix operation. Cost per unit is assumed to be
-  // roughly 1ns, based on comments in core/util/work_sharder.cc.
-  // Many linear algebra ops take roughly max(m,n) * min(m,n)^2, where the first
-  // input matrix is m-by-n. We provide that as a default implementation for
-  // convenience.
+  // Returns the cost per matrix operation. This is used to determine the
+  // number of threads to use for parallelizing calls to ComputeMatrix in
+  // batch mode. Cost per unit is assumed to be roughly 1ns, based on comments
+  // in core/util/work_sharder.cc. Many linear algebra ops take roughly max(m,n)
+  // * min(m,n)^2, where the first input matrix is m-by-n. We provide that as a
+  // default implementation for convenience.
   virtual int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
@@ -111,7 +118,9 @@ class LinearAlgebraOp : public OpKernel {
   // Performs a single matrix computation given input matrices, and
   // stores the result in outputs. For batch operations, this will be called
   // repeatedly for a single call to Compute() when multiple matrices exist in
-  // input Tensors with rank > 2.
+  // input Tensors with rank > 2. In this case the calls to ComputeMatrix are
+  // parallelized. The number of threads used is determined by a cost model from
+  // the value returned by GetCostPerUnit().
   virtual void ComputeMatrix(OpKernelContext* context,
                              const ConstMatrixMaps& inputs,
                              MatrixMaps* outputs) = 0;
@@ -142,6 +151,15 @@ class LinearAlgebraOp : public OpKernel {
                           const TensorShapes& input_matrix_shapes,
                           const TensorOutputs& outputs,
                           const TensorShapes& output_matrix_shapes);
+
+  void AnalyzeInputs(OpKernelContext* context, TensorInputs* inputs,
+                     TensorShapes* input_matrix_shapes,
+                     TensorShape* batch_shape);
+
+  void PrepareOutputs(OpKernelContext* context,
+                      const TensorShapes& input_matrix_shapes,
+                      const TensorShape& batch_shape, TensorOutputs* outputs,
+                      TensorShapes* output_matrix_shapes);
 };
 
 // Declare that LinearAlgebraOp is explicitly instantiated in

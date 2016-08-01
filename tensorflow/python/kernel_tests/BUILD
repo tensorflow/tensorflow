@@ -209,6 +209,7 @@ cuda_py_tests(
         "cwise_ops_test.py",
         "embedding_ops_test.py",
         "linalg_grad_test.py",
+        "svd_op_test.py",
     ],
     shard_count = 50,
     tags = ["notap"],  # b/30226163
