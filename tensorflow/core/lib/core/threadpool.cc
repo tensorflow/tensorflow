@@ -58,7 +58,7 @@ struct EigenEnvironment {
       port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
                                  id);
     }
-    return Task{std::move(f), Context(), id};
+    return Task{std::move(f), Context(ContextKind::kThread), id};
   }
 
   void ExecuteTask(const Task& t) {
