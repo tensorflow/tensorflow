@@ -238,9 +238,9 @@ class ESNCell(RNNCell):
   """Echo State Network Cell."""
 
   def __init__(self, num_units, wr2_scale=0.7, connectivity=0.1, leaky=1.0, activation=tanh,
-               win_init=random_ops.random_normal,
-               wr_init=random_ops.random_normal,
-               bias_init=random_ops.random_normal):
+               win_init=init_ops.random_normal_initializer(),
+               wr_init=init_ops.random_normal_initializer(),
+               bias_init=init_ops.random_normal_initializer()):
     """Initialize the Echo State Network Cell.
 
     Args:
