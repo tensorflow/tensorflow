@@ -25,7 +25,7 @@ class LabeledCounterTest : public ::testing::Test {
  protected:
   LabeledCounterTest() {}
 
-  Counter<1> counter_with_labels_{{"/tensorflow/test/counter_with_labels_",
+  Counter<1> counter_with_labels_{{"/tensorflow/test/counter_with_labels",
                                    "Counter with one label.", "One label"}};
 };
 
@@ -60,8 +60,8 @@ class UnlabeledCounterTest : public ::testing::Test {
  protected:
   UnlabeledCounterTest() {}
 
-  Counter<0> counter_without_labels_{
-      {"/tensorflow/test/counter0", "Counter without any labels."}};
+  Counter<0> counter_without_labels_{{"/tensorflow/test/counter_without_labels",
+                                      "Counter without any labels."}};
 };
 
 TEST_F(UnlabeledCounterTest, InitializedWithZero) {
