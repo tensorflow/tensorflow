@@ -315,6 +315,8 @@ class GraphRewriter(object):
       A quantized version of the float graph.
     """
     self.output_graph = tf.GraphDef()
+    if self.mode == "eightbit":
+      self.set_input_graph(self.remove_unneeded_nodes(self.input_graph))
     output_nodes = [self.nodes_map[output_node_name]
                     for output_node_name in output_node_names]
     if self.mode == "round":
@@ -327,7 +329,6 @@ class GraphRewriter(object):
       for output_node in output_nodes:
         self.quantize_nodes_recursively(output_node)
     elif self.mode == "eightbit":
-      self.set_input_graph(self.remove_unneeded_nodes(self.input_graph))
       self.already_visited = {}
       self.layers_eightbitized = []
       for output_node in output_nodes:
