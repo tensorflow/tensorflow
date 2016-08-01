@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-class SessionOptions;
+struct SessionOptions;
 class StepStats;
 class Timeline;
 

@@ -54,7 +54,7 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
                                              100000, 0.96, staircase=True)
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
@@ -195,7 +195,7 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
                                             power=0.5)
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
@@ -268,7 +268,7 @@ def natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate,
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
@@ -327,7 +327,7 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
