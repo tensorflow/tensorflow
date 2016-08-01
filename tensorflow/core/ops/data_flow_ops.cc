@@ -465,9 +465,7 @@ elem: The tensor that is popped from the top of the stack.
 elem_type: The type of the elem that is popped.
 )doc");
 
-REGISTER_OP("StackClose")
-    .Input("handle: Ref(string)")
-    .Doc(R"doc(
+REGISTER_OP("StackClose").Input("handle: Ref(string)").Doc(R"doc(
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
@@ -483,6 +481,12 @@ REGISTER_OP("TensorArray")
     .Attr("tensor_array_name: string = ''")
     .Output("handle: Ref(string)")
     .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
+    })
     .Doc(R"doc(
 An array of Tensors of given size, with data written via Write and read
 via Read or Pack.
@@ -506,6 +510,14 @@ REGISTER_OP("TensorArrayGrad")
     .Output("grad_handle: Ref(string)")
     .Attr("source: string")
     .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      c->set_output(0, c->Vector(2));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Creates a TensorArray for storing the gradients of values in the given handle.
 
@@ -559,6 +571,15 @@ REGISTER_OP("TensorArrayWrite")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    })
     .Doc(R"doc(
 Push an element onto the tensor_array.
 
@@ -575,6 +596,15 @@ REGISTER_OP("TensorArrayRead")
     .Input("flow_in: float")
     .Output("value: dtype")
     .Attr("dtype: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::UnknownShape(c);
+    })
     .Doc(R"doc(
 Read an element from the TensorArray into output `value`.
 
@@ -590,6 +620,14 @@ REGISTER_OP("TensorArrayPack")
     .Output("value: dtype")
     .Attr("dtype: type")
     .Attr("element_shape: shape = { unknown_rank: true }")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::UnknownShape(c);
+    })
     .Doc(R"doc(
 Pack the elements from the TensorArray into output `value`.
 
@@ -611,6 +649,14 @@ REGISTER_OP("TensorArrayUnpack")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    })
     .Doc(R"doc(
 Unpack the data from the input value into TensorArray elements.
 
@@ -627,6 +673,16 @@ REGISTER_OP("TensorArrayConcat")
     .Output("lengths: int64")
     .Attr("dtype: type")
     .Attr("element_shape_except0: shape = { unknown_rank: true }")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->UnknownShape());
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Concat the elements from the TensorArray into value `value`.
 
@@ -663,6 +719,15 @@ REGISTER_OP("TensorArraySplit")
     .Input("flow_in: float")
     .Output("flow_out: float")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    })
     .Doc(R"doc(
 Split the data from the input value into TensorArray elements.
 
@@ -696,6 +761,13 @@ REGISTER_OP("TensorArraySize")
     .Input("handle: Ref(string)")
     .Input("flow_in: float")
     .Output("size: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      return shape_inference::ScalarShape(c);
+    })
     .Doc(R"doc(
 Get the current size of the TensorArray.
 
@@ -706,6 +778,13 @@ size: The current size of the TensorArray.
 
 REGISTER_OP("TensorArrayClose")
     .Input("handle: Ref(string)")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Delete the TensorArray from its resource container.  This enables
 the user to close and release the resource in the middle of a step/run.
@@ -1100,9 +1179,7 @@ value: The tensor for the given handle.
 dtype: The type of the output value.
 )doc");
 
-REGISTER_OP("DeleteSessionTensor")
-    .Input("handle: string")
-    .Doc(R"doc(
+REGISTER_OP("DeleteSessionTensor").Input("handle: string").Doc(R"doc(
 Delete the tensor specified by its handle in the session.
 
 handle: The handle for a tensor stored in the session state.
