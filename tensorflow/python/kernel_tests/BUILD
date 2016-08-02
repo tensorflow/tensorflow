@@ -108,7 +108,6 @@ cuda_py_tests(
         "constant_op_test.py",
         "control_flow_ops_py_test.py",
         "conv1d_test.py",
-        "conv2d_backprop_filter_grad_test.py",
         "conv2d_transpose_test.py",
         "conv3d_backprop_filter_v2_grad_test.py",
         "cross_grad_test.py",
@@ -177,6 +176,7 @@ cuda_py_tests(
     name = "medium_kernel_tests",
     size = "medium",
     srcs = [
+        "conv2d_backprop_filter_grad_test.py",
         "conv3d_transpose_test.py",
         "conv_ops_test.py",
         "division_future_test.py",
