@@ -505,6 +505,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(indices_out, indices)
       self.assertAllEqual(values_out, values)
       self.assertAllEqual(shape_out, shape)
+      # Feed with tuple, fetch sp directly
+      sp_out = s.run(sp, {sp: (indices, values, shape)})
+      self.assertAllEqual(sp_out.indices, indices)
+      self.assertAllEqual(sp_out.values, values)
+      self.assertAllEqual(sp_out.shape, shape)
       # Feed with SparseTensorValue
       indices_out, values_out, shape_out = s.run(
           [sp_indices, sp_values, sp_shape],
@@ -517,6 +522,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(sp2_out.indices, indices)
       self.assertAllEqual(sp2_out.values, values)
       self.assertAllEqual(sp2_out.shape, shape)
+      # Feed SparseTensorValue and fetch sp directly.
+      sp_out = s.run(sp, {sp: ops.SparseTensorValue(indices, values, shape)})
+      self.assertAllEqual(sp_out.indices, indices)
+      self.assertAllEqual(sp_out.values, values)
+      self.assertAllEqual(sp_out.shape, shape)
 
   def testFeedSparsePlaceholder(self):
     with session.Session() as s:
@@ -1036,7 +1046,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(a2_val, [[1.0, 1.0]])
 
   def testFeedAndFetch(self):
-    with session.Session():
+    with session.Session() as sess:
       for dtype in [dtypes.float16,
                     dtypes.float32,
                     dtypes.float64,
@@ -1066,7 +1076,15 @@ class SessionTest(test_util.TensorFlowTestCase):
             np_array = np_array.astype(np_dtype)
 
           self.assertAllEqual(np_array,
-                              out_t.eval(feed_dict={feed_t: np_array}))
+                              sess.run(out_t, feed_dict={feed_t: np_array}))
+          # Check that we can also get the feed back.
+          self.assertAllEqual(np_array,
+                              sess.run(feed_t, feed_dict={feed_t: np_array}))
+          # Also check that we can get both back.
+          out_v, feed_v = sess.run([out_t, feed_t],
+                                   feed_dict={feed_t: np_array})
+          self.assertAllEqual(np_array, out_v)
+          self.assertAllEqual(np_array, feed_v)
 
   def testFeedError(self):
     with session.Session() as sess:
@@ -1108,7 +1126,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(c.eval(), c_list)
 
   def testStringFeed(self):
-    with session.Session():
+    with session.Session() as sess:
       for shape in [(32, 4, 128), (37,), (2, 0, 6), (0, 0, 0)]:
         size = 1
         for s in shape:
@@ -1117,7 +1135,12 @@ class SessionTest(test_util.TensorFlowTestCase):
                           dtype=np.object).reshape(shape)
         feed_t = array_ops.placeholder(dtype=dtypes.string, shape=shape)
         c = array_ops.identity(feed_t)
-        self.assertAllEqual(c.eval(feed_dict={feed_t: c_list}), c_list)
+        self.assertAllEqual(sess.run(c, feed_dict={feed_t: c_list}), c_list)
+        self.assertAllEqual(sess.run(feed_t, feed_dict={feed_t: c_list}),
+                            c_list)
+        c_v, feed_v = sess.run([c, feed_t], feed_dict={feed_t: c_list})
+        self.assertAllEqual(c_v, c_list)
+        self.assertAllEqual(feed_v, c_list)
 
   def testStringFeedWithNullCharacters(self):
     with session.Session():
@@ -1350,14 +1373,6 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       with self.assertRaisesRegexp(ValueError, 'may not be fed'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
-
-  def testRunWithNoTargetsIsAnError(self):
-    with session.Session() as sess:
-      _ = constant_op.constant(5.0)
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          'Must specify at least one target to fetch or execute.'):
-        sess.run([])
 
   def testInferShapesFalse(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):

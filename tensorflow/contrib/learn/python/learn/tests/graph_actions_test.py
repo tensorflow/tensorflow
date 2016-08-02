@@ -207,9 +207,8 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       self._assert_ckpt(self._output_dir, False)
       in0, _, _ = self._build_inference_graph()
-      with self.assertRaisesRegexp(
-          tf.errors.InvalidArgumentError, 'both fed and fetched'):
-        learn.graph_actions.infer(None, {'a': in0}, feed_dict={in0: 4.0})
+      with self.assertRaisesRegexp(TypeError, 'Can not convert a NoneType'):
+        learn.graph_actions.infer(None, {'a': in0}, feed_dict={None: 4.0})
       self._assert_ckpt(self._output_dir, False)
 
   def test_infer_feed(self):
