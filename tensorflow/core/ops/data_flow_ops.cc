@@ -32,6 +32,40 @@ REGISTER_OP("DynamicPartition")
     .Output("outputs: num_partitions * T")
     .Attr("num_partitions: int")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      int64 num_partitions;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_partitions", &num_partitions));
+
+      const Shape* data_shape = c->input(0);
+      const Shape* partitions_shape = c->input(1);
+
+      if (!c->RankKnown(partitions_shape)) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      const int64 rank = c->Rank(partitions_shape);
+
+      // data shape must start with partitions_shape
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(
+          c->MergePrefix(data_shape, partitions_shape, &unused, &unused));
+
+      // The partition shape is dynamic in the 0th dimension, and matches
+      // data_shape in the remaining dimensions.
+      const Shape* unknown_dim0 = c->MakeShape({c->UnknownDim()});
+
+      const Shape* data_suffix_shape;
+      TF_RETURN_IF_ERROR(c->Subshape(data_shape, rank, &data_suffix_shape));
+      const Shape* result_shape;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(unknown_dim0, data_suffix_shape, &result_shape));
+
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        c->set_output(i, result_shape);
+      }
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Partitions `data` into `num_partitions` tensors using indices from `partitions`.
 
@@ -77,6 +111,37 @@ REGISTER_OP("DynamicStitch")
     .Output("merged: T")
     .Attr("N : int >= 2")
     .Attr("T : type")
+    .SetShapeFn([](InferenceContext* c) {
+      int64 num_partitions;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
+
+      const Shape* extra_shape = c->UnknownShape();
+      for (int i = 0; i < num_partitions; ++i) {
+        const Shape* indices_shape = c->input(i);
+        const Shape* data_shape = c->input(i + num_partitions);
+        if (!c->RankKnown(indices_shape)) {
+          continue;
+        }
+
+        const int64 indices_rank = c->Rank(indices_shape);
+
+        // Assert that data_shape starts with indices_shape.
+        const Shape* unused;
+        TF_RETURN_IF_ERROR(
+            c->MergePrefix(data_shape, indices_shape, &unused, &unused));
+
+        // The rest belongs to output.
+        const Shape* rest;
+        TF_RETURN_IF_ERROR(c->Subshape(data_shape, indices_rank, &rest));
+        TF_RETURN_IF_ERROR(c->Merge(extra_shape, rest, &extra_shape));
+      }
+
+      const Shape* output_shape = c->Vector(c->UnknownDim());
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(output_shape, extra_shape, &output_shape));
+      c->set_output(0, output_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Interleave the values from the `data` tensors into a single tensor.
 
