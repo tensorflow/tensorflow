@@ -183,6 +183,7 @@ cuda_py_tests(
     name = "medium_kernel_tests",
     size = "medium",
     srcs = [
+        "atrous_conv2d_test.py",
         "conv2d_backprop_filter_grad_test.py",
         "conv3d_transpose_test.py",
         "conv_ops_test.py",
