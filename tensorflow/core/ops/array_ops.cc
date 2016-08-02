@@ -849,6 +849,32 @@ REGISTER_OP("EditDistance")
     .Attr("normalize: bool = true")
     .Attr("T: type")
     .Output("output: float")
+    .SetShapeFn([](InferenceContext* c) {
+      const Tensor* hypothesis_shape_t = c->input_tensor(2);
+      const Tensor* truth_shape_t = c->input_tensor(5);
+      if (hypothesis_shape_t == nullptr || truth_shape_t == nullptr) {
+        // We need to know the runtime shape of the two tensors,
+        // or else the output shape is unknown.
+        return shape_inference::UnknownShape(c);
+      }
+
+      if (hypothesis_shape_t->NumElements() != truth_shape_t->NumElements()) {
+        return errors::InvalidArgument(
+            "Num elements of hypothesis_shape does not match truth_shape: ",
+            hypothesis_shape_t->NumElements(), " vs. ",
+            truth_shape_t->NumElements());
+      }
+
+      auto h_values = hypothesis_shape_t->flat<int64>();
+      auto t_values = truth_shape_t->flat<int64>();
+      std::vector<const Dimension*> dims(hypothesis_shape_t->NumElements() - 1);
+      for (int i = 0; i < dims.size(); ++i) {
+        dims[i] = c->MakeDim(std::max(h_values(i), t_values(i)));
+      }
+
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the (possibly normalized) Levenshtein Edit Distance.
 
@@ -1782,6 +1808,44 @@ REGISTER_OP("Tile")
     .Input("multiples: int32")
     .Output("output: T")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      const Shape* multiples;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &multiples));
+      const Dimension* multiples_dim0 = c->Dim(multiples, 0);
+      if (!c->ValueKnown(multiples_dim0)) {
+        // Length of multiples vector unknown, so output is unknown.
+        //
+        // NOTE: we could potentially merge the input rank with the
+        // multiples length.
+        return shape_inference::UnknownShape(c);
+      }
+
+      int32 rank = c->Value(multiples_dim0);
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input));
+      const Tensor* multiples_t = c->input_tensor(1);
+      if (multiples_t == nullptr) {
+        // If multiples vector isn't available, we only know the
+        // output rank, not the sizes.
+        std::vector<const Dimension*> dims;
+        for (int64 i = 0; i < rank; ++i) {
+          dims.push_back(c->UnknownDim());
+        }
+        c->set_output(0, c->MakeShape(dims));
+        return Status::OK();
+      }
+
+      // Multiply each input dimension by its corresponding value
+      // from the multiples tensor.
+      auto multiples_data = multiples_t->vec<int32>();
+      std::vector<const Dimension*> dims(rank);
+      for (int i = 0; i < rank; ++i) {
+        const int32 multiple = multiples_data(i);
+        TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, i), multiple, &dims[i]));
+      }
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Constructs a tensor by tiling a given tensor.
 
