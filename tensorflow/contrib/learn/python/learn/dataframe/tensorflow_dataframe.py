@@ -28,6 +28,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import dataframe as df
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import batch
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import csv_parser
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import example_parser
+from tensorflow.contrib.learn.python.learn.dataframe.transforms import hashes
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import reader_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import sparsify
@@ -158,6 +159,52 @@ class TensorFlowDataFrame(df.DataFrame):
             "The select_rows method is not implemented for Series type {}. "
             "Original error: {}").format(type(col), e))
     return result
+
+  def split(self, index_series, proportion, batch_size=None):
+    """Deterministically split a `DataFrame` into two `DataFrame`s.
+
+    Note this split is only as deterministic as the underlying hash function;
+    see `tf.string_to_hash_bucket_fast`.  The hash function is deterministic
+    for a given binary, but may change occasionally.  The only way to achieve
+    an absolute guarantee that the split `DataFrame`s do not change across runs
+    is to materialize them.
+
+    Note too that the allocation of a row to one partition or the
+    other is evaluated independently for each row, so the exact number of rows
+    in each partition is binomially distributed.
+
+    Args:
+      index_series: a `Series` of unique strings, whose hash will determine the
+        partitioning; or the name in this `DataFrame` of such a `Series`.
+        (This `Series` must contain strings because TensorFlow provides hash
+        ops only for strings, and there are no number-to-string converter ops.)
+      proportion: The proportion of the rows to select for the 'left'
+        partition; the remaining (1 - proportion) rows form the 'right'
+        partition.
+      batch_size: the batch size to use when rebatching the left and right
+        `DataFrame`s.  If None (default), the `DataFrame`s are not rebatched;
+        thus their batches will have variable sizes, according to which rows
+        are selected from each batch of the original `DataFrame`.
+
+    Returns:
+      Two `DataFrame`s containing the partitioned rows.
+    """
+    # TODO(soergel): allow seed?
+    if isinstance(index_series, str):
+      index_series = self[index_series]
+    num_buckets = 1000000  # close enough for simple splits
+    hashed_input, = hashes.HashFast(num_buckets)(index_series)
+    threshold = int(num_buckets * proportion)
+    left = hashed_input < threshold
+    right = ~left
+    left_rows = self.select_rows(left)
+    right_rows = self.select_rows(right)
+
+    if batch_size:
+      left_rows = left_rows.batch(batch_size=batch_size, shuffle=False)
+      right_rows = right_rows.batch(batch_size=batch_size, shuffle=False)
+
+    return left_rows, right_rows
 
   def run_once(self):
     """Creates a new 'Graph` and `Session` and runs a single batch.

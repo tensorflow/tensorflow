@@ -90,6 +90,8 @@ class BooleanMask(transform.Transform):
     """
     input_tensor = input_tensors[0]
     mask = input_tensors[1]
+    if mask.get_shape().ndims > 1:
+      mask = array_ops.squeeze(mask)
 
     if isinstance(input_tensor, ops.SparseTensor):
       mask_fn = sparse_boolean_mask
