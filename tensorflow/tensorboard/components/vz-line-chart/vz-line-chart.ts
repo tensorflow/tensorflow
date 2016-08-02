@@ -352,18 +352,9 @@ module VZ {
       // prevent it from falling off the right side of the screen
       let left =
           Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
-      this.tooltip.style('left', left + 'px');
-      // compute top position
-      if (parentRect.bottom + nodeRect.height +
-              VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET <
-          document.body.clientHeight) {
-        this.tooltip.style(
-            'top', parentRect.bottom + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
-      } else {
-        this.tooltip.style(
-            'bottom', parentRect.top - VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
-      }
-
+      let top = parentRect.height + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET;
+      this.tooltip.style(
+          'transform', 'translate(' + left + 'px,' + top + 'px)');
       this.tooltip.style('opacity', 1);
     }
 
