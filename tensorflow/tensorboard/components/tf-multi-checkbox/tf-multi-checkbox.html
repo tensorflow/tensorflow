@@ -202,8 +202,9 @@ handle these situations gracefully.
       window.requestAnimationFrame(function() {_this.updateStyles();});
     },
     _checkboxChange: function(e) {
-      var name = e.srcElement.name;
-      var checked = e.srcElement.checked;
+      var target = e.srcElement || e.target; // Firefox doesn't have srcElement.
+      var name = target.name;
+      var checked = target.checked;
       this.runToIsCheckedMapping[name] = checked;
       // n.b. notifyPath won't work because run names may have periods.
       this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
