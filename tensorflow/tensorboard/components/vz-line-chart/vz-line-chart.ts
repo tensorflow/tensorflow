@@ -35,11 +35,10 @@ module VZ {
     private smoothLinePlot: Plottable.Plots.Line<number|Date>;
     private scatterPlot: Plottable.Plots.Scatter<number|Date, Number>;
     private nanDisplay: Plottable.Plots.Scatter<number|Date, Number>;
-    private yAccessor: Plottable.Accessor<number>;
+    private scalarAccessor: Plottable.Accessor<number>;
+    private smoothedAccessor: Plottable.Accessor<number>;
     private lastPointsDataset: Plottable.Dataset;
     private datasets: Plottable.Dataset[];
-    private smoothDatasets: Plottable.Dataset[];
-    private name2smoothDatasets: {[name: string]: Plottable.Dataset};
     private onDatasetChanged: (dataset: Plottable.Dataset) => void;
     private nanDataset: Plottable.Dataset;
     private smoothingDecay: number;
@@ -53,8 +52,6 @@ module VZ {
       this.colorScale = colorScale;
       this.tooltip = tooltip;
       this.datasets = [];
-      this.smoothDatasets = [];
-      this.name2smoothDatasets = {};
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
@@ -97,10 +94,11 @@ module VZ {
     }
 
     private buildPlot(xAccessor, xScale, yScale): Plottable.Component {
-      this.yAccessor = (d: VZ.ChartHelpers.ScalarDatum) => d.scalar;
+      this.scalarAccessor = (d: VZ.ChartHelpers.ScalarDatum) => d.scalar;
+      this.smoothedAccessor = (d: VZ.ChartHelpers.ScalarDatum) => d.smoothed;
       let linePlot = new Plottable.Plots.Line<number|Date>();
       linePlot.x(xAccessor, xScale);
-      linePlot.y(this.yAccessor, yScale);
+      linePlot.y(this.scalarAccessor, yScale);
       linePlot.attr(
           'stroke', (d: VZ.ChartHelpers.Datum, i: number,
                      dataset: Plottable.Dataset) =>
@@ -110,7 +108,7 @@ module VZ {
 
       let smoothLinePlot = new Plottable.Plots.Line<number|Date>();
       smoothLinePlot.x(xAccessor, xScale);
-      smoothLinePlot.y(this.yAccessor, yScale);
+      smoothLinePlot.y(this.smoothedAccessor, yScale);
       smoothLinePlot.attr(
           'stroke', (d: VZ.ChartHelpers.Datum, i: number,
                      dataset: Plottable.Dataset) =>
@@ -122,7 +120,7 @@ module VZ {
       // visible. We hide it when tooltips are active to keep things clean.
       let scatterPlot = new Plottable.Plots.Scatter<number|Date, number>();
       scatterPlot.x(xAccessor, xScale);
-      scatterPlot.y(this.yAccessor, yScale);
+      scatterPlot.y(this.scalarAccessor, yScale);
       scatterPlot.attr('fill', (d: any) => this.colorScale.scale(d.name));
       scatterPlot.attr('opacity', 1);
       scatterPlot.size(VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
@@ -148,10 +146,10 @@ module VZ {
      */
     private _onDatasetChanged(dataset: Plottable.Dataset) {
       if (this.smoothingEnabled) {
-        this.resmoothDataset(this.getSmoothDataset(dataset.metadata().name));
-        this.updateSpecialDatasets(this.smoothDatasets);
+        this.resmoothDataset(dataset);
+        this.updateSpecialDatasets(this.smoothedAccessor);
       } else {
-        this.updateSpecialDatasets(this.datasets);
+        this.updateSpecialDatasets(this.scalarAccessor);
       }
     }
 
@@ -159,14 +157,16 @@ module VZ {
      * values from all of the regular datasets, e.g. last points in series, or
      * NaN values. Those points will have a `name` and `relative` property added
      * (since usually those are context in the surrounding dataset).
+     * The accessor will point to the correct data to access.
      */
-    private updateSpecialDatasets(datasets: Plottable.Dataset[]) {
+    private updateSpecialDatasets(accessor: Plottable.Accessor<number>) {
       let lastPointsData =
-          datasets
+          this.datasets
               .map((d) => {
                 let datum = null;
                 // filter out NaNs to ensure last point is a clean one
-                let nonNanData = d.data().filter((x) => !isNaN(x.scalar));
+                let nonNanData =
+                    d.data().filter((x) => !isNaN(accessor(x, -1, d)));
                 if (nonNanData.length > 0) {
                   let idx = nonNanData.length - 1;
                   datum = nonNanData[idx];
@@ -187,8 +187,8 @@ module VZ {
         let data = d.data();
         let i = 0;
         while (i < data.length && displayY == null) {
-          if (!isNaN(data[i].scalar)) {
-            displayY = data[i].scalar;
+          if (!isNaN(accessor(data[i], -1, d))) {
+            displayY = accessor(data[i], -1, d);
           }
           i++;
         }
@@ -197,8 +197,8 @@ module VZ {
         }
         let nanData = [];
         for (i = 0; i < data.length; i++) {
-          if (!isNaN(data[i].scalar)) {
-            displayY = data[i].scalar;
+          if (!isNaN(accessor(data[i], -1, d))) {
+            displayY = accessor(data[i], -1, d);
           } else {
             data[i].name = d.metadata().name;
             data[i].displayY = displayY;
@@ -208,7 +208,7 @@ module VZ {
         }
         return nanData;
       };
-      let nanData = _.flatten(datasets.map(datasetToNaNData));
+      let nanData = _.flatten(this.datasets.map(datasetToNaNData));
       this.nanDataset.data(nanData);
     }
 
@@ -250,10 +250,8 @@ module VZ {
 
         let centerBBox: SVGRect =
             (<any>this.gridlines.content().node()).getBBox();
-        let datasets =
-            this.smoothingEnabled ? this.smoothDatasets : plot.datasets();
-        let points =
-            datasets.map((dataset) => this.findClosestPoint(target, dataset));
+        let points = plot.datasets().map(
+            (dataset) => this.findClosestPoint(target, dataset));
         let pointsToCircle = points.filter(
             (p) => p != null &&
                 Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox));
@@ -309,7 +307,7 @@ module VZ {
         let firstX =
             this.xScale.scale(this.xAccessor(firstPoint, 0, d.dataset));
         let lastX = this.xScale.scale(this.xAccessor(lastPoint, 0, d.dataset));
-        let s = d.datum.scalar;
+        let s = this.smoothingEnabled ? d.datum.smoothed : d.datum.scalar;
         let yD = this.yScale.domain();
         return target.x < firstX || target.x > lastX || s < yD[0] ||
             s > yD[1] || isNaN(s);
@@ -330,6 +328,11 @@ module VZ {
               'background-color',
               (d) => this.colorScale.scale(d.dataset.metadata().name));
       rows.append('td').text((d) => d.dataset.metadata().name);
+      if (this.smoothingEnabled) {
+        rows.append('td').text(
+            (d) => isNaN(d.datum.smoothed) ? 'NaN' :
+                                             valueFormatter(d.datum.smoothed));
+      }
       rows.append('td').text(
           (d) =>
               isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar));
@@ -369,7 +372,8 @@ module VZ {
         dataset: Plottable.Dataset): VZ.ChartHelpers.Point {
       let points: VZ.ChartHelpers.Point[] = dataset.data().map((d, i) => {
         let x = this.xAccessor(d, i, dataset);
-        let y = this.yAccessor(d, i, dataset);
+        let y = this.smoothingEnabled ? this.smoothedAccessor(d, i, dataset) :
+                                        this.scalarAccessor(d, i, dataset);
         return {
           x: this.xScale.scale(x),
           y: this.yScale.scale(y),
@@ -392,28 +396,18 @@ module VZ {
       }
     }
 
-    private getSmoothDataset(name: string) {
-      if (this.name2smoothDatasets[name] === undefined) {
-        this.name2smoothDatasets[name] =
-            new Plottable.Dataset([], {name: name});
-      }
-      return this.name2smoothDatasets[name];
-    }
-
     private resmoothDataset(dataset: Plottable.Dataset) {
-      let unsmoothedData = this.getDataset(dataset.metadata().name).data();
+      let data = dataset.data();
 
       // EMA with first step initialized to first element.
-      let smoothedData = _.cloneDeep(unsmoothedData);
-      smoothedData.forEach((d, i) => {
+      data.forEach((d, i) => {
         if (i === 0) {
-          return;
+          d.smoothed = d.scalar;
+        } else {
+          d.smoothed = (1.0 - this.smoothingDecay) * d.scalar +
+              this.smoothingDecay * data[i - 1].smoothed;
         }
-        d.scalar = (1.0 - this.smoothingDecay) * d.scalar +
-            this.smoothingDecay * smoothedData[i - 1].scalar;
       });
-
-      dataset.data(smoothedData);
     }
 
     private getDataset(name: string) {
@@ -434,11 +428,6 @@ module VZ {
       this.datasets = names.map((r) => this.getDataset(r));
       this.datasets.forEach((d) => d.onUpdate(this.onDatasetChanged));
       this.linePlot.datasets(this.datasets);
-
-      if (this.smoothingEnabled) {
-        this.smoothDatasets = names.map((r) => this.getSmoothDataset(r));
-        this.smoothLinePlot.datasets(this.smoothDatasets);
-      }
     }
 
     /**
@@ -449,26 +438,26 @@ module VZ {
     }
 
     public smoothingUpdate(decay: number) {
+      this.smoothingDecay = decay;
+      this.datasets.forEach((d) => this.resmoothDataset(d));
+
       if (!this.smoothingEnabled) {
         this.linePlot.addClass('ghost');
+        this.scatterPlot.y(this.smoothedAccessor, this.yScale);
         this.smoothingEnabled = true;
-        this.smoothDatasets =
-            this.seriesNames.map((r) => this.getSmoothDataset(r));
-        this.smoothLinePlot.datasets(this.smoothDatasets);
+        this.smoothLinePlot.datasets(this.datasets);
       }
 
-      this.smoothingDecay = decay;
-      this.smoothDatasets.forEach((d) => this.resmoothDataset(d));
-      this.updateSpecialDatasets(this.smoothDatasets);
+      this.updateSpecialDatasets(this.smoothedAccessor);
     }
 
     public smoothingDisable() {
       if (this.smoothingEnabled) {
         this.linePlot.removeClass('ghost');
-        this.smoothDatasets = [];
-        this.smoothLinePlot.datasets(this.smoothDatasets);
+        this.scatterPlot.y(this.scalarAccessor, this.yScale);
+        this.smoothLinePlot.datasets([]);
         this.smoothingEnabled = false;
-        this.updateSpecialDatasets(this.datasets);
+        this.updateSpecialDatasets(this.scalarAccessor);
       }
     }
 
