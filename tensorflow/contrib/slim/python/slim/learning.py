@@ -694,10 +694,11 @@ def train(
           if logdir and sv.is_chief:
             logging.info('Finished training! Saving model to disk.')
             sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-        finally:
+        except:
           if sv.is_chief and cleanup_op is not None:
             logging.info('About to execute sync_clean_up_op!')
             sess.run(cleanup_op)
+          raise
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the
