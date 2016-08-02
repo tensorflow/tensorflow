@@ -1782,6 +1782,7 @@ tf_cc_tests(
     tests = [
         "ops/array_ops_test.cc",
         "ops/candidate_sampling_ops_test.cc",
+        "ops/control_flow_ops_test.cc",
         "ops/ctc_ops_test.cc",
         "ops/data_flow_ops_test.cc",
         "ops/functional_ops_test.cc",

@@ -874,5 +874,18 @@ TEST(ShapeInferenceTest, Multiply) {
             c.Multiply(d_6, -7, &out).error_message());
 }
 
+TEST(ShapeInferenceTest, FullyDefined) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+
+  // No rank or missing dimension information should return false.
+  EXPECT_FALSE(c.FullyDefined(c.UnknownShape()));
+  EXPECT_FALSE(c.FullyDefined(c.Matrix(c.MakeDim(1), c.UnknownDim())));
+
+  // Return true if all information exists.
+  EXPECT_TRUE(c.FullyDefined(c.Matrix(c.MakeDim(1), c.MakeDim(2))));
+  EXPECT_TRUE(c.FullyDefined(c.Scalar()));
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

@@ -130,6 +130,9 @@ class InferenceContext {
   int64 Value(const Dimension* d) { return d->value_; }
   bool ValueKnown(const Dimension* d) { return Value(d) != kUnknownDim; }
 
+  // Returns true if the rank and all dimensions of the Shape are known.
+  bool FullyDefined(const Shape* s);
+
   // Returns the total number of elements, or an unknown dimension for an
   // incomplete shape.
   const Dimension* NumElements(const Shape* s);
