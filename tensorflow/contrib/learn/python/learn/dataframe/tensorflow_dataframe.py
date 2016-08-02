@@ -99,7 +99,7 @@ class TensorFlowDataFrame(df.DataFrame):
       start_queues: if true, queues will be started before running and halted
         after producting `n` batches.
       initialize_variables: if true, variables will be initialized.
-      **kwargs: Additional keyword arguments, unused here.
+      **kwargs: Additional keyword arguments e.g. `num_epochs`.
 
     Yields:
       A dictionary, mapping column names to the values resulting from running
