@@ -1033,6 +1033,7 @@ REGISTER_OP("HashTable")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates a non-initialized hash table.
 
@@ -1056,6 +1057,7 @@ REGISTER_OP("MutableHashTable")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates an empty hash table.
 
@@ -1080,6 +1082,7 @@ REGISTER_OP("MutableHashTableOfTensors")
     .Attr("value_dtype: type")
     .Attr("value_shape: shape = {}")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates an empty hash table.
 
