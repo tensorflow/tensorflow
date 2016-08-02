@@ -2877,6 +2877,32 @@ REGISTER_OP("OneHot")
     .Output("output: T")
     .Attr("T: type")
     .Attr("TI: {uint8, int32, int64} = DT_INT64")
+    .SetShapeFn([](InferenceContext* c) {
+      int32 axis;
+      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      if (axis < -1) return errors::InvalidArgument("axis must be >= -1");
+
+      const Dimension* depth;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &depth));
+
+      const Shape* indices = c->input(0);
+      if (!c->RankKnown(indices)) return shape_inference::UnknownShape(c);
+
+      int32 new_rank = c->Rank(indices) + 1;
+      // We need to add new_rank to axis in the case the axis is -1 because
+      // C++ returns negative values from % if the dividend is negative.
+      int32 depth_index = (axis + new_rank) % new_rank;
+      // Out shape is indices[0:depth_index] + [depth] + indices[depth_index:].
+      const Shape* front;
+      const Shape* back;
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->Subshape(indices, 0, depth_index, &front));
+      TF_RETURN_IF_ERROR(c->Subshape(indices, depth_index, &back));
+      TF_RETURN_IF_ERROR(c->Concatenate(front, c->Vector(depth), &front));
+      TF_RETURN_IF_ERROR(c->Concatenate(front, back, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns a one-hot tensor.
 
