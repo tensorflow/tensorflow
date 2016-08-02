@@ -968,17 +968,6 @@ output: Gradients w.r.t. the input of `max_pool`.
 
 // --------------------------------------------------------------------------
 
-namespace {
-Status CheckKnownDim(shape_inference::InferenceContext* c, const Dimension* dim,
-                     const char* name) {
-  if (!c->ValueKnown(dim)) {
-    return errors::InvalidArgument("Cannot infer shape because dimension ",
-                                   name, " is not known.");
-  }
-  return Status::OK();
-}
-}  // namespace
-
 REGISTER_OP("Dilation2D")
     .Input("input: T")
     .Input("filter: T")
@@ -1029,10 +1018,10 @@ REGISTER_OP("Dilation2D")
           c->Merge(c->Dim(input_shape, 3), output_depth_dim, &unused));
 
       // At the moment we need to know the values of several fields.
-      TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-      TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-      TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_rows_dim, "filter_rows"));
-      TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_cols_dim, "filter_cols"));
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
 
       auto in_rows = c->Value(in_rows_dim);
       auto in_cols = c->Value(in_cols_dim);

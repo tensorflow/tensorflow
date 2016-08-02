@@ -887,5 +887,13 @@ TEST(ShapeInferenceTest, FullyDefined) {
   EXPECT_TRUE(c.FullyDefined(c.Scalar()));
 }
 
+TEST(ShapeInferenceTest, ValidateKnownDim) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+
+  EXPECT_FALSE(c.ValidateKnownDim(c.UnknownDim(), "unknown").ok());
+  EXPECT_TRUE(c.ValidateKnownDim(c.Dim(c.Matrix(1, 2), 0), "known").ok());
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

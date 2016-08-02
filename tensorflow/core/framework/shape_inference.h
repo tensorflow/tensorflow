@@ -261,6 +261,16 @@ class InferenceContext {
 
   Status construction_status() const { return construction_status_; }
 
+  // Validates that 'dim' has a known value, and prints an error
+  // message containing 'name' if validation fails.
+  Status ValidateKnownDim(const Dimension* dim, const char* name) {
+    if (!ValueKnown(dim)) {
+      return errors::InvalidArgument("Cannot infer shape because dimension ",
+                                     name, " is not known.");
+    }
+    return Status::OK();
+  }
+
  private:
   const Dimension* GetDimension(const DimensionOrConstant& d);
 

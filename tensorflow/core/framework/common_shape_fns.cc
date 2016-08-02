@@ -173,17 +173,6 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
-namespace {
-Status CheckKnownDim(shape_inference::InferenceContext* c, const Dimension* dim,
-                     const char* name) {
-  if (!c->ValueKnown(dim)) {
-    return errors::InvalidArgument("Cannot infer shape because dimension ",
-                                   name, " is not known.");
-  }
-  return Status::OK();
-}
-}  // namespace
-
 Status Conv2DShape(shape_inference::InferenceContext* c) {
   const Shape* input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
@@ -224,10 +213,10 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   const Dimension* output_depth_dim = c->Dim(filter_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_rows_dim, "filter_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_cols_dim, "filter_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
 
   auto in_rows = c->Value(in_rows_dim);
   auto in_cols = c->Value(in_cols_dim);
@@ -292,12 +281,12 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   const Dimension* output_depth_dim = c->Dim(filter_shape, 4);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_planes_dim, "in_planes"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_planes_dim, "filter_planes"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_rows_dim, "filter_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_cols_dim, "filter_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_planes_dim, "in_planes"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_planes_dim, "filter_planes"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
 
   auto in_planes = c->Value(in_planes_dim);
   auto in_rows = c->Value(in_rows_dim);
@@ -357,12 +346,12 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   const Dimension* depth_multiplier = c->Dim(filter_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_rows_dim, "filter_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_cols_dim, "filter_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, input_depth, "depth"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, depth_multiplier, "depth_multiplier"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(input_depth, "depth"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(depth_multiplier, "depth_multiplier"));
 
   // Check that the input depths are compatible.
   TF_RETURN_IF_ERROR(
@@ -449,8 +438,8 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
   const Dimension* output_depth_dim = c->Dim(input_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
@@ -536,9 +525,9 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   const Dimension* in_depth_dim = c->Dim(input_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_depth_dim, "in_depth"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_depth_dim, "in_depth"));
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
@@ -614,9 +603,9 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   const Dimension* output_depth_dim = c->Dim(input_shape, 4);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_planes_dim, "in_planes"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_planes_dim, "in_planes"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
