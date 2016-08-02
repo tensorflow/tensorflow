@@ -11,6 +11,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -32,7 +33,6 @@ py_tests(
         "decode_png_op_test.py",
         "decode_raw_op_test.py",
         "determinant_op_test.py",
-        "diag_op_test.py",
         "edit_distance_op_test.py",
         "fifo_queue_test.py",
         "identity_op_py_test.py",
@@ -71,11 +71,25 @@ py_tests(
     ],
 )
 
+cuda_py_tests(
+    name = "cast_op_test",
+    size = "small",
+    srcs = ["cast_op_test.py"],
+    tags = ["noasan"],
+)
+
 cuda_py_test(
     name = "dense_update_ops_no_tsan_test",
     size = "small",
     srcs = ["dense_update_ops_no_tsan_test.py"],
     tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "diag_op_test",
+    size = "medium",
+    srcs = ["diag_op_test.py"],
+    shard_count = 2,
 )
 
 py_tests(
@@ -85,13 +99,6 @@ py_tests(
     additional_deps = [
         "//tensorflow/python:lib",
     ],
-)
-
-cuda_py_tests(
-    name = "cast_op_test",
-    size = "small",
-    srcs = ["cast_op_test.py"],
-    tags = ["noasan"],
 )
 
 cuda_py_tests(
