@@ -39,6 +39,7 @@ set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
 mark_as_advanced(DOWNLOAD_LOCATION)
 
 # External dependencies
+include(gif)
 include(png)
 include(jpeg)
 include(re2)

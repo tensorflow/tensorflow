@@ -22,6 +22,7 @@ target_link_libraries(${proto_text} PUBLIC
     ${PROTOBUF_LIBRARIES}
     # tf_protos_cc
     # re2_lib
+    ${gif_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${ZLIB_LIBRARIES}

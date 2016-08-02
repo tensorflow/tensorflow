@@ -1,10 +1,39 @@
 ########################################################
+# tf_cc_framework library
+########################################################
+set(tf_cc_framework_srcs
+    "${tensorflow_source_dir}/tensorflow/cc/framework/ops.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/scope.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
+)
+
+add_library(tf_cc_framework OBJECT ${tf_cc_framework_srcs})
+
+add_dependencies(tf_cc_framework tf_core_framework)
+
+target_include_directories(tf_cc_framework PRIVATE
+    ${tensorflow_source_dir}
+    ${eigen_INCLUDE_DIRS}
+)
+
+target_compile_options(tf_cc_framework PRIVATE
+    -fno-exceptions
+    -DEIGEN_AVOID_STL_ARRAY
+)
+
+# C++11
+target_compile_features(tf_cc_framework PRIVATE
+    cxx_rvalue_references
+)
+
+########################################################
 # tf_cc_op_gen_main library
 ########################################################
 set(tf_cc_op_gen_main_srcs
-    "${tensorflow_source_dir}/tensorflow/cc/ops/cc_op_gen.cc"
-    "${tensorflow_source_dir}/tensorflow/cc/ops/cc_op_gen_main.cc"
-    "${tensorflow_source_dir}/tensorflow/cc/ops/cc_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/cc_op_gen.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/cc_op_gen_main.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/cc_op_gen.h"
 )
 
 add_library(tf_cc_op_gen_main OBJECT ${tf_cc_op_gen_main_srcs})
@@ -120,6 +149,7 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
         ${PROTOBUF_LIBRARIES}
         tf_protos_cc
         re2_lib
+        ${gif_STATIC_LIBRARIES}
         ${jpeg_STATIC_LIBRARIES}
         ${png_STATIC_LIBRARIES}
         ${ZLIB_LIBRARIES}
