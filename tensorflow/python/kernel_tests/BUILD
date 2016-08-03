@@ -121,7 +121,6 @@ cuda_py_tests(
         "denormal_test.py",
         "dense_update_ops_test.py",
         "depthtospace_op_test.py",
-        "depthwise_conv_op_test.py",
         "division_past_test.py",
         "dynamic_partition_op_test.py",
         "dynamic_stitch_op_test.py",
@@ -187,6 +186,7 @@ cuda_py_tests(
         "conv2d_backprop_filter_grad_test.py",
         "conv3d_transpose_test.py",
         "conv_ops_test.py",
+        "depthwise_conv_op_test.py",  # http://b/30603882
         "division_future_test.py",
         "fft_ops_test.py",
         "pooling_ops_test.py",
