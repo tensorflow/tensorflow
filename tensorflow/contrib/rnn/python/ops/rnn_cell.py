@@ -23,8 +23,10 @@ import math
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
@@ -660,6 +662,82 @@ class GridLSTMCell(rnn_cell.RNNCell):
                                   [-1, self._feature_size])
       freq_inputs.append(cur_input)
     return freq_inputs
+
+class ESNCell(rnn_cell.RNNCell):
+  """Echo State Network Cell."""
+
+  def __init__(self, num_units, wr2_scale=0.7, connectivity=0.1, leaky=1.0, activation=math_ops.tanh,
+               win_init=init_ops.random_normal_initializer(),
+               wr_init=init_ops.random_normal_initializer(),
+               bias_init=init_ops.random_normal_initializer()):
+    """Initialize the Echo State Network Cell.
+
+    Args:
+      num_units: Int, the number of units in the reservoir
+      wr2_scale: desired norm2 of reservoir weight matrix.
+        `wr2_scale < 1` is a sufficient condition for echo state property.
+      connectivity: connection probability between two reservoir units
+      leaky: leaky parameter
+      activation: activation function
+      win_init: initializer for input weights
+      wr_init: used to initialize reservoir weights before applying connectivity mask and scaling
+      bias_init: initializer for biases
+
+    The necessary condition for the Echo State Property is `max(eig(wr)) < 1`
+    however can't find a way to compute the spectral radius in tensorflow
+    """
+    self._num_units = num_units
+    self._leaky = leaky
+    self._activation = activation
+
+    def _wr_initializer(shape, dtype):
+      wr = wr_init(shape, dtype=dtype)
+
+      connectivity_mask = \
+        math_ops.cast(
+          math_ops.less_equal(
+            random_ops.random_uniform(shape),
+            connectivity),
+          dtype)
+
+      wr = math_ops.mul(wr, connectivity_mask)
+
+      wr_norm2 = math_ops.sqrt(nn_ops.l2_loss(wr) * 2.0)
+      wr = wr * wr2_scale / wr_norm2
+
+      return wr
+
+    self._win_initializer = win_init
+    self._bias_initializer = bias_init
+    self._wr_initializer = _wr_initializer
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  @property
+  def state_size(self):
+    return self._num_units
+
+  def __call__(self, inputs, state, scope=None):
+    """Echo State Network Cell:
+        output = new_state = (1 - leaky) * state + leaky * activation(Win * input + Wr * state + B)."""
+
+    input_size = inputs.get_shape().as_list()[1]
+    dtype = inputs.dtype
+
+    with vs.variable_scope(scope or type(self).__name__):  # "ESNCell"
+
+      win = vs.get_variable("InputMatrix", [input_size, self._num_units], dtype=dtype,
+                            trainable=False, initializer=self._win_initializer)
+      wr = vs.get_variable("ReservoirMatrix", [self._num_units, self._num_units], dtype=dtype,
+                           trainable=False, initializer=self._wr_initializer)
+      b = vs.get_variable("Bias", [self._num_units], dtype=dtype, trainable=False, initializer=self._bias_initializer)
+
+      output = (1 - self._leaky) * state + self._leaky * self._activation(
+        math_ops.matmul(inputs, win) + math_ops.matmul(state, wr) + b)
+
+    return output, output
 
 
 # pylint: disable=protected-access

@@ -24,6 +24,9 @@
 @@TimeFreqLSTMCell
 @@GridLSTMCell
 
+### ESN cells
+@@ESNCell
+
 ### RNNCell wrappers
 @@AttentionCellWrapper
 """
