@@ -411,7 +411,7 @@ class LSTMFusedCell(rnn_cell.RNNCell):
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
-      use_peephole: Whether to use peephole connectios or not.
+      use_peephole: Whether to use peephole connections or not.
     """
     self._num_units = num_units
     self._forget_bias = forget_bias

@@ -18,6 +18,7 @@ py_library(
         ":python/ops/_lstm_ops.so",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
 )
 
 cuda_py_tests(
