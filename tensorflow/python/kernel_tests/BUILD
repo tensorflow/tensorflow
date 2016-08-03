@@ -140,7 +140,6 @@ cuda_py_tests(
         "pack_op_test.py",
         "pad_op_test.py",
         "padding_fifo_queue_test.py",
-        "pooling_ops_3d_test.py",
         "py_func_test.py",
         "random_crop_test.py",
         "random_ops_test.py",
@@ -189,6 +188,7 @@ cuda_py_tests(
         "depthwise_conv_op_test.py",  # http://b/30603882
         "division_future_test.py",
         "fft_ops_test.py",
+        "pooling_ops_3d_test.py",  # http://b/30600785
         "pooling_ops_test.py",
         "random_gamma_test.py",
         "rnn_test.py",
