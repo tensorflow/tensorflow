@@ -640,6 +640,7 @@
   * [`convert_to_tensor_or_sparse_tensor`](../../api_docs/python/contrib.framework.md#convert_to_tensor_or_sparse_tensor)
   * [`create_global_step`](../../api_docs/python/contrib.framework.md#create_global_step)
   * [`deprecated`](../../api_docs/python/contrib.framework.md#deprecated)
+  * [`deprecated_arg_values`](../../api_docs/python/contrib.framework.md#deprecated_arg_values)
   * [`get_global_step`](../../api_docs/python/contrib.framework.md#get_global_step)
   * [`get_graph_from_inputs`](../../api_docs/python/contrib.framework.md#get_graph_from_inputs)
   * [`get_local_variables`](../../api_docs/python/contrib.framework.md#get_local_variables)
