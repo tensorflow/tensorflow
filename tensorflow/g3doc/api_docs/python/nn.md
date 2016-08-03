@@ -1539,8 +1539,9 @@ The corresponding output is either a single `Tensor` having the same number
 of time steps and batch size, or a (possibly nested) tuple of such tensors,
 matching the nested structure of `cell.output_size`.
 
-The parameter `sequence_length` is required and dynamic calculation is
-automatically performed.
+The parameter `sequence_length` is optional and is used to copy-through state
+and zero-out outputs when past a batch element's sequence length. So it's more
+for correctness than performance, unlike in rnn().
 
 ##### Args:
 
