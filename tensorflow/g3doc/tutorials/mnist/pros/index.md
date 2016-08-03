@@ -308,7 +308,7 @@ third dimensions corresponding to image width and height, and the final
 dimension corresponding to the number of color channels.
 
 ```python
-x_image = tf.reshape(x, [-1,28,28,1])
+x_image = tf.reshape(x, [-1, 28, 28, 1])
 ```
 
 We then convolve `x_image` with the weight tensor, add the
