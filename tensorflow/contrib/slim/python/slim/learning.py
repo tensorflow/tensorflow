@@ -544,7 +544,8 @@ def train(
     startup_delay_steps=0,
     saver=None,
     save_interval_secs=600,
-    sync_optimizer=None):
+    sync_optimizer=None,
+    session_config=None):
   """Runs a training loop using a TensorFlow supervisor.
 
   When the sync_optimizer is supplied, gradient updates are applied
@@ -593,6 +594,8 @@ def train(
     sync_optimizer: an instance of tf.train.SyncReplicasOptimizer. If the
       argument is supplied, gradient updates will be synchronous. If left as
       `None`, gradient updates will be asynchronous.
+    session_config: An instance of `tf.ConfigProto` that will be used to
+      configure the `Session`. If left as `None`, the default will be used.
 
   Returns:
     the value of the loss function after training.
@@ -679,7 +682,8 @@ def train(
   while should_retry:
     try:
       should_retry = False
-      with sv.managed_session(master, start_standard_services=False) as sess:
+      with sv.managed_session(
+          master, start_standard_services=False, config=session_config) as sess:
         logging.info('Starting Session.')
         if is_chief:
           if logdir:
