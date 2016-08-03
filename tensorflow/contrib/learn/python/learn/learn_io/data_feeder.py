@@ -30,6 +30,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
 
 # pylint: disable=g-multiple-import,g-bad-import-order
 from .pandas_io import HAS_PANDAS, extract_pandas_data, extract_pandas_matrix, extract_pandas_labels
@@ -206,6 +207,13 @@ def _access(data, iloc):
   return data[iloc]
 
 
+def _check_dtype(dtype):
+  if dtypes.as_dtype(dtype) == dtypes.float64:
+    logging.warn(
+        'float64 is not supported by many models, consider casting to float32.')
+  return dtype
+
+
 class DataFeeder(object):
   """Data feeder is an example class to sample data for TF trainer."""
 
@@ -215,59 +223,81 @@ class DataFeeder(object):
     """Initializes a DataFeeder instance.
 
     Args:
-      x: feature Nd numpy matrix of shape [n_samples, n_features, ...].
-      y: target vector, either floats for regression or class id for
+      x: Feature Nd numpy matrix of shape `[n_samples, n_features, ...]`.
+      y: Target vector, either floats for regression or class id for
         classification. If matrix, will consider as a sequence
-        of targets. Can be None for unsupervised setting.
-      n_classes: number of classes, 0 and 1 are considered regression, None will
-        pass through the input labels without one-hot conversion.
-      batch_size: mini batch size to accumulate.
-      random_state: numpy RandomState object to reproduce sampling.
+        of targets. Can be `None` for unsupervised setting.
+      n_classes: Number of classes, 0 and 1 are considered regression, `None`
+        will pass through the input labels without one-hot conversion.
+      batch_size: Mini-batch size to accumulate.
+      shuffle: Whether to shuffle `x`.
+      random_state: Numpy `RandomState` object to reproduce sampling.
+      epochs: Number of times to iterate over input data before raising
+        `StopIteration` exception.
 
     Attributes:
-      x: input features.
-      y: input target.
-      n_classes: number of classes (if None, pass through indices without
+      x: Input features.
+      y: Input target.
+      n_classes: Number of classes (if `None`, pass through indices without
         one-hot conversion).
-      batch_size: mini batch size to accumulate.
-      input_shape: shape of the input.
-      output_shape: shape of the output.
-      input_dtype: dtype of input.
-      output_dtype: dtype of output.
+      batch_size: Mini-batch size to accumulate.
+      input_shape: Shape of the input.
+      output_shape: Shape of the output.
+      input_dtype: DType of input.
+      output_dtype: DType of output.
     """
-    x_dtype = np.int64 if x.dtype == np.int64 else np.float32
+    self._x = check_array(x, dtype=x.dtype)
+    # self.n_classes is None means we're passing in raw target indices.
     y_dtype = (
         np.int64 if n_classes is not None and n_classes > 1 else np.float32)
-    self.x = check_array(x, dtype=x_dtype)
-    # self.n_classes is None means we're passing in raw target indices
     if n_classes is not None:
-      self.y = (None if y is None else check_array(y, dtype=y_dtype))
+      self._y = (None if y is None else check_array(y, dtype=y_dtype))
+    elif isinstance(y, list):
+      self._y = np.array(y)
     else:
-      self.y = y
-      if isinstance(self.y, list):
-        self.y = np.array(y)
+      self._y = y
     self.n_classes = n_classes
     self.max_epochs = epochs
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
-        self.x.shape, None if self.y is None else self.y.shape, n_classes,
+        self._x.shape, None if self._y is None else self._y.shape, n_classes,
         batch_size)
     # Input dtype matches dtype of x.
-    self.input_dtype = x_dtype
+    self._input_dtype = _check_dtype(self._x.dtype)
     # self.n_classes is None means we're passing in raw target indices
-    if n_classes is not None or y is None:
-      self.output_dtype = np.float32
+    if n_classes is not None or self._y is None:
+      self._output_dtype = np.float32
     else:
-      self.output_dtype = self.y.dtype
-    self.shuffle = shuffle
+      self._output_dtype = _check_dtype(self._y.dtype)
+    self._shuffle = shuffle
     self.random_state = np.random.RandomState(
         42) if random_state is None else random_state
-    if self.shuffle:
-      self.indices = self.random_state.permutation(self.x.shape[0])
+    if self._shuffle:
+      self.indices = self.random_state.permutation(self._x.shape[0])
     else:
-      self.indices = np.array(range(self.x.shape[0]))
+      self.indices = np.array(range(self._x.shape[0]))
     self.offset = 0
     self.epoch = 0
     self._epoch_placeholder = None
+
+  @property
+  def x(self):
+    return self._x
+
+  @property
+  def y(self):
+    return self._y
+
+  @property
+  def shuffle(self):
+    return self._shuffle
+
+  @property
+  def input_dtype(self):
+    return self._input_dtype
+
+  @property
+  def output_dtype(self):
+    return self._output_dtype
 
   @property
   def batch_size(self):
@@ -291,7 +321,7 @@ class DataFeeder(object):
     """
     input_shape = [None] + self.input_shape[1:]
     self._input_placeholder = array_ops.placeholder(
-        dtypes.as_dtype(self.input_dtype),
+        dtypes.as_dtype(self._input_dtype),
         input_shape,
         name='input')
     if self.output_shape is None:
@@ -299,7 +329,7 @@ class DataFeeder(object):
     else:
       output_shape = [None] + self.output_shape[1:]
       self._output_placeholder = array_ops.placeholder(
-          dtypes.as_dtype(self.output_dtype),
+          dtypes.as_dtype(self._output_dtype),
           output_shape,
           name='output')
     return self._input_placeholder, self._output_placeholder
@@ -345,20 +375,20 @@ class DataFeeder(object):
         feed_dict[self._epoch_placeholder.name] = [self.epoch]
 
       # Take next batch of indices.
-      end = min(self.x.shape[0], self.offset + self._batch_size)
+      end = min(self._x.shape[0], self.offset + self._batch_size)
       batch_indices = self.indices[self.offset:end]
 
       # Assign input features from random indices.
       inp = (
-          np.array(_access(self.x, batch_indices)).reshape(
+          np.array(_access(self._x, batch_indices)).reshape(
               (batch_indices.shape[0], 1))
-          if len(self.x.shape) == 1 else _access(self.x, batch_indices))
+          if len(self._x.shape) == 1 else _access(self._x, batch_indices))
       feed_dict[self._input_placeholder.name] = inp
 
       # move offset and reset it if necessary
       self.offset += self._batch_size
-      if self.offset >= self.x.shape[0]:
-        self.indices = self.random_state.permutation(self.x.shape[0])
+      if self.offset >= self._x.shape[0]:
+        self.indices = self.random_state.permutation(self._x.shape[0])
         self.offset = 0
         self.epoch += 1
 
@@ -368,21 +398,21 @@ class DataFeeder(object):
 
       # assign labels from random indices
       self.output_shape[0] = batch_indices.shape[0]
-      out = np.zeros(self.output_shape, dtype=self.output_dtype)
+      out = np.zeros(self.output_shape, dtype=self._output_dtype)
       for i in xrange(out.shape[0]):
         sample = batch_indices[i]
         # self.n_classes is None means we're passing in raw target indices
         if self.n_classes is None:
-          out[i] = _access(self.y, sample)
+          out[i] = _access(self._y, sample)
         else:
           if self.n_classes > 1:
             if len(self.output_shape) == 2:
-              out.itemset((i, int(_access(self.y, sample))), 1.0)
+              out.itemset((i, int(_access(self._y, sample))), 1.0)
             else:
-              for idx, value in enumerate(_access(self.y, sample)):
+              for idx, value in enumerate(_access(self._y, sample)):
                 out.itemset(tuple([i, idx, value]), 1.0)
           else:
-            out[i] = _access(self.y, sample)
+            out[i] = _access(self._y, sample)
       feed_dict[self._output_placeholder.name] = out
 
       return feed_dict
@@ -420,32 +450,28 @@ class StreamingDataFeeder(DataFeeder):
     """
     # pylint: disable=invalid-name,super-init-not-called
     x_first_el = six.next(x)
-    self.x = itertools.chain([x_first_el], x)
+    self._x = itertools.chain([x_first_el], x)
     if y is not None:
       y_first_el = six.next(y)
-      self.y = itertools.chain([y_first_el], y)
+      self._y = itertools.chain([y_first_el], y)
     else:
       y_first_el = None
-      self.y = None
+      self._y = None
     self.n_classes = n_classes
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
         [1] + list(x_first_el.shape),
         [1] + list(y_first_el.shape) if y is not None else None,
         n_classes,
         batch_size)
-    self.input_dtype = x_first_el.dtype
-    # Convert float64 to float32, as all the parameters in the model are
-    # floats32 and there is a lot of benefits in using it in NNs.
-    if self.input_dtype == np.float64:
-      self.input_dtype = np.float32
+    self._input_dtype = _check_dtype(x_first_el.dtype)
     # Output types are floats, due to both softmaxes and regression req.
     if n_classes is not None and n_classes > 0:
-      self.output_dtype = np.float32
+      self._output_dtype = np.float32
     elif y is not None:
       if isinstance(y_first_el, list) or isinstance(y_first_el, np.ndarray):
-        self.output_dtype = np.dtype(type(y_first_el[0]))
+        self._output_dtype = _check_dtype(np.dtype(type(y_first_el[0])))
       else:
-        self.output_dtype = np.dtype(type(y_first_el))
+        self._output_dtype = _check_dtype(np.dtype(type(y_first_el)))
 
   def get_feed_params(self):
     """Function returns a dict with data feed params while training.
@@ -472,22 +498,22 @@ class StreamingDataFeeder(DataFeeder):
       """
       if self.stopped:
         raise StopIteration
-      inp = np.zeros(self.input_shape, dtype=self.input_dtype)
-      if self.y is not None:
-        out = np.zeros(self.output_shape, dtype=self.output_dtype)
+      inp = np.zeros(self.input_shape, dtype=self._input_dtype)
+      if self._y is not None:
+        out = np.zeros(self.output_shape, dtype=self._output_dtype)
       for i in xrange(self._batch_size):
         # Add handling when queue ends.
         try:
-          inp[i, :] = six.next(self.x)
+          inp[i, :] = six.next(self._x)
         except StopIteration:
           self.stopped = True
           inp = inp[:i, :]
-          if self.y is not None:
+          if self._y is not None:
             out = out[:i]
           break
 
-        if self.y is not None:
-          y = six.next(self.y)
+        if self._y is not None:
+          y = six.next(self._y)
           if self.n_classes is not None and self.n_classes > 1:
             if len(self.output_shape) == 2:
               out.itemset((i, y), 1.0)
@@ -496,7 +522,7 @@ class StreamingDataFeeder(DataFeeder):
                 out.itemset(tuple([i, idx, value]), 1.0)
           else:
             out[i] = y
-      if self.y is None:
+      if self._y is None:
         return {self._input_placeholder.name: inp}
       return {self._input_placeholder.name: inp,
               self._output_placeholder.name: out}
@@ -511,6 +537,7 @@ class DaskDataFeeder(object):
   into them. DaskDataFeeder will remove requirement to have full dataset in the
   memory and still do random seeks for sampling of batches.
   """
+
   def __init__(self, x, y, n_classes, batch_size, shuffle=True,
                random_state=None, epochs=None):
     """Initializes a DaskDataFeeder instance.
@@ -521,8 +548,10 @@ class DaskDataFeeder(object):
         regression values.
       n_classes: indicator of how many classes the target has.
       batch_size: Mini batch size to accumulate.
+      shuffle: Whether to shuffle the inputs.
       random_state: random state for RNG. Note that it will mutate so use a
         int value for this if you want consistent sized batches.
+      epochs: Number of epochs to run.
 
     Attributes:
       x: input features.
@@ -537,35 +566,33 @@ class DaskDataFeeder(object):
     # pylint: disable=invalid-name,super-init-not-called
     import dask.dataframe as dd  # pylint: disable=g-import-not-at-top
     # TODO(terrytangyuan): check x and y dtypes in dask_io like pandas
-    self.x = x
-    self.y = y
+    self._x = x
+    self._y = y
     # save column names
-    self.x_columns = list(x.columns)
+    self._x_columns = list(x.columns)
     if isinstance(y.columns[0], str):
-      self.y_columns = list(y.columns)
+      self._y_columns = list(y.columns)
     else:
       # deal with cases where two DFs have overlapped default numeric colnames
-      self.y_columns = len(self.x_columns) + 1
-      self.y = self.y.rename(columns={y.columns[0]: self.y_columns})
+      self._y_columns = len(self._x_columns) + 1
+      self._y = self._y.rename(columns={y.columns[0]: self._y_columns})
 
     # TODO(terrytangyuan): deal with unsupervised cases
     # combine into a data frame
-    self.df = dd.multi.concat([self.x, self.y], axis=1)
+    self.df = dd.multi.concat([self._x, self._y], axis=1)
     self.n_classes = n_classes
 
     x_count = x.count().compute()[0]
-    x_shape = (x_count, len(self.x.columns))
-    y_shape = (x_count, len(self.y.columns))
+    x_shape = (x_count, len(self._x.columns))
+    y_shape = (x_count, len(self._y.columns))
     # TODO(terrytangyuan): Add support for shuffle and epochs.
-    self.shuffle = shuffle
+    self._shuffle = shuffle
     self.epochs = epochs
     self.input_shape, self.output_shape, self._batch_size = _get_in_out_shape(
         x_shape, y_shape, n_classes, batch_size)
     self.sample_fraction = self._batch_size / float(x_count)
-    # TODO(ptucker,ipolosukhin): Remove this?
-    # TODO(ipolosukhin): remove or restore.
-    # self.x.dtypes[0], self.y.dtypes[self.y_columns]
-    self.input_dtype, self.output_dtype = np.float32, np.float32
+    self._input_dtype = _check_dtype(self._x.dtypes[0])
+    self._output_dtype = _check_dtype(self._y.dtypes[self._y_columns])
     if random_state is None:
       self.random_state = 66
     else:
@@ -597,17 +624,17 @@ class DaskDataFeeder(object):
       sample = self.df.random_split(
           [self.sample_fraction, 1 - self.sample_fraction],
           random_state=self.random_state)
-      inp = extract_pandas_matrix(sample[0][self.x_columns].compute()).tolist()
-      out = extract_pandas_matrix(sample[0][self.y_columns].compute())
+      inp = extract_pandas_matrix(sample[0][self._x_columns].compute()).tolist()
+      out = extract_pandas_matrix(sample[0][self._y_columns].compute())
       # convert to correct dtype
-      inp = np.array(inp, dtype=self.input_dtype)
+      inp = np.array(inp, dtype=self._input_dtype)
       # one-hot encode out for each class for cross entropy loss
       if HAS_PANDAS:
         import pandas as pd  # pylint: disable=g-import-not-at-top
         if not isinstance(out, pd.Series):
           out = out.flatten()
-      out_max = self.y.max().compute().values[0]
-      encoded_out = np.zeros((out.size, out_max + 1), dtype=self.output_dtype)
+      out_max = self._y.max().compute().values[0]
+      encoded_out = np.zeros((out.size, out_max + 1), dtype=self._output_dtype)
       encoded_out[np.arange(out.size), out] = 1
       return {input_placeholder.name: inp,
               output_placeholder.name: encoded_out}
