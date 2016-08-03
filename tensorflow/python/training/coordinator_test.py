@@ -47,7 +47,9 @@ def RaiseInNUsingContextHandler(coord, n_secs, ex):
     raise ex
 
 
-def SleepABit(n_secs):
+def SleepABit(n_secs, coord=None):
+  if coord:
+    coord.register_thread(threading.current_thread())
   time.sleep(n_secs)
 
 
@@ -80,6 +82,33 @@ class CoordinatorTest(tf.test.TestCase):
     for t in threads:
       t.start()
     coord.join(threads)
+    for t in threads:
+      self.assertFalse(t.is_alive())
+
+  def testJoinAllRegistered(self):
+    coord = tf.train.Coordinator()
+    threads = [
+        threading.Thread(target=SleepABit, args=(0.01, coord)),
+        threading.Thread(target=SleepABit, args=(0.02, coord)),
+        threading.Thread(target=SleepABit, args=(0.01, coord))]
+    for t in threads:
+      t.start()
+    coord.join()
+    for t in threads:
+      self.assertFalse(t.is_alive())
+
+  def testJoinSomeRegistered(self):
+    coord = tf.train.Coordinator()
+    threads = [
+        threading.Thread(target=SleepABit, args=(0.01, coord)),
+        threading.Thread(target=SleepABit, args=(0.02)),
+        threading.Thread(target=SleepABit, args=(0.01, coord))]
+    for t in threads:
+      t.start()
+    # threads[1] is not registred we must pass it in.
+    coord.join(threads[1:1])
+    for t in threads:
+      self.assertFalse(t.is_alive())
 
   def testJoinGraceExpires(self):
     def TestWithGracePeriod(stop_grace_period):
