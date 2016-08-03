@@ -716,10 +716,11 @@ class ControlFlowTest(tf.test.TestCase):
   def testWhileWithControl_3(self):
     with self.test_session() as sess:
       b = tf.placeholder(tf.bool)
-      c = tf.constant(0)
+      c = tf.constant(1)
+      x0 = tf.constant(0)
       with tf.control_dependencies([b]):
-        c = tf.while_loop(lambda x: x < 10, lambda x: x + 1, [c])
-      self.assertEqual(10, sess.run(c, {b: True}))
+        r = tf.while_loop(lambda x: x < 10, lambda x: x + c, [x0])
+      self.assertEqual(10, sess.run(r, {b: True}))
 
   def testWhileWithControl_4(self):
     with self.test_session() as sess:
@@ -1244,6 +1245,27 @@ class ControlFlowTest(tf.test.TestCase):
 
       r = tf.gradients([rx], x)
       self.assertAllClose(64.0, r[0].eval())
+
+  def testWhileGrad_OneOutputWithControlDependencyOnSecond(self):
+    with self.test_session():
+      i = tf.constant(0, name="i")
+      x = tf.constant(1.0, name="x")
+      y = tf.constant(1.0, name="y")
+      c = lambda i, *_: tf.less(i, 1, name="cond_less")
+      def b(i, xi, yi):
+        # return (i + 1, xi, xi + yi)
+        return (tf.add(i, 1, name="inc"),
+                tf.identity(xi, name="xi"),
+                tf.add(xi, yi, name="xi_plus_yi"))
+
+      _, x_f, y_f = tf.while_loop(c, b, [i, x, y])
+      with tf.control_dependencies([x_f]):
+        y_f_d = tf.identity(y_f, name="y_f_d")
+
+      self.assertAllClose(2.0, y_f_d.eval())  # y_f_d = 1.0 + 1.0
+      g = tf.gradients([y_f_d], [x])[0]
+      self.assertTrue(g is not None)
+      self.assertAllClose(1.0, g.eval())  # y_f_d = x + 1.0, dy_f_d/dx = 1.0
 
   def _testNestedWhileGrad_Simple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):

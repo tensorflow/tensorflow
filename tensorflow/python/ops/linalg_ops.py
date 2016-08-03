@@ -31,6 +31,7 @@ from tensorflow.python.ops.gen_linalg_ops import *
 @ops.RegisterShape("CholeskyGrad")
 @ops.RegisterShape("MatrixInverse")
 def _UnchangedSquare(op):
+  """Shape function for matrix ops with output equal to input shape."""
   input_shape = op.inputs[0].get_shape().with_rank(2)
   # The matrix must be square.
   input_shape[0].assert_is_compatible_with(input_shape[1])
@@ -41,6 +42,7 @@ def _UnchangedSquare(op):
 @ops.RegisterShape("BatchCholeskyGrad")
 @ops.RegisterShape("BatchMatrixInverse")
 def _BatchUnchangedSquare(op):
+  """Shape function for batch matrix ops with output equal to input shape."""
   input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
@@ -48,6 +50,7 @@ def _BatchUnchangedSquare(op):
 
 @ops.RegisterShape("MatrixDeterminant")
 def _MatrixDeterminantShape(op):
+  """Shape function for determinant op."""
   input_shape = op.inputs[0].get_shape().with_rank(2)
   # The matrix must be square.
   input_shape[0].assert_is_compatible_with(input_shape[1])
@@ -59,6 +62,7 @@ def _MatrixDeterminantShape(op):
 
 @ops.RegisterShape("BatchMatrixDeterminant")
 def _BatchMatrixDeterminantShape(op):
+  """Shape function for batch determinant op."""
   input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
@@ -70,6 +74,7 @@ def _BatchMatrixDeterminantShape(op):
 
 @ops.RegisterShape("SelfAdjointEig")
 def _SelfAdjointEigShape(op):
+  """Shape function for self-adjoint eigensolver op."""
   input_shape = op.inputs[0].get_shape().with_rank(2)
   # The matrix must be square.
   input_shape[0].assert_is_compatible_with(input_shape[1])
@@ -80,6 +85,7 @@ def _SelfAdjointEigShape(op):
 
 @ops.RegisterShape("BatchSelfAdjointEig")
 def _BatchSelfAdjointEigShape(op):
+  """Shape function for batch self-adjoint eigensolver op."""
   input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   # The matrices in the batch must be square.
   input_shape[-1].assert_is_compatible_with(input_shape[-2])
@@ -89,9 +95,63 @@ def _BatchSelfAdjointEigShape(op):
   return [out_shape]
 
 
+@ops.RegisterShape("Svd")
+def _SvdShape(op):
+  """Shape function for SVD op."""
+  input_shape = op.inputs[0].get_shape().with_rank(2)
+  unknown = tensor_shape.unknown_shape()
+  compute_uv = op.get_attr("compute_uv")
+  if input_shape.ndims is not None:
+    return [unknown, unknown, unknown]
+  full_matrices = op.get_attr("full_matrices")
+  m = input_shape.dims[0]
+  n = input_shape.dims[1]
+  p = min(m, n)
+  s_shape = tensor_shape.TensorShape([p])
+  if compute_uv:
+    if full_matrices:
+      u_shape = tensor_shape.TensorShape([m, m])
+      v_shape = tensor_shape.TensorShape([n, n])
+    else:
+      u_shape = tensor_shape.TensorShape([m, p])
+      v_shape = tensor_shape.TensorShape([n, p])
+  else:
+    u_shape = [0]
+    v_shape = [0]
+  return [s_shape, u_shape, v_shape]
+
+
+@ops.RegisterShape("BatchSvd")
+def _BatchSvdShape(op):
+  """Shape function for batch SVD op."""
+  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
+  unknown = tensor_shape.unknown_shape()
+  if input_shape.ndims is not None:
+    return [unknown, unknown, unknown]
+  compute_uv = op.get_attr("compute_uv")
+  full_matrices = op.get_attr("full_matrices")
+  m = input_shape.dims[-2]
+  n = input_shape.dims[-1]
+  p = min(m, n)
+  batch_shape = input_shape.dims[:-2]
+  s_shape = batch_shape.concatenate([p])
+  if compute_uv:
+    if full_matrices:
+      u_shape = batch_shape.concatenate([m, m])
+      v_shape = batch_shape.concatenate([n, n])
+    else:
+      u_shape = batch_shape.concatenate([m, p])
+      v_shape = batch_shape.concatenate([n, p])
+  else:
+    u_shape = [0]
+    v_shape = [0]
+  return [s_shape, u_shape, v_shape]
+
+
 @ops.RegisterShape("MatrixSolve")
 @ops.RegisterShape("MatrixTriangularSolve")
 def _SquareMatrixSolveShape(op):
+  """Shape function for square matrix solver ops."""
   lhs_shape = op.inputs[0].get_shape().with_rank(2)
   rhs_shape = op.inputs[1].get_shape().with_rank(2)
   # The matrix must be square.
@@ -104,6 +164,7 @@ def _SquareMatrixSolveShape(op):
 @ops.RegisterShape("BatchMatrixSolve")
 @ops.RegisterShape("BatchMatrixTriangularSolve")
 def _BatchSquareMatrixSolveShape(op):
+  """Shape function for batch square matrix solver ops."""
   lhs_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrices must be square.
@@ -116,6 +177,7 @@ def _BatchSquareMatrixSolveShape(op):
 
 @ops.RegisterShape("MatrixSolveLs")
 def _MatrixSolveLsShape(op):
+  """Shape function for least-squares matrix solver op."""
   lhs_shape = op.inputs[0].get_shape().with_rank(2)
   rhs_shape = op.inputs[1].get_shape().with_rank(2)
   # The matrix and right-hand side must have the same number of rows.
@@ -125,6 +187,7 @@ def _MatrixSolveLsShape(op):
 
 @ops.RegisterShape("BatchMatrixSolveLs")
 def _BatchMatrixSolveLsShape(op):
+  """Shape function for batch least-squares matrix solver op."""
   lhs_shape = op.inputs[0].get_shape().with_rank_at_least(2)
   rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
   # The matrices and right-hand sides in the batch must have the same number of
@@ -330,5 +393,93 @@ def batch_matrix_solve_ls(matrix,
                                               l2_regularizer,
                                               fast=fast,
                                               name=name)
+
+
+def svd(matrix, compute_uv=False, full_matrices=False, name=None):
+  """Computes the singular value decomposition of a matrix.
+
+  Computes the SVD of if `matrix` such that `matrix = u * diag(s) *
+  transpose(v)`
+
+  ```prettyprint
+  # a is a matrix.
+  # s is a vector of singular values.
+  # u is the matrix of left singular vectors.
+  # v is a matrix of right singular vectors.
+  s = svd(a, compute_uv=False)
+  s, u, v = svd(a, compute_uv=True)
+  ```
+
+  Args:
+    matrix: `Tensor` of shape `[M, N]`. Let `P` be the minimum of `M` and `N`.
+    compute_uv: If `True` then left and right singular vectors will be
+      computed and returned in `u` and `v`, respectively. Otherwise, only the
+      singular values will be computed.
+    full_matrices: If true, compute full-sized `u` and `v`. If false
+      (the default), compute only the leading `P` singular vectors.
+      Ignored if `compute_uv` is `False`.
+    name: string, optional name of the operation.
+
+  Returns:
+    s: Singular values. Shape is `[P]`.
+    u: Right singular vectors. If `full_matrices` is `False` (default) then
+      shape is `[M, P]`; if `full_matrices` is `True` then shape is
+      `[M, M]`. Not returned if `compute_uv` is `False`.
+    v: Left singular vectors. If `full_matrices` is `False` (default) then
+      shape is `[N, P]`. If `full_matrices` is `True` then shape is
+      `[N, N]`. Not returned if `compute_uv` is `False`.
+  """
+  s, u, v = gen_linalg_ops.svd(matrix,
+                               compute_uv=compute_uv,
+                               full_matrices=full_matrices)
+  if compute_uv:
+    return s, u, v
+  else:
+    return s
+
+
+def batch_svd(tensor, compute_uv=False, full_matrices=False, name=None):
+  """Computes the singular value decompositions of a batch of matrices.
+
+  Computes the SVD of each inner matrix in `tensor` such that
+  `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
+  :])`
+
+  ```prettyprint
+  # a is a tensor.
+  # s is a tensor of singular values.
+  # u is a tensor of left singular vectors.
+  # v is a tensor of right singular vectors.
+  s = batch_svd(a, compute_uv=False)
+  s, u, v = batch_svd(a, compute_uv=True)
+  ```
+
+  Args:
+    matrix: `Tensor` of shape `[..., M, N]`. Let `P` be the minimum of `M` and
+      `N`.
+    compute_uv: If `True` then left and right singular vectors will be
+      computed and returned in `u` and `v`, respectively. Otherwise, only the
+      singular values will be computed.
+    full_matrices: If true, compute full-sized `u` and `v`. If false
+      (the default), compute only the leading `P` singular vectors.
+      Ignored if `compute_uv` is `False`.
+    name: string, optional name of the operation.
+
+  Returns:
+    s: Singular values. Shape is `[..., P]`.
+    u: Right singular vectors. If `full_matrices` is `False` (default) then
+      shape is `[..., M, P]`; if `full_matrices` is `True` then shape is
+      `[..., M, M]`. Not returned if `compute_uv` is `False`.
+    v: Left singular vectors. If `full_matrices` is `False` (default) then
+      shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
+      `[..., N, N]`. Not returned if `compute_uv` is `False`.
+  """
+  s, u, v = gen_linalg_ops.batch_svd(
+      tensor, compute_uv=compute_uv, full_matrices=full_matrices)
+  if compute_uv:
+    return s, u, v
+  else:
+    return s
+
 
 # pylint: enable=invalid-name

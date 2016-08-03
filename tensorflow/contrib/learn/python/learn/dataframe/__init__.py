@@ -30,6 +30,7 @@ from tensorflow.contrib.learn.python.learn.dataframe.transform import Transform
 # Transforms
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.boolean_mask import BooleanMask
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.difference import Difference
+from tensorflow.contrib.learn.python.learn.dataframe.transforms.hashes import HashFast
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import NumpySource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import PandasSource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source import ReaderSource

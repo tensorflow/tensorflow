@@ -176,6 +176,8 @@ class QueueRunner(object):
       coord: Optional Coordinator object for reporting errors and checking
         for stop conditions.
     """
+    if coord:
+      coord.register_thread(threading.current_thread())
     decremented = False
     try:
       while True:
@@ -218,6 +220,7 @@ class QueueRunner(object):
       cancel_op: The Operation to run.
       coord: Coordinator.
     """
+    coord.register_thread(threading.current_thread())
     coord.wait_for_stop()
     try:
       sess.run(cancel_op)

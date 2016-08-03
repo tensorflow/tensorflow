@@ -192,9 +192,6 @@ def _PendingCount(graph, to_ops, from_ops, colocate_gradients_with_ops):
     for x in op.inputs:
       if between_ops[x.op._id]:
         pending_count[x.op._id] += 1
-    for x in op.control_inputs:
-      if between_ops[x._id]:
-        pending_count[x._id] += 1
 
   return pending_count, loop_state
 
@@ -361,6 +358,7 @@ def gradients(ys,
     grad_ys = [None] * len(ys)
   else:
     grad_ys = _AsList(grad_ys)
+
   with ops.op_scope(ys + xs + grad_ys, name, "gradients"):
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
     xs = ops.convert_n_to_tensor_or_indexed_slices(xs, name="x")
@@ -512,10 +510,6 @@ def gradients(ys,
                    control_flow_ops.IsLoopSwitch(x.op))
         if ready:
           queue.append(x.op)
-      for x in op.control_inputs:
-        pending_count[x._id] -= 1
-        if pending_count[x._id] is 0:
-          queue.append(x)
       # pylint: enable=protected-access
 
   if loop_state:

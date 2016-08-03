@@ -174,11 +174,11 @@ that value.
 indicating how to represent and transform the data. But they do not provide
 the data itself. You provide the data through an input function.
 
-The input function must return a dictionary of tensors. Each key corresponds
-to the name of a `FeatureColumn`. Each key's value is a tensor containing the
+The input function must return a dictionary of tensors. Each key corresponds to
+the name of a `FeatureColumn`. Each key's value is a tensor containing the
 values of that feature for all data instances. See `input_fn` in the [linear
-models tutorial code](
-https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py?l=160)
+models tutorial code]
+(https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py)
 for an example of an input function.
 
 The input function is passed to the `fit()` and `evaluate()` calls that

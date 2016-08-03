@@ -99,6 +99,14 @@ InferenceContext::~InferenceContext() {
   for (auto* d : all_dims_) delete d;
 }
 
+bool InferenceContext::FullyDefined(const Shape* s) {
+  if (!RankKnown(s)) return false;
+  for (int i = 0; i < Rank(s); ++i) {
+    if (!ValueKnown(Dim(s, i))) return false;
+  }
+  return true;
+}
+
 const Dimension* InferenceContext::NumElements(const Shape* s) {
   const auto rank = Rank(s);
   if (rank == kUnknownRank) return UnknownDim();

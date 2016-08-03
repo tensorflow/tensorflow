@@ -2655,9 +2655,9 @@ Construct a `LinearClassifier` estimator object.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can also
-    be used to load checkpoints from the directory into a estimator to continue
-    training a previously saved model.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph and etc. This can
+    also be used to load checkpoints from the directory into a estimator
+    to continue training a previously saved model.
 *  <b>`n_classes`</b>: number of target classes. Default is binary classification.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
@@ -3056,9 +3056,9 @@ Construct a `LinearRegressor` estimator object.
 *  <b>`feature_columns`</b>: An iterable containing all the feature columns used by
     the model. All items in the set should be instances of classes derived
     from `FeatureColumn`.
-*  <b>`model_dir`</b>: Directory to save model parameters, graph, etc. This can also
-    be used to load checkpoints from the directory into a estimator to continue
-    training a previously saved model.
+*  <b>`model_dir`</b>: Directory to save model parameters, graph, etc. This can
+    also be used to load checkpoints from the directory into a estimator
+    to continue training a previously saved model.
 *  <b>`weight_column_name`</b>: A string defining feature column name representing
     weights. It is used to down weight or boost examples during training. It
     will be multiplied by the loss of the example.
@@ -4870,7 +4870,7 @@ Perform various training, evaluation, and inference actions on a graph.
 This class specifies the specific configurations for the run.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(master='', task=0, num_ps_replicas=0, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, tf_random_seed=42, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, save_checkpoints_steps=1000)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(master='', task=0, num_ps_replicas=0, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, tf_random_seed=42, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
 
 Constructor.
 
@@ -4895,7 +4895,6 @@ Constructor.
 *  <b>`keep_checkpoint_every_n_hours`</b>: Number of hours between each checkpoint
     to be saved. The default value of 10,000 hours effectively disables
     the feature.
-*  <b>`save_checkpoints_steps`</b>: Number of steps between each checkpoint saving.
 
 
 

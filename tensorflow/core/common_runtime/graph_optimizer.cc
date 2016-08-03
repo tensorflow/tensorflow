@@ -60,7 +60,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, device, g)) {
+      if (DoConstantFolding(cf_opts, runtime, device, g)) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;

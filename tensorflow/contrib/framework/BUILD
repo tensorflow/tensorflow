@@ -91,6 +91,15 @@ py_test(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+py_test(
+    name = "sampling_ops_threading_test",
+    size = "small",
+    srcs = ["python/ops/sampling_ops_threading_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

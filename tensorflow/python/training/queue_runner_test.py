@@ -122,7 +122,7 @@ class QueueRunnerTest(tf.test.TestCase):
       threads = qr.create_threads(sess, coord)
       for t in threads:
         t.start()
-      coord.join(threads)
+      coord.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 0.
       self.assertEqual(0, var.eval())
@@ -137,7 +137,7 @@ class QueueRunnerTest(tf.test.TestCase):
         t.start()
       # The exception should be re-raised when joining.
       with self.assertRaisesRegexp(ValueError, "Operation not in the graph"):
-        coord.join(threads)
+        coord.join()
 
   def testGracePeriod(self):
     with self.test_session() as sess:
@@ -147,14 +147,14 @@ class QueueRunnerTest(tf.test.TestCase):
       dequeue = queue.dequeue()
       qr = tf.train.QueueRunner(queue, [enqueue])
       coord = tf.train.Coordinator()
-      threads = qr.create_threads(sess, coord, start=True)
+      qr.create_threads(sess, coord, start=True)
       # Dequeue one element and then request stop.
       dequeue.op.run()
       time.sleep(0.02)
       coord.request_stop()
       # We should be able to join because the RequestStop() will cause
       # the queue to be closed and the enqueue to terminate.
-      coord.join(threads, stop_grace_period_secs=0.05)
+      coord.join(stop_grace_period_secs=0.05)
 
   def testIgnoreMultiStarts(self):
     with self.test_session() as sess:
@@ -171,7 +171,7 @@ class QueueRunnerTest(tf.test.TestCase):
       new_threads = qr.create_threads(sess, coord=coord)
       self.assertEqual([], new_threads)
       coord.request_stop()
-      coord.join(threads, stop_grace_period_secs=0.5)
+      coord.join(stop_grace_period_secs=0.5)
 
   def testThreads(self):
     with self.test_session() as sess:

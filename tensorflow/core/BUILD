@@ -156,6 +156,7 @@ cc_library(
         "lib/io/table_options.h",
         "lib/jpeg/jpeg_mem.h",
         "lib/monitoring/counter.h",
+        "lib/monitoring/export_registry.h",
         "lib/monitoring/metric_def.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
@@ -172,6 +173,7 @@ cc_library(
         "platform/logging.h",
         "platform/macros.h",
         "platform/mem.h",
+        "platform/net.h",
         "platform/mutex.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
@@ -647,6 +649,27 @@ cc_library(
     alwayslink = 1,
 )
 
+# Native library support for iOS applications.
+#
+# bazel  build --config=ios_x86_64 \
+# //third_party/tensorflow/core:ios_tensorflow_lib
+cc_library(
+    name = "ios_tensorflow_lib",
+    srcs = [
+        ":android_op_registrations_and_gradients",
+        "//tensorflow/core:android_srcs",
+        "//tensorflow/core/kernels:android_core_ops",
+        "//tensorflow/core/kernels:android_extended_ops",
+    ],
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_cc",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
 # Full TensorFlow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
@@ -1009,6 +1032,7 @@ filegroup(
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/env.h",
+        "platform/file_statistics.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
         "platform/host_info.h",
@@ -1016,6 +1040,7 @@ filegroup(
         "platform/macros.h",
         "platform/mem.h",
         "platform/mutex.h",
+        "platform/net.h",
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/strong_hash.h",
@@ -1280,6 +1305,8 @@ tf_cc_tests(
         "lib/io/table_test.cc",
         "lib/io/zlib_buffers_test.cc",
         "lib/monitoring/counter_test.cc",
+        "lib/monitoring/export_registry_test.cc",
+        "lib/monitoring/metric_def_test.cc",
         "lib/random/distribution_sampler_test.cc",
         "lib/random/philox_random_test.cc",
         "lib/random/random_distributions_test.cc",
@@ -1294,6 +1321,7 @@ tf_cc_tests(
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/net_test.cc",
         "platform/port_test.cc",
     ],
     deps = [
@@ -1778,6 +1806,7 @@ tf_cc_tests(
     tests = [
         "ops/array_ops_test.cc",
         "ops/candidate_sampling_ops_test.cc",
+        "ops/control_flow_ops_test.cc",
         "ops/ctc_ops_test.cc",
         "ops/data_flow_ops_test.cc",
         "ops/functional_ops_test.cc",
@@ -1789,6 +1818,7 @@ tf_cc_tests(
         "ops/parsing_ops_test.cc",
         "ops/random_ops_test.cc",
         "ops/sparse_ops_test.cc",
+        "ops/state_ops_test.cc",
         "ops/string_ops_test.cc",
         "ops/training_ops_test.cc",
     ],

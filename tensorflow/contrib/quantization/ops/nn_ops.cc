@@ -21,6 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::Dimension;
 using shape_inference::InferenceContext;
 using shape_inference::Shape;
 
@@ -292,6 +293,25 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
     .Attr("out_type: quantizedtype")
     .Attr("variance_epsilon: float")
     .Attr("scale_after_normalization: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      const Dimension* last_dim = c->Dim(input, 3);
+      for (int i = 1; i < 5; ++i) {  // covers m, v, beta, gamma
+        const Shape* vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i * 3), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(last_dim, c->Dim(vec, 0), &last_dim));
+      }
+
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &out));
+      c->set_output(0, out);
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Quantized Batch normalization.
 

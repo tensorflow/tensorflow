@@ -177,6 +177,10 @@ REGISTER_OP("ResizeBilinearGrad")
     .Output("output: T")
     .Attr("T: {float, half, double}")
     .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradient of bilinear interpolation.
 
@@ -219,6 +223,27 @@ REGISTER_OP("ResizeNearestNeighborGrad")
     .Output("output: T")
     .Attr("T: {uint8, int8, int32, half, float, double}")
     .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      const Shape* unused;
+      const Dimension* unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(unused, 0), 2, &unused_dim));
+      const Tensor* size = c->input_tensor(1);
+      if (size == nullptr) {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(input, 1, c->UnknownDim(), &input));
+        TF_RETURN_IF_ERROR(c->ReplaceDim(input, 2, c->UnknownDim(), &input));
+      } else {
+        auto size_vec = size->vec<int32>();
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(input, 1, c->MakeDim(size_vec(0)), &input));
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(input, 2, c->MakeDim(size_vec(1)), &input));
+      }
+      c->set_output(0, input);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradient of nearest neighbor interpolation.
 
@@ -771,6 +796,13 @@ REGISTER_OP("CropAndResizeGradImage")
     .Output("output: T")
     .Attr("T: {float, half, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(3, &out));
+      TF_RETURN_IF_ERROR(c->WithRank(out, 4, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradient of the crop_and_resize op wrt the input image tensor.
 
@@ -803,6 +835,10 @@ REGISTER_OP("CropAndResizeGradBoxes")
     .Output("output: float")
     .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(2));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradient of the crop_and_resize op wrt the input boxes tensor.
 
@@ -834,6 +870,10 @@ REGISTER_OP("NonMaxSuppression")
     .Input("max_output_size: int32")
     .Output("selected_indices: int32")
     .Attr("iou_threshold: float = 0.5")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Greedily selects a subset of bounding boxes in descending order of score,
 pruning away boxes that have high intersection-over-union (IOU) overlap

@@ -70,7 +70,7 @@ def multi_class_target(n_classes, label_name=None, weight_column_name=None):
       will be multiplied by the loss of the example.
 
   Returns:
-    An instance of _TargetColumn
+    An instance of _MultiClassTargetColumn.
 
   Raises:
     ValueError: if n_classes is < 2

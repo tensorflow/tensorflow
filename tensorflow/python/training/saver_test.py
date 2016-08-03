@@ -595,7 +595,7 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([], save2.last_checkpoints)
       self.assertTrue(gfile.Exists(s2))
 
-  def testNoMetaGrap(self):
+  def testNoMetaGraph(self):
     save_dir = _TestDir("no_meta_graph")
 
     with self.test_session() as sess:

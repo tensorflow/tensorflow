@@ -571,7 +571,7 @@ class BaseEstimator(sklearn.BaseEstimator):
           log_every_steps=log_every_steps,
           supervisor_is_chief=(self._config.task == 0),
           supervisor_master=self._config.master,
-          supervisor_save_model_steps=self._config.save_checkpoints_steps,
+          supervisor_save_model_secs=self._config.save_checkpoints_secs,
           keep_checkpoint_max=self._config.keep_checkpoint_max,
           feed_fn=feed_fn,
           steps=steps,

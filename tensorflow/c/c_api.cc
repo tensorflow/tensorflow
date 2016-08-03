@@ -482,7 +482,6 @@ static void TF_Run_Helper(
     result = session->PRun(handle, input_pairs, output_tensor_names, &outputs);
   }
   if (!result.ok()) {
-    LOG(ERROR) << result.error_message();
     status->status = result;
     return;
   }

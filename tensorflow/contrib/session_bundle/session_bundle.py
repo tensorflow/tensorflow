@@ -32,7 +32,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.lib.io import file_io
 
 
-def LoadSessionBundleFromPath(export_dir, target="", config=None):
+def load_session_bundle_from_path(export_dir, target="", config=None):
   """Load session bundle from the given path.
 
   The function reads input from the export_dir, constructs the graph data to the

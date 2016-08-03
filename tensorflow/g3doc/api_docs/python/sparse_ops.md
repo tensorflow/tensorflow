@@ -350,7 +350,7 @@ The input `SparseTensor` must be in row-major order.
 
 - - -
 
-### `tf.sparse_merge(sp_ids, sp_values, vocab_size, name=None)` {#sparse_merge}
+### `tf.sparse_merge(sp_ids, sp_values, vocab_size, name=None, in_row_major_order=True)` {#sparse_merge}
 
 Combines a batch of feature ids and values into a single `SparseTensor`.
 
@@ -412,6 +412,8 @@ equal to:
 *  <b>`vocab_size`</b>: A scalar `int64` Tensor (or Python int) containing the new size
     of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional)
+*  <b>`in_row_major_order`</b>: A boolean to specify whether or not to sort the
+    tensor in row major order, True by default (optional).
 
 ##### Returns:
 

@@ -14,13 +14,15 @@ smoothing.
 -->
 <dom-module id="vz-line-chart">
   <template>
-    <svg id="chartsvg"></svg>
     <div id="tooltip">
       <table>
         <thead>
           <tr>
             <th></th>
             <th>Name</th>
+            <template is="dom-if" if="{{smoothingEnabled}}">
+              <th>Smoothed</th>
+            </template>
             <th>Value</th>
             <th>Step</th>
             <th>Time</th>
@@ -31,6 +33,7 @@ smoothing.
         </tbody>
       </table>
     </div>
+    <svg id="chartsvg"></svg>
     <style>
       :host {
         -webkit-user-select: none;
