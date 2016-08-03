@@ -47,6 +47,7 @@ class CopyOp : public OpKernel {
     Tensor* copied_tensor;
     OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
                                                      &copied_tensor));
+#if GOOGLE_CUDA
     if (off_host_input) {
       // Input is not on host: deep-copy it from GPU to the same GPU.
       Notification done_copy;
@@ -58,6 +59,9 @@ class CopyOp : public OpKernel {
       // The input tensor is on the host (CPU): deep-copy from CPU to CPU.
       *copied_tensor = tensor::DeepCopy(src_tensor);
     }
+#else
+    *copied_tensor = tensor::DeepCopy(src_tensor);
+#endif  // GOOGLE_CUDA
   }
 
   bool IsExpensive() override { return false; }
