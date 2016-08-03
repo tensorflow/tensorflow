@@ -17,7 +17,7 @@
 set -e
 
 # Select bazel version.
-BAZEL_VERSION="0.3.0"
+BAZEL_VERSION="0.3.1"
 
 # Install bazel.
 mkdir /bazel
