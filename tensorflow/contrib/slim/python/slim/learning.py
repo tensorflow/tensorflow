@@ -538,6 +538,7 @@ def train(
     init_feed_dict=None,
     local_init_op=None,
     init_fn=None,
+    ready_op=_USE_DEFAULT,
     summary_op=_USE_DEFAULT,
     save_summaries_secs=600,
     startup_delay_steps=0,
@@ -579,6 +580,9 @@ def train(
       `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
+    ready_op: Operation to check if the model is ready to use. If left to its
+      default value, then the session checks for readiness by calling
+      `tf.report_uninitialized_variables()`.
     summary_op: The summary operation.
     save_summaries_secs: How often, in seconds, to save summaries.
     startup_delay_steps: The number of steps to wait for before beginning. Note
@@ -624,6 +628,9 @@ def train(
     if init_op == _USE_DEFAULT:
       init_op = tf_variables.initialize_all_variables()
 
+    if ready_op == _USE_DEFAULT:
+      ready_op = tf_variables.report_uninitialized_variables()
+
     if summary_op == _USE_DEFAULT:
       summary_op = logging_ops.merge_all_summaries()
 
@@ -660,6 +667,7 @@ def train(
       init_op=init_op,
       init_feed_dict=init_feed_dict,
       local_init_op=local_init_op,
+      ready_op=ready_op,
       summary_op=summary_op,
       global_step=global_step,
       saver=saver,
