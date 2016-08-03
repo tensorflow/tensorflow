@@ -173,6 +173,7 @@ cc_library(
         "platform/logging.h",
         "platform/macros.h",
         "platform/mem.h",
+        "platform/net.h",
         "platform/mutex.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
@@ -1039,6 +1040,7 @@ filegroup(
         "platform/macros.h",
         "platform/mem.h",
         "platform/mutex.h",
+        "platform/net.h",
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/strong_hash.h",
@@ -1319,6 +1321,7 @@ tf_cc_tests(
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/net_test.cc",
         "platform/port_test.cc",
     ],
     deps = [
