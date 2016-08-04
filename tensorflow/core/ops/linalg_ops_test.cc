@@ -113,6 +113,70 @@ TEST(LinalgOpsTest, BatchSelfAdjointEig_ShapeFn) {
   INFER_OK(op, "[5,?,7,?,1]", "[d0_0,d0_1,d0_2,2,d0_4]");
 }
 
+TEST(LinalgOpsTest, SelfAdjointEigV2_ShapeFn) {
+  ShapeInferenceTestOp op("SelfAdjointEigV2");
+  auto set_compute_v = [&op](bool compute_v) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Pack")
+                    .Input({{"input", 0, DT_FLOAT}})
+                    .Attr("compute_v", compute_v)
+                    .Finalize(&op.node_def));
+  };
+  set_compute_v(false);
+  INFER_OK(op, "?", "[?];[0]");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[0]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
+
+  set_compute_v(true);
+  INFER_OK(op, "?", "[?];[?,?]");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
+}
+
+TEST(LinalgOpsTest, BatchSelfAdjointEigV2_ShapeFn) {
+  ShapeInferenceTestOp op("BatchSelfAdjointEigV2");
+  auto set_compute_v = [&op](bool compute_v) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Pack")
+                    .Input({{"input", 0, DT_FLOAT}})
+                    .Attr("compute_v", compute_v)
+                    .Finalize(&op.node_def));
+  };
+
+  set_compute_v(false);
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[3,1,2]");
+
+  INFER_OK(op, "?", "?;[0]");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[0]");
+
+  // Repeat previous block of tests with input rank > 2.
+  INFER_OK(op, "[5,?,7,?,?]", "[d0_0,d0_1,d0_2,d0_3|d0_4];[0]");
+  INFER_OK(op, "[5,?,7,1,?]", "[d0_0,d0_1,d0_2,d0_3|d0_4];[0]");
+  INFER_OK(op, "[5,?,7,?,1]", "[d0_0,d0_1,d0_2,d0_3|d0_4];[0]");
+
+  set_compute_v(true);
+  INFER_OK(op, "?", "?;?");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+
+  // Repeat previous block of tests with input rank > 2.
+  INFER_OK(op, "[5,?,7,?,?]",
+           "[d0_0,d0_1,d0_2,d0_3|d0_4];[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
+  INFER_OK(op, "[5,?,7,1,?]",
+           "[d0_0,d0_1,d0_2,d0_3|d0_4];[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
+  INFER_OK(op, "[5,?,7,?,1]",
+           "[d0_0,d0_1,d0_2,d0_3|d0_4];[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
+}
+
 TEST(LinalgOpsTest, SquareMatrixSolve_ShapeFn) {
   for (const char* op_name : {"MatrixSolve", "MatrixTriangularSolve"}) {
     ShapeInferenceTestOp op(op_name);

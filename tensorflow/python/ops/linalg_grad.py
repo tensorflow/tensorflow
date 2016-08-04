@@ -34,6 +34,8 @@ ops.NoGradient("CholeskyGrad")
 ops.NoGradient("BatchCholeskyGrad")
 ops.NoGradient("SelfAdjointEig")
 ops.NoGradient("BatchSelfAdjointEig")
+ops.NoGradient("SelfAdjointEigV2")
+ops.NoGradient("BatchSelfAdjointEigV2")
 ops.NoGradient("Svd")
 ops.NoGradient("BatchSvd")
 

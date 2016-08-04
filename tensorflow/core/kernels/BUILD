@@ -1019,6 +1019,7 @@ tf_kernel_libraries(
         "cholesky_grad",
         "determinant_op",
         "self_adjoint_eig_op",
+        "self_adjoint_eig_v2_op",
         "matrix_inverse_op",
         "matrix_solve_ls_op",
         "matrix_solve_op",

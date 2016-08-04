@@ -25,16 +25,17 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-
 namespace tensorflow {
 
 template <class Scalar, bool SupportsBatchOperation>
-class SelfAdjointEigOp
+class SelfAdjointEigV2Op
     : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
  public:
   typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
 
-  explicit SelfAdjointEigOp(OpKernelConstruction* context) : Base(context) {}
+  explicit SelfAdjointEigV2Op(OpKernelConstruction* context) : Base(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
+  }
 
   using TensorShapes = typename Base::TensorShapes;
   using Matrix = typename Base::Matrix;
@@ -44,8 +45,12 @@ class SelfAdjointEigOp
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 d = input_matrix_shapes[0].dim_size(0);
-    return TensorShapes({TensorShape({d + 1, d})});
+    int64 n = input_matrix_shapes[0].dim_size(0);
+    if (compute_v_) {
+      return TensorShapes({TensorShape({n}), TensorShape({n, n})});
+    } else {
+      return TensorShapes({TensorShape({n})});
+    }
   }
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
@@ -57,22 +62,30 @@ class SelfAdjointEigOp
       return;
     }
 
-    Eigen::SelfAdjointEigenSolver<
-        Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-        es(inputs[0]);
-    OP_REQUIRES(context, es.info() == Eigen::Success,
-                errors::InvalidArgument("Self Adjoint Eigen decomposition was"
-                                        "not successful. "
-                                        "The input might not be valid."));
-    outputs->at(0).row(0) = es.eigenvalues().transpose();
-    outputs->at(0).bottomRows(rows) = es.eigenvectors();
+    Eigen::SelfAdjointEigenSolver<Matrix> eig(
+        inputs[0],
+        compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
+    OP_REQUIRES(
+        context, eig.info() == Eigen::Success,
+        errors::InvalidArgument("Self Adjoint Eigen decomposition was not "
+                                "successful. The input might not be valid."));
+
+    outputs->at(0) = eig.eigenvalues();
+    if (compute_v_) {
+      outputs->at(1) = eig.eigenvectors();
+    }
   }
+
+ private:
+  bool compute_v_;
 };
 
-REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<float, false>), float);
-REGISTER_LINALG_OP("SelfAdjointEig", (SelfAdjointEigOp<double, false>), double);
-REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<float, true>),
+REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<float, false>),
                    float);
-REGISTER_LINALG_OP("BatchSelfAdjointEig", (SelfAdjointEigOp<double, true>),
+REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<double, false>),
+                   double);
+REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<float, true>),
+                   float);
+REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<double, true>),
                    double);
 }  // namespace tensorflow

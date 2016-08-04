@@ -176,6 +176,50 @@ Status BatchSvdShapeFn(InferenceContext* c) {
   return BatchSvdShapeHelperFn(c, input);
 }
 
+// Input is [N,N]. Outputs are:
+//   [N];[0], if compute_v is false,
+//   [N];[N,N], if compute_v is true.
+Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
+  const Shape* input;
+  TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
+  const Dimension* n;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, 0), c->Dim(input, 1), &n));
+  c->set_output(0, c->Vector(n));
+  bool compute_v;
+  TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
+  if (compute_v) {
+    c->set_output(1, c->Matrix(n, n));
+  } else {
+    c->set_output(1, c->Vector(0ll));
+  }
+  return Status::OK();
+}
+
+// Input is [...,N,N]. Outputs are:
+//   [...,N];[0], if compute_v is false,
+//   [...,N];[...,N,N], if compute_v is true.
+Status BatchSelfAdjointEigV2ShapeFn(InferenceContext* c) {
+  const Shape* input;
+  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
+  const Dimension* n;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -2), c->Dim(input, -1), &n));
+  const Shape* batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+  const Shape* e_shape;
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &e_shape));
+  c->set_output(0, e_shape);
+  bool compute_v;
+  TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
+  if (compute_v) {
+    const Shape* v_shape;
+    TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &v_shape));
+    c->set_output(1, v_shape);
+  } else {
+    c->set_output(1, c->Vector(0ll));
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("MatrixDeterminant")
@@ -349,6 +393,7 @@ REGISTER_OP("SelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
+    .Deprecated(11, "Use SelfAdjointEigV2 instead.")
     .SetShapeFn([](InferenceContext* c) {
       const Shape* input;
       TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
@@ -376,6 +421,7 @@ REGISTER_OP("BatchSelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
+    .Deprecated(11, "Use BatchSelfAdjointEigV2 instead.")
     .SetShapeFn([](InferenceContext* c) {
       const Shape* input;
       TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
@@ -397,11 +443,67 @@ The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices, with the same constraints as the single matrix
 SelfAdjointEig.
 
-The result is a '[..., M+1, M] matrix with [..., 0,:] containing the
+The result is a [..., M+1, M] matrix with [..., 0,:] containing the
 eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
 
 input: Shape is `[..., M, M]`.
 output: Shape is `[..., M+1, M]`.
+)doc");
+
+REGISTER_OP("SelfAdjointEigV2")
+    .Input("input: T")
+    .Output("e: T")
+    .Output("v: T")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {double, float}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn)
+    .Doc(R"doc(
+Computes the eigen decomposition of a self-adjoint (\"symmetric\") matrix.
+
+Computes the eigenvalues and (optionally) eigenvectors such that
+`input = v * diag(e)`.
+
+```prettyprint
+# a is a self-adjoint matrix.
+# e is a vector of eigenvalues.
+# v is a matrix of eigenvectors.
+e, v = self_adjoint_eig(a)
+e = self_adjoint_eig(a, compute_v=False)
+```
+
+input: `Tensor` input of shape `[N, N]`.
+compute_v: If `True` then eigenvectors will be computed and returned in `v`.
+  Otherwise, only the eigenvalues will be computed.
+e: Eigenvalues. Shape is `[N]`.
+v: Eigenvectors. Shape is `[N, N]`.
+)doc");
+
+REGISTER_OP("BatchSelfAdjointEigV2")
+    .Input("input: T")
+    .Output("e: T")
+    .Output("v: T")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {double, float}")
+    .SetShapeFn(BatchSelfAdjointEigV2ShapeFn)
+    .Doc(R"doc(
+Computes the eigen decomposition of a batch of square self-adjoint matrices.
+
+Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
+`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
+
+```prettyprint
+# a is a tensor.
+# e is a tensor of eigenvalues.
+# v is a tensor of eigenvectors.
+e, v = batch_self_adjoint_eig(a)
+e = batch_self_adjoint_eig(a, compute_v=False)
+```
+
+input: `Tensor` input of shape `[N, N]`.
+compute_v: If `True` then eigenvectors will be computed and returned in `v`.
+  Otherwise, only the eigenvalues will be computed.
+e: Eigenvalues. Shape is `[N]`.
+v: Eigenvectors. Shape is `[N, N]`.
 )doc");
 
 REGISTER_OP("MatrixSolve")
@@ -629,7 +731,7 @@ REGISTER_OP("Svd")
     .Output("s: T")
     .Output("u: T")
     .Output("v: T")
-    .Attr("compute_uv: bool = False")
+    .Attr("compute_uv: bool = True")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float}")
     .SetShapeFn(SvdShapeFn)
@@ -643,8 +745,8 @@ Computes the SVD of if `input` such that `input = u * diag(s) * transpose(v)`
 # s is a vector of singular values.
 # u is the matrix of left singular vectors.
 # v is a matrix of right singular vectors.
+s, u, v = svd(a)
 s, _, _ = svd(a, compute_uv=False)
-s, u, v = svd(a, compute_uv=True)
 ```
 
 input: Shape is `[M, N]`. Let `P` be the minimum of `M` and `N`.
@@ -668,7 +770,7 @@ REGISTER_OP("BatchSvd")
     .Output("s: T")
     .Output("u: T")
     .Output("v: T")
-    .Attr("compute_uv: bool = False")
+    .Attr("compute_uv: bool = True")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float}")
     .SetShapeFn(BatchSvdShapeFn)
@@ -683,8 +785,8 @@ Computes the SVD of each inner matrix in `input` such that
 # s is a tensor of singular values for each matrix.
 # u is the tensor containing of left singular vectors for each matrix.
 # v is the tensor containing of right singular vectors for each matrix.
+s, u, v = batch_svd(a)
 s, _, _ = batch_svd(a, compute_uv=False)
-s, u, v = batch_svd(a, compute_uv=True)
 ```
 
 input: A tensor of shape `[..., M, N]` whose inner-most 2 dimensions

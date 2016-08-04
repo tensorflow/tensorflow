@@ -109,6 +109,8 @@ functions on matrices to your graph.
 
 @@self_adjoint_eig
 @@batch_self_adjoint_eig
+@@self_adjoint_eigvals
+@@batch_self_adjoint_eigvals
 
 @@svd
 @@batch_svd
