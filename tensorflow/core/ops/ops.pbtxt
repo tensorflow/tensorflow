@@ -1898,12 +1898,12 @@ op {
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[..., M, M]\'.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
+    description: "df/dl where f is some scalar function. Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[..., M, M]\'"
+    description: "Symmetrized version of df/dA . Shape is `[..., M, M]`"
     type_attr: "T"
   }
   attr {
@@ -3086,12 +3086,12 @@ op {
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[M, M]\'.\nAlgorithm depends only on lower triangular part of this matrix."
+    description: "df/dl where f is some scalar function. Shape is `[M, M]`.\nAlgorithm depends only on lower triangular part of this matrix."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[M, M]\'."
+    description: "Symmetrized version of df/dA . Shape is `[M, M]`."
     type_attr: "T"
   }
   attr {
