@@ -124,18 +124,18 @@ class GraphIOTest(tf.test.TestCase):
           _VALID_FILE_PATTERN, batch_size, features, randomize_input=False,
           queue_capacity=queue_capacity, reader_num_threads=2,
           parser_num_threads=2, name=name)
-      self.assertEqual("%s/parse_example_batch_join:1" % name,
+      self.assertEqual("%s/fifo_queue_1_Dequeue:0" % name,
                        features["feature"].name)
       file_name_queue_name = "%s/file_name_queue" % name
       file_names_name = "%s/input" % file_name_queue_name
       example_queue_name = "%s/fifo_queue" % name
-      parse_example_queue_name = "%s/parse_example_batch_join" % name
+      parse_example_queue_name = "%s/fifo_queue" % name
       op_nodes = test_util.assert_ops_in_graph({
           file_names_name: "Const",
           file_name_queue_name: "FIFOQueue",
           "%s/read/TFRecordReader" % name: "TFRecordReader",
           example_queue_name: "FIFOQueue",
-          parse_example_queue_name: "QueueDequeueMany",
+          parse_example_queue_name: "FIFOQueue",
           name: "QueueDequeueMany"
       }, g)
       self.assertAllEqual(_FILE_NAMES, sess.run(["%s:0" % file_names_name])[0])
