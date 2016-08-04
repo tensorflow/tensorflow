@@ -2061,13 +2061,14 @@ REGISTER_OP("MirrorPadGrad")
       auto paddings_data = paddings_t->matrix<int32>();
       std::vector<const Dimension*> dims(input_rank);
       for (int i = 0; i < input_rank; ++i) {
-        const int32 pad0 = paddings_data(i, 0);
-        const int32 pad1 = paddings_data(i, 1);
+        const int64 pad0 = static_cast<int64>(paddings_data(i, 0));
+        const int64 pad1 = static_cast<int64>(paddings_data(i, 1));
         if (pad0 < 0 || pad1 < 0) {
           return errors::InvalidArgument("Paddings must be non-negative");
         }
 
-        TF_RETURN_IF_ERROR(c->Add(c->Dim(input, i), -(pad0 + pad1), &dims[i]));
+        TF_RETURN_IF_ERROR(
+            c->Subtract(c->Dim(input, i), pad0 + pad1, &dims[i]));
       }
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();

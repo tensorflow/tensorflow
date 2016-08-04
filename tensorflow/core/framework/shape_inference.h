@@ -46,7 +46,7 @@ class Dimension {
 class Shape {
  private:
   Shape();
-  Shape(std::vector<const Dimension*> dims);
+  Shape(const std::vector<const Dimension*>& dims);
   ~Shape() {}
 
   const int32 rank_;
@@ -61,13 +61,17 @@ class Shape {
 struct DimensionOrConstant {
  public:
   // Intentionally not explicit.
-  DimensionOrConstant(const Dimension* dim) : dim(dim) {}
+  DimensionOrConstant(const Dimension* dim);
 
   // val must be non-negative or InferenceContext::kUnknownDim.
-  DimensionOrConstant(int64 val) : val(val) {}
+  DimensionOrConstant(int64 val);
 
-  const Dimension* dim = nullptr;
-  int64 val = 0;
+  // dim takes precedence. If dim != nullptr, val is ignored.
+  const Dimension* dim;
+  int64 val;
+
+ private:
+  DimensionOrConstant();
 };
 
 // Note: This is experimental support for op shape inference in C++.  Shape
@@ -81,8 +85,8 @@ struct DimensionOrConstant {
 // by the InferenceContext.
 class InferenceContext {
  public:
-  static constexpr int32 kUnknownRank = -1;
   static constexpr int64 kUnknownDim = -1;
+  static constexpr int32 kUnknownRank = -1;
 
   // This is a temporary constructor used for initial testing.
   //
@@ -127,8 +131,12 @@ class InferenceContext {
   }
   int32 Rank(const Shape* s) { return s->rank_; }
   bool RankKnown(const Shape* s) { return Rank(s) != kUnknownRank; }
-  int64 Value(const Dimension* d) { return d->value_; }
-  bool ValueKnown(const Dimension* d) { return Value(d) != kUnknownDim; }
+  inline int64 Value(DimensionOrConstant d) {
+    return d.dim ? d.dim->value_ : d.val;
+  }
+  inline bool ValueKnown(DimensionOrConstant d) {
+    return Value(d) != kUnknownDim;
+  }
 
   // Returns true if the rank and all dimensions of the Shape are known.
   bool FullyDefined(const Shape* s);
@@ -232,8 +240,15 @@ class InferenceContext {
 
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
-  const Dimension* MakeDim(int64 value);
-  const Dimension* UnknownDim();
+  inline const Dimension* MakeDim(DimensionOrConstant d) {
+    if (d.dim) {
+      return d.dim;
+    } else {
+      all_dims_.push_back(new Dimension(d.val));
+      return all_dims_.back();
+    }
+  }
+  inline const Dimension* UnknownDim() { return MakeDim(kUnknownDim); }
 
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get
@@ -247,7 +262,8 @@ class InferenceContext {
   Status GetAttr(StringPiece attr_name, T* value) const;
 
   // Returns in <out> the result of dividing <dividend> by <divisor>.
-  // Returns an error if <divisor> does not evenly divide <dividend>.
+  // Returns an error if <divisor>  is not positive or does not evenly
+  // divide <dividend>.
   Status Divide(const Dimension* dividend, int64 divisor,
                 const Dimension** out);
 
@@ -255,9 +271,24 @@ class InferenceContext {
   Status Add(const Dimension* first, DimensionOrConstant second,
              const Dimension** out);
 
+  // Returns in <out> the dimension that is <first> minus <second>.
+  Status Subtract(const Dimension* first, DimensionOrConstant second,
+                  const Dimension** out);
+
   // Returns in <out> the product of <first> and <second>.
   Status Multiply(const Dimension* first, DimensionOrConstant second,
                   const Dimension** out);
+
+  // Returns in <out> the minimum of <first> and <second>. If either <first> or
+  // <second> is zero the results is zero. Otherwise, if either <first> or
+  // <second> is unknown the results is unknown.
+  Status Min(const Dimension* first, DimensionOrConstant second,
+             const Dimension** out);
+
+  // Returns in <out> the maximum of <first> and <second>. If either <first> or
+  // <second> is unknown the results is unknown.
+  Status Max(const Dimension* first, DimensionOrConstant second,
+             const Dimension** out);
 
   Status construction_status() const { return construction_status_; }
 
@@ -307,11 +338,29 @@ class InferenceContext {
 // Template and inline method implementations, please ignore
 
 inline Dimension::Dimension() : value_(InferenceContext::kUnknownDim) {}
-inline Dimension::Dimension(int64 value) : value_(value) {}
+inline Dimension::Dimension(int64 value) : value_(value) {
+  DCHECK(value >= 0 || value == InferenceContext::kUnknownDim)
+      << "Dimension must be non-negative or equal to "
+         "InferenceContext::kUnknownDim but got"
+      << value;
+}
 
 inline Shape::Shape() : rank_(InferenceContext::kUnknownRank) {}
-inline Shape::Shape(const std::vector<const Dimension*> dims)
+inline Shape::Shape(const std::vector<const Dimension*>& dims)
     : rank_(dims.size()), dims_(dims) {}
+
+inline DimensionOrConstant::DimensionOrConstant(const Dimension* dim)
+    : dim(dim) {
+  DCHECK(dim != nullptr) << "Internal error: Got nullptr for Dimension.";
+}
+
+inline DimensionOrConstant::DimensionOrConstant(int64 val)
+    : dim(nullptr), val(val) {
+  DCHECK(val >= 0 || val == InferenceContext::kUnknownDim)
+      << "Dimension must be non-negative or equal to "
+         "InferenceContext::kUnknownDim but got"
+      << val;
+}
 
 template <class T>
 Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {

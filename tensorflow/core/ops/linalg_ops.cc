@@ -115,6 +115,67 @@ Status BatchMatrixSolveShapeFn(InferenceContext* c, bool square) {
   return Status::OK();
 }
 
+Status BatchSvdShapeHelperFn(InferenceContext* c, const Shape* input) {
+  const Dimension* m = c->Dim(input, -2);
+  const Dimension* n = c->Dim(input, -1);
+  const Dimension* p;
+  TF_RETURN_IF_ERROR(c->Min(m, n, &p));
+  const Shape* batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+  const Shape* e_shape;
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(p), &e_shape));
+  c->set_output(0, e_shape);
+  bool compute_uv;
+  TF_RETURN_IF_ERROR(c->GetAttr("compute_uv", &compute_uv));
+  if (compute_uv) {
+    const Shape* u_shape;
+    const Shape* v_shape;
+    bool full_matrices;
+    TF_RETURN_IF_ERROR(c->GetAttr("full_matrices", &full_matrices));
+    if (full_matrices) {
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(batch_shape, c->Matrix(m, m), &u_shape));
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(batch_shape, c->Matrix(n, n), &v_shape));
+    } else {
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(batch_shape, c->Matrix(m, p), &u_shape));
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(batch_shape, c->Matrix(n, p), &v_shape));
+    }
+    c->set_output(1, u_shape);
+    c->set_output(2, v_shape);
+  } else {
+    c->set_output(1, c->Vector(0ll));
+    c->set_output(2, c->Vector(0ll));
+  }
+  return Status::OK();
+}
+
+// Input is [M,N].  First output is [min(M,N)].
+// Second and third outputs are:
+//   [0]; [0], if compute_uv is false.
+//   [M,M]; [N,N], if compute_uv is true and full_matrices is true,
+//   [M,P]; [N,P], if compute_uv is true and full_matrices is false,
+// where P = min(M,N).
+Status SvdShapeFn(InferenceContext* c) {
+  const Shape* input;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
+  return BatchSvdShapeHelperFn(c, input);
+}
+
+// Input is [...,M,N].  First output is [...,min(M,N)].
+// Second and third outputs are:
+//   [0]; [0], if compute_uv is false.
+//   [...,M,M]; [...,N,N], if compute_uv is true and full_matrices is true,
+//   [...,M,P]; [...,N,P], if compute_uv is true and full_matrices is false,
+// where P = min(M,N).
+Status BatchSvdShapeFn(InferenceContext* c) {
+  const Shape* input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
+  return BatchSvdShapeHelperFn(c, input);
+}
+
 }  // namespace
 
 REGISTER_OP("MatrixDeterminant")
@@ -258,9 +319,9 @@ Iain Murray http://arxiv.org/abs/1602.07527.
 
 l: Output of Cholesky algorithm l = chol(A). Shape is `[M, M]`.
   Algorithm depends only on lower triangular part of this matrix.
-grad: df/dl where f is some scalar function. Shape is `[M, M]'.
+grad: df/dl where f is some scalar function. Shape is `[M, M]`.
   Algorithm depends only on lower triangular part of this matrix.
-output: Symmetrized version of df/dA . Shape is `[M, M]'.
+output: Symmetrized version of df/dA . Shape is `[M, M]`.
 )doc");
 
 REGISTER_OP("BatchCholeskyGrad")
@@ -278,10 +339,10 @@ Iain Murray http://arxiv.org/abs/1602.07527.
 l: Output of batch Cholesky algorithm l = batch_cholesky(A). Shape is `[..., M, M]`.
   Algorithm depends only on lower triangular part of the innermost matrices of
   this tensor.
-grad: df/dl where f is some scalar function. Shape is `[..., M, M]'.
+grad: df/dl where f is some scalar function. Shape is `[..., M, M]`.
   Algorithm depends only on lower triangular part of the innermost matrices of
   this tensor.
-output: Symmetrized version of df/dA . Shape is `[..., M, M]'
+output: Symmetrized version of df/dA . Shape is `[..., M, M]`
 )doc");
 
 REGISTER_OP("SelfAdjointEig")
@@ -571,6 +632,7 @@ REGISTER_OP("Svd")
     .Attr("compute_uv: bool = False")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn(SvdShapeFn)
     .Doc(R"doc(
 Computes the singular value decomposition of a matrix.
 
@@ -609,6 +671,7 @@ REGISTER_OP("BatchSvd")
     .Attr("compute_uv: bool = False")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn(BatchSvdShapeFn)
     .Doc(R"doc(
 Computes the singular value decompositions of a batch of matrices.
 

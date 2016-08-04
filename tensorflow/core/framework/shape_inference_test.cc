@@ -36,6 +36,19 @@ static OpDef MakeOpDef(int num_inputs, int num_outputs) {
   return op_reg_data.op_def;
 }
 
+TEST(ShapeInferenceTest, DimensionOrConstant) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(1, 1), {"?"}, {});
+  EXPECT_EQ(InferenceContext::kUnknownDim,
+            c.Value(InferenceContext::kUnknownDim));
+  EXPECT_EQ(1, c.Value(1));
+
+#ifndef NDEBUG
+  // Only run death test if DCHECKS are enabled.
+  EXPECT_DEATH(c.Value(-7), "Dimension must be non\\-negative or equal to");
+#endif
+}
+
 TEST(ShapeInferenceTest, RankAndDimInspection) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(3, 2), {"?", "[1,?,3]", "[]"}, {});
@@ -767,15 +780,20 @@ TEST(ShapeInferenceTest, Divide) {
 
   EXPECT_EQ("Dimension size must be divisible by 5 but is 6",
             c.Divide(d_6, 5, &out).error_message());
+  EXPECT_EQ("Divisor must be positive but is 0",
+            c.Divide(d_6, 0, &out).error_message());
+  EXPECT_EQ("Divisor must be positive but is -1",
+            c.Divide(d_6, -1, &out).error_message());
 }
 
 TEST(ShapeInferenceTest, Add) {
   NodeDef def;
-  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?]"}, {});
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?,0]"}, {});
 
   auto s = c.input(0);
   auto d_6 = c.Dim(s, 0);
   auto d_unknown = c.Dim(s, 1);
+  auto d_0 = c.Dim(s, 2);
 
   // Adding non-zero to unknown gives new unknown.
   const Dimension* out;
@@ -790,16 +808,14 @@ TEST(ShapeInferenceTest, Add) {
   EXPECT_TRUE(out == d_6);
 
   // Adding dimension with value 0 to anything gives input.
-  EXPECT_TRUE(c.Add(d_unknown, c.MakeDim(0), &out).ok());
+  EXPECT_TRUE(c.Add(d_unknown, c.MakeDim(0ll), &out).ok());
   EXPECT_TRUE(out == d_unknown);
-  EXPECT_TRUE(c.Add(d_6, c.MakeDim(0), &out).ok());
+  EXPECT_TRUE(c.Add(d_6, c.MakeDim(0ll), &out).ok());
   EXPECT_TRUE(out == d_6);
 
   // Test addition.
   EXPECT_TRUE(c.Add(d_6, 2, &out).ok());
   EXPECT_EQ("8", c.DebugString(out));
-  EXPECT_TRUE(c.Add(d_6, -6, &out).ok());
-  EXPECT_EQ("0", c.DebugString(out));
   EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64>::max() - 6, &out).ok());
   EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
 
@@ -811,12 +827,60 @@ TEST(ShapeInferenceTest, Add) {
   EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
   EXPECT_TRUE(c.Add(d_6, c.UnknownDim(), &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Add(d_0, d_6, &out).ok());
+  EXPECT_TRUE(out == d_6);
 
-  EXPECT_EQ("Negative dimension size from adding 6 and -7",
-            c.Add(d_6, -7, &out).error_message());
   EXPECT_EQ(
       "Dimension size overflow from adding 6 and 9223372036854775802",
       c.Add(d_6, std::numeric_limits<int64>::max() - 5, &out).error_message());
+}
+
+TEST(ShapeInferenceTest, Subtract) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[6,?,0,5]"}, {});
+
+  auto s = c.input(0);
+  auto d_6 = c.Dim(s, 0);
+  auto d_unknown = c.Dim(s, 1);
+  auto d_0 = c.Dim(s, 2);
+  auto d_5 = c.Dim(s, 3);
+
+  // Subtracting non-zero from unknown gives new unknown.
+  const Dimension* out;
+  EXPECT_TRUE(c.Subtract(d_unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(out != d_unknown);
+
+  // Subtracting 0 from anything gives input.
+  EXPECT_TRUE(c.Subtract(d_unknown, 0ll, &out).ok());
+  EXPECT_TRUE(out == d_unknown);
+  EXPECT_TRUE(c.Subtract(d_6, 0ll, &out).ok());
+  EXPECT_TRUE(out == d_6);
+
+  // Subtracting dimension with value 0 from anything gives input.
+  EXPECT_TRUE(c.Subtract(d_unknown, c.MakeDim(0ll), &out).ok());
+  EXPECT_TRUE(out == d_unknown);
+  EXPECT_TRUE(c.Subtract(d_6, c.MakeDim(0ll), &out).ok());
+  EXPECT_TRUE(out == d_6);
+
+  // Test subtraction.
+  EXPECT_TRUE(c.Subtract(d_6, 2, &out).ok());
+  EXPECT_EQ("4", c.DebugString(out));
+  EXPECT_TRUE(c.Subtract(d_6, 6, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+
+  // Test subtraction using dimension as second value.
+  EXPECT_TRUE(c.Subtract(d_6, c.MakeDim(2), &out).ok());
+  EXPECT_EQ("4", c.DebugString(out));
+  EXPECT_TRUE(c.Subtract(d_6, d_5, &out).ok());
+  EXPECT_EQ("1", c.DebugString(out));
+  EXPECT_TRUE(c.Subtract(d_6, c.UnknownDim(), &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Subtract(d_6, d_0, &out).ok());
+  EXPECT_TRUE(out == d_6);
+
+  EXPECT_EQ("Negative dimension size caused by subtracting 6 from 5",
+            c.Subtract(d_5, d_6, &out).error_message());
 }
 
 TEST(ShapeInferenceTest, Multiply) {
@@ -831,7 +895,7 @@ TEST(ShapeInferenceTest, Multiply) {
 
   // Multiplying non-zero to unknown gives new unknown.
   const Dimension* out;
-  EXPECT_TRUE(c.Multiply(d_unknown, 1, &out).ok());
+  EXPECT_TRUE(c.Multiply(d_unknown, 2, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
 
   // Multiplying 0 to anything gives 0.
@@ -844,19 +908,19 @@ TEST(ShapeInferenceTest, Multiply) {
 
   // Multiplying 1 to anything gives the original.
   // (unknown -> unknown)
-  EXPECT_TRUE(c.Multiply(d_unknown, static_cast<int64>(1), &out).ok());
-  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_unknown, 1, &out).ok());
+  EXPECT_EQ(d_unknown, out);
   EXPECT_TRUE(c.Multiply(d_unknown, d_1, &out).ok());
-  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_EQ(d_unknown, out);
   EXPECT_TRUE(c.Multiply(d_1, d_unknown, &out).ok());
-  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_EQ(d_unknown, out);
   // (known -> known)
-  EXPECT_TRUE(c.Multiply(d_6, static_cast<int64>(1), &out).ok());
-  EXPECT_EQ("6", c.DebugString(out));
+  EXPECT_TRUE(c.Multiply(d_6, 1, &out).ok());
+  EXPECT_EQ(d_6, out);
   EXPECT_TRUE(c.Multiply(d_6, d_1, &out).ok());
-  EXPECT_EQ("6", c.DebugString(out));
+  EXPECT_EQ(d_6, out);
   EXPECT_TRUE(c.Multiply(d_1, d_6, &out).ok());
-  EXPECT_EQ("6", c.DebugString(out));
+  EXPECT_EQ(d_6, out);
 
   // Test multiplication.
   EXPECT_TRUE(c.Multiply(d_6, 2, &out).ok());
@@ -869,9 +933,6 @@ TEST(ShapeInferenceTest, Multiply) {
   EXPECT_EQ("12", c.DebugString(out));
   EXPECT_TRUE(c.Multiply(d_6, c.UnknownDim(), &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
-
-  EXPECT_EQ("Negative dimension size from multiplying 6 and -7",
-            c.Multiply(d_6, -7, &out).error_message());
 }
 
 TEST(ShapeInferenceTest, FullyDefined) {
@@ -893,6 +954,91 @@ TEST(ShapeInferenceTest, ValidateKnownDim) {
 
   EXPECT_FALSE(c.ValidateKnownDim(c.UnknownDim(), "unknown").ok());
   EXPECT_TRUE(c.ValidateKnownDim(c.Dim(c.Matrix(1, 2), 0), "known").ok());
+}
+
+TEST(ShapeInferenceTest, Min) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,?,0]"}, {});
+
+  auto s = c.input(0);
+  auto d_1 = c.Dim(s, 0);
+  auto d_2 = c.Dim(s, 1);
+  auto d_unknown = c.Dim(s, 2);
+  auto d_0 = c.Dim(s, 3);
+
+  // Minimum involving zero and unknown returns zero.
+  const Dimension* out;
+  EXPECT_TRUE(c.Min(d_0, d_unknown, &out).ok());
+  EXPECT_EQ(d_0, out);
+  EXPECT_TRUE(c.Min(d_unknown, d_0, &out).ok());
+  EXPECT_EQ(d_0, out);
+  EXPECT_TRUE(c.Min(c.MakeDim(0ll), d_unknown, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+  EXPECT_TRUE(c.Min(d_unknown, 0ll, &out).ok());
+  EXPECT_EQ("0", c.DebugString(out));
+
+  // Minimum involving unknowns and non-zeros gives new unknown.
+  EXPECT_TRUE(c.Min(d_unknown, d_unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Min(d_unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Min(d_1, d_unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+
+  // Minimum with constant second arg.
+  EXPECT_TRUE(c.Min(d_1, 1, &out).ok());
+  EXPECT_EQ(d_1, out);
+  EXPECT_TRUE(c.Min(d_1, 3, &out).ok());
+  EXPECT_EQ(d_1, out);
+  EXPECT_TRUE(c.Min(d_2, 1, &out).ok());
+  EXPECT_EQ("1", c.DebugString(out));
+
+  // Minimum with two dimensions.
+  EXPECT_TRUE(c.Min(d_1, d_1, &out).ok());
+  EXPECT_EQ(d_1, out);
+  EXPECT_TRUE(c.Min(d_1, d_2, &out).ok());
+  EXPECT_EQ(d_1, out);
+  EXPECT_TRUE(c.Min(d_2, d_1, &out).ok());
+  EXPECT_EQ(d_1, out);
+  EXPECT_TRUE(c.Min(d_2, d_2, &out).ok());
+  EXPECT_EQ(d_2, out);
+}
+
+TEST(ShapeInferenceTest, Max) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,?]"}, {});
+
+  auto s = c.input(0);
+  auto d_1 = c.Dim(s, 0);
+  auto d_2 = c.Dim(s, 1);
+  auto d_unknown = c.Dim(s, 2);
+
+  // Maximum involving unknowns gives new unknown.
+  const Dimension* out;
+  EXPECT_TRUE(c.Max(d_unknown, d_unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Max(d_unknown, 1, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+  EXPECT_TRUE(c.Max(d_1, d_unknown, &out).ok());
+  EXPECT_EQ("?", c.DebugString(out));
+
+  // Maximum with constant second arg.
+  EXPECT_TRUE(c.Max(d_1, 1, &out).ok());
+  EXPECT_EQ(d_1, out);
+  EXPECT_TRUE(c.Max(d_2, 1, &out).ok());
+  EXPECT_EQ(d_2, out);
+  EXPECT_TRUE(c.Max(d_2, 3, &out).ok());
+  EXPECT_EQ("3", c.DebugString(out));
+
+  // Maximum with two dimensions.
+  EXPECT_TRUE(c.Max(d_1, d_1, &out).ok());
+  EXPECT_EQ(d_1, out);
+  EXPECT_TRUE(c.Max(d_1, d_2, &out).ok());
+  EXPECT_EQ(d_2, out);
+  EXPECT_TRUE(c.Max(d_2, d_1, &out).ok());
+  EXPECT_EQ(d_2, out);
+  EXPECT_TRUE(c.Max(d_2, d_2, &out).ok());
+  EXPECT_EQ(d_2, out);
 }
 
 }  // namespace shape_inference
