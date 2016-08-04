@@ -795,14 +795,17 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
 
   For example, consider the following feature vectors:
 
+  ```python
     vector1 = [-3, 0, 0, 0, 0, 0]
     vector2 = [ 0, 1, 0, 4, 1, 0]
     vector3 = [ 5, 0, 0, 9, 0, 0]
+  ```
 
   These might be stored sparsely in the following Example protos by storing
   only the feature ids (column number if the vectors are treated as a matrix)
   of the non-zero elements and the corresponding values:
 
+  ```python
     examples = [Example(features={
                     "ids": Feature(int64_list=Int64List(value=[0])),
                     "values": Feature(float_list=FloatList(value=[-3]))}),
@@ -812,6 +815,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
                 Example(features={
                     "ids": Feature(int64_list=Int64List(value=[0, 3])),
                     "values": Feature(float_list=FloatList(value=[5, 9]))})]
+  ```
 
   The result of calling parse_example on these examples will produce a
   dictionary with entries for "ids" and "values". Passing those two objects
@@ -824,9 +828,11 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
   original matrix, i.e., (3, 6). For our example above, the output will be
   equal to:
 
+  ```python
     SparseTensor(indices=[[0, 0], [1, 1], [1, 3], [1, 4], [2, 0], [2, 3]],
                  values=[-3, 1, 4, 1, 5, 9],
                  shape=[3, 6])
+  ```
 
   Args:
     sp_ids: A `SparseTensor` with `values` property of type `int32`
