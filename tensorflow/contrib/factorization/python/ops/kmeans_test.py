@@ -171,8 +171,8 @@ class KMeansTest(tf.test.TestCase):
 
   def test_transform_with_cosine_distance(self):
     points = np.array(
-        [[2.5, 3.5], [2, 8], [3, 1], [3, 18],
-         [-2.5, -3.5], [-2, -8], [-3, -1], [-3, -18]], dtype=np.float32)
+        [[2.5, 0.1], [2, 0.2], [3, 0.1], [4, 0.2],
+         [0.1, 2.5], [0.2, 2], [0.1, 3], [0.2, 4]], dtype=np.float32)
 
     true_centers = [normalize(np.mean(normalize(points)[4:, :], axis=0,
                                       keepdims=True))[0],
@@ -183,8 +183,8 @@ class KMeansTest(tf.test.TestCase):
                     initial_clusters=kmeans_ops.RANDOM_INIT,
                     distance_metric=kmeans_ops.COSINE_DISTANCE,
                     use_mini_batch=self.use_mini_batch,
-                    config=self.config(3))
-    kmeans.fit(x=points, steps=30, batch_size=8)
+                    config=self.config(5))
+    kmeans.fit(x=points, steps=50, batch_size=8)
 
     centers = normalize(kmeans.clusters())
     self.assertAllClose(np.sort(centers, axis=0),
@@ -197,8 +197,8 @@ class KMeansTest(tf.test.TestCase):
 
   def test_predict_with_cosine_distance(self):
     points = np.array(
-        [[2.5, 3.5], [2, 8], [3, 1], [3, 18],
-         [-2.5, -3.5], [-2, -8], [-3, -1], [-3, -18]], dtype=np.float32)
+        [[2.5, 0.1], [2, 0.2], [3, 0.1], [4, 0.2],
+         [0.1, 2.5], [0.2, 2], [0.1, 3], [0.2, 4]], dtype=np.float32)
     true_centers = np.array(
         [normalize(np.mean(normalize(points)[0:4, :],
                            axis=0,
