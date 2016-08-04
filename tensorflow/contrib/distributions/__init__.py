@@ -25,6 +25,7 @@ initialized with parameters that define the distributions.
 
 ### Univariate (scalar) distributions
 
+@@Binomial
 @@Bernoulli
 @@Beta
 @@Categorical
@@ -50,6 +51,7 @@ initialized with parameters that define the distributions.
 
 @@Dirichlet
 @@DirichletMultinomial
+@@Multinomial
 
 ### Transformed distributions
 
@@ -79,6 +81,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
+from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.dirichlet import *
@@ -89,6 +92,7 @@ from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
 from tensorflow.contrib.distributions.python.ops.laplace import *
+from tensorflow.contrib.distributions.python.ops.multinomial import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *

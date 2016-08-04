@@ -34,9 +34,9 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
   Args:
     dist_a: instance of distributions.Distribution.
     dist_b: instance of distributions.Distribution.
-    allow_nan: If False (default), a runtime error is raised
+    allow_nan: If `False` (default), a runtime error is raised
       if the KL returns NaN values for any batch entry of the given
-      distributions.  If True, the KL may return a NaN for the given entry.
+      distributions.  If `True`, the KL may return a NaN for the given entry.
     name: (optional) Name scope to use for created operations.
 
   Returns:

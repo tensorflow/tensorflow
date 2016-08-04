@@ -105,9 +105,9 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
     which determines the covariance.
 
     Args:
-      mu: `float` or `double` tensor with shape `[N1,...,Nb, k]`, `b >= 0`.
-      cov: `float` or `double` instance of `OperatorPDBase` with same `dtype`
-        as `mu` and shape `[N1,...,Nb, k, k]`.
+      mu: Floating point tensor with shape `[N1,...,Nb, k]`, `b >= 0`.
+      cov: Instance of `OperatorPDBase` with same `dtype` as `mu` and shape
+        `[N1,...,Nb, k, k]`.
       validate_args: Whether to validate input with asserts.  If `validate_args`
         is `False`, and the inputs are invalid, correct behavior is not
         guaranteed.
@@ -466,7 +466,7 @@ class MultivariateNormalDiag(MultivariateNormalOperatorPD):
     The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 
     Args:
-      mu:  Rank `N + 1` `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+      mu:  Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
         `b >= 0`.
       diag_stdev: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
         representing the standard deviations.  Must be positive.
@@ -581,13 +581,13 @@ class MultivariateNormalDiagPlusVDVT(MultivariateNormalOperatorPD):
     ```
 
     Args:
-      mu:  Rank `n + 1` `float` or `double` tensor with shape `[N1,...,Nn, k]`,
+      mu:  Rank `n + 1` floating point tensor with shape `[N1,...,Nn, k]`,
         `n >= 0`.  The means.
-      diag_large:  Optional rank `n + 1` `float` or `double` tensor, shape
+      diag_large:  Optional rank `n + 1` floating point tensor, shape
         `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `M`.
-      v:  Rank `n + 1` `float` or `double` tensor, shape `[N1,...,Nn, k, r]`
+      v:  Rank `n + 1` floating point tensor, shape `[N1,...,Nn, k, r]`
         `n >= 0`.  Defines the matrix `V`.
-      diag_small:  Rank `n + 1` `float` or `double` tensor, shape
+      diag_small:  Rank `n + 1` floating point tensor, shape
         `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `D`.  Default
         is `None`, which means `D` will be the identity matrix.
       validate_args: Whether to validate input with asserts.  If `validate_args`
@@ -670,7 +670,7 @@ class MultivariateNormalCholesky(MultivariateNormalOperatorPD):
     factors, such that the covariance of each batch member is `chol chol^T`.
 
     Args:
-      mu: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+      mu: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
         `b >= 0`.
       chol: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
         `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as
@@ -750,7 +750,7 @@ class MultivariateNormalFull(MultivariateNormalOperatorPD):
     User must provide means `mu` and `sigma`, the mean and covariance.
 
     Args:
-      mu: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+      mu: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
         `b >= 0`.
       sigma: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
         `[N1,...,Nb, k, k]`.  Each batch member must be positive definite.
