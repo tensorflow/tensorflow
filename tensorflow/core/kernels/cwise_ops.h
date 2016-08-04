@@ -236,6 +236,110 @@ struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
   };
 };
 
+// tag for not complex number pass to tanh
+struct tanh_not_complex_tag {};
+// tag for complex number pass to tanh
+struct tanh_complex_tag {};
+// struct for tag dispatching
+template <typename T>
+struct tanh_dispatching_tag {
+  typedef tanh_not_complex_tag type;
+};
+// struct specify for complex<double>
+template <>
+struct tanh_dispatching_tag<std::complex<double>> {
+  typedef tanh_complex_tag type;
+};
+// struct specify for complex<float>
+template <>
+struct tanh_dispatching_tag<std::complex<float>> {
+  typedef tanh_complex_tag type;
+};
+// compute tanh for complex number
+template <typename T>
+const T tanh_dispatching(tanh_complex_tag, const T& _x) {
+  return numext::tanh(_x);
+}
+// compute tanh for not complex number
+template <typename T>
+const T tanh_dispatching(tanh_not_complex_tag, const T& _x) {
+  /** \internal \returns the hyperbolic tan of \a a (coeff-wise)
+        Doesn't do anything fancy, just a 13/6-degree rational interpolant which
+        is accurate up to a couple of ulp in the range [-9, 9], outside of which
+        the fl(tanh(x)) = +/-1. */
+
+  // Clamp the inputs to the range [-9, 9] since anything outside
+  // this range is +/-1.0f in single-precision.
+  const T plus_9 = static_cast<T>(9.0);
+  const T minus_9 = static_cast<T>(-9.0);
+  const T x = numext::maxi(minus_9, numext::mini(plus_9, _x));
+  // The monomial coefficients of the numerator polynomial (odd).
+  const T alpha_1 = static_cast<T>(4.89352455891786e-03);
+  const T alpha_3 = static_cast<T>(6.37261928875436e-04);
+  const T alpha_5 = static_cast<T>(1.48572235717979e-05);
+  const T alpha_7 = static_cast<T>(5.12229709037114e-08);
+  const T alpha_9 = static_cast<T>(-8.60467152213735e-11);
+  const T alpha_11 = static_cast<T>(2.00018790482477e-13);
+  const T alpha_13 = static_cast<T>(-2.76076847742355e-16);
+  // The monomial coefficients of the denominator polynomial (even).
+  const T beta_0 = static_cast<T>(4.89352518554385e-03);
+  const T beta_2 = static_cast<T>(2.26843463243900e-03);
+  const T beta_4 = static_cast<T>(1.18534705686654e-04);
+  const T beta_6 = static_cast<T>(1.19825839466702e-06);
+  // Since the polynomials are odd/even, we need x^2.
+  const T x2 = x * x;
+  // Evaluate the numerator polynomial p.
+  T p = x2 * alpha_13 + alpha_11;
+  p = x2 * p + alpha_9;
+  p = x2 * p + alpha_7;
+  p = x2 * p + alpha_5;
+  p = x2 * p + alpha_3;
+  p = x2 * p + alpha_1;
+  p = x * p;
+  // Evaluate the denominator polynomial p.
+  T q = x2 * beta_6 + beta_4;
+  q = x2 * q + beta_2;
+  q = x2 * q + beta_0;
+  // Divide the numerator by the denominator.
+  return p / q;
+}
+// tanh op
+template <typename T>
+struct scalar_tanh_op_google : scalar_tanh_op<T> {
+  EIGEN_DEVICE_FUNC inline const T operator()(const T& _x) const {
+    typedef typename tanh_dispatching_tag<T>::type tag;
+    return tanh_dispatching(tag(), _x);
+  }
+};
+// constexpr func return if tag is non complex
+constexpr bool tanh_traits_dispatching(tanh_complex_tag) { return false; }
+constexpr bool tanh_traits_dispatching(tanh_not_complex_tag) { return true; }
+// traits for tanh
+template <typename T>
+struct functor_traits<scalar_tanh_op_google<T>> {
+  typedef typename tanh_dispatching_tag<T>::type tag;
+  enum {
+    PacketAccess = packet_traits<T>::HasTanh,
+    Cost =
+        // only complex number is computed by naive tanh
+    (PacketAccess || tanh_traits_dispatching(tag())
+// The following numbers are based on the AVX implementation,
+#ifdef EIGEN_VECTORIZE_FMA
+         // Haswell can issue 2 add/mul/madd per cycle.
+         // 9 pmadd, 2 pmul, 1 div, 2 other
+         ? (2 * NumTraits<T>::AddCost + 6 * NumTraits<T>::MulCost +
+            NumTraits<T>::template Div<packet_traits<T>::HasDiv>::Cost)
+#else
+         ? (11 * NumTraits<T>::AddCost + 11 * NumTraits<T>::MulCost +
+            NumTraits<T>::template Div<packet_traits<T>::HasDiv>::Cost)
+#endif
+         // This number assumes a naive implementation of tanh
+         : (6 * NumTraits<T>::AddCost + 3 * NumTraits<T>::MulCost +
+            2 * NumTraits<T>::template Div<packet_traits<T>::HasDiv>::Cost +
+            functor_traits<scalar_exp_op<T>>::Cost))
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -344,7 +448,7 @@ template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T> > {};
 
 template <typename T>
-struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
+struct tanh : base<T, Eigen::internal::scalar_tanh_op_google<T> > {};
 
 template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
