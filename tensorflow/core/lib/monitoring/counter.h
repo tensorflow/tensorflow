@@ -79,11 +79,9 @@ class Counter {
     registration_handle_.reset();
   }
 
-  explicit Counter(
-      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def)
-      : metric_def_(metric_def),
-        registration_handle_(
-            ExportRegistry::Default()->Register(&metric_def_)) {}
+  // Creates the metric based on the metric-definition.
+  static Counter* New(
+      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -91,6 +89,12 @@ class Counter {
   CounterCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
 
  private:
+  explicit Counter(
+      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def)
+      : metric_def_(metric_def),
+        registration_handle_(
+            ExportRegistry::Default()->Register(&metric_def_)) {}
+
   mutable mutex mu_;
 
   // The metric definition. This will be used to identify the metric when we
@@ -108,6 +112,12 @@ class Counter {
 ////
 //  Implementation details follow. API readers may skip.
 ////
+
+template <int NumLabels>
+Counter<NumLabels>* Counter<NumLabels>::New(
+    const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def) {
+  return new Counter<NumLabels>(metric_def);
+}
 
 inline void CounterCell::IncrementBy(const int64 step) {
   DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
