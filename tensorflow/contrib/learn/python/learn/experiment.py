@@ -21,7 +21,9 @@ from __future__ import print_function
 
 import time
 
+from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors
+from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
@@ -47,7 +49,7 @@ class Experiment(object):
     """Constructor for `Experiment`.
 
     Args:
-      estimator: `Estimator` object.
+      estimator: Object implementing `Trainable` and `Evaluable`.
       train_input_fn: function, returns features and targets for training.
       eval_input_fn: function, returns features and targets for evaluation. If
         `eval_steps` is `None`, this should be configured only to produce for a
@@ -67,7 +69,14 @@ class Experiment(object):
       continuous_eval_throttle_secs: Do not re-evaluate unless the last
         evaluation was started at least this many seconds ago for
         continuous_eval().
+
+    Raises:
+      ValueError: if `estimator` does not implement `Evaluable` and `Trainable`.
     """
+    if not isinstance(estimator, evaluable.Evaluable):
+      raise ValueError("`estimator` must implement `Evaluable`.")
+    if not isinstance(estimator, trainable.Trainable):
+      raise ValueError("`estimator` must implement `Trainable`.")
     super(Experiment, self).__init__()
     self._estimator = estimator
     self._train_input_fn = train_input_fn
