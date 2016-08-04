@@ -56,7 +56,7 @@ factors, such that the covariance of each batch member is `chol chol^T`.
 ##### Args:
 
 
-*  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+*  <b>`mu`</b>: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as

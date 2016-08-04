@@ -83,13 +83,13 @@ D = is diagonal (r x r), optional (defaults to identity).
 ##### Args:
 
 
-*  <b>`mu`</b>: Rank `n + 1` `float` or `double` tensor with shape `[N1,...,Nn, k]`,
+*  <b>`mu`</b>: Rank `n + 1` floating point tensor with shape `[N1,...,Nn, k]`,
     `n >= 0`.  The means.
-*  <b>`diag_large`</b>: Optional rank `n + 1` `float` or `double` tensor, shape
+*  <b>`diag_large`</b>: Optional rank `n + 1` floating point tensor, shape
     `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `M`.
-*  <b>`v`</b>: Rank `n + 1` `float` or `double` tensor, shape `[N1,...,Nn, k, r]`
+*  <b>`v`</b>: Rank `n + 1` floating point tensor, shape `[N1,...,Nn, k, r]`
     `n >= 0`.  Defines the matrix `V`.
-*  <b>`diag_small`</b>: Rank `n + 1` `float` or `double` tensor, shape
+*  <b>`diag_small`</b>: Rank `n + 1` floating point tensor, shape
     `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `D`.  Default
     is `None`, which means `D` will be the identity matrix.
 *  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
