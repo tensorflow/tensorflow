@@ -279,7 +279,7 @@ class _SparseColumn(_FeatureColumn,
         initializer=init_ops.zeros_initializer,
         combiner=self.combiner,
         trainable=trainable,
-        name=self.name + "_weights")
+        name=self.name)
 
 
 class _SparseColumnIntegerized(_SparseColumn):
@@ -524,7 +524,7 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
         initializer=init_ops.zeros_initializer,
         combiner=self.sparse_id_column.combiner,
         trainable=trainable,
-        name=self.name + "_weights")
+        name=self.name)
 
 
 def weighted_sparse_column(sparse_id_column,
@@ -674,7 +674,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
         initializer=self.initializer,
         combiner=self.combiner,
         trainable=trainable,
-        name=self.name + "_weights")
+        name=self.name)
     if self.ckpt_to_load_from is not None:
       weights_to_restore = embedding_weights
       if len(embedding_weights) == 1:
@@ -770,7 +770,7 @@ class _HashedEmbeddingColumn(collections.namedtuple(
                          weight_collections=None,
                          trainable=True):
     embeddings = _create_embeddings(
-        name=self.name + "_weights",
+        name=self.name,
         shape=[self.size],
         initializer=self.initializer,
         dtype=dtypes.float32,
@@ -1104,7 +1104,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
         initializer=init_ops.zeros_initializer,
         combiner="sum",
         trainable=trainable,
-        name=self.name + "_weights")
+        name=self.name)
 
 
 def bucketized_column(source_column, boundaries):
@@ -1292,7 +1292,7 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
         initializer=init_ops.zeros_initializer,
         combiner=self.combiner,
         trainable=trainable,
-        name=self.name + "_weights")
+        name=self.name)
     if self.ckpt_to_load_from is not None:
       weights_to_restore = embedding_weights
       if len(embedding_weights) == 1:
@@ -1561,7 +1561,7 @@ def _create_embeddings(name, shape, dtype, initializer, trainable,
   with just one variable.
 
   Args:
-    name: A string specifying the name of the embedding variable.
+    name: A string. The name of the embedding variable will be name + _weights.
     shape: shape of the embeddding. Note this is not the shape of partitioned
       variables.
     dtype: type of the embedding. Also the shape of each partitioned variable.
@@ -1623,7 +1623,7 @@ def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
     A Tensor with shape [batch_size, dimension] and embedding Variable.
   """
 
-  embeddings = _create_embeddings(name=name,
+  embeddings = _create_embeddings(name=name + "_weights",
                                   shape=[vocab_size, dimension],
                                   dtype=dtypes.float32,
                                   initializer=initializer,
@@ -1635,4 +1635,4 @@ def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
       sparse_weights=weight_tensor,
       default_id=0,
       combiner=combiner,
-      name=name), embeddings
+      name=name + "_weights"), embeddings
