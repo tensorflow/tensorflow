@@ -163,6 +163,10 @@ smoothing.
         _seriesDataCache: {
           type: Object,
           value: function() { return {} }
+        },
+        _makeChartAsyncCallbackId: {
+          type: Number,
+          value: null
         }
       },
       observers: [
@@ -216,21 +220,25 @@ smoothing.
       detached: function() {
         this._attached = false;
       },
+      ready: function() {
+        this.scopeSubtree(this.$.tooltip, true);
+        this.scopeSubtree(this.$.chartsvg, true);
+      },
       _makeChart: function(xType, colorScale, _attached) {
-        if(!this._attached) {
-          return;
+        if (this._makeChartAsyncHandle === null) {
+          this.cancelAsync(this._makeChartAsyncCallbackId);
         }
 
-        if (this._chart) this._chart.destroy();
-        var tooltip = d3.select(this.$.tooltip);
-        this.scopeSubtree(this.$.tooltip, true);
-        var chart = new VZ.LineChart(xType, colorScale, tooltip);
-        var svg = d3.select(this.$.chartsvg);
-        this.async(function() {
+        this._makeChartAsyncHandle = this.async(function() {
+          this._makeChartAsyncCallbackId = null;
+          if (!this._attached) return;
+          if (this._chart) this._chart.destroy();
+          var tooltip = d3.select(this.$.tooltip);
+          var chart = new VZ.LineChart(xType, colorScale, tooltip);
+          var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
-          this.scopeSubtree(this.$.chartsvg, true);
           this._chart = chart;
-        }, 350);
+        }.bind(this), 350);
       },
       _reloadFromCache: function() {
         if(this._chart) {
