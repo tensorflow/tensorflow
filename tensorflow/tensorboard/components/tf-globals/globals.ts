@@ -16,7 +16,7 @@ limitations under the License.
 /* tslint:disable:no-namespace */
 module TF.Globals {
   // The names of TensorBoard tabs.
-  export var TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
+  export var TABS = ['events', 'images', 'audio', 'graphs', 'distributions'];
 
   // If true, TensorBoard stores its hash in the URI state.
   // If false, tab switching in TensorBoard will not update location hash,
