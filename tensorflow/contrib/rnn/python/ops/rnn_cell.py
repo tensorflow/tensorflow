@@ -664,7 +664,20 @@ class GridLSTMCell(rnn_cell.RNNCell):
     return freq_inputs
 
 class ESNCell(rnn_cell.RNNCell):
-  """Echo State Network Cell."""
+  """Echo State Network Cell.
+
+    Based on http://www.faculty.jacobs-university.de/hjaeger/pubs/EchoStatesTechRep.pdf
+    It doesn't consider output feedback, specifically it models just the reservoir.
+
+    Here a practical guide to use Echo State Networks:
+    http://minds.jacobs-university.de/sites/default/files/uploads/papers/PracticalESN.pdf
+
+    Since at the moment TF doesn't provide a way to compute spectral radius
+    of a matrix the echo state property necessary condition `max(eig(W)) < 1` is approximated
+    scaling the norm 2 of the reservoir matrix which is an upper bound of the spectral radius.
+    See https://en.wikipedia.org/wiki/Matrix_norm#Induced_norm
+
+  """
 
   def __init__(self, num_units, wr2_scale=0.7, connectivity=0.1, leaky=1.0, activation=math_ops.tanh,
                win_init=init_ops.random_normal_initializer(),
@@ -673,7 +686,7 @@ class ESNCell(rnn_cell.RNNCell):
     """Initialize the Echo State Network Cell.
 
     Args:
-      num_units: Int, the number of units in the reservoir
+      num_units: Int or 0-D Int Tensor, the number of units in the reservoir
       wr2_scale: desired norm2 of reservoir weight matrix.
         `wr2_scale < 1` is a sufficient condition for echo state property.
       connectivity: connection probability between two reservoir units
@@ -682,9 +695,6 @@ class ESNCell(rnn_cell.RNNCell):
       win_init: initializer for input weights
       wr_init: used to initialize reservoir weights before applying connectivity mask and scaling
       bias_init: initializer for biases
-
-    The necessary condition for the Echo State Property is `max(eig(wr)) < 1`
-    however can't find a way to compute the spectral radius in tensorflow
     """
     self._num_units = num_units
     self._leaky = leaky
@@ -725,8 +735,20 @@ class ESNCell(rnn_cell.RNNCell):
     return self._num_units
 
   def __call__(self, inputs, state, scope=None):
-    """Echo State Network Cell:
-        output = new_state = (1 - leaky) * state + leaky * activation(Win * input + Wr * state + B)."""
+    """ Run one step of ESN Cell
+
+        Args:
+          inputs: `2-D Tensor` with shape `[batch_size x input_size]`.
+          state: `2-D Tensor` with shape `[batch_size x self.state_size]`.
+          scope: VariableScope for the created subgraph; defaults to class `ESNCell`.
+
+        Returns:
+          A tuple `(output, new_state)`, computed as
+          `output = new_state = (1 - leaky) * state + leaky * activation(Win * input + Wr * state + B)`.
+
+        Raises:
+          ValueError: if `inputs` or `state` tensor size mismatch the previously provided dimension.
+          """
 
     input_size = inputs.get_shape().as_list()[1]
     dtype = inputs.dtype
