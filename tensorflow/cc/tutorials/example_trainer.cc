@@ -52,19 +52,22 @@ GraphDef CreateGraphDef() {
   Scope root = Scope::NewRootScope();
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
-  // a = [3 2; -1 0]
-  auto a = Const(root, {{3.f, 2.f}, {-1.f, 0.f}});
+  // A = [3 2; -1 0].  Using Const<float> means the result will be a
+  // float tensor even though the initializer has integers.
+  auto a = Const<float>(root, {{3, 2}, {-1, 0}});
 
   // x = [1.0; 1.0]
   auto x = Const(root.WithOpName("x"), {{1.f}, {1.f}});
 
-  // y = a * x
+  // y = A * x
   auto y = MatMul(root.WithOpName("y"), a, x);
 
   // y2 = y.^2
   auto y2 = Square(root, y);
 
-  // y2_sum = sum(y2)
+  // y2_sum = sum(y2).  Note that you can pass constants directly as
+  // inputs.  Sum() will automatically create a Const node to hold the
+  // 0 value.
   auto y2_sum = Sum(root, y2, 0);
 
   // y_norm = sqrt(y2_sum)
