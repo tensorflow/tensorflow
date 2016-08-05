@@ -11,6 +11,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -32,7 +33,6 @@ py_tests(
         "decode_png_op_test.py",
         "decode_raw_op_test.py",
         "determinant_op_test.py",
-        "diag_op_test.py",
         "edit_distance_op_test.py",
         "fifo_queue_test.py",
         "identity_op_py_test.py",
@@ -71,11 +71,25 @@ py_tests(
     ],
 )
 
+cuda_py_tests(
+    name = "cast_op_test",
+    size = "small",
+    srcs = ["cast_op_test.py"],
+    tags = ["noasan"],
+)
+
 cuda_py_test(
     name = "dense_update_ops_no_tsan_test",
     size = "small",
     srcs = ["dense_update_ops_no_tsan_test.py"],
     tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "diag_op_test",
+    size = "medium",
+    srcs = ["diag_op_test.py"],
+    shard_count = 2,
 )
 
 py_tests(
@@ -85,13 +99,6 @@ py_tests(
     additional_deps = [
         "//tensorflow/python:lib",
     ],
-)
-
-cuda_py_tests(
-    name = "cast_op_test",
-    size = "small",
-    srcs = ["cast_op_test.py"],
-    tags = ["noasan"],
 )
 
 cuda_py_tests(
@@ -108,14 +115,12 @@ cuda_py_tests(
         "constant_op_test.py",
         "control_flow_ops_py_test.py",
         "conv1d_test.py",
-        "conv2d_backprop_filter_grad_test.py",
         "conv2d_transpose_test.py",
         "conv3d_backprop_filter_v2_grad_test.py",
         "cross_grad_test.py",
         "denormal_test.py",
         "dense_update_ops_test.py",
         "depthtospace_op_test.py",
-        "depthwise_conv_op_test.py",
         "division_past_test.py",
         "dynamic_partition_op_test.py",
         "dynamic_stitch_op_test.py",
@@ -135,7 +140,6 @@ cuda_py_tests(
         "pack_op_test.py",
         "pad_op_test.py",
         "padding_fifo_queue_test.py",
-        "pooling_ops_3d_test.py",
         "py_func_test.py",
         "random_crop_test.py",
         "random_ops_test.py",
@@ -177,10 +181,14 @@ cuda_py_tests(
     name = "medium_kernel_tests",
     size = "medium",
     srcs = [
+        "atrous_conv2d_test.py",
+        "conv2d_backprop_filter_grad_test.py",
         "conv3d_transpose_test.py",
         "conv_ops_test.py",
+        "depthwise_conv_op_test.py",  # http://b/30603882
         "division_future_test.py",
         "fft_ops_test.py",
+        "pooling_ops_3d_test.py",  # http://b/30600785
         "pooling_ops_test.py",
         "random_gamma_test.py",
         "rnn_test.py",
@@ -209,6 +217,7 @@ cuda_py_tests(
         "cwise_ops_test.py",
         "embedding_ops_test.py",
         "linalg_grad_test.py",
+        "svd_op_test.py",
     ],
     shard_count = 50,
     tags = ["notap"],  # b/30226163

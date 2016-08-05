@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """The Beta distribution class."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -95,6 +96,7 @@ class Beta(distribution.Distribution):
   x = [.2, .3, .9]
   dist.pdf(x)  # Shape [2]
   ```
+
   """
 
   def __init__(self, a, b, validate_args=True, allow_nan_stats=False,
@@ -102,20 +104,20 @@ class Beta(distribution.Distribution):
     """Initialize a batch of Beta distributions.
 
     Args:
-      a:  Positive `float` or `double` tensor with shape broadcastable to
+      a:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different Beta distributions. This also defines the
          dtype of the distribution.
-      b:  Positive `float` or `double` tensor with shape broadcastable to
+      b:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different Beta distributions.
       validate_args: Whether to assert valid values for parameters `a` and `b`,
-        and `x` in `prob` and `log_prob`.  If False, correct behavior is not
+        and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
         guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Examples:
@@ -127,6 +129,7 @@ class Beta(distribution.Distribution):
     # Define a 2-batch.
     dist = Beta([1.0, 2.0], [4.0, 5.0])
     ```
+
     """
     with ops.op_scope([a, b], name):
       with ops.control_dependencies([
@@ -276,8 +279,14 @@ class Beta(distribution.Distribution):
                array_ops.ones_like(a_b_sum, dtype=self.dtype)))
         else:
           return control_flow_ops.with_dependencies([
-              check_ops.assert_less(one, a),
-              check_ops.assert_less(one, b)], mode)
+              check_ops.assert_less(
+                  one, a,
+                  message="mode not defined for components of a <= 1"
+              ),
+              check_ops.assert_less(
+                  one, b,
+                  message="mode not defined for components of b <= 1"
+              )], mode)
 
   def entropy(self, name="entropy"):
     """Entropy of the distribution in nats."""
@@ -306,7 +315,7 @@ class Beta(distribution.Distribution):
     """`Log(P[counts])`, computed for every batch member.
 
     Args:
-      x:  Non-negative `float` or `double`, tensor whose shape can
+      x:  Non-negative floating point tensor whose shape can
         be broadcast with `self.a` and `self.b`.  For fixed leading
         dimensions, the last dimension represents counts for the corresponding
         Beta distribution in `self.a` and `self.b`. `x` is only legal if
@@ -334,7 +343,7 @@ class Beta(distribution.Distribution):
     """`P[x]`, computed for every batch member.
 
     Args:
-      x:  Non-negative `float`, `double` tensor whose shape can
+      x:  Non-negative floating point tensor whose shape can
         be broadcast with `self.a` and `self.b`.  For fixed leading
         dimensions, the last dimension represents x for the corresponding Beta
         distribution in `self.a` and `self.b`. `x` is only legal if is

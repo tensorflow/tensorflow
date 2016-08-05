@@ -30,18 +30,18 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 ##### Args:
 
 
-*  <b>`alpha`</b>: `float` or `double` tensor, the shape params of the
+*  <b>`alpha`</b>: Floating point tensor, the shape params of the
     distribution(s).
     alpha must contain only positive values.
-*  <b>`beta`</b>: `float` or `double` tensor, the scale params of the distribution(s).
+*  <b>`beta`</b>: Floating point tensor, the scale params of the distribution(s).
     beta must contain only positive values.
 *  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:

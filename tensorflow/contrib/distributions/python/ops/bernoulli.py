@@ -19,15 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import kullback_leibler  # pylint: disable=line-too-long
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -38,10 +36,6 @@ class Bernoulli(distribution.Distribution):
 
   The Bernoulli distribution is parameterized by p, the probability of a
   positive event.
-
-  Note, the following methods of the base class aren't implemented:
-    * cdf
-    * log_cdf
   """
 
   def __init__(self,
@@ -64,10 +58,10 @@ class Bernoulli(distribution.Distribution):
       dtype: dtype for samples.
       validate_args: Whether to assert that `0 <= p <= 1`. If not validate_args,
        `log_pmf` may return nans.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: A name for this distribution.
 
     Raises:
@@ -77,27 +71,8 @@ class Bernoulli(distribution.Distribution):
     self._name = name
     self._dtype = dtype
     self._validate_args = validate_args
-    check_op = check_ops.assert_less_equal
-    if p is None and logits is None:
-      raise ValueError("Must pass p or logits.")
-    elif p is not None and logits is not None:
-      raise ValueError("Must pass either p or logits, not both.")
-    elif p is None:
-      with ops.op_scope([logits], name):
-        self._logits = array_ops.identity(logits, name="logits")
-      with ops.name_scope(name):
-        with ops.name_scope("p"):
-          self._p = math_ops.sigmoid(self._logits)
-    elif logits is None:
-      with ops.name_scope(name):
-        with ops.name_scope("p"):
-          p = array_ops.identity(p)
-          one = constant_op.constant(1., p.dtype)
-          zero = constant_op.constant(0., p.dtype)
-          self._p = control_flow_ops.with_dependencies(
-              [check_op(p, one), check_op(zero, p)] if validate_args else [], p)
-        with ops.name_scope("logits"):
-          self._logits = math_ops.log(self._p) - math_ops.log(1. - self._p)
+    self._logits, self._p = distribution_util.get_logits_and_prob(
+        name=name, logits=logits, p=p, validate_args=validate_args)
     with ops.name_scope(name):
       with ops.name_scope("q"):
         self._q = 1. - self._p
@@ -184,8 +159,12 @@ class Bernoulli(distribution.Distribution):
         event = ops.convert_to_tensor(event, name="event")
         event = math_ops.cast(event, self.logits.dtype)
         logits = self.logits
-        if ((event.get_shape().ndims is not None) or
-            (logits.get_shape().ndims is not None) or
+        # sigmoid_cross_entropy_with_logits doesn't broadcast shape,
+        # so we do this here.
+        # TODO(b/30637701): Check dynamic shape, and don't broadcast if the
+        # dynamic shapes are the same.
+        if (not event.get_shape().is_fully_defined() or
+            not logits.get_shape().is_fully_defined() or
             event.get_shape() != logits.get_shape()):
           logits = array_ops.ones_like(event) * logits
           event = array_ops.ones_like(logits) * event
@@ -206,8 +185,7 @@ class Bernoulli(distribution.Distribution):
     with ops.name_scope(self.name):
       with ops.op_scope([self.p, n], name):
         n = ops.convert_to_tensor(n, name="n")
-        new_shape = array_ops.concat(
-            0, [array_ops.expand_dims(n, 0), self.batch_shape()])
+        new_shape = array_ops.concat(0, ([n], self.batch_shape()))
         uniform = random_ops.random_uniform(
             new_shape, seed=seed, dtype=dtypes.float32)
         sample = math_ops.less(uniform, self.p)

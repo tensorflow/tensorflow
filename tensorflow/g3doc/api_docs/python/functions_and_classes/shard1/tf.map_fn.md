@@ -1,4 +1,4 @@
-### `tf.map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#map_fn}
+### `tf.map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True, swap_memory=False, infer_shape=True, name=None)` {#map_fn}
 
 map on the list of tensors unpacked from `elems` on dimension 0.
 
@@ -40,6 +40,7 @@ nested) tuple of types matching the output of `fn`.
     in parallel.
 *  <b>`back_prop`</b>: (optional) True enables support for back propagation.
 *  <b>`swap_memory`</b>: (optional) True enables GPU-CPU memory swapping.
+*  <b>`infer_shape`</b>: (optional) False disables tests for consistent output shapes.
 *  <b>`name`</b>: (optional) Name prefix for the returned tensors.
 
 ##### Returns:

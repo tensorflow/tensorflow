@@ -23,6 +23,7 @@ import tempfile
 
 import numpy as np
 import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 
 
@@ -458,10 +459,39 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertLess(loss2, 0.01)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
-    self.assertNotIn('dnn_logits/biases', classifier.get_variable_names())
-    self.assertNotIn('dnn_logits/weights', classifier.get_variable_names())
+    self.assertNotIn('dnn/logits/biases', classifier.get_variable_names())
+    self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
     self.assertEquals(1, len(classifier.linear_bias_))
-    self.assertEquals(100, len(classifier.linear_weights_))
+    self.assertEquals(2, len(classifier.linear_weights_))
+    self.assertEquals(1, len(classifier.linear_weights_['linear/age/weight']))
+    self.assertEquals(
+        100, len(classifier.linear_weights_['linear/language_weights']))
+
+  def testLinearOnlyOneFeature(self):
+    """Tests that linear-only instantiation works for one feature only."""
+    def input_fn():
+      return {
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 99)
+
+    classifier = tf.contrib.learn.DNNLinearCombinedClassifier(
+        linear_feature_columns=[language])
+    classifier.fit(input_fn=input_fn, steps=100)
+    loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    classifier.fit(input_fn=input_fn, steps=200)
+    loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss2, loss1)
+    self.assertLess(loss2, 0.01)
+    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
+    self.assertNotIn('dnn/logits/biases', classifier.get_variable_names())
+    self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
+    self.assertEquals(1, len(classifier.linear_bias_))
+    self.assertEquals(99, len(classifier.linear_weights_))
 
   def testDNNOnly(self):
     """Tests that DNN-only instantiation works."""

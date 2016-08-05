@@ -1,4 +1,4 @@
-### `tf.sparse_merge(sp_ids, sp_values, vocab_size, name=None)` {#sparse_merge}
+### `tf.sparse_merge(sp_ids, sp_values, vocab_size, name=None, already_sorted=False)` {#sparse_merge}
 
 Combines a batch of feature ids and values into a single `SparseTensor`.
 
@@ -18,14 +18,17 @@ The `SparseTensor` returned by this function has the following properties:
 
 For example, consider the following feature vectors:
 
+```python
   vector1 = [-3, 0, 0, 0, 0, 0]
   vector2 = [ 0, 1, 0, 4, 1, 0]
   vector3 = [ 5, 0, 0, 9, 0, 0]
+```
 
 These might be stored sparsely in the following Example protos by storing
 only the feature ids (column number if the vectors are treated as a matrix)
 of the non-zero elements and the corresponding values:
 
+```python
   examples = [Example(features={
                   "ids": Feature(int64_list=Int64List(value=[0])),
                   "values": Feature(float_list=FloatList(value=[-3]))}),
@@ -35,6 +38,7 @@ of the non-zero elements and the corresponding values:
               Example(features={
                   "ids": Feature(int64_list=Int64List(value=[0, 3])),
                   "values": Feature(float_list=FloatList(value=[5, 9]))})]
+```
 
 The result of calling parse_example on these examples will produce a
 dictionary with entries for "ids" and "values". Passing those two objects
@@ -47,9 +51,11 @@ batch, and the second dimension is the column number, i.e., the feature id);
 original matrix, i.e., (3, 6). For our example above, the output will be
 equal to:
 
+```python
   SparseTensor(indices=[[0, 0], [1, 1], [1, 3], [1, 4], [2, 0], [2, 3]],
                values=[-3, 1, 4, 1, 5, 9],
                shape=[3, 6])
+```
 
 ##### Args:
 
@@ -60,6 +66,9 @@ equal to:
 *  <b>`vocab_size`</b>: A scalar `int64` Tensor (or Python int) containing the new size
     of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional)
+*  <b>`already_sorted`</b>: A boolean to specify whether the per-batch values in
+   `sp_values` are already sorted. If so skip sorting, False by default
+   (optional).
 
 ##### Returns:
 

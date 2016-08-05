@@ -117,10 +117,11 @@ class DataFrame(object):
       value = [value]
     self.assign(**dict(zip(key, value)))
 
-  def build(self):
+  def build(self, **kwargs):
     # We do not allow passing a cache here, because that would encourage
     # working around the rule that DataFrames cannot be expected to be
     # synced with each other (e.g., they shuffle independently).
     cache = {}
-    tensors = {name: c.build(cache) for name, c in self._columns.items()}
+    tensors = {name: c.build(cache, **kwargs)
+               for name, c in self._columns.items()}
     return tensors

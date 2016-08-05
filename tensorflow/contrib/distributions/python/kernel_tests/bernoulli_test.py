@@ -57,10 +57,17 @@ class BernoulliTest(tf.test.TestCase):
       self.assertAllClose(scipy.special.logit(p), dist.logits.eval())
 
   def testInvalidP(self):
-    invalid_ps = [1.01, -0.01, 2., -3.]
+    invalid_ps = [1.01, 2.]
     for p in invalid_ps:
       with self.test_session():
-        with self.assertRaisesOpError("x <= y"):
+        with self.assertRaisesOpError("p has components greater than 1"):
+          dist = tf.contrib.distributions.Bernoulli(p=p)
+          dist.p.eval()
+
+    invalid_ps = [-0.01, -3.]
+    for p in invalid_ps:
+      with self.test_session():
+        with self.assertRaisesOpError("Condition x >= 0"):
           dist = tf.contrib.distributions.Bernoulli(p=p)
           dist.p.eval()
 

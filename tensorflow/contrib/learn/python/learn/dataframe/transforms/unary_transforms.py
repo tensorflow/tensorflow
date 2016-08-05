@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,7 +43,8 @@ UNARY_TRANSFORMS = [("__neg__", math_ops.neg),
                     ("lgamma", math_ops.lgamma),
                     ("digamma", math_ops.digamma),
                     ("erf", math_ops.erf),
-                    ("erfc", math_ops.erfc)]
+                    ("erfc", math_ops.erfc),
+                    ("__invert__", math_ops.logical_not, bool)]
 
 DOC_FORMAT_STRING = (
     "A `Transform` that wraps the `{0}` operation. "
@@ -52,7 +53,7 @@ DOC_FORMAT_STRING = (
 
 
 # pylint: disable=unused-argument
-def register_unary_op(registered_name, operation):
+def register_unary_op(registered_name, operation, ignore_dtype=None):
   """Creates a `Transform` that wraps a unary tensorflow operation.
 
   If `registered_name` is specified, the `Transform` is registered as a member
@@ -62,6 +63,8 @@ def register_unary_op(registered_name, operation):
     registered_name: the name of the member function of `Series` corresponding
       to the returned `Transform`.
     operation: a unary TensorFlow operation.
+    ignore_dtype: an optional dtype, not used here but needed for symmetry with
+      test.
   """
 
   doc = DOC_FORMAT_STRING.format(operation.__name__, operation.__doc__)
@@ -78,7 +81,7 @@ def register_unary_op(registered_name, operation):
   def _output_names(self):
     return "output"
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     input_tensor = input_tensors[0]
     if isinstance(input_tensor, ops.SparseTensor):
       result = ops.SparseTensor(input_tensor.indices,

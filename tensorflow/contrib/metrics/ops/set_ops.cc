@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 REGISTER_OP("SetSize")
     .Input("set_indices: int64")
@@ -24,6 +28,7 @@ REGISTER_OP("SetSize")
     .Attr("validate_indices: bool = true")
     .Attr("T: {int8, int16, int32, int64, uint8, uint16, string}")
     .Output("size: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Number of unique elements along last dimension of input `set`.
 
@@ -51,6 +56,12 @@ REGISTER_OP("DenseToDenseSetOperation")
     .Output("result_indices: int64")
     .Output("result_values: T")
     .Output("result_shape: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->Dim(c->input(0), 0), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies set operation along last dimension of 2 `Tensor` inputs.
 
@@ -84,6 +95,12 @@ REGISTER_OP("DenseToSparseSetOperation")
     .Output("result_indices: int64")
     .Output("result_values: T")
     .Output("result_shape: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->Dim(c->input(0), 0), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies set operation along last dimension of `Tensor` and `SparseTensor`.
 
@@ -132,6 +149,12 @@ REGISTER_OP("SparseToSparseSetOperation")
     .Output("result_indices: int64")
     .Output("result_values: T")
     .Output("result_shape: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies set operation along last dimension of 2 `SparseTensor` inputs.
 

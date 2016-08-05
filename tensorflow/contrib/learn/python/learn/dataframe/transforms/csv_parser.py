@@ -58,7 +58,7 @@ class CSVParser(transform.Transform):
   def default_values(self):
     return self._default_values
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     default_consts = [constant_op.constant(d, shape=[1])
                       for d in self._default_values]
     parsed_values = parsing_ops.decode_csv(input_tensors[0],

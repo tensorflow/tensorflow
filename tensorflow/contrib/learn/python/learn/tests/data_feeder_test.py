@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import six
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import tensorflow as tf
 # pylint: disable=wildcard-import
@@ -30,6 +31,68 @@ from tensorflow.contrib.learn.python.learn.learn_io import *
 class DataFeederTest(tf.test.TestCase):
   # pylint: disable=undefined-variable
   """Tests for `DataFeeder`."""
+
+  def _assert_raises(self, input_data):
+    with self.assertRaisesRegexp(TypeError, 'annot convert'):
+      data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
+
+  def test_input_uint32(self):
+    self._assert_raises(np.matrix([[1, 2], [3, 4]], dtype=np.uint32))
+
+  def test_input_uint64(self):
+    self._assert_raises(np.matrix([[1, 2], [3, 4]], dtype=np.uint64))
+
+  def _assert_dtype(self, expected_np_dtype, expected_tf_dtype, input_data):
+    feeder = data_feeder.DataFeeder(input_data, None, n_classes=0, batch_size=1)
+    self.assertEqual(expected_np_dtype, feeder.input_dtype)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inp, _ = feeder.input_builder()
+      self.assertEqual(expected_tf_dtype, inp.dtype)
+
+  def test_input_int8(self):
+    self._assert_dtype(
+        np.int8, tf.int8, np.matrix([[1, 2], [3, 4]], dtype=np.int8))
+
+  def test_input_int16(self):
+    self._assert_dtype(
+        np.int16, tf.int16, np.matrix([[1, 2], [3, 4]], dtype=np.int16))
+
+  def test_input_int32(self):
+    self._assert_dtype(
+        np.int32, tf.int32, np.matrix([[1, 2], [3, 4]], dtype=np.int32))
+
+  def test_input_int64(self):
+    self._assert_dtype(
+        np.int64, tf.int64, np.matrix([[1, 2], [3, 4]], dtype=np.int64))
+
+  def test_input_uint8(self):
+    self._assert_dtype(
+        np.uint8, tf.uint8, np.matrix([[1, 2], [3, 4]], dtype=np.uint8))
+
+  def test_input_uint16(self):
+    self._assert_dtype(
+        np.uint16, tf.uint16, np.matrix([[1, 2], [3, 4]], dtype=np.uint16))
+
+  def test_input_float16(self):
+    self._assert_dtype(
+        np.float16, tf.float16, np.matrix([[1, 2], [3, 4]], dtype=np.float16))
+
+  def test_input_float32(self):
+    self._assert_dtype(
+        np.float32, tf.float32, np.matrix([[1, 2], [3, 4]], dtype=np.float32))
+
+  def test_input_float64(self):
+    self._assert_dtype(
+        np.float64, tf.float64, np.matrix([[1, 2], [3, 4]], dtype=np.float64))
+
+  def test_input_bool(self):
+    self._assert_dtype(
+        np.bool, tf.bool,
+        np.array([[False for _ in xrange(2)] for _ in xrange(2)]))
+
+  def test_input_string(self):
+    input_data = np.array([['str%d' % i for i in xrange(2)] for _ in xrange(2)])
+    self._assert_dtype(input_data.dtype, tf.string, input_data)
 
   def test_unsupervised(self):
     data = np.matrix([[1, 2], [2, 3], [3, 4]])

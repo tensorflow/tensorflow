@@ -730,12 +730,14 @@ Status DirectSession::GetOrCreateExecutors(
   options.fetch_endpoints = outputs_sorted;
   options.target_nodes = tn_sorted;
 
+  std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
+
   // The executor_lock_ is intentionally released while executor is
   // being created.
   std::unordered_map<string, std::unique_ptr<Graph>> graphs;
-  TF_RETURN_IF_ERROR(CreateGraphs(options, &graphs, run_state_args));
+  TF_RETURN_IF_ERROR(
+      CreateGraphs(options, &graphs, &ek->flib_def, run_state_args));
 
-  std::unique_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
     std::unordered_set<StringPiece, StringPiece::Hasher> names;
@@ -769,7 +771,7 @@ Status DirectSession::GetOrCreateExecutors(
     auto* item = &(ek->items.back());
     item->flib.reset(
         NewFunctionLibraryRuntime(device_mgr_.get(), device, graph_def_version,
-                                  flib_def_.get(), optimizer_opts));
+                                  ek->flib_def.get(), optimizer_opts));
 
     LocalExecutorParams params;
     params.device = device;
@@ -848,6 +850,7 @@ Status DirectSession::GetOrCreateExecutors(
 Status DirectSession::CreateGraphs(
     const BuildGraphOptions& options,
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
+    std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args) {
   mutex_lock l(graph_def_lock_);
   std::unique_ptr<SimpleClientGraph> client_graph;
@@ -964,7 +967,8 @@ Status DirectSession::CreateGraphs(
     if (!s.ok()) {
       break;
     }
-    std::unique_ptr<Graph> device_graph(new Graph(flib_def_.get()));
+    std::unique_ptr<Graph> device_graph(
+        new Graph(client_graph->flib_def.get()));
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now
     // allow.
@@ -974,6 +978,7 @@ Status DirectSession::CreateGraphs(
         ConvertGraphDefToGraph(device_opts, *graph_def, device_graph.get()));
     outputs->emplace(partition_name, std::move(device_graph));
   }
+  *flib_def = std::move(client_graph->flib_def);
   return s;
 }
 

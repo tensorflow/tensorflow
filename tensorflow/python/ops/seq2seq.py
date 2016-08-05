@@ -560,6 +560,13 @@ def attention_decoder(decoder_inputs, initial_state, attention_states, cell,
     def attention(query):
       """Put attention masks on hidden using hidden_features and query."""
       ds = []  # Results of attention reads will be stored here.
+      if nest.is_sequence(query):  # If the query is a tuple, flatten it.
+        query_list = nest.flatten(query)
+        for q in query_list:  # Check that ndims == 2 if specified.
+          ndims = q.get_shape().ndims
+          if ndims:
+            assert ndims == 2
+        query = array_ops.concat(1, query_list)
       for a in xrange(num_heads):
         with variable_scope.variable_scope("Attention_%d" % a):
           y = linear(query, attention_vec_size, True)

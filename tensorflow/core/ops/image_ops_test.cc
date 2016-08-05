@@ -160,4 +160,37 @@ TEST(ImageOpsTest, CropAndResize_ShapeFn) {
   INFER_ERROR("Dimension must be 4 but is 3", op, "?;[?,3];?;?");
 }
 
+TEST(ImageOpsTest, ResizeNearestNeighborGrad_ShapeFn) {
+  ShapeInferenceTestOp op("ResizeNearestNeighborGrad");
+  op.input_tensors.resize(2);
+
+  // Rank and size checks.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op, "[1,2,3];?");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,2]")
+  INFER_ERROR("Dimension must be 2 but is 1", op, "?;[1]");
+
+  // When the size tensor is not a constant, the middle dims are unknown.
+  INFER_OK(op, "[1,?,3,?];[2]", "[d0_0,?,?,d0_3]");
+
+  Tensor size_tensor = test::AsTensor<int32>({20, 30});
+  op.input_tensors[1] = &size_tensor;
+  INFER_OK(op, "[1,?,3,?];[2]", "[d0_0,20,30,d0_3]");
+}
+
+TEST(ImageOpsTest, CropAndResizeGradImage_ShapeFn) {
+  ShapeInferenceTestOp op("CropAndResizeGradImage");
+  op.input_tensors.resize(4);
+
+  // Rank checks.
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;?;?;[1,2]");
+
+  // Unknown image_size should result in output of rank 4 with unknown dims.
+  INFER_OK(op, "?;?;?;?", "[?,?,?,?]");
+
+  // Known image_size should result in full shape information.
+  Tensor image_size = test::AsTensor<int32>({10, 20, 30, 40});
+  op.input_tensors[3] = &image_size;
+  INFER_OK(op, "?;?;?;[1]", "[10, 20, 30, 40]");
+}
+
 }  // end namespace tensorflow

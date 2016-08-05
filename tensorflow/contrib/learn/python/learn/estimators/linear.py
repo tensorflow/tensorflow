@@ -122,9 +122,9 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       n_classes: number of target classes. Default is binary classification.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
@@ -186,8 +186,8 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         columns_to_tensors=features,
         feature_columns=self._linear_feature_columns,
         num_outputs=self._target_column.num_label_columns,
-        weight_collections=[self._linear_weight_collection],
-        scope="linear")
+        weight_collections=[self._linear_model.get_scope_name()],
+        scope=self._linear_model.get_scope_name())
     with ops.control_dependencies([self._centered_bias()]):
       loss = self._target_column.loss(logits, targets, features)
     logging_ops.scalar_summary("loss", loss)
@@ -282,9 +282,9 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       feature_columns: An iterable containing all the feature columns used by
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
-      model_dir: Directory to save model parameters, graph, etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph, etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.

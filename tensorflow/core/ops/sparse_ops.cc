@@ -363,7 +363,7 @@ REGISTER_OP("SparseConcat")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
       // These accumulates the sum.
-      const Dimension* output_row_count = c->MakeDim(0);
+      const Dimension* output_row_count = c->MakeDim(0ll);
 
       // These are only merged.
       const Dimension* output_ind_cols = c->UnknownDim();

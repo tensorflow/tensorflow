@@ -19,11 +19,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import shutil
+import tempfile
+import time
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn import supervised_session
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -326,6 +331,127 @@ class StopAtStepTest(tf.test.TestCase):
     self.assertTrue(m.step_end(14, None))
     m.step_begin(15)
     self.assertTrue(m.step_end(15, None))
+
+
+class CheckpointSaverTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.model_dir = tempfile.mkdtemp()
+    self.graph = tf.Graph()
+    with self.graph.as_default():
+      self.scaffold = supervised_session.Scaffold()
+      self.global_step = tf.contrib.framework.get_or_create_global_step()
+      self.train_op = tf.assign_add(self.global_step, 1)
+
+  def tearDown(self):
+    shutil.rmtree(self.model_dir, ignore_errors=True)
+
+  def _run(self, monitor, step, train_op, sess):
+    monitor.step_begin(step)
+    sess.run(train_op)
+    monitor.post_step(step, sess)
+
+  def test_raise_in_both_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=10, save_steps=20)
+
+  def test_raise_in_none_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      learn.monitors.CheckpointSaver(self.model_dir)
+
+  def test_save_secs_saves_in_first_step(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_secs_saves_periodically(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self._run(monitor, 2, self.train_op, sess)
+        # Not saved
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        time.sleep(2.5)
+        self._run(monitor, 3, self.train_op, sess)
+        # saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 4, self.train_op, sess)
+        self._run(monitor, 5, self.train_op, sess)
+        # Not saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        time.sleep(2.5)
+        self._run(monitor, 6, self.train_op, sess)
+        # saved
+        self.assertEqual(6, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_steps_saves_in_first_step(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_steps_saves_periodically(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self._run(monitor, 2, self.train_op, sess)
+        # Not saved
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 3, self.train_op, sess)
+        # saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 4, self.train_op, sess)
+        # Not saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 5, self.train_op, sess)
+        # saved
+        self.assertEqual(5, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_saves_at_end(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self._run(monitor, 2, self.train_op, sess)
+        monitor.end(sess)
+        self.assertEqual(2, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
 
 
 if __name__ == '__main__':

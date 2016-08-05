@@ -354,16 +354,418 @@ Variance of the distribution.
 
 - - -
 
+### `class tf.contrib.distributions.Binomial` {#Binomial}
+
+Binomial distribution.
+
+This distribution is parameterized by a vector `p` of probabilities and `n`,
+the total counts.
+
+#### Mathematical details
+
+The Binomial is a distribution over the number of successes in `n` independent
+trials, with each trial having the same probability of success `p`.
+The probability mass function (pmf):
+
+```pmf(k) = n! / (k! * (n - k)!) * (p)^k * (1 - p)^(n - k)```
+
+#### Examples
+
+Create a single distribution, corresponding to 5 coin flips.
+
+```python
+dist = Binomial(n=5., p=.5)
+```
+
+Create a single distribution (using logits), corresponding to 5 coin flips.
+
+```python
+dist = Binomial(n=5., logits=0.)
+```
+
+Creates 3 distributions with the third distribution most likely to have
+successes.
+
+```python
+p = [.2, .3, .8]
+# n will be broadcast to [4., 4., 4.], to match p.
+dist = Binomial(n=4., p=p)
+```
+
+The distribution functions can be evaluated on counts.
+
+```python
+# counts same shape as p.
+counts = [1., 2, 3]
+dist.prob(counts)  # Shape [3]
+
+# p will be broadcast to [[.2, .3, .8], [.2, .3, .8]] to match counts.
+counts = [[1., 2, 1], [2, 2, 4]]
+dist.prob(counts)  # Shape [2, 3]
+
+# p will be broadcast to shape [5, 7, 3] to match counts.
+counts = [[...]]  # Shape [5, 7, 3]
+dist.prob(counts)  # Shape [5, 7, 3]
+```
+- - -
+
+#### `tf.contrib.distributions.Binomial.__init__(n, logits=None, p=None, validate_args=True, allow_nan_stats=False, name='Binomial')` {#Binomial.__init__}
+
+Initialize a batch of Binomial distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: Non-negative floating point tensor with shape broadcastable to
+    `[N1,..., Nm]` with `m >= 0` and the same dtype as `p` or `logits`.
+    Defines this as a batch of `N1 x ... x Nm` different Binomial
+    distributions. Its components should be equal to integer values.
+*  <b>`logits`</b>: Floating point tensor representing the log-odds of a
+    positive event with shape broadcastable to `[N1,..., Nm]` `m >= 0`, and
+    the same dtype as `n`. Each entry represents logits for the probability
+    of success for independent Binomial distributions.
+*  <b>`p`</b>: Positive floating point tensor with shape broadcastable to
+    `[N1,..., Nm]` `m >= 0`, `p in [0, 1]`. Each entry represents the
+    probability of success for independent Binomial distributions.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `n` and `p`,
+    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+
+
+*  <b>`Examples`</b>: 
+
+```python
+# Define 1-batch of a binomial distribution.
+dist = Binomial(n=2., p=.9)
+
+# Define a 2-batch.
+dist = Binomial(n=[4., 5], p=[.1, .3])
+```
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.allow_nan_stats` {#Binomial.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.batch_shape(name='batch_shape')` {#Binomial.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.cdf(value, name='cdf')` {#Binomial.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.dtype` {#Binomial.dtype}
+
+dtype of samples from this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.entropy(name='entropy')` {#Binomial.entropy}
+
+Entropy of the distribution in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.event_shape(name='event_shape')` {#Binomial.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.get_batch_shape()` {#Binomial.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  batch shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.get_event_shape()` {#Binomial.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  event shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.is_continuous` {#Binomial.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.is_reparameterized` {#Binomial.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.log_cdf(value, name='log_cdf')` {#Binomial.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.log_pdf(value, name='log_pdf')` {#Binomial.log_pdf}
+
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.log_pmf(value, name='log_pmf')` {#Binomial.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.log_prob(counts, name='log_prob')` {#Binomial.log_prob}
+
+`Log(P[counts])`, computed for every batch member.
+
+For each batch member of counts `k`, `P[counts]` is the probability that
+after sampling `n` draws from this Binomial distribution, the number of
+successes is `k`.  Note that different sequences of draws can result in the
+same counts, thus the probability includes a combinatorial coefficient.
+
+##### Args:
+
+
+*  <b>`counts`</b>: Non-negative tensor with dtype `dtype` and whose shape can be
+    broadcast with `self.p` and `self.n`. `counts` is only legal if it is
+    less than or equal to `n` and its components are equal to integer
+    values.
+*  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
+
+##### Returns:
+
+  Log probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.logits` {#Binomial.logits}
+
+Log-odds.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.mean(name='mean')` {#Binomial.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.mode(name='mode')` {#Binomial.mode}
+
+Mode of the distribution.
+
+Note that when `(n + 1) * p` is an integer, there are actually two modes.
+Namely, `(n + 1) * p` and `(n + 1) * p - 1` are both modes. Here we return
+only the larger of the two modes.
+
+##### Args:
+
+
+*  <b>`name`</b>: The name for this op.
+
+##### Returns:
+
+  The mode of the Binomial distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.n` {#Binomial.n}
+
+Number of trials.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.name` {#Binomial.name}
+
+Name to prepend to all ops.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.p` {#Binomial.p}
+
+Probability of success.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.pdf(value, name='pdf')` {#Binomial.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.pmf(value, name='pmf')` {#Binomial.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.prob(counts, name='prob')` {#Binomial.prob}
+
+`P[counts]`, computed for every batch member.
+
+
+For each batch member of counts `k`, `P[counts]` is the probability that
+after sampling `n` draws from this Binomial distribution, the number of
+successes is `k`.  Note that different sequences of draws can result in the
+same counts, thus the probability includes a combinatorial coefficient.
+
+##### Args:
+
+
+*  <b>`counts`</b>: Non-negative tensor with dtype `dtype` and whose shape can be
+    broadcast with `self.p` and `self.n`. `counts` is only legal if it is
+    less than or equal to `n` and its components are equal to integer
+    values.
+*  <b>`name`</b>: Name to give this Op, defaults to "prob".
+
+##### Returns:
+
+  Probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.sample(sample_shape=(), seed=None, name='sample')` {#Binomial.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.sample_n(n, seed=None, name='sample_n')` {#Binomial.sample_n}
+
+Generate `n` samples.
+
+##### Args:
+
+
+*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
+      with values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.std(name='std')` {#Binomial.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.validate_args` {#Binomial.validate_args}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.variance(name='variance')` {#Binomial.variance}
+
+Variance of the distribution.
+
+
+
+- - -
+
 ### `class tf.contrib.distributions.Bernoulli` {#Bernoulli}
 
 Bernoulli distribution.
 
 The Bernoulli distribution is parameterized by p, the probability of a
 positive event.
-
-Note, the following methods of the base class aren't implemented:
-  * cdf
-  * log_cdf
 - - -
 
 #### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Bernoulli')` {#Bernoulli.__init__}
@@ -383,10 +785,10 @@ Construct Bernoulli distributions.
 *  <b>`dtype`</b>: dtype for samples.
 *  <b>`validate_args`</b>: Whether to assert that `0 <= p <= 1`. If not validate_args,
    `log_pmf` may return nans.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution.
 
 ##### Raises:
@@ -767,20 +1169,20 @@ Initialize a batch of Beta distributions.
 ##### Args:
 
 
-*  <b>`a`</b>: Positive `float` or `double` tensor with shape broadcastable to
+*  <b>`a`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions. This also defines the
      dtype of the distribution.
-*  <b>`b`</b>: Positive `float` or `double` tensor with shape broadcastable to
+*  <b>`b`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions.
 *  <b>`validate_args`</b>: Whether to assert valid values for parameters `a` and `b`,
-    and `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
     guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
@@ -942,7 +1344,7 @@ Log of the probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+*  <b>`x`</b>: Non-negative floating point tensor whose shape can
     be broadcast with `self.a` and `self.b`.  For fixed leading
     dimensions, the last dimension represents counts for the corresponding
     Beta distribution in `self.a` and `self.b`. `x` is only legal if
@@ -1012,7 +1414,7 @@ The probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+*  <b>`x`</b>: Non-negative floating point tensor whose shape can
     be broadcast with `self.a` and `self.b`.  For fixed leading
     dimensions, the last dimension represents x for the corresponding Beta
     distribution in `self.a` and `self.b`. `x` is only legal if is
@@ -1098,11 +1500,6 @@ Categorical distribution.
 
 The categorical distribution is parameterized by the log-probabilities
 of a set of classes.
-
-Note, the following methods of the base class aren't implemented:
-  * mean
-  * cdf
-  * log_cdf
 - - -
 
 #### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Categorical')` {#Categorical.__init__}
@@ -1118,10 +1515,10 @@ Initialize Categorical distributions using class log-probabilities.
       indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
 *  <b>`validate_args`</b>: Unused in this distribution.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
 
 
@@ -1385,15 +1782,15 @@ Construct Chi2 distributions with parameter `df`.
 ##### Args:
 
 
-*  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
+*  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
 *  <b>`validate_args`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`. If `validate_args` is False
+    methods `prob(x)` and `log_prob(x)`. If `validate_args` is `False`
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
@@ -1767,15 +2164,15 @@ Construct Exponential distribution with parameter `lam`.
 ##### Args:
 
 
-*  <b>`lam`</b>: `float` or `double` tensor, the rate of the distribution(s).
+*  <b>`lam`</b>: Floating point tensor, the rate of the distribution(s).
     `lam` must contain only positive values.
 *  <b>`validate_args`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
+    methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member. If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 
@@ -2161,19 +2558,19 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 ##### Args:
 
 
-*  <b>`alpha`</b>: `float` or `double` tensor, the shape params of the
+*  <b>`alpha`</b>: Floating point tensor, the shape params of the
     distribution(s).
     alpha must contain only positive values.
-*  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
+*  <b>`beta`</b>: Floating point tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
 *  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
@@ -2560,18 +2957,18 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 ##### Args:
 
 
-*  <b>`alpha`</b>: `float` or `double` tensor, the shape params of the
+*  <b>`alpha`</b>: Floating point tensor, the shape params of the
     distribution(s).
     alpha must contain only positive values.
-*  <b>`beta`</b>: `float` or `double` tensor, the scale params of the distribution(s).
+*  <b>`beta`</b>: Floating point tensor, the scale params of the distribution(s).
     beta must contain only positive values.
 *  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
@@ -2972,17 +3369,17 @@ broadcasting (e.g., `loc / scale` is a valid operation).
 ##### Args:
 
 
-*  <b>`loc`</b>: `float` or `double` tensor which characterizes the location (center)
+*  <b>`loc`</b>: Floating point tensor which characterizes the location (center)
     of the distribution.
-*  <b>`scale`</b>: `float` or `double`, positive-valued tensor which characterzes the
-    spread of the distribution.
+*  <b>`scale`</b>: Positive floating point tensor which characterizes the spread of
+    the distribution.
 *  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
     is `False`, and the inputs are invalid, correct behavior is not
     guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -3363,15 +3760,15 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 ##### Args:
 
 
-*  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: `float` or `double` tensor, the stddevs of the distribution(s).
+*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
+*  <b>`sigma`</b>: Floating point tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
 *  <b>`validate_args`</b>: Whether to assert that `sigma > 0`. If `validate_args` is
-    False, correct output is not guaranteed when input is invalid.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+    `False`, correct output is not guaranteed when input is invalid.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -3750,19 +4147,19 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 ##### Args:
 
 
-*  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
+*  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s). `df` must contain only positive values.
-*  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
+*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
+*  <b>`sigma`</b>: Floating point tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
 *  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
-    `validate_args` is False and inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+    `validate_args` is `False` and inputs are invalid, correct behavior is
+    not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
@@ -4102,14 +4499,14 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 ##### Args:
 
 
-*  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
-*  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is False
-    and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`a`</b>: Floating point tensor, the minimum endpoint.
+*  <b>`b`</b>: Floating point tensor, the maximum endpoint. Must be > `a`.
+*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is
+    `False` and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:
@@ -4446,7 +4843,7 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
 ##### Args:
 
 
-*  <b>`mu`</b>: Rank `N + 1` `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+*  <b>`mu`</b>: Rank `N + 1` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
 *  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
     representing the standard deviations.  Must be positive.
@@ -4803,7 +5200,7 @@ User must provide means `mu` and `sigma`, the mean and covariance.
 ##### Args:
 
 
-*  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+*  <b>`mu`</b>: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
 *  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  Each batch member must be positive definite.
@@ -5168,7 +5565,7 @@ factors, such that the covariance of each batch member is `chol chol^T`.
 ##### Args:
 
 
-*  <b>`mu`</b>: `(N+1)-D`  `float` or `double` tensor with shape `[N1,...,Nb, k]`,
+*  <b>`mu`</b>: `(N+1)-D` floating point tensor with shape `[N1,...,Nb, k]`,
     `b >= 0`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as
@@ -5605,16 +6002,16 @@ Initialize a batch of Dirichlet distributions.
 ##### Args:
 
 
-*  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
+*  <b>`alpha`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet distributions.
 *  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
     guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
@@ -5770,7 +6167,7 @@ Log of the probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+*  <b>`x`</b>: Non-negative tensor with dtype `dtype` and whose shape can
     be broadcast with `self.alpha`.  For fixed leading dimensions, the last
     dimension represents counts for the corresponding Dirichlet distribution
     in `self.alpha`. `x` is only legal if it sums up to one.
@@ -5839,7 +6236,7 @@ The probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+*  <b>`x`</b>: Non-negative tensor with dtype `dtype` and whose shape can
     be broadcast with `self.alpha`.  For fixed leading dimensions, the last
     dimension represents x for the corresponding Dirichlet distribution in
     `self.alpha` and `self.beta`. `x` is only legal if it sums up to one.
@@ -5996,22 +6393,22 @@ Initialize a batch of DirichletMultinomial distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: Non-negative `float` or `double` tensor, whose dtype is the same as
+*  <b>`n`</b>: Non-negative floating point tensor, whose dtype is the same as
     `alpha`. The shape is broadcastable to `[N1,..., Nm]` with `m >= 0`.
     Defines this as a batch of `N1 x ... x Nm` different Dirichlet
-    multinomial distributions. Its components should be equal to integral
+    multinomial distributions. Its components should be equal to integer
     values.
-*  <b>`alpha`</b>: Positive `float` or `double` tensor, whose dtype is the same as
+*  <b>`alpha`</b>: Positive floating point tensor, whose dtype is the same as
     `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
     this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
     multinomial distributions.
 *  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
-    `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
+    `n`, and `x` in `prob` and `log_prob`.  If `False`, correct behavior is
     not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
@@ -6173,12 +6570,11 @@ probability includes a combinatorial coefficient.
 ##### Args:
 
 
-*  <b>`counts`</b>: Non-negative `float` or `double` tensor whose dtype is the same
-    `self` and whose shape can be broadcast with `self.alpha`.  For fixed
-    leading dimensions, the last dimension represents counts for the
-    corresponding Dirichlet Multinomial distribution in `self.alpha`.
-    `counts` is only legal if it sums up to `n` and its components are
-    equal to integral values.
+*  <b>`counts`</b>: Non-negative tensor with dtype `dtype` and whose shape can be
+    broadcast with `self.alpha`.  For fixed leading dimensions, the last
+    dimension represents counts for the corresponding Dirichlet Multinomial
+    distribution in `self.alpha`. `counts` is only legal if it sums up to
+    `n` and its components are equal to integer values.
 *  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
 
 ##### Returns:
@@ -6243,12 +6639,11 @@ probability includes a combinatorial coefficient.
 ##### Args:
 
 
-*  <b>`counts`</b>: Non-negative `float` or `double` tensor whose dtype is the same
-    `self` and whose shape can be broadcast with `self.alpha`.  For fixed
-    leading dimensions, the last dimension represents counts for the
-    corresponding Dirichlet Multinomial distribution in `self.alpha`.
-    `counts` is only legal if it sums up to `n` and its components are
-    equal to integral values.
+*  <b>`counts`</b>: Non-negative tensor with dtype `dtype` and whose shape can be
+    broadcast with `self.alpha`.  For fixed leading dimensions, the last
+    dimension represents counts for the corresponding Dirichlet Multinomial
+    distribution in `self.alpha`. `counts` is only legal if it sums up to
+    `n` and its components are equal to integer values.
 *  <b>`name`</b>: Name to give this Op, defaults to "prob".
 
 ##### Returns:
@@ -6344,6 +6739,413 @@ Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
 ##### Returns:
 
   A `Tensor` representing the variances for each batch member.
+
+
+
+- - -
+
+### `class tf.contrib.distributions.Multinomial` {#Multinomial}
+
+Multinomial distribution.
+
+This distribution is parameterized by a vector `p` of probability
+parameters for `k` classes and `n`, the counts per each class..
+
+#### Mathematical details
+
+The Multinomial is a distribution over k-class count data, meaning
+for each k-tuple of non-negative integer `counts = [n_1,...,n_k]`, we have a
+probability of these draws being made from the distribution.  The distribution
+has hyperparameters `p = (p_1,...,p_k)`, and probability mass
+function (pmf):
+
+```pmf(counts) = n! / (n_1!...n_k!) * (p_1)^n_1*(p_2)^n_2*...(p_k)^n_k```
+
+where above `n = sum_j n_j`, `n!` is `n` factorial.
+
+#### Examples
+
+Create a 3-class distribution, with the 3rd class is most likely to be drawn,
+using logits..
+
+```python
+logits = [-50., -43, 0]
+dist = Multinomial(n=4., logits=logits)
+```
+
+Create a 3-class distribution, with the 3rd class is most likely to be drawn.
+
+```python
+p = [.2, .3, .5]
+dist = Multinomial(n=4., p=p)
+```
+
+The distribution functions can be evaluated on counts.
+
+```python
+# counts same shape as p.
+counts = [1., 0, 3]
+dist.prob(counts)  # Shape []
+
+# p will be broadcast to [[.2, .3, .5], [.2, .3, .5]] to match counts.
+counts = [[1., 2, 1], [2, 2, 0]]
+dist.prob(counts)  # Shape [2]
+
+# p will be broadcast to shape [5, 7, 3] to match counts.
+counts = [[...]]  # Shape [5, 7, 3]
+dist.prob(counts)  # Shape [5, 7]
+```
+
+Create a 2-batch of 3-class distributions.
+
+```python
+p = [[.1, .2, .7], [.3, .3, .4]]  # Shape [2, 3]
+dist = Multinomial(n=[4., 5], p=p)
+
+counts = [[2., 1, 1], [3, 1, 1]]
+dist.prob(counts)  # Shape [2]
+```
+- - -
+
+#### `tf.contrib.distributions.Multinomial.__init__(n, logits=None, p=None, validate_args=True, allow_nan_stats=False, name='Multinomial')` {#Multinomial.__init__}
+
+Initialize a batch of Multinomial distributions.
+
+##### Args:
+
+
+*  <b>`n`</b>: Non-negative floating point tensor with shape broadcastable to
+    `[N1,..., Nm]` with `m >= 0`. Defines this as a batch of
+    `N1 x ... x Nm` different Multinomial distributions.  Its components
+    should be equal to integer values.
+*  <b>`logits`</b>: Floating point tensor representing the log-odds of a
+    positive event with shape broadcastable to `[N1,..., Nm, k], m >= 0`,
+    and the same dtype as `n`. Defines this as a batch of `N1 x ... x Nm`
+    different `k` class Multinomial distributions.
+*  <b>`p`</b>: Positive floating point tensor with shape broadcastable to
+    `[N1,..., Nm, k]` `m >= 0` and same dtype as `n`.  Defines this as
+    a batch of `N1 x ... x Nm` different `k` class Multinomial
+    distributions. `p`'s components in the last portion of its shape should
+    sum up to 1.
+*  <b>`validate_args`</b>: Whether to assert valid values for parameters `n` and `p`,
+    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
+    guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
+*  <b>`name`</b>: The name to prefix Ops created by this distribution class.
+
+
+*  <b>`Examples`</b>: 
+
+```python
+# Define 1-batch of 2-class multinomial distribution,
+# also known as a Binomial distribution.
+dist = Multinomial(n=2., p=[.1, .9])
+
+# Define a 2-batch of 3-class distributions.
+dist = Multinomial(n=[4., 5], p=[[.1, .3, .6], [.4, .05, .55]])
+```
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.allow_nan_stats` {#Multinomial.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.batch_shape(name='batch_shape')` {#Multinomial.batch_shape}
+
+Batch dimensions of this instance as a 1-D int32 `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `batch_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.cdf(value, name='cdf')` {#Multinomial.cdf}
+
+Cumulative distribution function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.dtype` {#Multinomial.dtype}
+
+dtype of samples from this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.entropy(name='entropy')` {#Multinomial.entropy}
+
+Entropy of the distribution in nats.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.event_shape(name='event_shape')` {#Multinomial.event_shape}
+
+Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+  `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.get_batch_shape()` {#Multinomial.get_batch_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+  batch shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.get_event_shape()` {#Multinomial.get_event_shape}
+
+`TensorShape` available at graph construction time.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+  event shape
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.is_continuous` {#Multinomial.is_continuous}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.is_reparameterized` {#Multinomial.is_reparameterized}
+
+
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.log_cdf(value, name='log_cdf')` {#Multinomial.log_cdf}
+
+Log CDF.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.log_pdf(value, name='log_pdf')` {#Multinomial.log_pdf}
+
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.log_pmf(value, name='log_pmf')` {#Multinomial.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.log_prob(counts, name='log_prob')` {#Multinomial.log_prob}
+
+`Log(P[counts])`, computed for every batch member.
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+##### Args:
+
+
+*  <b>`counts`</b>: Non-negative tensor with dtype `dtype` and whose shape can
+    be broadcast with `self.p` and `self.n`.  For fixed leading dimensions,
+    the last dimension represents counts for the corresponding Multinomial
+    distribution in `self.p`. `counts` is only legal if it sums up to `n`
+    and its components are equal to integer values.
+*  <b>`name`</b>: Name to give this Op, defaults to "log_prob".
+
+##### Returns:
+
+  Log probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.logits` {#Multinomial.logits}
+
+Log-odds.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.mean(name='mean')` {#Multinomial.mean}
+
+Mean of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.mode(name='mode')` {#Multinomial.mode}
+
+Mode of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.n` {#Multinomial.n}
+
+Number of trials.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.name` {#Multinomial.name}
+
+Name to prepend to all ops.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.p` {#Multinomial.p}
+
+Event probabilities.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.pdf(value, name='pdf')` {#Multinomial.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.pmf(value, name='pmf')` {#Multinomial.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.prob(counts, name='prob')` {#Multinomial.prob}
+
+`P[counts]`, computed for every batch member.
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+##### Args:
+
+
+*  <b>`counts`</b>: Non-negative tensor with dtype `dtype` and whose shape can
+    be broadcast with `self.p` and `self.n`.  For fixed leading dimensions,
+    the last dimension represents counts for the corresponding Multinomial
+    distribution in `self.p`. `counts` is only legal if it sums up to `n`
+    and its components are equal to integer values.
+*  <b>`name`</b>: Name to give this Op, defaults to "prob".
+
+##### Returns:
+
+  Probabilities for each record, shape `[N1,...,Nm]`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.sample(sample_shape=(), seed=None, name='sample')` {#Multinomial.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.sample_n(n, seed=None, name='sample_n')` {#Multinomial.sample_n}
+
+Generate `n` samples.
+
+##### Args:
+
+
+*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
+      with values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.std(name='std')` {#Multinomial.std}
+
+Standard deviation of the distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.validate_args` {#Multinomial.validate_args}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.variance(name='variance')` {#Multinomial.variance}
+
+Variance of the distribution.
 
 
 
@@ -6847,9 +7649,9 @@ Get the KL-divergence KL(dist_a || dist_b).
 
 *  <b>`dist_a`</b>: instance of distributions.Distribution.
 *  <b>`dist_b`</b>: instance of distributions.Distribution.
-*  <b>`allow_nan`</b>: If False (default), a runtime error is raised
+*  <b>`allow_nan`</b>: If `False` (default), a runtime error is raised
     if the KL returns NaN values for any batch entry of the given
-    distributions.  If True, the KL may return a NaN for the given entry.
+    distributions.  If `True`, the KL may return a NaN for the given entry.
 *  <b>`name`</b>: (optional) Name scope to use for created operations.
 
 ##### Returns:
@@ -7059,13 +7861,13 @@ D = is diagonal (r x r), optional (defaults to identity).
 ##### Args:
 
 
-*  <b>`mu`</b>: Rank `n + 1` `float` or `double` tensor with shape `[N1,...,Nn, k]`,
+*  <b>`mu`</b>: Rank `n + 1` floating point tensor with shape `[N1,...,Nn, k]`,
     `n >= 0`.  The means.
-*  <b>`diag_large`</b>: Optional rank `n + 1` `float` or `double` tensor, shape
+*  <b>`diag_large`</b>: Optional rank `n + 1` floating point tensor, shape
     `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `M`.
-*  <b>`v`</b>: Rank `n + 1` `float` or `double` tensor, shape `[N1,...,Nn, k, r]`
+*  <b>`v`</b>: Rank `n + 1` floating point tensor, shape `[N1,...,Nn, k, r]`
     `n >= 0`.  Defines the matrix `V`.
-*  <b>`diag_small`</b>: Rank `n + 1` `float` or `double` tensor, shape
+*  <b>`diag_small`</b>: Rank `n + 1` floating point tensor, shape
     `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `D`.  Default
     is `None`, which means `D` will be the identity matrix.
 *  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`

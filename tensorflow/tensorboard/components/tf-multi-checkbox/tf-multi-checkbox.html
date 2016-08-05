@@ -21,13 +21,13 @@ handle these situations gracefully.
   <style include="run-color-style"></style>
 
   <template>
-    <div id="outer-container" class="scrollbar">
       <paper-input
         id="runs-regex"
         no-label-float
         label="Write a regex to filter runs"
         value="{{regexInput}}"
       ></paper-input>
+    <div id="outer-container" class="scrollbar">
       <template
         is="dom-repeat"
         items="[[namesMatchingRegex]]"
@@ -65,9 +65,10 @@ handle these situations gracefully.
       height: 100%;
     }
     #outer-container {
-      overflow-y: scroll;
+      overflow-y: auto;
       overflow-x: hidden;
       width: 100%;
+      height: 0; /* Quirk to make firefox add scrolling instead of expand div */
       flex-grow: 1;
       flex-shrink: 1;
       word-wrap: break-word;
@@ -202,8 +203,9 @@ handle these situations gracefully.
       window.requestAnimationFrame(function() {_this.updateStyles();});
     },
     _checkboxChange: function(e) {
-      var name = e.srcElement.name;
-      var checked = e.srcElement.checked;
+      var target = e.srcElement || e.target; // Firefox doesn't have srcElement.
+      var name = target.name;
+      var checked = target.checked;
       this.runToIsCheckedMapping[name] = checked;
       // n.b. notifyPath won't work because run names may have periods.
       this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);

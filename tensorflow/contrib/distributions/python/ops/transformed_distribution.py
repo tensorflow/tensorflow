@@ -57,6 +57,7 @@ class TransformedDistribution(distribution.Distribution):
     name="LogitNormalTransformedDistribution"
   )
   ```
+
   """
 
   def __init__(self,

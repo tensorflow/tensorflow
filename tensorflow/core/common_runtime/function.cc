@@ -272,6 +272,11 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   bool IsStateful(const string& function) override;
 
+  const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
+      const override {
+    return lib_def_;
+  }
+
   Device* device() override { return device_; }
 
  private:

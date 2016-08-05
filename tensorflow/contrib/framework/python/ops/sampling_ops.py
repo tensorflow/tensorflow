@@ -27,6 +27,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner
 
@@ -34,10 +35,8 @@ __all__ = ['stratified_sample',
            'stratified_sample_unknown_dist',]
 
 
-# TODO(joelshor): Use an exponential-moving-average to estimate the initial
-# class distribution and remove the requirement that it be provided.
-def stratified_sample(tensors, labels, init_probs, target_probs, batch_size,
-                      enqueue_many=False, queue_capacity=16,
+def stratified_sample(tensors, labels, target_probs, batch_size,
+                      init_probs=None, enqueue_many=False, queue_capacity=16,
                       threads_per_queue=1, name=None):
   """Stochastically creates batches based on per-class probabilities.
 
@@ -52,11 +51,12 @@ def stratified_sample(tensors, labels, init_probs, target_probs, batch_size,
         batch, according to enqueue_many.
     labels: Tensor for label of data. Label is a single integer or a batch,
         depending on enqueue_many. It is not a one-hot vector.
-    init_probs: Class proportions in the data. An object whose type has a
-        registered Tensor conversion function.
     target_probs: Target class proportions in batch. An object whose type has a
         registered Tensor conversion function.
     batch_size: Size of batch to be returned.
+    init_probs: Class proportions in the data. An object whose type has a
+        registered Tensor conversion function, or `None` for estimating the
+        initial distribution.
     enqueue_many: Bool. If true, interpret input tensors as having a batch
         dimension.
     queue_capacity: Capacity of the large queue that holds input examples.
@@ -81,10 +81,9 @@ def stratified_sample(tensors, labels, init_probs, target_probs, batch_size,
     data, label = data_provider.Get(['data', 'label'])
 
     # Get stratified batch according to per-class probabilities.
-    init_probs = [1.0/NUM_CLASSES for _ in range(NUM_CLASSES)]
     target_probs = [...distribution you want...]
     [data_batch], labels = tf.contrib.framework.sampling_ops.stratified_sample(
-        [data], label, init_probs, target_probs)
+        [data], label, target_probs)
 
     # Run batch through network.
     ...
@@ -92,12 +91,21 @@ def stratified_sample(tensors, labels, init_probs, target_probs, batch_size,
   with ops.op_scope(tensors + [labels], name, 'stratified_sample'):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
-    init_probs = ops.convert_to_tensor(init_probs, dtype=dtypes.float32)
     target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
     # Reduce the case of a single example to that of a batch of size 1.
     if not enqueue_many:
       tensor_list = [array_ops.expand_dims(tensor, 0) for tensor in tensor_list]
       labels = array_ops.expand_dims(labels, 0)
+
+    # If `init_probs` is `None`, set up online estimation of data distribution.
+    if init_probs is None:
+      # We use `target_probs` to get the number of classes, so its shape must be
+      # fully defined at graph construction time.
+      target_probs.get_shape().assert_is_fully_defined()
+      init_probs = _estimate_data_distribution(
+          labels, target_probs.get_shape().num_elements())
+    else:
+      init_probs = ops.convert_to_tensor(init_probs, dtype=dtypes.float32)
 
     # Validate that input is consistent.
     tensor_list, labels, [init_probs, target_probs] = _verify_input(
@@ -105,9 +113,12 @@ def stratified_sample(tensors, labels, init_probs, target_probs, batch_size,
 
     # Check that all zero initial probabilities also have zero target
     # probabilities.
-    assert_op = logging_ops.Assert(math_ops.reduce_all(math_ops.logical_or(
-        math_ops.not_equal(init_probs, 0),
-        math_ops.equal(target_probs, 0))), [init_probs, target_probs])
+    assert_op = logging_ops.Assert(
+        math_ops.reduce_all(math_ops.logical_or(
+            math_ops.not_equal(init_probs, 0),
+            math_ops.equal(target_probs, 0))),
+        ['All classes with zero initial probability must also have zero target '
+         'probability: ', init_probs, target_probs])
     init_probs = control_flow_ops.with_dependencies([assert_op], init_probs)
 
     # Calculate acceptance sampling probabilities.
@@ -210,6 +221,40 @@ def stratified_sample_unknown_dist(tensors, labels, probs, batch_size,
     # Use the per-class queues to generate stratified batches.
     return _get_batch_from_per_class_queues(
         per_class_queues, probs, batch_size)
+
+
+def _estimate_data_distribution(labels, num_classes):
+  """Estimate data distribution as labels are seen."""
+  # Variable to track running count of classes. Add 1 to avoid division-by-zero,
+  # and to guarantee that calculation of acceptance probabilities is (mostly)
+  # correct.
+  num_examples_per_class_seen = variables.Variable(
+      initial_value=[1] * num_classes, trainable=False, name='class_count',
+      dtype=dtypes.int64)
+
+  # Update the class-count based on what labels are seen in batch.
+  num_examples_per_class_seen = num_examples_per_class_seen.assign_add(
+      math_ops.reduce_sum(array_ops.one_hot(labels, num_classes,
+                                            dtype=dtypes.int64), 0))
+
+  # Normalize count into a probability.
+  # NOTE: Without the `+= 0` line below, the test
+  # `testMultiThreadedEstimateDataDistribution` fails. The reason is that
+  # before this line, `num_examples_per_class_seen` is a Tensor that shares a
+  # buffer with an underlying `ref` object. When the `ref` is changed by another
+  # thread, `num_examples_per_class_seen` changes as well. Since this can happen
+  # in the middle of the normalization computation, we get probabilities that
+  # are very far from summing to one. Adding `+= 0` copies the contents of the
+  # tensor to a new buffer, which will be consistent from the start to the end
+  # of the normalization computation.
+  num_examples_per_class_seen += 0
+  init_prob_estimate = math_ops.truediv(
+      num_examples_per_class_seen,
+      math_ops.reduce_sum(num_examples_per_class_seen))
+
+  # Must return float32 (not float64) to agree with downstream `_verify_input`
+  # checks.
+  return math_ops.cast(init_prob_estimate, dtypes.float32)
 
 
 def _verify_input(tensor_list, labels, probs_list):

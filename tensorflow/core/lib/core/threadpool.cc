@@ -29,10 +29,13 @@ namespace thread {
 
 struct EigenEnvironment {
   typedef Thread EnvThread;
-  struct Task {
+  struct TaskImpl {
     std::function<void()> f;
     Context context;
     uint64 trace_id;
+  };
+  struct Task {
+    std::unique_ptr<TaskImpl> f;
   };
 
   Env* const env_;
@@ -58,17 +61,21 @@ struct EigenEnvironment {
       port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
                                  id);
     }
-    return Task{std::move(f), Context(), id};
+    return Task{
+        std::unique_ptr<TaskImpl>(new TaskImpl{
+            std::move(f), Context(ContextKind::kThread), id,
+        }),
+    };
   }
 
   void ExecuteTask(const Task& t) {
-    WithContext wc(t.context);
-    if (t.trace_id != 0) {
+    WithContext wc(t.f->context);
+    if (t.f->trace_id != 0) {
       port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, t.trace_id);
-      t.f();
+          port::Tracing::EventCategory::kRunClosure, t.f->trace_id);
+      t.f->f();
     } else {
-      t.f();
+      t.f->f();
     }
   }
 };

@@ -535,8 +535,12 @@ class LoggingTrainable(EveryN):
 class SummarySaver(EveryN):
   """Saves summaries every N steps."""
 
-  def __init__(self, summary_op, save_steps=100, output_dir=None,
-               summary_writer=None):
+  def __init__(self,
+               summary_op,
+               save_steps=100,
+               output_dir=None,
+               summary_writer=None,
+               scaffold=None):
     """Initializes a `SummarySaver` monitor.
 
     Args:
@@ -548,6 +552,7 @@ class SummarySaver(EveryN):
           if no `summary_writer` is supplied.
       summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
           one will be created accordingly.
+      scaffold: `Scaffold` to get summary_op if it's not provided.
     """
     # TODO(ipolosukhin): Implement every N seconds.
     super(SummarySaver, self).__init__(every_n_steps=save_steps)
@@ -555,6 +560,7 @@ class SummarySaver(EveryN):
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
       self._summary_writer = summary_io.SummaryWriter(output_dir)
+    self._scaffold = scaffold
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def set_estimator(self, estimator):
@@ -565,15 +571,18 @@ class SummarySaver(EveryN):
 
   def every_n_step_begin(self, step):
     super(SummarySaver, self).every_n_step_begin(step)
+    if self._summary_op is None and self._scaffold is not None:
+      self._summary_op = self._scaffold.summary_op
     if self._summary_op is not None:
       return [self._summary_op]
     return []
 
   def every_n_step_end(self, step, outputs):
     super(SummarySaver, self).every_n_step_end(step, outputs)
-    summary_strs = _extract_output(outputs, self._summary_op)
-    if self._summary_writer and self._summary_op is not None:
-      self._summary_writer.add_summary(summary_strs, step)
+    if self._summary_op is not None:
+      summary_strs = _extract_output(outputs, self._summary_op)
+      if self._summary_writer:
+        self._summary_writer.add_summary(summary_strs, step)
     return False
 
   def end(self, session=None):
@@ -923,37 +932,89 @@ class ExportMonitor(EveryN):
                             default_batch_size=self._default_batch_size)
 
 
-class CheckpointSaver(EveryN):
+class CheckpointSaver(BaseMonitor):
   """Saves checkpoints every N steps."""
 
-  def __init__(self, every_n_steps, saver, checkpoint_dir,
+  def __init__(self,
+               checkpoint_dir,
+               save_secs=None,
+               save_steps=None,
+               saver=None,
                checkpoint_basename="model.ckpt",
-               first_n_steps=-1):
+               scaffold=None):
     """Initialize CheckpointSaver monitor.
 
     Args:
-      every_n_steps: `int`, save every N steps.
-      saver: `Saver` object, used for saving.
       checkpoint_dir: `str`, base directory for the checkpoint files.
+      save_secs: `int`, save every N secs.
+      save_steps: `int`, save every N steps.
+      saver: `Saver` object, used for saving.
       checkpoint_basename: `str`, base name for the checkpoint files.
-      first_n_steps: `int`, if positive, save every step during the
-        first `first_n_steps` steps.
+      scaffold: `Scaffold`, use to get saver object.
+
+    Raises:
+      ValueError: If both `save_steps` and `save_secs` are not `None`.
+      ValueError: If both `save_steps` and `save_secs` are `None`.
     """
     logging.info("Create CheckpointSaver")
-    super(CheckpointSaver, self).__init__(every_n_steps=every_n_steps,
-                                          first_n_steps=first_n_steps)
+    super(CheckpointSaver, self).__init__()
     self._saver = saver
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
+    self._scaffold = scaffold
+    self._save_secs = save_secs
+    self._save_steps = save_steps
+    self._last_saved_time = None
+    self._last_begin_step = None
+    self._last_saved_step = None
 
-  def every_n_post_step(self, step, session):
+    if save_steps is None and save_secs is None:
+      raise ValueError("Either save_steps or save_secs should be provided")
+    if (save_steps is not None) and (save_secs is not None):
+      raise ValueError("Can not provide both save_steps and save_secs.")
+
+  def begin(self, max_steps=None):
+    super(CheckpointSaver, self).begin(max_steps)
+    self._last_saved_time = None
+    self._last_begin_step = None
+    self._last_saved_step = None
+
+  def step_begin(self, step):
+    super(CheckpointSaver, self).step_begin(step)
+    self._last_begin_step = step
+
+  def post_step(self, step, session):
+    super(CheckpointSaver, self).post_step(step, session)
+    if self._last_saved_time is None:
+      self._save(step, session)
+
+    if self._save_steps is not None:
+      if step >= self._last_saved_step + self._save_steps:
+        self._save(step, session)
+
+    if self._save_secs is not None:
+      if time.time() >= self._last_saved_time + self._save_secs:
+        self._save(step, session)
+
+  def end(self, session=None):
+    super(CheckpointSaver, self).end(session)
+    self._save(self._last_begin_step, session)
+
+  def _save(self, step, session):
+    """Saves the latest checkpoint."""
+    if step == self._last_saved_step:
+      return
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
-    self._saver.save(session, self._save_path, global_step=step)
-    if self._summary_writer:
-      self._summary_writer.add_session_log(
-          SessionLog(status=SessionLog.CHECKPOINT,
-                     checkpoint_path=self._save_path),
-          step)
+    self._last_saved_time = time.time()
+    self._last_saved_step = step
+    if self._saver is None:
+      self._scaffold.saver.save(session, self._save_path, global_step=step)
+    else:
+      self._saver.save(session, self._save_path, global_step=step)
+    self._summary_writer.add_session_log(
+        SessionLog(
+            status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
+        step)
 
 
 class StepCounter(EveryN):

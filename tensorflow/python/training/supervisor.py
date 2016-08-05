@@ -296,7 +296,6 @@ class Supervisor(object):
     self._graph = graph
     self._is_chief = is_chief
     self._coord = coordinator.Coordinator()
-    self._started_threads = []
     self._recovery_wait_secs = recovery_wait_secs
     self._stop_grace_secs = stop_grace_secs
     self._init_fn = init_fn
@@ -636,8 +635,6 @@ class Supervisor(object):
       threads.append(SVTimerCheckpointThread(self, sess))
     for t in threads:
       t.start()
-    self._started_threads.extend(threads)
-
     return threads
 
   def prepare_or_wait_for_session(self, master="", config=None,
@@ -712,7 +709,6 @@ class Supervisor(object):
     for qr in queue_runners:
       threads.extend(qr.create_threads(sess, coord=self._coord, daemon=True,
                                        start=True))
-    self._started_threads.extend(threads)
     return threads
 
   def loop(self, timer_interval_secs, target, args=None, kwargs=None):
@@ -737,7 +733,6 @@ class Supervisor(object):
     looper = coordinator.LooperThread(self._coord, timer_interval_secs,
                                       target=target, args=args, kwargs=kwargs)
     looper.start()
-    self._started_threads.append(looper)
     return looper
 
   def stop(self, threads=None, close_summary_writer=True):
@@ -755,16 +750,12 @@ class Supervisor(object):
         `True` if the summary writer was created by the supervisor, `False`
         otherwise.
     """
-    join_threads = []
-    join_threads.extend(self._started_threads)
-    if threads is not None:
-      join_threads.extend(threads)
     self._coord.request_stop()
     try:
       # coord.join() re-raises the first reported exception; the "finally"
       # block ensures that we clean up whether or not an exception was
       # reported.
-      self._coord.join(join_threads,
+      self._coord.join(threads,
                        stop_grace_period_secs=self._stop_grace_secs)
     finally:
       # Close the writer last, in case one of the running threads was using it.
@@ -774,8 +765,6 @@ class Supervisor(object):
         self._summary_writer.add_session_log(SessionLog(status=SessionLog.STOP))
         self._summary_writer.close()
         self._graph_added_to_summary = False
-
-      self._started_threads = []
 
   def request_stop(self, ex=None):
     """Request that the coordinator stop the threads.
