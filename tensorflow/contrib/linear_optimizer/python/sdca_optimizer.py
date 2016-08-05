@@ -20,10 +20,8 @@ import uuid
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import sparse_ops
 
 
 # TODO(sibyl-vie3Poto, sibyl-Aix6ihai): Add proper testing to this wrapper once the API is
@@ -96,17 +94,11 @@ class SDCAOptimizer(object):
       for column in sorted(set(linear_feature_columns), key=lambda x: x.key):
         transformed_tensor = features[column]
         if isinstance(column, layers.feature_column._RealValuedColumn):
-          # A real-valued column corresponds to a dense feature in SDCA.
-          if column.dimension != 1:
-            raise ValueError(
-                "Invalid column dimension %d for column %s. SDCAOptimizer "
-                "supports only 1-dimensional dense feature columns." %
-                (column.dimension, column.name))
-
-          # TODO(sibyl-Aix6ihai, sibyl-vie3Poto): SDCA supports efficient dense representation.
-          # Perhaps concat dense features for efficiency.
-          dense_features.append(array_ops.reshape(transformed_tensor,
-                                                  shape=[-1, 1]))
+          # A real-valued column corresponds to a dense feature in SDCA. A
+          # transformed tensor corresponding to a RealValuedColumn has rank 2
+          # (its shape is typically [batch_size, column.dimension]) and so it
+          # can be passed to SDCA as is.
+          dense_features.append(transformed_tensor)
           # For real valued columns, the variables list contains exactly one
           # element.
           dense_feature_weights.append(columns_to_variables[column][0])

@@ -239,6 +239,7 @@ class SparseFeatureColumn(object):
   @property
   def example_indices(self):
     """The example indices represented as a dense tensor.
+
     Returns:
       A 1-D Tensor of int64 with shape `[N]`.
     """
@@ -247,6 +248,7 @@ class SparseFeatureColumn(object):
   @property
   def feature_indices(self):
     """The feature indices represented as a dense tensor.
+
     Returns:
       A 1-D Tensor of int64 with shape `[N]`.
     """
@@ -255,6 +257,7 @@ class SparseFeatureColumn(object):
   @property
   def feature_values(self):
     """The feature values represented as a dense tensor.
+
     Returns:
       May return None, or a 1-D Tensor of float32 with shape `[N]`.
     """
@@ -301,7 +304,7 @@ class SdcaModel(object):
     }
     variables: {
       sparse_features_weights: list of tensors of shape [vocab size]
-      dense_features_weights: list of tensors of shape [1]
+      dense_features_weights: list of tensors of shape [dense_feature_dimension]
     }
     options: {
       symmetric_l1_regularization: 0.0
@@ -436,7 +439,8 @@ class SdcaModel(object):
           'dense_features_weights'])
 
       for i in range(len(dense_variables)):
-        result += dense_features[i] * dense_variables[i]
+        result += math_ops.matmul(dense_features[i], array_ops.expand_dims(
+            dense_variables[i], -1))
 
     # Reshaping to allow shape inference at graph construction time.
     return array_ops.reshape(result, [-1])
