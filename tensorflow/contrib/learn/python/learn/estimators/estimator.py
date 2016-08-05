@@ -503,7 +503,7 @@ class BaseEstimator(
           feed_fn=feed_fn,
           steps=steps,
           fail_on_nan_loss=fail_on_nan_loss,
-          monitors=monitors,
+          hooks=monitors,
           max_steps=max_steps)
 
   def _extract_metric_update_ops(self, eval_dict):

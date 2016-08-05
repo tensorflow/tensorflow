@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.wrapped_session import WrappedSession
 from tensorflow.python.framework import ops
 
@@ -46,20 +48,21 @@ class MonitoredSession(WrappedSession):
   in calls to `run()`
   """
 
-  def __init__(self, sess, monitors, global_step_tensor):
+  def __init__(self, sess, hooks):
     """Initializes a MonitoredSession object.
 
     Args:
       sess: A `tf.Session` or a `WrappedSession` object.
-      monitors: An iterable of `tf.contrib.learn.BaseMonitor' objects.
-      global_step_tensor: A 'Tensor' which holds a scalar int value.
+      hooks: An iterable of `tf.contrib.learn.SessionRunHook' objects.
     """
 
     WrappedSession.__init__(self, sess)
-    self._monitors = monitors
+    self._hooks = [m for m in hooks
+                   if isinstance(m, session_run_hook.SessionRunHook)]
+    self._monitors = [m for m in hooks
+                      if not isinstance(m, session_run_hook.SessionRunHook)]
     self._should_stop = False
-    self._global_step_tensor = global_step_tensor
-    self._last_step = None
+    self._monitors_init()
 
   def _check_stop(self):
     """See base class."""
@@ -70,24 +73,15 @@ class MonitoredSession(WrappedSession):
     if self.should_stop():
       raise RuntimeError('Run called even after should_stop requested.')
 
-    if self._last_step is None:
-      self._last_step = WrappedSession.run(self, self._global_step_tensor)
+    actual_fetches = {'caller': fetches}
 
-    monitors_step = self._last_step + 1
-    monitor_fetches = []
-    for monitor in self._monitors:
-      monitor_requests = monitor.step_begin(monitors_step)
-      if monitor_requests:
-        # TODO(ispir): remove following restriction after b/30136815 fixed
-        if not isinstance(monitor_requests, list):
-          raise ValueError('Monitor.step_begin should return a list.')
-        monitor_fetches.extend(monitor_requests)
+    self._monitors_step_begin(actual_fetches)
 
-    actual_fetches = {
-        'caller': fetches,
-        self._global_step_tensor: self._global_step_tensor,
-        'monitors': [_as_graph_element(f, self.graph) for f in monitor_fetches]
-    }
+    run_context = session_run_hook.SessionRunContext(
+        original_args=session_run_hook.SessionRunArgs(fetches, feed_dict),
+        session=self._sess)
+    feed_dict = self._call_hook_before_run(
+        run_context, actual_fetches, feed_dict)
 
     # Do session run.
     outputs = WrappedSession.run(self,
@@ -95,26 +89,90 @@ class MonitoredSession(WrappedSession):
                                  feed_dict=feed_dict,
                                  options=options,
                                  run_metadata=run_metadata)
-    self._last_step = outputs[self._global_step_tensor]
 
-    # Call monitors step_end and stop if one of them tells to stop.
-    if monitor_fetches:
-      monitor_outputs = dict(zip(monitor_fetches, outputs['monitors']))
-    else:
-      monitor_outputs = {}
+    for hook in self._hooks:
+      hook.after_run(
+          run_context,
+          session_run_hook.SessionRunValues(results=outputs[hook] if
+                                            hook in outputs else None))
+    self._should_stop = self._should_stop or run_context.stop_requested
 
-    for monitor in self._monitors:
-      induce_stop = monitor.step_end(monitors_step, monitor_outputs)
-      self._should_stop = self._should_stop or induce_stop
-
-    # Call the post_step methods.
-    for monitor in self._monitors:
-      monitor.post_step(monitors_step, self._sess)
+    self._monitors_step_end(outputs)
 
     return outputs['caller']
 
+  def _call_hook_before_run(self, run_context, fetch_dict, user_feed_dict):
+    hook_feeds = {}
+    for hook in self._hooks:
+      request = hook.before_run(run_context)
+      if request is not None:
+        if request.fetches is not None:
+          fetch_dict[hook] = request.fetches
+        if request.feed_dict:
+          self._raise_if_feeds_intersects(
+              hook_feeds, request.feed_dict,
+              'Same tensor is fed by two hooks.')
+          hook_feeds.update(request.feed_dict)
 
-# TODO(ispir): Remove following logic after forcing monitors returns tensors.
+    if hook_feeds:
+      if user_feed_dict:
+        self._raise_if_feeds_intersects(
+            user_feed_dict, hook_feeds,
+            'Same tensor is fed by a SessionRunHook and user.')
+        hook_feeds.update(user_feed_dict)
+        user_feed_dict = hook_feeds
+      else:
+        user_feed_dict = hook_feeds
+
+    return user_feed_dict
+
+  def _raise_if_feeds_intersects(self, feeds1, feeds2, message):
+    intersection = set(feeds1.keys()) & set(feeds2.keys())
+    if intersection:
+      raise RuntimeError(message + ' Conflict(s): ' + str(list(intersection)))
+
+  # TODO(ispir): Delete all of following functions after deprecating Monitors.
+  def _monitors_init(self):
+    if self._monitors:
+      self._global_step_tensor = contrib_variables.get_global_step()
+      self._last_step = None
+
+  def _monitors_step_begin(self, actual_fetches):
+    if self._monitors:
+      actual_fetches[self._global_step_tensor] = self._global_step_tensor
+      if self._last_step is None:
+        self._last_step = WrappedSession.run(self, self._global_step_tensor)
+
+      self.monitors_step = self._last_step + 1
+      self.monitor_fetches = []
+      for monitor in self._monitors:
+        monitor_requests = monitor.step_begin(self.monitors_step)
+        if monitor_requests:
+          if not isinstance(monitor_requests, list):
+            raise ValueError('Monitor.step_begin should return a list.')
+          self.monitor_fetches.extend(monitor_requests)
+      actual_fetches['monitors'] = [
+          _as_graph_element(f, self.graph) for f in self.monitor_fetches
+      ]
+
+  def _monitors_step_end(self, outputs):
+    if self._monitors:
+      self._last_step = outputs[self._global_step_tensor]
+      # Call monitors step_end and stop if one of them tells to stop.
+      if self.monitor_fetches:
+        monitor_outputs = dict(zip(self.monitor_fetches, outputs['monitors']))
+      else:
+        monitor_outputs = {}
+
+      for monitor in self._monitors:
+        induce_stop = monitor.step_end(self.monitors_step, monitor_outputs)
+        self._should_stop = self._should_stop or induce_stop
+
+      # Call the post_step methods.
+      for monitor in self._monitors:
+        monitor.post_step(self.monitors_step, self._sess)
+
+
 def _as_graph_element(obj, graph):
   """Retrieves Graph element."""
   graph = graph or ops.get_default_graph()
@@ -137,3 +195,6 @@ def _as_graph_element(obj, graph):
                        'as this `Operation` has multiple outputs '
                        '(at least 2).' % obj)
   return element
+
+
+

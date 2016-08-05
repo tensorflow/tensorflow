@@ -24,6 +24,8 @@ import os
 
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import supervised_session
 
 
@@ -33,7 +35,6 @@ class ScaffoldTest(tf.test.TestCase):
   def test_nothing_created_before_finalize(self):
     with tf.Graph().as_default():
       scaffold = supervised_session.Scaffold()
-      self.assertEqual(None, scaffold.global_step_tensor)
       self.assertEqual(None, scaffold.init_op)
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
@@ -44,8 +45,8 @@ class ScaffoldTest(tf.test.TestCase):
   def test_defaults_empty_graph(self):
     with tf.Graph().as_default():
       scaffold = supervised_session.Scaffold()
+      tf.Variable(1, name='my_var')
       scaffold.finalize()
-      self.assertTrue(isinstance(scaffold.global_step_tensor, tf.Variable))
       self.assertTrue(isinstance(scaffold.init_op, tf.Operation))
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
@@ -53,19 +54,17 @@ class ScaffoldTest(tf.test.TestCase):
       self.assertTrue(isinstance(scaffold.local_init_op, tf.Operation))
       self.assertTrue(isinstance(scaffold.saver, tf.train.Saver))
       with self.test_session() as sess:
-        self.assertTrue(b'global_step' in sess.run(scaffold.ready_op))
+        self.assertTrue(b'my_var' in sess.run(scaffold.ready_op))
         sess.run([scaffold.init_op, scaffold.local_init_op])
         self.assertEquals(0, len(sess.run(scaffold.ready_op)))
-        self.assertEquals(0, sess.run(scaffold.global_step_tensor))
 
   def test_caches_values(self):
     with tf.Graph().as_default():
+      tf.Variable([1])
       scaffold1 = supervised_session.Scaffold()
       scaffold1.finalize()
       scaffold2 = supervised_session.Scaffold()
       scaffold2.finalize()
-      self.assertEqual(scaffold1.global_step_tensor,
-                       scaffold2.global_step_tensor)
       self.assertEqual(scaffold1.init_op, scaffold2.init_op)
       self.assertEqual(scaffold1.ready_op, scaffold2.ready_op)
       self.assertEqual(scaffold1.local_init_op, scaffold2.local_init_op)
@@ -81,15 +80,14 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_uses_passed_values(self):
     with tf.Graph().as_default():
-      scaffold = supervised_session.Scaffold(global_step_tensor=1,
-                                             init_op=2,
-                                             init_feed_dict=3,
-                                             init_fn=lambda scaffold, sess: 4,
-                                             ready_op=5,
-                                             local_init_op=6,
-                                             saver=7)
+      scaffold = supervised_session.Scaffold(
+          init_op=2,
+          init_feed_dict=3,
+          init_fn=lambda scaffold, sess: 4,
+          ready_op=5,
+          local_init_op=6,
+          saver=7)
       scaffold.finalize()
-      self.assertEqual(1, scaffold.global_step_tensor)
       self.assertEqual(2, scaffold.init_op)
       self.assertEqual(3, scaffold.init_feed_dict)
       self.assertTrue(callable(scaffold.init_fn))
@@ -99,28 +97,28 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_graph_is_finalized(self):
     with tf.Graph().as_default():
+      tf.Variable([1])
       supervised_session.Scaffold().finalize()
       with self.assertRaisesRegexp(RuntimeError,
                                    'Graph is finalized and cannot be modified'):
         tf.constant([0])
 
 
-class RaiseOnceAtStepN(tf.contrib.learn.monitors.BaseMonitor):
-  """Monitor that raises an Exception at step N."""
+class RaiseOnceAtCountN(session_run_hook.SessionRunHook):
+  """Hook that raises an Exception at step N."""
 
   def __init__(self, n, ex):
-    super(RaiseOnceAtStepN, self).__init__()
     self.n = n
     self.ex = ex
     self.raised = False
 
-  def step_begin(self, step):
-    super(RaiseOnceAtStepN, self).step_begin(step)
+  def before_run(self, run_context):
     # Raise the first time we reach step N.
-    if step == self.n and not self.raised:
+    self.n -= 1
+    if 0 == self.n and not self.raised:
       self.raised = True
       raise self.ex
-    return []
+    return None
 
 
 class SupervisedSessionTest(tf.test.TestCase):
@@ -145,8 +143,9 @@ class SupervisedSessionTest(tf.test.TestCase):
 
   def test_defaults(self):
     with tf.Graph().as_default():
+      a_var = tf.Variable(0)
       with supervised_session.SupervisedSession('') as session:
-        self.assertEqual(0, session.run(session.scaffold.global_step_tensor))
+        self.assertEqual(0, session.run(a_var))
 
   def test_last_step(self):
     logdir = self._test_dir('test_last_step')
@@ -155,9 +154,9 @@ class SupervisedSessionTest(tf.test.TestCase):
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
       # Run till step 3 and save.
-      monitors = [tf.contrib.learn.monitors.StopAtStep(last_step=3)]
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                monitors=monitors) as session:
+      hooks = [basic_session_run_hooks.StopAtStepHook(last_step=3)]
+      with supervised_session.SupervisedSession(
+          '', scaffold=scaffold, hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertFalse(session.should_stop())
         self.assertEqual(1, session.run(do_step))
@@ -172,9 +171,9 @@ class SupervisedSessionTest(tf.test.TestCase):
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
       scaffold = supervised_session.Scaffold(init_fn=load_ckpt)
-      monitors = [tf.contrib.learn.monitors.StopAtStep(last_step=5)]
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                monitors=monitors) as session:
+      hooks = [basic_session_run_hooks.StopAtStepHook(last_step=5)]
+      with supervised_session.SupervisedSession(
+          '', scaffold=scaffold, hooks=hooks) as session:
         self.assertEqual(3, session.run(gstep))
         self.assertFalse(session.should_stop())
         self.assertEqual(4, session.run(do_step))
@@ -189,9 +188,9 @@ class SupervisedSessionTest(tf.test.TestCase):
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
       # Do 3 steps and save.
-      monitors = [tf.contrib.learn.monitors.StopAtStep(num_steps=3)]
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                monitors=monitors) as session:
+      hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=3)]
+      with supervised_session.SupervisedSession(
+          '', scaffold=scaffold, hooks=hooks) as session:
         session.run(do_step)
         self.assertFalse(session.should_stop())
         session.run(do_step)
@@ -204,11 +203,10 @@ class SupervisedSessionTest(tf.test.TestCase):
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
       scaffold = supervised_session.Scaffold(init_fn=load_ckpt)
-      monitors = [tf.contrib.learn.monitors.StopAtStep(num_steps=4)]
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                monitors=monitors) as session:
-        self.assertEqual(3, session.run(gstep))
-        session.run(do_step)
+      hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=4)]
+      with supervised_session.SupervisedSession(
+          '', scaffold=scaffold, hooks=hooks) as session:
+        self.assertEqual(4, session.run(do_step))
         self.assertFalse(session.should_stop())
         session.run(do_step)
         self.assertFalse(session.should_stop())
@@ -226,13 +224,12 @@ class SupervisedSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
-      # Use a monitor to save the model every 100 steps.  It also saves it at
+      # Use a hook to save the model every 100 steps.  It also saves it at
       # the end.
-      monitors = [tf.contrib.learn.monitors.CheckpointSaver(
+      hooks = [basic_session_run_hooks.CheckpointSaverHook(
           logdir, save_steps=1, scaffold=scaffold)]
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                checkpoint_dir=logdir,
-                                                monitors=monitors) as session:
+      with supervised_session.SupervisedSession(
+          '', scaffold=scaffold, checkpoint_dir=logdir, hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
@@ -248,20 +245,20 @@ class SupervisedSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
-      monitor = RaiseOnceAtStepN(3, tf.errors.AbortedError(None, None, 'Abort'))
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                monitors=[monitor]) as session:
+      hook = RaiseOnceAtCountN(4, tf.errors.AbortedError(None, None, 'Abort'))
+      with supervised_session.SupervisedSession(
+          '', scaffold=scaffold, hooks=[hook]) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
-        # Here at step 3, the monitor triggers and raises AbortedError.  The
+        # Here at step 3, the hook triggers and raises AbortedError.  The
         # SupervisedSession automatically retries and restart from a freshly
         # initialized session, so the step is back to 0 and running do_step
         # moves it to 1.
         self.assertEqual(1, session.run(do_step))
         self.assertFalse(session.should_stop())
-        self.assertTrue(monitor.raised)
+        self.assertTrue(hook.raised)
         self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
 
@@ -273,23 +270,22 @@ class SupervisedSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
-      abort_monitor = RaiseOnceAtStepN(
-          3, tf.errors.AbortedError(None, None, 'Abort'))
+      abort_hook = RaiseOnceAtCountN(
+          4, tf.errors.AbortedError(None, None, 'Abort'))
       # Save after each step.
-      ckpt_monitor = tf.contrib.learn.monitors.CheckpointSaver(
+      ckpt_hook = basic_session_run_hooks.CheckpointSaverHook(
           logdir, save_steps=1, scaffold=scaffold)
-      monitors = [abort_monitor, ckpt_monitor]
-      with supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                checkpoint_dir=logdir,
-                                                monitors=monitors) as session:
+      hooks = [abort_hook, ckpt_hook]
+      with supervised_session.SupervisedSession(
+          '', scaffold=scaffold, checkpoint_dir=logdir, hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
         self.assertFalse(session.should_stop())
-        # Here at step 3, the monitor triggers and raises AbortedError.  The
+        # Here at step 3, the hook triggers and raises AbortedError.  The
         # SupervisedSession automatically restores and retries.
         self.assertEqual(3, session.run(do_step))
-        self.assertTrue(abort_monitor.raised)
+        self.assertTrue(abort_hook.raised)
         self.assertFalse(session.should_stop())
         self.assertEqual(4, session.run(do_step))
         self.assertFalse(session.should_stop())
@@ -300,15 +296,14 @@ class SupervisedSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
-      monitor = RaiseOnceAtStepN(1,
-                                 tf.errors.OutOfRangeError(None, None, 'EOI'))
+      hook = RaiseOnceAtCountN(2, tf.errors.OutOfRangeError(None, None, 'EOI'))
       session = supervised_session.SupervisedSession(
-          '', scaffold=scaffold, monitors=[monitor])
+          '', scaffold=scaffold, hooks=[hook])
       # session should cleanly exit from the context.
       with session:
         self.assertEqual(0, session.run(gstep))
         self.assertFalse(session.should_stop())
-        # Here at step 1, the monitor triggers and raises OutOfRange. The
+        # Here at step 1, the hook triggers and raises OutOfRange. The
         # session should go into should_stop() mode. It should raise the
         # exception. So next step should not be executed.
         session.run(do_step)
@@ -321,14 +316,14 @@ class SupervisedSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
-      monitor = RaiseOnceAtStepN(1, StopIteration)
+      hook = RaiseOnceAtCountN(2, StopIteration)
       session = supervised_session.SupervisedSession(
-          '', scaffold=scaffold, monitors=[monitor])
+          '', scaffold=scaffold, hooks=[hook])
       # session should cleanly exit from the context.
       with session:
         self.assertEqual(0, session.run(gstep))
         self.assertFalse(session.should_stop())
-        # Here at step 1, the monitor triggers and raises StopIteration. The
+        # Here at step 1, the hook triggers and raises StopIteration. The
         # session should go into should_stop() mode. It should raise the
         # exception. So next step should not be executed.
         session.run(do_step)
@@ -342,20 +337,20 @@ class SupervisedSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       scaffold = supervised_session.Scaffold()
-      monitor = RaiseOnceAtStepN(3, RuntimeError('regular exception'))
-      session = supervised_session.SupervisedSession('', scaffold=scaffold,
-                                                     monitors=[monitor])
+      hook = RaiseOnceAtCountN(4, RuntimeError('regular exception'))
+      session = supervised_session.SupervisedSession(
+          '', scaffold=scaffold, hooks=[hook])
       with self.assertRaisesRegexp(RuntimeError, 'regular exception'):
         with session:
           self.assertEqual(0, session.run(gstep))
           self.assertEqual(1, session.run(do_step))
           self.assertEqual(2, session.run(do_step))
           self.assertFalse(session.should_stop())
-          # This triggers the monitor and raises the exception
+          # This triggers the hook and raises the exception
           session.run(do_step)
           # We should not hit this
           self.assertFalse(True)
-      self.assertTrue(monitor.raised)
+      self.assertTrue(hook.raised)
       self.assertTrue(session.should_stop())
 
   # This set of tests, verifies the session behavior when exceptions are raised

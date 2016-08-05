@@ -26,6 +26,7 @@ from tensorflow.contrib.framework.python.ops import variables as contrib_variabl
 from tensorflow.contrib.learn.python.learn import coordinated_session
 from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import recoverable_session
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import summary_writer_cache
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import errors
@@ -90,7 +91,6 @@ class Scaffold(object):
   # implement the caching logic.
 
   def __init__(self,
-               global_step_tensor=None,
                init_op=None,
                init_feed_dict=None,
                init_fn=None,
@@ -102,7 +102,6 @@ class Scaffold(object):
     """Create a scaffold.
 
     Args:
-      global_step_tensor: Optional tensor to use as the global step counter.
       init_op: Optional op for initializing variables.
       init_feed_dict: Optional session feed dictionary to use when running the
         init_op.
@@ -127,7 +126,6 @@ class Scaffold(object):
     else:
       self._init_fn = None
 
-    self._global_step_tensor = global_step_tensor
     self._init_op = init_op
     self._ready_op = ready_op
     self._local_init_op = local_init_op
@@ -138,8 +136,6 @@ class Scaffold(object):
 
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
-    if self._global_step_tensor is None:
-      self._global_step_tensor = contrib_variables.get_or_create_global_step()
     if self._init_op is None:
       self._init_op = Scaffold._get_or_default(
           'init_op', ops.GraphKeys.INIT_OP, variables.initialize_all_variables)
@@ -165,10 +161,6 @@ class Scaffold(object):
     # pylint: enable=g-long-lambda
 
     ops.get_default_graph().finalize()
-
-  @property
-  def global_step_tensor(self):
-    return self._global_step_tensor
 
   @property
   def init_fn(self):
@@ -232,16 +224,14 @@ def _call_monitor_end(monitor, sess):
 # TODO(ispir): Document this class after interface is finalized.
 # mention StopIteration and OutOfRangeError
 class SupervisedSession(object):
-  """Session-like object that supports recovery and monitors.
-
-
+  """Session-like object that supports recovery and SessionRunHooks.
   """
 
   def __init__(self,
                master,
                is_chief=True,
                checkpoint_dir=None,
-               monitors=None,
+               hooks=None,
                scaffold=None,
                config=None):
     self._graph = ops.get_default_graph()
@@ -249,10 +239,13 @@ class SupervisedSession(object):
     self._checkpoint_dir = checkpoint_dir
     self._is_chief = is_chief
     self._config = config
-    self._monitors = monitors or []
+    self._hooks = hooks or []
     self._scaffold = scaffold or Scaffold()
-    for monitor in self._monitors:
-      monitor.begin(max_steps=None)
+    for monitor in self._hooks:
+      if isinstance(monitor, session_run_hook.SessionRunHook):
+        monitor.begin()
+      else:
+        monitor.begin(max_steps=None)
     # Create the session.
     self._scaffold.finalize()
     self._session_manager = sm.SessionManager(
@@ -260,9 +253,6 @@ class SupervisedSession(object):
         ready_op=self._scaffold.ready_op,
         graph=ops.get_default_graph())
     self._sess = recoverable_session.RecoverableSession(self._create_session)
-    # Call the begin() method of monitors.
-    self._init_step = self._tf_sess.run(self._scaffold.global_step_tensor)
-    # Write the graph out, note: this uses self._init_step.
     self.write_graph()
 
   def _create_session(self):
@@ -288,9 +278,8 @@ class SupervisedSession(object):
     coordinated_threads_to_join = queue_runner.start_queue_runners(sess=tf_sess,
                                                                    coord=coord)
     return coordinated_session.CoordinatedSession(
-        monitored_session.MonitoredSession(tf_sess, self._monitors,
-                                           self._scaffold.global_step_tensor),
-        coord, coordinated_threads_to_join)
+        monitored_session.MonitoredSession(tf_sess, self._hooks), coord,
+        coordinated_threads_to_join)
 
   @property
   def scaffold(self):
@@ -328,7 +317,7 @@ class SupervisedSession(object):
   def _close_internal(self, exception_type=None):
     try:
       if not exception_type:
-        for monitor in self._monitors:
+        for monitor in self._hooks:
           _call_monitor_end(monitor, self._tf_sess)
     finally:
       self._sess.close()
@@ -357,10 +346,14 @@ class SupervisedSession(object):
   def write_graph(self):
     """Saves current graph."""
     if self._checkpoint_dir is not None and self._is_chief:
+      init_step = 0
+      global_step_tensor = contrib_variables.get_global_step()
+      if global_step_tensor is not None:
+        init_step = self._tf_sess.run(global_step_tensor)
       summary_writer = summary_writer_cache.SummaryWriterCache.get(
           self._checkpoint_dir)
       training_util.write_graph(self._graph.as_graph_def(add_shapes=True),
                                 self._checkpoint_dir, 'graph.pbtxt')
       summary_writer.add_graph(self._graph)
-      summary_writer.add_session_log(SessionLog(status=SessionLog.START),
-                                     self._init_step)
+      summary_writer.add_session_log(
+          SessionLog(status=SessionLog.START), init_step)

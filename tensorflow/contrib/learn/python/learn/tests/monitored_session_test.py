@@ -25,6 +25,7 @@ import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import monitors
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.wrapped_session import WrappedSession
 
 
@@ -68,16 +69,33 @@ class FakeMonitor(monitors.BaseMonitor):
     self.session = session
 
 
+class FakeHook(session_run_hook.SessionRunHook):
+
+  def __init__(self):
+    self.should_stop = False
+    self.request = None
+    self.call_counter = Counter()
+    self.last_run_context = None
+    self.last_run_values = None
+
+  def before_run(self, run_context):
+    self.call_counter['before_run'] += 1
+    self.last_run_context = run_context
+    return self.request
+
+  def after_run(self, run_context, run_values):
+    self.call_counter['after_run'] += 1
+    self.last_run_values = run_values
+    if self.should_stop:
+      run_context.request_stop()
+
+
 class MonitoredSessionTest(tf.test.TestCase):
 
   def testRunPassesAllArguments(self):
     with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
       mock_run = FakeSession(sess)
-      mon_sess = monitored_session.MonitoredSession(
-          sess=mock_run,
-          monitors=[],
-          global_step_tensor=global_step_tensor)
+      mon_sess = monitored_session.MonitoredSession(sess=mock_run, hooks=[])
       a_tensor = tf.constant([0], name='a_tensor')
       sess.run(tf.initialize_all_variables())
       output = mon_sess.run(fetches=a_tensor,
@@ -91,15 +109,145 @@ class MonitoredSessionTest(tf.test.TestCase):
           'run_metadata': 'a_metadata'
       })
 
+  def testCallsHooksBeginEnd(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      mock_hook = FakeHook()
+      mock_hook2 = FakeHook()
+      mon_sess = monitored_session.MonitoredSession(
+          sess=sess, hooks=[mock_hook, mock_hook2])
+      a_tensor = tf.constant([0], name='a_tensor')
+      sess.run(tf.initialize_all_variables())
+      mon_sess.run(a_tensor)
+
+      for hook in [mock_hook, mock_hook2]:
+        self.assertEqual(
+            hook.last_run_values,
+            session_run_hook.SessionRunValues(results=None))
+        self.assertEqual(hook.last_run_context.original_args,
+                         session_run_hook.SessionRunArgs(a_tensor))
+        self.assertEqual(hook.last_run_context.session, sess)
+        self.assertEqual(hook.call_counter['before_run'], 1)
+        self.assertEqual(hook.call_counter['after_run'], 1)
+
+  def testShouldStop(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      mock_hook = FakeHook()
+      mock_hook2 = FakeHook()
+      mon_sess = monitored_session.MonitoredSession(
+          sess=sess, hooks=[mock_hook, mock_hook2])
+      tf.constant([0], name='a_tensor')
+      sess.run(tf.initialize_all_variables())
+
+      mon_sess.run(fetches='a_tensor')
+      self.assertFalse(mon_sess.should_stop())
+
+      mock_hook.should_stop = True
+      mon_sess.run(fetches='a_tensor')
+      self.assertTrue(mon_sess.should_stop())
+
+  def testFetchesHookRequests(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      mock_hook = FakeHook()
+      mock_hook2 = FakeHook()
+      mon_sess = monitored_session.MonitoredSession(
+          sess=sess, hooks=[mock_hook, mock_hook2])
+      a_tensor = tf.constant([0], name='a_tensor')
+      another_tensor = tf.constant([5], name='another_tensor')
+      third_tensor = tf.constant([10], name='third_tensor')
+      mock_hook.request = session_run_hook.SessionRunArgs([another_tensor])
+      mock_hook2.request = session_run_hook.SessionRunArgs([third_tensor])
+      sess.run(tf.initialize_all_variables())
+
+      output = mon_sess.run(fetches=a_tensor)
+      self.assertEqual(output, [0])
+      self.assertEqual(mock_hook.last_run_values.results, [5])
+      self.assertEqual(mock_hook2.last_run_values.results, [10])
+
+  def testOnlyHooksHaveFeeds(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      mock_hook = FakeHook()
+      mock_hook2 = FakeHook()
+      mon_sess = monitored_session.MonitoredSession(
+          sess=sess, hooks=[mock_hook, mock_hook2])
+      a_tensor = tf.constant([0], name='a_tensor')
+      b_tensor = tf.constant([0], name='b_tensor')
+      add_tensor = a_tensor + b_tensor
+      mock_hook.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={a_tensor: [5]})
+      mock_hook2.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={b_tensor: [10]})
+      sess.run(tf.initialize_all_variables())
+
+      self.assertEqual(mon_sess.run(fetches=add_tensor), [15])
+
+  def testBothHooksAndUserHaveFeeds(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      mock_hook = FakeHook()
+      mock_hook2 = FakeHook()
+      mon_sess = monitored_session.MonitoredSession(
+          sess=sess, hooks=[mock_hook, mock_hook2])
+      a_tensor = tf.constant([0], name='a_tensor')
+      b_tensor = tf.constant([0], name='b_tensor')
+      c_tensor = tf.constant([0], name='c_tensor')
+      add_tensor = a_tensor + b_tensor + c_tensor
+      mock_hook.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={a_tensor: [5]})
+      mock_hook2.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={b_tensor: [10]})
+      sess.run(tf.initialize_all_variables())
+
+      feed_dict = {c_tensor: [20]}
+      self.assertEqual(
+          mon_sess.run(fetches=add_tensor, feed_dict=feed_dict), [35])
+      # User feed_dict should not be changed
+      self.assertEqual(len(feed_dict), 1)
+
+  def testHooksFeedConflicts(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      mock_hook = FakeHook()
+      mock_hook2 = FakeHook()
+      mon_sess = monitored_session.MonitoredSession(
+          sess=sess, hooks=[mock_hook, mock_hook2])
+      a_tensor = tf.constant([0], name='a_tensor')
+      b_tensor = tf.constant([0], name='b_tensor')
+      add_tensor = a_tensor + b_tensor
+      mock_hook.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={a_tensor: [5]})
+      mock_hook2.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={a_tensor: [10]})
+      sess.run(tf.initialize_all_variables())
+
+      with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
+        mon_sess.run(fetches=add_tensor)
+
+  def testHooksAndUserFeedConflicts(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      mock_hook = FakeHook()
+      mock_hook2 = FakeHook()
+      mon_sess = monitored_session.MonitoredSession(
+          sess=sess, hooks=[mock_hook, mock_hook2])
+      a_tensor = tf.constant([0], name='a_tensor')
+      b_tensor = tf.constant([0], name='b_tensor')
+      add_tensor = a_tensor + b_tensor
+      mock_hook.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={a_tensor: [5]})
+      mock_hook2.request = session_run_hook.SessionRunArgs(
+          None, feed_dict={b_tensor: [10]})
+      sess.run(tf.initialize_all_variables())
+
+      with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
+        mon_sess.run(fetches=add_tensor, feed_dict={b_tensor: [10]})
+
+
+class MonitoredSessionWithMonitorsTest(tf.test.TestCase):
+
   def testCallsMonitorsBeginEndAndPost(self):
     with tf.Graph().as_default(), tf.Session() as sess:
       global_step_tensor = tf.contrib.framework.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
       mon_sess = monitored_session.MonitoredSession(
-          sess=sess,
-          monitors=[mock_mon, mock_mon2],
-          global_step_tensor=global_step_tensor)
+          sess=sess, hooks=[mock_mon, mock_mon2])
       a_tensor = tf.constant([0], name='a_tensor')
       sess.run(tf.initialize_all_variables())
       sess.run(global_step_tensor.assign(10))
@@ -120,9 +268,7 @@ class MonitoredSessionTest(tf.test.TestCase):
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
       mon_sess = monitored_session.MonitoredSession(
-          sess=sess,
-          monitors=[mock_mon, mock_mon2],
-          global_step_tensor=global_step_tensor)
+          sess=sess, hooks=[mock_mon, mock_mon2])
       inc_5 = tf.assign_add(global_step_tensor, 5)
       # Initialize global_step_tensor to '0':
       sess.run(tf.initialize_all_variables())
@@ -147,13 +293,11 @@ class MonitoredSessionTest(tf.test.TestCase):
 
   def testShouldStop(self):
     with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
+      tf.contrib.framework.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
       mon_sess = monitored_session.MonitoredSession(
-          sess=sess,
-          monitors=[mock_mon, mock_mon2],
-          global_step_tensor=global_step_tensor)
+          sess=sess, hooks=[mock_mon, mock_mon2])
       tf.constant([0], name='a_tensor')
       sess.run(tf.initialize_all_variables())
 
@@ -166,13 +310,11 @@ class MonitoredSessionTest(tf.test.TestCase):
 
   def testFetchesMonitorRequests(self):
     with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
+      tf.contrib.framework.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
       mon_sess = monitored_session.MonitoredSession(
-          sess=sess,
-          monitors=[mock_mon, mock_mon2],
-          global_step_tensor=global_step_tensor)
+          sess=sess, hooks=[mock_mon, mock_mon2])
       a_tensor = tf.constant([0], name='a_tensor')
       tf.constant([5], name='another_tensor')
       tf.constant([10], name='third_tensor')
@@ -187,13 +329,11 @@ class MonitoredSessionTest(tf.test.TestCase):
 
   def testMonitorHasSameRequests(self):
     with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
+      tf.contrib.framework.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
       mon_sess = monitored_session.MonitoredSession(
-          sess=sess,
-          monitors=[mock_mon, mock_mon2],
-          global_step_tensor=global_step_tensor)
+          sess=sess, hooks=[mock_mon, mock_mon2])
       a_tensor = tf.constant([0], name='a_tensor')
       tf.constant([5], name='another_tensor')
       mock_mon.requested_tensors = ['another_tensor']
@@ -207,13 +347,11 @@ class MonitoredSessionTest(tf.test.TestCase):
 
   def testMonitorHasSameRequestWithCaller(self):
     with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
+      tf.contrib.framework.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
       mon_sess = monitored_session.MonitoredSession(
-          sess=sess,
-          monitors=[mock_mon, mock_mon2],
-          global_step_tensor=global_step_tensor)
+          sess=sess, hooks=[mock_mon, mock_mon2])
       a_tensor = tf.constant([0], name='a_tensor')
       tf.constant([10], name='third_tensor')
       mock_mon.requested_tensors = ['a_tensor']
@@ -227,13 +365,11 @@ class MonitoredSessionTest(tf.test.TestCase):
 
   def testMonitorRequestWithColonZero(self):
     with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
+      tf.contrib.framework.create_global_step()
       mock_mon = FakeMonitor()
       mock_mon2 = FakeMonitor()
       mon_sess = monitored_session.MonitoredSession(
-          sess=sess,
-          monitors=[mock_mon, mock_mon2],
-          global_step_tensor=global_step_tensor)
+          sess=sess, hooks=[mock_mon, mock_mon2])
       a_tensor = tf.constant([0], name='a_tensor')
       tf.constant([5], name='another_tensor')
       mock_mon.requested_tensors = ['another_tensor']

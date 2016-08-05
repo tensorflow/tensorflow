@@ -483,7 +483,7 @@ class GraphActionsTest(tf.test.TestCase):
           loss_op=loss_op,
           supervisor_is_chief=True,
           steps=1,
-          monitors=[chief_exclusive_monitor, all_workers_monitor])
+          hooks=[chief_exclusive_monitor, all_workers_monitor])
       self.assertEqual(2.0, loss)
       self.assertTrue(chief_exclusive_monitor.is_active and
                       all_workers_monitor.is_active,
@@ -517,7 +517,7 @@ class GraphActionsTest(tf.test.TestCase):
             loss_op=loss_op,
             supervisor_is_chief=False,
             steps=1,
-            monitors=[chief_exclusive_monitor, all_workers_monitor])
+            hooks=[chief_exclusive_monitor, all_workers_monitor])
       self.assertEqual(2.0, loss)
       self.assertTrue(not chief_exclusive_monitor.is_active and
                       all_workers_monitor.is_active,
