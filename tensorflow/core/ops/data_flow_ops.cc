@@ -899,6 +899,16 @@ REGISTER_OP("BarrierInsertMany")
     .Input("values: T")
     .Attr("T: type")
     .Attr("component_index: int")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* keys = c->input(1);
+      const Shape* values = c->input(2);
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(keys, 1, &keys));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(values, 1, &values));
+      TF_RETURN_IF_ERROR(c->Merge(keys, c->Vector(c->Dim(values, 0)), &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 For each key, assigns the respective value to the specified component.
 
