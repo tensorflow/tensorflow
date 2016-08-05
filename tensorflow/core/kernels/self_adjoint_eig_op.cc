@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-// TODO(rmlarsen): Change this op to return the eigenvalues and eigenvectors in
-// separate output tensors.
 
 namespace tensorflow {
 

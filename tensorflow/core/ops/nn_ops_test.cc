@@ -312,4 +312,29 @@ TEST(NNOpsTest, InTopK_ShapeFn) {
   INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,2]");
 }
 
+TEST(NNOpsTest, Dilation2DShapeTest) {
+  ShapeInferenceTestOp op("Dilation2D");
+  auto set_op = [&op](const std::vector<int32>& strides,
+                      const std::vector<int32>& rates, const string& padding) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Dilation2D")
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("rates", rates)
+                    .Attr("padding", padding)
+                    .Finalize(&op.node_def));
+  };
+
+  // rate rows and cols is 1, so filter_rows and cols are unchanged.
+  // We have a 1x1 filter so the output is still 2x2.
+  set_op({1, 1, 1, 1}, {1, 1, 1, 1}, "VALID");
+  INFER_OK(op, "[1,2,2,2];[1,1,2]", "[d0_0,2,2,d1_2]");
+
+  // rate rows and cols is 2, so filter_rows and cols are changed to
+  // be 2 + (2 - 1) = 3.  7x7 input with 3x3 filter and 1x1 stride
+  // gives a 5x5 output.
+  set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "VALID");
+  INFER_OK(op, "[1,7,7,2];[2,2,2]", "[d0_0,5,5,d1_2]");
+}
+
 }  // end namespace tensorflow

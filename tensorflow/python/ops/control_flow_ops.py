@@ -348,9 +348,11 @@ def merge(inputs, name=None):
     A tuple containing the chosen input tensor and its index in `inputs`.
 
   Raises:
-    ValueError: If inputs are IndexedSlices and some but not all have a
-      dense_shape property.
+    ValueError: If any of the inputs is None, or inputs are IndexedSlices and
+      some but not all have a dense_shape property.
   """
+  if any([inp is None for inp in inputs]):
+    raise ValueError("At least one of the merge inputs is None: %s" % inputs)
   with ops.op_scope(inputs, name, "Merge") as name:
     inputs = [ops.convert_to_tensor_or_indexed_slices(inp, as_ref=True)
               for inp in inputs]

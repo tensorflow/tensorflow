@@ -68,16 +68,16 @@ Initialize a batch of Dirichlet distributions.
 ##### Args:
 
 
-*  <b>`alpha`</b>: Positive `float` or `double` tensor with shape broadcastable to
+*  <b>`alpha`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet distributions.
 *  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
-    `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
     guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
@@ -233,7 +233,7 @@ Log of the probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+*  <b>`x`</b>: Non-negative tensor with dtype `dtype` and whose shape can
     be broadcast with `self.alpha`.  For fixed leading dimensions, the last
     dimension represents counts for the corresponding Dirichlet distribution
     in `self.alpha`. `x` is only legal if it sums up to one.
@@ -302,7 +302,7 @@ The probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+*  <b>`x`</b>: Non-negative tensor with dtype `dtype` and whose shape can
     be broadcast with `self.alpha`.  For fixed leading dimensions, the last
     dimension represents x for the corresponding Dirichlet distribution in
     `self.alpha` and `self.beta`. `x` is only legal if it sums up to one.

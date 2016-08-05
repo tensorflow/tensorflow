@@ -80,6 +80,15 @@ REGISTER_OP("QuantizeDownAndShrinkRange")
     .Output("output_max: float")
     .Attr("Tinput: quantizedtype")
     .Attr("out_type: quantizedtype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Convert the quantized 'input' tensor into a lower-precision 'output', using the
 actual distribution of the values to maximize the usage of the lower bit depth

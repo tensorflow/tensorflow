@@ -573,11 +573,19 @@ class VariableScope(object):
     partitioner: callable or `None`: the partitioner passed to `get_variable`.
     custom_getter: default custom getter passed to get_variable.
     name_scope: The name passed to `tf.name_scope`.
+    dtype: default type passed to get_variable (defaults to DT_FLOAT).
   """
 
-  def __init__(self, reuse, name="", initializer=None, regularizer=None,
-               caching_device=None, partitioner=None, custom_getter=None,
-               name_scope=""):
+  def __init__(self,
+               reuse,
+               name="",
+               initializer=None,
+               regularizer=None,
+               caching_device=None,
+               partitioner=None,
+               custom_getter=None,
+               name_scope="",
+               dtype=dtypes.float32):
     """Creates a new VariableScope with the given properties."""
     self._name = name
     self._initializer = initializer
@@ -587,6 +595,7 @@ class VariableScope(object):
     self._partitioner = partitioner
     self._custom_getter = custom_getter
     self._name_scope = name_scope
+    self._dtype = dtype
 
   @property
   def name(self):
@@ -603,6 +612,10 @@ class VariableScope(object):
   @property
   def initializer(self):
     return self._initializer
+
+  @property
+  def dtype(self):
+    return self._dtype
 
   @property
   def regularizer(self):
@@ -628,6 +641,10 @@ class VariableScope(object):
     """Set initializer for this scope."""
     self._initializer = initializer
 
+  def set_dtype(self, dtype):
+    """Set data type for this scope."""
+    self._dtype = dtype
+
   def set_regularizer(self, regularizer):
     """Set regularizer for this scope."""
     self._regularizer = regularizer
@@ -644,10 +661,18 @@ class VariableScope(object):
     """Set custom getter for this scope."""
     self._custom_getter = custom_getter
 
-  def get_variable(self, var_store, name, shape=None, dtype=dtypes.float32,
-                   initializer=None, regularizer=None,
-                   trainable=True, collections=None, caching_device=None,
-                   partitioner=None, validate_shape=True,
+  def get_variable(self,
+                   var_store,
+                   name,
+                   shape=None,
+                   dtype=None,
+                   initializer=None,
+                   regularizer=None,
+                   trainable=True,
+                   collections=None,
+                   caching_device=None,
+                   partitioner=None,
+                   validate_shape=True,
                    custom_getter=None):
     """Gets an existing variable with this name or create a new one."""
     if initializer is None:
@@ -660,6 +685,8 @@ class VariableScope(object):
       partitioner = self._partitioner
     if custom_getter is None:
       custom_getter = self._custom_getter
+    if dtype is None:
+      dtype = self._dtype
 
     full_name = self.name + "/" + name if self.name else name
     # Variable names only depend on variable_scope (full_name here),
@@ -672,12 +699,18 @@ class VariableScope(object):
           partitioner=partitioner, validate_shape=validate_shape,
           custom_getter=custom_getter)
 
-  def _get_partitioned_variable(
-      self, var_store, name,
-      shape=None, dtype=dtypes.float32,
-      initializer=None, regularizer=None,
-      trainable=True, collections=None, caching_device=None,
-      partitioner=None, validate_shape=True):
+  def _get_partitioned_variable(self,
+                                var_store,
+                                name,
+                                shape=None,
+                                dtype=None,
+                                initializer=None,
+                                regularizer=None,
+                                trainable=True,
+                                collections=None,
+                                caching_device=None,
+                                partitioner=None,
+                                validate_shape=True):
     """Gets an existing variable with this name or create a new one."""
     if initializer is None:
       initializer = self._initializer
@@ -687,6 +720,9 @@ class VariableScope(object):
       caching_device = self._caching_device
     if partitioner is None:
       partitioner = self._partitioner
+    if dtype is None:
+      dtype = self._dtype
+
     if self._custom_getter is not None:
       raise ValueError(
           "Private access to _get_partitioned_variable is not allowed when "
@@ -743,9 +779,16 @@ def _get_default_variable_store():
   return store
 
 
-def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
-                 regularizer=None, trainable=True, collections=None,
-                 caching_device=None, partitioner=None, validate_shape=True,
+def get_variable(name,
+                 shape=None,
+                 dtype=None,
+                 initializer=None,
+                 regularizer=None,
+                 trainable=True,
+                 collections=None,
+                 caching_device=None,
+                 partitioner=None,
+                 validate_shape=True,
                  custom_getter=None):
   """Gets an existing variable with these parameters or create a new one.
 
@@ -830,10 +873,16 @@ def get_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       custom_getter=custom_getter)
 
 
-def _get_partitioned_variable(
-    name, shape=None, dtype=dtypes.float32, initializer=None,
-    regularizer=None, trainable=True, collections=None,
-    caching_device=None, partitioner=None, validate_shape=True):
+def _get_partitioned_variable(name,
+                              shape=None,
+                              dtype=None,
+                              initializer=None,
+                              regularizer=None,
+                              trainable=True,
+                              collections=None,
+                              caching_device=None,
+                              partitioner=None,
+                              validate_shape=True):
   """Gets or creates a sharded variable list with these parameters.
 
   The `partitioner` must be a callable that accepts a fully defined
@@ -915,10 +964,15 @@ def _get_partitioned_variable(
 
 
 @contextlib.contextmanager
-def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
-                         regularizer=None, caching_device=None,
-                         partitioner=None, custom_getter=None,
-                         old_name_scope=None):
+def _pure_variable_scope(name_or_scope,
+                         reuse=None,
+                         initializer=None,
+                         regularizer=None,
+                         caching_device=None,
+                         partitioner=None,
+                         custom_getter=None,
+                         old_name_scope=None,
+                         dtype=dtypes.float32):
   """Creates a context for the variable_scope, see `variable_scope` for docs.
 
   Note: this does not create a name scope.
@@ -933,6 +987,7 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
     partitioner: default partitioner for variables within this scope.
     custom_getter: default custom getter for variables within this scope.
     old_name_scope: the original name scope when re-entering a variable scope.
+    dtype: type of the variables within this scope (defaults to `DT_FLOAT`).
 
   Yields:
     A scope that can be to captured and reused.
@@ -967,6 +1022,7 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
           regularizer=name_or_scope.regularizer,
           caching_device=name_or_scope.caching_device,
           partitioner=name_or_scope.partitioner,
+          dtype=name_or_scope.dtype,
           custom_getter=name_or_scope.custom_getter,
           name_scope=name_scope)
       if initializer is not None:
@@ -979,6 +1035,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
         default_varscope[0].set_partitioner(partitioner)
       if custom_getter is not None:
         default_varscope[0].set_custom_getter(custom_getter)
+      if dtype is not None:
+        default_varscope[0].set_dtype(dtype)
       yield default_varscope[0]
     else:
       # Handler for the case when we just prolong current variable scope.
@@ -986,11 +1044,13 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
       #   reuse and initializer (except if the user provided values to set).
       reuse = reuse or old.reuse  # Re-using is inherited by sub-scopes.
       default_varscope[0] = VariableScope(
-          reuse, name=new_name,
+          reuse,
+          name=new_name,
           initializer=old.initializer,
           regularizer=old.regularizer,
           caching_device=old.caching_device,
           partitioner=old.partitioner,
+          dtype=old.dtype,
           custom_getter=old.custom_getter,
           name_scope=old_name_scope or name_or_scope)
       if initializer is not None:
@@ -1003,6 +1063,8 @@ def _pure_variable_scope(name_or_scope, reuse=None, initializer=None,
         default_varscope[0].set_partitioner(partitioner)
       if custom_getter is not None:
         default_varscope[0].set_custom_getter(custom_getter)
+      if dtype is not None:
+        default_varscope[0].set_dtype(dtype)
       yield default_varscope[0]
   finally:
     var_store.close_variable_subscopes(new_name)
@@ -1024,9 +1086,14 @@ def _get_unique_variable_scope(prefix):
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def variable_scope(name_or_scope, reuse=None, initializer=None,
-                   regularizer=None, caching_device=None, partitioner=None,
-                   custom_getter=None):
+def variable_scope(name_or_scope,
+                   reuse=None,
+                   initializer=None,
+                   regularizer=None,
+                   caching_device=None,
+                   partitioner=None,
+                   custom_getter=None,
+                   dtype=None):
   """Returns a context for variable scope.
 
   Variable scope allows to create new variables and to share already created
@@ -1094,6 +1161,8 @@ def variable_scope(name_or_scope, reuse=None, initializer=None,
     caching_device: default caching device for variables within this scope.
     partitioner: default partitioner for variables within this scope.
     custom_getter: default custom getter for variables within this scope.
+    dtype: type of variables created in this scope (defaults to the type
+      in the passed scope, or inherited from parent scope).
 
   Returns:
     A scope that can be to captured and reused.
@@ -1117,25 +1186,42 @@ def variable_scope(name_or_scope, reuse=None, initializer=None,
       else:
         old_name_scope = name_or_scope.original_name_scope
       with _pure_variable_scope(
-          name_or_scope, reuse=reuse, initializer=initializer,
-          regularizer=regularizer, caching_device=caching_device,
-          partitioner=partitioner, custom_getter=custom_getter,
-          old_name_scope=old_name_scope) as vs:
+          name_or_scope,
+          reuse=reuse,
+          initializer=initializer,
+          regularizer=regularizer,
+          caching_device=caching_device,
+          partitioner=partitioner,
+          custom_getter=custom_getter,
+          old_name_scope=old_name_scope,
+          dtype=dtype) as vs:
         yield vs
   else:
     # This can only happen if someone is entering the root variable scope.
     with _pure_variable_scope(
-        name_or_scope, reuse=reuse, initializer=initializer,
-        regularizer=regularizer, caching_device=caching_device,
-        partitioner=partitioner, custom_getter=custom_getter) as vs:
+        name_or_scope,
+        reuse=reuse,
+        initializer=initializer,
+        regularizer=regularizer,
+        caching_device=caching_device,
+        partitioner=partitioner,
+        custom_getter=custom_getter,
+        dtype=dtype) as vs:
       yield vs
 
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def variable_op_scope(values, name_or_scope, default_name=None,
-                      initializer=None, regularizer=None, caching_device=None,
-                      partitioner=None, custom_getter=None, reuse=None):
+def variable_op_scope(values,
+                      name_or_scope,
+                      default_name=None,
+                      initializer=None,
+                      regularizer=None,
+                      caching_device=None,
+                      partitioner=None,
+                      custom_getter=None,
+                      reuse=None,
+                      dtype=None):
   """Returns a context manager for defining an op that creates variables.
 
   This context manager validates that the given `values` are from the
@@ -1176,6 +1262,8 @@ def variable_op_scope(values, name_or_scope, default_name=None,
     custom_getter: The default custom getter for variables within this scope.
     reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
       well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
+    dtype: The default type of variables created in this scope, defaults to the
+      type of the parent scope.
 
   Returns:
     A context manager for use in defining a Python op.
@@ -1191,9 +1279,14 @@ def variable_op_scope(values, name_or_scope, default_name=None,
   with g.as_default():
     if name_or_scope:
       with variable_scope(
-          name_or_scope, reuse=reuse, initializer=initializer,
-          regularizer=regularizer, caching_device=caching_device,
-          partitioner=partitioner, custom_getter=custom_getter) as vs:
+          name_or_scope,
+          reuse=reuse,
+          initializer=initializer,
+          regularizer=regularizer,
+          caching_device=caching_device,
+          partitioner=partitioner,
+          custom_getter=custom_getter,
+          dtype=dtype) as vs:
         yield vs
     else:
       if reuse:
@@ -1201,10 +1294,14 @@ def variable_op_scope(values, name_or_scope, default_name=None,
       with ops.name_scope(default_name) as scope:
         unique_default_name = _get_unique_variable_scope(default_name)
         with _pure_variable_scope(
-            unique_default_name, initializer=initializer,
-            regularizer=regularizer, caching_device=caching_device,
-            partitioner=partitioner, custom_getter=custom_getter,
-            old_name_scope=scope) as vs:
+            unique_default_name,
+            initializer=initializer,
+            regularizer=regularizer,
+            caching_device=caching_device,
+            partitioner=partitioner,
+            custom_getter=custom_getter,
+            old_name_scope=scope,
+            dtype=dtype) as vs:
           yield vs
 
 

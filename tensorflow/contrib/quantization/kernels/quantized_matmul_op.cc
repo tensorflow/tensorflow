@@ -15,7 +15,7 @@ limitations under the License.
 
 // Implements a quantized eight-bit version of the matmul operation.
 
-#include "external/gemmlowp/public/gemmlowp.h"
+#include "public/gemmlowp.h"
 #include "tensorflow/contrib/quantization/kernels/quantization_utils.h"
 #include "tensorflow/contrib/quantization/kernels/reference_gemm.h"
 #include "tensorflow/core/framework/op_kernel.h"

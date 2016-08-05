@@ -31,14 +31,14 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 ##### Args:
 
 
-*  <b>`a`</b>: `float` or `double` tensor, the minimum endpoint.
-*  <b>`b`</b>: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is False
-    and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`a`</b>: Floating point tensor, the minimum endpoint.
+*  <b>`b`</b>: Floating point tensor, the maximum endpoint. Must be > `a`.
+*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is
+    `False` and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 ##### Raises:

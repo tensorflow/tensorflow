@@ -19,6 +19,9 @@ limitations under the License.
 namespace tensorflow {
 
 class Context {
+ public:
+  Context() {}
+  Context(const ContextKind kind) {}
 };
 
 class WithContext {

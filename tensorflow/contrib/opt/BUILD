@@ -24,6 +24,7 @@ py_test(
     deps = [
         ":opt_py",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
     ],
 )
 

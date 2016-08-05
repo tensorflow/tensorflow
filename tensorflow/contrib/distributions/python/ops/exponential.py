@@ -46,15 +46,15 @@ class Exponential(gamma.Gamma):
     """Construct Exponential distribution with parameter `lam`.
 
     Args:
-      lam: `float` or `double` tensor, the rate of the distribution(s).
+      lam: Floating point tensor, the rate of the distribution(s).
         `lam` must contain only positive values.
       validate_args: Whether to assert that `lam > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
+        methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
         and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member. If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
     """
     # Even though all statistics of are defined for valid inputs, this is not
@@ -95,8 +95,7 @@ class Exponential(gamma.Gamma):
     broadcast_shape = self._lam.get_shape()
     with ops.op_scope([self.lam, n], name, "ExponentialSample"):
       n = ops.convert_to_tensor(n, name="n")
-      shape = array_ops.concat(
-          0, [array_ops.pack([n]), array_ops.shape(self._lam)])
+      shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
       # Sample uniformly-at-random from the open-interval (0, 1).
       sampled = random_ops.random_uniform(
           shape, minval=np.nextafter(

@@ -15,7 +15,7 @@ limitations under the License.
 /* tslint:disable:no-namespace variable-name */
 
 module TF {
-  export class HistogramChart {
+  export class DistributionChart {
     protected dataFn: VZ.ChartHelpers.DataFn;
     protected tag: string;
     private run2datasets: {[run: string]: Plottable.Dataset};

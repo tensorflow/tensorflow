@@ -33,7 +33,7 @@ class SessionBundleLoadTest(tf.test.TestCase):
     base_path = tf.test.test_src_dir_path(
         "contrib/session_bundle/example/half_plus_two/00000123")
     tf.reset_default_graph()
-    sess, meta_graph_def = session_bundle.LoadSessionBundleFromPath(
+    sess, meta_graph_def = session_bundle.load_session_bundle_from_path(
         base_path, target="", config=tf.ConfigProto(device_count={"CPU": 2}))
 
     self.assertTrue(sess)
@@ -66,7 +66,7 @@ class SessionBundleLoadTest(tf.test.TestCase):
     base_path = tf.test.test_src_dir_path("/no/such/a/dir")
     tf.reset_default_graph()
     with self.assertRaises(RuntimeError) as cm:
-      _, _ = session_bundle.LoadSessionBundleFromPath(
+      _, _ = session_bundle.load_session_bundle_from_path(
           base_path, target="local",
           config=tf.ConfigProto(device_count={"CPU": 2}))
     self.assertTrue("Expected meta graph file missing" in str(cm.exception))

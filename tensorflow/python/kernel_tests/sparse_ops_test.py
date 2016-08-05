@@ -119,13 +119,16 @@ class SparseToIndicatorTest(test_util.TensorFlowTestCase):
 class SparseMergeTest(test_util.TensorFlowTestCase):
 
   def _SparseTensor_3x50(self, indices_dtype, values_dtype):
+    # NOTE: This input is intentionally not sorted to validate the
+    # already_sorted flag below.
     ind = np.array([
         [0, 0],
-        [1, 0], [1, 1], [1, 2],
-        [2, 0], [2, 1]])
+        [1, 0], [1, 2],
+        [2, 0], [2, 1],
+        [1, 1]])
     # NB: these are not sorted
-    indices = np.array([0, 13, 10, 14, 32, 33])
-    values = np.array([-3, 4, 1, 1, 5, 9])
+    indices = np.array([0, 13, 10, 33, 32, 14])
+    values = np.array([-3, 4, 1, 9, 5, 1])
     shape = np.array([3, 3])
     indices = ops.SparseTensor(
         constant_op.constant(ind, dtypes.int64),
@@ -137,6 +140,28 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
         constant_op.constant(shape, dtypes.int64))
     return indices, values
 
+  def _AssertResultsSorted(self, output, vocab_size):
+    self.assertAllEqual(
+        output.indices,
+        [[0, 0], [1, 10], [1, 13], [1, 14], [2, 32], [2, 33]])
+    self.assertAllEqual(
+        output.values,
+        [-3, 1, 4, 1, 5, 9])
+    self.assertAllEqual(
+        output.shape,
+        [3, vocab_size])
+
+  def _AssertResultsNotSorted(self, output, vocab_size):
+    self.assertAllEqual(
+        output.indices,
+        [[0, 0], [1, 13], [1, 10], [2, 33], [2, 32], [1, 14]])
+    self.assertAllEqual(
+        output.values,
+        [-3, 4, 1, 9, 5, 1])
+    self.assertAllEqual(
+        output.shape,
+        [3, vocab_size])
+
   def testInt32AndFloat32(self):
     vocab_size = 50
     with self.test_session(use_gpu=False) as sess:
@@ -144,15 +169,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
       output = sess.run(sp_output)
-      self.assertAllEqual(
-          output.indices,
-          [[0, 0], [1, 10], [1, 13], [1, 14], [2, 32], [2, 33]])
-      self.assertAllEqual(
-          output.values,
-          [-3, 1, 4, 1, 5, 9])
-      self.assertAllEqual(
-          output.shape,
-          [3, vocab_size])
+      self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat32(self):
     vocab_size = 50
@@ -161,15 +178,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
       output = sess.run(sp_output)
-      self.assertAllEqual(
-          output.indices,
-          [[0, 0], [1, 10], [1, 13], [1, 14], [2, 32], [2, 33]])
-      self.assertAllEqual(
-          output.values,
-          [-3, 1, 4, 1, 5, 9])
-      self.assertAllEqual(
-          output.shape,
-          [3, vocab_size])
+      self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64(self):
     vocab_size = 50
@@ -178,15 +187,37 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
       output = sess.run(sp_output)
-      self.assertAllEqual(
-          output.indices,
-          [[0, 0], [1, 10], [1, 13], [1, 14], [2, 32], [2, 33]])
-      self.assertAllEqual(
-          output.values,
-          [-3, 1, 4, 1, 5, 9])
-      self.assertAllEqual(
-          output.shape,
-          [3, vocab_size])
+      self._AssertResultsSorted(output, vocab_size)
+
+  def testInt32AndFloat32NonCanonicalOrder(self):
+    vocab_size = 50
+    with self.test_session(use_gpu=False) as sess:
+      indices, values = self._SparseTensor_3x50(dtypes.int32, dtypes.float32)
+      sp_output = sparse_ops.sparse_merge(
+          indices, values, vocab_size, already_sorted=True)
+
+      output = sess.run(sp_output)
+      self._AssertResultsNotSorted(output, vocab_size)
+
+  def testInt64AndFloat32NonCanonicalOrder(self):
+    vocab_size = 50
+    with self.test_session(use_gpu=False) as sess:
+      indices, values = self._SparseTensor_3x50(dtypes.int64, dtypes.float32)
+      sp_output = sparse_ops.sparse_merge(
+          indices, values, vocab_size, already_sorted=True)
+
+      output = sess.run(sp_output)
+      self._AssertResultsNotSorted(output, vocab_size)
+
+  def testInt64AndFloat64NonCanonicalOrder(self):
+    vocab_size = 50
+    with self.test_session(use_gpu=False) as sess:
+      indices, values = self._SparseTensor_3x50(dtypes.int64, dtypes.float64)
+      sp_output = sparse_ops.sparse_merge(
+          indices, values, vocab_size, already_sorted=True)
+
+      output = sess.run(sp_output)
+      self._AssertResultsNotSorted(output, vocab_size)
 
 
 class SparseRetainTest(test_util.TensorFlowTestCase):

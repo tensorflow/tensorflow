@@ -13,13 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """The Dirichlet Multinomial distribution class."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=line-too-long
 
-from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -28,34 +30,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 
 # pylint: enable=line-too-long
-
-
-def _assert_integer_form(x):
-  """Check x for integer components (or floats that are equal to integers)."""
-  x = ops.convert_to_tensor(x, name='x')
-  casted_x = math_ops.to_int64(x)
-  return check_ops.assert_equal(x, math_ops.cast(
-      math_ops.round(casted_x), x.dtype))
-
-
-def _log_combinations(n, counts, name='log_combinations'):
-  """Log number of ways counts could have come in."""
-  # First a bit about the number of ways counts could have come in:
-  # E.g. if counts = [1, 2], then this is 3 choose 2.
-  # In general, this is (sum counts)! / sum(counts!)
-  # The sum should be along the last dimension of counts.  This is the
-  # "distribution" dimension. Here n a priori represents the sum of counts.
-  with ops.op_scope([counts], name):
-    # To compute factorials, use the fact that Gamma(n + 1) = n!
-    # Compute two terms, each a sum over counts.  Compute each for each
-    # batch member.
-    # Log Gamma((sum counts) + 1) = Log((sum counts)!)
-    total_permutations = math_ops.lgamma(n + 1)
-    # sum(Log Gamma(counts + 1)) = Log sum(counts!)
-    counts_factorial = math_ops.lgamma(counts + 1)
-    redundant_permutations = math_ops.reduce_sum(counts_factorial,
-                                                 reduction_indices=[-1])
-    return total_permutations - redundant_permutations
 
 
 class DirichletMultinomial(distribution.Distribution):
@@ -126,6 +100,7 @@ class DirichletMultinomial(distribution.Distribution):
   counts = [2, 1, 0]
   dist.pmf(counts)  # Shape [2]
   ```
+
   """
 
   # TODO(b/27419586) Change docstring for dtype of alpha once int allowed.
@@ -134,26 +109,26 @@ class DirichletMultinomial(distribution.Distribution):
                alpha,
                validate_args=True,
                allow_nan_stats=False,
-               name='DirichletMultinomial'):
+               name="DirichletMultinomial"):
     """Initialize a batch of DirichletMultinomial distributions.
 
     Args:
-      n:  Non-negative `float` or `double` tensor, whose dtype is the same as
+      n:  Non-negative floating point tensor, whose dtype is the same as
         `alpha`. The shape is broadcastable to `[N1,..., Nm]` with `m >= 0`.
         Defines this as a batch of `N1 x ... x Nm` different Dirichlet
-        multinomial distributions. Its components should be equal to integral
+        multinomial distributions. Its components should be equal to integer
         values.
-      alpha:  Positive `float` or `double` tensor, whose dtype is the same as
+      alpha: Positive floating point tensor, whose dtype is the same as
         `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
         this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
         multinomial distributions.
       validate_args: Whether to assert valid values for parameters `alpha` and
-        `n`, and `x` in `prob` and `log_prob`.  If False, correct behavior is
+        `n`, and `x` in `prob` and `log_prob`.  If `False`, correct behavior is
         not guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Examples:
@@ -166,6 +141,7 @@ class DirichletMultinomial(distribution.Distribution):
     # Define a 2-batch of 3-class distributions.
     dist = DirichletMultinomial([3., 4], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     ```
+
     """
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
@@ -221,7 +197,7 @@ class DirichletMultinomial(distribution.Distribution):
     """dtype of samples from this distribution."""
     return self._alpha.dtype
 
-  def mean(self, name='mean'):
+  def mean(self, name="mean"):
     """Class means for every batch member."""
     alpha = self._alpha
     alpha_sum = self._alpha_sum
@@ -231,7 +207,7 @@ class DirichletMultinomial(distribution.Distribution):
         mean_no_n = alpha / array_ops.expand_dims(alpha_sum, -1)
         return array_ops.expand_dims(n, -1) * mean_no_n
 
-  def variance(self, name='mean'):
+  def variance(self, name="mean"):
     """Class variances for every batch member.
 
     The variance for each batch member is defined as the following:
@@ -273,7 +249,7 @@ class DirichletMultinomial(distribution.Distribution):
         variance *= array_ops.expand_dims(shared_factor, -1)
         return variance
 
-  def batch_shape(self, name='batch_shape'):
+  def batch_shape(self, name="batch_shape"):
     """Batch dimensions of this instance as a 1-D int32 `Tensor`.
 
     The product of the dimensions of the `batch_shape` is the number of
@@ -299,7 +275,7 @@ class DirichletMultinomial(distribution.Distribution):
     """
     return self._get_batch_shape
 
-  def event_shape(self, name='event_shape'):
+  def event_shape(self, name="event_shape"):
     """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
     Args:
@@ -322,15 +298,15 @@ class DirichletMultinomial(distribution.Distribution):
     """
     return self._get_event_shape
 
-  def cdf(self, x, name='cdf'):
+  def cdf(self, x, name="cdf"):
     raise NotImplementedError(
-        'DirichletMultinomial does not have a well-defined cdf.')
+        "DirichletMultinomial does not have a well-defined cdf.")
 
-  def log_cdf(self, x, name='log_cdf'):
+  def log_cdf(self, x, name="log_cdf"):
     raise NotImplementedError(
-        'DirichletMultinomial does not have a well-defined cdf.')
+        "DirichletMultinomial does not have a well-defined cdf.")
 
-  def log_prob(self, counts, name='log_prob'):
+  def log_prob(self, counts, name="log_prob"):
     """`Log(P[counts])`, computed for every batch member.
 
     For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
@@ -340,12 +316,11 @@ class DirichletMultinomial(distribution.Distribution):
     probability includes a combinatorial coefficient.
 
     Args:
-      counts:  Non-negative `float` or `double` tensor whose dtype is the same
-        `self` and whose shape can be broadcast with `self.alpha`.  For fixed
-        leading dimensions, the last dimension represents counts for the
-        corresponding Dirichlet Multinomial distribution in `self.alpha`.
-        `counts` is only legal if it sums up to `n` and its components are
-        equal to integral values.
+      counts:  Non-negative tensor with dtype `dtype` and whose shape can be
+        broadcast with `self.alpha`.  For fixed leading dimensions, the last
+        dimension represents counts for the corresponding Dirichlet Multinomial
+        distribution in `self.alpha`. `counts` is only legal if it sums up to
+        `n` and its components are equal to integer values.
       name:  Name to give this Op, defaults to "log_prob".
 
     Returns:
@@ -359,20 +334,11 @@ class DirichletMultinomial(distribution.Distribution):
 
         ordered_prob = (special_math_ops.lbeta(alpha + counts) -
                         special_math_ops.lbeta(alpha))
-        log_prob = ordered_prob + _log_combinations(n, counts)
-        # If alpha = counts = [[]], ordered_prob carries the right shape, which
-        # is [].  However, since reduce_sum([[]]) = [0], log_combinations = [0],
-        # which is not correct.  Luckily, [] + [0] = [], so the sum is fine, but
-        # shape must be inferred from ordered_prob. We must also make this
-        # broadcastable with n, so this is multiplied by n to ensure the shape
-        # is correctly inferred.
-        # Note also that tf.constant([]).get_shape() =
-        # TensorShape([Dimension(0)])
-        broadcasted_tensor = ordered_prob * n
-        log_prob.set_shape(broadcasted_tensor.get_shape())
+        log_prob = ordered_prob + distribution_util.log_combinations(
+            n, counts)
         return log_prob
 
-  def prob(self, counts, name='prob'):
+  def prob(self, counts, name="prob"):
     """`P[counts]`, computed for every batch member.
 
     For each batch of counts `[c_1,...,c_k]`, `P[counts]` is the probability
@@ -382,12 +348,11 @@ class DirichletMultinomial(distribution.Distribution):
     probability includes a combinatorial coefficient.
 
     Args:
-      counts:  Non-negative `float` or `double` tensor whose dtype is the same
-        `self` and whose shape can be broadcast with `self.alpha`.  For fixed
-        leading dimensions, the last dimension represents counts for the
-        corresponding Dirichlet Multinomial distribution in `self.alpha`.
-        `counts` is only legal if it sums up to `n` and its components are
-        equal to integral values.
+      counts:  Non-negative tensor with dtype `dtype` and whose shape can be
+        broadcast with `self.alpha`.  For fixed leading dimensions, the last
+        dimension represents counts for the corresponding Dirichlet Multinomial
+        distribution in `self.alpha`. `counts` is only legal if it sums up to
+        `n` and its components are equal to integer values.
       name:  Name to give this Op, defaults to "prob".
 
     Returns:
@@ -397,18 +362,21 @@ class DirichletMultinomial(distribution.Distribution):
 
   def _check_counts(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
-    counts = ops.convert_to_tensor(counts, name='counts')
+    counts = ops.convert_to_tensor(counts, name="counts")
     if not self.validate_args:
       return counts
     candidate_n = math_ops.reduce_sum(counts, reduction_indices=[-1])
 
     return control_flow_ops.with_dependencies([
         check_ops.assert_non_negative(counts),
-        check_ops.assert_equal(self._n, candidate_n),
-        _assert_integer_form(counts)], counts)
+        check_ops.assert_equal(
+            self._n, candidate_n,
+            message="counts do not sum to n"
+        ),
+        distribution_util.assert_integer_form(counts)], counts)
 
   def _check_alpha(self, alpha):
-    alpha = ops.convert_to_tensor(alpha, name='alpha')
+    alpha = ops.convert_to_tensor(alpha, name="alpha")
     if not self.validate_args:
       return alpha
     return control_flow_ops.with_dependencies(
@@ -416,11 +384,12 @@ class DirichletMultinomial(distribution.Distribution):
          check_ops.assert_positive(alpha)], alpha)
 
   def _check_n(self, n):
-    n = ops.convert_to_tensor(n, name='n')
+    n = ops.convert_to_tensor(n, name="n")
     if not self.validate_args:
       return n
     return control_flow_ops.with_dependencies(
-        [check_ops.assert_non_negative(n), _assert_integer_form(n)], n)
+        [check_ops.assert_non_negative(n),
+         distribution_util.assert_integer_form(n)], n)
 
   @property
   def is_continuous(self):

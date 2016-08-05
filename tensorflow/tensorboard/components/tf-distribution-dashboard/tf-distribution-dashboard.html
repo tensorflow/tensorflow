@@ -4,7 +4,7 @@
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
-<link rel="import" href="tf-obsolete-histogram-chart.html">
+<link rel="import" href="tf-distribution-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
@@ -12,7 +12,7 @@
 <link rel="import" href="../tf-backend/tf-backend.html">
 
 <!--
-tf-histogram-dashboard is a complete frontend that loads runs from a backend,
+tf-distribution-dashboard is a complete frontend that loads runs from a backend,
 and creates chart panes that display data for those runs.
 
 It provides a categorizer, run selector, and x type selector, by which the user
@@ -24,10 +24,10 @@ charts are larger.
 Organizationally, the #plumbing div contains components that have no concrete
 manifestation and just effect data bindings or data loading. The #sidebar contains
 shared controls like the tf-categorizer, tf-run-selector, and tf-x-type-selector.
-The #center div contains tf-obsolete-histogram-charts embedded inside
+The #center div contains tf-distribution-charts embedded inside
 tf-collapsable-panes.
 -->
-<dom-module id="tf-histogram-dashboard">
+<dom-module id="tf-distribution-dashboard">
   <template>
     <div id="plumbing">
       <tf-color-scale
@@ -64,7 +64,7 @@ tf-collapsable-panes.
 
       <div class="center">
         <tf-no-data-warning
-          data-type="histogram"
+          data-type="distribution"
           show-warning="[[dataNotFound]]"
         ></tf-no-data-warning>
         <template is="dom-repeat" items="[[categories]]">
@@ -76,7 +76,7 @@ tf-collapsable-panes.
                     <div class="card">
                       <span class="card-title">[[tag]]</span>
                       <div class="card-content">
-                        <tf-obsolete-histogram-chart
+                        <tf-distribution-chart
                           tag="[[tag]]"
                           id="chart"
                           selected-runs="[[_array(run)]]"
@@ -85,7 +85,7 @@ tf-collapsable-panes.
                           color-scale="[[colorScale]]"
                           on-keyup="toggleSelected"
                           tabindex="2"
-                        ></tf-obsolete-histogram-chart>
+                        ></tf-distribution-chart>
                         <paper-icon-button
                           class="expand-button"
                           icon="fullscreen"
@@ -107,9 +107,9 @@ tf-collapsable-panes.
 
   <script>
     Polymer({
-      is: "tf-histogram-dashboard",
+      is: "tf-distribution-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-obsolete-histogram-chart"),
+        TF.Dashboard.ReloadBehavior("tf-distribution-chart"),
         TF.Backend.Behavior,
       ],
       properties: {

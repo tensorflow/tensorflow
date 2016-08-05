@@ -1065,7 +1065,7 @@ create variables contingent on certain conditions.
 
 - - -
 
-### `tf.get_variable(name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#get_variable}
+### `tf.get_variable(name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#get_variable}
 
 Gets an existing variable with these parameters or create a new one.
 
@@ -1167,9 +1167,10 @@ Attributes:
   partitioner: callable or `None`: the partitioner passed to `get_variable`.
   custom_getter: default custom getter passed to get_variable.
   name_scope: The name passed to `tf.name_scope`.
+  dtype: default type passed to get_variable (defaults to DT_FLOAT).
 - - -
 
-#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='')` {#VariableScope.__init__}
+#### `tf.VariableScope.__init__(reuse, name='', initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, name_scope='', dtype=tf.float32)` {#VariableScope.__init__}
 
 Creates a new VariableScope with the given properties.
 
@@ -1190,7 +1191,14 @@ Creates a new VariableScope with the given properties.
 
 - - -
 
-#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=tf.float32, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#VariableScope.get_variable}
+#### `tf.VariableScope.dtype` {#VariableScope.dtype}
+
+
+
+
+- - -
+
+#### `tf.VariableScope.get_variable(var_store, name, shape=None, dtype=None, initializer=None, regularizer=None, trainable=True, collections=None, caching_device=None, partitioner=None, validate_shape=True, custom_getter=None)` {#VariableScope.get_variable}
 
 Gets an existing variable with this name or create a new one.
 
@@ -1260,6 +1268,13 @@ Set custom getter for this scope.
 
 - - -
 
+#### `tf.VariableScope.set_dtype(dtype)` {#VariableScope.set_dtype}
+
+Set data type for this scope.
+
+
+- - -
+
 #### `tf.VariableScope.set_initializer(initializer)` {#VariableScope.set_initializer}
 
 Set initializer for this scope.
@@ -1282,7 +1297,7 @@ Set regularizer for this scope.
 
 - - -
 
-### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None)` {#variable_scope}
+### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, dtype=None)` {#variable_scope}
 
 Returns a context for variable scope.
 
@@ -1353,6 +1368,8 @@ then all its sub-scopes become reusing as well.
 *  <b>`caching_device`</b>: default caching device for variables within this scope.
 *  <b>`partitioner`</b>: default partitioner for variables within this scope.
 *  <b>`custom_getter`</b>: default custom getter for variables within this scope.
+*  <b>`dtype`</b>: type of variables created in this scope (defaults to the type
+    in the passed scope, or inherited from parent scope).
 
 ##### Returns:
 
@@ -1368,7 +1385,7 @@ then all its sub-scopes become reusing as well.
 
 - - -
 
-### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None)` {#variable_op_scope}
+### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_op_scope}
 
 Returns a context manager for defining an op that creates variables.
 
@@ -1412,6 +1429,8 @@ def my_op_with_vars(a, b, scope=None):
 *  <b>`custom_getter`</b>: The default custom getter for variables within this scope.
 *  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
     well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
+*  <b>`dtype`</b>: The default type of variables created in this scope, defaults to the
+    type of the parent scope.
 
 ##### Returns:
 

@@ -146,6 +146,7 @@ std::vector<type>* OUTPUT (std::vector<type> temp),
 %enddef
 
 _LIST_OUTPUT_TYPEMAP(string, _SwigBytes_FromString);
+_LIST_OUTPUT_TYPEMAP(long long, PyLong_FromLongLong);
 _LIST_OUTPUT_TYPEMAP(unsigned long long, PyLong_FromUnsignedLongLong);
 
 %typemap(in) uint64 {
@@ -178,6 +179,7 @@ _LIST_OUTPUT_TYPEMAP(unsigned long long, PyLong_FromUnsignedLongLong);
 %enddef
 
 _COPY_TYPEMAPS(unsigned long long, uint64);
+_COPY_TYPEMAPS(long long, int64);
 
 // SWIG macros for explicit API declaration.
 // Usage:

@@ -76,9 +76,8 @@ class CoordinatedSessionTest(tf.test.TestCase):
       self.assertFalse(coord_sess.should_stop())
       self.assertEqual(0, coord_sess.run(c))
       self.assertEqual(1, coord_sess.run(v, feed_dict={c: 1}))
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   'both fed and fetched'):
-        coord_sess.run(c, feed_dict={c: 2})
+      with self.assertRaisesRegexp(TypeError, 'None has invalid type'):
+        coord_sess.run([None], feed_dict={c: 2})
       self.assertTrue(coord.should_stop())
       self.assertTrue(coord_sess.should_stop())
 
@@ -101,9 +100,8 @@ class CoordinatedSessionTest(tf.test.TestCase):
       self.assertEqual(1, coord_sess.run(v, feed_dict={c: 1}))
       for t in threads:
         self.assertTrue(t.is_alive())
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   'both fed and fetched'):
-        coord_sess.run(c, feed_dict={c: 2})
+      with self.assertRaisesRegexp(TypeError, 'None has invalid type'):
+        coord_sess.run([None], feed_dict={c: 2})
       for t in threads:
         self.assertFalse(t.is_alive())
       self.assertTrue(coord.should_stop())

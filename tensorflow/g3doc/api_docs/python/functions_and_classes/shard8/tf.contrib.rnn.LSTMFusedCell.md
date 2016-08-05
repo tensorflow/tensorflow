@@ -19,7 +19,7 @@ Initialize the basic LSTM cell.
 
 *  <b>`num_units`</b>: int, The number of units in the LSTM cell.
 *  <b>`forget_bias`</b>: float, The bias added to forget gates (see above).
-*  <b>`use_peephole`</b>: Whether to use peephole connectios or not.
+*  <b>`use_peephole`</b>: Whether to use peephole connections or not.
 
 
 - - -

@@ -188,9 +188,14 @@ TEST(EnvTest, GetSchemeForURI) {
 TEST(EnvTest, SleepForMicroseconds) {
   Env* env = Env::Default();
   const int64 start = env->NowMicros();
-  env->SleepForMicroseconds(1e6 + 5e5);
+  const int64 sleep_time = 1e6 + 5e5;
+  env->SleepForMicroseconds(sleep_time);
   const int64 delta = env->NowMicros() - start;
-  EXPECT_GE(delta, 1e6 + 5e5);
+
+  // Subtract 10 from the sleep_time for this check because NowMicros can
+  // sometimes give slightly inconsistent values between the start and the
+  // finish (e.g. because the two calls run on different CPUs).
+  EXPECT_GE(delta, sleep_time - 10);
 }
 
 }  // namespace tensorflow

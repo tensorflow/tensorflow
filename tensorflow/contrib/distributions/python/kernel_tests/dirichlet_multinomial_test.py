@@ -65,7 +65,7 @@ class DirichletMultinomialTest(tf.test.TestCase):
       dist.pmf([3., 0, 2]).eval()
       with self.assertRaisesOpError('Condition x >= 0.*'):
         dist.pmf([-1., 4, 2]).eval()
-      with self.assertRaisesOpError('Condition x == y.*'):
+      with self.assertRaisesOpError('counts do not sum to n'):
         dist.pmf([3., 3, 0]).eval()
 
   def testPmf_non_integer_counts(self):

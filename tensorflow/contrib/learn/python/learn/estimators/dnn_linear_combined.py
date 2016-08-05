@@ -71,9 +71,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     Args:
       target_column: A _TargetColumn object.
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       linear_feature_columns: An iterable containing all the feature columns
         used by linear part of the model. All items in the set should be
         instances of classes derived from `FeatureColumn`.
@@ -102,8 +102,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       ValueError: If both linear_feature_columns and dnn_features_columns are
         empty at the same time.
     """
-    super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
-                                                          config=config)
+    super(_DNNLinearCombinedBaseEstimator, self).__init__(
+        model_dir=model_dir, config=config)
 
     num_ps_replicas = config.num_ps_replicas if config else 0
 
@@ -124,8 +124,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     self._linear_feature_columns = linear_feature_columns
     self._linear_optimizer = linear_optimizer
-    self._linear_weight_collection = (
-        self._linear_model.get_weight_collection_name())
     self._dnn_feature_columns = dnn_feature_columns
     self._dnn_hidden_units = dnn_hidden_units
     self._centered_bias_weight_collection = "centered_bias"
@@ -135,38 +133,24 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
   @property
   def linear_weights_(self):
     """Returns weights per feature of the linear part."""
-    all_variables = self.get_variable_names()
-    # TODO(ispir): Figure out a better way to retrieve variables for features.
-    # for example using feature info / columns.
-    values = {}
-    for name in all_variables:
-      if (name.startswith("linear/") and name.rfind("/") == 6 and
-          name != "linear/bias_weight"):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
+    return self._linear_model.get_weights(model_dir=self._model_dir)
 
   @property
   def linear_bias_(self):
     """Returns bias of the linear part."""
-    return (self.get_variable_value("linear/bias_weight") +
+    return (self._linear_model.get_bias(model_dir=self._model_dir) +
             self.get_variable_value("centered_bias_weight"))
 
   @property
   def dnn_weights_(self):
     """Returns weights of deep neural network part."""
-    return [self.get_variable_value("hiddenlayer_%d/weights" % i)
-            for i, _ in enumerate(self._dnn_hidden_units)] + [
-                self.get_variable_value("dnn_logits/weights")]
+    return self._dnn_model.get_weights(model_dir=self._model_dir)
 
   @property
   def dnn_bias_(self):
     """Returns bias of deep neural network part."""
-    return [self.get_variable_value("hiddenlayer_%d/biases" % i)
-            for i, _ in enumerate(self._dnn_hidden_units)] + [
-                self.get_variable_value("dnn_logits/biases"),
-                self.get_variable_value("centered_bias_weight")]
+    return (self._dnn_model.get_bias(model_dir=self._model_dir) +
+            [self.get_variable_value("centered_bias_weight")])
 
   def _get_feature_dict(self, features):
     if isinstance(features, dict):
@@ -347,9 +331,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     """Constructs a DNNLinearCombinedClassifier instance.
 
     Args:
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       n_classes: number of target classes. Default is binary classification.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training.
@@ -532,9 +516,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
