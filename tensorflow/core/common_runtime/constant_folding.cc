@@ -383,6 +383,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts,
   };
   LocalExecutorParams params;
   params.device = device;
+  params.function_library = function_library;
   params.create_kernel = [device, constant_graph](const NodeDef& ndef,
                                                   OpKernel** kernel) {
     return CreateNonCachedKernel(device, nullptr, ndef,

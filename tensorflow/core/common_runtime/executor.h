@@ -128,7 +128,7 @@ struct LocalExecutorParams {
   Device* device;
 
   // The library runtime support.
-  FunctionLibraryRuntime* function_library;
+  FunctionLibraryRuntime* function_library = nullptr;
 
   // create_kernel returns an instance of op kernel based on NodeDef.
   // delete_kernel is called for every kernel used by the executor
