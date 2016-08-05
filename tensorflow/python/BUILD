@@ -1401,6 +1401,19 @@ py_library(
     ],
 )
 
+py_library(
+    name = "gen_docs_combined_lib",
+    srcs = [
+        "framework/gen_docs_combined.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":docs",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+    ],
+)
+
 py_binary(
     name = "gen_docs_combined",
     srcs = [
