@@ -1042,6 +1042,10 @@ Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     DeviceTypeVector* device_types);
 
+// Returns a message with a description of the kernels registered for op
+// `op_name`.
+string KernelsRegisteredForOp(StringPiece op_name);
+
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
