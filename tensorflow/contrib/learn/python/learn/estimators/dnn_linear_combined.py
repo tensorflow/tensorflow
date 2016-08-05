@@ -152,6 +152,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return (self._dnn_model.get_bias(model_dir=self._model_dir) +
             [self.get_variable_value("centered_bias_weight")])
 
+  def _get_target_column(self):
+    """Returns the target column of this Estimator."""
+    return self._target_column
+
   def _get_feature_dict(self, features):
     if isinstance(features, dict):
       return features

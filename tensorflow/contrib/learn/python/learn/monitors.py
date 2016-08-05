@@ -893,16 +893,28 @@ class ExportMonitor(EveryN):
       every_n_steps: Run monitor every N steps.
       export_dir: str, folder to export.
       exports_to_keep: int, number of exports to keep.
-      signature_fn: Function that given `Tensor` of `Example` strings,
-        `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
-        and returns default and named exporting signautres.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `dict` of `Tensor`s for predictions.
       default_batch_size: Default batch size of the `Example` placeholder.
     """
     super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
-    self.export_dir = export_dir
-    self.exports_to_keep = exports_to_keep
-    self.signature_fn = signature_fn
+    self._export_dir = export_dir
+    self._exports_to_keep = exports_to_keep
+    self._signature_fn = signature_fn
     self._default_batch_size = default_batch_size
+
+  @property
+  def export_dir(self):
+    return self._export_dir
+
+  @property
+  def exports_to_keep(self):
+    return self._exports_to_keep
+
+  @property
+  def signature_fn(self):
+    return self._signature_fn
 
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
