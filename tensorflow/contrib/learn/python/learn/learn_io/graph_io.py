@@ -303,7 +303,8 @@ def read_keyed_batch_features(file_pattern,
     # tensors into a queue. This could be taken care in somewhere else so others
     # can reuse it. Also, QueueBase maybe extended to handle sparse tensors
     # directly.
-    for key, tensor in feature_map.iteritems():
+    for key in sorted(feature_map.keys()):
+      tensor = feature_map[key]
       if isinstance(tensor, ops.SparseTensor):
         tensors_mapping.append((key, True))
         tensors_to_enqueue.extend([tensor.indices, tensor.values, tensor.shape])
