@@ -2516,7 +2516,49 @@ op {
     }
   }
   summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a \'[..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a [..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
+  deprecation {
+    version: 11
+    explanation: "Use BatchSelfAdjointEigV2 instead."
+  }
+}
+op {
+  name: "BatchSelfAdjointEigV2"
+  input_arg {
+    name: "input"
+    description: "`Tensor` input of shape `[N, N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "e"
+    description: "Eigenvalues. Shape is `[N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    description: "Eigenvectors. Shape is `[N, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_v"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If `True` then eigenvectors will be computed and returned in `v`.\nOtherwise, only the eigenvalues will be computed."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Computes the eigen decomposition of a batch of square self-adjoint matrices."
+  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = batch_self_adjoint_eig(a)\ne = batch_self_adjoint_eig(a, compute_v=False)\n```"
 }
 op {
   name: "BatchSvd"
@@ -2544,7 +2586,7 @@ op {
     name: "compute_uv"
     type: "bool"
     default_value {
-      b: false
+      b: true
     }
     description: "If true, left and right singular vectors will be\ncomputed and returned in `u` and `v`, respectively.\nIf false, `u` and `v` are not set and should never referenced."
   }
@@ -2567,7 +2609,7 @@ op {
     }
   }
   summary: "Computes the singular value decompositions of a batch of matrices."
-  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, _, _ = batch_svd(a, compute_uv=False)\ns, u, v = batch_svd(a, compute_uv=True)\n```"
+  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = batch_svd(a)\ns, _, _ = batch_svd(a, compute_uv=False)\n```"
 }
 op {
   name: "BatchToSpace"
@@ -12143,6 +12185,48 @@ op {
   }
   summary: "Computes the Eigen Decomposition of a square Self-Adjoint matrix."
   description: "Only the lower-triangular part of the input will be used in this case. The\nupper-triangular part will not be read.\n\nThe result is a M+1 x M matrix whose first row is the eigenvalues, and\nsubsequent rows are eigenvectors."
+  deprecation {
+    version: 11
+    explanation: "Use SelfAdjointEigV2 instead."
+  }
+}
+op {
+  name: "SelfAdjointEigV2"
+  input_arg {
+    name: "input"
+    description: "`Tensor` input of shape `[N, N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "e"
+    description: "Eigenvalues. Shape is `[N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    description: "Eigenvectors. Shape is `[N, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_v"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If `True` then eigenvectors will be computed and returned in `v`.\nOtherwise, only the eigenvalues will be computed."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Computes the eigen decomposition of a self-adjoint (\\\"symmetric\\\") matrix."
+  description: "Computes the eigenvalues and (optionally) eigenvectors such that\n`input = v * diag(e)`.\n\n```prettyprint\n# a is a self-adjoint matrix.\n# e is a vector of eigenvalues.\n# v is a matrix of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
 }
 op {
   name: "SerializeManySparse"
@@ -15201,7 +15285,7 @@ op {
     name: "compute_uv"
     type: "bool"
     default_value {
-      b: false
+      b: true
     }
     description: "If true, left and right singular vectors will be\ncomputed and returned in `u` and `v`, respectively.\nIf false, `u` and `v` are not set and should never referenced."
   }
@@ -15224,7 +15308,7 @@ op {
     }
   }
   summary: "Computes the singular value decomposition of a matrix."
-  description: "Computes the SVD of if `input` such that `input = u * diag(s) * transpose(v)`\n\n```prettyprint\n# a is a matrix.\n# s is a vector of singular values.\n# u is the matrix of left singular vectors.\n# v is a matrix of right singular vectors.\ns, _, _ = svd(a, compute_uv=False)\ns, u, v = svd(a, compute_uv=True)\n```"
+  description: "Computes the SVD of if `input` such that `input = u * diag(s) * transpose(v)`\n\n```prettyprint\n# a is a matrix.\n# s is a vector of singular values.\n# u is the matrix of left singular vectors.\n# v is a matrix of right singular vectors.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
 }
 op {
   name: "Switch"
