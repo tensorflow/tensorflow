@@ -863,9 +863,9 @@ Initializes ExportMonitor.
 *  <b>`every_n_steps`</b>: Run monitor every N steps.
 *  <b>`export_dir`</b>: str, folder to export.
 *  <b>`exports_to_keep`</b>: int, number of exports to keep.
-*  <b>`signature_fn`</b>: Function that given `Tensor` of `Example` strings,
-    `dict` of `Tensor`s for features and `dict` of `Tensor`s for predictions
-    and returns default and named exporting signautres.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `dict` of `Tensor`s for predictions.
 *  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
 
 
@@ -967,6 +967,20 @@ Callback before every n'th step begins.
 
 - - -
 
+#### `tf.contrib.learn.monitors.ExportMonitor.export_dir` {#ExportMonitor.export_dir}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.monitors.ExportMonitor.exports_to_keep` {#ExportMonitor.exports_to_keep}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.monitors.ExportMonitor.post_step(step, session)` {#ExportMonitor.post_step}
 
 
@@ -994,6 +1008,13 @@ A setter called automatically by the target estimator.
 
 
 *  <b>`ValueError`</b>: if the estimator is None.
+
+
+- - -
+
+#### `tf.contrib.learn.monitors.ExportMonitor.signature_fn` {#ExportMonitor.signature_fn}
+
+
 
 
 - - -
