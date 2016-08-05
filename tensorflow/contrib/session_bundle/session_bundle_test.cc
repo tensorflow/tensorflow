@@ -78,11 +78,8 @@ Status CopyExport(const string& export_path, const string& variables_filename,
   return Status::OK();
 }
 
-void BasicTest(const string& export_path) {
-  tensorflow::SessionOptions options;
-  SessionBundle bundle;
-  TF_ASSERT_OK(LoadSessionBundleFromPath(options, export_path, &bundle));
-
+void CheckSessionBundle(const string& export_path,
+                        const SessionBundle& bundle) {
   const string asset_path =
       tensorflow::io::JoinPath(export_path, kAssetsDirectory);
   // Validate the assets behavior.
@@ -124,10 +121,31 @@ void BasicTest(const string& export_path) {
       outputs[0], test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
 }
 
+void BasicTest(const string& export_path) {
+  tensorflow::SessionOptions options;
+  SessionBundle bundle;
+  TF_ASSERT_OK(LoadSessionBundleFromPath(options, export_path, &bundle));
+  CheckSessionBundle(export_path, bundle);
+}
+
 TEST(LoadSessionBundleFromPath, BasicTensorFlowContrib) {
   const string export_path = test_util::TestSrcDirPath(
       "session_bundle/example/half_plus_two/00000123");
   BasicTest(export_path);
+}
+
+TEST(LoadSessionBundleFromPath, BasicTensorFlowContribWithRunOptions) {
+  const string export_path = test_util::TestSrcDirPath(
+      "session_bundle/example/half_plus_two/00000123");
+  // Setup run-options with full-traces.
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::FULL_TRACE);
+
+  tensorflow::SessionOptions session_options;
+  SessionBundle bundle;
+  TF_ASSERT_OK(LoadSessionBundleFromPathUsingRunOptions(
+      session_options, run_options, export_path, &bundle));
+  CheckSessionBundle(export_path, bundle);
 }
 
 TEST(LoadSessionBundleFromPath, BadExportPath) {

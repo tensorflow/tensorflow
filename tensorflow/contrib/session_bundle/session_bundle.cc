@@ -98,7 +98,7 @@ string GetVariablesFilename(const StringPiece export_dir) {
   }
 }
 
-Status RunRestoreOp(const StringPiece export_dir,
+Status RunRestoreOp(const RunOptions& run_options, const StringPiece export_dir,
                     const std::vector<AssetFile>& asset_files,
                     const StringPiece restore_op_name,
                     const StringPiece variables_filename_const_op_name,
@@ -109,16 +109,20 @@ Status RunRestoreOp(const StringPiece export_dir,
   std::vector<std::pair<string, Tensor>> inputs = {
       {variables_filename_const_op_name.ToString(), variables_tensor}};
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
-  return session->Run(inputs, {}, {restore_op_name.ToString()}, nullptr);
+  RunMetadata run_metadata;
+  return session->Run(run_options, inputs, {}, {restore_op_name.ToString()},
+                      nullptr /* outputs */, &run_metadata);
 }
 
-Status RunInitOp(const StringPiece export_dir,
+Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
                  const std::vector<AssetFile>& asset_files,
                  const StringPiece init_op_name, tensorflow::Session* session) {
   LOG(INFO) << "Running init op for SessionBundle";
   std::vector<std::pair<string, Tensor>> inputs;
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
-  return session->Run(inputs, {}, {init_op_name.ToString()}, nullptr);
+  RunMetadata run_metadata;
+  return session->Run(run_options, inputs, {}, {init_op_name.ToString()},
+                      nullptr /* outputs */, &run_metadata);
 }
 
 }  // namespace
@@ -126,6 +130,14 @@ Status RunInitOp(const StringPiece export_dir,
 tensorflow::Status LoadSessionBundleFromPath(
     const tensorflow::SessionOptions& options, const StringPiece export_dir,
     SessionBundle* const bundle) {
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      options, RunOptions(), export_dir, bundle));
+  return Status::OK();
+}
+
+tensorflow::Status LoadSessionBundleFromPathUsingRunOptions(
+    const tensorflow::SessionOptions& options, const RunOptions& run_options,
+    const StringPiece export_dir, SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
   const int64 start_seconds = Env::Default()->NowSeconds();
   TF_RETURN_IF_ERROR(
@@ -184,7 +196,7 @@ tensorflow::Status LoadSessionBundleFromPath(
   }
 
   TF_RETURN_IF_ERROR(
-      RunRestoreOp(export_dir, asset_files,
+      RunRestoreOp(run_options, export_dir, asset_files,
                    bundle->meta_graph_def.saver_def().restore_op_name(),
                    bundle->meta_graph_def.saver_def().filename_tensor_name(),
                    bundle->session.get()));
@@ -196,7 +208,7 @@ tensorflow::Status LoadSessionBundleFromPath(
           strings::StrCat("Expected exactly one serving init op in : ",
                           bundle->meta_graph_def.DebugString()));
     }
-    TF_RETURN_IF_ERROR(RunInitOp(export_dir, asset_files,
+    TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, asset_files,
                                  init_op_it->second.node_list().value(0),
                                  bundle->session.get()));
   }
