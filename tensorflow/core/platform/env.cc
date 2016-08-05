@@ -301,7 +301,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
     pos_ += count;
     return true;
   }
-  google::protobuf::int64 ByteCount() const override { return pos_; }
+  int64 ByteCount() const override { return pos_; }
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {
