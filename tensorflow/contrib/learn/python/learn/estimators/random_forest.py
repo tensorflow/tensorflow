@@ -162,10 +162,10 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    _assert_float32(features)
-    _assert_float32(targets)
     features, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    _assert_float32(features)
+    _assert_float32(labels)
 
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner,
@@ -186,18 +186,18 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return train, self.training_loss
 
   def _get_predict_ops(self, features):
-    _assert_float32(features)
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,
         **self.construction_args)
     features, spec = data_ops.ParseDataTensorOrDict(features)
+    _assert_float32(features)
     return graph_builder.inference_graph(features, data_spec=spec)
 
   def _get_eval_ops(self, features, targets, metrics):
-    _assert_float32(features)
-    _assert_float32(targets)
     features, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    _assert_float32(features)
+    _assert_float32(labels)
 
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,
