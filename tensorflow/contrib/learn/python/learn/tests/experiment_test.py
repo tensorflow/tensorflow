@@ -23,7 +23,7 @@ import tensorflow as tf
 from tensorflow.contrib.learn.python.learn import runner_flags  # pylint: disable=unused-import
 
 
-class TestEstimator(object):
+class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
 
   def __init__(self):
     self.eval_count = 0

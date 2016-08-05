@@ -2,11 +2,6 @@ Categorical distribution.
 
 The categorical distribution is parameterized by the log-probabilities
 of a set of classes.
-
-Note, the following methods of the base class aren't implemented:
-  * mean
-  * cdf
-  * log_cdf
 - - -
 
 #### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Categorical')` {#Categorical.__init__}
@@ -22,10 +17,10 @@ Initialize Categorical distributions using class log-probabilities.
       indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
 *  <b>`validate_args`</b>: Unused in this distribution.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: A name for this distribution (optional).
 
 

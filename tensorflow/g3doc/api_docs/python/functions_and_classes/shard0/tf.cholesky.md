@@ -1,6 +1,6 @@
 ### `tf.cholesky(input, name=None)` {#cholesky}
 
-Calculates the Cholesky decomposition of a square matrix.
+Computes the Cholesky decomposition of a square matrix.
 
 The input has to be symmetric and positive definite. Only the lower-triangular
 part of the input will be used for this operation. The upper-triangular part

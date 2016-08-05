@@ -99,7 +99,16 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/beta_test.py"],
     additional_deps = [
         ":distributions_py",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "binomial_test",
+    size = "small",
+    srcs = ["python/kernel_tests/binomial_test.py"],
+    additional_deps = [
+        ":distributions_py",
         "//tensorflow/python:platform_test",
     ],
     tags = ["notsan"],
@@ -179,9 +188,8 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "kullback_leibler_test",
-    size = "small",
-    srcs = ["python/kernel_tests/kullback_leibler_test.py"],
+    name = "laplace_test",
+    srcs = ["python/kernel_tests/laplace_test.py"],
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:framework_test_lib",
@@ -190,13 +198,14 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "laplace_test",
-    srcs = ["python/kernel_tests/laplace_test.py"],
+    name = "multinomial_test",
+    srcs = ["python/kernel_tests/multinomial_test.py"],
     additional_deps = [
         ":distributions_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["notsan"],
 )
 
 cuda_py_tests(
@@ -239,6 +248,15 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/uniform_test.py"],
     additional_deps = [
         ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+cuda_py_tests(
+    name = "kullback_leibler_test",
+    size = "small",
+    srcs = ["python/kernel_tests/kullback_leibler_test.py"],
+    additional_deps = [
         "//tensorflow/python:platform_test",
     ],
 )

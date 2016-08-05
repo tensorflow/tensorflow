@@ -92,15 +92,15 @@ class Normal(distribution.Distribution):
     broadcasting (e.g. `mu + sigma` is a valid operation).
 
     Args:
-      mu: `float` or `double` tensor, the means of the distribution(s).
-      sigma: `float` or `double` tensor, the stddevs of the distribution(s).
+      mu: Floating point tensor, the means of the distribution(s).
+      sigma: Floating point tensor, the stddevs of the distribution(s).
         sigma must contain only positive values.
       validate_args: Whether to assert that `sigma > 0`. If `validate_args` is
-        False, correct output is not guaranteed when input is invalid.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+        `False`, correct output is not guaranteed when input is invalid.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to give Ops created by the initializer.
 
     Raises:
@@ -321,8 +321,7 @@ class Normal(distribution.Distribution):
       with ops.op_scope([self._mu, self._sigma, n], name):
         broadcast_shape = (self._mu + self._sigma).get_shape()
         n = ops.convert_to_tensor(n)
-        shape = array_ops.concat(
-            0, [array_ops.pack([n]), array_ops.shape(self.mean())])
+        shape = array_ops.concat(0, ([n], array_ops.shape(self.mean())))
         sampled = random_ops.random_normal(
             shape=shape, mean=0, stddev=1, dtype=self._mu.dtype, seed=seed)
 

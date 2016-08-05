@@ -98,7 +98,7 @@ class Series(object):
       return transform_cls
     return register
 
-  def build(self, cache):
+  def build(self, cache, **kwargs):
     """Returns a Tensor."""
     raise NotImplementedError()
 
@@ -122,7 +122,7 @@ class PredefinedSeries(Series):
   def required_base_features(self):
     return {self.name: self.feature_spec}
 
-  def build(self, cache):
+  def build(self, cache, **kwargs):
     try:
       return cache[self.name]
     except KeyError:
@@ -171,10 +171,11 @@ class TransformedSeries(Series):
       result.update(s.required_base_features)
     return result
 
-  def build(self, cache=None):
+  def build(self, cache=None, **kwargs):
     if cache is None:
       cache = {}
-    all_outputs = self._transform.build_transitive(self._input_series, cache)
+    all_outputs = self._transform.build_transitive(
+        self._input_series, cache, **kwargs)
     return getattr(all_outputs, self._output_name)
 
   def __repr__(self):

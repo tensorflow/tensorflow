@@ -77,18 +77,21 @@ class BooleanMask(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     """Applies the transformation to the `transform_input`.
 
     Args:
-        input_tensors: a list of Tensors representing the input to
+      input_tensors: a list of Tensors representing the input to
         the Transform.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
         A namedtuple of Tensors representing the transformed output.
     """
     input_tensor = input_tensors[0]
     mask = input_tensors[1]
+    if mask.get_shape().ndims > 1:
+      mask = array_ops.squeeze(mask)
 
     if isinstance(input_tensor, ops.SparseTensor):
       mask_fn = sparse_boolean_mask

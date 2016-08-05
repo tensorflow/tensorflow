@@ -89,7 +89,7 @@ class BaseInMemorySource(transform.Transform):
   def input_valency(self):
     return 0
 
-  def _apply_transform(self, transform_input):
+  def _apply_transform(self, transform_input, **kwargs):
     queue = feeding_functions.enqueue_data(self.data,
                                            self.queue_capacity,
                                            self.shuffle,

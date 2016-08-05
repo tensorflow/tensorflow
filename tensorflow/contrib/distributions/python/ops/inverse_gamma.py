@@ -69,18 +69,18 @@ class InverseGamma(distribution.Distribution):
     broadcasting (e.g. `alpha + beta` is a valid operation).
 
     Args:
-      alpha: `float` or `double` tensor, the shape params of the
+      alpha: Floating point tensor, the shape params of the
         distribution(s).
         alpha must contain only positive values.
-      beta: `float` or `double` tensor, the scale params of the distribution(s).
+      beta: Floating point tensor, the scale params of the distribution(s).
         beta must contain only positive values.
       validate_args: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-        the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is False
+        the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
         and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
 
     Raises:
@@ -206,9 +206,12 @@ class InverseGamma(distribution.Distribution):
           nan = np.nan * self._ones()
           return math_ops.select(alpha_gt_1, mean_if_defined, nan)
         else:
-          one = ops.convert_to_tensor(1.0, dtype=self.dtype)
+          one = constant_op.constant(1.0, dtype=self.dtype)
           return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(one, alpha)], mean_if_defined)
+              [check_ops.assert_less(
+                  one, alpha,
+                  message="mean not defined for components of alpha <= 1")],
+              mean_if_defined)
 
   def mode(self, name="mode"):
     """Mode of each batch member.
@@ -250,9 +253,12 @@ class InverseGamma(distribution.Distribution):
           nan = np.nan * self._ones()
           return math_ops.select(alpha_gt_2, var_if_defined, nan)
         else:
-          two = ops.convert_to_tensor(2.0, dtype=self.dtype)
+          two = constant_op.constant(2.0, dtype=self.dtype)
           return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(two, alpha)], var_if_defined)
+              [check_ops.assert_less(
+                  two, alpha,
+                  message="variance not defined for components of alpha <= 2")],
+              var_if_defined)
 
   def log_prob(self, x, name="log_prob"):
     """Log prob of observations in `x` under these InverseGamma distribution(s).

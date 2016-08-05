@@ -21,6 +21,7 @@ module VZ.ChartHelpers {
 
   export interface Scalar {
     scalar: number;
+    smoothed: number;
   }
 
   export type ScalarDatum = Datum & Scalar;

@@ -34,11 +34,6 @@ class Categorical(distribution.Distribution):
 
   The categorical distribution is parameterized by the log-probabilities
   of a set of classes.
-
-  Note, the following methods of the base class aren't implemented:
-    * mean
-    * cdf
-    * log_cdf
   """
 
   def __init__(
@@ -57,10 +52,10 @@ class Categorical(distribution.Distribution):
           indexes into the classes.
       dtype: The type of the event samples (default: int32).
       validate_args: Unused in this distribution.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
     self._allow_nan_stats = allow_nan_stats
@@ -177,8 +172,7 @@ class Categorical(distribution.Distribution):
         samples = math_ops.cast(samples, self._dtype)
         ret = array_ops.reshape(
             array_ops.transpose(samples),
-            array_ops.concat(
-                0, [array_ops.expand_dims(n, 0), self.batch_shape()]))
+            array_ops.concat(0, ([n], self.batch_shape())))
         ret.set_shape(tensor_shape.vector(tensor_util.constant_value(n))
                       .concatenate(self.get_batch_shape()))
         return ret

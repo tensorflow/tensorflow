@@ -27,17 +27,29 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
+class Output;
+
 // Represents a node in the computation graph.
 class Operation {
  public:
   Operation() : node_(nullptr) {}
-  explicit Operation(Node* n) : node_(n) {}
+  explicit Operation(Node* n);
+
+  int num_inputs() const { return node_->num_inputs(); }
+  DataType input_type(int o) const { return node_->input_type(o); }
+  Output input(int i) const;
 
   int num_outputs() const { return node_->num_outputs(); }
   DataType output_type(int o) const { return node_->output_type(o); }
+  Output output(int i) const;
+
   Node* node() const { return node_; }
 
  private:
+  typedef std::vector<std::pair<Node*, int64>> Inputs;
+  static Inputs GetInputs(Node* node);
+
+  Inputs inputs_;
   Node* node_;
 };
 
@@ -81,7 +93,7 @@ class Input {
       tensor = t;
     }
 
-    explicit Initializer(const Tensor& t) : tensor(t) {}
+    Initializer(const Tensor& t) : tensor(t) {}  // NOLINT(runtime/explicit)
 
     // Construct from a scalar value and an explicit shape
     template <typename T, typename = typename std::enable_if<

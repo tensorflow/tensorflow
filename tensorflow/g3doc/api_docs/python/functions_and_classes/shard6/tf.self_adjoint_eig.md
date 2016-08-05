@@ -1,21 +1,20 @@
-### `tf.self_adjoint_eig(input, name=None)` {#self_adjoint_eig}
+### `tf.self_adjoint_eig(matrix, name=None)` {#self_adjoint_eig}
 
-Calculates the Eigen Decomposition of a square Self-Adjoint matrix.
+Computes the eigen decomposition of a self-adjoint matrix.
 
-Only the lower-triangular part of the input will be used in this case. The
-upper-triangular part will not be read.
-
-The result is a M+1 x M matrix whose first row is the eigenvalues, and
-subsequent rows are eigenvectors.
+Computes the eigenvalues and eigenvectors of an N-by-N matrix `matrix` such
+that `matrix * v[:,i] = e(i) * v[:,i]`, for i=0...N-1.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`matrix`</b>: `Tensor` of shape `[N, N]`.
+*  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[M+1, M]`.
+
+*  <b>`e`</b>: Eigenvalues. Shape is `[N]`.
+*  <b>`v`</b>: Eigenvectors. Shape is `[N, N]`. The columns contain the eigenvectors of
+    `matrix`.
 

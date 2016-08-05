@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -108,7 +109,7 @@ class ConstantFoldingTest : public ::testing::Test {
 
 TEST_F(ConstantFoldingTest, Basic) {
   SIMPLE_GRAPH;
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, nullptr, g));
 
   // Nodes s1 and s2 now should now have a constant input
   EXPECT_EQ(1, s1->num_inputs());
@@ -124,7 +125,7 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
   ConstantFoldingOptions opts;
   // Do not allow constant folding of m2
   opts.consider = [m2](const Node* n) { return m2 != n; };
-  EXPECT_TRUE(DoConstantFolding(opts, nullptr, g));
+  EXPECT_TRUE(DoConstantFolding(opts, nullptr, nullptr, g));
 
   // Node s1 now should now have a constant input
   EXPECT_EQ(1, s1->num_inputs());
@@ -141,7 +142,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceAnotherConstant) {
   g->AddControlEdge(g->source_node(), d);
   Node* s3 = test::graph::Send(g, d, "d", "sender", 0, "receiver");
   g->AddControlEdge(s3, g->sink_node());
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, nullptr, g));
 
   // Nodes s3 should still have d as input
   EXPECT_EQ(1, s3->num_inputs());
@@ -167,7 +168,7 @@ TEST_F(ConstantFoldingTest, TwoOutputs) {
   g->AddControlEdge(b0, g->sink_node());
   g->AddControlEdge(b1, g->sink_node());
 
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, nullptr, g));
   EXPECT_EQ(1, b0->num_inputs());
   ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
   EXPECT_EQ(1, b1->num_inputs());
@@ -193,7 +194,7 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
 
   ConstantFoldingOptions opts;
   opts.consider = [b1_ident](const Node* n) { return b1_ident != n; };
-  EXPECT_TRUE(DoConstantFolding(opts, nullptr, g));
+  EXPECT_TRUE(DoConstantFolding(opts, nullptr, nullptr, g));
   // 0th output of b should have been folded.
   EXPECT_EQ(1, b0->num_inputs());
   ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
@@ -229,11 +230,11 @@ TEST_F(ConstantFoldingTest, TestNoReplaceOnGPU) {
   g->AddControlEdge(send, g->sink_node());
 
   // No ops should be replaced, as there is no kernel for BFLOAT16 on GPU.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, device, g));
+  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, device, g));
 
   // But constant folding should have replaced the cast op with a constant when
   // running on CPU.
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, nullptr, g));
 
   for (auto d : devices) {
     delete d;
@@ -258,7 +259,39 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   g->AddControlEdge(concat_send, g->sink_node());
 
   // The above concat should not have been constant folded.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, g));
+  EXPECT_FALSE(
+      DoConstantFolding(ConstantFoldingOptions{}, nullptr, nullptr, g));
+}
+
+TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
+  FunctionDefLibrary fdef_lib;
+  *fdef_lib.add_function() = test::function::XTimesTwo();
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
+  g_.reset(new Graph(&flib_def));
+
+  Graph* g = g_.get();
+  Node* s =
+      Constant<int>(std::vector<int>(5 * 1024 * 256, 0), {5 * 1024 * 256});
+  g->AddControlEdge(g->source_node(), s);
+
+  NodeDef def;
+  TF_ASSERT_OK(NodeDefBuilder("times_two", "XTimesTwo", g->op_registry())
+                   .Input(s->name(), 0, DT_INT32)
+                   .Finalize(&def));
+  Status status;
+  Node* times_two = g->AddNode(def, &status);
+  TF_ASSERT_OK(status);
+
+  Node* times_two_send = test::graph::Send(g, times_two, "times_two_send",
+                                           "sender", 0, "receiver");
+  g->AddControlEdge(times_two_send, g->sink_node());
+
+  // The above function call should not have been constant folded.
+  EXPECT_FALSE(
+      DoConstantFolding(ConstantFoldingOptions{}, nullptr, nullptr, g));
+
+  g_ = nullptr;
 }
 
 }  // namespace

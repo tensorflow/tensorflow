@@ -333,16 +333,18 @@ class _DictFetchMapper(_FetchMapper):
 class _FetchHandler(object):
   """Handler for structured fetches.
 
-  Given a graph and a user-provided structure for fetches, this class takes
-  care of generating a list of tensor names to fetch and op names to run for a
-  low level `run()` call.
+  Given a graph, a user-provided structure for fetches, and a feed dict, this
+  class takes care of generating a list of tensor names to fetch and op names
+  to run for a low level `run()` call.
 
   Given the results of the low level run call, this class can also rebuild a
   result structure matching the user-provided structure for fetches, but
   containing the corresponding results.
   """
+  # TODO(touts): Make this class also take care of destructuring the feed
+  # dict instead of doing it in the callers.
 
-  def __init__(self, graph, fetches):
+  def __init__(self, graph, fetches, feeds):
     """Creates a fetch handler.
 
     Args:
@@ -350,11 +352,13 @@ class _FetchHandler(object):
         and to convert all fetches to tensors or ops as needed.
       fetches: An arbitrary fetch structure: singleton, list, tuple,
         namedtuple, or dict.
+      feeds: A feed dict where keys are fully resolved tensor names.
     """
     with graph.as_default():
       self._fetch_mapper = _FetchMapper.for_fetch(fetches)
     self._fetches = []
     self._targets = []
+    self._feeds = feeds
     self._ops = []
     self._fetch_handles = {}
     for fetch in self._fetch_mapper.unique_fetches():
@@ -370,6 +374,7 @@ class _FetchHandler(object):
       # Remember the fetch if it is for a tensor handle.
       if isinstance(fetch, ops.Tensor) and fetch.op.type == 'GetSessionHandle':
         self._fetch_handles[fetch_name] = fetch.op.inputs[0].dtype
+    self._final_fetches = [x for x in self._fetches if x not in feeds]
 
   def _assert_fetchable(self, graph, op):
     if not graph.is_fetchable(op):
@@ -382,7 +387,7 @@ class _FetchHandler(object):
     Returns:
       A list of strings.
     """
-    return self._fetches
+    return self._final_fetches
 
   def targets(self):
     """Return the unique names of ops to run.
@@ -413,19 +418,26 @@ class _FetchHandler(object):
         containing tensors or None (for fetched ops).
     """
     full_values = []
-    assert len(self._fetches) == len(tensor_values)
+    assert len(self._final_fetches) == len(tensor_values)
     i = 0
+    j = 0
     for is_op in self._ops:
       if is_op:
         full_values.append(None)
       else:
+        # If the fetch was in the feeds, use the fed value, otherwise
+        # use the returned value.
+        value = self._feeds.get(self._fetches[i])
+        if value is None:
+          value = tensor_values[j]
+          j += 1
         dtype = self._fetch_handles.get(self._fetches[i])
         if dtype:
-          full_values.append(session_ops.TensorHandle(
-              tensor_values[i], dtype, session))
+          full_values.append(session_ops.TensorHandle(value, dtype, session))
         else:
-          full_values.append(tensor_values[i])
+          full_values.append(value)
         i += 1
+    assert j == len(tensor_values)
     return self._fetch_mapper.build_results(full_values)
 
 
@@ -749,6 +761,7 @@ class BaseSession(SessionInterface):
     Raises:
       tf.errors.OpError: Or one of its subclasses on error.
     """
+    # TODO(touts): Support feeding and fetching the same tensor.
     return self._run(handle, fetches, feed_dict, None, None)
 
   def partial_run_setup(self, fetches, feeds=None):
@@ -786,9 +799,6 @@ class BaseSession(SessionInterface):
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
 
-    # Validate and process fetches.
-    fetch_handler = _FetchHandler(self._graph, fetches)
-
     # Create request.
     feed_list = []
 
@@ -807,6 +817,10 @@ class BaseSession(SessionInterface):
                        + e.message)
           e.args = (e.message,)
           raise e
+
+    # Validate and process fetches.
+    # TODO(touts): Support feeding and fetching the same tensor.
+    fetch_handler = _FetchHandler(self._graph, fetches, {})
 
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
@@ -833,9 +847,6 @@ class BaseSession(SessionInterface):
     if self.graph.version == 0:
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
-
-    # Create a fetch handler to take care of the structure of fetches.
-    fetch_handler = _FetchHandler(self._graph, fetches)
 
     # Create request.
     feed_dict_string = {}
@@ -880,6 +891,9 @@ class BaseSession(SessionInterface):
           feed_dict_string[subfeed_name] = np_val
           feed_map[subfeed_name] = (subfeed_t, subfeed_val)
 
+    # Create a fetch handler to take care of the structure of fetches.
+    fetch_handler = _FetchHandler(self._graph, fetches, feed_dict_string)
+
     # Run request and get response.
     # We need to keep the movers alive for the following _do_run().
     # These movers are no longer needed when _do_run() completes, and
@@ -887,9 +901,13 @@ class BaseSession(SessionInterface):
     # TODO(yuanbyu, keveman): Revisit whether we should just treat feeding
     # of a handle from a different device as an error.
     movers = self._update_with_movers(feed_dict_string, feed_map)
-    results = self._do_run(handle, fetch_handler.targets(),
-                           fetch_handler.fetches(), feed_dict_string, options,
-                           run_metadata)
+    final_fetches = fetch_handler.fetches()
+    final_targets = fetch_handler.targets()
+    if final_fetches or final_targets:
+      results = self._do_run(handle, final_targets, final_fetches,
+                             feed_dict_string, options, run_metadata)
+    else:
+      results = []
     return fetch_handler.build_results(self, results)
 
   # Captures the name of a node in an error status.

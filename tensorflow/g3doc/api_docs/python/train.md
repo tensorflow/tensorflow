@@ -851,7 +851,7 @@ learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
                                            100000, 0.96, staircase=True)
 # Passing global_step to minimize() will increment it at each step.
 learning_step = (
-    tf.GradientDescentOptimizer(learning_rate)
+    tf.train.GradientDescentOptimizer(learning_rate)
     .minimize(...my loss..., global_step=global_step)
 )
 ```
@@ -1251,11 +1251,14 @@ After this is called, calls to `should_stop()` will return `False`.
 
 - - -
 
-#### `tf.train.Coordinator.join(threads, stop_grace_period_secs=120)` {#Coordinator.join}
+#### `tf.train.Coordinator.join(threads=None, stop_grace_period_secs=120)` {#Coordinator.join}
 
 Wait for threads to terminate.
 
-Blocks until all `threads` have terminated or `request_stop()` is called.
+This call blocks until a set of threads have terminated.  The set of thread
+is the union of the threads passed in the `threads` argument and the list
+of threads that registered with the coordinator by calling
+`Coordinator.register_thread()`.
 
 After the threads stop, if an `exc_info` was passed to `request_stop`, that
 exception is re-raised.
@@ -1269,7 +1272,8 @@ that `RuntimeError`.
 ##### Args:
 
 
-*  <b>`threads`</b>: List of `threading.Threads`. The started threads to join.
+*  <b>`threads`</b>: List of `threading.Threads`. The started threads to join in
+    addition to the registered threads.
 *  <b>`stop_grace_period_secs`</b>: Number of seconds given to threads to stop after
     `request_stop()` has been called.
 
@@ -1285,6 +1289,18 @@ that `RuntimeError`.
 #### `tf.train.Coordinator.joined` {#Coordinator.joined}
 
 
+
+
+- - -
+
+#### `tf.train.Coordinator.register_thread(thread)` {#Coordinator.register_thread}
+
+Register a thread to join.
+
+##### Args:
+
+
+*  <b>`thread`</b>: A Python thread to join.
 
 
 - - -

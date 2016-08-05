@@ -33,7 +33,7 @@ class StringLiteral {
  public:
   // We allow implicit conversions here on purpose.
   template <int N>
-  StringLiteral(const char (&data)[N]) : literal_(data, N) {}
+  StringLiteral(const char (&data)[N]) : literal_(data, N - 1) {}
 
   // This ctor will be called for non-literals, causing compile-time failure.
   template <typename NotStringLiteral>

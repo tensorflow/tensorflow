@@ -150,6 +150,11 @@ class Coordinator(object):
     self._exc_info_to_raise = None
     # True if we have called join() already.
     self._joined = False
+    # Set of threads registered for joining when join() is called.  These
+    # threads will be joined in addition to the threads passed to the join()
+    # call.  It's ok if threads are both registered and passed to the join()
+    # call.
+    self._registered_threads = set()
 
   def _filter_exception(self, ex):
     """Check if the exception indicated in 'ex' should be ignored.
@@ -305,10 +310,22 @@ class Coordinator(object):
     """
     return self._stop_event.wait(timeout)
 
-  def join(self, threads, stop_grace_period_secs=120):
+  def register_thread(self, thread):
+    """Register a thread to join.
+
+    Args:
+      thread: A Python thread to join.
+    """
+    with self._lock:
+      self._registered_threads.add(thread)
+
+  def join(self, threads=None, stop_grace_period_secs=120):
     """Wait for threads to terminate.
 
-    Blocks until all `threads` have terminated or `request_stop()` is called.
+    This call blocks until a set of threads have terminated.  The set of thread
+    is the union of the threads passed in the `threads` argument and the list
+    of threads that registered with the coordinator by calling
+    `Coordinator.register_thread()`.
 
     After the threads stop, if an `exc_info` was passed to `request_stop`, that
     exception is re-raised.
@@ -320,7 +337,8 @@ class Coordinator(object):
     that `RuntimeError`.
 
     Args:
-      threads: List of `threading.Threads`. The started threads to join.
+      threads: List of `threading.Threads`. The started threads to join in
+        addition to the registered threads.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `request_stop()` has been called.
 
@@ -328,6 +346,13 @@ class Coordinator(object):
       RuntimeError: If any thread is still alive after `request_stop()`
         is called and the grace period expires.
     """
+    # Threads registered after this call will not be joined.
+    with self._lock:
+      if threads is None:
+        threads = self._registered_threads
+      else:
+        threads = self._registered_threads.union(set(threads))
+
     # Wait for all threads to stop or for request_stop() to be called.
     while any(t.is_alive() for t in threads) and not self.wait_for_stop(1.0):
       pass
@@ -353,6 +378,7 @@ class Coordinator(object):
     # Terminate with an exception if appropriate.
     with self._lock:
       self._joined = True
+      self._registered_threads = set()
       if self._exc_info_to_raise:
         six.reraise(*self._exc_info_to_raise)
       elif stragglers:
@@ -411,6 +437,7 @@ class LooperThread(threading.Thread):
     elif args or kwargs:
       raise ValueError("'args' and 'kwargs' argument require that you also "
                        "pass 'target'")
+    self._coord.register_thread(self)
 
   @staticmethod
   def loop(coord, timer_interval_secs, target, args=None, kwargs=None):

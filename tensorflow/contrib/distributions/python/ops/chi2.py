@@ -42,15 +42,15 @@ class Chi2(gamma.Gamma):
     """Construct Chi2 distributions with parameter `df`.
 
     Args:
-      df: `float` or `double` tensor, the degrees of freedom of the
+      df: Floating point tensor, the degrees of freedom of the
         distribution(s).  `df` must contain only positive values.
       validate_args: Whether to assert that `df > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`. If `validate_args` is False
+        methods `prob(x)` and `log_prob(x)`. If `validate_args` is `False`
         and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prepend to all ops created by this distribution.
     """
     # Even though all stats of chi2 are defined for valid parameters, this is

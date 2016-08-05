@@ -30,9 +30,21 @@ from tensorflow.contrib.learn.python.learn import supervised_session
 class ScaffoldTest(tf.test.TestCase):
   """Scaffold tests."""
 
+  def test_nothing_created_before_finalize(self):
+    with tf.Graph().as_default():
+      scaffold = supervised_session.Scaffold()
+      self.assertEqual(None, scaffold.global_step_tensor)
+      self.assertEqual(None, scaffold.init_op)
+      self.assertEqual(None, scaffold.init_feed_dict)
+      self.assertEqual(None, scaffold.init_fn)
+      self.assertEqual(None, scaffold.ready_op)
+      self.assertEqual(None, scaffold.local_init_op)
+      self.assertEqual(None, scaffold.saver)
+
   def test_defaults_empty_graph(self):
     with tf.Graph().as_default():
       scaffold = supervised_session.Scaffold()
+      scaffold.finalize()
       self.assertTrue(isinstance(scaffold.global_step_tensor, tf.Variable))
       self.assertTrue(isinstance(scaffold.init_op, tf.Operation))
       self.assertEqual(None, scaffold.init_feed_dict)
@@ -49,7 +61,9 @@ class ScaffoldTest(tf.test.TestCase):
   def test_caches_values(self):
     with tf.Graph().as_default():
       scaffold1 = supervised_session.Scaffold()
+      scaffold1.finalize()
       scaffold2 = supervised_session.Scaffold()
+      scaffold2.finalize()
       self.assertEqual(scaffold1.global_step_tensor,
                        scaffold2.global_step_tensor)
       self.assertEqual(scaffold1.init_op, scaffold2.init_op)
@@ -63,7 +77,7 @@ class ScaffoldTest(tf.test.TestCase):
       tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
       tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
       with self.assertRaisesRegexp(RuntimeError, 'More than one item'):
-        supervised_session.Scaffold()
+        supervised_session.Scaffold().finalize()
 
   def test_uses_passed_values(self):
     with tf.Graph().as_default():
@@ -74,6 +88,7 @@ class ScaffoldTest(tf.test.TestCase):
                                              ready_op=5,
                                              local_init_op=6,
                                              saver=7)
+      scaffold.finalize()
       self.assertEqual(1, scaffold.global_step_tensor)
       self.assertEqual(2, scaffold.init_op)
       self.assertEqual(3, scaffold.init_feed_dict)
@@ -84,7 +99,7 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_graph_is_finalized(self):
     with tf.Graph().as_default():
-      supervised_session.Scaffold()
+      supervised_session.Scaffold().finalize()
       with self.assertRaisesRegexp(RuntimeError,
                                    'Graph is finalized and cannot be modified'):
         tf.constant([0])
@@ -214,7 +229,7 @@ class SupervisedSessionTest(tf.test.TestCase):
       # Use a monitor to save the model every 100 steps.  It also saves it at
       # the end.
       monitors = [tf.contrib.learn.monitors.CheckpointSaver(
-          100, scaffold.saver, logdir)]
+          logdir, save_steps=1, scaffold=scaffold)]
       with supervised_session.SupervisedSession('', scaffold=scaffold,
                                                 checkpoint_dir=logdir,
                                                 monitors=monitors) as session:
@@ -262,7 +277,7 @@ class SupervisedSessionTest(tf.test.TestCase):
           3, tf.errors.AbortedError(None, None, 'Abort'))
       # Save after each step.
       ckpt_monitor = tf.contrib.learn.monitors.CheckpointSaver(
-          1, scaffold.saver, logdir)
+          logdir, save_steps=1, scaffold=scaffold)
       monitors = [abort_monitor, ckpt_monitor]
       with supervised_session.SupervisedSession('', scaffold=scaffold,
                                                 checkpoint_dir=logdir,

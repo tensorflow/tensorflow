@@ -61,9 +61,9 @@ class PadOpTest(tf.test.TestCase):
             [[1, 1], [1, 2]],
             mode="symmetric"))
 
-  def _testPad(self, np_inputs, paddings, mode, use_gpu=False):
+  def _testPad(self, np_inputs, paddings, mode):
     np_val = self._npPad(np_inputs, paddings, mode=mode)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session():
       tf_val = tf.pad(np_inputs, paddings, mode=mode)
       out = tf_val.eval()
     self.assertAllEqual(np_val, out)
@@ -86,8 +86,8 @@ class PadOpTest(tf.test.TestCase):
 
   def _testAll(self, np_inputs, paddings):
     for mode in ("CONSTANT", "REFLECT", "SYMMETRIC"):
-      self._testPad(np_inputs, paddings, mode=mode, use_gpu=False)
-      self._testPad(np_inputs, paddings, mode=mode, use_gpu=True)
+      self._testPad(np_inputs, paddings, mode=mode)
+      self._testPad(np_inputs, paddings, mode=mode)
       if np_inputs.dtype == np.float32:
         self._testGradient(np_inputs, paddings, mode=mode)
 
@@ -189,12 +189,11 @@ class PadOpTest(tf.test.TestCase):
   def testScalars(self):
     paddings = np.zeros((0, 2), dtype=np.int32)
     inp = np.asarray(7)
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        tf_val = tf.pad(inp, paddings)
-        out = tf_val.eval()
-      self.assertAllEqual(inp, out)
-      self.assertShapeEqual(inp, tf_val)
+    with self.test_session():
+      tf_val = tf.pad(inp, paddings)
+      out = tf_val.eval()
+    self.assertAllEqual(inp, out)
+    self.assertShapeEqual(inp, tf_val)
 
 
 if __name__ == "__main__":

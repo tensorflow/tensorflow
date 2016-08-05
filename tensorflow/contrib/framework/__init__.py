@@ -30,6 +30,7 @@
 
 ## Deprecation
 @@deprecated
+@@deprecated_arg_values
 
 ## Arg_Scope
 @@arg_scope

@@ -59,9 +59,9 @@ class CumsumTest(tf.test.TestCase):
   valid_dtypes = [np.int32, np.int64, np.float16, np.float32,
                   np.float64, np.complex64, np.complex128]
 
-  def _compare(self, x, axis, exclusive, reverse, use_gpu=False):
+  def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumsum, x, axis, exclusive, reverse)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session():
       tf_out = tf.cumsum(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -69,8 +69,7 @@ class CumsumTest(tf.test.TestCase):
   def _compareAll(self, x, axis):
     for exclusive in [True, False]:
       for reverse in [True, False]:
-        for use_gpu in [True, False]:
-          self._compare(x, axis, exclusive, reverse, use_gpu)
+        self._compare(x, axis, exclusive, reverse)
 
   def test1D(self):
     for dtype in self.valid_dtypes:
@@ -144,9 +143,9 @@ class CumprodTest(tf.test.TestCase):
   valid_dtypes = [np.int32, np.int64, np.float16, np.float32,
                   np.float64, np.complex64, np.complex128]
 
-  def _compare(self, x, axis, exclusive, reverse, use_gpu=False):
+  def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumprod, x, axis, exclusive, reverse)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session():
       tf_out = tf.cumprod(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -154,8 +153,7 @@ class CumprodTest(tf.test.TestCase):
   def _compareAll(self, x, axis):
     for exclusive in [True, False]:
       for reverse in [True, False]:
-        for use_gpu in [True, False]:
-          self._compare(x, axis, exclusive, reverse, use_gpu)
+        self._compare(x, axis, exclusive, reverse)
 
 
   def test1D(self):

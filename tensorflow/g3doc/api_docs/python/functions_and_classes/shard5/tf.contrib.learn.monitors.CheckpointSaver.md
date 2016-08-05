@@ -1,38 +1,32 @@
 Saves checkpoints every N steps.
 - - -
 
-#### `tf.contrib.learn.monitors.CheckpointSaver.__init__(every_n_steps, saver, checkpoint_dir, checkpoint_basename='model.ckpt', first_n_steps=-1)` {#CheckpointSaver.__init__}
+#### `tf.contrib.learn.monitors.CheckpointSaver.__init__(checkpoint_dir, save_secs=None, save_steps=None, saver=None, checkpoint_basename='model.ckpt', scaffold=None)` {#CheckpointSaver.__init__}
 
 Initialize CheckpointSaver monitor.
 
 ##### Args:
 
 
-*  <b>`every_n_steps`</b>: `int`, save every N steps.
-*  <b>`saver`</b>: `Saver` object, used for saving.
 *  <b>`checkpoint_dir`</b>: `str`, base directory for the checkpoint files.
+*  <b>`save_secs`</b>: `int`, save every N secs.
+*  <b>`save_steps`</b>: `int`, save every N steps.
+*  <b>`saver`</b>: `Saver` object, used for saving.
 *  <b>`checkpoint_basename`</b>: `str`, base name for the checkpoint files.
-*  <b>`first_n_steps`</b>: `int`, if positive, save every step during the
-    first `first_n_steps` steps.
+*  <b>`scaffold`</b>: `Scaffold`, use to get saver object.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If both `save_steps` and `save_secs` are not `None`.
+*  <b>`ValueError`</b>: If both `save_steps` and `save_secs` are `None`.
 
 
 - - -
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.begin(max_steps=None)` {#CheckpointSaver.begin}
 
-Called at the beginning of training.
 
-When called, the default graph is the one we are executing.
-
-##### Args:
-
-
-*  <b>`max_steps`</b>: `int`, the maximum global step this training will run until.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if we've already begun a run.
 
 
 - - -
@@ -78,55 +72,6 @@ End epoch.
 
 - - -
 
-#### `tf.contrib.learn.monitors.CheckpointSaver.every_n_post_step(step, session)` {#CheckpointSaver.every_n_post_step}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.monitors.CheckpointSaver.every_n_step_begin(step)` {#CheckpointSaver.every_n_step_begin}
-
-Callback before every n'th step begins.
-
-##### Args:
-
-
-*  <b>`step`</b>: `int`, the current value of the global step.
-
-##### Returns:
-
-  A `list` of tensors that will be evaluated at this step.
-
-
-- - -
-
-#### `tf.contrib.learn.monitors.CheckpointSaver.every_n_step_end(step, outputs)` {#CheckpointSaver.every_n_step_end}
-
-Callback after every n'th step finished.
-
-This callback provides access to the tensors/ops evaluated at this step,
-including the additional tensors for which evaluation was requested in
-`step_begin`.
-
-In addition, the callback has the opportunity to stop training by returning
-`True`. This is useful for early stopping, for example.
-
-##### Args:
-
-
-*  <b>`step`</b>: `int`, the current value of the global step.
-*  <b>`outputs`</b>: `dict` mapping `string` values representing tensor names to
-    the value resulted from running these tensors. Values may be either
-    scalars, for scalar tensors, or Numpy `array`, for non-scalar tensors.
-
-##### Returns:
-
-  `bool`. True if training should stop.
-
-
-- - -
-
 #### `tf.contrib.learn.monitors.CheckpointSaver.post_step(step, session)` {#CheckpointSaver.post_step}
 
 
@@ -160,33 +105,24 @@ A setter called automatically by the target estimator.
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.step_begin(step)` {#CheckpointSaver.step_begin}
 
-Overrides `BaseMonitor.step_begin`.
 
-When overriding this method, you must call the super implementation.
-
-##### Args:
-
-
-*  <b>`step`</b>: `int`, the current value of the global step.
-
-##### Returns:
-
-  A `list`, the result of every_n_step_begin, if that was called this step,
-  or an empty list otherwise.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if called more than once during a step.
 
 
 - - -
 
 #### `tf.contrib.learn.monitors.CheckpointSaver.step_end(step, output)` {#CheckpointSaver.step_end}
 
-Overrides `BaseMonitor.step_end`.
+Callback after training step finished.
 
-When overriding this method, you must call the super implementation.
+This callback provides access to the tensors/ops evaluated at this step,
+including the additional tensors for which evaluation was requested in
+`step_begin`.
+
+In addition, the callback has the opportunity to stop training by returning
+`True`. This is useful for early stopping, for example.
+
+Note that this method is not called if the call to `Session.run()` that
+followed the last call to `step_begin()` failed.
 
 ##### Args:
 
@@ -198,7 +134,11 @@ When overriding this method, you must call the super implementation.
 
 ##### Returns:
 
-  `bool`, the result of every_n_step_end, if that was called this step,
-  or `False` otherwise.
+  `bool`. True if training should stop.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if we've not begun a step, or `step` number does not match.
 
 

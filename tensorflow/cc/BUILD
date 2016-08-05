@@ -73,6 +73,46 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "grad_op_registry",
+    srcs = ["framework/grad_op_registry.cc"],
+    hdrs = ["framework/grad_op_registry.h"],
+    deps = [
+        ":ops",
+        ":scope",
+    ],
+)
+
+cc_library(
+    name = "math_grad",
+    srcs = ["gradients/math_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":ops",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "gradients/math_grad_test",
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":math_grad",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
     op_lib_names = [

@@ -108,10 +108,15 @@ class DirectSession : public Session {
   // a partition of the graph bundled with its dependent library runtime.
   // 'input_keys' are the rendezvous keys for the feeds and 'output_keys'
   // are rendezvous keys for the fetches.
+  // 'flib_def' is the function library used by graphs in 'items'.
+  // TODO(phawkins): currently partitions always share the same function
+  // library. Consider giving each partition its own function library to enable
+  // per-partition rewrites.
   struct ExecutorsAndKeys {
     int64 step_count = 0;
     std::unique_ptr<Graph> graph;
     NameNodeMap name_to_node;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def;
     std::vector<PerPartitionExecutorsAndLib> items;
     std::unordered_map<string, string> input_keys;
     std::unordered_map<string, string> output_keys;
@@ -157,10 +162,12 @@ class DirectSession : public Session {
       ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
 
   // Creates several graphs given the existing graph_def_ and the
-  // input feeds and fetches, given 'devices'.
+  // input feeds and fetches, given 'devices'. The graphs share a common
+  // function library 'flib_def'.
   ::tensorflow::Status CreateGraphs(
       const BuildGraphOptions& options,
       std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
+      std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       RunStateArgs* run_state_args);
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
@@ -237,6 +244,10 @@ class DirectSession : public Session {
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<SimpleGraphExecutionState> execution_state_
       GUARDED_BY(graph_def_lock_);
+
+  // The function library, before any rewrites or optimizations have been
+  // performed. In particular, CreateGraphs() may need to modify the function
+  // library; it copies and modifies the function library.
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
   // For generating unique names.

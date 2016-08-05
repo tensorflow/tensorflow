@@ -67,20 +67,20 @@ Initialize a batch of Beta distributions.
 ##### Args:
 
 
-*  <b>`a`</b>: Positive `float` or `double` tensor with shape broadcastable to
+*  <b>`a`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions. This also defines the
      dtype of the distribution.
-*  <b>`b`</b>: Positive `float` or `double` tensor with shape broadcastable to
+*  <b>`b`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions.
 *  <b>`validate_args`</b>: Whether to assert valid values for parameters `a` and `b`,
-    and `x` in `prob` and `log_prob`.  If False, correct behavior is not
+    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
     guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prefix Ops created by this distribution class.
 
 
@@ -242,7 +242,7 @@ Log of the probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float` or `double`, tensor whose shape can
+*  <b>`x`</b>: Non-negative floating point tensor whose shape can
     be broadcast with `self.a` and `self.b`.  For fixed leading
     dimensions, the last dimension represents counts for the corresponding
     Beta distribution in `self.a` and `self.b`. `x` is only legal if
@@ -312,7 +312,7 @@ The probability mass function.
 ##### Args:
 
 
-*  <b>`x`</b>: Non-negative `float`, `double` tensor whose shape can
+*  <b>`x`</b>: Non-negative floating point tensor whose shape can
     be broadcast with `self.a` and `self.b`.  For fixed leading
     dimensions, the last dimension represents x for the corresponding Beta
     distribution in `self.a` and `self.b`. `x` is only legal if is

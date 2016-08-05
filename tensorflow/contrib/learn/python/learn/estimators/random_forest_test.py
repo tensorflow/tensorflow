@@ -19,10 +19,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 
 
 class TensorForestTrainerTests(tf.test.TestCase):
+
+  def testFloat64(self):
+    hparams = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
+        num_trees=3, max_nodes=1000, num_classes=3, num_features=4)
+    classifier = tf.contrib.learn.TensorForestEstimator(hparams)
+    iris = tf.contrib.learn.datasets.load_iris()
+    with self.assertRaisesRegexp(TypeError, 'float32'):
+      classifier.fit(x=iris.data, y=iris.target, steps=100)
 
   def testClassification(self):
     """Tests multi-class classification using matrix data as input."""
@@ -31,9 +40,11 @@ class TensorForestTrainerTests(tf.test.TestCase):
     classifier = tf.contrib.learn.TensorForestEstimator(hparams)
 
     iris = tf.contrib.learn.datasets.load_iris()
+    data = iris.data.astype(np.float32)
+    target = iris.target.astype(np.float32)
 
-    classifier.fit(x=iris.data, y=iris.target, steps=100)
-    classifier.evaluate(x=iris.data, y=iris.target, steps=10)
+    classifier.fit(x=data, y=target, steps=100)
+    classifier.evaluate(x=data, y=target, steps=10)
 
   def testRegression(self):
     """Tests multi-class classification using matrix data as input."""
@@ -45,9 +56,11 @@ class TensorForestTrainerTests(tf.test.TestCase):
     regressor = tf.contrib.learn.TensorForestEstimator(hparams)
 
     boston = tf.contrib.learn.datasets.load_boston()
+    data = boston.data.astype(np.float32)
+    target = boston.target.astype(np.float32)
 
-    regressor.fit(x=boston.data, y=boston.target, steps=100)
-    regressor.evaluate(x=boston.data, y=boston.target, steps=10)
+    regressor.fit(x=data, y=target, steps=100)
+    regressor.evaluate(x=data, y=target, steps=10)
 
 
 if __name__ == '__main__':

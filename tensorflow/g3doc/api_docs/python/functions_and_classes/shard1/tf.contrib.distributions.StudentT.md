@@ -57,19 +57,19 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 ##### Args:
 
 
-*  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
+*  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s). `df` must contain only positive values.
-*  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
+*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
+*  <b>`sigma`</b>: Floating point tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
 *  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
-    `validate_args` is False and inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+    `validate_args` is `False` and inputs are invalid, correct behavior is
+    not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:

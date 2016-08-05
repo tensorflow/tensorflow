@@ -33,6 +33,7 @@ from tensorflow.contrib.learn.python.learn import preprocessing
 from tensorflow.contrib.learn.python.learn import utils
 from tensorflow.contrib.learn.python.learn.dataframe import *
 from tensorflow.contrib.learn.python.learn.estimators import *
+from tensorflow.contrib.learn.python.learn.evaluable import Evaluable
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
 from tensorflow.contrib.learn.python.learn.graph_actions import infer
@@ -41,4 +42,5 @@ from tensorflow.contrib.learn.python.learn.graph_actions import run_feeds
 from tensorflow.contrib.learn.python.learn.graph_actions import run_n
 from tensorflow.contrib.learn.python.learn.graph_actions import train
 from tensorflow.contrib.learn.python.learn.learn_io import *
+from tensorflow.contrib.learn.python.learn.trainable import Trainable
 # pylint: enable=wildcard-import

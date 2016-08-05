@@ -253,7 +253,8 @@ def evaluation_loop(master,
                     summary_op_feed_dict=None,
                     variables_to_restore=None,
                     eval_interval_secs=60,
-                    max_number_of_evaluations=None):
+                    max_number_of_evaluations=None,
+                    session_config=None):
   """Runs TF-Slim's Evaluation Loop.
 
   Args:
@@ -276,6 +277,8 @@ def evaluation_loop(master,
     eval_interval_secs: The minimum number of seconds between evaluations.
     max_number_of_evaluations: the max number of iterations of the evaluation.
       If the value is left as 'None', the evaluation continues indefinitely.
+    session_config: An instance of `tf.ConfigProto` that will be used to
+      configure the `Session`. If left as `None`, the default will be used.
   """
   if summary_op == _USE_DEFAULT:
     summary_op = logging_ops.merge_all_summaries()
@@ -307,7 +310,8 @@ def evaluation_loop(master,
     logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                            time.gmtime()))
 
-    with sv.managed_session(master, start_standard_services=False) as sess:
+    with sv.managed_session(
+        master, start_standard_services=False, config=session_config) as sess:
       sv.saver.restore(sess, last_checkpoint)
       sv.start_queue_runners(sess)
       evaluation(sess,
