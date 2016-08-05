@@ -47,9 +47,9 @@ class Classifier(estimator.Estimator):
     Args:
       model_fn: (targets, predictions, mode) -> logits, loss, train_op
       n_classes: Number of classes
-      model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
       config: Configuration object (optional)
     """
     self._n_classes = n_classes
@@ -57,12 +57,40 @@ class Classifier(estimator.Estimator):
     super(Classifier, self).__init__(model_fn=self._classifier_model,
                                      model_dir=model_dir, config=config)
 
-  def evaluate(self, x=None, y=None, input_fn=None, batch_size=None,
-               steps=None, metrics=None):
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None):
+    """Evaluates given model with provided evaluation data.
+
+    See superclass Estimator for more details.
+
+    Args:
+      x: features.
+      y: targets.
+      input_fn: Input function.
+      feed_fn: Function creating a feed dict every time it is called.
+      batch_size: minibatch size to use on the input.
+      steps: Number of steps for which to evaluate model.
+      metrics: Dict of metric ops to run. If None, the default metrics are used.
+      name: Name of the evaluation.
+
+    Returns:
+      Returns `dict` with evaluation results.
+    """
     metrics = metrics or _get_classifier_metrics(self._n_classes)
-    return super(Classifier, self).evaluate(x=x, y=y, input_fn=input_fn,
+    return super(Classifier, self).evaluate(x=x,
+                                            y=y,
+                                            input_fn=input_fn,
                                             batch_size=batch_size,
-                                            steps=steps, metrics=metrics)
+                                            steps=steps,
+                                            metrics=metrics,
+                                            name=name)
 
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns predicted classes for given features.
