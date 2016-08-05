@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ class SeriesBinaryTransform(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     # TODO(jamieas): consider supporting sparse inputs.
     if isinstance(input_tensors[0], ops.SparseTensor) or isinstance(
         input_tensors[1], ops.SparseTensor):
@@ -87,7 +87,7 @@ class ScalarBinaryTransform(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     input_tensor = input_tensors[0]
     if isinstance(input_tensor, ops.SparseTensor):
       result = ops.SparseTensor(input_tensor.indices,

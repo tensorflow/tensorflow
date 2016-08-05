@@ -90,19 +90,35 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::Compute(
   TensorInputs inputs;
   TensorShapes input_matrix_shapes;
   TensorShape batch_shape;
+  AnalyzeInputs(context, &inputs, &input_matrix_shapes, &batch_shape);
+
+  TensorShapes output_matrix_shapes;
+  TensorOutputs outputs;
+  PrepareOutputs(context, input_matrix_shapes, batch_shape, &outputs,
+                 &output_matrix_shapes);
+
+  // Process the individual matrix problems in parallel using a threadpool.
+  auto shard = [this, &inputs, &input_matrix_shapes, &outputs,
+                &output_matrix_shapes, context](int64 begin, int64 end) {
+    for (int64 i = begin; i < end; ++i) {
+      ComputeTensorSlice(context, i, inputs, input_matrix_shapes, outputs,
+                         output_matrix_shapes);
+    }
+  };
+  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+  Shard(worker_threads.num_threads, worker_threads.workers,
+        batch_shape.num_elements(), GetCostPerUnit(input_matrix_shapes), shard);
+}
+
+template <typename Scalar, bool SupportsBatchOperation>
+void LinearAlgebraOp<Scalar, SupportsBatchOperation>::AnalyzeInputs(
+    OpKernelContext* context, TensorInputs* inputs,
+    TensorShapes* input_matrix_shapes, TensorShape* batch_shape) {
   int input_rank = -1;
-  int num_batch_matrices = 1;
   for (int i = 0; i < NumMatrixInputs(context); ++i) {
     const Tensor& in = context->input(i);
     if (i == 0) {
-      // If the tensor rank is greater than 2, we consider the inner-most
-      // dimensions as matrices, and loop over all the other outer ("batch")
-      // dimensions to compute the results.
       input_rank = in.dims();
-      for (int dim = 0; dim < input_rank - 2; ++dim) {
-        num_batch_matrices *= in.dim_size(dim);
-        batch_shape.AddDim(in.dim_size(dim));
-      }
       if (SupportsBatchOperation) {
         OP_REQUIRES(
             context, input_rank >= 2,
@@ -114,6 +130,13 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::Compute(
             errors::InvalidArgument("Input tensor ", i,
                                     " must have rank == 2, got", input_rank));
       }
+
+      // If the tensor rank is greater than 2, we consider the inner-most
+      // dimensions as matrices, and loop over all the other outer ("batch")
+      // dimensions to compute the results.
+      for (int dim = 0; dim < input_rank - 2; ++dim) {
+        batch_shape->AddDim(in.dim_size(dim));
+      }
     } else {
       // Make sure that all inputs have the same rank and outer dimensions.
       OP_REQUIRES(context, input_rank == in.dims(),
@@ -121,7 +144,7 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::Compute(
                       "All input tensors must have the same rank."));
       for (int dim = 0; dim < input_rank - 2; ++dim) {
         OP_REQUIRES(
-            context, in.dim_size(dim) == batch_shape.dim_size(dim),
+            context, in.dim_size(dim) == batch_shape->dim_size(dim),
             errors::InvalidArgument(
                 "All input tensors must have the same outer dimensions."));
       }
@@ -131,64 +154,59 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::Compute(
     const int col_dimension = input_rank - 1;
     const int64 num_rows = in.dim_size(row_dimension);
     const int64 num_cols = in.dim_size(col_dimension);
-    input_matrix_shapes.push_back(TensorShape({num_rows, num_cols}));
-    inputs.push_back(in);
+    // TODO(rmlarsen): Use emplace_back when it is added to InlinedVector. Same
+    // in several places below.
+    input_matrix_shapes->push_back(TensorShape({num_rows, num_cols}));
+    inputs->push_back(in);
   }
   // Have the derived class validate that the inputs are as expected.
-  ValidateInputMatrixShapes(context, input_matrix_shapes);
-
-  // Get shape for each of the matrix outputs.
-  const TensorShapes output_matrix_shapes =
-      GetOutputMatrixShapes(input_matrix_shapes);
-  // Make sure the number of outputs is what the derived class expects.
-  OP_REQUIRES(
-      context, output_matrix_shapes.size() == context->num_outputs(),
-      errors::Internal(
-          "Derived class expected (%d) output matrices for op, got (%d).",
-          output_matrix_shapes.size(), context->num_outputs()));
-
-  // Allocate outputs.
-  TensorShapes output_shapes;
-  TensorOutputs outputs;
-  for (int i = 0; i < context->num_outputs(); ++i) {
-    OP_REQUIRES(context, output_matrix_shapes[i].dims() <= 2,
-                errors::InvalidArgument(
-                    "Rank of matrix output no. %d must be 0, 1 or 2, got %d.",
-                    i, output_matrix_shapes[i].dims()));
-
-    // The final output has the shape of the outer batch dimensions concatenated
-    // with the output_matrix_shape (if the output is not scalar).
-    TensorShape output_shape;
-    if (input_rank == 2) {
-      output_shape = output_matrix_shapes[i];
-    } else {
-      output_shape = batch_shape;
-      // Add the inner dimensions that depend on the operation implemented by
-      // the derived class.
-      for (int dim = 0; dim < output_matrix_shapes[i].dims(); ++dim) {
-        output_shape.AddDim(output_matrix_shapes[i].dim_size(dim));
-      }
-    }
-    output_shapes.push_back(output_shape);
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(i, output_shape, &out));
-    outputs.push_back(out);
-  }
-
-  auto shard = [this, &inputs, &input_matrix_shapes, &outputs,
-                &output_matrix_shapes, context](int64 begin, int64 end) {
-    for (int64 i = begin; i < end; ++i) {
-      ComputeTensorSlice(context, i, inputs, input_matrix_shapes, outputs,
-                         output_matrix_shapes);
-    }
-  };
-  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-  Shard(worker_threads.num_threads, worker_threads.workers, num_batch_matrices,
-        GetCostPerUnit(input_matrix_shapes), shard);
+  ValidateInputMatrixShapes(context, *input_matrix_shapes);
 }
 
-template <typename Scalar, bool SupportsBatchOperationT>
-void LinearAlgebraOp<Scalar, SupportsBatchOperationT>::ComputeTensorSlice(
+template <typename Scalar, bool SupportsBatchOperation>
+void LinearAlgebraOp<Scalar, SupportsBatchOperation>::PrepareOutputs(
+    OpKernelContext* context, const TensorShapes& input_matrix_shapes,
+    const TensorShape& batch_shape, TensorOutputs* outputs,
+    TensorShapes* output_matrix_shapes) {
+  // Get shape for each of the matrix outputs produced by the derived class.
+  *output_matrix_shapes = GetOutputMatrixShapes(input_matrix_shapes);
+  const int num_outputs = output_matrix_shapes->size();
+
+  // Make sure the number of op outputs is what the derived class expects.
+  OP_REQUIRES(
+      context, num_outputs <= context->num_outputs(),
+      errors::Internal(
+          "Derived class expected more outputs (%d) that the op has (%d).",
+          num_outputs, context->num_outputs()));
+
+  // Allocate outputs.
+  for (int i = 0; i < context->num_outputs(); ++i) {
+    TensorShape output_tensor_shape({0});
+    if (i < num_outputs) {
+      // This output is used, set up output shape and allocate it.
+      const TensorShape& output_matrix_shape = output_matrix_shapes->at(i);
+      OP_REQUIRES(context, output_matrix_shape.dims() <= 2,
+                  errors::InvalidArgument(
+                      "Rank of matrix output no. %d must be 0, 1 or 2, got %d.",
+                      i, output_matrix_shape.dims()));
+
+      // The final output has the shape of the outer batch dimensions
+      // concatenated with the output_matrix_shape (if the output is not
+      // scalar).
+      output_tensor_shape = batch_shape;
+      for (int dim = 0; dim < output_matrix_shape.dims(); ++dim) {
+        output_tensor_shape.AddDim(output_matrix_shape.dim_size(dim));
+      }
+    }
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(i, output_tensor_shape, &out));
+    outputs->push_back(out);
+  }
+}
+
+template <typename Scalar, bool SupportsBatchOperation>
+void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ComputeTensorSlice(
     OpKernelContext* context, int64 matrix_index, const TensorInputs& inputs,
     const TensorShapes& input_matrix_shapes, const TensorOutputs& outputs,
     const TensorShapes& output_matrix_shapes) {
@@ -204,7 +222,7 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperationT>::ComputeTensorSlice(
   }
 
   MatrixMaps matrix_outputs;
-  for (int i = 0; i < outputs.size(); ++i) {
+  for (int i = 0; i < output_matrix_shapes.size(); ++i) {
     // The output matrix shape may not be a matrix.
     int num_output_rows = output_matrix_shapes[i].dims() >= 1
                               ? output_matrix_shapes[i].dim_size(0)

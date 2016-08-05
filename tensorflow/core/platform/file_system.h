@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -33,16 +34,6 @@ namespace tensorflow {
 class RandomAccessFile;
 class ReadOnlyMemoryRegion;
 class WritableFile;
-
-struct FileStatistics {
-  // The length of the file or -1 if finding file length is not supported.
-  int64 length;
-  // The last modified time in nanoseconds.
-  int64 mtime_nsec;
-  // This field contains more than just the permissions bits.  More information
-  // can be found on the man page for stat(2).
-  mode_t mode;
-};
 
 /// A generic interface for accessing a file system.
 class FileSystem {

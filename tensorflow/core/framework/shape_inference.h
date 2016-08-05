@@ -130,6 +130,9 @@ class InferenceContext {
   int64 Value(const Dimension* d) { return d->value_; }
   bool ValueKnown(const Dimension* d) { return Value(d) != kUnknownDim; }
 
+  // Returns true if the rank and all dimensions of the Shape are known.
+  bool FullyDefined(const Shape* s);
+
   // Returns the total number of elements, or an unknown dimension for an
   // incomplete shape.
   const Dimension* NumElements(const Shape* s);
@@ -257,6 +260,16 @@ class InferenceContext {
                   const Dimension** out);
 
   Status construction_status() const { return construction_status_; }
+
+  // Validates that 'dim' has a known value, and prints an error
+  // message containing 'name' if validation fails.
+  Status ValidateKnownDim(const Dimension* dim, const char* name) {
+    if (!ValueKnown(dim)) {
+      return errors::InvalidArgument("Cannot infer shape because dimension ",
+                                     name, " is not known.");
+    }
+    return Status::OK();
+  }
 
  private:
   const Dimension* GetDimension(const DimensionOrConstant& d);

@@ -775,7 +775,8 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
                                   name=name)
 
 
-def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
+def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
+                 in_row_major_order=True):
   """Combines a batch of feature ids and values into a single `SparseTensor`.
 
   The most common use case for this function occurs when feature ids and
@@ -834,6 +835,8 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
     vocab_size: A scalar `int64` Tensor (or Python int) containing the new size
       of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
     name: A name prefix for the returned tensors (optional)
+    in_row_major_order: A boolean to specify whether or not to sort the
+      tensor in row major order, True by default (optional).
 
   Returns:
     A `SparseTensor` compactly representing a batch of feature ids and values,
@@ -868,7 +871,8 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None):
         [array_ops.slice(sp_ids.shape, [0], array_ops.expand_dims(rank - 1, 0)),
          math_ops.cast(array_ops.pack([vocab_size]), dtypes.int64)])
 
-    return sparse_reorder(ops.SparseTensor(new_indices, new_values, new_shape))
+    result = ops.SparseTensor(new_indices, new_values, new_shape)
+    return sparse_reorder(result) if in_row_major_order else result
 
 
 def sparse_retain(sp_input, to_retain):

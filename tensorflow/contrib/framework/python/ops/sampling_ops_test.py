@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.platform import tf_logging as logging
 
 
 class SamplingOpsTest(tf.test.TestCase):
@@ -33,15 +34,22 @@ class SamplingOpsTest(tf.test.TestCase):
 
     # Curry the rejection sampler so we can easily run the same tests on both
     # stratified_sample and stratified_sample_unknown_dist.
-    def curried_sampler(val, lbls, probs, batch, enqueue_many=True):
+    def curried_sampler(tensors, labels, probs, batch_size, enqueue_many=True):
       return tf.contrib.framework.sampling_ops.stratified_sample(
-          val, lbls, initial_p, probs, batch, enqueue_many=enqueue_many)
+          tensors=tensors,
+          labels=labels,
+          target_probs=probs,
+          batch_size=batch_size,
+          init_probs=initial_p,
+          enqueue_many=enqueue_many)
+
     samplers = [
         tf.contrib.framework.sampling_ops.stratified_sample_unknown_dist,
         curried_sampler,
     ]
 
     for sampler in samplers:
+      logging.info('Now testing `%s`', sampler.__class__.__name__)
       # Label must have only batch dimension if enqueue_many is True.
       with self.assertRaises(ValueError):
         sampler(val, tf.zeros([]), probs, batch_size, enqueue_many=True)
@@ -70,20 +78,21 @@ class SamplingOpsTest(tf.test.TestCase):
 
       # Probabilities shape must be fully defined.
       with self.assertRaises(ValueError):
-        sampler(val, label, tf.placeholder(tf.float32, shape=[None]),
-                batch_size)
+        sampler(
+            val, label, tf.placeholder(
+                tf.float32, shape=[None]), batch_size)
 
     # In the rejection sampling case, make sure that probability lengths are
     # the same.
     with self.assertRaises(ValueError):
       tf.contrib.framework.sampling_ops.stratified_sample(
-          val, label, [.2] * 5, [.1] * 10, batch_size)
+          val, label, [.1] * 10, batch_size, init_probs=[.2] * 5)
 
     # In the rejection sampling case, make sure that zero initial probability
     # classes also have zero target probability.
     with self.assertRaises(ValueError):
       tf.contrib.framework.sampling_ops.stratified_sample(
-          val, label, [0, .5, .5], [.2, .4, .4], batch_size)
+          val, label, [.2, .4, .4], batch_size, init_probs=[0, .5, .5])
 
     # Probabilities must be 1D.
     with self.assertRaises(ValueError):
@@ -116,15 +125,17 @@ class SamplingOpsTest(tf.test.TestCase):
       # Run session that should fail.
       with self.test_session() as sess:
         with self.assertRaises(tf.errors.InvalidArgumentError):
-          sess.run([val_tf, lbl_tf], feed_dict={label_ph: illegal_label,
-                                                probs_ph: valid_probs})
+          sess.run([val_tf, lbl_tf],
+                   feed_dict={label_ph: illegal_label,
+                              probs_ph: valid_probs})
 
     for illegal_prob in illegal_probs:
       # Run session that should fail.
       with self.test_session() as sess:
         with self.assertRaises(tf.errors.InvalidArgumentError):
-          sess.run([prob_tf], feed_dict={label_ph: valid_labels,
-                                         probs_ph: illegal_prob})
+          sess.run([prob_tf],
+                   feed_dict={label_ph: valid_labels,
+                              probs_ph: illegal_prob})
 
   def batchingBehaviorHelper(self, sampler):
     batch_size = 20
@@ -152,15 +163,14 @@ class SamplingOpsTest(tf.test.TestCase):
     lbl_input_batch = tf.ones([], dtype=tf.int32)
     probs = np.array([0, 1, 0, 0, 0])
     batches = tf.contrib.framework.sampling_ops.stratified_sample(
-        val_input_batch, lbl_input_batch, probs, probs, batch_size)
+        val_input_batch, lbl_input_batch, probs, batch_size, init_probs=probs)
     batches += tf.contrib.framework.sampling_ops.stratified_sample(
-        val_input_batch, lbl_input_batch, probs, probs, batch_size)
+        val_input_batch, lbl_input_batch, probs, batch_size, init_probs=probs)
     batches += tf.contrib.framework.sampling_ops.stratified_sample_unknown_dist(
         val_input_batch, lbl_input_batch, probs, batch_size)
     batches += tf.contrib.framework.sampling_ops.stratified_sample_unknown_dist(
         val_input_batch, lbl_input_batch, probs, batch_size)
-    summary_op = tf.merge_summary(tf.get_collection(
-        tf.GraphKeys.SUMMARIES))
+    summary_op = tf.merge_summary(tf.get_collection(tf.GraphKeys.SUMMARIES))
 
     with self.test_session() as sess:
       coord = tf.train.Coordinator()
@@ -177,9 +187,15 @@ class SamplingOpsTest(tf.test.TestCase):
 
   def testRejectionBatchingBehavior(self):
     initial_p = [0, .3, 0, .7, 0]
+
     def curried_sampler(val, lbls, probs, batch, enqueue_many=True):
       return tf.contrib.framework.sampling_ops.stratified_sample(
-          val, lbls, initial_p, probs, batch, enqueue_many=enqueue_many)
+          val,
+          lbls,
+          probs,
+          batch,
+          init_probs=initial_p,
+          enqueue_many=enqueue_many)
 
     self.batchingBehaviorHelper(curried_sampler)
 
@@ -190,8 +206,7 @@ class SamplingOpsTest(tf.test.TestCase):
     lbl2 = 3
     # This cond allows the necessary class queues to be populated.
     label = tf.cond(
-        tf.greater(.5, tf.random_uniform([])),
-        lambda: tf.constant(lbl1),
+        tf.greater(.5, tf.random_uniform([])), lambda: tf.constant(lbl1),
         lambda: tf.constant(lbl2))
     val = [np.array([1, 4]) * label]
     probs = tf.placeholder(tf.float32, shape=[5])
@@ -225,7 +240,7 @@ class SamplingOpsTest(tf.test.TestCase):
   def testBatchDimensionNotRequired(self):
     classes = 5
     # Probs must be a tensor, since we pass it directly to _verify_input.
-    probs = tf.constant([1.0/classes] * classes)
+    probs = tf.constant([1.0 / classes] * classes)
 
     # Make sure that these vals/labels pairs don't throw any runtime exceptions.
     legal_input_pairs = [
@@ -243,16 +258,17 @@ class SamplingOpsTest(tf.test.TestCase):
     # Run graph to make sure there are no shape-related runtime errors.
     for vals, labels in legal_input_pairs:
       with self.test_session() as sess:
-        sess.run([val_tf, labels_tf], feed_dict={vals_ph: vals,
-                                                 labels_ph: labels})
+        sess.run([val_tf, labels_tf],
+                 feed_dict={vals_ph: vals,
+                            labels_ph: labels})
 
   def dataListHelper(self, sampler):
     batch_size = 20
     val_input_batch = [tf.zeros([2, 3, 4]), tf.ones([2, 4]), tf.ones(2) * 3]
     lbl_input_batch = tf.ones([], dtype=tf.int32)
     probs = np.array([0, 1, 0, 0, 0])
-    val_list, lbls = sampler(
-        val_input_batch, lbl_input_batch, probs, batch_size)
+    val_list, lbls = sampler(val_input_batch, lbl_input_batch, probs,
+                             batch_size)
 
     # Check output shapes.
     self.assertTrue(isinstance(val_list, list))
@@ -277,9 +293,16 @@ class SamplingOpsTest(tf.test.TestCase):
 
   def testRejectionDataListInput(self):
     initial_p = [0, 1, 0, 0, 0]
+
     def curried_sampler(val, lbls, probs, batch, enqueue_many=False):
       return tf.contrib.framework.sampling_ops.stratified_sample(
-          val, lbls, initial_p, probs, batch, enqueue_many=enqueue_many)
+          val,
+          lbls,
+          probs,
+          batch,
+          init_probs=initial_p,
+          enqueue_many=enqueue_many)
+
     self.dataListHelper(curried_sampler)
 
   def normalBehaviorHelper(self, sampler):
@@ -289,8 +312,7 @@ class SamplingOpsTest(tf.test.TestCase):
     lbl2 = 3
     # This cond allows the necessary class queues to be populated.
     label = tf.cond(
-        tf.greater(.5, tf.random_uniform([])),
-        lambda: tf.constant(lbl1),
+        tf.greater(.5, tf.random_uniform([])), lambda: tf.constant(lbl1),
         lambda: tf.constant(lbl2))
     val = [np.array([1, 4]) * label]
     probs = np.array([.8, 0, 0, .2, 0])
@@ -302,6 +324,9 @@ class SamplingOpsTest(tf.test.TestCase):
     data_l = []
     label_l = []
     with self.test_session() as sess:
+      # Need to initialize variables that keep running total of classes seen.
+      tf.initialize_all_variables().run()
+
       coord = tf.train.Coordinator()
       threads = tf.train.start_queue_runners(coord=coord)
 
@@ -329,7 +354,7 @@ class SamplingOpsTest(tf.test.TestCase):
     # is fixed, for a given implementation, this test will pass or fail 100% of
     # the time. This use of assertNear is to cover cases where someone changes
     # an implementation detail, which would cause the random behavior to differ.
-    self.assertNear(actual_lbl, expected_label, 3*lbl_std_dev_of_mean)
+    self.assertNear(actual_lbl, expected_label, 3 * lbl_std_dev_of_mean)
 
   def testNormalBehavior(self):
     self.normalBehaviorHelper(
@@ -337,10 +362,26 @@ class SamplingOpsTest(tf.test.TestCase):
 
   def testRejectionNormalBehavior(self):
     initial_p = [.7, 0, 0, .3, 0]
+
     def curried_sampler(val, lbls, probs, batch, enqueue_many=False):
       return tf.contrib.framework.sampling_ops.stratified_sample(
-          val, lbls, initial_p, probs, batch, enqueue_many=enqueue_many)
+          val,
+          lbls,
+          probs,
+          batch,
+          init_probs=initial_p,
+          enqueue_many=enqueue_many)
+
     self.normalBehaviorHelper(curried_sampler)
+
+  def testRejectionNormalBehaviorWithOnlineInitPEstimate(self):
+
+    def curried_sampler(val, lbls, probs, batch, enqueue_many=False):
+      return tf.contrib.framework.sampling_ops.stratified_sample(
+          val, lbls, probs, batch, init_probs=None, enqueue_many=enqueue_many)
+
+    self.normalBehaviorHelper(curried_sampler)
+
 
 if __name__ == '__main__':
   tf.test.main()

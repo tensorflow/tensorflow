@@ -173,17 +173,6 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
-namespace {
-Status CheckKnownDim(shape_inference::InferenceContext* c, const Dimension* dim,
-                     const char* name) {
-  if (!c->ValueKnown(dim)) {
-    return errors::InvalidArgument("Cannot infer shape because dimension ",
-                                   name, " is not known.");
-  }
-  return Status::OK();
-}
-}  // namespace
-
 Status Conv2DShape(shape_inference::InferenceContext* c) {
   const Shape* input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
@@ -224,10 +213,10 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   const Dimension* output_depth_dim = c->Dim(filter_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_rows_dim, "filter_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_cols_dim, "filter_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
 
   auto in_rows = c->Value(in_rows_dim);
   auto in_cols = c->Value(in_cols_dim);
@@ -263,6 +252,75 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status Conv3DShape(shape_inference::InferenceContext* c) {
+  const Shape* input_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
+  const Shape* filter_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &filter_shape));
+
+  std::vector<int32> strides;
+  TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+  if (strides.size() != 5) {
+    return errors::InvalidArgument(
+        "Conv3D requires the stride attribute to contain 5 values, but got: ",
+        strides.size());
+  }
+
+  int32 stride_planes = strides[1];
+  int32 stride_rows = strides[2];
+  int32 stride_cols = strides[3];
+
+  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
+  const Dimension* in_planes_dim = c->Dim(input_shape, 1);
+  const Dimension* in_rows_dim = c->Dim(input_shape, 2);
+  const Dimension* in_cols_dim = c->Dim(input_shape, 3);
+
+  const Dimension* filter_planes_dim = c->Dim(filter_shape, 0);
+  const Dimension* filter_rows_dim = c->Dim(filter_shape, 1);
+  const Dimension* filter_cols_dim = c->Dim(filter_shape, 2);
+  const Dimension* output_depth_dim = c->Dim(filter_shape, 4);
+
+  // At the moment we need to know the values of several fields.
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_planes_dim, "in_planes"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_planes_dim, "filter_planes"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
+
+  auto in_planes = c->Value(in_planes_dim);
+  auto in_rows = c->Value(in_rows_dim);
+  auto in_cols = c->Value(in_cols_dim);
+  auto filter_planes = c->Value(filter_planes_dim);
+  auto filter_rows = c->Value(filter_rows_dim);
+  auto filter_cols = c->Value(filter_cols_dim);
+
+  const Dimension* unused;
+  TF_RETURN_IF_ERROR(
+      c->Merge(c->Dim(input_shape, 4), c->Dim(filter_shape, 3), &unused));
+
+  Padding padding;
+  TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+
+  int64 output_planes, output_rows, output_cols;
+  int64 padding_before, padding_after;
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_planes, filter_planes, stride_planes, padding, &output_planes,
+      &padding_before, &padding_after));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_rows, filter_rows, stride_rows, padding, &output_rows, &padding_before,
+      &padding_after));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_cols, filter_cols, stride_cols, padding, &output_cols, &padding_before,
+      &padding_after));
+
+  const Shape* output_shape =
+      c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
+                    output_depth_dim});
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   const Shape* input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
@@ -288,12 +346,12 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   const Dimension* depth_multiplier = c->Dim(filter_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_rows_dim, "filter_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, filter_cols_dim, "filter_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, input_depth, "depth"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, depth_multiplier, "depth_multiplier"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(input_depth, "depth"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(depth_multiplier, "depth_multiplier"));
 
   // Check that the input depths are compatible.
   TF_RETURN_IF_ERROR(
@@ -380,8 +438,8 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
   const Dimension* output_depth_dim = c->Dim(input_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
@@ -467,9 +525,9 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   const Dimension* in_depth_dim = c->Dim(input_shape, 3);
 
   // At the moment we need to know the values of several fields.
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_rows_dim, "in_rows"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_cols_dim, "in_cols"));
-  TF_RETURN_IF_ERROR(CheckKnownDim(c, in_depth_dim, "in_depth"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_depth_dim, "in_depth"));
 
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
@@ -502,6 +560,78 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
         c->MakeShape({c->Dim(output_shape, 0), c->Dim(output_shape, 3),
                       c->Dim(output_shape, 1), c->Dim(output_shape, 2)});
   }
+
+  c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+Status Pool3DShape(shape_inference::InferenceContext* c) {
+  const Shape* input_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
+
+  std::vector<int32> strides;
+  TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+  if (strides.size() != 5) {
+    return errors::InvalidArgument(
+        "Pool3D ops require the stride attribute to contain 5 values, but "
+        "got: ",
+        strides.size());
+  }
+
+  std::vector<int32> kernel_sizes;
+  TF_RETURN_IF_ERROR(c->GetAttr("ksize", &kernel_sizes));
+  if (kernel_sizes.size() != 5) {
+    return errors::InvalidArgument(
+        "Pool3D requires the ksize attribute to contain 5 values, but got: ",
+        kernel_sizes.size());
+  }
+
+  int32 stride_planes, stride_rows, stride_cols;
+  int32 kernel_planes, kernel_rows, kernel_cols;
+
+  stride_planes = strides[1];
+  stride_rows = strides[2];
+  stride_cols = strides[3];
+  kernel_planes = kernel_sizes[1];
+  kernel_rows = kernel_sizes[2];
+  kernel_cols = kernel_sizes[3];
+
+  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
+  const Dimension* in_planes_dim = c->Dim(input_shape, 1);
+  const Dimension* in_rows_dim = c->Dim(input_shape, 2);
+  const Dimension* in_cols_dim = c->Dim(input_shape, 3);
+  const Dimension* output_depth_dim = c->Dim(input_shape, 4);
+
+  // At the moment we need to know the values of several fields.
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_planes_dim, "in_planes"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+  TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+
+  Padding padding;
+  TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+
+  // TODO(mrry,shlens): Raise an error if the stride would cause
+  // information in the input to be ignored. This will require a change
+  // in the kernel implementation.
+  auto in_planes = c->Value(in_planes_dim);
+  auto in_rows = c->Value(in_rows_dim);
+  auto in_cols = c->Value(in_cols_dim);
+
+  int64 output_planes, output_rows, output_cols;
+  int64 padding_before, padding_after;
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_planes, kernel_planes, stride_planes, padding, &output_planes,
+      &padding_before, &padding_after));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_rows, kernel_rows, stride_rows, padding, &output_rows, &padding_before,
+      &padding_after));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+      in_cols, kernel_cols, stride_cols, padding, &output_cols, &padding_before,
+      &padding_after));
+
+  const Shape* output_shape =
+      c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
+                    output_depth_dim});
 
   c->set_output(0, output_shape);
   return Status::OK();

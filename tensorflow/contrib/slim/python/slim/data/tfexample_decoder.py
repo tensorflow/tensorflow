@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ class ItemHandlerCallback(ItemHandler):
 
 
 class Tensor(ItemHandler):
-  """An ItemHandler that returns a parsed Tensor or SparseTensor."""
+  """An ItemHandler that returns a parsed Tensor."""
 
   def __init__(self, tensor_key, shape_key=None, shape=None, default_value=0):
     """Initializes the Tensor handler.
@@ -114,10 +114,10 @@ class Tensor(ItemHandler):
       tensor_key: the name of the `TFExample` feature to read the tensor from.
       shape_key: Optional name of the TF-Example feature in which the tensor
         shape is stored.
-      shape: Optional output shape of the Tensor. If provided, the `Tensor` is
+      shape: Optional output shape of the `Tensor`. If provided, the `Tensor` is
         reshaped accordingly.
-      default_value: Scalar value to set when making dense for indices not
-        specified in the `SparseTensor`.
+      default_value: The value used when the `tensor_key` is not found in a
+        particular `TFExample`.
 
     Raises:
       ValueError: if both `shape_key` and `shape` are specified.

@@ -749,27 +749,19 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     * the (possibly shifted) sum of squares of the elements in the array.
     * the shift by which the mean must be corrected or None if `shift` is None.
   """
-  with ops.op_scope([x, axes, shift], name, "sufficient_statistics"):
+  axes = list(set(axes))
+  with ops.op_scope([x, shift], name, "sufficient_statistics"):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
     if x_shape.is_fully_defined():
       counts = 1
-      m_shape = []
-      for d in xrange(x_shape.ndims):
-        dim = x_shape[d].value
-        if d in set(axes):
-          counts *= dim
-          dim = 1
-        m_shape.append(dim)
+      for d in axes:
+        counts *= x_shape[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
-      x_shape = array_ops.shape(x)
-      select_axes = sparse_ops.sparse_to_dense(axes, array_ops.shape(x_shape),
-                                               True, False)
-      m_shape = math_ops.select(select_axes, array_ops.ones_like(x_shape),
-                                x_shape)
+      x_dims = array_ops.gather(array_ops.shape(x), axes)
       counts = math_ops.cast(
-          math_ops.reduce_prod(x_shape / m_shape), x.dtype, name="count")
+          math_ops.reduce_prod(x_dims), x.dtype, name="count")
     if shift is not None:
       shift = ops.convert_to_tensor(shift, name="shift")
       m_ss = math_ops.sub(x, shift)

@@ -379,8 +379,8 @@ tf_kernel_libraries(
         "batch_matrix_diag_op",
         "batch_matrix_set_diag_op",
         "edit_distance_op",
-        "gather_nd_op",
         "gather_op",
+        "gather_nd_op",
         "identity_op",
         "immutable_constant_op",
         "listdiff_op",
@@ -1023,6 +1023,7 @@ tf_kernel_libraries(
         "matrix_solve_ls_op",
         "matrix_solve_op",
         "matrix_triangular_solve_op",
+        "svd_op",
     ],
     deps = [
         ":linalg_ops_common",

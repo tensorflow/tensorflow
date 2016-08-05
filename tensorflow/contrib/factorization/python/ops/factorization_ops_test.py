@@ -304,7 +304,7 @@ class WalsModelTest(tf.test.TestCase):
       col_factors2 = [x.eval() for x in wals_model.col_factors]
 
       for c1, c2 in zip(col_factors1, col_factors2):
-        self.assertAllClose(c1, c2, atol=1e-3)
+        self.assertAllClose(c1, c2, rtol=5e-3, atol=1e-2)
 
   def test_als_transposed(self):
     with self.test_session():
@@ -383,7 +383,7 @@ class WalsModelTest(tf.test.TestCase):
                                           regularization=1e-5,
                                           row_weights=None,
                                           col_weights=None)
-      self.simple_train(model, inp, 15)
+      self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
       self.assertAllClose(data,
@@ -407,7 +407,7 @@ class WalsModelTest(tf.test.TestCase):
                                           regularization=1e-5,
                                           row_weights=[0] * rows,
                                           col_weights=[0] * cols)
-      self.simple_train(model, inp, 15)
+      self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
       self.assertAllClose(data,
@@ -438,7 +438,7 @@ class WalsModelTest(tf.test.TestCase):
                                           regularization=0.001,
                                           row_weights=row_wts,
                                           col_weights=col_wts)
-      self.simple_train(model, inp, 10)
+      self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
       out = np.dot(row_factor, np.transpose(col_factor))
@@ -446,7 +446,7 @@ class WalsModelTest(tf.test.TestCase):
         for j in xrange(cols):
           if keep_index([i, j]):
             self.assertNear(data[i][j], out[i][j],
-                            err=0.2, msg="%d, %d" % (i, j))
+                            err=0.4, msg="%d, %d" % (i, j))
           else:
             self.assertNear(0, out[i][j], err=0.5, msg="%d, %d" % (i, j))
 

@@ -301,6 +301,38 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
   }
 }
 
+TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {
+  ShapeInferenceTestOp op("MirrorPadGrad");
+  op.input_tensors.resize(2);
+
+  // Inputs are input and paddings.
+  INFER_OK(op, "?;?", "?");
+
+  // First padding dimension is unknown, so rank is unknown.
+  INFER_OK(op, "?;[?,4]", "?");
+
+  // Input tensor rank doesn't match paddings dimension.
+  INFER_ERROR("must be rank 3 but is rank 2", op, "[?,?];[3,2]");
+
+  // Paddings tensor is not a [rank x 2] matrix.
+  INFER_ERROR("Dimension 1 in both shapes must be equal, but are 3 and 2", op,
+              "[?,?,?];[3,3]");
+
+  // Paddings tensor is unknown, but rank is known, so the output
+  // shape is a rank 3 unknown shape.
+  INFER_OK(op, "[?,?,?];[3,2]", "[?,?,?]");
+
+  // Make the paddings tensor known and verify padding values get
+  // subtracted.  E.g., if padding is ((1,10),(2,20),(3,30)) then
+  // values 11,22,23 are subtracted to input dims to get output.
+  Tensor paddings_t(DT_INT32, TensorShape{3, 2});
+  test::FillValues<int32>(&paddings_t, {1, 10, 2, 20, 3, 30});
+  op.input_tensors[1] = &paddings_t;
+
+  INFER_OK(op, "[111,222,333];[3,2]", "[100,200,300]");
+  INFER_OK(op, "[111,?,333];[3,2]", "[100,?,300]");
+}
+
 TEST(ArrayOpsTest, BroadcastGradientArgs_ShapeFn) {
   ShapeInferenceTestOp op("BroadcastGradientArgs");
   // Output is always two unknown vectors.
@@ -765,6 +797,116 @@ TEST(ArrayOpsTest, Split_ShapeFn) {
   INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
   INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
   INFER_ERROR("Dimension size must be divisible by 2 but is 5", op, "?;[1,5]");
+}
+
+TEST(ArrayOpsTest, Tile_ShapeFn) {
+  ShapeInferenceTestOp op("Tile");
+  op.input_tensors.resize(2);
+
+  // No value for split_dim and no input.
+  TF_CHECK_OK(NodeDefBuilder("test", "Tile")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("multiples", 1, DT_INT32)
+                  .Finalize(&op.node_def));
+
+  // If multiples rank is unknown, output is unknown.
+  INFER_OK(op, "[2,3,1,4];?", "?");
+
+  // Bad rank for 'multiples'
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[2,3,1,4];[4,1]");
+
+  // No multiples tensor available, but output rank is known.
+  INFER_OK(op, "[2,3,1,4];[4]", "[?,?,?,?]");
+
+  // Test a tile of a 4D input.
+  Tensor multiples = test::AsTensor<int32>({2, 3, 4, 5});
+  op.input_tensors[1] = &multiples;
+  INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
+}
+
+TEST(ArrayOpsTest, EditDistance_ShapeFn) {
+  ShapeInferenceTestOp op("EditDistance");
+  op.input_tensors.resize(6);
+
+  // If the shape tensors are not available, the output shape is unknown.
+  INFER_OK(op, "[?];[?];[4];[?];[?];[4]", "?");
+
+  Tensor hypothesis_shape = test::AsTensor<int64>({2, 30, 4, 50});
+  op.input_tensors[2] = &hypothesis_shape;
+  Tensor truth_shape = test::AsTensor<int64>({20, 3, 40, 5});
+  op.input_tensors[5] = &truth_shape;
+  INFER_OK(op, "[?];[?];[4];[?];[?];[4]", "[20,30,40]");
+
+  // Shape elements don't match
+  hypothesis_shape = test::AsTensor<int64>({2});
+  op.input_tensors[2] = &hypothesis_shape;
+  INFER_ERROR("Num elements of hypothesis_shape does not match truth_shape", op,
+              "[?];[?];[1];[?];[?];[4]");
+}
+
+TEST(ArrayOpsTest, OneHot_ShapeFn) {
+  ShapeInferenceTestOp op("OneHot");
+  op.input_tensors.resize(4);
+  auto set_axis = [&op](int axis) {
+    TF_CHECK_OK(NodeDefBuilder("test", "OneHot")
+                    .Input("indices", 0, DT_FLOAT)
+                    .Input("depth", 1, DT_INT32)
+                    .Input("on_value", 2, DT_FLOAT)
+                    .Input("off_value", 3, DT_FLOAT)
+                    .Attr("axis", axis)
+                    .Finalize(&op.node_def));
+  };
+
+  // Invalid axis value.
+  set_axis(-2);
+  INFER_ERROR("axis must be >= -1", op, "?;?;?;?");
+  set_axis(1);
+
+  // If indices shape is unknown, we return an unknown shape.
+  INFER_OK(op, "?;[];?;?", "?");
+
+  // Depth must be scalar.
+  Tensor depth = test::AsTensor<int32>({1, 2});
+  op.input_tensors[1] = &depth;
+  INFER_ERROR("Input must be scalar but has rank 1", op, "?;[2];?;?");
+
+  // Full information is available.
+  depth = test::AsScalar<int32>(2);
+  INFER_OK(op, "[1,3,4];[];?;?", "[d0_0,2,d0_1,d0_2]");
+  set_axis(-1);
+  INFER_OK(op, "[1,3,4];[];?;?", "[d0_0,d0_1,d0_2,2]");
+}
+
+TEST(NNOpsTest, ExtractImagePatchesShapeTest) {
+  ShapeInferenceTestOp op("ExtractImagePatches");
+  auto set_op = [&op](const std::vector<int32>& ksizes,
+                      const std::vector<int32>& strides,
+                      const std::vector<int32>& rates, const string& padding) {
+    TF_CHECK_OK(NodeDefBuilder("test", "ExtractImagePatches")
+                    .Input("input", 0, DT_FLOAT)
+                    .Attr("ksizes", ksizes)
+                    .Attr("strides", strides)
+                    .Attr("rates", rates)
+                    .Attr("padding", padding)
+                    .Finalize(&op.node_def));
+  };
+
+  // Just tests that the ksize calculation with rates works.  Most of
+  // the other code is boilerplate that is tested by a variety of
+  // other ops.
+  //
+  // ksizes is 2x2.  rate rows and cols is 2, so ksize_rows and
+  // cols are changed to be 2 + (2 - 1) = 3.  7x7 input with 3x3
+  // filter and 1x1 stride gives a 5x5 output.
+  set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 2, 2, 1}, "VALID");
+  INFER_OK(op, "[1,7,7,2]", "[d0_0,5,5,d0_3]");
+
+  // Bad ksize rank
+  set_op({1, 2, 2, 1, 1}, {1, 1, 1, 1}, {1, 2, 2, 1}, "VALID");
+  INFER_ERROR(
+      "ExtractImagePatches requires the ksizes attribute to contain 4 values, "
+      "but got: 5",
+      op, "[1,7,7,2]");
 }
 
 }  // end namespace tensorflow

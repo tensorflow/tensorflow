@@ -91,7 +91,8 @@ def _build_alternate_universe(
 def to_feature_columns_and_input_fn(dataframe,
                                     base_input_keys_with_defaults,
                                     feature_keys,
-                                    target_keys=None):
+                                    target_keys=None,
+                                    **kwargs):
   """Build a list of FeatureColumns and an input_fn for use with Estimator.
 
   Args:
@@ -103,6 +104,7 @@ def to_feature_columns_and_input_fn(dataframe,
       These may include base features and/or derived features.
     target_keys: the names of columns to be used as targets.  None is
       acceptable for unsupervised learning.
+    **kwargs: Additional keyword arguments, unused here.
 
   Returns:
     A tuple of two elements:
@@ -155,10 +157,11 @@ def to_feature_columns_and_input_fn(dataframe,
 
   # Build an input_fn suitable for use with Estimator.
   def input_fn():
+    """An input_fn() for feeding the given set of DataFrameColumns."""
     # It's important to build all the tensors together in one DataFrame.
     # If we did df.select() for both key sets and then build those, the two
     # resulting DataFrames would be shuffled independently.
-    tensors = limited_dataframe.build()
+    tensors = limited_dataframe.build(**kwargs)
 
     base_input_features = {key: tensors[key] for key in base_input_keys}
     targets = {key: tensors[key] for key in target_keys}

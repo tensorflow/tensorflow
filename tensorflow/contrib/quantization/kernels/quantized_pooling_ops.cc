@@ -29,11 +29,6 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/core/kernels/maxpooling_op_gpu.h"
-#include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
-#endif  // GOOGLE_CUDA
-
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;

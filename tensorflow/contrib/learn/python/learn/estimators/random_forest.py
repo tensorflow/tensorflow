@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 import numpy as np
 import six
 
@@ -26,16 +24,34 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.learn.python.learn import monitors as mon
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
-from tensorflow.contrib.learn.python.learn.estimators import run_config
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.data import data_ops
 from tensorflow.contrib.tensor_forest.python import tensor_forest
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+
+
+def _assert_float32(tensors):
+  """Assert all tensors are float32.
+
+  Args:
+    tensors: `Tensor` or `dict` of `Tensor` objects.
+
+  Raises:
+    TypeError: if any tensor is not float32.
+  """
+  if not isinstance(tensors, dict):
+    tensors = [tensors]
+  else:
+    tensors = tensors.values()
+  for tensor in tensors:
+    if tensor.dtype.base_dtype != dtypes.float32:
+      raise TypeError('Expected dtype=float32, %s.' % tensor)
 
 
 class LossMonitor(mon.EveryN):
@@ -146,6 +162,8 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
+    _assert_float32(features)
+    _assert_float32(targets)
     features, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
 
@@ -168,6 +186,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return train, self.training_loss
 
   def _get_predict_ops(self, features):
+    _assert_float32(features)
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,
         **self.construction_args)
@@ -175,6 +194,8 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return graph_builder.inference_graph(features, data_spec=spec)
 
   def _get_eval_ops(self, features, targets, metrics):
+    _assert_float32(features)
+    _assert_float32(targets)
     features, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
 
