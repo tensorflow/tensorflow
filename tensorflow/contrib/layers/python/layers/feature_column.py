@@ -279,8 +279,7 @@ class _SparseColumn(_FeatureColumn,
         weight_collections=_add_variable_collection(weight_collections),
         initializer=init_ops.zeros_initializer,
         combiner=self.combiner,
-        trainable=trainable,
-        name=self.name)
+        trainable=trainable)
 
 
 class _SparseColumnIntegerized(_SparseColumn):
@@ -305,7 +304,7 @@ class _SparseColumnIntegerized(_SparseColumn):
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
     sparse_id_values = math_ops.mod(columns_to_tensors[self.name].values,
-                                    self.bucket_size)
+                                    self.bucket_size, name="mod")
     columns_to_tensors[self] = ops.SparseTensor(
         columns_to_tensors[self.name].indices, sparse_id_values,
         columns_to_tensors[self.name].shape)
@@ -364,7 +363,7 @@ class _SparseColumnHashed(_SparseColumn):
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
         columns_to_tensors[self.name].values,
         self.bucket_size,
-        name=self.name + "_lookup")
+        name="lookup")
     columns_to_tensors[self] = ops.SparseTensor(
         columns_to_tensors[self.name].indices, sparse_id_values,
         columns_to_tensors[self.name].shape)
@@ -422,7 +421,7 @@ class _SparseColumnKeys(_SparseColumn):
         tensor=columns_to_tensors[self.name],
         mapping=list(self.lookup_config.keys),
         default_value=self.lookup_config.default_value,
-        name=self.name + "_lookup")
+        name="lookup")
 
 
 def sparse_column_with_keys(column_name,
@@ -467,8 +466,8 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
 
   @property
   def name(self):
-    return (self.sparse_id_column.name + "_weighted_by_" +
-            self.weight_column_name)
+    return "{}_weighted_by_{}".format(self.sparse_id_column.name,
+                                      self.weight_column_name)
 
   @property
   def length(self):
@@ -524,8 +523,7 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
         weight_collections=_add_variable_collection(weight_collections),
         initializer=init_ops.zeros_initializer,
         combiner=self.sparse_id_column.combiner,
-        trainable=trainable,
-        name=self.name)
+        trainable=trainable)
 
 
 def weighted_sparse_column(sparse_id_column,
@@ -629,7 +627,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
 
   @property
   def name(self):
-    return self.sparse_id_column.name + "_embedding"
+    return "{}_embedding".format(self.sparse_id_column.name)
 
   @property
   def length(self):
@@ -676,8 +674,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
         weight_collections=_add_variable_collection(weight_collections),
         initializer=self.initializer,
         combiner=self.combiner,
-        trainable=trainable,
-        name=self.name)
+        trainable=trainable)
     if self.ckpt_to_load_from is not None:
       weights_to_restore = embedding_weights
       if len(embedding_weights) == 1:
@@ -760,7 +757,7 @@ class _HashedEmbeddingColumn(collections.namedtuple(
 
   @property
   def name(self):
-    return self.column_name + "_embedding"
+    return "{}_hashed_embedding".format(self.column_name)
 
   @property
   def config(self):
@@ -774,7 +771,6 @@ class _HashedEmbeddingColumn(collections.namedtuple(
                          weight_collections=None,
                          trainable=True):
     embeddings = _create_embeddings(
-        name=self.name,
         shape=[self.size],
         initializer=self.initializer,
         dtype=dtypes.float32,
@@ -782,7 +778,7 @@ class _HashedEmbeddingColumn(collections.namedtuple(
         weight_collections=_add_variable_collection(weight_collections))
 
     return embedding_ops.hashed_embedding_lookup_sparse(
-        embeddings, input_tensor, self.dimension, name=self.name + "_lookup")
+        embeddings, input_tensor, self.dimension, name="lookup")
 
 
 def hashed_embedding_column(column_name,
@@ -872,7 +868,9 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     batch_size = int(batch_size) if batch_size else -1
     flattened_shape = [batch_size, self.dimension]
     columns_to_tensors[self] = array_ops.reshape(
-        math_ops.to_float(input_tensor), flattened_shape)
+        math_ops.to_float(input_tensor),
+        flattened_shape,
+        name="reshape")
 
   # pylint: disable=unused-argument
   def to_dnn_input_layer(self,
@@ -895,14 +893,13 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
           collections=_add_variable_collection(weight_collections))
 
     if self.name:
-      with variable_scope.variable_op_scope([input_tensor], None, self.name):
-        weight = _weight("weight")
+      weight = _weight("weight")
     else:
       # Old behavior to support a subset of old checkpoints.
       weight = _weight("_weight")
 
     # The _RealValuedColumn has the shape of [batch_size, column.dimension].
-    log_odds_by_dim = math_ops.matmul(input_tensor, weight)
+    log_odds_by_dim = math_ops.matmul(input_tensor, weight, name="matmul")
     return log_odds_by_dim, [weight]
 
 
@@ -1048,7 +1045,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
   @property
   def name(self):
-    return self.source_column.name + "_BUCKETIZED"
+    return "{}_bucketized".format(self.source_column.name)
 
   @property
   def length(self):
@@ -1070,7 +1067,8 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
       self.source_column.insert_transformed_feature(columns_to_tensors)
     columns_to_tensors[self] = bucketization_op.bucketize(
         columns_to_tensors[self.source_column],
-        boundaries=list(self.boundaries))
+        boundaries=list(self.boundaries),
+        name="bucketize")
 
   # pylint: disable=unused-argument
   def to_dnn_input_layer(self,
@@ -1079,26 +1077,39 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
                          trainable=True):
     return array_ops.reshape(
         array_ops.one_hot(
-            math_ops.to_int64(input_tensor), self.length, 1., 0.),
-        [-1, self.length * self.source_column.dimension])
+            math_ops.to_int64(input_tensor),
+            self.length, 1., 0.,
+            name="one_hot"),
+        [-1, self.length * self.source_column.dimension],
+        name="reshape")
 
   def to_sparse_tensor(self, input_tensor):
     """Creates a SparseTensor from the bucketized Tensor."""
     dimension = self.source_column.dimension
-    batch_size = array_ops.shape(input_tensor)[0]
+    batch_size = array_ops.shape(input_tensor, name="shape")[0]
 
     if dimension > 1:
-      i1 = array_ops.reshape(array_ops.tile(array_ops.expand_dims(
-          math_ops.range(0, batch_size), 1), [1, dimension]), [-1])
-      i2 = array_ops.tile(math_ops.range(0, dimension), [batch_size])
+      i1 = array_ops.reshape(
+          array_ops.tile(
+              array_ops.expand_dims(
+                  math_ops.range(0, batch_size),
+                  1,
+                  name="expand_dims"),
+              [1, dimension],
+              name="tile"),
+          [-1],
+          name="rehsape")
+      i2 = array_ops.tile(math_ops.range(0, dimension),
+                          [batch_size], name="tile")
       # Flatten the bucket indices and unique them across dimensions
       # E.g. 2nd dimension indices will range from k to 2*k-1 with k buckets
-      bucket_indices = array_ops.reshape(input_tensor, [-1]) + self.length * i2
+      bucket_indices = array_ops.reshape(
+          input_tensor, [-1], name="reshape") + self.length * i2
     else:
       # Simpler indices when dimension=1
       i1 = math_ops.range(0, batch_size)
-      i2 = array_ops.zeros([batch_size], dtype=dtypes.int32)
-      bucket_indices = array_ops.reshape(input_tensor, [-1])
+      i2 = array_ops.zeros([batch_size], dtype=dtypes.int32, name="zeros")
+      bucket_indices = array_ops.reshape(input_tensor, [-1], name="reshape")
 
     indices = math_ops.to_int64(array_ops.transpose(array_ops.pack((i1, i2))))
     shape = math_ops.to_int64(array_ops.pack([batch_size, dimension]))
@@ -1120,8 +1131,7 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
         weight_collections=_add_variable_collection(weight_collections),
         initializer=init_ops.zeros_initializer,
         combiner="sum",
-        trainable=trainable,
-        name=self.name)
+        trainable=trainable)
 
 
 def bucketized_column(source_column, boundaries):
@@ -1288,7 +1298,8 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
     columns_to_tensors[self] = sparse_feature_cross_op.sparse_feature_cross(
         feature_tensors,
         hashed_output=True,
-        num_buckets=self.hash_bucket_size)
+        num_buckets=self.hash_bucket_size,
+        name="cross")
 
   # pylint: disable=unused-argument
   def to_dnn_input_layer(self,
@@ -1311,8 +1322,7 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
         weight_collections=_add_variable_collection(weight_collections),
         initializer=init_ops.zeros_initializer,
         combiner=self.combiner,
-        trainable=trainable,
-        name=self.name)
+        trainable=trainable)
     if self.ckpt_to_load_from is not None:
       weights_to_restore = embedding_weights
       if len(embedding_weights) == 1:
@@ -1411,7 +1421,7 @@ class DataFrameColumn(_FeatureColumn,
           "Can't build input layer from tensor of shape (): {}".format(
               self.column_name))
     elif dims == 1:
-      return array_ops.expand_dims(input_tensor, 1)
+      return array_ops.expand_dims(input_tensor, 1, name="expand_dims")
     else:
       return input_tensor
 
@@ -1430,14 +1440,13 @@ class DataFrameColumn(_FeatureColumn,
           collections=_add_variable_collection(weight_collections))
 
     if self.name:
-      with variable_scope.variable_op_scope([input_tensor], None, self.name):
-        weight = _weight("weight")
+      weight = _weight("weight")
     else:
       # Old behavior to support a subset of old checkpoints.
       weight = _weight("_weight")
 
     # The _RealValuedColumn has the shape of [batch_size, column.dimension].
-    log_odds_by_dim = math_ops.matmul(input_tensor, weight)
+    log_odds_by_dim = math_ops.matmul(input_tensor, weight, name="matmul")
     return log_odds_by_dim, [weight]
 
   def __eq__(self, other):
@@ -1521,13 +1530,13 @@ def make_place_holder_tensors_for_base_features(feature_columns):
       # Sparse placeholder for sparse tensors.
       placeholders[column_name] = array_ops.sparse_placeholder(
           column_type.dtype,
-          name="Placeholder_" + column_name)
+          name="Placeholder_{}".format(column_name))
     else:
       # Simple placeholder for dense tensors.
       placeholders[column_name] = array_ops.placeholder(
           column_type.dtype,
           shape=(None, column_type.shape[0]),
-          name="Placeholder_" + column_name)
+          name="Placeholder_{}".format(column_name))
   return placeholders
 
 
@@ -1572,8 +1581,8 @@ def _add_variable_collection(weight_collections):
   return weight_collections
 
 
-def _create_embeddings(name, shape, dtype, initializer, trainable,
-                       weight_collections):
+def _create_embeddings(shape, dtype, initializer, trainable, weight_collections,
+                       name="weights"):
   """Creates embedding variable.
 
   If called within the scope of a partitioner, will partition the variable and
@@ -1581,7 +1590,6 @@ def _create_embeddings(name, shape, dtype, initializer, trainable,
   with just one variable.
 
   Args:
-    name: A string. The name of the embedding variable will be name + _weights.
     shape: shape of the embeddding. Note this is not the shape of partitioned
       variables.
     dtype: type of the embedding. Also the shape of each partitioned variable.
@@ -1591,6 +1599,7 @@ def _create_embeddings(name, shape, dtype, initializer, trainable,
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     weight_collections: List of graph collections to which embedding variables
       are added.
+    name: A string. The name of the embedding variable.
 
   Returns:
     A list of `tf.Variable` containing the partitioned embeddings.
@@ -1616,7 +1625,7 @@ def _create_embeddings(name, shape, dtype, initializer, trainable,
 
 def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
                              weight_collections, initializer, combiner,
-                             trainable, name):
+                             trainable, name="weights"):
   """Creates embedding variable and does a lookup.
 
   Args:
@@ -1643,7 +1652,7 @@ def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
     A Tensor with shape [batch_size, dimension] and embedding Variable.
   """
 
-  embeddings = _create_embeddings(name=name + "_weights",
+  embeddings = _create_embeddings(name=name,
                                   shape=[vocab_size, dimension],
                                   dtype=dtypes.float32,
                                   initializer=initializer,
@@ -1655,4 +1664,4 @@ def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
       sparse_weights=weight_tensor,
       default_id=0,
       combiner=combiner,
-      name=name + "_weights"), embeddings
+      name=name), embeddings
