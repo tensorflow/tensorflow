@@ -1,8 +1,8 @@
-### `tf.svd(matrix, compute_uv=False, full_matrices=False, name=None)` {#svd}
+### `tf.svd(matrix, compute_uv=True, full_matrices=False, name=None)` {#svd}
 
 Computes the singular value decomposition of a matrix.
 
-Computes the SVD of if `matrix` such that `matrix = u * diag(s) *
+Computes the SVD of `matrix` such that `matrix = u * diag(s) *
 transpose(v)`
 
 ```prettyprint
@@ -10,8 +10,8 @@ transpose(v)`
 # s is a vector of singular values.
 # u is the matrix of left singular vectors.
 # v is a matrix of right singular vectors.
+s, u, v = svd(a)
 s = svd(a, compute_uv=False)
-s, u, v = svd(a, compute_uv=True)
 ```
 
 ##### Args:
@@ -20,7 +20,7 @@ s, u, v = svd(a, compute_uv=True)
 *  <b>`matrix`</b>: `Tensor` of shape `[M, N]`. Let `P` be the minimum of `M` and `N`.
 *  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
     computed and returned in `u` and `v`, respectively. Otherwise, only the
-    singular values will be computed.
+    singular values will be computed, which can be significantly faster.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
     Ignored if `compute_uv` is `False`.

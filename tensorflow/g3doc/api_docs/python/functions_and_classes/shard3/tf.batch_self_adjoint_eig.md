@@ -1,22 +1,22 @@
-### `tf.batch_self_adjoint_eig(input, name=None)` {#batch_self_adjoint_eig}
+### `tf.batch_self_adjoint_eig(tensor, name=None)` {#batch_self_adjoint_eig}
 
-Computes the Eigen Decomposition of a batch of square self-adjoint matrices.
+Computes the eigen decomposition of a batch of self-adjoint matrices.
 
-The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices, with the same constraints as the single matrix
-SelfAdjointEig.
-
-The result is a '[..., M+1, M] matrix with [..., 0,:] containing the
-eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
+Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
+in `tensor` such that
+`tensor[...,:,:] * v[..., :,i] = e(..., i) * v[...,:,i]`, for i=0...N-1.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[..., M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
+*  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[..., M+1, M]`.
+
+*  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`.
+*  <b>`v`</b>: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
+  matrices
+    contain eigenvectors of the corresponding matrices in `tensor`
 

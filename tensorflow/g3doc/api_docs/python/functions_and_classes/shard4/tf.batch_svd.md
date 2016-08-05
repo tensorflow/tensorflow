@@ -1,4 +1,4 @@
-### `tf.batch_svd(tensor, compute_uv=False, full_matrices=False, name=None)` {#batch_svd}
+### `tf.batch_svd(tensor, compute_uv=True, full_matrices=False, name=None)` {#batch_svd}
 
 Computes the singular value decompositions of a batch of matrices.
 
@@ -11,8 +11,8 @@ Computes the SVD of each inner matrix in `tensor` such that
 # s is a tensor of singular values.
 # u is a tensor of left singular vectors.
 # v is a tensor of right singular vectors.
+s, u, v = batch_svd(a)
 s = batch_svd(a, compute_uv=False)
-s, u, v = batch_svd(a, compute_uv=True)
 ```
 
 ##### Args:
@@ -22,7 +22,7 @@ s, u, v = batch_svd(a, compute_uv=True)
     `N`.
 *  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
     computed and returned in `u` and `v`, respectively. Otherwise, only the
-    singular values will be computed.
+    singular values will be computed, which can be significantly faster.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
     Ignored if `compute_uv` is `False`.

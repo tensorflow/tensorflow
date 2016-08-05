@@ -1860,61 +1860,97 @@ typically 6-7 times slower than the fast path. If `fast` is `False` then
 
 - - -
 
-### `tf.self_adjoint_eig(input, name=None)` {#self_adjoint_eig}
+### `tf.self_adjoint_eig(matrix, name=None)` {#self_adjoint_eig}
 
-Computes the Eigen Decomposition of a square Self-Adjoint matrix.
+Computes the eigen decomposition of a self-adjoint matrix.
 
-Only the lower-triangular part of the input will be used in this case. The
-upper-triangular part will not be read.
-
-The result is a M+1 x M matrix whose first row is the eigenvalues, and
-subsequent rows are eigenvectors.
+Computes the eigenvalues and eigenvectors of an N-by-N matrix `matrix` such
+that `matrix * v[:,i] = e(i) * v[:,i]`, for i=0...N-1.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`matrix`</b>: `Tensor` of shape `[N, N]`.
+*  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[M+1, M]`.
+
+*  <b>`e`</b>: Eigenvalues. Shape is `[N]`.
+*  <b>`v`</b>: Eigenvectors. Shape is `[N, N]`. The columns contain the eigenvectors of
+    `matrix`.
 
 
 - - -
 
-### `tf.batch_self_adjoint_eig(input, name=None)` {#batch_self_adjoint_eig}
+### `tf.batch_self_adjoint_eig(tensor, name=None)` {#batch_self_adjoint_eig}
 
-Computes the Eigen Decomposition of a batch of square self-adjoint matrices.
+Computes the eigen decomposition of a batch of self-adjoint matrices.
 
-The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices, with the same constraints as the single matrix
-SelfAdjointEig.
-
-The result is a '[..., M+1, M] matrix with [..., 0,:] containing the
-eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
+Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
+in `tensor` such that
+`tensor[...,:,:] * v[..., :,i] = e(..., i) * v[...,:,i]`, for i=0...N-1.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[..., M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
+*  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`. Shape is `[..., M+1, M]`.
+
+*  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`.
+*  <b>`v`</b>: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
+  matrices
+    contain eigenvectors of the corresponding matrices in `tensor`
+
+
+- - -
+
+### `tf.self_adjoint_eigvals(matrix, name=None)` {#self_adjoint_eigvals}
+
+Computes the eigenvalues a self-adjoint  matrix.
+
+##### Args:
+
+
+*  <b>`matrix`</b>: `Tensor` of shape `[N, N]`.
+*  <b>`name`</b>: string, optional name of the operation.
+
+##### Returns:
+
+
+*  <b>`e`</b>: Eigenvalues of `matrix`. Shape is `[N]`.
+
+
+- - -
+
+### `tf.batch_self_adjoint_eigvals(tensor, name=None)` {#batch_self_adjoint_eigvals}
+
+Computes the eigenvalues of a batch of self-adjoint matrices.
+
+##### Args:
+
+
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
+*  <b>`name`</b>: string, optional name of the operation.
+
+##### Returns:
+
+
+*  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
+    eigenvalues of `tensor[..., :, :]`.
 
 
 
 - - -
 
-### `tf.svd(matrix, compute_uv=False, full_matrices=False, name=None)` {#svd}
+### `tf.svd(matrix, compute_uv=True, full_matrices=False, name=None)` {#svd}
 
 Computes the singular value decomposition of a matrix.
 
-Computes the SVD of if `matrix` such that `matrix = u * diag(s) *
+Computes the SVD of `matrix` such that `matrix = u * diag(s) *
 transpose(v)`
 
 ```prettyprint
@@ -1922,8 +1958,8 @@ transpose(v)`
 # s is a vector of singular values.
 # u is the matrix of left singular vectors.
 # v is a matrix of right singular vectors.
+s, u, v = svd(a)
 s = svd(a, compute_uv=False)
-s, u, v = svd(a, compute_uv=True)
 ```
 
 ##### Args:
@@ -1932,7 +1968,7 @@ s, u, v = svd(a, compute_uv=True)
 *  <b>`matrix`</b>: `Tensor` of shape `[M, N]`. Let `P` be the minimum of `M` and `N`.
 *  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
     computed and returned in `u` and `v`, respectively. Otherwise, only the
-    singular values will be computed.
+    singular values will be computed, which can be significantly faster.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
     Ignored if `compute_uv` is `False`.
@@ -1952,7 +1988,7 @@ s, u, v = svd(a, compute_uv=True)
 
 - - -
 
-### `tf.batch_svd(tensor, compute_uv=False, full_matrices=False, name=None)` {#batch_svd}
+### `tf.batch_svd(tensor, compute_uv=True, full_matrices=False, name=None)` {#batch_svd}
 
 Computes the singular value decompositions of a batch of matrices.
 
@@ -1965,8 +2001,8 @@ Computes the SVD of each inner matrix in `tensor` such that
 # s is a tensor of singular values.
 # u is a tensor of left singular vectors.
 # v is a tensor of right singular vectors.
+s, u, v = batch_svd(a)
 s = batch_svd(a, compute_uv=False)
-s, u, v = batch_svd(a, compute_uv=True)
 ```
 
 ##### Args:
@@ -1976,7 +2012,7 @@ s, u, v = batch_svd(a, compute_uv=True)
     `N`.
 *  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
     computed and returned in `u` and `v`, respectively. Otherwise, only the
-    singular values will be computed.
+    singular values will be computed, which can be significantly faster.
 *  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
     (the default), compute only the leading `P` singular vectors.
     Ignored if `compute_uv` is `False`.
