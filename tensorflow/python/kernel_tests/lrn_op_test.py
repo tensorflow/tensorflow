@@ -45,8 +45,8 @@ class LRNOpTest(tf.test.TestCase):
                 np.power(bias + alpha * np.sum(patch * patch), beta))
     return output
 
-  def _RunAndVerify(self, dtype, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+  def _RunAndVerify(self, dtype):
+    with self.test_session():
       # random shape
       shape = np.random.randint(1, 16, size=4)
       # Make depth at least 2 to make it meaningful
@@ -77,30 +77,28 @@ class LRNOpTest(tf.test.TestCase):
     self.assertShapeEqual(expected, lrn_t)
 
   def testCompute(self):
-    for use_gpu in (True, False):
-      for _ in range(2):
-        self._RunAndVerify(tf.float32, use_gpu)
-        # Enable when LRN supports tf.float16 on GPU.
-        if not use_gpu:
-          self._RunAndVerify(tf.float16, use_gpu)
+    for _ in range(2):
+      self._RunAndVerify(tf.float32)
+      # Enable when LRN supports tf.float16 on GPU.
+      if not tf.test.is_gpu_available():
+        self._RunAndVerify(tf.float16)
 
   def testGradientsZeroInput(self):
-    for use_gpu in (True, False):
-      with self.test_session(use_gpu=use_gpu):
-        shape = [4, 4, 4, 4]
-        p = tf.placeholder(tf.float32, shape=shape)
-        inp_array = np.zeros(shape).astype("f")
-        lrn_op = tf.nn.local_response_normalization(p, 2, 1.0, 0.0,
-                                                    1.0, name="lrn")
-        grad = tf.gradients([lrn_op], [p])[0]
-        params = {p: inp_array}
-        r = grad.eval(feed_dict=params)
-      expected = np.ones(shape).astype("f")
-      self.assertAllClose(r, expected)
-      self.assertShapeEqual(expected, grad)
+    with self.test_session():
+      shape = [4, 4, 4, 4]
+      p = tf.placeholder(tf.float32, shape=shape)
+      inp_array = np.zeros(shape).astype("f")
+      lrn_op = tf.nn.local_response_normalization(p, 2, 1.0, 0.0,
+                                                  1.0, name="lrn")
+      grad = tf.gradients([lrn_op], [p])[0]
+      params = {p: inp_array}
+      r = grad.eval(feed_dict=params)
+    expected = np.ones(shape).astype("f")
+    self.assertAllClose(r, expected)
+    self.assertShapeEqual(expected, grad)
 
-  def _RunAndVerifyGradients(self, dtype, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+  def _RunAndVerifyGradients(self, dtype):
+    with self.test_session():
       # random shape
       shape = np.random.randint(1, 5, size=4)
       # Make depth at least 2 to make it meaningful
@@ -133,12 +131,11 @@ class LRNOpTest(tf.test.TestCase):
       self.assertLess(err, 1.0)
 
   def testGradients(self):
-    for use_gpu in (True, False):
-      for _ in range(2):
-        self._RunAndVerifyGradients(tf.float32, use_gpu)
-        # Enable when LRN supports tf.float16 on GPU.
-        if not use_gpu:
-          self._RunAndVerifyGradients(tf.float16, use_gpu)
+    for _ in range(2):
+      self._RunAndVerifyGradients(tf.float32)
+      # Enable when LRN supports tf.float16 on GPU.
+      if not tf.test.is_gpu_available():
+        self._RunAndVerifyGradients(tf.float16)
 
 
 if __name__ == "__main__":
