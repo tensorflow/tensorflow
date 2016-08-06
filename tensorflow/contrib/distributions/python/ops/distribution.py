@@ -79,8 +79,7 @@ class BaseDistribution(object):
     sample.
 
     Args:
-      sample_shape: int32 `Tensor` or tuple or list. Shape of the generated
-        samples.
+      sample_shape: Rank 1 `int32` `Tensor`. Shape of the generated samples.
       seed: Python integer seed for RNG
       name: name to give to the op.
 
@@ -317,8 +316,7 @@ class Distribution(BaseDistribution):
     sample per batched distribution.
 
     Args:
-      sample_shape: `int32` `Tensor` or tuple or list. Shape of the generated
-        samples.
+      sample_shape: Rank 1 `int32` `Tensor`. Shape of the generated samples.
       seed: Python integer seed for RNG
       name: name to give to the op.
 
