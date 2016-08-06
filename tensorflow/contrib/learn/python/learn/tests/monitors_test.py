@@ -28,7 +28,7 @@ import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
-from tensorflow.contrib.learn.python.learn import supervised_session
+from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -339,7 +339,7 @@ class CheckpointSaverTest(tf.test.TestCase):
     self.model_dir = tempfile.mkdtemp()
     self.graph = tf.Graph()
     with self.graph.as_default():
-      self.scaffold = supervised_session.Scaffold()
+      self.scaffold = monitored_session.Scaffold()
       self.global_step = tf.contrib.framework.get_or_create_global_step()
       self.train_op = tf.assign_add(self.global_step, 1)
 

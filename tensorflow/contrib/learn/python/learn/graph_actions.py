@@ -31,10 +31,10 @@ from six import reraise
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
+from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import summary_writer_cache
-from tensorflow.contrib.learn.python.learn import supervised_session
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
@@ -140,7 +140,7 @@ def _supervised_train(graph,
                       fail_on_nan_loss=True,
                       hooks=None,
                       max_steps=None):
-  """Train a model via supervised_session.
+  """Train a model via monitored_session.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
   run a training loop. The given `train_op` performs one step of training on the
@@ -242,7 +242,7 @@ def _supervised_train(graph,
 
     # Finalize graph and add savers
     # TODO(ispir): remove keep_checkpoint_max from Scaffold interface
-    scaffold = supervised_session.Scaffold(
+    scaffold = monitored_session.Scaffold(
         init_op=init_op,
         init_feed_dict=init_feed_dict,
         init_fn=init_fn,
@@ -275,7 +275,7 @@ def _supervised_train(graph,
                if isinstance(m, session_run_hook.SessionRunHook) or
                m.run_on_all_workers]
 
-    with supervised_session.SupervisedSession(
+    with monitored_session.MonitoredSession(
         supervisor_master,
         is_chief=supervisor_is_chief,
         checkpoint_dir=output_dir,

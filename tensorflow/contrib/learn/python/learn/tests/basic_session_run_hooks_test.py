@@ -29,7 +29,6 @@ import tensorflow as tf
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
 from tensorflow.contrib.learn.python.learn import monitored_session
-from tensorflow.contrib.learn.python.learn import supervised_session
 
 
 class StopAtStepTest(tf.test.TestCase):
@@ -45,7 +44,7 @@ class StopAtStepTest(tf.test.TestCase):
       no_op = tf.no_op()
       h.begin()
       with tf.Session() as sess:
-        mon_sess = monitored_session.MonitoredSession(sess, [h])
+        mon_sess = monitored_session._HookedSession(sess, [h])
         sess.run(tf.assign(global_step, 5))
         mon_sess.run(no_op)
         self.assertFalse(mon_sess.should_stop())
@@ -68,7 +67,7 @@ class StopAtStepTest(tf.test.TestCase):
       no_op = tf.no_op()
       h.begin()
       with tf.Session() as sess:
-        mon_sess = monitored_session.MonitoredSession(sess, [h])
+        mon_sess = monitored_session._HookedSession(sess, [h])
         sess.run(tf.assign(global_step, 5))
         mon_sess.run(no_op)
         self.assertFalse(mon_sess.should_stop())
@@ -108,7 +107,7 @@ class LoggingTensorHookTest(tf.test.TestCase):
       hook = basic_session_run_hooks.LoggingTensorHook(tensors=[t.name],
                                                        every_n_iter=10)
       hook.begin()
-      mon_sess = monitored_session.MonitoredSession(sess, [hook])
+      mon_sess = monitored_session._HookedSession(sess, [hook])
       sess.run(tf.initialize_all_variables())
       mon_sess.run(train_op)
       self.assertRegexpMatches(str(self.logged_message), t.name)
@@ -130,7 +129,7 @@ class CheckpointSaverHookTest(tf.test.TestCase):
     self.model_dir = tempfile.mkdtemp()
     self.graph = tf.Graph()
     with self.graph.as_default():
-      self.scaffold = supervised_session.Scaffold()
+      self.scaffold = monitored_session.Scaffold()
       self.global_step = tf.contrib.framework.get_or_create_global_step()
       self.train_op = tf.assign_add(self.global_step, 1)
 
@@ -154,7 +153,7 @@ class CheckpointSaverHookTest(tf.test.TestCase):
       self.scaffold.finalize()
       with tf.Session() as sess:
         sess.run(self.scaffold.init_op)
-        mon_sess = monitored_session.MonitoredSession(sess, [hook])
+        mon_sess = monitored_session._HookedSession(sess, [hook])
         mon_sess.run(self.train_op)
         self.assertEqual(1, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
@@ -167,7 +166,7 @@ class CheckpointSaverHookTest(tf.test.TestCase):
       self.scaffold.finalize()
       with tf.Session() as sess:
         sess.run(self.scaffold.init_op)
-        mon_sess = monitored_session.MonitoredSession(sess, [hook])
+        mon_sess = monitored_session._HookedSession(sess, [hook])
         mon_sess.run(self.train_op)
         mon_sess.run(self.train_op)
         # Not saved
@@ -197,7 +196,7 @@ class CheckpointSaverHookTest(tf.test.TestCase):
       self.scaffold.finalize()
       with tf.Session() as sess:
         sess.run(self.scaffold.init_op)
-        mon_sess = monitored_session.MonitoredSession(sess, [hook])
+        mon_sess = monitored_session._HookedSession(sess, [hook])
         mon_sess.run(self.train_op)
         self.assertEqual(1, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
@@ -210,7 +209,7 @@ class CheckpointSaverHookTest(tf.test.TestCase):
       self.scaffold.finalize()
       with tf.Session() as sess:
         sess.run(self.scaffold.init_op)
-        mon_sess = monitored_session.MonitoredSession(sess, [hook])
+        mon_sess = monitored_session._HookedSession(sess, [hook])
         mon_sess.run(self.train_op)
         mon_sess.run(self.train_op)
         # Not saved
@@ -237,7 +236,7 @@ class CheckpointSaverHookTest(tf.test.TestCase):
       self.scaffold.finalize()
       with tf.Session() as sess:
         sess.run(self.scaffold.init_op)
-        mon_sess = monitored_session.MonitoredSession(sess, [hook])
+        mon_sess = monitored_session._HookedSession(sess, [hook])
         mon_sess.run(self.train_op)
         mon_sess.run(self.train_op)
         hook.end(sess)
@@ -262,7 +261,7 @@ class StepCounterHookTest(tf.test.TestCase):
           summary_writer=summary_writer, every_n_steps=10)
       hook.begin()
       sess.run(tf.initialize_all_variables())
-      mon_sess = monitored_session.MonitoredSession(sess, [hook])
+      mon_sess = monitored_session._HookedSession(sess, [hook])
       for _ in range(30):
         time.sleep(0.01)
         mon_sess.run(train_op)
@@ -294,7 +293,7 @@ class SummarySaverHookTest(tf.test.TestCase):
           summary_op=summary_op, save_steps=8, summary_writer=summary_writer)
       hook.begin()
       sess.run(tf.initialize_all_variables())
-      mon_sess = monitored_session.MonitoredSession(sess, [hook])
+      mon_sess = monitored_session._HookedSession(sess, [hook])
       for i in range(30):
         _ = i
         mon_sess.run(train_op)
