@@ -364,17 +364,21 @@ class LaunchConvOp<GPUDevice, T> {
 
     if (data_format == FORMAT_NHWC) {
       // Convert the input tensor from NHWC to NCHW.
-      Tensor transformed_input;
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                  ShapeFromFormat(FORMAT_NCHW, in_batch,
-                                                  in_rows, in_cols, in_depths),
-                                  &transformed_input));
-      functor::NHWCToNCHW<GPUDevice, T, 4>()(
-          ctx->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(input).tensor<T, 4>(),
-          transformed_input.tensor<T, 4>());
-      input = transformed_input;
+      TensorShape nchw_shape =
+          ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
+      if (in_depths > 1) {
+        Tensor transformed_input;
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                               nchw_shape, &transformed_input));
+        functor::NHWCToNCHW<GPUDevice, T, 4>()(
+            ctx->eigen_device<GPUDevice>(),
+            const_cast<const Tensor&>(input).tensor<T, 4>(),
+            transformed_input.tensor<T, 4>());
+        input = transformed_input;
+      } else {
+        // If depth <= 1, then just reshape.
+        CHECK(input.CopyFrom(input, nchw_shape));
+      }
     }
 
     CHECK(padding_rows >= 0 && padding_cols >= 0)

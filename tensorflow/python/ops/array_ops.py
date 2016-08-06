@@ -1978,8 +1978,8 @@ def _MirrorPadGradShape(op):
   for i, dim in enumerate(input_shape.dims):
     if paddings[i, 0] < 0 or paddings[i, 1] < 0:
       raise ValueError("Paddings must be non-negative.")
-    if dim <= paddings[i, 0] + paddings[i, 1]:
-      raise ValueError("Output dimension is not positive.")
+    if dim < paddings[i, 0] + paddings[i, 1]:
+      raise ValueError("Output dimension is negative.")
     output_dims.append(dim - paddings[i, 0] - paddings[i, 1])
   return [tensor_shape.TensorShape(output_dims)]
 
