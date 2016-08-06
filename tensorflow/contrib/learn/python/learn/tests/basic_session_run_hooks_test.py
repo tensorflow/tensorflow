@@ -245,6 +245,40 @@ class CheckpointSaverHookTest(tf.test.TestCase):
             self.model_dir, self.global_step.name))
 
 
+class StepCounterHookTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.log_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    shutil.rmtree(self.log_dir, ignore_errors=True)
+
+  def test_step_counter(self):
+    with tf.Graph().as_default() as g, tf.Session() as sess:
+      global_step = tf.contrib.framework.get_or_create_global_step()
+      train_op = tf.assign_add(global_step, 1)
+      summary_writer = testing.FakeSummaryWriter(self.log_dir, g)
+      hook = basic_session_run_hooks.StepCounterHook(
+          summary_writer=summary_writer, every_n_steps=10)
+      hook.begin()
+      sess.run(tf.initialize_all_variables())
+      mon_sess = monitored_session.MonitoredSession(sess, [hook])
+      for _ in range(30):
+        time.sleep(0.01)
+        mon_sess.run(train_op)
+      hook.end(sess)
+      summary_writer.assert_summaries(
+          test_case=self,
+          expected_logdir=self.log_dir,
+          expected_graph=g,
+          expected_summaries={})
+      for step in [11, 21]:
+        summary_value = summary_writer.summaries[step][0].value[0]
+        self.assertTrue(summary_value.tag, 'global_step/sec')
+        # check at least 10 steps per sec is recorded.
+        self.assertGreater(summary_value.simple_value, 10)
+
+
 class SummarySaverHookTest(tf.test.TestCase):
 
   def test_summary_saver(self):
