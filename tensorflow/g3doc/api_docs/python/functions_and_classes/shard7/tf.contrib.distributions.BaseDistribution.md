@@ -36,8 +36,7 @@ sample.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: int32 `Tensor` or tuple or list. Shape of the generated
-    samples.
+*  <b>`sample_shape`</b>: Rank 1 `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
