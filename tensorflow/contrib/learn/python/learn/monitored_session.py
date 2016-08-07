@@ -27,7 +27,6 @@ import six
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import summary_writer_cache
-from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
@@ -343,10 +342,6 @@ class MonitoredSession(object):
   def write_graph(self):
     """Saves current graph."""
     if self._checkpoint_dir is not None and self._is_chief:
-      init_step = 0
-      global_step_tensor = contrib_variables.get_global_step()
-      if global_step_tensor is not None:
-        init_step = self._tf_sess.run(global_step_tensor)
       summary_writer = summary_writer_cache.SummaryWriterCache.get(
           self._checkpoint_dir)
       training_util.write_graph(
@@ -354,8 +349,6 @@ class MonitoredSession(object):
           self._checkpoint_dir,
           'graph.pbtxt')
       summary_writer.add_graph(self._graph)
-      summary_writer.add_session_log(
-          SessionLog(status=SessionLog.START), init_step)
 
 
 def _call_monitor_end(monitor, sess):

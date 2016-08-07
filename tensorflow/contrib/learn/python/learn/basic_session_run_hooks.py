@@ -338,10 +338,18 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     _ = run_context
+    if not self._summary_writer:
+      return
+
     global_step = run_values.results["global_step"]
+
+    if self._last_saved_step is None:
+      self._summary_writer.add_session_log(
+          SessionLog(status=SessionLog.START), global_step)
+
     if self._request_summary:
       self._last_saved_step = global_step
-      if self._summary_writer and "summary" in run_values.results:
+      if "summary" in run_values.results:
         self._summary_writer.add_summary(run_values.results["summary"],
                                          global_step)
 
