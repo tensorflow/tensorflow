@@ -371,13 +371,13 @@ class Beta(distribution.Distribution):
       with ops.op_scope([self.a, self.b, n], name):
         a = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.a
         b = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.b
+        n = ops.convert_to_tensor(n)
+
         gamma1_sample = random_ops.random_gamma(
             [n,], a, dtype=self.dtype, seed=seed)
         gamma2_sample = random_ops.random_gamma(
             [n,], b, dtype=self.dtype, seed=seed)
 
-        # This is equal to gamma1_sample / (gamma1_sample + gamma2_sample)
-        # but is more numerically stable.
         beta_sample = gamma1_sample / (gamma1_sample + gamma2_sample)
 
         n_val = tensor_util.constant_value(n)
