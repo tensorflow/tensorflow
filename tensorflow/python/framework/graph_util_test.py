@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 
@@ -187,6 +188,88 @@ class DeviceFunctionsTest(tf.test.TestCase):
         output_node = sess.graph.get_tensor_by_name("output_node:0")
         output = sess.run(output_node)
         self.assertNear(2.0, output, 0.00001)
+
+  def create_node_def(self, op, name, inputs):
+    new_node = tf.NodeDef()
+    new_node.op = op
+    new_node.name = name
+    for input_name in inputs:
+      new_node.input.extend([input_name])
+    return new_node
+
+  def create_constant_node_def(self, name, value, dtype, shape=None):
+    node = self.create_node_def("Const", name, [])
+    self.set_attr_dtype(node, "dtype", dtype)
+    self.set_attr_tensor(node, "value", value, dtype, shape)
+    return node
+
+  def set_attr_dtype(self, node, key, value):
+    node.attr[key].CopyFrom(tf.AttrValue(type=value.as_datatype_enum))
+
+  def set_attr_tensor(self, node, key, value, dtype, shape=None):
+    node.attr[key].CopyFrom(tf.AttrValue(
+        tensor=tensor_util.make_tensor_proto(value,
+                                             dtype=dtype,
+                                             shape=shape)))
+
+  def testRemoveTrainingNodes(self):
+    a_constant_name = "a_constant"
+    b_constant_name = "b_constant"
+    a_check_name = "a_check"
+    b_check_name = "b_check"
+    a_identity_name = "a_identity"
+    b_identity_name = "b_identity"
+    add_name = "add"
+    graph_def = tf.GraphDef()
+    a_constant = self.create_constant_node_def(a_constant_name,
+                                               value=1,
+                                               dtype=tf.float32,
+                                               shape=[])
+    graph_def.node.extend([a_constant])
+    a_check_node = self.create_node_def("CheckNumerics", a_check_name,
+                                        [a_constant_name])
+    graph_def.node.extend([a_check_node])
+    a_identity_node = self.create_node_def("Identity", a_identity_name,
+                                           [a_constant_name,
+                                            "^" + a_check_name])
+    graph_def.node.extend([a_identity_node])
+    b_constant = self.create_constant_node_def(b_constant_name,
+                                               value=1,
+                                               dtype=tf.float32,
+                                               shape=[])
+    graph_def.node.extend([b_constant])
+    b_check_node = self.create_node_def("CheckNumerics", b_check_name,
+                                        [b_constant_name])
+    graph_def.node.extend([b_check_node])
+    b_identity_node = self.create_node_def("Identity", b_identity_name,
+                                           [b_constant_name,
+                                            "^" + b_check_name])
+    graph_def.node.extend([b_identity_node])
+    add_node = self.create_node_def("Add", add_name,
+                                    [a_identity_name,
+                                     b_identity_name])
+    self.set_attr_dtype(add_node, "T", tf.float32)
+    graph_def.node.extend([add_node])
+
+    expected_output = tf.GraphDef()
+    a_constant = self.create_constant_node_def(a_constant_name,
+                                               value=1,
+                                               dtype=tf.float32,
+                                               shape=[])
+    expected_output.node.extend([a_constant])
+    b_constant = self.create_constant_node_def(b_constant_name,
+                                               value=1,
+                                               dtype=tf.float32,
+                                               shape=[])
+    expected_output.node.extend([b_constant])
+    add_node = self.create_node_def("Add", add_name,
+                                    [a_constant_name,
+                                     b_constant_name])
+    self.set_attr_dtype(add_node, "T", tf.float32)
+    expected_output.node.extend([add_node])
+
+    output = graph_util.remove_training_nodes(graph_def)
+    self.assertProtoEquals(expected_output, output)
 
 
 if __name__ == "__main__":
