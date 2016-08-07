@@ -481,7 +481,8 @@ def _ExtractImagePatchesGrad(op, grad):
     cols_out = int(ceil((cols_in - ksize_c_eff + 1) / stride_h))
     pad_rows = (rows_out - 1) * stride_r + ksize_r_eff - rows_in
     pad_cols = (cols_out - 1) * stride_h + ksize_c_eff - cols_in
-    pad_rows, pad_cols = max(0, pad_rows), max(0, pad_cols)
+
+  pad_rows, pad_cols = max(0, pad_rows), max(0, pad_cols)
 
   grad_expanded = array_ops.transpose(
     array_ops.reshape(grad, (batch_size, rows_out,
