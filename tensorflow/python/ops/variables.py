@@ -999,7 +999,7 @@ def assert_variables_initialized(var_list=None):
     ranks = []
     for var in var_list:
       with ops.colocate_with(var.op):
-        ranks.append(array_ops.rank(var))
+        ranks.append(array_ops.rank_internal(var, optimize=False))
     if len(ranks) == 1:
       return ranks[0]
     else:

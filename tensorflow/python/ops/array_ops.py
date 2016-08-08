@@ -104,7 +104,6 @@ _baseslice = slice
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
 
-
 def shape(input, name=None):
   """Returns the shape of a tensor.
 
@@ -124,10 +123,31 @@ def shape(input, name=None):
   Returns:
     A `Tensor` of type `int32`.
   """
+  return shape_internal(input, name, optimize=True)
+
+
+def shape_internal(input, name=None, optimize=True):
+  """Returns the shape of a tensor.
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+    optimize: if true, encode the shape as a constant when possible.
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
   with ops.op_scope([input], name, "Shape") as name:
     if isinstance(input, ops.SparseTensor):
       return gen_math_ops.cast(input.shape, dtypes.int32)
     else:
+      input_tensor = ops.convert_to_tensor(input)
+      input_shape = input_tensor.get_shape()
+      # Static shape inference can be incorrect when loops are involved: disable
+      # shape optimization in this case to avoid generating invalid constants.
+      optimize &= input_tensor.graph._get_control_flow_context() is None
+      if optimize and input_shape.is_fully_defined():
+        return constant(input_shape.as_list(), dtypes.int32, name=name)
       return gen_array_ops.shape(input, name=name)
 
 
@@ -151,11 +171,32 @@ def size(input, name=None):
   Returns:
     A `Tensor` of type `int32`.
   """
+  return size_internal(input, name, optimize=True)
+
+
+def size_internal(input, name=None, optimize=True):
+  """Returns the size of a tensor.
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+    optimize: if true, encode the size as a constant when possible.
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
   with ops.op_scope([input], name, "Size") as name:
     if isinstance(input, ops.SparseTensor):
       return gen_math_ops._prod(gen_math_ops.cast(input.shape, dtypes.int32), 0,
                                 name=name)
     else:
+      input_tensor = ops.convert_to_tensor(input)
+      input_shape = input_tensor.get_shape()
+      # Static shape inference can be incorrect when loops are involved: disable
+      # shape optimization in this case to avoid generating invalid constants.
+      optimize &= input_tensor.graph._get_control_flow_context() is None
+      if optimize and input_shape.is_fully_defined():
+        return constant(input_shape.num_elements(), dtypes.int32, name=name)
       return gen_array_ops.size(input, name=name)
 
 
@@ -183,10 +224,31 @@ def rank(input, name=None):
   Returns:
     A `Tensor` of type `int32`.
   """
+  return rank_internal(input, name, optimize=True)
+
+
+def rank_internal(input, name=None, optimize=True):
+  """Returns the rank of a tensor.
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+    optimize: if true, encode the rank as a constant when possible.
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
   with ops.op_scope([input], name, "Rank") as name:
     if isinstance(input, ops.SparseTensor):
       return gen_array_ops.size(input.shape, name=name)
     else:
+      input_tensor = ops.convert_to_tensor(input)
+      input_shape = input_tensor.get_shape()
+      # Static shape inference can be incorrect when loops are involved: disable
+      # shape optimization in this case to avoid generating invalid constants.
+      optimize &= input_tensor.graph._get_control_flow_context() is None
+      if optimize and input_shape.ndims is not None:
+        return constant(input_shape.ndims, dtypes.int32, name=name)
       return gen_array_ops.rank(input, name=name)
 
 
@@ -1074,7 +1136,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   return output
 
 
-def zeros_like(tensor, dtype=None, name=None):
+def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
@@ -1093,6 +1155,8 @@ def zeros_like(tensor, dtype=None, name=None):
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
     `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
+    optimize: if true, attempt to statically determine the shape of 'tensor'
+    and encode it as a constant.
 
   Returns:
     A `Tensor` with all elements set to zero.
@@ -1100,14 +1164,14 @@ def zeros_like(tensor, dtype=None, name=None):
   with ops.op_scope([tensor], name, "zeros_like") as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     if dtype is not None and tensor.dtype != dtype:
-      ret = zeros(shape(tensor), dtype, name=name)
+      ret = zeros(shape_internal(tensor, optimize=optimize), dtype, name=name)
       ret.set_shape(tensor.get_shape())
       return ret
     else:
       return gen_array_ops._zeros_like(tensor, name=name)
 
 
-def ones_like(tensor, dtype=None, name=None):
+def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the same
@@ -1126,13 +1190,15 @@ def ones_like(tensor, dtype=None, name=None):
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
     `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
+    optimize: if true, attempt to statically determine the shape of 'tensor'
+    and encode it as a constant.
 
   Returns:
     A `Tensor` with all elements set to 1.
   """
   with ops.op_scope([tensor], name, "ones_like") as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    ones_shape = shape(tensor)
+    ones_shape = shape_internal(tensor, optimize=optimize)
     if dtype is None:
       dtype = tensor.dtype
     ret = ones(ones_shape, dtype=dtype, name=name)

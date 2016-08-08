@@ -526,7 +526,7 @@ class ConstantValueTest(tf.test.TestCase):
     tf_val = tf.size(tf.constant(0.0))
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertEqual(1, c_val)
-    self.assertEqual(np.int32, type(c_val))
+    self.assertEqual(np.ndarray, type(c_val))
 
   def testRank(self):
     tf_val = tf.rank(tf.constant(0.0, shape=[1, 2, 3]))

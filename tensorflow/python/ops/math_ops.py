@@ -1387,13 +1387,14 @@ def _calc_mat_mul_weight_parameters(graph, node):
                      (int(weights_shape[1]) * int(weights_shape[0])))
 
 
-def _as_indexed_slices(x):
+def _as_indexed_slices(x, optimize=True):
   """Convert 'x' to IndexedSlices.
 
   Convert a dense Tensor to a block-sparse IndexedSlices.
 
   Args:
     x: Either a Tensor object, or an IndexedSlices object.
+    optimize: if true, attempt to optimize the conversion of 'x'.
 
   Returns:
     An IndexedSlices object.
@@ -1406,11 +1407,11 @@ def _as_indexed_slices(x):
     raise TypeError("Not a Tensor or IndexedSlices: %s" % type(x))
   if isinstance(x, ops.IndexedSlices):
     return x
-  x_shape = array_ops.shape(x)
+  x_shape = array_ops.shape_internal(x, optimize=optimize)
   return ops.IndexedSlices(x, range(0, x_shape[0]), x_shape)
 
 
-def _as_indexed_slices_list(inputs):
+def _as_indexed_slices_list(inputs, optimize=True):
   """Convert all elements of 'inputs' to IndexedSlices.
 
   Additionally, homogenize the types of all the indices to
@@ -1418,6 +1419,7 @@ def _as_indexed_slices_list(inputs):
 
   Args:
     inputs: List containing either Tensor or IndexedSlices objects.
+    optimize: if true, attempt to optimize the conversion of each input.
 
   Returns:
     A list of IndexedSlices objects.
@@ -1427,7 +1429,7 @@ def _as_indexed_slices_list(inputs):
   """
   if not isinstance(inputs, (list, tuple)):
     raise TypeError("Expected a list or tuple, not a %s" % type(inputs))
-  outputs = [_as_indexed_slices(i) for i in inputs]
+  outputs = [_as_indexed_slices(i, optimize=optimize) for i in inputs]
   with_int32_index = [o.indices for o in outputs
                       if o.indices.dtype == dtypes.int32]
   if not with_int32_index or len(with_int32_index) == len(outputs):
