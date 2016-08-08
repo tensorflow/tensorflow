@@ -15,8 +15,8 @@ Connect the outputs of sgv0 to the inputs of sgv1.
 
 ##### Returns:
 
-  Two new subgraph views (now connected). sgv0 and svg1 are also modified
-    in place.
+  The modified sgv0 (now connected to sgv1).
+  The modified sgv1 (now connected to sgv0).
 
 ##### Raises:
 

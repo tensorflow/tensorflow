@@ -12,6 +12,7 @@ Bypass the given subgraph by connecting its inputs to its outputs.
 
   A new subgraph view of the bypassed subgraph.
     Note that sgv is also modified in place.
+  A list of the created input placeholders.
 
 ##### Raises:
 

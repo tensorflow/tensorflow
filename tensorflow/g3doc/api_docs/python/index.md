@@ -672,6 +672,7 @@
 * **[Graph Editor (contrib)](../../api_docs/python/contrib.graph_editor.md)**:
   * [`bypass`](../../api_docs/python/contrib.graph_editor.md#bypass)
   * [`connect`](../../api_docs/python/contrib.graph_editor.md#connect)
+  * [`ControlOutputs`](../../api_docs/python/contrib.graph_editor.md#ControlOutputs)
   * [`detach`](../../api_docs/python/contrib.graph_editor.md#detach)
   * [`detach_inputs`](../../api_docs/python/contrib.graph_editor.md#detach_inputs)
   * [`detach_outputs`](../../api_docs/python/contrib.graph_editor.md#detach_outputs)
