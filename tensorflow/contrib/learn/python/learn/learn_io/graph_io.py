@@ -133,7 +133,7 @@ def read_keyed_batch_examples(
   Raises:
     ValueError: for invalid inputs.
   """
-  # Retrive files to read.
+  # Retrieve files to read.
   if isinstance(file_pattern, list):
     file_names = file_pattern
     if not file_names:
