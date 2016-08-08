@@ -940,11 +940,14 @@ class ExportMonitor(EveryN):
       logging.info("Skipping export at the end since model has not been saved "
                    "yet.")
       return
-    export.export_estimator(self._estimator,
-                            self.export_dir,
-                            exports_to_keep=self.exports_to_keep,
-                            signature_fn=self.signature_fn,
-                            default_batch_size=self._default_batch_size)
+    try:
+      export.export_estimator(self._estimator,
+                              self.export_dir,
+                              exports_to_keep=self.exports_to_keep,
+                              signature_fn=self.signature_fn,
+                              default_batch_size=self._default_batch_size)
+    except (RuntimeError, TypeError):
+      logging.info("Skipping exporting for the same step.")
 
 
 class CheckpointSaver(BaseMonitor):
