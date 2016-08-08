@@ -1517,14 +1517,14 @@ class LayerNormTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       with self.assertRaisesRegexp(ValueError, 'undefined rank'):
-        tf.contrib.layers.batch_norm(inputs)
+        tf.contrib.layers.layer_norm(inputs)
 
   def testUnknownLastDim(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
       with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
-        tf.contrib.layers.batch_norm(inputs)
+        tf.contrib.layers.layer_norm(inputs)
 
   def testCreateOp(self):
     height, width = 3, 3
