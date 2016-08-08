@@ -228,6 +228,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -1505,46 +1506,39 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
-  if tensor_dtype is None:
-    if not inputs or not isinstance(inputs, (list, tuple)):
-      raise ValueError("inputs must be a list of at least one Tensor with the "
-                       "same dtype and shape")
-    inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
-    if not all(isinstance(x, ops.Tensor) for x in inputs):
-      raise ValueError("inputs must be a list of at least one Tensor with the "
-                       "same dtype and shape")
-    if not all(x.dtype == inputs[0].dtype for x in inputs):
-      raise ValueError("inputs must be a list of at least one Tensor with the "
-                       "same dtype and shape")
-    tensor_dtype = inputs[0].dtype
+  if not inputs or not isinstance(inputs, (list, tuple)):
+    raise ValueError("inputs must be a list of at least one Tensor with the "
+                     "same dtype and shape")
+  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+  if not all(isinstance(x, ops.Tensor) for x in inputs):
+    raise ValueError("inputs must be a list of at least one Tensor with the "
+                     "same dtype and shape")
+  if not all(x.dtype == inputs[0].dtype for x in inputs):
+    raise ValueError("inputs must be a list of at least one Tensor with the "
+                     "same dtype and shape")
   if shape is not None:
     shape = tensor_shape.as_shape(shape)
   else:
     shape = tensor_shape.unknown_shape()
-    for input_tensor in inputs:
-      if isinstance(input_tensor, ops.Tensor):
-        shape = shape.merge_with(input_tensor.get_shape())
-  if not shape.is_fully_defined():
-    # TODO(pbar): Make a version of assign_add that accepts an uninitialized
-    # lvalue, and takes its shape from that? This would allow accumulate_n to
-    # work in all situations that add_n currently works.
-    raise ValueError("Cannot infer the shape of the accumulator for "
-                     "accumulate_n. Pass the shape argument, or set the shape "
-                     "of at least one of the inputs.")
+  for input_tensor in inputs:
+    if isinstance(input_tensor, ops.Tensor):
+      shape = shape.merge_with(input_tensor.get_shape())
+  if len(inputs) == 1:
+    return inputs[0]
+  if tensor_dtype is None:
+    tensor_dtype = inputs[0].dtype
   with ops.op_scope(inputs, name, "AccumulateN") as name:
-    if len(inputs) == 1:
-      return inputs[0]
-    var = gen_state_ops._temporary_variable(shape=shape, dtype=tensor_dtype)
-    var_name = var.op.name
-    var = state_ops.assign(var, array_ops.zeros_like(inputs[0]))
-    update_ops = []
-    for input_tensor in inputs:
-      op = state_ops.assign_add(var, input_tensor, use_locking=True)
-      update_ops.append(op)
-    with ops.control_dependencies(update_ops):
-      return gen_state_ops._destroy_temporary_variable(var,
-                                                       var_name=var_name,
-                                                       name=name)
+    var = gen_state_ops._temporary_variable(shape=tensor_shape.vector(0),
+                                            dtype=tensor_dtype)
+    with ops.colocate_with(var):
+      zeros = array_ops.zeros_like(gen_control_flow_ops._merge(inputs)[0])
+      zeros.set_shape(shape)
+      ref = state_ops.assign(var, zeros, validate_shape=False)
+      update_ops = [state_ops.assign_add(ref, input_tensor, use_locking=True)
+                    for input_tensor in inputs]
+      with ops.control_dependencies(update_ops):
+        return gen_state_ops._destroy_temporary_variable(
+            ref, var_name=var.op.name, name=name)
 
 
 @ops.RegisterShape("BatchMatMul")

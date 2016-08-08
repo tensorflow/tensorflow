@@ -1440,6 +1440,15 @@ filegroup(
 )
 
 cuda_py_test(
+    name = "accumulate_n_benchmark",
+    size = "large",
+    srcs = [
+        "ops/accumulate_n_benchmark.py",
+    ],
+    main = "ops/accumulate_n_benchmark.py",
+)
+
+cuda_py_test(
     name = "batch_norm_benchmark",
     srcs = [
         "ops/batch_norm_benchmark.py",
