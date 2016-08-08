@@ -127,16 +127,20 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
+    using namespace std::placeholders;
+    StatusCallback cb = std::bind(
+        [this](std::function<void()> recv_done,
+               // Begin unbound arguments.
+               const Status& s) {
+          if (!s.ok()) {
+            mutex_lock l(mu_);
+            status_.Update(s);
+          }
+          recv_done();
+        },
+        std::move(recv_done), _1);
     wi_->RecvTensorAsync(&opts_, &req_, &resp_,
-                         nullptr /* TensorBufAllocator */,
-                         // done callback
-                         [this, recv_done](const Status& s) {
-                           if (!s.ok()) {
-                             mutex_lock l(mu_);
-                             status_.Update(s);
-                           }
-                           recv_done();
-                         });
+                         nullptr /* TensorBufAllocator */, std::move(cb));
   }
 
   string src_worker_;

@@ -64,13 +64,17 @@ void BaseRendezvousMgr::RecvLocalAsync(int64 step_id,
                                        const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
   BaseRemoteRendezvous* rendez = FindOrCreate(step_id);
-  rendez->RecvLocalAsync(
-      parsed, [rendez, done](const Status& s, const Rendezvous::Args& send_args,
-                             const Rendezvous::Args& recv_args, const Tensor& v,
-                             bool dead) {
+  using namespace std::placeholders;
+  Rendezvous::DoneCallback done_cb = std::bind(
+      [rendez](Rendezvous::DoneCallback done,
+               // Begin unbound arguments.
+               const Status& s, const Rendezvous::Args& send_args,
+               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
         rendez->Unref();
         done(s, send_args, recv_args, v, dead);
-      });
+      },
+      std::move(done), _1, _2, _3, _4, _5);
+  rendez->RecvLocalAsync(parsed, std::move(done_cb));
 }
 
 Status BaseRendezvousMgr::RecvLocal(int64 step_id,

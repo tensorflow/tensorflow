@@ -46,41 +46,44 @@ class GrpcRemoteWorker : public WorkerInterface {
                       GetStatusResponse* response,
                       StatusCallback done) override {
     IssueRequest(request, response, &grpc::WorkerService::Stub::AsyncGetStatus,
-                 done);
+                 std::move(done));
   }
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
                           RegisterGraphResponse* response,
                           StatusCallback done) override {
     IssueRequest(request, response,
-                 &grpc::WorkerService::Stub::AsyncRegisterGraph, done);
+                 &grpc::WorkerService::Stub::AsyncRegisterGraph,
+                 std::move(done));
   }
 
   void DeregisterGraphAsync(const DeregisterGraphRequest* request,
                             DeregisterGraphResponse* response,
                             StatusCallback done) override {
     IssueRequest(request, response,
-                 &grpc::WorkerService::Stub::AsyncDeregisterGraph, done);
+                 &grpc::WorkerService::Stub::AsyncDeregisterGraph,
+                 std::move(done));
   }
 
   void RunGraphAsync(CallOptions* call_opts, const RunGraphRequest* request,
                      RunGraphResponse* response, StatusCallback done) override {
     IssueRequest(request, response, &grpc::WorkerService::Stub::AsyncRunGraph,
-                 done, call_opts);
+                 std::move(done), call_opts);
   }
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
                          StatusCallback done) override {
     IssueRequest(request, response,
-                 &grpc::WorkerService::Stub::AsyncCleanupGraph, done);
+                 &grpc::WorkerService::Stub::AsyncCleanupGraph,
+                 std::move(done));
   }
 
   void CleanupAllAsync(const CleanupAllRequest* request,
                        CleanupAllResponse* response,
                        StatusCallback done) override {
     IssueRequest(request, response, &grpc::WorkerService::Stub::AsyncCleanupAll,
-                 done);
+                 std::move(done));
   }
 
   void RecvTensorAsync(CallOptions* call_opts, const RecvTensorRequest* request,

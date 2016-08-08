@@ -29,7 +29,7 @@ namespace tensorflow {
 class GrpcClientCQTag {
  public:
   GrpcClientCQTag(::grpc::ClientContext* context, StatusCallback cb)
-      : context_(context), cb_(cb) {}
+      : context_(context), cb_(std::move(cb)) {}
   ~GrpcClientCQTag() { delete context_; }
 
   void OnCompleted(bool ok) {
