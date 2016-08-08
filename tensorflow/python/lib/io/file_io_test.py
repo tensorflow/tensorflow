@@ -38,6 +38,8 @@ class FileIoTest(tf.test.TestCase):
   def testFileDoesntExist(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     self.assertFalse(file_io.file_exists(file_path))
+    with self.assertRaises(errors.NotFoundError):
+      _ = file_io.read_file_to_string(file_path)
 
   def testFileWrite(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -51,6 +53,11 @@ class FileIoTest(tf.test.TestCase):
     file_io.write_string_to_file(file_path, "testing")
     file_io.delete_file(file_path)
     self.assertFalse(file_io.file_exists(file_path))
+
+  def testFileDeleteFail(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with self.assertRaises(errors.NotFoundError):
+      file_io.delete_file(file_path)
 
   def testGetMatchingFiles(self):
     dir_path = os.path.join(self._base_dir, "temp_dir")
