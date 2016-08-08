@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import types
 
 from six import iteritems
 from six import string_types
@@ -299,7 +298,7 @@ def compute_boundary_ts(ops, ambiguous_are_outputs=True):
 
 def get_within_boundary_ops(ops,
                             seed_ops,
-                            boundary_ops,
+                            boundary_ops=(),
                             inclusive=True,
                             control_inputs=False,
                             control_outputs=None,
