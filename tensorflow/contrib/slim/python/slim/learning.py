@@ -538,12 +538,14 @@ def train(
     init_feed_dict=None,
     local_init_op=None,
     init_fn=None,
+    ready_op=_USE_DEFAULT,
     summary_op=_USE_DEFAULT,
     save_summaries_secs=600,
     startup_delay_steps=0,
     saver=None,
     save_interval_secs=600,
-    sync_optimizer=None):
+    sync_optimizer=None,
+    session_config=None):
   """Runs a training loop using a TensorFlow supervisor.
 
   When the sync_optimizer is supplied, gradient updates are applied
@@ -579,6 +581,9 @@ def train(
       `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
+    ready_op: Operation to check if the model is ready to use. If left to its
+      default value, then the session checks for readiness by calling
+      `tf.report_uninitialized_variables()`.
     summary_op: The summary operation.
     save_summaries_secs: How often, in seconds, to save summaries.
     startup_delay_steps: The number of steps to wait for before beginning. Note
@@ -589,6 +594,8 @@ def train(
     sync_optimizer: an instance of tf.train.SyncReplicasOptimizer. If the
       argument is supplied, gradient updates will be synchronous. If left as
       `None`, gradient updates will be asynchronous.
+    session_config: An instance of `tf.ConfigProto` that will be used to
+      configure the `Session`. If left as `None`, the default will be used.
 
   Returns:
     the value of the loss function after training.
@@ -623,6 +630,9 @@ def train(
 
     if init_op == _USE_DEFAULT:
       init_op = tf_variables.initialize_all_variables()
+
+    if ready_op == _USE_DEFAULT:
+      ready_op = tf_variables.report_uninitialized_variables()
 
     if summary_op == _USE_DEFAULT:
       summary_op = logging_ops.merge_all_summaries()
@@ -660,6 +670,7 @@ def train(
       init_op=init_op,
       init_feed_dict=init_feed_dict,
       local_init_op=local_init_op,
+      ready_op=ready_op,
       summary_op=summary_op,
       global_step=global_step,
       saver=saver,
@@ -671,7 +682,8 @@ def train(
   while should_retry:
     try:
       should_retry = False
-      with sv.managed_session(master, start_standard_services=False) as sess:
+      with sv.managed_session(
+          master, start_standard_services=False, config=session_config) as sess:
         logging.info('Starting Session.')
         if is_chief:
           if logdir:
@@ -694,10 +706,11 @@ def train(
           if logdir and sv.is_chief:
             logging.info('Finished training! Saving model to disk.')
             sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-        finally:
+        except:
           if sv.is_chief and cleanup_op is not None:
             logging.info('About to execute sync_clean_up_op!')
             sess.run(cleanup_op)
+          raise
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the

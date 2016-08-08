@@ -94,6 +94,7 @@ class DebugNodeInserter {
                                 const string& src_copy_node_name,
                                 const DataType src_dt,
                                 const string& tensor_name,
+                                const std::vector<string>& debug_urls,
                                 const int debug_op_num,
                                 const string& debug_op_name, Node** debug_node);
 };

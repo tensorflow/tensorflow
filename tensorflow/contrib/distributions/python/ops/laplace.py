@@ -60,17 +60,17 @@ class Laplace(distribution.Distribution):
     broadcasting (e.g., `loc / scale` is a valid operation).
 
     Args:
-      loc: `float` or `double` tensor which characterizes the location (center)
+      loc: Floating point tensor which characterizes the location (center)
         of the distribution.
-      scale: `float` or `double`, positive-valued tensor which characterzes the
-        spread of the distribution.
+      scale: Positive floating point tensor which characterizes the spread of
+        the distribution.
       validate_args: Whether to validate input with asserts.  If `validate_args`
         is `False`, and the inputs are invalid, correct behavior is not
         guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to give Ops created by the initializer.
 
     Raises:
@@ -294,8 +294,7 @@ class Laplace(distribution.Distribution):
       with ops.op_scope([self._loc, self._scale, n], name):
         n = ops.convert_to_tensor(n)
         n_val = tensor_util.constant_value(n)
-        shape = array_ops.concat(
-            0, [array_ops.pack([n]), self.batch_shape()])
+        shape = array_ops.concat(0, ([n], self.batch_shape()))
         # Sample uniformly-at-random from the open-interval (-1, 1).
         uniform_samples = random_ops.random_uniform(
             shape=shape,

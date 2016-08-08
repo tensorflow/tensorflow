@@ -1,6 +1,6 @@
 ### `tf.batch_matrix_inverse(input, adjoint=None, name=None)` {#batch_matrix_inverse}
 
-Calculates the inverse of square invertible matrices or their adjoints
+Computes the inverse of square invertible matrices or their adjoints
 
 (conjugate transposes).
 

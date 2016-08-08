@@ -533,6 +533,7 @@ REGISTER_OP("Conv3D")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn(shape_inference::Conv3DShape)
     .Doc(R"doc(
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
 
@@ -677,6 +678,7 @@ REGISTER_OP("AvgPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 Performs 3D average pooling on the input.
 
@@ -726,6 +728,7 @@ REGISTER_OP("MaxPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 Performs 3D max pooling on the input.
 
@@ -769,6 +772,7 @@ REGISTER_OP("L2Loss")
     .Input("t: T")
     .Output("output: T")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 L2 Loss.
 
@@ -857,6 +861,7 @@ REGISTER_OP("MaxPool")
     .Attr(GetConvnetDataFormatAttrString())
     .Input("input: T")
     .Output("output: T")
+    .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
 Performs max pooling on the input.
 
@@ -913,6 +918,11 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("output: T")
     .Output("argmax: Targmax")
     .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      c->set_output(1, c->output(0));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Performs max pooling on the input and outputs both max values and indices.
 
@@ -966,6 +976,77 @@ REGISTER_OP("Dilation2D")
     .Attr("strides: list(int) >= 4")
     .Attr("rates: list(int) >= 4")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
+      const Shape* filter_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &filter_shape));
+
+      std::vector<int32> strides;
+      TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+      if (strides.size() != 4) {
+        return errors::InvalidArgument(
+            "Dilation2D requires the stride attribute to contain 4 values, but "
+            "got: ",
+            strides.size());
+      }
+
+      std::vector<int32> rates;
+      TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
+      if (rates.size() != 4) {
+        return errors::InvalidArgument(
+            "Dilation2D requires the rates attribute to contain 4 values, but "
+            "got: ",
+            rates.size());
+      }
+
+      int32 stride_rows = strides[1];
+      int32 stride_cols = strides[2];
+
+      int32 rate_rows = rates[1];
+      int32 rate_cols = rates[2];
+
+      const Dimension* batch_size_dim = c->Dim(input_shape, 0);
+      const Dimension* in_rows_dim = c->Dim(input_shape, 1);
+      const Dimension* in_cols_dim = c->Dim(input_shape, 2);
+      const Dimension* filter_rows_dim = c->Dim(filter_shape, 0);
+      const Dimension* filter_cols_dim = c->Dim(filter_shape, 1);
+      const Dimension* output_depth_dim = c->Dim(filter_shape, 2);
+
+      const Dimension* unused;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(input_shape, 3), output_depth_dim, &unused));
+
+      // At the moment we need to know the values of several fields.
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
+      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
+
+      auto in_rows = c->Value(in_rows_dim);
+      auto in_cols = c->Value(in_cols_dim);
+      auto filter_rows = c->Value(filter_rows_dim);
+      auto filter_cols = c->Value(filter_cols_dim);
+      auto filter_rows_eff = filter_rows + (filter_rows - 1) * (rate_rows - 1);
+      auto filter_cols_eff = filter_cols + (filter_cols - 1) * (rate_cols - 1);
+
+      Padding padding;
+      TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+
+      int64 output_rows, output_cols;
+      int64 padding_before, padding_after;
+      TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+          in_rows, filter_rows_eff, stride_rows, padding, &output_rows,
+          &padding_before, &padding_after));
+      TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
+          in_cols, filter_cols_eff, stride_cols, padding, &output_cols,
+          &padding_before, &padding_after));
+
+      const Shape* output_shape = c->MakeShape(
+          {batch_size_dim, output_rows, output_cols, output_depth_dim});
+      c->set_output(0, output_shape);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the grayscale dilation of 4-D `input` and 3-D `filter` tensors.
 
@@ -1184,7 +1265,7 @@ REGISTER_OP("Softmax")
     .Output("softmax: T")
     .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
+      return shape_inference::UnchangedShapeWithRank(c, 2);
     })
     .Doc(R"doc(
 Computes softmax activations.
@@ -1204,7 +1285,7 @@ REGISTER_OP("LogSoftmax")
     .Output("logsoftmax: T")
     .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
+      return shape_inference::UnchangedShapeWithRank(c, 2);
     })
     .Doc(R"doc(
 Computes log softmax activations.

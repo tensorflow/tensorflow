@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/platform/test.h"
@@ -112,6 +113,70 @@ TEST(LinalgOpsTest, BatchSelfAdjointEig_ShapeFn) {
   INFER_OK(op, "[5,?,7,?,1]", "[d0_0,d0_1,d0_2,2,d0_4]");
 }
 
+TEST(LinalgOpsTest, SelfAdjointEigV2_ShapeFn) {
+  ShapeInferenceTestOp op("SelfAdjointEigV2");
+  auto set_compute_v = [&op](bool compute_v) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Pack")
+                    .Input({{"input", 0, DT_FLOAT}})
+                    .Attr("compute_v", compute_v)
+                    .Finalize(&op.node_def));
+  };
+  set_compute_v(false);
+  INFER_OK(op, "?", "[?];[0]");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[0]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
+
+  set_compute_v(true);
+  INFER_OK(op, "?", "[?];[?,?]");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
+}
+
+TEST(LinalgOpsTest, BatchSelfAdjointEigV2_ShapeFn) {
+  ShapeInferenceTestOp op("BatchSelfAdjointEigV2");
+  auto set_compute_v = [&op](bool compute_v) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Pack")
+                    .Input({{"input", 0, DT_FLOAT}})
+                    .Attr("compute_v", compute_v)
+                    .Finalize(&op.node_def));
+  };
+
+  set_compute_v(false);
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[3,1,2]");
+
+  INFER_OK(op, "?", "?;[0]");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[0]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[0]");
+
+  // Repeat previous block of tests with input rank > 2.
+  INFER_OK(op, "[5,?,7,?,?]", "[d0_0,d0_1,d0_2,d0_3|d0_4];[0]");
+  INFER_OK(op, "[5,?,7,1,?]", "[d0_0,d0_1,d0_2,d0_3|d0_4];[0]");
+  INFER_OK(op, "[5,?,7,?,1]", "[d0_0,d0_1,d0_2,d0_3|d0_4];[0]");
+
+  set_compute_v(true);
+  INFER_OK(op, "?", "?;?");
+  INFER_OK(op, "[?,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[1,?]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+  INFER_OK(op, "[?,1]", "[d0_0|d0_1];[d0_0|d0_1,d0_0|d0_1]");
+
+  // Repeat previous block of tests with input rank > 2.
+  INFER_OK(op, "[5,?,7,?,?]",
+           "[d0_0,d0_1,d0_2,d0_3|d0_4];[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
+  INFER_OK(op, "[5,?,7,1,?]",
+           "[d0_0,d0_1,d0_2,d0_3|d0_4];[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
+  INFER_OK(op, "[5,?,7,?,1]",
+           "[d0_0,d0_1,d0_2,d0_3|d0_4];[d0_0,d0_1,d0_2,d0_3|d0_4,d0_3|d0_4]");
+}
+
 TEST(LinalgOpsTest, SquareMatrixSolve_ShapeFn) {
   for (const char* op_name : {"MatrixSolve", "MatrixTriangularSolve"}) {
     ShapeInferenceTestOp op(op_name);
@@ -198,6 +263,102 @@ TEST(LinalgOpsTest, BatchMatrixSolveLs_ShapeFn) {
   // Rank checks.
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1];?;?");
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "?;[1];?");
+}
+
+TEST(LinalgOpsTest, Svd_ShapeFn) {
+  ShapeInferenceTestOp op("Svd");
+  auto set_attrs = [&op](bool compute_uv, bool full_matrices) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Svd")
+                    .Input({"input", 0, DT_FLOAT})
+                    .Attr("compute_uv", compute_uv)
+                    .Attr("full_matrices", full_matrices)
+                    .Finalize(&op.node_def));
+  };
+
+  set_attrs(false, false);
+  INFER_OK(op, "?", "[?];[0];[0]");
+  INFER_OK(op, "[?,?]", "[?];[0];[0]");
+  INFER_OK(op, "[2,?]", "[?];[0];[0]");
+  INFER_OK(op, "[?,2]", "[?];[0];[0]");
+  INFER_OK(op, "[2,2]", "[d0_0];[0];[0]");
+  INFER_OK(op, "[3,2]", "[d0_1];[0];[0]");
+  INFER_OK(op, "[2,3]", "[d0_0];[0];[0]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3]");
+
+  set_attrs(true, false);
+  INFER_OK(op, "?", "[?];[?,?];[?,?]");
+  INFER_OK(op, "[?,?]", "[?];[d0_0,?];[d0_1,?]");
+  INFER_OK(op, "[2,?]", "[?];[d0_0,?];[d0_1,?]");
+  INFER_OK(op, "[?,2]", "[?];[d0_0,?];[d0_1,?]");
+  INFER_OK(op, "[2,2]", "[d0_0];[d0_0,d0_0];[d0_1,d0_0]");
+  INFER_OK(op, "[3,2]", "[d0_1];[d0_0,d0_1];[d0_1,d0_1]");
+  INFER_OK(op, "[2,3]", "[d0_0];[d0_0,d0_0];[d0_1,d0_0]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3]");
+
+  set_attrs(true, true);
+  INFER_OK(op, "?", "[?];[?,?];[?,?]");
+  INFER_OK(op, "[?,?]", "[?];[d0_0,d0_0];[d0_1,d0_1]");
+  INFER_OK(op, "[2,?]", "[?];[d0_0,d0_0];[d0_1,d0_1]");
+  INFER_OK(op, "[?,2]", "[?];[d0_0,d0_0];[d0_1,d0_1]");
+  INFER_OK(op, "[2,2]", "[d0_0];[d0_0,d0_0];[d0_1,d0_1]");
+  INFER_OK(op, "[3,2]", "[d0_1];[d0_0,d0_0];[d0_1,d0_1]");
+  INFER_OK(op, "[2,3]", "[d0_0];[d0_0,d0_0];[d0_1,d0_1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3]");
+}
+
+TEST(LinalgOpsTest, BatchSvd_ShapeFn) {
+  ShapeInferenceTestOp op("BatchSvd");
+  auto set_attrs = [&op](bool compute_uv, bool full_matrices) {
+    TF_CHECK_OK(NodeDefBuilder("test", "BatchSvd")
+                    .Input({"input", 0, DT_FLOAT})
+                    .Attr("compute_uv", compute_uv)
+                    .Attr("full_matrices", full_matrices)
+                    .Finalize(&op.node_def));
+  };
+  set_attrs(false, false);
+  INFER_OK(op, "?", "?;[0];[0]");
+  INFER_OK(op, "[?,?,?]", "[d0_0,?];[0];[0]");
+  INFER_OK(op, "[4,?,?]", "[d0_0,?];[0];[0]");
+  INFER_OK(op, "[4,2,?]", "[d0_0,?];[0];[0]");
+  INFER_OK(op, "[4,?,2]", "[d0_0,?];[0];[0]");
+  INFER_OK(op, "[?,2,2]", "[d0_0,d0_1];[0];[0]");
+  INFER_OK(op, "[4,2,2]", "[d0_0,d0_1];[0];[0]");
+  INFER_OK(op, "[?,3,2]", "[d0_0,d0_2];[0];[0]");
+  INFER_OK(op, "[4,3,2]", "[d0_0,d0_2];[0];[0]");
+  INFER_OK(op, "[?,2,3]", "[d0_0,d0_1];[0];[0]");
+  INFER_OK(op, "[4,2,3]", "[d0_0,d0_1];[0];[0]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+
+  set_attrs(true, false);
+  INFER_OK(op, "?", "?;?;?");
+  INFER_OK(op, "[?,?,?]", "[d0_0,?];[d0_0,d0_1,?];[d0_0,d0_2,?]");
+  INFER_OK(op, "[4,?,?]", "[d0_0,?];[d0_0,d0_1,?];[d0_0,d0_2,?]");
+  INFER_OK(op, "[4,2,?]", "[d0_0,?];[d0_0,d0_1,?];[d0_0,d0_2,?]");
+  INFER_OK(op, "[4,?,2]", "[d0_0,?];[d0_0,d0_1,?];[d0_0,d0_2,?]");
+  INFER_OK(op, "[?,2,2]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_1]");
+  INFER_OK(op, "[4,2,2]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_1]");
+  INFER_OK(op, "[?,3,2]", "[d0_0,d0_2];[d0_0,d0_1,d0_2];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,3,2]", "[d0_0,d0_2];[d0_0,d0_1,d0_2];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[?,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_1]");
+  INFER_OK(op, "[4,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_1]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+
+  set_attrs(true, true);
+  INFER_OK(op, "?", "?;?;?");
+  INFER_OK(op, "[?,?,?]", "[d0_0,?];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,?,?]", "[d0_0,?];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,2,?]", "[d0_0,?];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,?,2]", "[d0_0,?];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[?,2,2]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,2,2]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[?,3,2]", "[d0_0,d0_2];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,3,2]", "[d0_0,d0_2];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[?,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_OK(op, "[4,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
 }
 
 }  // end namespace tensorflow

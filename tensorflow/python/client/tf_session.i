@@ -213,7 +213,7 @@ tensorflow::ImportNumpy();
       reinterpret_cast<const char*>($1.data), $1.length);
 }
 
-// Include the functions from tensor_c_api.h, except TF_Run.
+// Include the functions from c_api.h, except TF_Run.
 %ignoreall
 %unignore TF_Code;
 %unignore TF_Status;
@@ -238,7 +238,7 @@ tensorflow::ImportNumpy();
 %unignore TF_NewLibrary;
 %unignore TF_LoadLibrary;
 %unignore TF_GetOpList;
-%include "tensorflow/core/public/tensor_c_api.h"
+%include "tensorflow/c/c_api.h"
 %ignoreall
 
 %insert("python") %{

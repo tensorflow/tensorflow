@@ -20,6 +20,9 @@ limitations under the License.
 #include <atomic>
 #include <map>
 
+#include "tensorflow/core/lib/monitoring/export_registry.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -71,8 +74,14 @@ class CounterCell {
 template <int NumLabels>
 class Counter {
  public:
-  Counter() {}
-  ~Counter() {}
+  ~Counter() {
+    // Deleted here, before the metric_def is destroyed.
+    registration_handle_.reset();
+  }
+
+  // Creates the metric based on the metric-definition.
+  static Counter* New(
+      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -80,7 +89,19 @@ class Counter {
   CounterCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
 
  private:
+  explicit Counter(
+      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def)
+      : metric_def_(metric_def),
+        registration_handle_(
+            ExportRegistry::Default()->Register(&metric_def_)) {}
+
   mutable mutex mu_;
+
+  // The metric definition. This will be used to identify the metric when we
+  // register it for exporting.
+  const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels> metric_def_;
+
+  std::unique_ptr<ExportRegistry::RegistrationHandle> registration_handle_;
 
   using LabelArray = std::array<string, NumLabels>;
   std::map<LabelArray, CounterCell> cells_ GUARDED_BY(mu_);
@@ -91,6 +112,19 @@ class Counter {
 ////
 //  Implementation details follow. API readers may skip.
 ////
+
+template <int NumLabels>
+Counter<NumLabels>* Counter<NumLabels>::New(
+    const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def) {
+  return new Counter<NumLabels>(metric_def);
+}
+
+inline void CounterCell::IncrementBy(const int64 step) {
+  DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
+  value_ += step;
+}
+
+inline int64 CounterCell::value() const { return value_; }
 
 template <int NumLabels>
 template <typename... Labels>

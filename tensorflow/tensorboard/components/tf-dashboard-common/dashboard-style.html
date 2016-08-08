@@ -31,9 +31,9 @@
         display: flex;
       }
       .card .card-bottom-row {
-        flex-grow: 0;
-        flex-shrink: 0;
-        padding-left: 10px;
+        position: absolute;
+        left: 50px;
+        bottom: 0;
         padding-right: 10px;
       }
 
@@ -42,14 +42,10 @@
         width: 100%;
       }
 
-      [shift] {
-        bottom: 20px !important;
-      }
-
       .expand-button {
         position: absolute;
         left: 0px;
-        bottom: 20px;
+        bottom: 0px;
         color: #2196F3;
         display: block;
       }

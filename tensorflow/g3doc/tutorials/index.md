@@ -2,6 +2,10 @@
 
 ## Basic Neural Networks
 
+The first few Tensorflow tutorials guide you through training and testing a
+simple neural network to classify handwritten digits from the MNIST database of
+digit images.
+
 ### MNIST For ML Beginners
 
 If you're new to machine learning, we recommend starting here.  You'll learn
@@ -26,13 +30,6 @@ TensorFlow infrastructure to train models at scale.  We use MNIST as the
 example.
 
 [View Tutorial](../tutorials/mnist/tf/index.md)
-
-### MNIST Data Download
-
-Details about downloading the MNIST handwritten digits data set.  Exciting
-stuff.
-
-[View Tutorial](../tutorials/mnist/download/index.md)
 
 
 ## Easy ML with tf.contrib.learn
@@ -66,6 +63,12 @@ model and a deep neural net to harness the advantages of each type of model.
 
 [View Tutorial](../tutorials/wide_and_deep/index.md)
 
+### Logging and Monitoring Basics with tf.contrib.learn
+
+This tutorial shows you how to use TensorFlow’s logging capabilities and the
+Monitor API to audit the in-progress training of a neural network.
+
+[View Tutorial](../tutorials/monitors/index.md)
 
 ## TensorFlow Serving
 

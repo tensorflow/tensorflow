@@ -19,8 +19,8 @@ limitations under the License.
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
 #define TF_MAJOR_VERSION 0
-#define TF_MINOR_VERSION 9
-#define TF_PATCH_VERSION 0
+#define TF_MINOR_VERSION 10
+#define TF_PATCH_VERSION 0rc0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
@@ -64,9 +64,10 @@ limitations under the License.
 // 8. Replace RandomCrop from C++ with pure Python (5feb2016).
 // 9. Deprecate batch_norm_with_global_normalization (16feb2016).
 // 10. Deprecate conv3d_backprop_{filter,input} (10jun2016).
+// 11. Deprecate {batch}_self_adjoint_eig (3aug2016).
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 10
+#define TF_GRAPH_DEF_VERSION 11
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

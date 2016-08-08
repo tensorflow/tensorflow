@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <cstring>
 
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/tf_status_helper.h"
 
 namespace tensorflow {
 

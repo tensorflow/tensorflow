@@ -1,4 +1,4 @@
-### `tf.assert_non_positive(x, data=None, summarize=None, name=None)` {#assert_non_positive}
+### `tf.assert_non_positive(x, data=None, summarize=None, message=None, name=None)` {#assert_non_positive}
 
 Assert the condition `x <= 0` holds element-wise.
 
@@ -25,6 +25,7 @@ If `x` is empty this is trivially satisfied.
 *  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
     error message and first few entries of `x`.
 *  <b>`summarize`</b>: Print this many entries of each tensor.
+*  <b>`message`</b>: A string to prefix to the default message.
 *  <b>`name`</b>: A name for this operation (optional).
     Defaults to "assert_non_positive".
 

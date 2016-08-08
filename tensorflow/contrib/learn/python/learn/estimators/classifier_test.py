@@ -29,14 +29,10 @@ from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 
 def iris_input_fn(num_epochs=None):
   iris = tf.contrib.learn.datasets.load_iris()
-  features = tf.cast(
-      tf.reshape(
-          tf.constant(iris.data), [-1, 4]), tf.float32)
+  features = tf.reshape(tf.constant(iris.data), [-1, 4])
   if num_epochs:
     features = tf.train.limit_epochs(features, num_epochs=num_epochs)
-  target = tf.cast(
-      tf.reshape(
-          tf.constant(iris.target), [-1]), tf.int64)
+  target = tf.reshape(tf.constant(iris.target), [-1])
   return features, target
 
 

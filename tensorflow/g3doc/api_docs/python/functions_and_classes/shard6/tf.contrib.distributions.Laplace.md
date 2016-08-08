@@ -20,17 +20,17 @@ broadcasting (e.g., `loc / scale` is a valid operation).
 ##### Args:
 
 
-*  <b>`loc`</b>: `float` or `double` tensor which characterizes the location (center)
+*  <b>`loc`</b>: Floating point tensor which characterizes the location (center)
     of the distribution.
-*  <b>`scale`</b>: `float` or `double`, positive-valued tensor which characterzes the
-    spread of the distribution.
+*  <b>`scale`</b>: Positive floating point tensor which characterizes the spread of
+    the distribution.
 *  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
     is `False`, and the inputs are invalid, correct behavior is not
     guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default False.  If False, raise an exception if
-    a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-    If True, batch members with valid parameters leading to undefined
-    statistics will return NaN for this statistic.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:

@@ -1,6 +1,6 @@
 ### `tf.batch_cholesky(input, name=None)` {#batch_cholesky}
 
-Calculates the Cholesky decomposition of a batch of square matrices.
+Computes the Cholesky decomposition of a batch of square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices, with the same constraints as the single matrix Cholesky

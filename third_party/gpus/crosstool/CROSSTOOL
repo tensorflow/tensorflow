@@ -18,6 +18,10 @@ default_toolchain {
   cpu: "darwin"
   toolchain_identifier: "local_darwin"
 }
+default_toolchain {
+  cpu: "ppc"
+  toolchain_identifier: "local_linux"
+}
 
 toolchain {
   abi_version: "local"

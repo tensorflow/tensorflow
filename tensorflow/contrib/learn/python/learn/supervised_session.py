@@ -119,47 +119,96 @@ class Scaffold(object):
       keep_checkpoint_max: Optional parameter to use to construct a saver if
         none is already there in the graph.
     """
-    if global_step_tensor is None:
-      global_step_tensor = contrib_variables.get_or_create_global_step()
-    self.global_step_tensor = global_step_tensor
-    if init_op is None:
-      init_op = Scaffold._get_or_default(
-          ops.GraphKeys.INIT_OP, variables.initialize_all_variables)
-    self.init_op = init_op
-    self.init_feed_dict = init_feed_dict
+
     # NOTE(touts): modifying the init function to be passed the scaffold is a
     # hack to make it easy to find the saver.  Is there a better way?
     if init_fn:
-      self.init_fn = lambda sess: init_fn(self, sess)
+      self._init_fn = lambda sess: init_fn(self, sess)
     else:
-      self.init_fn = None
-    if ready_op is None:
-      ready_op = Scaffold._get_or_default(
-          ops.GraphKeys.READY_OP, variables.report_uninitialized_variables)
-    self.ready_op = ready_op
-    if local_init_op is None:
-      local_init_op = Scaffold._get_or_default(
-          ops.GraphKeys.LOCAL_INIT_OP, Scaffold._default_local_init_op)
-    self.local_init_op = local_init_op
-    if summary_op is None:
-      summary_op = Scaffold._get_or_default(
-          ops.GraphKeys.SUMMARY_OP, logging_ops.merge_all_summaries)
-    self.summary_op = summary_op
+      self._init_fn = None
+
+    self._global_step_tensor = global_step_tensor
+    self._init_op = init_op
+    self._ready_op = ready_op
+    self._local_init_op = local_init_op
+    self._summary_op = summary_op
+    self._saver = saver
+    self._keep_checkpoint_max = keep_checkpoint_max
+    self._init_feed_dict = init_feed_dict
+
+  def finalize(self):
+    """Creates operations if needed and finalizes the graph."""
+    if self._global_step_tensor is None:
+      self._global_step_tensor = contrib_variables.get_or_create_global_step()
+    if self._init_op is None:
+      self._init_op = Scaffold._get_or_default(
+          'init_op', ops.GraphKeys.INIT_OP, variables.initialize_all_variables)
+    if self._ready_op is None:
+      self._ready_op = Scaffold._get_or_default(
+          'ready_op', ops.GraphKeys.READY_OP,
+          variables.report_uninitialized_variables)
+    if self._local_init_op is None:
+      self._local_init_op = Scaffold._get_or_default(
+          'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
+          Scaffold._default_local_init_op)
+    if self._summary_op is None:
+      self._summary_op = Scaffold._get_or_default(
+          'summary_op', ops.GraphKeys.SUMMARY_OP,
+          logging_ops.merge_all_summaries)
     # pylint: disable=g-long-lambda
-    if saver is None:
-      saver = Scaffold._get_or_default(
+    if self._saver is None:
+      self._saver = Scaffold._get_or_default(
+          'saver',
           ops.GraphKeys.SAVERS,
           lambda: training_saver.Saver(sharded=True,
-                                       max_to_keep=keep_checkpoint_max))
+                                       max_to_keep=self._keep_checkpoint_max))
     # pylint: enable=g-long-lambda
-    self.saver = saver
 
     ops.get_default_graph().finalize()
 
+  @property
+  def global_step_tensor(self):
+    return self._global_step_tensor
+
+  @property
+  def init_fn(self):
+    return self._init_fn
+
+  @property
+  def init_op(self):
+    return self._init_op
+
+  @property
+  def ready_op(self):
+    return self._ready_op
+
+  @property
+  def local_init_op(self):
+    return self._local_init_op
+
+  @property
+  def summary_op(self):
+    return self._summary_op
+
+  @property
+  def saver(self):
+    return self._saver
+
+  @property
+  def init_feed_dict(self):
+    return self._init_feed_dict
+
   @staticmethod
-  def _get_or_default(collection_key, default_constructor):
+  def _get_or_default(arg_name, collection_key, default_constructor):
+    """Get from cache or create a default operation."""
     elements = ops.get_collection(collection_key)
     if elements:
+      if len(elements) > 1:
+        raise RuntimeError('More than one item in the collection "%s". '
+                           'Please indicate which one to use by passing it to '
+                           'the tf.Scaffold constructor as:  '
+                           'tf.Scaffold(%s=item to use)', collection_key,
+                           arg_name)
       return elements[0]
     op = default_constructor()
     if op is not None:
@@ -202,9 +251,10 @@ class SupervisedSession(object):
     self._config = config
     self._monitors = monitors or []
     self._scaffold = scaffold or Scaffold()
-    # Finalize and write the graph.
-    self._graph.finalize()
+    for monitor in self._monitors:
+      monitor.begin(max_steps=None)
     # Create the session.
+    self._scaffold.finalize()
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
         ready_op=self._scaffold.ready_op,
@@ -212,8 +262,6 @@ class SupervisedSession(object):
     self._sess = recoverable_session.RecoverableSession(self._create_session)
     # Call the begin() method of monitors.
     self._init_step = self._tf_sess.run(self._scaffold.global_step_tensor)
-    for monitor in self._monitors:
-      monitor.begin(max_steps=None)
     # Write the graph out, note: this uses self._init_step.
     self.write_graph()
 

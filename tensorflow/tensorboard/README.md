@@ -54,18 +54,18 @@ work, but there may be bugs or performance issues.
 
 The first step in using TensorBoard is acquiring data from your TensorFlow run.
 For this, you need [summary
-ops](https://www.tensorflow.org/versions/r0.9/api_docs/python/train.html#summary-operations).
+ops](https://www.tensorflow.org/versions/r0.10/api_docs/python/train.html#summary-operations).
 Summary ops are ops, like
-[`tf.matmul`](https://www.tensorflow.org/versions/r0.9/api_docs/python/math_ops.html#matmul)
+[`tf.matmul`](https://www.tensorflow.org/versions/r0.10/api_docs/python/math_ops.html#matmul)
 or
-[`tf.nn.relu`](https://www.tensorflow.org/versions/r0.9/api_docs/python/nn.html#relu),
+[`tf.nn.relu`](https://www.tensorflow.org/versions/r0.10/api_docs/python/nn.html#relu),
 which means they take in tensors, produce tensors, and are evaluated from within
 a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
 contain serialized protobufs, which are written to disk and sent to TensorBoard.
 To visualize the summary data in TensorBoard, you should evaluate the summary
 op, retrieve the result, and then write that result to disk using a
 SummaryWriter. A full explanation, with examples, is in [the
-tutorial](https://www.tensorflow.org/versions/r0.9/how_tos/summaries_and_tensorboard/index.html).
+tutorial](https://www.tensorflow.org/versions/r0.10/how_tos/summaries_and_tensorboard/index.html).
 
 ### Tags: Giving names to data
 
@@ -105,12 +105,21 @@ For example, here is a well-organized TensorBoard log directory, with two runs,
 "run1" and "run2".
 
 ```
-/some/path/mnist_experiments/ some/path/mnist_experiments/run1/
+/some/path/mnist_experiments/
+/some/path/mnist_experiments/run1/
 /some/path/mnist_experiments/run1/events.out.tfevents.1456525581.name
 /some/path/mnist_experiments/run1/events.out.tfevents.1456525585.name
 /some/path/mnist_experiments/run2/
 /some/path/mnist_experiments/run2/events.out.tfevents.1456525385.name
 /tensorboard --logdir=/some/path/mnist_experiments
+```
+
+You may also pass a comma separated list of log directories, and TensorBoard
+will watch each directory. You can also assign names to individual log
+directories by putting a colon between the name and the path, as in
+
+```
+tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 ```
 
 # The Visualizations
@@ -178,7 +187,7 @@ TensorFlow model. To get best use of the graph visualizer, you should use name
 scopes to hierarchically group the ops in your graph - otherwise, the graph may
 be difficult to decipher. For more information, including examples, see [the
 graph visualizer
-tutorial](https://www.tensorflow.org/versions/r0.9/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
+tutorial](https://www.tensorflow.org/versions/r0.10/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
 
 # Frequently Asked Questions
 

@@ -182,8 +182,8 @@ Status GrpcServer::Init() {
 
   // Finish setting up worker environment.
   worker_env_.graph_mgr = new GraphMgr(&worker_env_);
-  worker_env_.rendezvous_mgr = new RpcRendezvousMgr(&worker_env_);
   worker_env_.compute_pool = ComputePool(sess_opts);
+  worker_env_.rendezvous_mgr = new RpcRendezvousMgr(&worker_env_);
 
   return Status::OK();
 }

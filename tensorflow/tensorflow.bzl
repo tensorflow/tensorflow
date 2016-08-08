@@ -634,6 +634,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
                    srcs=srcs,
                    deps=deps + if_cuda(cuda_deps),
                    data=[name + "_check_deps"],
+                   copts=tf_copts(),
                    linkshared=1,
                    linkopts = select({
                        "//conditions:default": [

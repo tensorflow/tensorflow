@@ -161,7 +161,7 @@ def _SegmentMeanGrad(op, grad):
           array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)])
   ones = array_ops.fill(ones_shape,
                         constant_op.constant(1, dtype=grad.dtype))
-  scaled_grad = grad * math_ops.inv(math_ops.segment_sum(ones, op.inputs[1]))
+  scaled_grad = math_ops.div(grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
 

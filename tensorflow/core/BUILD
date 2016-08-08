@@ -135,6 +135,7 @@ cc_library(
         "lib/core/coding.h",
         "lib/core/errors.h",
         "lib/core/notification.h",
+        "lib/core/raw_coding.h",
         "lib/core/status.h",
         "lib/core/stringpiece.h",
         "lib/core/threadpool.h",
@@ -155,6 +156,8 @@ cc_library(
         "lib/io/table_options.h",
         "lib/jpeg/jpeg_mem.h",
         "lib/monitoring/counter.h",
+        "lib/monitoring/export_registry.h",
+        "lib/monitoring/metric_def.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
         "lib/random/simple_philox.h",  # TODO(josh11b): make internal
@@ -170,6 +173,7 @@ cc_library(
         "platform/logging.h",
         "platform/macros.h",
         "platform/mem.h",
+        "platform/net.h",
         "platform/mutex.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
@@ -422,9 +426,6 @@ tf_cuda_library(
         "graph/validate.h",
         "public/session.h",
         "public/session_options.h",
-        "public/tensor_c_api.h",
-        "util/checkpoint_reader.h",
-        "util/tf_status_helper.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -571,6 +572,7 @@ filegroup(
     name = "android_srcs",
     srcs = [
         ":proto_text_srcs_all",
+        "//tensorflow/core/debug:android_srcs",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -581,8 +583,6 @@ filegroup(
             "client/**/*.cc",
             "common_runtime/**/*.h",
             "common_runtime/**/*.cc",
-            "debug/**/*.h",
-            "debug/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
             "graph/**/*.h",
@@ -604,10 +604,8 @@ filegroup(
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
-            "util/checkpoint_reader.*",
             "util/events_writer.*",
             "util/reporter.*",
-            "util/tf_status_helper.*",
             "platform/default/stream_executor.*",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
@@ -916,8 +914,6 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
             "example/example_parser_configuration.*",
-            "util/tf_status_helper.*",
-            "util/checkpoint_reader.*",
             "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
@@ -1015,6 +1011,7 @@ filegroup(
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/env.h",
+        "platform/file_statistics.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
         "platform/host_info.h",
@@ -1022,6 +1019,7 @@ filegroup(
         "platform/macros.h",
         "platform/mem.h",
         "platform/mutex.h",
+        "platform/net.h",
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/strong_hash.h",
@@ -1062,10 +1060,7 @@ tf_cuda_library(
             "graph/**/*.cc",
             "public/session.h",
             "public/session_options.h",
-            "public/tensor_c_api.h",
             "public/version.h",
-            "util/tf_status_helper.*",
-            "util/checkpoint_reader.*",
         ],
         exclude = [
             "**/*test*",
@@ -1111,49 +1106,13 @@ tf_cuda_library(
     linkstatic = 1,
     deps = [
         ":core_cpu_internal",
-        ":debug_graph_utils",
         ":framework",
         ":gpu_tracer",
         ":lib",
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "debug_gateway_internal",
-    srcs = ["debug/debug_gateway.cc"],
-    hdrs = ["debug/debug_gateway.h"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":gpu_tracer",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "debug_graph_utils",
-    srcs = ["debug/debug_graph_utils.cc"],
-    hdrs = ["debug/debug_graph_utils.h"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_internal",
-        ":framework",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
+        "//tensorflow/core/debug:debug_graph_utils",
     ],
     alwayslink = 1,
 )
@@ -1325,6 +1284,8 @@ tf_cc_tests(
         "lib/io/table_test.cc",
         "lib/io/zlib_buffers_test.cc",
         "lib/monitoring/counter_test.cc",
+        "lib/monitoring/export_registry_test.cc",
+        "lib/monitoring/metric_def_test.cc",
         "lib/random/distribution_sampler_test.cc",
         "lib/random/philox_random_test.cc",
         "lib/random/random_distributions_test.cc",
@@ -1336,11 +1297,27 @@ tf_cc_tests(
         "lib/strings/strcat_test.cc",
         "lib/strings/stringprintf_test.cc",
         "lib/wav/wav_io_test.cc",
-        "platform/env_test.cc",
+        "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
+        "platform/net_test.cc",
         "platform/port_test.cc",
     ],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    size = "small",
+    tags = ["manual"],  # http://b/30439755
+    tests = ["platform/env_test.cc"],
     deps = [
         ":lib",
         ":lib_internal",
@@ -1481,36 +1458,6 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests(
-    size = "small",
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tests = [
-        "client/tensor_c_api_test.cc",
-    ],
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/core/kernels:array",
-        "//tensorflow/core/kernels:math",
-        "//third_party/eigen3",
-    ],
-)
-
 # GPU-related tests
 tf_cc_tests_gpu(
     size = "small",
@@ -1624,35 +1571,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "debug/debug_gateway_test",
-    size = "small",
-    args = ["--heap_check=local"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":debug_gateway_internal",
-        ":debug_graph_utils",
-        ":direct_session",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:debug_ops",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
@@ -1867,6 +1785,7 @@ tf_cc_tests(
     tests = [
         "ops/array_ops_test.cc",
         "ops/candidate_sampling_ops_test.cc",
+        "ops/control_flow_ops_test.cc",
         "ops/ctc_ops_test.cc",
         "ops/data_flow_ops_test.cc",
         "ops/functional_ops_test.cc",
@@ -1876,7 +1795,9 @@ tf_cc_tests(
         "ops/math_ops_test.cc",
         "ops/nn_ops_test.cc",
         "ops/parsing_ops_test.cc",
+        "ops/random_ops_test.cc",
         "ops/sparse_ops_test.cc",
+        "ops/state_ops_test.cc",
         "ops/string_ops_test.cc",
         "ops/training_ops_test.cc",
     ],
@@ -1983,6 +1904,7 @@ filegroup(
         "example/testdata/parse_example_graph_def.pbtxt",
     ],
 )
+
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).
 

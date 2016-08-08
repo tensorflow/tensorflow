@@ -40,6 +40,11 @@ Status InferShapes(ShapeInferenceTestOp op, const string& ins,
   shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def, ins_v,
                                       op.input_tensors);
   TF_RETURN_IF_ERROR(c.construction_status());
+  if (op_reg_data->shape_inference_fn == nullptr) {
+    return errors::InvalidArgument(
+        "No shape inference function exists for op '", op.name,
+        "', did you forget to define it?");
+  }
   TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
   const int num_outputs = c.num_outputs();
 

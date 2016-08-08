@@ -61,8 +61,9 @@ using UnalignedInt64Vector = TTypes<const int64>::UnalignedConstVec;
 
 // Statistics computed with input (ModelWeights, Example).
 struct ExampleStatistics {
-  // feature_weights dot feature_values for the example
+  // feature_weights dot feature_values for the example.
   double wx = 0;
+
   // sum of squared feature values occurring in the example divided by
   // L2 * sum(example_weights).
   double normalized_squared_norm = 0;
@@ -76,21 +77,26 @@ class Regularizations {
   Status Initialize(OpKernelConstruction* const context) {
     TF_RETURN_IF_ERROR(context->GetAttr("l1", &symmetric_l1_));
     TF_RETURN_IF_ERROR(context->GetAttr("l2", &symmetric_l2_));
-    shrinkage_factor_ = symmetric_l1_ / symmetric_l2_;
+    shrinkage_ = symmetric_l1_ / symmetric_l2_;
     return Status::OK();
   }
 
   // Proximal SDCA shrinking for L1 regularization.
   double Shrink(const double weight) const {
-    const double shrink_weight =
-        std::max(std::abs(weight) - shrinkage_factor_, 0.0);
-    if (shrink_weight > 0.0) {
-      return std::copysign(shrink_weight, weight);
+    const double shrinked = std::max(std::abs(weight) - shrinkage_, 0.0);
+    if (shrinked > 0.0) {
+      return std::copysign(shrinked, weight);
     }
     return 0.0;
   }
 
-  float shrinkage_factor() const { return shrinkage_factor_; }
+  // Vectorized float variant of the above.
+  Eigen::Tensor<float, 1, Eigen::RowMajor> EigenShrink(
+      const Eigen::Tensor<float, 1, Eigen::RowMajor> weights) const {
+    // Proximal step on the weights which is sign(w)*|w - shrinkage|+.
+    return weights.sign() * ((weights.abs() - weights.constant(shrinkage_))
+                                 .cwiseMax(weights.constant(0.0)));
+  }
 
   float symmetric_l2() const { return symmetric_l2_; }
 
@@ -98,25 +104,10 @@ class Regularizations {
   float symmetric_l1_ = 0;
   float symmetric_l2_ = 0;
 
-  // L1 divided by L2, precomputed for use during weight shrinking.
-  double shrinkage_factor_ = 0;
+  // L1 divided by L2, pre-computed for use during weight shrinking.
+  double shrinkage_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Regularizations);
-};
-
-// A dense vector which is a row-slice of the underlying matrix.
-struct DenseVector {
-  // Returns a row slice from the matrix.
-  inline Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>> row()
-      const {
-    // TensorMap to a row slice of the matrix.
-    return Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>>(
-        data_matrix.data() + row_index * data_matrix.dimension(1),
-        data_matrix.dimension(1));
-  }
-
-  const TTypes<float>::ConstMatrix data_matrix;
-  const int row_index;
 };
 
 class ModelWeights;
@@ -124,15 +115,17 @@ class ModelWeights;
 // Struct describing a single example.
 class Example {
  public:
-  float example_label() const { return example_label_; }
-  float example_weight() const { return example_weight_; }
-  double squared_norm() const { return squared_norm_; }
-
   // Compute dot product between weights, and example feature values. This
   // method also computes the normalized example norm used in SDCA update.
   const ExampleStatistics ComputeWxAndWeightedExampleNorm(
-      const int num_partitions, const ModelWeights& weights,
+      const int num_partitions, const ModelWeights& model_weights,
       const Regularizations& regularization) const;
+
+  float example_label() const { return example_label_; }
+
+  float example_weight() const { return example_weight_; }
+
+  double squared_norm() const { return squared_norm_; }
 
  private:
   // Sparse features associated with the example.
@@ -144,7 +137,23 @@ class Example {
     std::unique_ptr<UnalignedFloatVector> values;  // nullptr encodes optional.
   };
   std::vector<SparseFeatures> sparse_features_;
-  std::vector<std::unique_ptr<DenseVector>> dense_values_;
+
+  // A dense vector which is a row-slice of the underlying matrix.
+  struct DenseVector {
+    // Returns a row slice from the matrix.
+    Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>> row()
+        const {
+      // TensorMap to a row slice of the matrix.
+      return Eigen::TensorMap<Eigen::Tensor<const float, 1, Eigen::RowMajor>>(
+          data_matrix.data() + row_index * data_matrix.dimension(1),
+          data_matrix.dimension(1));
+    }
+
+    const TTypes<float>::ConstMatrix data_matrix;
+    const int64 row_index;
+  };
+  std::vector<std::unique_ptr<DenseVector>> dense_vectors_;
+
   float example_label_ = 0;
   float example_weight_ = 0;
   double squared_norm_ = 0;  // sum squared norm of the features.
@@ -162,28 +171,32 @@ class ModelWeights {
  public:
   ModelWeights() {}
 
+  // Go through all the features present in the example, and update the
+  // weights based on the dual delta.
   void UpdateDeltaWeights(const Eigen::ThreadPoolDevice& device,
-                          const Example& example, const double dual_delta,
-                          const Regularizations& regularization) {
-    // Go through all the features present in the example, and update the
-    // weights based on the dual delta.
-    for (int j = 0; j < sparse_weights_.size(); ++j) {
+                          const Example& example,
+                          const double normalized_bounded_dual_delta) {
+    // Sparse weights.
+    for (size_t j = 0; j < sparse_weights_.size(); ++j) {
       const Example::SparseFeatures& sparse_features =
           example.sparse_features_[j];
-      for (int k = 0; k < sparse_features.indices->size(); ++k) {
-        double delta_w = dual_delta / regularization.symmetric_l2();
-        if (sparse_features.values) {
-          delta_w *= (*sparse_features.values)(k);
-        }
-        sparse_delta_weights_[j]((*sparse_features.indices)(k)) += delta_w;
+      FeatureWeights* const feature_weights = &sparse_weights_[j];
+      for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
+        const double feature_value = sparse_features.values == nullptr
+                                         ? 1.0
+                                         : (*sparse_features.values)(k);
+        feature_weights->deltas((*sparse_features.indices)(k)) +=
+            feature_value * normalized_bounded_dual_delta;
       }
     }
-    for (int j = 0; j < dense_weights_.size(); ++j) {
-      TTypes<float>::Vec w = dense_delta_weights_[j];
-      w.device(device) =
-          w +
-          (example.dense_values_[j]->row()) *
-              w.constant(dual_delta / regularization.symmetric_l2());
+
+    // Dense weights.
+    for (size_t j = 0; j < dense_weights_.size(); ++j) {
+      const Example::DenseVector& dense_vector = *example.dense_vectors_[j];
+      TTypes<float>::Vec deltas = dense_weights_[j].deltas;
+      deltas.device(device) =
+          deltas +
+          dense_vector.row() * deltas.constant(normalized_bounded_dual_delta);
     }
   }
 
@@ -206,23 +219,22 @@ class ModelWeights {
     // Reads in the weights, and allocates and initializes the delta weights.
     const auto intialize_weights = [&](
         const OpInputList& weight_inputs, OpOutputList* const weight_outputs,
-        std::vector<TTypes<const float>::Vec>* const weights,
-        std::vector<TTypes<float>::Vec>* const delta_weights) {
-
+        std::vector<FeatureWeights>* const feature_weights) {
       for (int i = 0; i < weight_inputs.size(); ++i) {
-        weights->push_back(weight_inputs[i].flat<float>());
         Tensor* delta_t;
         weight_outputs->allocate(i, weight_inputs[i].shape(), &delta_t);
-        auto delta_vec = delta_t->flat<float>();
-        delta_vec.setZero();
-        delta_weights->push_back(delta_vec);
+        auto deltas = delta_t->flat<float>();
+        deltas.setZero();
+        feature_weights->emplace_back(
+            FeatureWeights{weight_inputs[i].flat<float>(), deltas});
       }
     };
 
     intialize_weights(sparse_weights_inputs, &sparse_weights_outputs,
-                      &sparse_weights_, &sparse_delta_weights_);
+                      &sparse_weights_);
     intialize_weights(dense_weights_inputs, &dense_weights_outputs,
-                      &dense_weights_, &dense_delta_weights_);
+                      &dense_weights_);
+
     return Status::OK();
   }
 
@@ -230,11 +242,18 @@ class ModelWeights {
   // TODO(sibyl-Aix6ihai): Refactor this to support both small-batch mode, and large
   // batch mode, where we use sparse storage (hashmap) vs dense storage
   // (vectors).
-  // Weights for each of the feature groups.
-  std::vector<TTypes<const float>::Vec> sparse_weights_;
-  std::vector<TTypes<float>::Vec> sparse_delta_weights_;
-  std::vector<TTypes<const float>::Vec> dense_weights_;
-  std::vector<TTypes<float>::Vec> dense_delta_weights_;
+
+  // Weights relate to a feature group.
+  struct FeatureWeights {
+    // The nominal value of the weight for a feature (indexed by its id).
+    TTypes<const float>::Vec nominals;
+
+    // The accumulated delta weight for a feature (indexed by its id).
+    TTypes<float>::Vec deltas;
+  };
+
+  std::vector<FeatureWeights> sparse_weights_;
+  std::vector<FeatureWeights> dense_weights_;
 
   // Example requires ModelWeights to compute the ExampleStatistics.
   friend class Example;
@@ -243,41 +262,48 @@ class ModelWeights {
 };
 
 const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
-    const int num_partitions, const ModelWeights& weights,
+    const int num_partitions, const ModelWeights& model_weights,
     const Regularizations& regularization) const {
   ExampleStatistics result;
+
   result.normalized_squared_norm =
       squared_norm_ / regularization.symmetric_l2();
 
-  const int num_sparse_features = weights.sparse_weights_.size();
   // Compute the w \dot x.
-  for (int j = 0; j < num_sparse_features; ++j) {
+
+  // Sparse features contribution.
+  for (size_t j = 0; j < sparse_features_.size(); ++j) {
     const Example::SparseFeatures& sparse_features = sparse_features_[j];
-    const int num_features = sparse_features.indices->size();
-    for (int k = 0; k < num_features; ++k) {
-      const int feature_index = (*sparse_features.indices)(k);
-      const float w = regularization.Shrink(
-          (weights.sparse_weights_[j](feature_index) +
-           num_partitions * weights.sparse_delta_weights_[j](feature_index)));
-      if (sparse_features.values) {
-        result.wx += (*sparse_features.values)(k)*w;
-      } else {
-        result.wx += w;
-      }
+    const ModelWeights::FeatureWeights& sparse_weights =
+        model_weights.sparse_weights_[j];
+
+    for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
+      const int64 feature_index = (*sparse_features.indices)(k);
+      const double feature_value = sparse_features.values == nullptr
+                                       ? 1.0
+                                       : (*sparse_features.values)(k);
+      const double feature_weight =
+          sparse_weights.nominals(feature_index) +
+          sparse_weights.deltas(feature_index) * num_partitions;
+      result.wx += feature_value * regularization.Shrink(feature_weight);
     }
   }
 
-  for (int j = 0; j < weights.dense_weights_.size(); ++j) {
-    auto w = (weights.dense_weights_[j] +
-              weights.dense_delta_weights_[j] *
-                  weights.dense_delta_weights_[j].constant(num_partitions));
+  // Dense features contribution.
+  for (size_t j = 0; j < dense_vectors_.size(); ++j) {
+    const Example::DenseVector& dense_vector = *dense_vectors_[j];
+    const ModelWeights::FeatureWeights& dense_weights =
+        model_weights.dense_weights_[j];
+
+    const Eigen::Tensor<float, 1, Eigen::RowMajor> feature_weights =
+        dense_weights.nominals +
+        dense_weights.deltas * dense_weights.deltas.constant(num_partitions);
     const Eigen::Tensor<float, 0, Eigen::RowMajor> prediction =
-        ((dense_values_[j]->row()) *
-         (w.sign() * ((w.abs() - w.constant(regularization.shrinkage_factor()))
-                          .cwiseMax(w.constant(0.0)))))
+        (dense_vector.row() * regularization.EigenShrink(feature_weights))
             .sum();
     result.wx += prediction();
   }
+
   return result;
 }
 
@@ -286,13 +312,14 @@ class Examples {
  public:
   Examples() {}
 
-  // Returns features for example at |example_index|.
+  // Returns the Example at |example_index|.
   const Example& example(const int example_index) const {
     return examples_.at(example_index);
   }
 
   int num_examples() const { return examples_.size(); }
-  int num_columns() const { return num_columns_; }
+
+  int num_features() const { return num_features_; }
 
   // Initialize() must be called immediately after construction.
   // TODO(sibyl-Aix6ihai): Refactor/shorten this function.
@@ -300,7 +327,8 @@ class Examples {
                     const int num_sparse_features,
                     const int num_sparse_features_with_values,
                     const int num_dense_features) {
-    num_columns_ = num_sparse_features + num_dense_features;
+    num_features_ = num_sparse_features + num_dense_features;
+
     OpInputList sparse_example_indices_inputs;
     TF_RETURN_IF_ERROR(context->input_list("sparse_example_indices",
                                            &sparse_example_indices_inputs));
@@ -329,9 +357,9 @@ class Examples {
     examples_.clear();
     examples_.resize(num_examples);
     for (int example_id = 0; example_id < num_examples; ++example_id) {
-      Example* example = &examples_[example_id];
+      Example* const example = &examples_[example_id];
       example->sparse_features_.resize(num_sparse_features);
-      example->dense_values_.resize(num_dense_features);
+      example->dense_vectors_.resize(num_dense_features);
       example->example_weight_ = example_weights(example_id);
       example->example_label_ = example_labels(example_id);
     }
@@ -359,7 +387,7 @@ class Examples {
             }
             if (start_id < example_indices.size() &&
                 example_indices(start_id) == example_id) {
-              Example::SparseFeatures* sparse_features =
+              Example::SparseFeatures* const sparse_features =
                   &examples_[example_id].sparse_features_[i];
               sparse_features->indices.reset(new UnalignedInt64Vector(
                   &(feature_indices(start_id)), end_id - start_id));
@@ -370,7 +398,7 @@ class Examples {
                     &(feature_weights(start_id)), end_id - start_id));
               }
             } else {
-              Example::SparseFeatures* sparse_features =
+              Example::SparseFeatures* const sparse_features =
                   &examples_[example_id].sparse_features_[i];
               // Add a Tensor that has size 0.
               sparse_features->indices.reset(
@@ -396,8 +424,8 @@ class Examples {
       Shard(worker_threads.num_threads, worker_threads.workers,
             num_sparse_features, num_examples, parse_partition);
     }
-    // Parse dense.
-    {
+
+    {  // Parse dense.
       auto parse_partition = [&](const int64 begin, const int64 end) {
         // The static_cast here is safe since begin and end can be at most
         // num_examples which is an int.
@@ -405,8 +433,8 @@ class Examples {
           auto dense_features =
               dense_features_inputs[i].template matrix<float>();
           for (int example_id = 0; example_id < num_examples; ++example_id) {
-            examples_[example_id].dense_values_[i].reset(
-                new DenseVector{dense_features, example_id});
+            examples_[example_id].dense_vectors_[i].reset(
+                new Example::DenseVector{dense_features, example_id});
           }
         }
       };
@@ -416,16 +444,17 @@ class Examples {
       Shard(worker_threads.num_threads, worker_threads.workers,
             num_dense_features, kCostPerUnit, parse_partition);
     }
-    // Compute norm of examples.
-    {
+
+    {  // Compute norm of examples.
       auto compute_example_norm = [&](const int64 begin, const int64 end) {
         // The static_cast here is safe since begin and end can be at most
         // num_examples which is an int.
-        for (int i = static_cast<int>(begin); i < end; ++i) {
+        for (int example_id = static_cast<int>(begin); example_id < end;
+             ++example_id) {
           double squared_norm = 0;
           for (int j = 0; j < num_sparse_features; ++j) {
             const Example::SparseFeatures& sparse_features =
-                examples_[i].sparse_features_[j];
+                examples_[example_id].sparse_features_[j];
             if (sparse_features.values) {
               const Eigen::Tensor<float, 0, Eigen::RowMajor> sn =
                   sparse_features.values->square().sum();
@@ -436,10 +465,10 @@ class Examples {
           }
           for (int j = 0; j < num_dense_features; ++j) {
             const Eigen::Tensor<float, 0, Eigen::RowMajor> sn =
-                examples_[i].dense_values_[j]->row().square().sum();
+                examples_[example_id].dense_vectors_[j]->row().square().sum();
             squared_norm += sn();
           }
-          examples_[i].squared_norm_ = squared_norm;
+          examples_[example_id].squared_norm_ = squared_norm;
         }
       };
       // TODO(sibyl-Aix6ihai): Compute the cost optimally.
@@ -455,7 +484,8 @@ class Examples {
  private:
   // All examples in the batch.
   std::vector<Example> examples_;
-  int num_columns_;
+
+  int num_features_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Examples);
 };
@@ -478,7 +508,6 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
       OP_REQUIRES(context, false, errors::InvalidArgument(
                                       "Unsupported loss type: ", loss_type));
     }
-
     OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features",
                                              &num_sparse_features_));
     OP_REQUIRES_OK(context,
@@ -558,9 +587,11 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
             primal_loss, dual_loss);
 
         // Compute new weights.
-        const double bounded_dual_delta = (new_dual - dual) * example_weight;
+        const double normalized_bounded_dual_delta =
+            (new_dual - dual) * example_weight /
+            regularizations_.symmetric_l2();
         model_weights.UpdateDeltaWeights(context->eigen_cpu_device(), example,
-                                         bounded_dual_delta, regularizations_);
+                                         normalized_bounded_dual_delta);
 
         // Update example data.
         example_state_data(example_index, 0) = new_dual;
@@ -571,7 +602,8 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
     };
     // TODO(sibyl-Aix6ihai): Tune this properly based on sparsity of the data,
     // number of cpus, and cost per example.
-    const int64 kCostPerUnit = examples.num_examples() * examples.num_columns();
+    const int64 kCostPerUnit =
+        examples.num_examples() * examples.num_features();
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers,
@@ -584,11 +616,11 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
   // template the entire class to avoid the virtual table lookup penalty in
   // the inner loop.
   std::unique_ptr<DualLossUpdater> loss_updater_;
-  int num_sparse_features_;
-  int num_sparse_features_with_values_;
-  int num_dense_features_;
-  int num_inner_iterations_;
-  int num_partitions_;
+  int num_sparse_features_ = 0;
+  int num_sparse_features_with_values_ = 0;
+  int num_dense_features_ = 0;
+  int num_inner_iterations_ = 0;
+  int num_partitions_ = 0;
   Regularizations regularizations_;
 };
 REGISTER_KERNEL_BUILDER(
@@ -612,15 +644,14 @@ class SdcaShrinkL1 : public OpKernel {
                                                         &dense_weights_inputs));
 
     auto shrink_l1 = [&](OpMutableInputList* const inputs) {
+      // TODO(sibyl-Mooth6ku): Maybe parallelize this.
       for (int i = 0; i < inputs->size(); ++i) {
         auto prox_w = inputs->at(i, /*lock_held=*/true).flat<float>();
         prox_w.device(context->eigen_cpu_device()) =
-            prox_w.sign() *
-            ((prox_w.abs() -
-              prox_w.constant(regularizations_.shrinkage_factor()))
-                 .cwiseMax(prox_w.constant(0.0)));
+            regularizations_.EigenShrink(prox_w);
       }
     };
+
     // Shrink both sparse, and dense weights.
     shrink_l1(&sparse_weights_inputs);
     shrink_l1(&dense_weights_inputs);

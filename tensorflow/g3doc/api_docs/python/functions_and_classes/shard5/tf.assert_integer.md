@@ -1,4 +1,4 @@
-### `tf.assert_integer(x, data=None, summarize=None, name=None)` {#assert_integer}
+### `tf.assert_integer(x, message=None, name=None)` {#assert_integer}
 
 Assert that `x` is of integer dtype.
 
@@ -19,12 +19,15 @@ x = tf.with_dependencies([tf.assert_integer(x)], x)
 
 
 *  <b>`x`</b>: `Tensor` whose basetype is integer and is not quantized.
-*  <b>`data`</b>: The tensors to print out if the condition is False.  Defaults to
-    error message and first few entries of `x`.
-*  <b>`summarize`</b>: Print this many entries of each tensor.
+*  <b>`message`</b>: A string to prefix to the default message.
 *  <b>`name`</b>: A name for this operation (optional).  Defaults to "assert_integer".
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `x.dtype` is anything other than non-quantized integer.
 
 ##### Returns:
 
-  Op that raises `InvalidArgumentError` if `x == y` is False.
+  A `no_op` that does nothing.  Type can be determined statically.
 

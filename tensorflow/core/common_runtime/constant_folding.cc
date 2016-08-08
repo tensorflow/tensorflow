@@ -39,7 +39,8 @@ namespace tensorflow {
 
 namespace {
 
-bool IsConstantFoldable(const Node* n,
+bool IsConstantFoldable(const FunctionLibraryDefinition* flib_def,
+                        const Node* n,
                         std::function<bool(const Node*)> consider) {
   if (n->op_def().is_stateful()) {
     return false;
@@ -61,18 +62,28 @@ bool IsConstantFoldable(const Node* n,
   if (n->IsSink()) {
     return false;
   }
+  // For now, don't try to constant-fold functions. (They may be inlined, in
+  // which case they will become subject to constant-folding again.)
+  // TODO(phawkins): support constant-folding for functions; functions may
+  // be arbitrarily expensive to execute.
+  if (flib_def && flib_def->Find(n->type_string())) {
+    return false;
+  }
   return true;
 }
 
 // Returns the constant foldable nodes in `nodes_result` in data flow order.
-void FindConstantFoldableNodes(const Graph* graph, ConstantFoldingOptions opts,
+void FindConstantFoldableNodes(const Graph* graph,
+                               const FunctionLibraryDefinition* flib_def,
+                               ConstantFoldingOptions opts,
                                std::vector<Node*>* nodes_result) {
   std::set<const Node*> node_set;
   std::vector<Node*>& nodes = *nodes_result;
   bool internal_node_inserted = false;
   // Walk the nodes in data flow order
   ReverseDFS(*graph, nullptr,
-             [&nodes, &node_set, &internal_node_inserted, opts](Node* n) {
+             [&nodes, &node_set, &internal_node_inserted, opts,
+              flib_def](Node* n) {
                if (n->IsConstant()) {
                  // Constants with no control inputs (except from _SOURCE node)
                  // are definitely constant foldable.
@@ -82,7 +93,7 @@ void FindConstantFoldableNodes(const Graph* graph, ConstantFoldingOptions opts,
                    node_set.insert(n);
                    nodes.push_back(n);
                  }
-               } else if (IsConstantFoldable(n, opts.consider)) {
+               } else if (IsConstantFoldable(flib_def, n, opts.consider)) {
                  // Check whether the set of this node's in_nodes is completely
                  // included in the set of constant foldable nodes. If true,
                  // then this node is also constant foldable.
@@ -303,6 +314,7 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
 }
 
 bool DoConstantFolding(const ConstantFoldingOptions& opts,
+                       FunctionLibraryRuntime* function_library,
                        Device* partition_device, Graph* graph) {
   DumpGraph("Before", graph);
   Device* device = GetCPUDevice();
@@ -313,8 +325,12 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts,
     return false;
   }
 
+  const FunctionLibraryDefinition* flib_def = nullptr;
+  if (function_library) {
+    flib_def = function_library->GetFunctionLibraryDefinition();
+  }
   std::vector<Node*> constant_foldable_nodes;
-  FindConstantFoldableNodes(graph, opts, &constant_foldable_nodes);
+  FindConstantFoldableNodes(graph, flib_def, opts, &constant_foldable_nodes);
   if (constant_foldable_nodes.empty()) {
     VLOG(1) << "No constant foldable nodes found";
     return false;

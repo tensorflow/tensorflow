@@ -287,22 +287,6 @@ class SaverTest(tf.test.TestCase):
         expected_save_path = "%s-%d" % (save_path, global_step_int)
         self.assertEqual(expected_save_path, val)
 
-  def testLargeVariable(self):
-    save_path = os.path.join(self.get_temp_dir(), "large_variable")
-    with tf.Session("", graph=tf.Graph()) as sess:
-      # Declare a variable that is exactly 2GB. This should fail,
-      # because a serialized checkpoint includes other header
-      # metadata.
-      with tf.device("/cpu:0"):
-        var = tf.Variable(
-            tf.constant(False, shape=[2, 1024, 1024, 1024], dtype=tf.bool))
-      save = tf.train.Saver({var.op.name: var})
-      var.initializer.run()
-      with self.assertRaisesRegexp(
-          tf.errors.InvalidArgumentError,
-          "Tensor slice is too large to serialize"):
-        save.save(sess, save_path)
-
 
 class SaveRestoreShardedTest(tf.test.TestCase):
 
@@ -611,7 +595,7 @@ class MaxToKeepTest(tf.test.TestCase):
       self.assertEqual([], save2.last_checkpoints)
       self.assertTrue(gfile.Exists(s2))
 
-  def testNoMetaGrap(self):
+  def testNoMetaGraph(self):
     save_dir = _TestDir("no_meta_graph")
 
     with self.test_session() as sess:

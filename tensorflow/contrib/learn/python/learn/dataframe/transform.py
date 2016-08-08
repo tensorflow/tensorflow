@@ -223,13 +223,14 @@ class Transform(object):
     # pylint: disable=not-callable
     return self.return_type(*output_series)
 
-  def build_transitive(self, input_series, cache=None):
+  def build_transitive(self, input_series, cache=None, **kwargs):
     """Apply this `Transform` to the provided `Series`, producing 'Tensor's.
 
     Args:
       input_series: None, a `Series`, or a list of input `Series`, acting as
          positional arguments.
       cache: a dict from Series reprs to Tensors.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
       A namedtuple of the output Tensors.
@@ -244,7 +245,7 @@ class Transform(object):
     if len(input_series) != self.input_valency:
       raise ValueError("Expected %s input Series but received %s." %
                        (self.input_valency, len(input_series)))
-    input_tensors = [series.build(cache) for series in input_series]
+    input_tensors = [series.build(cache, **kwargs) for series in input_series]
 
     # Note we cache each output individually, not just the entire output
     # tuple.  This allows using the graph as the cache, since it can sensibly
@@ -254,7 +255,7 @@ class Transform(object):
     output_tensors = [cache.get(output_repr) for output_repr in output_reprs]
 
     if None in output_tensors:
-      result = self._apply_transform(input_tensors)
+      result = self._apply_transform(input_tensors, **kwargs)
       for output_name, output_repr in zip(self.output_names, output_reprs):
         cache[output_repr] = getattr(result, output_name)
     else:
@@ -264,12 +265,13 @@ class Transform(object):
     return result
 
   @abstractmethod
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     """Applies the transformation to the `transform_input`.
 
     Args:
-        input_tensors: a list of Tensors representing the input to
+      input_tensors: a list of Tensors representing the input to
         the Transform.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
         A namedtuple of Tensors representing the transformed output.

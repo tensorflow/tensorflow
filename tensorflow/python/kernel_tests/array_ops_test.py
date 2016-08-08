@@ -278,12 +278,10 @@ class StridedSliceChecker(object):
     self.x_np = np.array(x)
 
   def __getitem__(self, spec):
-    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
-    # op = self.x[spec]
-    op = array_ops._NewSliceHelper(self.x, spec)
+    op = self.x.__getitem__(spec)
 
     tensor = op.eval()
-    self.test.assertAllEqual(self.x_np[spec], tensor)
+    self.test.assertAllEqual(self.x_np.__getitem__(spec), tensor)
     self.test.assertAllEqual(tensor.shape, op.get_shape())
     return tensor
 
@@ -296,9 +294,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
                         tf.float64]:
       for use_gpu in [False, True]:
         with self.test_session(use_gpu=use_gpu):
-          checker = StridedSliceChecker(self,
-                                        StridedSliceChecker.REF_TENSOR,
-                                        tensor_type=tensor_type)
+          checker = StridedSliceChecker(
+              self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
           _ = checker[:, :, :]
           # Various ways of representing identity slice
           _ = checker[:, :, :]
@@ -400,9 +397,7 @@ class StridedSliceShapeChecker(object):
     self.x = x
 
   def __getitem__(self, spec):
-    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
-    # op = self.x[spec]
-    op = array_ops._NewSliceHelper(self.x, spec)
+    op = self.x.__getitem__(spec)
     return op.get_shape()
 
 
@@ -456,22 +451,28 @@ class GradSliceChecker(object):
     self.varnp = varnp
 
   def __getitem__(self, spec):
-    val_grad_op = tf.gradients(self.val, self.var)
-    sliceval_grad_op = tf.gradients(
-        array_ops._NewSliceHelper(self.val, spec), self.var)
-    slice1_op = array_ops._NewSliceHelper(val_grad_op, spec)
-    slice2_op = array_ops._NewSliceHelper(sliceval_grad_op, spec)
-    val_grad, sliceval_grad, slice1, slice2 = self.sess.run(
-        [val_grad_op, sliceval_grad_op, slice1_op, slice2_op])
-    np_val_grad = (2 * self.varnp)
+    slice_var = self.var[spec]
+    slice_val = self.val[spec]
+
+    # compute analytic 2nd derivative
+    analytic_grad2 = 2 * slice_val
+
+    dy = tf.Variable(tf.ones(shape=slice_var.get_shape(), dtype=tf.int32))
+    assign = dy.assign(slice_var)
+    slice_val_grad, = tf.gradients(slice_val, self.var, grad_ys=dy)
+    slice_val_grad2, = tf.gradients(slice_val_grad, dy, grad_ys=self.var)
+    self.sess.run(assign)
+    slice_val_grad_evaled, slice_val_grad2_evaled = (
+        self.sess.run([slice_val_grad, slice_val_grad2]))
+    analytic_grad2_evaled = analytic_grad2.eval()
+    self.test.assertAllEqual(slice_val_grad2_evaled, analytic_grad2_evaled)
+
+    # compute analytic gradient for slice
+    np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
-    np_sliceval_grad[spec] = np.array(val_grad[0])[spec]
-    # make sure np val grad is correct
-    self.test.assertAllEqual(np_val_grad, val_grad[0])
-    # make sure slice gradient is correct
-    self.test.assertAllEqual(np_sliceval_grad, sliceval_grad[0])
-    # make sure val grad and sliceval grad are the same in sliced area
-    self.test.assertAllEqual(slice1, slice2)
+    np_sliceval_grad[spec] = np_val_grad[spec]
+    # verify gradient
+    self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
 
 
 class StridedSliceGradTest(test_util.TensorFlowTestCase):
@@ -492,13 +493,59 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[3:0:-2, 1:3, 2]
 
 
+class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
+  """Test varied index types and host located memory."""
+
+  def testHostVsDevice(self):
+    with self.test_session(use_gpu=True) as sess:
+      var2 = tf.Variable(
+          tf.reshape(
+              tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1)))
+      varshape = tf.Variable([6, 4, 4], dtype=tf.int32)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0])
+      end = tf.constant([4, 1, 1])
+      strides = tf.constant([1, 1, 1])
+      foo = array_ops.strided_slice_grad(varshape, begin, end, strides, var2)
+      sess.run(foo)
+
+  def testInt64Shape(self):
+    with self.test_session(use_gpu=True) as sess:
+      original_dy = tf.reshape(
+          tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
+      original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0], dtype=tf.int64)
+      end = tf.constant([4, 1, 1], dtype=tf.int64)
+      strides = tf.constant([1, 1, 1], dtype=tf.int64)
+      dx = array_ops.strided_slice_grad(original_shape, begin, end, strides,
+                                        original_dy)
+      sess.run(dx)
+
+  def testMixedIndexTypes(self):
+    with self.test_session(use_gpu=True) as sess:
+      original_dy = tf.reshape(
+          tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
+      original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0], dtype=tf.int32)
+      end = tf.constant([4, 1, 1], dtype=tf.int64)
+      strides = tf.constant([1, 1, 1], dtype=tf.int64)
+      with self.assertRaisesRegexp(
+          TypeError, "Input 'begin' of 'StridedSliceGrad' Op has type int32"
+          " that does not match type int64 of argument 'shape'"):
+        dx = array_ops.strided_slice_grad(original_shape, begin, end, strides,
+                                          original_dy)
+        sess.run(dx)
+
+
 class BenchmarkSlice(object):
 
   def __init__(self, tensor):
     self.tensor = tensor
 
   def __getitem__(self, x):
-    return array_ops._NewSliceHelper(self.tensor, x)
+    return self.tensor[x]
 
 
 class StridedSliceBenchmark(tf.test.Benchmark):

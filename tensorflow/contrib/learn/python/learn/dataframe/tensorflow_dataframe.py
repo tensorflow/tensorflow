@@ -28,6 +28,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import dataframe as df
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import batch
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import csv_parser
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import example_parser
+from tensorflow.contrib.learn.python.learn.dataframe.transforms import hashes
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import reader_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import sparsify
@@ -83,7 +84,8 @@ class TensorFlowDataFrame(df.DataFrame):
           graph=None,
           session=None,
           start_queues=True,
-          initialize_variables=True):
+          initialize_variables=True,
+          **kwargs):
     """Builds and runs the columns of the `DataFrame` and yields batches.
 
     This is a generator that yields a dictionary mapping column names to
@@ -97,6 +99,7 @@ class TensorFlowDataFrame(df.DataFrame):
       start_queues: if true, queues will be started before running and halted
         after producting `n` batches.
       initialize_variables: if true, variables will be initialized.
+      **kwargs: Additional keyword arguments e.g. `num_epochs`.
 
     Yields:
       A dictionary, mapping column names to the values resulting from running
@@ -107,7 +110,7 @@ class TensorFlowDataFrame(df.DataFrame):
     with graph.as_default():
       if session is None:
         session = sess.Session()
-      self_built = self.build()
+      self_built = self.build(**kwargs)
       keys = list(self_built.keys())
       cols = list(self_built.values())
       if initialize_variables:
@@ -156,6 +159,52 @@ class TensorFlowDataFrame(df.DataFrame):
             "The select_rows method is not implemented for Series type {}. "
             "Original error: {}").format(type(col), e))
     return result
+
+  def split(self, index_series, proportion, batch_size=None):
+    """Deterministically split a `DataFrame` into two `DataFrame`s.
+
+    Note this split is only as deterministic as the underlying hash function;
+    see `tf.string_to_hash_bucket_fast`.  The hash function is deterministic
+    for a given binary, but may change occasionally.  The only way to achieve
+    an absolute guarantee that the split `DataFrame`s do not change across runs
+    is to materialize them.
+
+    Note too that the allocation of a row to one partition or the
+    other is evaluated independently for each row, so the exact number of rows
+    in each partition is binomially distributed.
+
+    Args:
+      index_series: a `Series` of unique strings, whose hash will determine the
+        partitioning; or the name in this `DataFrame` of such a `Series`.
+        (This `Series` must contain strings because TensorFlow provides hash
+        ops only for strings, and there are no number-to-string converter ops.)
+      proportion: The proportion of the rows to select for the 'left'
+        partition; the remaining (1 - proportion) rows form the 'right'
+        partition.
+      batch_size: the batch size to use when rebatching the left and right
+        `DataFrame`s.  If None (default), the `DataFrame`s are not rebatched;
+        thus their batches will have variable sizes, according to which rows
+        are selected from each batch of the original `DataFrame`.
+
+    Returns:
+      Two `DataFrame`s containing the partitioned rows.
+    """
+    # TODO(soergel): allow seed?
+    if isinstance(index_series, str):
+      index_series = self[index_series]
+    num_buckets = 1000000  # close enough for simple splits
+    hashed_input, = hashes.HashFast(num_buckets)(index_series)
+    threshold = int(num_buckets * proportion)
+    left = hashed_input < threshold
+    right = ~left
+    left_rows = self.select_rows(left)
+    right_rows = self.select_rows(right)
+
+    if batch_size:
+      left_rows = left_rows.batch(batch_size=batch_size, shuffle=False)
+      right_rows = right_rows.batch(batch_size=batch_size, shuffle=False)
+
+    return left_rows, right_rows
 
   def run_once(self):
     """Creates a new 'Graph` and `Session` and runs a single batch.
@@ -208,7 +257,7 @@ class TensorFlowDataFrame(df.DataFrame):
 
   @classmethod
   def _from_csv_base(cls, filepatterns, get_default_values, has_header,
-                     column_names, num_epochs, num_threads, enqueue_size,
+                     column_names, num_threads, enqueue_size,
                      batch_size, queue_capacity, min_after_dequeue, shuffle,
                      seed):
     """Create a `DataFrame` from CSV files.
@@ -223,9 +272,6 @@ class TensorFlowDataFrame(df.DataFrame):
         each column, given the column names.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -265,7 +311,6 @@ class TensorFlowDataFrame(df.DataFrame):
         reader_kwargs=reader_kwargs,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
-        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,
@@ -287,7 +332,6 @@ class TensorFlowDataFrame(df.DataFrame):
                default_values,
                has_header=True,
                column_names=None,
-               num_epochs=None,
                num_threads=1,
                enqueue_size=None,
                batch_size=32,
@@ -306,9 +350,6 @@ class TensorFlowDataFrame(df.DataFrame):
       default_values: a list of default values for each column.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -332,7 +373,7 @@ class TensorFlowDataFrame(df.DataFrame):
       return default_values
 
     return cls._from_csv_base(filepatterns, get_default_values, has_header,
-                              column_names, num_epochs, num_threads,
+                              column_names, num_threads,
                               enqueue_size, batch_size, queue_capacity,
                               min_after_dequeue, shuffle, seed)
 
@@ -342,7 +383,6 @@ class TensorFlowDataFrame(df.DataFrame):
                                  feature_spec,
                                  has_header=True,
                                  column_names=None,
-                                 num_epochs=None,
                                  num_threads=1,
                                  enqueue_size=None,
                                  batch_size=32,
@@ -362,9 +402,6 @@ class TensorFlowDataFrame(df.DataFrame):
           `VarLenFeature`.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -387,7 +424,7 @@ class TensorFlowDataFrame(df.DataFrame):
       return [_get_default_value(feature_spec[name]) for name in column_names]
 
     dataframe = cls._from_csv_base(filepatterns, get_default_values, has_header,
-                                   column_names, num_epochs, num_threads,
+                                   column_names, num_threads,
                                    enqueue_size, batch_size, queue_capacity,
                                    min_after_dequeue, shuffle, seed)
 
@@ -405,7 +442,6 @@ class TensorFlowDataFrame(df.DataFrame):
                     filepatterns,
                     features,
                     reader_cls=io_ops.TFRecordReader,
-                    num_epochs=None,
                     num_threads=1,
                     enqueue_size=None,
                     batch_size=32,
@@ -421,9 +457,6 @@ class TensorFlowDataFrame(df.DataFrame):
         `FixedLenFeature`.
       reader_cls: a subclass of `tensorflow.ReaderBase` that will be used to
         read the `Example`s.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -454,7 +487,6 @@ class TensorFlowDataFrame(df.DataFrame):
         filenames,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
-        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,

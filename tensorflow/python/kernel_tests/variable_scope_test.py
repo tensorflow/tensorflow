@@ -69,6 +69,16 @@ class VariableScopeTest(tf.test.TestCase):
           sess.run(tf.initialize_variables([w]))
           self.assertAllClose(w.eval(), 0.3)
 
+  def testVarScopeDType(self):
+    with self.test_session():
+      with tf.variable_scope("tower") as tower:
+        with tf.variable_scope("foo", dtype=tf.float16):
+          v = tf.get_variable("v", [])
+          self.assertEqual(v.dtype, tf.float16_ref)
+        with tf.variable_scope(tower, dtype=tf.float16):
+          w = tf.get_variable("w", [])
+          self.assertEqual(w.dtype, tf.float16_ref)
+
   def testInitFromNonTensorValue(self):
     with self.test_session() as sess:
       v = tf.get_variable("v", initializer=4, dtype=tf.int32)

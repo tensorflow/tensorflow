@@ -360,6 +360,10 @@ class FunctionLibraryRuntime {
 
   // Return the device on which the function executes.
   virtual Device* device() = 0;
+
+  // Returns the function library definition that backs this runtime.
+  virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
+      const = 0;
 };
 
 // To register a gradient function for a builtin op, one should use

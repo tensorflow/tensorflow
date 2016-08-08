@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 REGISTER_OP("SparseFeatureCross")
@@ -31,6 +32,12 @@ REGISTER_OP("SparseFeatureCross")
     .Attr("dense_types: list({int64, string}) >= 0")
     .Attr("out_type: {int64, string}")
     .Attr("internal_type: {int64, string}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Generates sparse cross form a list of sparse tensors.
 

@@ -315,9 +315,50 @@ class TFExampleDecoderTest(tf.test.TestCase):
       }
       items_to_handlers = {
           'image': slim.tfexample_decoder.Tensor('image',
-                                                 shape_key='image/shape'),
+                                                 shape_keys='image/shape'),
           'labels': slim.tfexample_decoder.Tensor('labels',
-                                                  shape_key='labels/shape'),
+                                                  shape_keys='labels/shape'),
+      }
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features, items_to_handlers)
+      [tf_image, tf_labels] = decoder.decode(serialized_example,
+                                             ['image', 'labels'])
+      self.assertAllEqual(tf_image.eval(), np_image)
+      self.assertAllEqual(tf_labels.eval(), np_labels)
+
+  def testDecodeExampleMultiShapeKeyTensor(self):
+    np_image = np.random.rand(2, 3, 1).astype('f')
+    np_labels = np.array([[[1], [2], [3]],
+                          [[4], [5], [6]]])
+    height, width, depth = np_labels.shape
+
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'image': self._EncodedFloatFeature(np_image),
+        'image/shape': self._EncodedInt64Feature(np.array(np_image.shape)),
+        'labels': self._EncodedInt64Feature(np_labels),
+        'labels/height': self._EncodedInt64Feature(np.array([height])),
+        'labels/width': self._EncodedInt64Feature(np.array([width])),
+        'labels/depth': self._EncodedInt64Feature(np.array([depth])),
+    }))
+
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+      keys_to_features = {
+          'image': tf.VarLenFeature(dtype=tf.float32),
+          'image/shape': tf.VarLenFeature(dtype=tf.int64),
+          'labels': tf.VarLenFeature(dtype=tf.int64),
+          'labels/height': tf.VarLenFeature(dtype=tf.int64),
+          'labels/width': tf.VarLenFeature(dtype=tf.int64),
+          'labels/depth': tf.VarLenFeature(dtype=tf.int64),
+      }
+      items_to_handlers = {
+          'image': slim.tfexample_decoder.Tensor(
+              'image', shape_keys='image/shape'),
+          'labels': slim.tfexample_decoder.Tensor(
+              'labels',
+              shape_keys=['labels/height', 'labels/width', 'labels/depth']),
       }
       decoder = slim.tfexample_decoder.TFExampleDecoder(
           keys_to_features, items_to_handlers)

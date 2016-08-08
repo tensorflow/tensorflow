@@ -98,7 +98,7 @@ op {
     }
   }
   summary: "Returns x + y element-wise."
-  description: "*NOTE*: Add supports broadcasting. AddN does not."
+  description: "*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "AddN"
@@ -1886,7 +1886,7 @@ op {
       }
     }
   }
-  summary: "Calculates the Cholesky decomposition of a batch of square matrices."
+  summary: "Computes the Cholesky decomposition of a batch of square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
 }
 op {
@@ -1898,12 +1898,12 @@ op {
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[..., M, M]\'.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
+    description: "df/dl where f is some scalar function. Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[..., M, M]\'"
+    description: "Symmetrized version of df/dA . Shape is `[..., M, M]`"
     type_attr: "T"
   }
   attr {
@@ -1916,7 +1916,7 @@ op {
       }
     }
   }
-  summary: "Calculates the reverse mode backpropagated gradient of the Cholesky algorithm."
+  summary: "Computes the reverse mode backpropagated gradient of the Cholesky algorithm."
   description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
 }
 op {
@@ -2110,7 +2110,7 @@ op {
       }
     }
   }
-  summary: "Calculates the determinants for a batch of square matrices."
+  summary: "Computes the determinants for a batch of square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
@@ -2180,7 +2180,7 @@ op {
       }
     }
   }
-  summary: "Calculates the inverse of square invertible matrices or their adjoints"
+  summary: "Computes the inverse of square invertible matrices or their adjoints"
   description: "(conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
@@ -2284,7 +2284,7 @@ op {
     }
   }
   summary: "Solves multiple linear least-squares problems."
-  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape `[..., M, K]`. The output\nis a tensor shape `[..., N, K]` where each output matrix solves each of\nthe equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :] in the\nleast squares sense.\n\nBelow we will use the following notation for each pair of\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nBelow we will use the following notation for each pair of\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
 }
 op {
   name: "BatchMatrixTriangularSolve"
@@ -2515,8 +2515,101 @@ op {
       }
     }
   }
-  summary: "Calculates the Eigen Decomposition of a batch of square self-adjoint matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a \'[..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
+  summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a [..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
+  deprecation {
+    version: 11
+    explanation: "Use BatchSelfAdjointEigV2 instead."
+  }
+}
+op {
+  name: "BatchSelfAdjointEigV2"
+  input_arg {
+    name: "input"
+    description: "`Tensor` input of shape `[N, N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "e"
+    description: "Eigenvalues. Shape is `[N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    description: "Eigenvectors. Shape is `[N, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_v"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If `True` then eigenvectors will be computed and returned in `v`.\nOtherwise, only the eigenvalues will be computed."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Computes the eigen decomposition of a batch of square self-adjoint matrices."
+  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = batch_self_adjoint_eig(a)\ne = batch_self_adjoint_eig(a, compute_v=False)\n```"
+}
+op {
+  name: "BatchSvd"
+  input_arg {
+    name: "input"
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "s"
+    description: "Singular values. Shape is `[..., P]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "u"
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_uv"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true, left and right singular vectors will be\ncomputed and returned in `u` and `v`, respectively.\nIf false, `u` and `v` are not set and should never referenced."
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, compute full-sized `u` and `v`. If false\n(the default), compute only the leading `P` singular vectors.\nIgnored if `compute_uv` is `False`."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Computes the singular value decompositions of a batch of matrices."
+  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = batch_svd(a)\ns, _, _ = batch_svd(a, compute_uv=False)\n```"
 }
 op {
   name: "BatchToSpace"
@@ -3023,7 +3116,7 @@ op {
       }
     }
   }
-  summary: "Calculates the Cholesky decomposition of a square matrix."
+  summary: "Computes the Cholesky decomposition of a square matrix."
   description: "The input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe result is the lower-triangular matrix of the Cholesky decomposition of the\ninput, `L`, so that `input = L L^*`."
 }
 op {
@@ -3035,12 +3128,12 @@ op {
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[M, M]\'.\nAlgorithm depends only on lower triangular part of this matrix."
+    description: "df/dl where f is some scalar function. Shape is `[M, M]`.\nAlgorithm depends only on lower triangular part of this matrix."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[M, M]\'."
+    description: "Symmetrized version of df/dA . Shape is `[M, M]`."
     type_attr: "T"
   }
   attr {
@@ -3053,7 +3146,7 @@ op {
       }
     }
   }
-  summary: "Calculates the reverse mode backpropagated gradient of the Cholesky algorithm."
+  summary: "Computes the reverse mode backpropagated gradient of the Cholesky algorithm."
   description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
 }
 op {
@@ -3292,8 +3385,8 @@ op {
 }
 op {
   name: "ControlTrigger"
-  summary: "Does nothing. Serves as a control trigger for scheduling. Only useful as a"
-  description: "placeholder for control edges."
+  summary: "Does nothing. Serves as a control trigger for scheduling."
+  description: "Only useful as a placeholder for control edges."
 }
 op {
   name: "Conv2D"
@@ -4278,6 +4371,15 @@ op {
     }
     description: "Name of the input tensor."
   }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+  }
   summary: "Debug Identity Op."
   description: "Provides an identity mapping of the non-Ref type input tensor for debugging."
 }
@@ -4304,6 +4406,15 @@ op {
       s: ""
     }
     description: "Name of the input tensor."
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
   }
   summary: "Debug NaN Value Counter Op"
   description: "Counts number of NaNs in the input tensor, for debugging."
@@ -5077,6 +5188,7 @@ op {
     }
   }
   summary: "Returns x / y element-wise."
+  description: "*NOTE*: `Div` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "DrawBoundingBoxes"
@@ -5488,6 +5600,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x == y) element-wise."
+  description: "*NOTE*: `Equal` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -6168,6 +6281,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x > y) element-wise."
+  description: "*NOTE*: `Greater` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "GreaterEqual"
@@ -6201,6 +6315,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x >= y) element-wise."
+  description: "*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "HSVToRGB"
@@ -7086,6 +7201,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x < y) element-wise."
+  description: "*NOTE*: `Less` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "LessEqual"
@@ -7119,6 +7235,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x <= y) element-wise."
+  description: "*NOTE*: `LessEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Lgamma"
@@ -7341,6 +7458,7 @@ op {
     type: DT_BOOL
   }
   summary: "Returns the truth value of x AND y element-wise."
+  description: "*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -7370,6 +7488,7 @@ op {
     type: DT_BOOL
   }
   summary: "Returns the truth value of x OR y element-wise."
+  description: "*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -7576,7 +7695,7 @@ op {
       }
     }
   }
-  summary: "Calculates the determinant of a square matrix."
+  summary: "Computes the determinant of a square matrix."
 }
 op {
   name: "MatrixInverse"
@@ -7607,7 +7726,7 @@ op {
       }
     }
   }
-  summary: "Calculates the inverse of a square invertible matrix or its adjoint (conjugate"
+  summary: "Computes the inverse of a square invertible matrix or its adjoint (conjugate"
   description: "transpose).\n\nThe op uses LU decomposition with partial pivoting to compute the inverse.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
@@ -8227,7 +8346,8 @@ op {
       }
     }
   }
-  summary: "Returns the max of x and y (i.e. x > y ? x : y) element-wise, broadcasts."
+  summary: "Returns the max of x and y (i.e. x > y ? x : y) element-wise."
+  description: "*NOTE*: `Maximum` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -8410,7 +8530,8 @@ op {
       }
     }
   }
-  summary: "Returns the min of x and y (i.e. x < y ? x : y) element-wise, broadcasts."
+  summary: "Returns the min of x and y (i.e. x < y ? x : y) element-wise."
+  description: "*NOTE*: `Minimum` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -8510,6 +8631,7 @@ op {
     }
   }
   summary: "Returns element-wise remainder of division."
+  description: "*NOTE*: `Mod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Mul"
@@ -8544,6 +8666,7 @@ op {
     }
   }
   summary: "Returns x * y element-wise."
+  description: "*NOTE*: `Mul` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -8845,6 +8968,7 @@ op {
     }
   }
   summary: "Returns the truth value of (x != y) element-wise."
+  description: "*NOTE*: `NotEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -12095,8 +12219,50 @@ op {
       }
     }
   }
-  summary: "Calculates the Eigen Decomposition of a square Self-Adjoint matrix."
+  summary: "Computes the Eigen Decomposition of a square Self-Adjoint matrix."
   description: "Only the lower-triangular part of the input will be used in this case. The\nupper-triangular part will not be read.\n\nThe result is a M+1 x M matrix whose first row is the eigenvalues, and\nsubsequent rows are eigenvectors."
+  deprecation {
+    version: 11
+    explanation: "Use SelfAdjointEigV2 instead."
+  }
+}
+op {
+  name: "SelfAdjointEigV2"
+  input_arg {
+    name: "input"
+    description: "`Tensor` input of shape `[N, N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "e"
+    description: "Eigenvalues. Shape is `[N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    description: "Eigenvectors. Shape is `[N, N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_v"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If `True` then eigenvectors will be computed and returned in `v`.\nOtherwise, only the eigenvalues will be computed."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Computes the eigen decomposition of a self-adjoint (\\\"symmetric\\\") matrix."
+  description: "Computes the eigenvalues and (optionally) eigenvectors such that\n`input = v * diag(e)`.\n\n```prettyprint\n# a is a self-adjoint matrix.\n# e is a vector of eigenvalues.\n# v is a matrix of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
 }
 op {
   name: "SerializeManySparse"
@@ -14625,6 +14791,7 @@ op {
     }
   }
   summary: "Returns (x - y)(x - y) element-wise."
+  description: "*NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
   is_commutative: true
 }
 op {
@@ -15076,6 +15243,7 @@ op {
     }
   }
   summary: "Returns x - y element-wise."
+  description: "*NOTE*: `Sub` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Sum"
@@ -15126,6 +15294,57 @@ op {
   }
   summary: "Computes the sum of elements across dimensions of a tensor."
   description: "Reduces `input` along the dimensions given in `reduction_indices`. Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_indices`. If `keep_dims` is true, the reduced dimensions are\nretained with length 1."
+}
+op {
+  name: "Svd"
+  input_arg {
+    name: "input"
+    description: "Shape is `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "s"
+    description: "Singular values. Shape is `[P]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "u"
+    description: "Left singular vectors; if `full_matrices` is `False` then shape is `[M, M]`.\nIf `full_matrices` is `True` then shape is `[M, P]`.\nUndefined if `compute_uv` is `False`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "v"
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is `[N, N]`.\nIf `full_matrices` is `True` then shape is `[N, P]`.\nUndefined if `compute_uv` is false."
+    type_attr: "T"
+  }
+  attr {
+    name: "compute_uv"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true, left and right singular vectors will be\ncomputed and returned in `u` and `v`, respectively.\nIf false, `u` and `v` are not set and should never referenced."
+  }
+  attr {
+    name: "full_matrices"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, compute full-sized `u` and `v`. If false\n(the default), compute only the leading `P` singular vectors.\nIgnored if `compute_uv` is `False`."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+  summary: "Computes the singular value decomposition of a matrix."
+  description: "Computes the SVD of if `input` such that `input = u * diag(s) * transpose(v)`\n\n```prettyprint\n# a is a matrix.\n# s is a vector of singular values.\n# u is the matrix of left singular vectors.\n# v is a matrix of right singular vectors.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
 }
 op {
   name: "Switch"

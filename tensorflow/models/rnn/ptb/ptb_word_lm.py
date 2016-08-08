@@ -148,11 +148,15 @@ class PTBModel(object):
     tvars = tf.trainable_variables()
     grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
                                       config.max_grad_norm)
-    optimizer = tf.train.GradientDescentOptimizer(self.lr)
+    optimizer = tf.train.GradientDescentOptimizer(self._lr)
     self._train_op = optimizer.apply_gradients(zip(grads, tvars))
 
+    self._new_lr = tf.placeholder(
+        tf.float32, shape=[], name="new_learning_rate")
+    self._lr_update = tf.assign(self._lr, self._new_lr)
+
   def assign_lr(self, session, lr_value):
-    session.run(tf.assign(self.lr, lr_value))
+    session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
 
   @property
   def input_data(self):

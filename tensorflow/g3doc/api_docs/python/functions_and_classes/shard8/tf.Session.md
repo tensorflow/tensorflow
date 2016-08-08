@@ -80,32 +80,55 @@ the session constructor.
 
 #### `tf.Session.run(fetches, feed_dict=None, options=None, run_metadata=None)` {#Session.run}
 
-Runs the operations and evaluates the tensors in `fetches`.
+Runs operations and evaluates tensors in `fetches`.
 
 This method runs one "step" of TensorFlow computation, by
 running the necessary graph fragment to execute every `Operation`
 and evaluate every `Tensor` in `fetches`, substituting the values in
 `feed_dict` for the corresponding input values.
 
-The `fetches` argument may be a single graph element, an arbitrarily nested
-list of graph elements, or a dictionary whose values are the above. The type
-of `fetches` determines the return value of this method. A graph element can
-be one of the following types:
+The `fetches` argument may be a single graph element, or an arbitrarily
+nested list, tuple, namedtuple, or dict containing graph elements at its
+leaves.  A graph element can be one of the following types:
 
-* If an element of `fetches` is an
-  [`Operation`](../../api_docs/python/framework.md#Operation), the
-  corresponding fetched value will be `None`.
-* If an element of `fetches` is a
-  [`Tensor`](../../api_docs/python/framework.md#Tensor), the corresponding
-  fetched value will be a numpy ndarray containing the value of that tensor.
-* If an element of `fetches` is a
-  [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor),
-  the corresponding fetched value will be a
+* An [`Operation`](../../api_docs/python/framework.md#Operation).
+  The corresponding fetched value will be `None`.
+* A [`Tensor`](../../api_docs/python/framework.md#Tensor).
+  The corresponding fetched value will be a numpy ndarray containing the
+  value of that tensor.
+* A [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor).
+  The corresponding fetched value will be a
   [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
   containing the value of that sparse tensor.
-* If an element of `fetches` is produced by a `get_tensor_handle` op,
-  the corresponding fetched value will be a numpy ndarray containing the
-  handle of that tensor.
+* A `get_tensor_handle` op.  The corresponding fetched value will be a
+  numpy ndarray containing the handle of that tensor.
+* A `string` which is the name of a tensor or operation in the graph.
+
+The value returned by `run()` has the same shape as the `fetches` argument,
+where the leaves are replaced by the corresponding values returned by
+TensorFlow.
+
+Example:
+
+```python
+   a = tf.constant([10, 20])
+   b = tf.constant([1.0, 2.0])
+   # 'fetches' can be a singleton
+   v = session.run(a)
+   # v is the numpy array [10, 20]
+   # 'fetches' can be a list.
+   v = session.run([a, b])
+   # v a Python list with 2 numpy arrays: the numpy array [10, 20] and the
+   # 1-D array [1.0, 2.0]
+   # 'fetches' can be arbitrary lists, tuples, namedtuple, dicts:
+   MyData = collections.namedtuple('MyData', ['a', 'b'])
+   v = session.run({'k1': MyData(a, b), 'k2': [b, a]})
+   # v is a dict with
+   # v['k1'] is a MyData namedtuple with 'a' the numpy array [10, 20] and
+   # 'b' the numpy array [1.0, 2.0]
+   # v['k2'] is a list with the numpy array [1.0, 2.0] and the numpy array
+   # [10, 20].
+```
 
 The optional `feed_dict` argument allows the caller to override
 the value of tensors in the graph. Each key in `feed_dict` can be

@@ -56,6 +56,7 @@ Below are few simple examples of the API. For more examples, please see [example
 Simple linear classification:
 
 ```python
+import tensorflow.contrib.learn.python.learn as learn
 from sklearn import datasets, metrics
 
 iris = datasets.load_iris()
@@ -70,6 +71,7 @@ print("Accuracy: %f" % score)
 Simple linear regression:
 
 ```python
+import tensorflow.contrib.learn.python.learn as learn
 from sklearn import datasets, metrics, preprocessing
 
 boston = datasets.load_boston()
@@ -85,6 +87,7 @@ print ("MSE: %f" % score)
 Example of 3 layer network with 10, 20 and 10 hidden units respectively:
 
 ```python
+import tensorflow.contrib.learn.python.learn as learn
 from sklearn import datasets, metrics
 
 iris = datasets.load_iris()
@@ -99,6 +102,7 @@ print("Accuracy: %f" % score)
 Example of how to pass a custom model to the Estimator:
 
 ```python
+import tensorflow.contrib.learn.python.learn as learn
 from sklearn import datasets, metrics
 
 iris = datasets.load_iris()

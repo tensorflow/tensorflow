@@ -25,7 +25,7 @@ limitations under the License.
 // to avoid a dependency on floating-point hardware.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "external/gemmlowp/public/gemmlowp.h"
+#include "public/gemmlowp.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 

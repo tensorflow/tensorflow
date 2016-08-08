@@ -15,18 +15,32 @@ limitations under the License.
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 // --------------------------------------------------------------------------
+namespace {
+Status SwitchShape(InferenceContext* c) {
+  const Shape* unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+  const Shape* out = c->input(0);
+  c->set_output(0, out);
+  c->set_output(1, out);
+  return Status::OK();
+}
+}  // namespace
+
 REGISTER_OP("Switch")
     .Input("data: T")
     .Input("pred: bool")
     .Output("output_false: T")
     .Output("output_true: T")
     .Attr("T: type")
+    .SetShapeFn(SwitchShape)
     .Doc(R"doc(
 Forwards `data` to the output port determined by `pred`.
 
@@ -41,7 +55,6 @@ output_false: If `pred` is false, data will be forwarded to this output.
 output_true: If `pred` is true, data will be forwarded to this output.
 )doc");
 
-// --------------------------------------------------------------------------
 REGISTER_OP("RefSwitch")
     .Input("data: Ref(T)")
     .Input("pred: bool")
@@ -49,6 +62,7 @@ REGISTER_OP("RefSwitch")
     .Output("output_true: Ref(T)")
     .Attr("T: type")
     .SetAllowsUninitializedInput()
+    .SetShapeFn(SwitchShape)
     .Doc(R"doc(
 Forwards the ref tensor `data` to the output port determined by `pred`.
 
@@ -70,6 +84,26 @@ REGISTER_OP("RefSelect")
     .Output("output: Ref(T)")
     .Attr("T: type")
     .Attr("N: int >= 1")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      const Shape* first_input = c->input(1);
+      if (!c->FullyDefined(first_input)) {
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+      // If any inputs aren't fully defined or don't match, we return unknown.
+      for (int i = 2; i < c->num_inputs(); ++i) {
+        const Shape* input = c->input(i);
+        if (!c->FullyDefined(input) ||
+            !c->Merge(first_input, input, &unused).ok()) {
+          c->set_output(0, c->UnknownShape());
+          return Status::OK();
+        }
+      }
+      c->set_output(0, first_input);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Forwards the `index`th element of `inputs` to `output`.
 
@@ -79,12 +113,40 @@ output: The forwarded tensor.
 )doc");
 
 // --------------------------------------------------------------------------
+namespace {
+Status MergeShape(InferenceContext* c) {
+  const Shape* out = c->input(0);
+  if (!c->RankKnown(out)) {
+    out = c->UnknownShape();
+  } else {
+    int32 rank = c->Rank(out);
+    for (int i = 1; i < c->num_inputs(); ++i) {
+      const Shape* input = c->input(i);
+      if (c->Rank(input) != rank) {
+        out = c->UnknownShape();
+        break;
+      }
+
+      for (int d = 0; d < rank; ++d) {
+        if (c->Value(c->Dim(input, d)) != c->Value(c->Dim(out, d))) {
+          TF_RETURN_IF_ERROR(c->ReplaceDim(out, d, c->UnknownDim(), &out));
+        }
+      }
+    }
+  }
+  c->set_output(0, out);
+  c->set_output(1, c->Scalar());
+  return Status::OK();
+}
+}  // namespace
+
 REGISTER_OP("Merge")
     .Input("inputs: N * T")
     .Output("output: T")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
+    .SetShapeFn(MergeShape)
     .Doc(R"doc(
 Forwards the value of an available tensor from `inputs` to `output`.
 
@@ -107,6 +169,7 @@ REGISTER_OP("RefMerge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
+    .SetShapeFn(MergeShape)
     .Doc(R"doc(
 Forwards the value of an available tensor from `inputs` to `output`.
 
@@ -245,15 +308,17 @@ output: The same tensor as `input`.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ControlTrigger")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Does nothing. Serves as a control trigger for scheduling. Only useful as a
-placeholder for control edges.
-)doc");
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"docstring(
+Does nothing. Serves as a control trigger for scheduling.
+
+Only useful as a placeholder for control edges.
+)docstring");
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Abort")
     .Attr("error_msg: string = ''")
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Raise a exception to abort the process when called.
 

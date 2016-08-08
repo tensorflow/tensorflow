@@ -61,13 +61,13 @@ class SVM(linear.LinearClassifier):
         whose `value` is a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
         whose `value` is a `Tensor`.
-      - if `feauture_columns` is None, then `input` must contains only real
+      - if `feature_columns` is None, then `input` must contains only real
         valued `Tensor`.
 
 
   Parameters:
     example_id_column: A string defining the feature column name representing
-      example ids. Used do initialize the underlying optimizer.
+      example ids. Used to initialize the underlying optimizer.
     feature_columns: An iterable containing all the feature columns used by the
       model. All items in the set should be instances of classes derived from
       `FeatureColumn`.
@@ -75,10 +75,12 @@ class SVM(linear.LinearClassifier):
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
     model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to continue
-        training a previously saved model.
-    l1_regularization: L1-regularization parameter
-    l2_regularization: L2-regularization parameter
+        be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
+    l1_regularization: L1-regularization parameter. Refers to global L1
+    regularization (across all examples).
+    l2_regularization: L2-regularization parameter. Refers to global L2
+    regularization (across all examples).
     kernels: A list of kernels for the SVM. Currently, no kernels are supported.
       Reserved for future use for non-linear SVMs
     config: RunConfig object to configure the runtime settings.
@@ -100,12 +102,13 @@ class SVM(linear.LinearClassifier):
         symmetric_l1_regularization=l1_regularization,
         symmetric_l2_regularization=l2_regularization)
 
-    super(SVM, self).__init__(model_dir=model_dir,
-                              n_classes=2,
-                              weight_column_name=weight_column_name,
-                              feature_columns=feature_columns,
-                              optimizer=optimizer,
-                              config=config)
+    super(SVM, self).__init__(
+        model_dir=model_dir,
+        n_classes=2,
+        weight_column_name=weight_column_name,
+        feature_columns=feature_columns,
+        optimizer=optimizer,
+        config=config)
     self._target_column = layers.binary_svm_target(
         weight_column_name=weight_column_name)
 

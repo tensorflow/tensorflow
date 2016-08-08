@@ -60,11 +60,13 @@ def get_module_to_name():
       tf.contrib.distributions: "tf.contrib.distributions",
       tf.contrib.ffmpeg: "tf.contrib.ffmpeg",
       tf.contrib.framework: "tf.contrib.framework",
+      tf.contrib.graph_editor: "tf.contrib.graph_editor",
       tf.contrib.layers: "tf.contrib.layers",
       tf.contrib.learn: "tf.contrib.learn",
       tf.contrib.learn.monitors: (
           "tf.contrib.learn.monitors"),
       tf.contrib.losses: "tf.contrib.losses",
+      tf.contrib.rnn: "tf.contrib.rnn",
       tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
   }
@@ -118,7 +120,7 @@ def all_libraries(module_to_name, members, documented):
       library("tensor_array_ops", "TensorArray Operations", prefix=PREFIX_TEXT),
       library("session_ops", "Tensor Handle Operations", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
-               prefix=PREFIX_TEXT),
+              prefix=PREFIX_TEXT),
       library("sparse_ops",
               "Sparse Tensors",
               exclude_symbols=["serialize_sparse", "serialize_many_sparse",
@@ -166,16 +168,19 @@ def all_libraries(module_to_name, members, documented):
               tf.contrib.distributions),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
       library("contrib.framework", "Framework (contrib)", tf.contrib.framework),
+      library("contrib.graph_editor", "Graph Editor (contrib)",
+              tf.contrib.graph_editor),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
       library("contrib.learn.monitors", "Monitors (contrib)",
               tf.contrib.learn.monitors),
       library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
+      library("contrib.rnn", "RNN (contrib)", tf.contrib.rnn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
               tf.contrib.copy_graph),
-    ]
+  ]
 
 _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",

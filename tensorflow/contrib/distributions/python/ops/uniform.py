@@ -67,14 +67,14 @@ class Uniform(distribution.Distribution):
     ```
 
     Args:
-      a: `float` or `double` tensor, the minimum endpoint.
-      b: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
-      validate_args: Whether to assert that `a > b`. If `validate_args` is False
-        and inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      a: Floating point tensor, the minimum endpoint.
+      b: Floating point tensor, the maximum endpoint. Must be > `a`.
+      validate_args: Whether to assert that `a > b`. If `validate_args` is
+        `False` and inputs are invalid, correct behavior is not guaranteed.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Raises:
@@ -83,8 +83,9 @@ class Uniform(distribution.Distribution):
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     with ops.op_scope([a, b], name):
-      with ops.control_dependencies([check_ops.assert_less(a, b)] if
-                                    validate_args else []):
+      with ops.control_dependencies([check_ops.assert_less(
+          a, b, message="uniform not defined when a > b.")] if validate_args
+                                    else []):
         a = array_ops.identity(a, name="a")
         b = array_ops.identity(b, name="b")
 
@@ -228,7 +229,7 @@ class Uniform(distribution.Distribution):
         n = ops.convert_to_tensor(n, name="n")
         n_val = tensor_util.constant_value(n)
 
-        shape = array_ops.concat(0, [array_ops.pack([n]), self.batch_shape()])
+        shape = array_ops.concat(0, ([n], self.batch_shape()))
         samples = random_ops.random_uniform(shape=shape,
                                             dtype=self.dtype,
                                             seed=seed)

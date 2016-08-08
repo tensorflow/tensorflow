@@ -21,5 +21,6 @@ Create an op that decodes the contents of an audio file.
 
   A rank 2 tensor that has time along dimension 0 and channels along
   dimension 1. Dimension 0 will be `samples_per_second * length` wide, and
-  dimension 1 will be `channel_count` wide.
+  dimension 1 will be `channel_count` wide. If ffmpeg fails to decode the
+  audio then an empty tensor will be returned.
 

@@ -19,9 +19,8 @@ from __future__ import print_function
 
 # pylint: disable=line-too-long
 
-import numpy as np
-
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -29,30 +28,11 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
 # pylint: enable=line-too-long
-
-
-def _assert_close(x, y, data=None, summarize=None, name=None):
-  if x.dtype.is_integer:
-    return check_ops.assert_equal(
-        x, y, data=data, summarize=summarize, name=name)
-
-  with ops.op_scope([x, y, data], name, "assert_close"):
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
-    tol = np.finfo(x.dtype.as_numpy_dtype).resolution
-    if data is None:
-      data = [
-          "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
-          y.name, y
-      ]
-    condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
-    return logging_ops.Assert(condition, data, summarize=summarize)
 
 
 class Dirichlet(distribution.Distribution):
@@ -117,6 +97,7 @@ class Dirichlet(distribution.Distribution):
   x = [.2, .3, .5]
   dist.prob(x)  # Shape [2]
   ```
+
   """
 
   def __init__(self,
@@ -127,16 +108,16 @@ class Dirichlet(distribution.Distribution):
     """Initialize a batch of Dirichlet distributions.
 
     Args:
-      alpha:  Positive `float` or `double` tensor with shape broadcastable to
+      alpha:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different `k` class Dirichlet distributions.
       validate_args: Whether to assert valid values for parameters `alpha` and
-        `x` in `prob` and `log_prob`.  If False, correct behavior is not
+        `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
         guaranteed.
-      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
-        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
-        If True, batch members with valid parameters leading to undefined
-        statistics will return NaN for this statistic.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Examples:
@@ -149,6 +130,7 @@ class Dirichlet(distribution.Distribution):
     # Define a 2-batch of 3-class distributions.
     dist = Dirichlet([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     ```
+
     """
     with ops.op_scope([alpha], name):
       alpha = ops.convert_to_tensor(alpha, name="alpha_before_deps")
@@ -302,7 +284,9 @@ class Dirichlet(distribution.Distribution):
                array_ops.ones_like(self._alpha, dtype=self.dtype)))
         else:
           return control_flow_ops.with_dependencies([
-              check_ops.assert_less(one, self._alpha)
+              check_ops.assert_less(
+                  one, self._alpha,
+                  message="mode not defined for components of alpha <= 1")
           ], mode)
 
   def entropy(self, name="entropy"):
@@ -334,7 +318,7 @@ class Dirichlet(distribution.Distribution):
     """`Log(P[counts])`, computed for every batch member.
 
     Args:
-      x:  Non-negative `float` or `double`, tensor whose shape can
+      x:  Non-negative tensor with dtype `dtype` and whose shape can
         be broadcast with `self.alpha`.  For fixed leading dimensions, the last
         dimension represents counts for the corresponding Dirichlet distribution
         in `self.alpha`. `x` is only legal if it sums up to one.
@@ -359,7 +343,7 @@ class Dirichlet(distribution.Distribution):
     """`P[x]`, computed for every batch member.
 
     Args:
-      x:  Non-negative `float`, `double` tensor whose shape can
+      x:  Non-negative tensor with dtype `dtype` and whose shape can
         be broadcast with `self.alpha`.  For fixed leading dimensions, the last
         dimension represents x for the corresponding Dirichlet distribution in
         `self.alpha` and `self.beta`. `x` is only legal if it sums up to one.
@@ -407,7 +391,8 @@ class Dirichlet(distribution.Distribution):
     x = ops.convert_to_tensor(x, name="x_before_deps")
     candidate_one = math_ops.reduce_sum(x, reduction_indices=[-1])
     one = constant_op.constant(1., self.dtype)
-    dependencies = [check_ops.assert_positive(x), check_ops.assert_less(x, one),
-                    _assert_close(one, candidate_one)
+    dependencies = [check_ops.assert_positive(x), check_ops.assert_less(
+        x, one, message="x has components greater than or equal to 1"),
+                    distribution_util.assert_close(one, candidate_one)
                    ] if self.validate_args else []
     return control_flow_ops.with_dependencies(dependencies, x)

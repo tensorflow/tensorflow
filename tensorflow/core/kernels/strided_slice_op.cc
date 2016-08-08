@@ -405,13 +405,29 @@ class StridedSliceGradOp : public OpKernel {
         context, input_shape_tensor.dims() == 1,
         errors::InvalidArgument("shape must be 1-D, got shape.shape = ",
                                 input_shape_tensor.shape().DebugString()));
-    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                input_shape_tensor.vec<int32>(), &input_shape));
+    if (input_shape_tensor.dtype() == DT_INT32) {
+      OP_REQUIRES_OK(
+          context, TensorShapeUtils::MakeShape(input_shape_tensor.vec<int32>(),
+                                               &input_shape));
+    } else if (input_shape_tensor.dtype() == DT_INT64) {
+      OP_REQUIRES_OK(
+          context, TensorShapeUtils::MakeShape(input_shape_tensor.vec<int64>(),
+                                               &input_shape));
+    } else {
+      LOG(FATAL) << "shape must have type int32 or int64.";
+    }
 
     SharedValidation(context, input_shape, begin_mask, end_mask, ellipsis_mask,
                      new_axis_mask, shrink_axis_mask, &processing_shape,
                      &final_shape, &is_identity, &is_simple_slice, &slice_dim0,
                      &begin, &end, &strides);
+
+    // Check to make sure dy is consistent with the original slice
+    TensorShape dy_shape = context->input(4).shape();
+    OP_REQUIRES(
+        context, final_shape == dy_shape,
+        errors::InvalidArgument("shape of dy was ", dy_shape.DebugString(),
+                                " instead of ", final_shape.DebugString()));
 
     if (!context->status().ok()) return;
 
@@ -454,6 +470,7 @@ class StridedSliceGradOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")         \
                               .Device(DEVICE_CPU)          \
                               .TypeConstraint<type>("T")   \
+                              .HostMemory("shape")         \
                               .HostMemory("begin")         \
                               .HostMemory("end")           \
                               .HostMemory("strides"),      \
@@ -478,6 +495,7 @@ REGISTER_STRIDED_SLICE(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("StridedSliceGrad")             \
                               .Device(DEVICE_GPU)              \
                               .TypeConstraint<type>("T")       \
+                              .HostMemory("shape")             \
                               .HostMemory("begin")             \
                               .HostMemory("end")               \
                               .HostMemory("strides")           \

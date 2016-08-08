@@ -151,7 +151,7 @@ def _SliceGrad(op, grad):
 
 @ops.RegisterGradient("StridedSlice")
 def _StridedSliceGrad(op, grad):
-  """Gradient for unpack op."""
+  """Gradient for StridedSlice op."""
   x = array_ops.shape(op.inputs[0])
   begin = op.inputs[1]
   end = op.inputs[2]
@@ -168,6 +168,25 @@ def _StridedSliceGrad(op, grad):
       ellipsis_mask=op.get_attr("ellipsis_mask"),
       new_axis_mask=op.get_attr("new_axis_mask"),
       shrink_axis_mask=op.get_attr("shrink_axis_mask")), None, None, None
+
+
+@ops.RegisterGradient("StridedSliceGrad")
+def _StridedSliceGradGrad(op, grad):
+  """Gradient for StridedSliceGrad op."""
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+
+  return None, None, None, None, array_ops.strided_slice(
+      grad,
+      begin,
+      end,
+      strides,
+      begin_mask=op.get_attr("begin_mask"),
+      end_mask=op.get_attr("end_mask"),
+      ellipsis_mask=op.get_attr("ellipsis_mask"),
+      new_axis_mask=op.get_attr("new_axis_mask"),
+      shrink_axis_mask=op.get_attr("shrink_axis_mask"))
 
 
 @ops.RegisterGradient("Split")
@@ -253,6 +272,12 @@ def _GatherGrad(op, grad):
 @ops.RegisterGradient("GatherNd")
 def _GatherNdGrad(unused_op, unused_grad):
   raise NotImplementedError("Gradient for gather_nd is not implemented.")
+
+
+@ops.RegisterGradient("CheckNumerics")
+def _CheckNumericsGrad(_, grad):
+  """Gradient for check_numerics op."""
+  return grad
 
 
 @ops.RegisterGradient("Identity")

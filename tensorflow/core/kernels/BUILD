@@ -379,8 +379,8 @@ tf_kernel_libraries(
         "batch_matrix_diag_op",
         "batch_matrix_set_diag_op",
         "edit_distance_op",
-        "gather_nd_op",
         "gather_op",
+        "gather_nd_op",
         "identity_op",
         "immutable_constant_op",
         "listdiff_op",
@@ -423,6 +423,7 @@ tf_kernel_libraries(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/debug:debug_io_utils",
         "//third_party/eigen3",
     ],
 )
@@ -1018,13 +1019,14 @@ tf_kernel_libraries(
         "cholesky_grad",
         "determinant_op",
         "self_adjoint_eig_op",
+        "self_adjoint_eig_v2_op",
         "matrix_inverse_op",
         "matrix_solve_ls_op",
         "matrix_solve_op",
         "matrix_triangular_solve_op",
+        "svd_op",
     ],
     deps = [
-        ":binary_linalg_ops_common",
         ":linalg_ops_common",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1033,7 +1035,6 @@ tf_kernel_libraries(
     ],
 )
 
-# TODO(josh11b): Should these two *linalg_ops_common libraries be merged?
 cc_library(
     name = "linalg_ops_common",
     srcs = ["linalg_ops_common.cc"],
@@ -1041,17 +1042,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "binary_linalg_ops_common",
-    srcs = ["binary_linalg_ops_common.cc"],
-    hdrs = ["binary_linalg_ops_common.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )

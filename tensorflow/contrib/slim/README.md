@@ -198,7 +198,7 @@ of the corresponding TF-Slim code:
 
 ```python
 input = ...
-net = slim.conv2d(input, [3, 3], 128, scope='conv1_1')
+net = slim.conv2d(input, 128, [3, 3], scope='conv1_1')
 ```
 
 TF-Slim provides standard implementations for numerous components for building
@@ -431,7 +431,7 @@ between the predicted and true values.
 
 Certain models, such as multi-task
 learning models, require the use of multiple loss functions simultaneously. In
-other words, the loss function ultimatey being minimized is the sum of various
+other words, the loss function ultimately being minimized is the sum of various
 other loss functions. For example, consider a model that predicts both
 the type of scene in an image as well as the depth from the
 camera of each pixel. This model's loss function would be the sum of the

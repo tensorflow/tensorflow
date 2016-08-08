@@ -247,6 +247,9 @@ class TypesTest(test_util.TensorFlowTestCase):
       self.assertEquals(type(dtype2), tf.DType)
       self.assertEquals(dtype, dtype2)
 
+  def testEqWithNonTFTypes(self):
+    self.assertNotEqual(tf.int32, int)
+    self.assertNotEqual(tf.float64, 2.1)
 
 if __name__ == "__main__":
   googletest.main()

@@ -117,6 +117,61 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
 
 
+class MultivariateNormalDiagPlusVDVTTest(tf.test.TestCase):
+  """Well tested because this is a simple override of the base class."""
+
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
+  def testMean(self):
+    mu = [-1.0, 1.0]
+    diag_large = [1.0, 5.0]
+    v = [[2.0], [3.0]]
+    diag_small = [3.0]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiagPlusVDVT(
+          mu, diag_large, v, diag_small=diag_small)
+      self.assertAllEqual(mu, dist.mean().eval())
+
+  def testNonmatchingMuAndSigmaDimensionFailsStatic(self):
+    mu = self._rng.rand(2)
+    # With this diag_large and v, the covariance is 3 x 3
+    diag_large = self._rng.rand(3)
+    v = self._rng.rand(3, 2)  # v works with diag_large.
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "shape.*should match"):
+        distributions.MultivariateNormalDiagPlusVDVT(
+            mu, diag_large, v)
+
+  def testNonmatchingMuDiagDimensionsFailsDynamic(self):
+    mu = self._rng.rand(2)
+    # With this diag_large and v, the covariance is 3 x 3
+    diag_large = self._rng.rand(3)
+    v = self._rng.rand(3, 2)  # v works with diag_large.
+
+    with self.test_session():
+      mu_ph = tf.placeholder(tf.float32, name="mu_ph")
+      v_ph = tf.placeholder(tf.float32, name="v_ph")
+      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
+      dist = distributions.MultivariateNormalDiagPlusVDVT(
+          mu_ph, diag_ph, v_ph)
+      with self.assertRaisesOpError("mu.*cov.*shape"):
+        dist.mean().eval(feed_dict={mu_ph: mu, diag_ph: diag_large, v_ph: v})
+
+  def testSample(self):
+    mu = [-1.0, 1.0]
+    diag_large = [1.0, 0.5]
+    v = [[0.2], [0.3]]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiagPlusVDVT(mu, diag_large, v)
+
+      samps = dist.sample_n(1000, seed=0).eval()
+      cov_mat = dist.sigma.eval()
+
+      self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
+      self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
+
+
 class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
   def setUp(self):
@@ -312,6 +367,88 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
       # Shapes known at runtime.
       self.assertEqual((2,), tuple(mvn.event_shape().eval()))
       self.assertEqual((3, 5), tuple(mvn.batch_shape().eval()))
+
+
+class MultivariateNormalFullTest(tf.test.TestCase):
+
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
+  def _random_mu_and_sigma(self, batch_shape, event_shape):
+    # This ensures sigma is positive def.
+    mat_shape = batch_shape + event_shape + event_shape
+    mat = self._rng.randn(*mat_shape)
+    sigma = tf.batch_matmul(mat, mat, adj_y=True).eval()
+
+    mu_shape = batch_shape + event_shape
+    mu = self._rng.randn(*mu_shape)
+
+    return mu, sigma
+
+  def testKLNonBatch(self):
+    batch_shape = ()
+    event_shape = (2,)
+    with self.test_session():
+      mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
+      mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
+      mvn_a = distributions.MultivariateNormalFull(mu_a, sigma_a)
+      mvn_b = distributions.MultivariateNormalFull(mu_b, sigma_b)
+
+      kl = distributions.kl(mvn_a, mvn_b)
+      self.assertEqual(batch_shape, kl.get_shape())
+
+      kl_v = kl.eval()
+      expected_kl = _compute_non_batch_kl(mu_a, sigma_a, mu_b, sigma_b)
+      self.assertAllClose(expected_kl, kl_v)
+
+  def testKLBatch(self):
+    batch_shape = (2,)
+    event_shape = (3,)
+    with self.test_session():
+      mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
+      mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
+      mvn_a = distributions.MultivariateNormalFull(mu_a, sigma_a)
+      mvn_b = distributions.MultivariateNormalFull(mu_b, sigma_b)
+
+      kl = distributions.kl(mvn_a, mvn_b)
+      self.assertEqual(batch_shape, kl.get_shape())
+
+      kl_v = kl.eval()
+      expected_kl_0 = _compute_non_batch_kl(
+          mu_a[0, :], sigma_a[0, :, :], mu_b[0, :], sigma_b[0, :])
+      expected_kl_1 = _compute_non_batch_kl(
+          mu_a[1, :], sigma_a[1, :, :], mu_b[1, :], sigma_b[1, :])
+      self.assertAllClose(expected_kl_0, kl_v[0])
+      self.assertAllClose(expected_kl_1, kl_v[1])
+
+  def testKLTwoIdenticalDistributionsIsZero(self):
+    batch_shape = (2,)
+    event_shape = (3,)
+    with self.test_session():
+      mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
+      mvn_a = distributions.MultivariateNormalFull(mu_a, sigma_a)
+
+      # Should be zero since KL(p || p) = =.
+      kl = distributions.kl(mvn_a, mvn_a)
+      self.assertEqual(batch_shape, kl.get_shape())
+
+      kl_v = kl.eval()
+      self.assertAllClose(np.zeros(*batch_shape), kl_v)
+
+
+def _compute_non_batch_kl(mu_a, sigma_a, mu_b, sigma_b):
+  """Non-batch KL for N(mu_a, sigma_a), N(mu_b, sigma_b)."""
+  # Check using numpy operations
+  # This mostly repeats the tensorflow code _kl_mvn_mvn(), but in numpy.
+  # So it is important to also check that KL(mvn, mvn) = 0.
+  sigma_b_inv = np.linalg.inv(sigma_b)
+
+  t = np.trace(sigma_b_inv.dot(sigma_a))
+  q = (mu_b - mu_a).dot(sigma_b_inv).dot(mu_b - mu_a)
+  k = mu_a.shape[0]
+  l = np.log(np.linalg.det(sigma_b) / np.linalg.det(sigma_a))
+
+  return 0.5 * (t + q - k + l)
 
 
 if __name__ == "__main__":
