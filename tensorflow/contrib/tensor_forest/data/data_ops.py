@@ -131,7 +131,7 @@ def _ParseSparse(data):
     offset += offset_increment
 
   return (sparse_ops.sparse_concat(1, sparse_tensors),
-          [constants.DATA_FLOAT])
+          [constants.DATA_CATEGORICAL])
 
 
 def _ParseDense(data):
