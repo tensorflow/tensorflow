@@ -918,6 +918,10 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
 
   // Initialize the executor state.
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
+
+  if (args.step_resource_manager_init) {
+    args.step_resource_manager_init(&step_resource_manager_);
+  }
 }
 
 ExecutorState::~ExecutorState() {
