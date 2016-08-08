@@ -140,6 +140,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
                                                 const StringPiece export_dir,
                                                 SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
+  LOG(INFO) << "Using RunOptions: " << run_options.DebugString();
   const int64 start_seconds = Env::Default()->NowSeconds();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
