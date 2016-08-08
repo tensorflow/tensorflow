@@ -1066,6 +1066,9 @@ class Saver(object):
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
             (latest_filename, save_path))
 
+    if not os.path.exists(os.path.dirname(save_path)):
+      raise ValueError("Parent directory of {} doesn't exist, can't save.".format(save_path))
+
     save_path = os.path.dirname(save_path)
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
