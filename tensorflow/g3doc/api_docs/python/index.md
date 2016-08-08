@@ -767,6 +767,7 @@
   * [`LoggingTrainable`](../../api_docs/python/contrib.learn.monitors.md#LoggingTrainable)
   * [`NanLoss`](../../api_docs/python/contrib.learn.monitors.md#NanLoss)
   * [`PrintTensor`](../../api_docs/python/contrib.learn.monitors.md#PrintTensor)
+  * [`RunHookAdapterForMonitors`](../../api_docs/python/contrib.learn.monitors.md#RunHookAdapterForMonitors)
   * [`StepCounter`](../../api_docs/python/contrib.learn.monitors.md#StepCounter)
   * [`StopAtStep`](../../api_docs/python/contrib.learn.monitors.md#StopAtStep)
   * [`SummarySaver`](../../api_docs/python/contrib.learn.monitors.md#SummarySaver)
