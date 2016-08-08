@@ -2393,6 +2393,66 @@ REGISTER_OP("SpaceToBatch")
     .Output("output: T")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      const Shape* paddings;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &paddings));
+
+      const Dimension* pad0_dim = c->Dim(paddings, 0);
+      const Dimension* pad1_dim = c->Dim(paddings, 1);
+
+      if (!c->ValueKnown(pad0_dim) || !c->ValueKnown(pad1_dim)) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      int64 pad0 = c->Value(pad0_dim);
+      int64 pad1 = c->Value(pad1_dim);
+      if (pad0 != 2 || pad1 != 2) {
+        return errors::InvalidArgument(
+            "SpaceToBatch requires paddings with shape [2,2].");
+      }
+
+      int32 block_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+
+      const Dimension* output_height;
+      const Dimension* output_width;
+
+      const Tensor* paddings_t = c->input_tensor(1);
+      if (paddings_t == nullptr) {
+        output_height = c->UnknownDim();
+        output_width = c->UnknownDim();
+      } else {
+        auto pad_matrix = paddings_t->matrix<int32>();
+        const int32 pad_top = pad_matrix(0, 0);
+        const int32 pad_bottom = pad_matrix(0, 1);
+        const int32 pad_left = pad_matrix(1, 0);
+        const int32 pad_right = pad_matrix(1, 1);
+
+        if (pad_top < 0 || pad_bottom < 0 || pad_left < 0 || pad_right < 0) {
+          return errors::InvalidArgument("Paddings cannot be negative.");
+        }
+
+        TF_RETURN_IF_ERROR(
+            c->Add(c->Dim(input, 1), pad_top + pad_bottom, &output_height));
+        TF_RETURN_IF_ERROR(
+            c->Add(c->Dim(input, 2), pad_left + pad_right, &output_width));
+      }
+
+      const Dimension* batch;
+      TF_RETURN_IF_ERROR(
+          c->Multiply(c->Dim(input, 0), block_size * block_size, &batch));
+
+      // Will return an error if block_size does not evenly divide.
+      TF_RETURN_IF_ERROR(c->Divide(output_height, block_size, &output_height));
+      TF_RETURN_IF_ERROR(c->Divide(output_width, block_size, &output_width));
+
+      c->set_output(0, c->MakeShape({batch, output_height, output_width,
+                                     c->Dim(input, 3)}));
+      return Status::OK();
+    })
     .Doc(R"doc(
 SpaceToBatch for 4-D tensors of type T.
 
@@ -2498,6 +2558,69 @@ REGISTER_OP("BatchToSpace")
     .Output("output: T")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      const Shape* crops;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &crops));
+
+      const Dimension* crops0_dim = c->Dim(crops, 0);
+      const Dimension* crops1_dim = c->Dim(crops, 1);
+
+      if (!c->ValueKnown(crops0_dim) || !c->ValueKnown(crops1_dim)) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      int64 crops0 = c->Value(crops0_dim);
+      int64 crops1 = c->Value(crops1_dim);
+      if (crops0 != 2 || crops1 != 2) {
+        return errors::InvalidArgument(
+            "BatchToSpace requires crops with shape [2,2].");
+      }
+
+      int32 block_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+
+      const Dimension* batch;
+      // Will return an error if does not evenly divide
+      TF_RETURN_IF_ERROR(
+          c->Divide(c->Dim(input, 0), block_size * block_size, &batch));
+
+      const Dimension* output_height;
+      const Dimension* output_width;
+
+      const Tensor* crops_t = c->input_tensor(1);
+      if (crops_t == nullptr) {
+        output_height = c->UnknownDim();
+        output_width = c->UnknownDim();
+      } else {
+        auto crops_matrix = crops_t->matrix<int32>();
+        const int32 crops_top = crops_matrix(0, 0);
+        const int32 crops_bottom = crops_matrix(0, 1);
+        const int32 crops_left = crops_matrix(1, 0);
+        const int32 crops_right = crops_matrix(1, 1);
+
+        if (crops_top < 0 || crops_bottom < 0 || crops_left < 0 ||
+            crops_right < 0) {
+          return errors::InvalidArgument("Croppings cannot be negative.");
+        }
+
+        TF_RETURN_IF_ERROR(
+            c->Multiply(c->Dim(input, 1), block_size, &output_height));
+        TF_RETURN_IF_ERROR(c->Subtract(
+            output_height, (crops_top + crops_bottom), &output_height));
+
+        TF_RETURN_IF_ERROR(
+            c->Multiply(c->Dim(input, 2), block_size, &output_width));
+        TF_RETURN_IF_ERROR(c->Subtract(output_width, (crops_left + crops_right),
+                                       &output_width));
+      }
+
+      c->set_output(0, c->MakeShape({batch, output_height, output_width,
+                                     c->Dim(input, 3)}));
+      return Status::OK();
+    })
     .Doc(R"doc(
 BatchToSpace for 4-D tensors of type T.
 
@@ -2593,6 +2716,29 @@ REGISTER_OP("SpaceToDepth")
     .Output("output: T")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      int32 block_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+
+      const Dimension* output_height;
+      const Dimension* output_width;
+      const Dimension* output_depth;
+      // Will return an error if does not evenly divide
+      TF_RETURN_IF_ERROR(
+          c->Divide(c->Dim(input, 1), block_size, &output_height));
+      TF_RETURN_IF_ERROR(
+          c->Divide(c->Dim(input, 2), block_size, &output_width));
+
+      TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, 3), block_size * block_size,
+                                     &output_depth));
+
+      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
+                                     output_width, output_depth}));
+      return Status::OK();
+    })
     .Doc(R"doc(
 SpaceToDepth for tensors of type T.
 
@@ -2677,6 +2823,27 @@ REGISTER_OP("DepthToSpace")
     .Output("output: T")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      int32 block_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+
+      const Dimension* output_height;
+      const Dimension* output_width;
+      const Dimension* output_depth;
+      TF_RETURN_IF_ERROR(
+          c->Multiply(c->Dim(input, 1), block_size, &output_height));
+      TF_RETURN_IF_ERROR(
+          c->Multiply(c->Dim(input, 2), block_size, &output_width));
+      TF_RETURN_IF_ERROR(
+          c->Divide(c->Dim(input, 3), block_size * block_size, &output_depth));
+
+      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
+                                     output_width, output_depth}));
+      return Status::OK();
+    })
     .Doc(R"doc(
 DepthToSpace for tensors of type T.
 
