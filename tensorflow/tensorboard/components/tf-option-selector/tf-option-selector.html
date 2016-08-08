@@ -1,0 +1,77 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+
+<!--
+tf-option-selector is a simple component that has buttons as content and
+provides a "selectedId" property that is one of the IDs of the buttons inside it.
+-->
+<dom-module id="tf-option-selector">
+  <template>
+    <div id="wrap">
+      <h3>[[name]]</h3>
+      <div class="content-wrapper"><content></content></div>
+    </div>
+    <style>
+      .content-wrapper ::content > * {
+        width: 30%;
+        font-size: 13px;
+        background: none;
+        margin-top: 10px;
+        color: var(--tb-ui-dark-accent);
+      }
+
+      .content-wrapper ::content :first-of-type {
+        margin-left: 0;
+      }
+
+      .content-wrapper ::content .selected {
+        background-color: var(--tb-ui-dark-accent);
+        color: white!important;
+      }
+
+      h3 {
+        color: var(--paper-grey-800);
+        margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
+        display: block;
+        pointer-events: none;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-option-selector",
+      properties: {
+        name: String,
+        selectedId: {
+          type: String,
+          notify: true,
+          observer: '_selectedIdChanged'
+        }
+      },
+      attached: function() {
+        this.async(function() {
+          this.getEffectiveChildren().forEach(function(node) {
+            this.listen(node, 'tap', '_selectTarget');
+          }.bind(this));
+        });
+      },
+      _selectTarget: function(e) {
+        this.selectedId = e.currentTarget.id;
+      },
+      _selectedIdChanged: function() {
+        var selected = this.queryEffectiveChildren('#' + this.selectedId);
+        if (!selected) {
+          return;
+        }
+
+        this.getEffectiveChildren().forEach(function(node) {
+          node.classList.remove("selected");
+        });
+        selected.classList.add("selected");
+      }
+    });
+  </script>
+</dom-module>

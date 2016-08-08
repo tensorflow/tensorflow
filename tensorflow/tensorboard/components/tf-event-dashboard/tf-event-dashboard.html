@@ -1,7 +1,7 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="tf-run-selector.html">
 <link rel="import" href="tf-smoothing-input.html">
-<link rel="import" href="tf-x-type-selector.html">
+<link rel="import" href="../tf-option-selector/tf-option-selector.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
 <link rel="import" href="../tf-chart-scaffold/tf-chart-scaffold.html">
@@ -59,10 +59,15 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
           ></tf-smoothing-input>
         </div>
         <div class="sidebar-section">
-          <tf-x-type-selector
+          <tf-option-selector
             id="xTypeSelector"
-            out-x-type="{{xType}}"
-          ></tf-x-type-selector>
+            name="Horizontal Axis"
+            selected-id="{{_xType}}"
+            >
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
         </div>
         <div class="sidebar-section">
           <tf-run-selector
@@ -92,7 +97,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                       >
                       <vz-line-chart
                         id="chart"
-                        x-type="[[xType]]"
+                        x-type="[[_xType]]"
                         color-scale="[[colorScale]]"
                         smoothing-decay="[[_smoothingDecay]]"
                         smoothing-enabled="[[_smoothingEnabled]]"
@@ -160,6 +165,10 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
           type: Object,
           notify: true,
         },
+        _xType: {
+          type: String,
+          value: "step"
+        }
       },
       attached: function() {
         this.async(function() {
