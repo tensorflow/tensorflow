@@ -30,10 +30,15 @@ void TF_Run_wrapper(TF_Session* session,
                    std::vector<std::string> target_node_names,
                    // Output status
                    TF_Status* out_status) {
- 
+
   std::vector<const char*> cstring_input_tensor_names;
   std::vector<const char*> cstring_output_tensor_names;
   std::vector<const char*> cstring_target_node_names;
+
+  cstring_input_tensor_names.reserve(input_tensor_names.size());
+  cstring_output_tensor_names.reserve(output_tensor_names.size());
+  cstring_target_node_names.reserve(target_node_names.size());
+
   for (auto& input_name: input_tensor_names) {
     cstring_input_tensor_names.push_back(input_name.c_str());
   }
@@ -43,7 +48,7 @@ void TF_Run_wrapper(TF_Session* session,
   for (auto& target_name: target_node_names) {
     cstring_target_node_names.push_back(target_name.c_str());
   }
-  
+
   outputs = std::vector<TF_Tensor*>(output_tensor_names.size());
 
   const TF_Buffer* run_options = TF_NewBuffer();

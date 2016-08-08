@@ -3,14 +3,13 @@ package tensorflow_test
 import (
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 
 	tf "github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
 
 func getTensorFromGraph(t *testing.T, dType, shapeVal string) *tf.Tensor {
-	graph, err := tf.NewGraphFromReader(strings.NewReader(fmt.Sprintf(`
+	graph, err := tf.NewGraphFromString(`
 		node {
 			name: "output"
 			op: "Const"
@@ -30,8 +29,7 @@ func getTensorFromGraph(t *testing.T, dType, shapeVal string) *tf.Tensor {
 				}
 			}
 		}
-		version: 5`,
-		dType, dType, shapeVal)), true)
+		version: 5`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +44,7 @@ func getTensorFromGraph(t *testing.T, dType, shapeVal string) *tf.Tensor {
 	}
 
 	if len(output) != 1 {
-		t.Fatalf("Expexted 1 tensor, got: %d tensors", len(output))
+		t.Fatalf("Expected 1 tensor, got: %d tensors", len(output))
 	}
 
 	return output[0]

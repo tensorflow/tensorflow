@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include "typemaps.i"
-%include "std_vector.i"
-%include "std_string.i"
+%include <typemaps.i>
+%include <std_vector.i>
+%include <std_string.i>
 
 %{
 #include "tensorflow/core/public/tensor_c_api.h"
@@ -24,12 +24,8 @@ limitations under the License.
 #include "tf_session_helper.h"
 %}
 
-%include "typemaps.i"
-
-namespace std {
-   %template(StringVector) vector<string>;
-   %template(TensorVector) vector<TF_Tensor*>;
-}
+%template(StringVector) std::vector<std::string>;
+%template(TensorVector) std::vector<TF_Tensor*>;
 
 %typemap(gotype) void *proto %{[]byte%}
 %typemap(in) (const void* proto, size_t proto_len) {

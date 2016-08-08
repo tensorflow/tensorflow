@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_GO_CLIENT_TF_TENSOR_HELPER_H_
 #define TENSORFLOW_GO_CLIENT_TF_TENSOR_HELPER_H_
 
-#include <vector>
-
 #include "tensorflow/core/public/tensor_c_api.h"
 
 namespace tensorflow {

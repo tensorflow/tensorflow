@@ -2,8 +2,7 @@ package tensorflow_test
 
 import (
 	"fmt"
-	"os"
-	"strings"
+	"io/ioutil"
 
 	"github.com/tensorflow/tensorflow/tensorflow/contrib/go"
 )
@@ -31,7 +30,7 @@ func ExampleGraph_Op() {
 
 	for i := 0; i < len(inputSlice1); i++ {
 		val, _ := out[0].GetVal(int64(i))
-		fmt.Println("The result of: %d + (%d*%d) is: %d", inputSlice1[i], inputSlice2[i], additions, val)
+		fmt.Printf("The result of: %d + (%d*%d) is: %d\n", inputSlice1[i], inputSlice2[i], additions, val)
 	}
 }
 
@@ -46,8 +45,8 @@ func ExampleNewTensor_scalar() {
 	tensorflow.NewTensor("Hello TensorFlow")
 }
 
-func ExampleNewGraphFromText() {
-	graph, err := tensorflow.NewGraphFromReader(strings.NewReader(`
+func ExampleNewGraphFromString() {
+	graph, err := tensorflow.NewGraphFromString(`
 		node {
 			name: "output"
 			op: "Const"
@@ -69,9 +68,12 @@ func ExampleNewGraphFromText() {
 				}
 			}
 		}
-		version: 5`), true)
+		version: 5`)
+	if err != nil {
+		return
+	}
 
-	fmt.Println(graph, err)
+	fmt.Print(graph)
 }
 
 func ExampleGraph_Constant() {
@@ -145,11 +147,11 @@ func ExampleSession_ExtendGraph() {
 	s.ExtendGraph(graph)
 }
 
-func ExampleNewGraphFromReader() {
-	// Load the Graph from from a file who contains a previously generated
-	// Graph as text.
-	reader, _ := os.Open("/tmp/graph/test_graph.pb")
-	graph, _ := tensorflow.NewGraphFromReader(reader, true)
+func ExampleNewGraphFromBuffer() {
+	// Load the Graph from from a file containing a serialized
+	// Graph.
+	b, _ := ioutil.ReadFile("/tmp/graph/test_graph.pb")
+	graph, _ := tensorflow.NewGraphFromBuffer(b)
 
 	// Create the Session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
