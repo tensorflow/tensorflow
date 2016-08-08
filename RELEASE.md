@@ -1,3 +1,9 @@
+# Changes since last release
+
+## Breaking Changes to the API
+
+* DeviceFactory's AddDevices and CreateDevices functions now return
+  a Status instead of void.
 
 # Release 0.10.0
 

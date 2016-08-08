@@ -173,9 +173,9 @@ Device* GetCPUDevice() {
   mutex_lock l(mu);
   if (!device) {
     std::vector<Device*> devices;
-    DeviceFactory::GetFactory(DEVICE_CPU)
-        ->CreateDevices(SessionOptions{}, "", &devices);
-    if (devices.size() > 0) {
+    Status s = DeviceFactory::GetFactory(DEVICE_CPU)
+                   ->CreateDevices(SessionOptions{}, "", &devices);
+    if (s.ok() && devices.size() > 0) {
       device = devices[0];
     }
   }

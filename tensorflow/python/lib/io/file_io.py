@@ -99,7 +99,11 @@ def get_matching_files(filename):
     errors.OpError: If there are filesystem / directory listing errors.
   """
   with errors.raise_exception_on_not_ok_status() as status:
-    return pywrap_tensorflow.GetMatchingFiles(compat.as_bytes(filename), status)
+    # Convert each element to string, since the return values of the
+    # vector of string should be interpreted as strings, not bytes.
+    return [compat.as_str(matching_filename)
+            for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+                compat.as_bytes(filename), status)]
 
 
 def create_dir(dirname):
