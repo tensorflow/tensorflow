@@ -2174,14 +2174,17 @@ def _TileShape(op):
   """
   multiples_shape = op.inputs[1].get_shape().with_rank(1)
   input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0].value)
-  multiples = tensor_util.constant_value(op.inputs[1])
-  if multiples is None:
-    return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
+  # NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
+  # it is a vector of non-negative integers, and (ii) doing so allows
+  # us to handle partially-known multiples.
+  multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
+      input_shape.ndims)
+  if multiples.ndims is None:
+    return [tensor_shape.unknown_shape()]
   else:
     output_dims = []
-    multiples = multiples.ravel()
-    for i, dim in enumerate(input_shape.dims):
-      output_dims.append(dim * multiples[i])
+    for dim, multiple in zip(input_shape.dims, multiples.dims):
+      output_dims.append(dim * multiple)
     return [tensor_shape.TensorShape(output_dims)]
 
 
@@ -2190,13 +2193,17 @@ def _TileGradShape(op):
   """Shape function for the TileGrad op."""
   multiples_shape = op.inputs[1].get_shape().with_rank(1)
   input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0])
-  multiples = tensor_util.constant_value(op.inputs[1])
-  if multiples is None:
-    return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
+  # NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
+  # it is a vector of non-negative integers, and (ii) doing so allows
+  # us to handle partially-known multiples.
+  multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
+      input_shape.ndims)
+  if multiples.ndims is None:
+    return [tensor_shape.unknown_shape()]
   else:
     output_dims = []
-    for i, dim in enumerate(input_shape.dims):
-      output_dims.append(dim // multiples[i])
+    for dim, multiple in zip(input_shape.dims, multiples.dims):
+      output_dims.append(dim // multiple)
     return [tensor_shape.TensorShape(output_dims)]
 
 
