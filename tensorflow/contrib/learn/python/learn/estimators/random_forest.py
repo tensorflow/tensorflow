@@ -54,24 +54,28 @@ def _assert_float32(tensors):
       raise TypeError('Expected dtype=float32, %s.' % tensor)
 
 
-class LossMonitor(mon.EveryN):
+class TensorForestLossMonitor(mon.EveryN):
   """Terminates training when training loss stops decreasing."""
 
   def __init__(self,
                early_stopping_rounds,
                every_n_steps):
-    super(LossMonitor, self).__init__(every_n_steps=every_n_steps)
+    super(TensorForestLossMonitor, self).__init__(every_n_steps=every_n_steps)
     self.early_stopping_rounds = early_stopping_rounds
     self.min_loss = None
     self.min_loss_step = 0
 
+  def step_begin(self, step):
+    super(TensorForestLossMonitor, self).step_begin(step)
+    return [self._loss_op_name]
+
   def set_estimator(self, est):
     """This function gets called in the same graph as _get_train_ops."""
-    super(LossMonitor, self).set_estimator(est)
+    super(TensorForestLossMonitor, self).set_estimator(est)
     self._loss_op_name = est.training_loss.name
 
   def every_n_step_end(self, step, outputs):
-    super(LossMonitor, self).every_n_step_end(step, outputs)
+    super(TensorForestLossMonitor, self).every_n_step_end(step, outputs)
     current_loss = outputs[self._loss_op_name]
     if self.min_loss is None or current_loss < self.min_loss:
       self.min_loss = current_loss

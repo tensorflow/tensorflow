@@ -35,7 +35,8 @@ class TensorForestTrainerTests(tf.test.TestCase):
     data = iris.data.astype(np.float32)
     target = iris.target.astype(np.float32)
 
-    classifier.fit(x=data, y=target, steps=100)
+    monitors = [tf.contrib.learn.TensorForestLossMonitor(10, 10)]
+    classifier.fit(x=data, y=target, steps=100, monitors=monitors)
     classifier.evaluate(x=data, y=target, steps=10)
 
   def testRegression(self):
@@ -51,7 +52,8 @@ class TensorForestTrainerTests(tf.test.TestCase):
     data = boston.data.astype(np.float32)
     target = boston.target.astype(np.float32)
 
-    regressor.fit(x=data, y=target, steps=100)
+    monitors = [tf.contrib.learn.TensorForestLossMonitor(10, 10)]
+    regressor.fit(x=data, y=target, steps=100, monitors=monitors)
     regressor.evaluate(x=data, y=target, steps=10)
 
 
