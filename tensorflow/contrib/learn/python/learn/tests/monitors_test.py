@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import Counter
 import shutil
 import tempfile
 import time
@@ -452,6 +453,107 @@ class CheckpointSaverTest(tf.test.TestCase):
         monitor.end(sess)
         self.assertEqual(2, tf.contrib.framework.load_variable(
             self.model_dir, self.global_step.name))
+
+
+class FakeMonitor(learn.monitors.BaseMonitor):
+
+  def __init__(self):
+    learn.monitors.BaseMonitor.__init__(self)
+    self.should_stop = False
+    self.requested_tensors = []
+    self.call_counter = Counter()
+    self.last_begin_step = None
+    self.last_end_step = None
+    self.last_post_step = None
+
+  def begin(self, max_steps):
+    self.call_counter['begin'] += 1
+
+  def end(self, session):
+    self.call_counter['end'] += 1
+
+  def step_begin(self, step):
+    self.call_counter['step_begin'] += 1
+    self.last_begin_step = step
+    return self.requested_tensors
+
+  def step_end(self, step, output):
+    self.call_counter['step_end'] += 1
+    self.last_end_step = step
+    self.output = output
+    return self.should_stop
+
+  def post_step(self, step, session):
+    self.call_counter['post_step'] += 1
+    self.last_post_step = step
+    self.session = session
+
+
+class RunHookAdapterForMonitorsTest(tf.test.TestCase):
+
+  def test_calls_and_steps(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      global_step_tensor = tf.contrib.framework.create_global_step()
+      inc_5 = tf.assign_add(global_step_tensor, 5)
+      mock_mon = FakeMonitor()
+      mock_mon2 = FakeMonitor()
+
+      hook = learn.monitors.RunHookAdapterForMonitors([mock_mon, mock_mon2])
+      hook.begin()
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.call_counter['begin'], 1)
+
+      sess.run(tf.initialize_all_variables())
+      sess.run(global_step_tensor.assign(10))
+
+      mon_sess = monitored_session._HookedSession(sess=sess, hooks=[hook])
+
+      mon_sess.run(inc_5)
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.output, {})
+        self.assertEqual(mon.last_begin_step, 11)
+        self.assertEqual(mon.last_end_step, 11)
+        self.assertEqual(mon.last_post_step, 11)
+        self.assertEqual(mon.call_counter['step_end'], 1)
+        self.assertEqual(mon.call_counter['step_begin'], 1)
+        self.assertEqual(mon.call_counter['post_step'], 1)
+
+      mon_sess.run(inc_5)
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.output, {})
+        self.assertEqual(mon.last_begin_step, 16)
+        self.assertEqual(mon.last_end_step, 16)
+        self.assertEqual(mon.last_post_step, 16)
+        self.assertEqual(mon.call_counter['step_end'], 2)
+        self.assertEqual(mon.call_counter['step_begin'], 2)
+        self.assertEqual(mon.call_counter['post_step'], 2)
+
+      hook.end(sess)
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.call_counter['end'], 1)
+
+  def test_requests(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      tf.contrib.framework.create_global_step()
+      mock_mon = FakeMonitor()
+      mock_mon2 = FakeMonitor()
+
+      hook = learn.monitors.RunHookAdapterForMonitors([mock_mon, mock_mon2])
+      hook.begin()
+
+      mon_sess = monitored_session._HookedSession(sess=sess, hooks=[hook])
+
+      a_tensor = tf.constant([0], name='a_tensor')
+      tf.constant([5], name='another_tensor')
+      tf.constant([10], name='third_tensor')
+      mock_mon.requested_tensors = ['another_tensor']
+      mock_mon2.requested_tensors = ['third_tensor']
+      sess.run(tf.initialize_all_variables())
+
+      output = mon_sess.run(a_tensor)
+      self.assertEqual(output, [0])
+      self.assertEqual(mock_mon.output['another_tensor'], [5])
+      self.assertEqual(mock_mon2.output['third_tensor'], [10])
 
 
 if __name__ == '__main__':

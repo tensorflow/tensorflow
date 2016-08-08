@@ -33,6 +33,8 @@ from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
+from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -482,9 +484,25 @@ class BaseEstimator(
       if monitors is None:
         monitors = []
 
+      hooks = [m for m in monitors
+               if isinstance(m, session_run_hook.SessionRunHook)]
+
+      deprecated_monitors = [
+          m for m in monitors
+          if not isinstance(m, session_run_hook.SessionRunHook)
+      ]
+
+      supervisor_is_chief = (self._config.task == 0)
+      if not supervisor_is_chief:
+        # Prune list of monitor to the ones runnable on all workers.
+        deprecated_monitors = [m for m in deprecated_monitors
+                               if m.run_on_all_workers]
+
       # Setup monitors.
-      for monitor in monitors:
+      for monitor in deprecated_monitors:
         monitor.set_estimator(self)
+
+      hooks.append(monitor_lib.RunHookAdapterForMonitors(deprecated_monitors))
 
       return graph_actions._supervised_train(  # pylint: disable=protected-access
           graph=g,
@@ -496,14 +514,14 @@ class BaseEstimator(
           init_feed_dict=init_feed_fn() if init_feed_fn is not None else None,
           init_fn=init_fn,
           log_every_steps=log_every_steps,
-          supervisor_is_chief=(self._config.task == 0),
+          supervisor_is_chief=supervisor_is_chief,
           supervisor_master=self._config.master,
           supervisor_save_model_secs=self._config.save_checkpoints_secs,
           keep_checkpoint_max=self._config.keep_checkpoint_max,
           feed_fn=feed_fn,
           steps=steps,
           fail_on_nan_loss=fail_on_nan_loss,
-          hooks=monitors,
+          hooks=hooks,
           max_steps=max_steps)
 
   def _extract_metric_update_ops(self, eval_dict):

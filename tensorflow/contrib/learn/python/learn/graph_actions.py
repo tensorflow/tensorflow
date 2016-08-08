@@ -33,7 +33,6 @@ from tensorflow.contrib.framework.python.ops import variables as contrib_variabl
 from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
 from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
-from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import summary_writer_cache
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.core.framework import summary_pb2
@@ -268,12 +267,6 @@ def _supervised_train(graph,
 
     if steps is not None or max_steps is not None:
       hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
-
-    if not supervisor_is_chief:
-      # Prune list of monitor to the ones runnable on all workers.
-      hooks = [m for m in hooks
-               if isinstance(m, session_run_hook.SessionRunHook) or
-               m.run_on_all_workers]
 
     with monitored_session.MonitoredSession(
         supervisor_master,

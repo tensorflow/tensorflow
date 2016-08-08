@@ -29,7 +29,6 @@ import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
 from tensorflow.contrib.learn.python.learn import monitored_session
-from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import session_run_hook
 
 
@@ -344,34 +343,6 @@ class FakeSession(monitored_session._WrappedSession):
     return monitored_session._WrappedSession.run(self, fetches)
 
 
-class FakeMonitor(monitors.BaseMonitor):
-
-  def __init__(self):
-    monitors.BaseMonitor.__init__(self)
-    self.should_stop = False
-    self.requested_tensors = []
-    self.call_counter = Counter()
-    self.last_begin_step = None
-    self.last_end_step = None
-    self.last_post_step = None
-
-  def step_begin(self, step):
-    self.call_counter['step_begin'] += 1
-    self.last_begin_step = step
-    return self.requested_tensors
-
-  def step_end(self, step, output):
-    self.call_counter['step_end'] += 1
-    self.last_end_step = step
-    self.output = output
-    return self.should_stop
-
-  def post_step(self, step, session):
-    self.call_counter['post_step'] += 1
-    self.last_post_step = step
-    self.session = session
-
-
 class FakeHook(session_run_hook.SessionRunHook):
 
   def __init__(self):
@@ -540,149 +511,6 @@ class HookedSessionTest(tf.test.TestCase):
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor, feed_dict={b_tensor: [10]})
-
-
-class HookedSessionWithMonitorsTest(tf.test.TestCase):
-
-  def testCallsMonitorsBeginEndAndPost(self):
-    with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
-      mock_mon = FakeMonitor()
-      mock_mon2 = FakeMonitor()
-      mon_sess = monitored_session._HookedSession(
-          sess=sess, hooks=[mock_mon, mock_mon2])
-      a_tensor = tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
-      sess.run(global_step_tensor.assign(10))
-      mon_sess.run(fetches=a_tensor)
-
-      for mon in [mock_mon, mock_mon2]:
-        self.assertEqual(mon.output, {})
-        self.assertEqual(mon.last_begin_step, 11)
-        self.assertEqual(mon.last_end_step, 11)
-        self.assertEqual(mon.last_post_step, 11)
-        self.assertEqual(mon.call_counter['step_end'], 1)
-        self.assertEqual(mon.call_counter['step_begin'], 1)
-        self.assertEqual(mon.call_counter['post_step'], 1)
-
-  def testCallsMonitorsWithLastStep(self):
-    with tf.Graph().as_default(), tf.Session() as sess:
-      global_step_tensor = tf.contrib.framework.create_global_step()
-      mock_mon = FakeMonitor()
-      mock_mon2 = FakeMonitor()
-      mon_sess = monitored_session._HookedSession(
-          sess=sess, hooks=[mock_mon, mock_mon2])
-      inc_5 = tf.assign_add(global_step_tensor, 5)
-      # Initialize global_step_tensor to '0':
-      sess.run(tf.initialize_all_variables())
-
-      mon_sess.run(fetches=[inc_5])
-      for mon in [mock_mon, mock_mon2]:
-        self.assertEqual(mon.last_begin_step, 1)
-        self.assertEqual(mon.last_end_step, 1)
-        self.assertEqual(mon.last_post_step, 1)
-
-      mon_sess.run(fetches=[inc_5])
-      for mon in [mock_mon, mock_mon2]:
-        self.assertEqual(mon.last_begin_step, 6)
-        self.assertEqual(mon.last_end_step, 6)
-        self.assertEqual(mon.last_post_step, 6)
-
-      mon_sess.run(fetches=[inc_5])
-      for mon in [mock_mon, mock_mon2]:
-        self.assertEqual(mon.last_begin_step, 11)
-        self.assertEqual(mon.last_end_step, 11)
-        self.assertEqual(mon.last_post_step, 11)
-
-  def testShouldStop(self):
-    with tf.Graph().as_default(), tf.Session() as sess:
-      tf.contrib.framework.create_global_step()
-      mock_mon = FakeMonitor()
-      mock_mon2 = FakeMonitor()
-      mon_sess = monitored_session._HookedSession(
-          sess=sess, hooks=[mock_mon, mock_mon2])
-      tf.constant([0], name='a_tensor')
-      sess.run(tf.initialize_all_variables())
-
-      mon_sess.run(fetches='a_tensor')
-      self.assertFalse(mon_sess.should_stop())
-
-      mock_mon.should_stop = True
-      mon_sess.run(fetches='a_tensor')
-      self.assertTrue(mon_sess.should_stop())
-
-  def testFetchesMonitorRequests(self):
-    with tf.Graph().as_default(), tf.Session() as sess:
-      tf.contrib.framework.create_global_step()
-      mock_mon = FakeMonitor()
-      mock_mon2 = FakeMonitor()
-      mon_sess = monitored_session._HookedSession(
-          sess=sess, hooks=[mock_mon, mock_mon2])
-      a_tensor = tf.constant([0], name='a_tensor')
-      tf.constant([5], name='another_tensor')
-      tf.constant([10], name='third_tensor')
-      mock_mon.requested_tensors = ['another_tensor']
-      mock_mon2.requested_tensors = ['third_tensor']
-      sess.run(tf.initialize_all_variables())
-
-      output = mon_sess.run(fetches=a_tensor)
-      self.assertEqual(output, [0])
-      self.assertEqual(mock_mon.output['another_tensor'], [5])
-      self.assertEqual(mock_mon2.output['third_tensor'], [10])
-
-  def testMonitorHasSameRequests(self):
-    with tf.Graph().as_default(), tf.Session() as sess:
-      tf.contrib.framework.create_global_step()
-      mock_mon = FakeMonitor()
-      mock_mon2 = FakeMonitor()
-      mon_sess = monitored_session._HookedSession(
-          sess=sess, hooks=[mock_mon, mock_mon2])
-      a_tensor = tf.constant([0], name='a_tensor')
-      tf.constant([5], name='another_tensor')
-      mock_mon.requested_tensors = ['another_tensor']
-      mock_mon2.requested_tensors = ['another_tensor']
-      sess.run(tf.initialize_all_variables())
-
-      output = mon_sess.run(fetches=a_tensor)
-      self.assertEqual(output, [0])
-      self.assertEqual(mock_mon.output['another_tensor'], [5])
-      self.assertEqual(mock_mon2.output['another_tensor'], [5])
-
-  def testMonitorHasSameRequestWithCaller(self):
-    with tf.Graph().as_default(), tf.Session() as sess:
-      tf.contrib.framework.create_global_step()
-      mock_mon = FakeMonitor()
-      mock_mon2 = FakeMonitor()
-      mon_sess = monitored_session._HookedSession(
-          sess=sess, hooks=[mock_mon, mock_mon2])
-      a_tensor = tf.constant([0], name='a_tensor')
-      tf.constant([10], name='third_tensor')
-      mock_mon.requested_tensors = ['a_tensor']
-      mock_mon2.requested_tensors = ['third_tensor']
-      sess.run(tf.initialize_all_variables())
-
-      output = mon_sess.run(fetches=a_tensor)
-      self.assertEqual(output, [0])
-      self.assertEqual(mock_mon.output['a_tensor'], [0])
-      self.assertEqual(mock_mon2.output['third_tensor'], [10])
-
-  def testMonitorRequestWithColonZero(self):
-    with tf.Graph().as_default(), tf.Session() as sess:
-      tf.contrib.framework.create_global_step()
-      mock_mon = FakeMonitor()
-      mock_mon2 = FakeMonitor()
-      mon_sess = monitored_session._HookedSession(
-          sess=sess, hooks=[mock_mon, mock_mon2])
-      a_tensor = tf.constant([0], name='a_tensor')
-      tf.constant([5], name='another_tensor')
-      mock_mon.requested_tensors = ['another_tensor']
-      mock_mon2.requested_tensors = ['another_tensor:0']
-      sess.run(tf.initialize_all_variables())
-
-      output = mon_sess.run(fetches=a_tensor)
-      self.assertEqual(output, [0])
-      self.assertEqual(mock_mon.output['another_tensor'], [5])
-      self.assertEqual(mock_mon2.output['another_tensor:0'], [5])
 
 
 class RaiseOnceAtCountN(session_run_hook.SessionRunHook):

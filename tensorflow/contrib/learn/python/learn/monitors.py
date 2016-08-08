@@ -83,12 +83,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import os
 import time
 
 import numpy as np
 import six
 
+from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.core.framework.summary_pb2 import Summary
@@ -1101,3 +1104,79 @@ class NanLoss(EveryN):
         # We don't raise an error but we return "should stop" so we stop, but
         # without an exception.
         return True
+
+
+class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
+  """Wraps monitors into a SessionRunHook."""
+
+  def __init__(self, monitors):
+    self._monitors = monitors
+
+  def begin(self):
+    self._last_step = None
+    self._global_step_tensor = contrib_variables.get_global_step()
+    for m in self._monitors:
+      m.begin(max_steps=None)
+
+  def before_run(self, run_context):
+    if self._last_step is None:
+      self._last_step = run_context.session.run(self._global_step_tensor) + 1
+
+    request = {self._global_step_tensor: self._global_step_tensor}
+    monitor_fetches = []
+    for m in self._monitors:
+      monitor_requests = m.step_begin(self._last_step)
+      if monitor_requests:
+        if not isinstance(monitor_requests, list):
+          raise ValueError("Monitor.step_begin should return a list.")
+        monitor_fetches.extend(monitor_requests)
+    if monitor_fetches:
+      request["monitors"] = dict(
+          zip(monitor_fetches, [_as_graph_element(f) for f in monitor_fetches]))
+
+    return session_run_hook.SessionRunArgs(request)
+
+  def after_run(self, run_context, run_values):
+    result = run_values.results[
+        "monitors"] if "monitors" in run_values.results else {}
+    for m in self._monitors:
+      induce_stop = m.step_end(self._last_step, result)
+      if induce_stop:
+        run_context.request_stop()
+
+    for m in self._monitors:
+      m.post_step(self._last_step, run_context.session)
+
+    self._last_step = run_values.results[self._global_step_tensor] + 1
+
+  def end(self, session):
+    self._last_step = None
+    for m in self._monitors:
+      if "session" in inspect.getargspec(m.end).args:
+        m.end(session=session)
+      else:
+        m.end()
+
+
+def _as_graph_element(obj):
+  """Retrieves Graph element."""
+  graph = ops.get_default_graph()
+  if not isinstance(obj, six.string_types):
+    if not hasattr(obj, "graph") or obj.graph != graph:
+      raise ValueError("Passed %s should have graph attribute that is equal "
+                       "to current graph %s." % (obj, graph))
+    return obj
+  if ":" in obj:
+    element = graph.as_graph_element(obj)
+  else:
+    element = graph.as_graph_element(obj + ":0")
+    # Check that there is no :1 (e.g. it's single output).
+    try:
+      graph.as_graph_element(obj + ":1")
+    except (KeyError, ValueError):
+      pass
+    else:
+      raise ValueError("Name %s is ambiguous, "
+                       "as this `Operation` has multiple outputs "
+                       "(at least 2)." % obj)
+  return element
