@@ -768,7 +768,7 @@ REGISTER_OP("Reverse")
     .Input("dims: bool")
     .Output("output: T")
     .Attr(
-        "T: {uint8, int8, int32, bool, half, float, double, complex64, "
+        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
         "complex128}")
     .SetShapeFn([](InferenceContext* c) {
       const Shape* input = c->input(0);

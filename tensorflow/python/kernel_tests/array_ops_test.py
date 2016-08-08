@@ -207,7 +207,7 @@ class ReverseTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def testReverse1DimAuto(self):
-    for dtype in [np.uint8, np.int8, np.int32, np.bool, np.float16,
+    for dtype in [np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16,
                   np.float32, np.float64, np.complex64, np.complex128]:
       self._reverse1DimAuto(dtype)
 
