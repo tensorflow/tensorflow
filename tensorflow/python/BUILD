@@ -1300,6 +1300,7 @@ cuda_py_tests(
             "training/supervisor_test.py",
             "training/saver_large_variable_test.py",
             "training/localhost_cluster_performance_test.py",
+            "training/saver_large_partitioned_variable_test.py",
         ],
     ),
     additional_deps = [
@@ -1313,6 +1314,16 @@ py_test(
     srcs = ["training/saver_large_variable_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/30379628
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "saver_large_partitioned_variable_test",
+    size = "medium",
+    srcs = ["training/saver_large_partitioned_variable_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

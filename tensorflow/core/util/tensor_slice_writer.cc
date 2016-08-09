@@ -173,11 +173,11 @@ size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const string* data, int num_elements,
+Status TensorSliceWriter::SaveData(const string* data, int64 num_elements,
                                    SavedSlice* ss) {
   size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
                       (num_elements * MaxBytesPerElement(DT_INT32));
-  for (int i = 0; i < num_elements; ++i) {
+  for (int64 i = 0; i < num_elements; ++i) {
     size_bound += data[i].size();
   }
   if (size_bound > kMaxMessageBytes) {
