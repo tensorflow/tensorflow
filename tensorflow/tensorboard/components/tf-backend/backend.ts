@@ -254,11 +254,65 @@ module TF.Backend {
   }
 
   /** Given a RunToTag, return sorted array of all runs */
-  export function getRuns(r: RunToTag): string[] { return _.keys(r).sort(); }
+  export function getRuns(r: RunToTag): string[] {
+    return _.keys(r).sort(compareTagNames);
+  }
 
   /** Given a RunToTag, return array of all tags (sorted + dedup'd) */
   export function getTags(r: RunToTag): string[] {
-    return _.union.apply(null, _.values(r)).sort();
+    return _.union.apply(null, _.values(r)).sort(compareTagNames);
+  }
+
+  /** Compares tag names asciinumerically broken into components. */
+  export function compareTagNames(a, b: string): number {
+    let ai = 0;
+    let bi = 0;
+    while (true) {
+      if (ai === a.length) return bi === b.length ? 0 : -1;
+      if (bi === b.length) return 1;
+      if (isDigit(a[ai]) && isDigit(b[bi])) {
+        let ais = ai;
+        let bis = bi;
+        ai = consumeNumber(a, ai + 1);
+        bi = consumeNumber(b, bi + 1);
+        let an = parseFloat(a.slice(ais, ai));
+        let bn = parseFloat(b.slice(bis, bi));
+        if (an < bn) return -1;
+        if (an > bn) return 1;
+        continue;
+      }
+      if (isBreak(a[ai])) {
+        if (!isBreak(b[bi])) return -1;
+      } else if (isBreak(b[bi])) {
+        return 1;
+      } else if (a[ai] < b[bi]) {
+        return -1;
+      } else if (a[ai] > b[bi]) {
+        return 1;
+      }
+      ai++;
+      bi++;
+    }
+  }
+
+  function consumeNumber(s: string, i: number): number {
+    let decimal = false;
+    for (; i < s.length; i++) {
+      if (isDigit(s[i])) continue;
+      if (!decimal && s[i] === '.') {
+        decimal = true;
+        continue;
+      }
+      break;
+    }
+    return i;
+  }
+
+  function isDigit(c: string): boolean { return '0' <= c && c <= '9'; }
+
+  function isBreak(c: string): boolean {
+    // TODO(jart): Remove underscore when people stop using it like a slash.
+    return c === '/' || c === '_' || isDigit(c);
   }
 
   /**
