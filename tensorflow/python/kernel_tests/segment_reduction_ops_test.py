@@ -30,10 +30,11 @@ class SegmentReductionHelper(tf.test.TestCase):
       num_elem *= x
     values = np.arange(1, num_elem + 1)
     np_values = values.reshape(input_shape).astype(dtype.as_numpy_dtype)
+
     return tf.constant(values, shape=input_shape,
                                 dtype=dtype), np_values
 
-  def _segmentReduce(self, indices, x, op1, op2=None, num_out_rows=None):
+  def _segmentReduce(self, indices, x, op1, op2=None, num_out_rows=None,dtype=tf.int32):
     if not x.size: return np.array([])
     indices = np.asarray(indices)
     if num_out_rows is None:
@@ -42,12 +43,22 @@ class SegmentReductionHelper(tf.test.TestCase):
     slice_shape = x.shape[indices.ndim:]
     x_flat = x.reshape((indices.size,) + slice_shape)
     for i, index in enumerate(indices.ravel()):
-      if output[index] is not None:
+      if (output[index] is not None) and op1 == np.max:
+
+        for j in range(0,output[index].shape[0]):
+          output[index][j] = op1([output[index][j], x_flat[i][j]])
+      elif output[index] is not None:
         output[index] = op1(output[index], x_flat[i])
       else:
         output[index] = x_flat[i]
     # zero initialize values that are still uncalcuated.
-    output = [o if o is not None else np.zeros(slice_shape) for o in output]
+    # output = [o if o is not None else np.zeros(slice_shape) for o in output]
+    if not op1 == np.max:
+      output = [o if o is not None else np.zeros(slice_shape) for o in output]
+    else:
+      zeroslice = np.zeros(slice_shape)
+      zeroslice.fill(dtype.min)
+      output = [o if o is not None else zeroslice for o in output]
     if op2 is not None:
       output = [op2(o) for o in output]
     output = [o.reshape(slice_shape) for o in output]
@@ -91,9 +102,9 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     indices = [i // 3 for i in range(n)]
     for dtype in dtypes:
       if dtype in (tf.complex64, tf.complex128):
-          curr_ops_list = complex_ops_list
+        curr_ops_list = complex_ops_list
       else:
-          curr_ops_list = ops_list
+        curr_ops_list = ops_list
 
       with self.test_session(use_gpu=False):
         tf_x, np_x = self._input(shape, dtype=dtype)
@@ -306,6 +317,93 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     with self.test_session():
       for bad in [[-1]], [[7]]:
         unsorted = tf.unsorted_segment_sum([[17]], bad, num_segments=2)
+        with self.assertRaisesOpError(
+            r"segment_ids\[0,0\] = %d is out of range \[0, 2\)" % bad[0][0]):
+          unsorted.eval()
+
+class UnsortedSegmentMaxTest(SegmentReductionHelper):
+
+  def testValues(self):
+    dtypes = [tf.float32,
+              tf.float64,
+              tf.int64,
+              tf.int32]
+    
+    indices_flat = np.array([0, 4, 0, 8, 3, 8, 4, 7, 7, 3])
+    num_segments = 12
+
+    for indices in indices_flat, indices_flat.reshape(5, 2):
+      shape = indices.shape + (2,)
+      for dtype in dtypes:
+        with self.test_session(use_gpu=False):
+          tf_x, np_x = self._input(shape, dtype=dtype)
+          np_ans = self._segmentReduce(indices,
+                                       np_x,
+                                       np.max,
+                                       op2=None,
+                                       num_out_rows=num_segments,
+                                       dtype=dtype)
+          s = tf.unsorted_segment_max(data=tf_x,
+                                      segment_ids=indices,
+                                      num_segments=num_segments)
+          tf_ans = s.eval()
+        self._assertAllClose(indices, np_ans, tf_ans)
+        self.assertShapeEqual(np_ans, s)
+
+  def testGradient(self):
+    num_cols = 2
+    indices_flat = np.array([0, 4, 0, 8, 3, 8, 4, 7, 7, 3])
+    num_segments = max(indices_flat) + 3
+    for indices in indices_flat, indices_flat.reshape(5, 2):
+      shape = indices.shape + (num_cols,)
+      with self.test_session():
+        tf_x, np_x = self._input(shape, dtype=tf.float64)
+        s = tf.unsorted_segment_max(data=tf_x,segment_ids=indices,num_segments=num_segments)
+        jacob_t, jacob_n = tf.test.compute_gradient(
+            tf_x,
+            shape,
+            s,
+            [num_segments, num_cols],
+            x_init_value=np_x.astype(np.double),delta=1)
+      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+
+  def testGradientMatchesSegmentMax(self):
+    # Strategy: compute the gradient for UnsortedSegmentMax and SegmentMax
+    # and compare the outputs, which should be identical.
+    # NB: for this test to work, indices must be valid for SegmentMax, namely
+    # it must be sorted, the indices must be contiguous, and num_segments
+    # must be max(indices) + 1.
+    indices = [0, 0, 1, 1, 1, 2, 3, 4, 5,5]
+    n = len(indices)
+    num_cols = 2
+    shape = [n, num_cols]
+    num_segments = max(indices) + 1
+    with self.test_session():
+      tf_x, np_x = self._input(shape, dtype=tf.float64)
+      # Results from UnsortedSegmentMax
+      unsorted_s = tf.unsorted_segment_max(data=tf_x,segment_ids=indices,num_segments=num_segments)
+      unsorted_jacob_t, unsorted_jacob_n = tf.test.compute_gradient(
+          tf_x,
+          shape,
+          unsorted_s,
+          [num_segments, num_cols],
+          x_init_value=np_x.astype(np.double),delta=1)
+      # Results from SegmentSum
+      sorted_s = tf.segment_max(data=tf_x, segment_ids=indices)
+
+      sorted_jacob_t, sorted_jacob_n = tf.test.compute_gradient(
+          tf_x,
+          shape,
+          sorted_s,
+          [num_segments, num_cols],
+          x_init_value=np_x.astype(np.double),delta=1)
+    self.assertAllClose(unsorted_jacob_t, sorted_jacob_t, rtol=1e-3, atol=1e-3)
+    self.assertAllClose(unsorted_jacob_n, sorted_jacob_n, rtol=1e-3, atol=1e-3)
+
+  def testBadIndices(self):
+    with self.test_session():
+      for bad in [[-1]], [[7]]:
+        unsorted = tf.unsorted_segment_max([[17]], bad, num_segments=2)
         with self.assertRaisesOpError(
             r"segment_ids\[0,0\] = %d is out of range \[0, 2\)" % bad[0][0]):
           unsorted.eval()
