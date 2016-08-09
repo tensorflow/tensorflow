@@ -171,37 +171,38 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#Estimator.predict}
+#### `tf.contrib.learn.Estimator.predict(*args, **kwargs)` {#Estimator.predict}
 
-Returns predictions for given features.
+Returns predictions for given features. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
+    Args:
+      x: Matrix of shape [n_samples, n_features...]. Can be iterator that
+         returns arrays of features. The training input samples for fitting the
+         model. If set, `input_fn` must be `None`.
+      input_fn: Input function. If set, `x` and 'batch_size' must be `None`.
+      batch_size: Override default batch size. If set, 'input_fn' must be
+        'None'.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns all.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
-*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-    'None'.
-*  <b>`outputs`</b>: list of `str`, name of the output to predict.
-    If `None`, returns all.
-*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-    for each example until inputs are exhausted. Note: The inputs must
-    terminate if you want the iterable to terminate (e.g. be sure to pass
-    num_epochs=1 if you are using something like read_batch_features).
+    Returns:
+      A numpy array of predicted classes or regression values if the
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+      of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+      predictions if as_iterable is True.
 
-##### Returns:
-
-  A numpy array of predicted classes or regression values if the
-  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
-  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
-  predictions if as_iterable is True.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+    Raises:
+      ValueError: If x and input_fn are both provided or both `None`.
 
 
 - - -
