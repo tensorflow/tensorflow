@@ -491,6 +491,14 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[3:0:-2, 1:3, 1:3]
         _ = grad[3:0:-2, tf.newaxis, 1:3, 2, tf.newaxis]
         _ = grad[3:0:-2, 1:3, 2]
+        _ = grad[:, -1, :]
+        _ = grad[:, -2, :]
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "out of bounds"):
+          _ = grad[:, -200, :]
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "out of bounds"):
+          _ = grad[:, 200, :]
 
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):

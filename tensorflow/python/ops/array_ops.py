@@ -1544,10 +1544,15 @@ SHRINK_AXIS = -2
 
 # PEP-8 naming
 # pylint: disable=invalid-name
-def _compute_size_of_strided_dim(spec, size):
+def _compute_size_of_strided_dim(shrink, spec, size):
+  """Computes the size of a single strided slice dimension."""
+
   unknown = None  # Document what None means here.
   use_full_range = None  # Document other use of None.
-
+  # if this is a shrink axis (i.e. a non-range index)
+  # it either will produce an error or return 1
+  if shrink:
+    return 1
   if size is unknown or size.value is unknown:
     return unknown
   size = size.value
@@ -1634,6 +1639,7 @@ def _StridedSliceShape(op):
   dense_dims = ndims  # not accounting for newaxis and shrink
   final_shape_gather = []
   full_index = 0
+  dense_shrink_axis = 0
   dense_specs = []
   for dim in range(sparse_dims):
     bit = 1 << dim
@@ -1652,6 +1658,7 @@ def _StridedSliceShape(op):
           None if (begin_mask & bit) else begin_value[dim], None if (
               end_mask & bit) else end_value[dim], strides_value[dim]))
       if shrink_axis_mask & bit:
+        dense_shrink_axis |= (1 << full_index)
         final_shape_gather.append(SHRINK_AXIS)
       else:
         final_shape_gather.append(full_index)
@@ -1661,8 +1668,10 @@ def _StridedSliceShape(op):
   # Compute each dimensions contribution to the "processing" shape
   final_dims = []
   for dim in range(dense_dims):
-    final_dims.append(_compute_size_of_strided_dim(dense_specs[dim],
-                                                   input_shape.dims[dim]))
+    shrink = (dense_shrink_axis & (1 << dim)) != 0
+    final_dims.append(
+        _compute_size_of_strided_dim(shrink, dense_specs[dim], input_shape.dims[
+            dim]))
 
   # Gather the final shape from the processing shape
   final_shape = []
