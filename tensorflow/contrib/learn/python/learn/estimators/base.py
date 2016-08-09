@@ -427,14 +427,9 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
     return(super(TensorFlowBaseTransformer, self).predict(
         x, axis=1, batch_size=None))
 
-  def fit(self, x, y=None, monitor=None, logdir=None):
-    """Fit a transformer."""
-    return(super(TensorFlowBaseTransformer, self).fit(
-        x, y, monitors=None, logdir=None))
-
-  def fit_transform(self, x, y=None, monitor=None, logdir=None):
+  def fit_transform(self, x, y=None, monitors=None, logdir=None):
     """Fit transformer and transform `x` using trained transformer."""
-    return self.fit(x, y, monitor=None, logdir=None).transform(x)
+    return self.fit(x, y, monitors=monitors, logdir=logdir).transform(x)
 
 
 class DeprecatedMixin(object):
