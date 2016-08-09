@@ -57,7 +57,7 @@ class Chi2(gamma.Gamma):
     # not true in the parent class "gamma."  therefore, passing
     # allow_nan_stats=False
     # through to the parent class results in unnecessary asserts.
-    with ops.op_scope([df], name):
+    with ops.name_scope(name, values=[df]):
       df = ops.convert_to_tensor(df)
       self._df = df
       super(Chi2, self).__init__(alpha=df / 2,

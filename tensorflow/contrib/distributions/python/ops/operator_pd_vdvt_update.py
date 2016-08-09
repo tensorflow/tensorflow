@@ -105,7 +105,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
       raise TypeError('operator was not instance of OperatorPDBase.')
 
     with ops.name_scope(name):
-      with ops.op_scope(operator.inputs + [v, diag], 'init'):
+      with ops.name_scope('init', values=operator.inputs + [v, diag]):
         self._operator = operator
         self._v = ops.convert_to_tensor(v, name='v')
         self._verify_pd = verify_pd
@@ -136,7 +136,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
 
   def _get_identity_operator(self, v):
     """Get an `OperatorPDIdentity` to play the role of `D` in `VDV^T`."""
-    with ops.op_scope([v], 'get_identity_operator'):
+    with ops.name_scope('get_identity_operator', values=[v]):
       if v.get_shape().is_fully_defined():
         v_shape = v.get_shape().as_list()
         v_batch_shape = v_shape[:-2]
@@ -214,7 +214,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
   def _check_shapes_dynamic(self, operator, v, diag):
     """Return (v, diag) with Assert dependencies, which check shape."""
     checks = []
-    with ops.op_scope([operator, v, diag], 'check_shapes'):
+    with ops.name_scope('check_shapes', values=[operator, v, diag]):
       s_v = array_ops.shape(v)
       r_op = operator.rank()
       r_v = array_ops.rank(v)

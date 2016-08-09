@@ -78,7 +78,7 @@ class Laplace(distribution.Distribution):
     """
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    with ops.op_scope([loc, scale], name):
+    with ops.name_scope(name, values=[loc, scale]):
       loc = ops.convert_to_tensor(loc)
       scale = ops.convert_to_tensor(scale)
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
@@ -122,7 +122,7 @@ class Laplace(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return array_ops.shape(self._ones())
 
   def get_batch_shape(self):
@@ -145,7 +145,7 @@ class Laplace(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], dtype=dtypes.int32)
 
   def get_event_shape(self):
@@ -171,7 +171,7 @@ class Laplace(distribution.Distribution):
   def mean(self, name="mean"):
     """Mean of this distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._scale, self._loc], name):
+      with ops.name_scope(name, values=[self._scale, self._loc]):
         return self._loc + array_ops.zeros_like(self._scale)
 
   def median(self, name="median"):
@@ -185,14 +185,14 @@ class Laplace(distribution.Distribution):
   def std(self, name="std"):
     """Standard deviation of this distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._scale, self._loc], name):
+      with ops.name_scope(name, values=[self._scale, self._loc]):
         sqrt_2 = constant_op.constant(math.sqrt(2.), dtype=self.dtype)
         return sqrt_2 * self._scale + array_ops.zeros_like(self._loc)
 
   def variance(self, name="variance"):
     """Variance of this distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return math_ops.square(self.std())
 
   def prob(self, x, name="pdf"):
@@ -219,7 +219,7 @@ class Laplace(distribution.Distribution):
       log_prob: tensor of dtype `dtype`, the log-probability of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._loc, self._scale, x], name):
+      with ops.name_scope(name, values=[self._loc, self._scale, x]):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s"
@@ -239,7 +239,7 @@ class Laplace(distribution.Distribution):
       cdf: tensor of dtype `dtype`, the CDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._loc, self._scale, x], name):
+      with ops.name_scope(name, values=[self._loc, self._scale, x]):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s"
@@ -259,7 +259,7 @@ class Laplace(distribution.Distribution):
       log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._loc, self._scale, x], name):
+      with ops.name_scope(name, values=[self._loc, self._scale, x]):
         return math_ops.log(self.cdf(x))
 
   def entropy(self, name="entropy"):
@@ -272,7 +272,7 @@ class Laplace(distribution.Distribution):
       entropy: tensor of dtype `dtype`, the entropy.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._loc, self._scale], name):
+      with ops.name_scope(name, values=[self._loc, self._scale]):
         log_2_e = constant_op.constant(math.log(2.) + 1., dtype=self.dtype)
         # Use broadcasting rules to calculate the full broadcast scale.
         scale = self._scale + array_ops.zeros_like(self._loc)
@@ -291,7 +291,7 @@ class Laplace(distribution.Distribution):
         of the distributions determined by broadcasting the parameters.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._loc, self._scale, n], name):
+      with ops.name_scope(name, values=[self._loc, self._scale, n]):
         n = ops.convert_to_tensor(n)
         n_val = tensor_util.constant_value(n)
         shape = array_ops.concat(0, ([n], self.batch_shape()))

@@ -58,7 +58,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
     # Grab static shape if available now.
     with ops.name_scope(name):
-      with ops.op_scope([shape], 'init'):
+      with ops.name_scope('init', values=[shape]):
         self._dtype = dtypes.as_dtype(dtype)
         self._verify_pd = verify_pd
         self._name = name

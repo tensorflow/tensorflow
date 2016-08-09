@@ -262,8 +262,8 @@ class Variable(object):
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
-      with ops.op_scope(
-          [] if init_from_fn else [initial_value], name, "Variable") as name:
+      with ops.name_scope(name, "Variable",
+                          [] if init_from_fn else [initial_value]) as name:
 
         # Get the initial value from a callable function. The real shape of the
         # variable will be set later, since under the init_from_fn case, the

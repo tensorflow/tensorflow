@@ -84,7 +84,7 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     self._verify_pd = verify_pd
     self._name = name
     with ops.name_scope(name):
-      with ops.op_scope([chol], 'init'):
+      with ops.name_scope('init', values=[chol]):
         self._chol = self._check_chol(chol)
 
   @property
@@ -241,7 +241,7 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
   Returns:
     A `Tensor` with same shape and `dtype` as `matrix`.
   """
-  with ops.op_scope([matrix], name, 'batch_matrix_diag_transform'):
+  with ops.name_scope(name, 'batch_matrix_diag_transform', [matrix]):
     matrix = ops.convert_to_tensor(matrix, name='matrix')
     if transform is None:
       return matrix

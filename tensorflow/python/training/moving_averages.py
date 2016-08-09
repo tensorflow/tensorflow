@@ -50,7 +50,8 @@ def assign_moving_average(variable, value, decay, name=None):
     An Operation that updates 'variable' with the newly computed
     moving average.
   """
-  with ops.op_scope([variable, value, decay], name, "AssignMovingAvg") as scope:
+  with ops.name_scope(name, "AssignMovingAvg",
+                      [variable, value, decay]) as scope:
     with ops.colocate_with(variable):
       decay = ops.convert_to_tensor(1.0 - decay, name="decay")
       if decay.dtype != variable.dtype.base_dtype:

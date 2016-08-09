@@ -256,7 +256,7 @@ class QueueBase(object):
     return tensors
 
   def _scope_vals(self, vals):
-    """Return a list of values to pass to `op_scope()`.
+    """Return a list of values to pass to `name_scope()`.
 
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary.
@@ -294,8 +294,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a new tuple of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_enqueue" % self._name) as scope:
+    with ops.name_scope(name, "%s_enqueue" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -332,8 +332,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a batch of tuples of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_EnqueueMany" % self._name) as scope:
+    with ops.name_scope(name, "%s_EnqueueMany" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to

@@ -266,7 +266,7 @@ def abs(x, name=None):
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
   """
-  with ops.op_scope([x], name, "Abs") as name:
+  with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       if x.values.dtype in (dtypes.complex64, dtypes.complex128):
         x_abs = gen_math_ops.complex_abs(x.values,
@@ -294,7 +294,7 @@ def neg(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
   """
-  with ops.op_scope([x], name, "Neg") as name:
+  with ops.name_scope(name, "Neg", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       x_neg = gen_math_ops.neg(x.values, name=name)
       return ops.SparseTensor(indices=x.indices, values=x_neg, shape=x.shape)
@@ -317,7 +317,7 @@ def sign(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
   """
-  with ops.op_scope([x], name, "Sign") as name:
+  with ops.name_scope(name, "Sign", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       x_sign = gen_math_ops.sign(x.values, name=name)
       return ops.SparseTensor(indices=x.indices, values=x_sign, shape=x.shape)
@@ -338,7 +338,7 @@ def square(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor`. Has the same type as `x`.
   """
-  with ops.op_scope([x], name, "Square") as name:
+  with ops.name_scope(name, "Square", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       x_square = gen_math_ops.square(x.values, name=name)
       return ops.SparseTensor(indices=x.indices, values=x_square, shape=x.shape)
@@ -359,7 +359,7 @@ def sqrt(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
   """
-  with ops.op_scope([x], name, "Sqrt") as name:
+  with ops.name_scope(name, "Sqrt", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       x_sqrt = gen_math_ops.sqrt(x.values, name=name)
       return ops.SparseTensor(indices=x.indices, values=x_sqrt, shape=x.shape)
@@ -378,7 +378,7 @@ def erf(x, name=None):
   Returns:
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
   """
-  with ops.op_scope([x], name, "Erf") as name:
+  with ops.name_scope(name, "Erf", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       x_erf = gen_math_ops.erf(x.values, name=name)
       return ops.SparseTensor(indices=x.indices, values=x_erf, shape=x.shape)
@@ -462,7 +462,7 @@ def pow(x, y, name=None):
   Returns:
     A `Tensor`.
   """
-  with ops.op_scope([x], name, "Pow") as name:
+  with ops.name_scope(name, "Pow", [x]) as name:
     return gen_math_ops._pow(x, y, name=name)
 
 
@@ -494,7 +494,7 @@ def complex(real, imag, name=None):
   """
   real = ops.convert_to_tensor(real, name="real")
   imag = ops.convert_to_tensor(imag, name="imag")
-  with ops.op_scope([real, imag], name, "Complex") as name:
+  with ops.name_scope(name, "Complex", [real, imag]) as name:
     input_types = (real.dtype, imag.dtype)
     if input_types == (dtypes.float64, dtypes.float64):
       Tout = dtypes.complex128
@@ -530,7 +530,7 @@ def real(input, name=None):
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
-  with ops.op_scope([input], name, "Real") as name:
+  with ops.name_scope(name, "Real", [input]) as name:
     return gen_math_ops.real(input, Tout=input.dtype.real_dtype, name=name)
 
 
@@ -557,7 +557,7 @@ def imag(input, name=None):
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
-  with ops.op_scope([input], name, "Imag") as name:
+  with ops.name_scope(name, "Imag", [input]) as name:
     return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
 
 
@@ -610,7 +610,7 @@ def cast(x, dtype, name=None):
     TypeError: If `x` cannot be cast to the `dtype`.
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
-  with ops.op_scope([x], name, "Cast") as name:
+  with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
       return ops.SparseTensor(x.indices, values_cast, x.shape)
@@ -643,7 +643,7 @@ def saturate_cast(value, dtype, name=None):
   """
   # When casting to a type with smaller representable range, clamp.
   # Note that this covers casting to unsigned types as well.
-  with ops.op_scope([value], name, "saturate_cast") as name:
+  with ops.name_scope(name, "saturate_cast", [value]) as name:
     value = ops.convert_to_tensor(value, name="value")
     dtype = dtypes.as_dtype(dtype).base_dtype
     if value.dtype.min < dtype.min:
@@ -755,20 +755,20 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
     clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
   """
   def binary_op_wrapper(x, y):
-    with ops.op_scope([x, y], None, op_name) as name:
+    with ops.name_scope(None, op_name, [x, y]) as name:
       if not isinstance(y, ops.SparseTensor):
         y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
       return func(x, y, name=name)
 
   def binary_op_wrapper_sparse(sp_x, y):
-    with ops.op_scope([sp_x, y], None, op_name) as name:
+    with ops.name_scope(None, op_name, [sp_x, y]) as name:
       y = ops.convert_to_tensor(y, dtype=sp_x.dtype.base_dtype, name="y")
       return ops.SparseTensor(sp_x.indices, func(sp_x.indices, sp_x.values,
                                                  sp_x.shape, y, name=name),
                               sp_x.shape)
 
   def r_binary_op_wrapper(y, x):
-    with ops.op_scope([x, y], None, op_name) as name:
+    with ops.name_scope(None, op_name, [x, y]) as name:
       x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
       return func(x, y, name=name)
 
@@ -803,8 +803,8 @@ _TRUEDIV_TABLE = {
 # to explicitly use the "/" operator to invoke either truediv or div.
 def _sparse_dense_truediv(sp_indices, sp_values, sp_shape, y, name=None):
   """Internal helper function for 'sp_t / dense_t'."""
-  with ops.op_scope([sp_indices, sp_values, sp_shape, y],
-                    name, "truediv") as name:
+  with ops.name_scope(name, "truediv",
+                      [sp_indices, sp_values, sp_shape, y]) as name:
     sp_values = ops.convert_to_tensor(sp_values, name="sp_values")
     y = ops.convert_to_tensor(y, name="y")
     x_dtype = sp_values.dtype.base_dtype
@@ -848,7 +848,7 @@ def truediv(x, y, name=None):
   Raises:
     TypeError: If `x` and `y` have different dtypes.
   """
-  with ops.op_scope([x, y], name, "truediv") as name:
+  with ops.name_scope(name, "truediv", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     y = ops.convert_to_tensor(y, name="y")
     x_dtype = x.dtype.base_dtype
@@ -892,7 +892,7 @@ def floordiv(x, y, name=None):
   Raises:
     TypeError: If the inputs are complex.
   """
-  with ops.op_scope([x, y], name, "floordiv") as name:
+  with ops.name_scope(name, "floordiv", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     dtype = x.dtype
     if dtype.is_floating:
@@ -1276,7 +1276,7 @@ def trace(x, name=None):
   Returns:
     The trace of input tensor.
   """
-  with ops.op_scope([x], name, "Trace") as name:
+  with ops.name_scope(name, "Trace", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     if len(x.get_shape()) != 2:
       raise ValueError("Expected a tensor with rank 2, rank %d tensor received"
@@ -1329,7 +1329,7 @@ def matmul(a, b,
   Returns:
     A `Tensor` of the same type as `a`.
   """
-  with ops.op_scope([a, b], name, "MatMul") as name:
+  with ops.name_scope(name, "MatMul", [a, b]) as name:
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
     sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
@@ -1527,7 +1527,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   if tensor_dtype is None:
     tensor_dtype = inputs[0].dtype
-  with ops.op_scope(inputs, name, "AccumulateN") as name:
+  with ops.name_scope(name, "AccumulateN", inputs) as name:
     var = gen_state_ops._temporary_variable(shape=tensor_shape.vector(0),
                                             dtype=tensor_dtype)
     with ops.colocate_with(var):
@@ -1573,7 +1573,7 @@ def sigmoid(x, name=None):
     A Tensor with the same type as `x` if `x.dtype != qint32`
       otherwise the return type is `quint8`.
   """
-  with ops.op_scope([x], name, "Sigmoid") as name:
+  with ops.name_scope(name, "Sigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops._sigmoid(x, name=name)
 
@@ -1590,7 +1590,7 @@ def tanh(x, name=None):
     A Tensor or SparseTensor respectively with the same type as `x` if
     `x.dtype != qint32` otherwise the return type is `quint8`.
   """
-  with ops.op_scope([x], name, "Tanh") as name:
+  with ops.name_scope(name, "Tanh", [x]) as name:
     if isinstance(x, ops.SparseTensor):
       x_tanh = gen_math_ops._tanh(x.values, name=name)
       return ops.SparseTensor(indices=x.indices, values=x_tanh, shape=x.shape)
@@ -1636,7 +1636,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   Returns:
     A `Tensor`. Has the same type as `x`.
   """
-  with ops.op_scope([x], name, "Cumsum") as name:
+  with ops.name_scope(name, "Cumsum", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.cumsum(
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
@@ -1682,7 +1682,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   Returns:
     A `Tensor`. Has the same type as `x`.
   """
-  with ops.op_scope([x], name, "Cumprod") as name:
+  with ops.name_scope(name, "Cumprod", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.cumprod(
         x, axis, exclusive=exclusive, reverse=reverse, name=name)

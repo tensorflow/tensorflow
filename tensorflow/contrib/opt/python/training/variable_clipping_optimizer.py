@@ -85,7 +85,7 @@ class VariableClippingOptimizer(optimizer.Optimizer):
     return self._opt.get_slot_names(*args, **kwargs)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-    with ops.op_scope([], name, self._name) as name:
+    with ops.name_scope(name, self._name) as name:
       update_op = self._opt.apply_gradients(
           grads_and_vars, global_step=global_step)
       clip_update_ops = []

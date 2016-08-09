@@ -137,7 +137,7 @@ def shape_internal(input, name=None, optimize=True):
   Returns:
     A `Tensor` of type `int32`.
   """
-  with ops.op_scope([input], name, "Shape") as name:
+  with ops.name_scope(name, "Shape", [input]) as name:
     if isinstance(input, ops.SparseTensor):
       return gen_math_ops.cast(input.shape, dtypes.int32)
     else:
@@ -185,7 +185,7 @@ def size_internal(input, name=None, optimize=True):
   Returns:
     A `Tensor` of type `int32`.
   """
-  with ops.op_scope([input], name, "Size") as name:
+  with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, ops.SparseTensor):
       return gen_math_ops._prod(gen_math_ops.cast(input.shape, dtypes.int32), 0,
                                 name=name)
@@ -238,7 +238,7 @@ def rank_internal(input, name=None, optimize=True):
   Returns:
     A `Tensor` of type `int32`.
   """
-  with ops.op_scope([input], name, "Rank") as name:
+  with ops.name_scope(name, "Rank", [input]) as name:
     if isinstance(input, ops.SparseTensor):
       return gen_array_ops.size(input.shape, name=name)
     else:
@@ -328,8 +328,8 @@ def _SliceHelper(tensor, slice_spec):
 
   # pack possibly involves often involves no tensors, so we must use op_scope
   # correct graph
-  with ops.op_scope([tensor] + begin + end + strides, None,
-                    "strided_slice") as name:
+  with ops.name_scope(None, "strided_slice",
+                      [tensor] + begin + end + strides) as name:
     begin_pack, end_pack, strides_pack = pack(begin), pack(end), pack(strides)
     return strided_slice(tensor,
                          begin_pack,
@@ -867,7 +867,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     indices = squeeze(where(mask), squeeze_dims=[1])
     return gather(reshaped_tensor, indices)
 
-  with ops.op_scope([tensor, mask], name):
+  with ops.name_scope(name, values=[tensor, mask]):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     mask = ops.convert_to_tensor(mask, name="mask")
 
@@ -928,7 +928,7 @@ def sparse_mask(a, mask_indices, name=None):
   Returns:
     The masked `IndexedSlices` instance.
   """
-  with ops.op_scope([a, mask_indices], name, "sparse_mask") as name:
+  with ops.name_scope(name, "sparse_mask", [a, mask_indices]) as name:
     indices = a.indices
     out_indices, to_gather = listdiff(indices, mask_indices)
     out_values = gather(a.values, to_gather, name=name)
@@ -1037,7 +1037,7 @@ def transpose(a, perm=None, name="transpose"):
   Returns:
     A transposed `Tensor`.
   """
-  with ops.op_scope([a], name, "transpose") as name:
+  with ops.name_scope(name, "transpose", [a]) as name:
     if perm is None:
       rank = gen_array_ops.rank(a)
       perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
@@ -1081,7 +1081,7 @@ def batch_matrix_transpose(a, name="batch_matrix_transpose"):
   Raises:
     ValueError:  If `a` is determined statically to have `rank < 2`.
   """
-  with ops.op_scope([a], name):
+  with ops.name_scope(name, values=[a]):
     a = ops.convert_to_tensor(a, name="a")
 
     # If we know the number of dimensions (statically), we can do two things:
@@ -1125,7 +1125,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   Returns:
     A `Tensor` with all elements set to zero.
   """
-  with ops.op_scope([shape], name, "zeros") as name:
+  with ops.name_scope(name, "zeros", [shape]) as name:
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(0, shape=shape, dtype=dtype, name=name)
@@ -1161,7 +1161,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   Returns:
     A `Tensor` with all elements set to zero.
   """
-  with ops.op_scope([tensor], name, "zeros_like") as name:
+  with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     if dtype is not None and tensor.dtype != dtype:
       ret = zeros(shape_internal(tensor, optimize=optimize), dtype, name=name)
@@ -1196,7 +1196,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   Returns:
     A `Tensor` with all elements set to 1.
   """
-  with ops.op_scope([tensor], name, "ones_like") as name:
+  with ops.name_scope(name, "ones_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     ones_shape = shape_internal(tensor, optimize=optimize)
     if dtype is None:
@@ -1226,7 +1226,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   Returns:
     A `Tensor` with all elements set to 1.
   """
-  with ops.op_scope([shape], name, "ones") as name:
+  with ops.name_scope(name, "ones", [shape]) as name:
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(1, shape=shape, dtype=dtype, name=name)
@@ -1449,7 +1449,7 @@ def meshgrid(*args, **kwargs):
   if indexing not in ("xy", "ij"):
     raise ValueError("indexing parameter must be either 'xy' or 'ij'")
 
-  with ops.op_scope(args, name, "meshgrid") as name:
+  with ops.name_scope(name, "meshgrid", args) as name:
     num_inputs = len(args)
     ones = (1,) * num_inputs
 
@@ -2761,8 +2761,8 @@ def one_hot(indices, depth, on_value=None, off_value=None,
     TypeError: If dtype of either `on_value` or `off_value` don't match `dtype`
     TypeError: If dtype of `on_value` and `off_value` don't match one another
   """
-  with ops.op_scope([indices, depth, on_value, off_value,
-            axis, dtype], name, "one_hot") as name:
+  with ops.name_scope(name, "one_hot", [indices, depth, on_value, off_value,
+                                        axis, dtype]) as name:
     on_exists = on_value is not None
     off_exists = off_value is not None
 

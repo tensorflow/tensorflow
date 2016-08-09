@@ -28,7 +28,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
-from tensorflow.python.framework.ops import op_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -69,7 +68,7 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
                default_value,
                num_shards=1,
                name=None):
-    with ops.op_scope([], name, 'sharded_mutable_hash_table') as scope:
+    with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
       super(_ShardedMutableHashTable, self).__init__(key_dtype, value_dtype,
                                                      scope)
       table_shards = []
@@ -95,7 +94,7 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
     return self._table_shards
 
   def size(self, name=None):
-    with ops.op_scope([], name, 'sharded_mutable_hash_table_size'):
+    with ops.name_scope(name, 'sharded_mutable_hash_table_size'):
       sizes = [
           self._table_shards[i].size() for i in range(self._num_shards)
       ]
@@ -221,8 +220,8 @@ class SparseFeatureColumn(object):
     Returns:
       A `SparseFeatureColumn`
     """
-    with op_scope([example_indices, feature_indices], None,
-                  'SparseFeatureColumn'):
+    with name_scope(None, 'SparseFeatureColumn',
+                    [example_indices, feature_indices]):
       self._example_indices = convert_to_tensor(example_indices,
                                                 name='example_indices',
                                                 dtype=dtypes.int64)
@@ -231,7 +230,7 @@ class SparseFeatureColumn(object):
                                                 dtype=dtypes.int64)
     self._feature_values = None
     if feature_values is not None:
-      with op_scope([feature_values], None, 'SparseFeatureColumn'):
+      with name_scope(None, 'SparseFeatureColumn', [feature_values]):
         self._feature_values = convert_to_tensor(feature_values,
                                                  name='feature_values',
                                                  dtype=dtypes.float32)
@@ -264,7 +263,7 @@ class SparseFeatureColumn(object):
     return self._feature_values
 
 
-# TODO(sibyl-Aix6ihai): add op_scope to appropriate methods.
+# TODO(sibyl-Aix6ihai): add name_scope to appropriate methods.
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
 
@@ -484,7 +483,7 @@ class SdcaModel(object):
     """
     # Technically, the op depends on a lot more than the variables,
     # but we'll keep the list short.
-    with op_scope([], name, 'sdca/minimize'):
+    with name_scope(name, 'sdca/minimize'):
       sparse_example_indices = []
       sparse_feature_indices = []
       sparse_features_values = []

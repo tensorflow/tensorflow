@@ -133,7 +133,7 @@ def enqueue_data(data,
   Raises:
     TypeError: `data` is not a Pandas `DataFrame` or a numpy `ndarray`.
   """
-  with ops.op_scope([], name, None):
+  with ops.name_scope(name):
     if isinstance(data, np.ndarray):
       types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
       queue_shapes = [(), data.shape[1:]]

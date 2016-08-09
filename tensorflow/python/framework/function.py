@@ -252,7 +252,7 @@ def call_function(func_def, *inputs, **kwargs):
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   func_name = func_def.signature.name
-  with ops.op_scope(inputs, name, func_name) as name:
+  with ops.name_scope(name, func_name, inputs) as name:
     if len(inputs) != len(func_def.signature.input_arg):
       raise ValueError("Expected number of arguments: %d, received: %d" %
                        (len(func_def.signature.input_arg), len(inputs)))

@@ -131,7 +131,7 @@ class Beta(distribution.Distribution):
     ```
 
     """
-    with ops.op_scope([a, b], name):
+    with ops.name_scope(name, values=[a, b]):
       with ops.control_dependencies([
           check_ops.assert_positive(a),
           check_ops.assert_positive(b)] if validate_args else []):
@@ -193,7 +193,7 @@ class Beta(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._a_b_sum], name):
+      with ops.name_scope(name, values=[self._a_b_sum]):
         return array_ops.shape(self._a_b_sum)
 
   def get_batch_shape(self):
@@ -216,7 +216,7 @@ class Beta(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], name=name, dtype=dtypes.int32)
 
   def get_event_shape(self):
@@ -232,20 +232,20 @@ class Beta(distribution.Distribution):
   def mean(self, name="mean"):
     """Mean of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._a, self._a_b_sum], name):
+      with ops.name_scope(name, values=[self._a, self._a_b_sum]):
         return self._a / self._a_b_sum
 
   def variance(self, name="variance"):
     """Variance of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._a, self._b, self._a_b_sum], name):
+      with ops.name_scope(name, values=[self._a, self._b, self._a_b_sum]):
         return (self._a * self._b) / (
             self._a_b_sum **2 * (self._a_b_sum + 1))
 
   def std(self, name="std"):
     """Standard deviation of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return math_ops.sqrt(self.variance())
 
   def mode(self, name="mode"):
@@ -263,7 +263,7 @@ class Beta(distribution.Distribution):
       Mode of the Beta distribution.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._a, self._b, self._a_b_sum], name):
+      with ops.name_scope(name, values=[self._a, self._b, self._a_b_sum]):
         a = self._a
         b = self._b
         a_b_sum = self._a_b_sum
@@ -291,7 +291,7 @@ class Beta(distribution.Distribution):
   def entropy(self, name="entropy"):
     """Entropy of the distribution in nats."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._a, self._b, self._a_b_sum], name):
+      with ops.name_scope(name, values=[self._a, self._b, self._a_b_sum]):
         a = self._a
         b = self._b
         a_b_sum = self._a_b_sum
@@ -328,7 +328,7 @@ class Beta(distribution.Distribution):
     a = self._a
     b = self._b
     with ops.name_scope(self.name):
-      with ops.op_scope([a, x], name):
+      with ops.name_scope(name, values=[a, x]):
         x = self._check_x(x)
 
         unnorm_pdf = (a - 1) * math_ops.log(x) + (
@@ -368,7 +368,7 @@ class Beta(distribution.Distribution):
         of the distributions determined by broadcasting the hyperparameters.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, n], name):
+      with ops.name_scope(name, values=[self.a, self.b, n]):
         a = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.a
         b = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.b
         n = ops.convert_to_tensor(n)

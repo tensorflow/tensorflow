@@ -123,7 +123,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     with ops.name_scope(name):
-      with ops.op_scope([mu] + cov.inputs, "init"):
+      with ops.name_scope("init", values=[mu] + cov.inputs):
         self._cov = cov
         self._mu = self._check_mu(mu)
         self._name = name
@@ -193,14 +193,14 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
     """Shape of a sample from a single distribution as a 1-D int32 `Tensor`."""
     # Recall _check_mu ensures mu and self._cov have same batch shape.
     with ops.name_scope(self.name):
-      with ops.op_scope(self._cov.inputs, name):
+      with ops.name_scope(name, values=self._cov.inputs):
         return array_ops.pack([self._cov.vector_space_dimension()])
 
   def batch_shape(self, name="batch_shape"):
     """Batch dimensions of this instance as a 1-D int32 `Tensor`."""
     # Recall _check_mu ensures mu and self._cov have same batch shape.
     with ops.name_scope(self.name):
-      with ops.op_scope(self._cov.inputs, name):
+      with ops.name_scope(name, values=self._cov.inputs):
         return self._cov.batch_shape()
 
   def get_batch_shape(self):
@@ -221,13 +221,13 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
   def mean(self, name="mean"):
     """Mean of each batch member."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu], name):
+      with ops.name_scope(name, values=[self._mu]):
         return array_ops.identity(self._mu)
 
   def mode(self, name="mode"):
     """Mode of each batch member."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu], name):
+      with ops.name_scope(name, values=[self._mu]):
         return array_ops.identity(self._mu)
 
   def variance(self, name="variance"):
@@ -238,13 +238,13 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
   def log_sigma_det(self, name="log_sigma_det"):
     """Log of determinant of covariance matrix."""
     with ops.name_scope(self.name):
-      with ops.op_scope(self._cov.inputs, name):
+      with ops.name_scope(name, values=self._cov.inputs):
         return self._cov.log_det()
 
   def sigma_det(self, name="sigma_det"):
     """Determinant of covariance matrix."""
     with ops.name_scope(self.name):
-      with ops.op_scope(self._cov.inputs, name):
+      with ops.name_scope(name, values=self._cov.inputs):
         return math_ops.exp(self._cov.log_det())
 
   def log_prob(self, x, name="log_prob"):
@@ -271,7 +271,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
     #     a shape compatible with self._cov.
     # See Operator base class for notes about shapes compatible with self._cov.
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, x] + self._cov.inputs, name):
+      with ops.name_scope(name, values=[self._mu, x] + self._cov.inputs):
         x = ops.convert_to_tensor(x)
         contrib_tensor_util.assert_same_float_dtype((self._mu, x))
 
@@ -320,7 +320,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
       prob: tensor of dtype `dtype`, the prob values of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, x] + self._cov.inputs, name):
+      with ops.name_scope(name, values=[self._mu, x] + self._cov.inputs):
         return math_ops.exp(self.log_prob(x))
 
   def entropy(self, name="entropy"):
@@ -333,7 +333,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
       entropy: tensor of dtype `dtype`, the entropies.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu] + self._cov.inputs, name):
+      with ops.name_scope(name, values=[self._mu] + self._cov.inputs):
         log_sigma_det = self.log_sigma_det()
         one_plus_log_two_pi = constant_op.constant(1 + math.log(2 * math.pi),
                                                    dtype=self.dtype)
@@ -357,7 +357,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
         of the distributions determined by broadcasting the hyperparameters.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, n] + self._cov.inputs, name):
+      with ops.name_scope(name, values=[self._mu, n] + self._cov.inputs):
         # Recall _check_mu ensures mu and self._cov have same batch shape.
         broadcast_shape = self.mu.get_shape()
         n = ops.convert_to_tensor(n)
@@ -809,7 +809,7 @@ def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
   mu_b = mvn_b.mu
   inputs = [mu_a, mu_b] + cov_a.inputs + cov_b.inputs
 
-  with ops.op_scope(inputs, name, "kl_mvn_mvn"):
+  with ops.name_scope(name, "kl_mvn_mvn", inputs):
     # If Ca = AA', Cb = BB', then
     # tr[inv(Cb) Ca] = tr[inv(B)' inv(B) A A']
     #                = tr[inv(B) A A' inv(B)']

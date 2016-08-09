@@ -88,7 +88,7 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
     # Run batch through network.
     ...
   """
-  with ops.op_scope(tensors + [labels], name, 'stratified_sample'):
+  with ops.name_scope(name, 'stratified_sample', tensors + [labels]):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
@@ -200,8 +200,8 @@ def stratified_sample_unknown_dist(tensors, labels, probs, batch_size,
     # Run batch through network.
     ...
   """
-  with ops.op_scope(tensors + [labels], name,
-                    'stratified_sample_unknown_dist'):
+  with ops.name_scope(name, 'stratified_sample_unknown_dist',
+                      tensors + [labels]):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     probs = ops.convert_to_tensor(probs, dtype=dtypes.float32)

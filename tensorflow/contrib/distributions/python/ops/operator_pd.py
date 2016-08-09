@@ -129,7 +129,7 @@ class OperatorPDBase(object):
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs + [mat], name):
+      with ops.name_scope(name, values=self.inputs + [mat]):
         mat = ops.convert_to_tensor(mat, name='mat')
         return self._add_to_tensor(mat)
 
@@ -173,7 +173,7 @@ class OperatorPDBase(object):
         as `self`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([x] + self.inputs, name):
+      with ops.name_scope(name, values=[x] + self.inputs):
         x = ops.convert_to_tensor(x, name='x')
         return self._inv_quadratic_form_on_vectors(x)
 
@@ -239,7 +239,7 @@ class OperatorPDBase(object):
     # Derived classes are encouraged to implement log_det() (since it is
     # usually more stable), and then det() comes for free.
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return self._det()
 
   def _det(self):
@@ -255,7 +255,7 @@ class OperatorPDBase(object):
       Logarithm of determinant for every batch member.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return self._dispatch_based_on_batch(self._batch_log_det, self._log_det)
 
   def _batch_log_det(self):
@@ -277,7 +277,7 @@ class OperatorPDBase(object):
       Logarithm of determinant of the square root `S` for every batch member.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return self._dispatch_based_on_batch(
             self._batch_sqrt_log_det, self._sqrt_log_det)
 
@@ -343,7 +343,7 @@ class OperatorPDBase(object):
       `int32` `Tensor`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return self._shape()
 
   @abc.abstractmethod
@@ -365,7 +365,7 @@ class OperatorPDBase(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return array_ops.size(self.shape())
 
   def batch_shape(self, name='batch_shape'):
@@ -382,7 +382,7 @@ class OperatorPDBase(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return array_ops.slice(self.shape(), [0], [self.rank() - 2])
 
   def vector_shape(self, name='vector_shape'):
@@ -399,7 +399,7 @@ class OperatorPDBase(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return array_ops.concat(
             0, (self.batch_shape(), [self.vector_space_dimension()]))
 
@@ -417,7 +417,7 @@ class OperatorPDBase(object):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return array_ops.gather(self.shape(), self.rank() - 1)
 
   def matmul(self, x, transpose_x=False, name='matmul'):
@@ -440,7 +440,7 @@ class OperatorPDBase(object):
       A result equivalent to `tf.batch_matmul(self.to_dense(), x)`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([x] + self.inputs, name):
+      with ops.name_scope(name, values=[x] + self.inputs):
         x = ops.convert_to_tensor(x, name='x')
         return self._dispatch_based_on_batch(
             self._batch_matmul, self._matmul, x=x, transpose_x=transpose_x)
@@ -474,7 +474,7 @@ class OperatorPDBase(object):
       A result equivalent to `tf.batch_matmul(self.sqrt_to_dense(), x)`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([x] + self.inputs, name):
+      with ops.name_scope(name, values=[x] + self.inputs):
         x = ops.convert_to_tensor(x, name='x')
         return self._dispatch_based_on_batch(
             self._batch_sqrt_matmul, self._sqrt_matmul, x=x,
@@ -527,7 +527,7 @@ class OperatorPDBase(object):
       `Tensor` with same `dtype` and shape as `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([rhs] + self.inputs, name):
+      with ops.name_scope(name, values=[rhs] + self.inputs):
         rhs = ops.convert_to_tensor(rhs, name='rhs')
         return self._dispatch_based_on_batch(
             self._batch_solve, self._solve, rhs=rhs)
@@ -579,7 +579,7 @@ class OperatorPDBase(object):
       `Tensor` with same `dtype` and shape as `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([rhs] + self.inputs, name):
+      with ops.name_scope(name, values=[rhs] + self.inputs):
         rhs = ops.convert_to_tensor(rhs, name='rhs')
         return self._dispatch_based_on_batch(
             self._batch_sqrt_solve, self._sqrt_solve, rhs=rhs)
@@ -597,7 +597,7 @@ class OperatorPDBase(object):
   def to_dense(self, name='to_dense'):
     """Return a dense (batch) matrix representing this operator."""
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return self._to_dense()
 
   def _to_dense(self):
@@ -607,7 +607,7 @@ class OperatorPDBase(object):
   def sqrt_to_dense(self, name='sqrt_to_dense'):
     """Return a dense (batch) matrix representing sqrt of this operator."""
     with ops.name_scope(self.name):
-      with ops.op_scope(self.inputs, name):
+      with ops.name_scope(name, values=self.inputs):
         return self._sqrt_to_dense()
 
   def _sqrt_to_dense(self):
@@ -817,7 +817,7 @@ def _extract_batch_shape(x, num_event_dims, name='extract_batch_shape'):
   Returns:
     batch_shape:  `1-D` `int32` `Tensor`
   """
-  with ops.op_scope([x], name):
+  with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name='x')
     return array_ops.slice(
         array_ops.shape(x), [0], [array_ops.rank(x) - num_event_dims])

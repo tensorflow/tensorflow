@@ -88,8 +88,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
   contrib_tensor_util.assert_same_float_dtype(embedding_weights +
                                               [sparse_weights])
 
-  with ops.op_scope(embedding_weights + [sparse_ids, sparse_weights], name,
-                    "embedding_lookup") as scope:
+  with ops.name_scope(name, "embedding_lookup",
+                      embedding_weights + [sparse_ids,
+                                           sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
     original_shape = sparse_ids.shape
     original_rank_dim = sparse_ids.shape.get_shape()[0]
@@ -199,8 +200,8 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
   if not isinstance(params, list):
     params = [params]
 
-  with ops.op_scope(params + [dimension, values], name,
-                    "hashed_embedding_lookup"):
+  with ops.name_scope(name, "hashed_embedding_lookup",
+                      params + [dimension, values]):
     if dimension <= 0:
       raise ValueError("Dimension should be >0 not %d" % dimension)
 
@@ -277,8 +278,8 @@ def hashed_embedding_lookup_sparse(params,
   if not isinstance(sparse_values, ops.SparseTensor):
     raise TypeError("sparse_values must be SparseTensor")
 
-  with ops.op_scope(params + [sparse_values], name,
-                    "hashed_sparse_embedding_lookup") as scope:
+  with ops.name_scope(name, "hashed_sparse_embedding_lookup",
+                      params + [sparse_values]) as scope:
     # Fill in the empty rows.
     if default_value is None:
       # Random default values to reduce the risk of collision.

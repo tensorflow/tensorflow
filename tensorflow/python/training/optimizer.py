@@ -299,7 +299,7 @@ class Optimizer(object):
     with ops.control_dependencies(None):
       self._create_slots(var_list)
     update_ops = []
-    with ops.op_scope([], name, self._name) as name:
+    with ops.name_scope(name, self._name) as name:
       self._prepare()
       for grad, var in grads_and_vars:
         if grad is None:

@@ -253,7 +253,7 @@ def switch(data, pred, dtype=None, name=None):
     `(output_false, output_true)`: If `pred` is true, data will be forwarded
     to `output_true`, otherwise it goes to `output_false`.
   """
-  with ops.op_scope([data, pred], name, "Switch") as name:
+  with ops.name_scope(name, "Switch", [data, pred]) as name:
     data = ops.convert_to_tensor_or_indexed_slices(data, dtype=dtype,
                                                    name="data", as_ref=True)
     pred = ops.convert_to_tensor(pred, name="pred")
@@ -353,7 +353,7 @@ def merge(inputs, name=None):
   """
   if any([inp is None for inp in inputs]):
     raise ValueError("At least one of the merge inputs is None: %s" % inputs)
-  with ops.op_scope(inputs, name, "Merge") as name:
+  with ops.name_scope(name, "Merge", inputs) as name:
     inputs = [ops.convert_to_tensor_or_indexed_slices(inp, as_ref=True)
               for inp in inputs]
     if all([isinstance(v, ops.Tensor) for v in inputs]):
@@ -1320,7 +1320,7 @@ def cond(pred, fn1, fn2, name=None):
   ```
 
   """
-  with ops.op_scope([pred], name, "cond") as name:
+  with ops.name_scope(name, "cond", [pred]) as name:
     if not callable(fn1):
       raise TypeError("fn1 must be callable.")
     if not callable(fn2):
@@ -1985,7 +1985,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     ijk_final = tf.while_loop(c, b, ijk_0)
     ```
   """
-  with ops.op_scope(loop_vars, name, "while") as name:
+  with ops.name_scope(name, "while", loop_vars) as name:
     if not loop_vars:
       raise ValueError("No loop variables provided")
     if not callable(cond):
@@ -2068,8 +2068,8 @@ def with_dependencies(dependencies, output_tensor, name=None):
   Raises:
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
-  with ops.op_scope(dependencies + [output_tensor], name,
-                    "control_dependency") as name:
+  with ops.name_scope(name, "control_dependency",
+                      dependencies + [output_tensor]) as name:
     with ops.colocate_with(output_tensor):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)
@@ -2113,7 +2113,7 @@ def group(*inputs, **kwargs):
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
-  with ops.op_scope(inputs, name, "group_deps") as name:
+  with ops.name_scope(name, "group_deps", inputs) as name:
     # Grouping no inputs means do nothing
     if not inputs:
       return no_op(name=name)
@@ -2176,7 +2176,7 @@ def tuple(tensors, name=None, control_inputs=None):
       objects.
 
   """
-  with ops.op_scope(tensors, name, "tuple") as name:
+  with ops.name_scope(name, "tuple", tensors) as name:
     gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
       for c in control_inputs:
@@ -2291,7 +2291,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     raise TypeError("default must be callable.")
 
   preds, fns = map(list, zip(*pfp))
-  with ops.op_scope([preds], name, "case"):
+  with ops.name_scope(name, "case", [preds]):
     if not preds:
       return default()
     not_preds = []

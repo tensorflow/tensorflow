@@ -335,7 +335,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     local_step = array_ops.reshape(local_step, ())
     is_stale = math_ops.less(local_step, global_step)
 
-    with ops.op_scope(inputs, None, self._name):
+    with ops.name_scope(None, self._name, inputs):
       for grad, var in grads_and_vars:
         var_list.append(var)
         with ops.device(var.device):

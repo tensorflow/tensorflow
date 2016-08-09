@@ -108,7 +108,7 @@ class Normal(distribution.Distribution):
     """
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    with ops.op_scope([mu, sigma], name):
+    with ops.name_scope(name, values=[mu, sigma]):
       mu = ops.convert_to_tensor(mu)
       sigma = ops.convert_to_tensor(sigma)
       with ops.control_dependencies([check_ops.assert_positive(sigma)] if
@@ -152,7 +152,7 @@ class Normal(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return array_ops.shape(self._ones())
 
   def get_batch_shape(self):
@@ -175,7 +175,7 @@ class Normal(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], dtype=dtypes.int32)
 
   def get_event_shape(self):
@@ -201,7 +201,7 @@ class Normal(distribution.Distribution):
   def mean(self, name="mean"):
     """Mean of this distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._sigma, self._mu], name):
+      with ops.name_scope(name, values=[self._sigma, self._mu]):
         return self._mu * array_ops.ones_like(self._sigma)
 
   def mode(self, name="mode"):
@@ -211,13 +211,13 @@ class Normal(distribution.Distribution):
   def std(self, name="std"):
     """Standard deviation of this distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._sigma, self._mu], name):
+      with ops.name_scope(name, values=[self._sigma, self._mu]):
         return self._sigma * array_ops.ones_like(self._mu)
 
   def variance(self, name="variance"):
     """Variance of this distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return math_ops.square(self.std())
 
   def log_prob(self, x, name="log_prob"):
@@ -231,7 +231,7 @@ class Normal(distribution.Distribution):
       log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, x], name):
+      with ops.name_scope(name, values=[self._mu, self._sigma, x]):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s"
@@ -251,7 +251,7 @@ class Normal(distribution.Distribution):
       cdf: tensor of dtype `dtype`, the CDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, x], name):
+      with ops.name_scope(name, values=[self._mu, self._sigma, x]):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s"
@@ -273,7 +273,7 @@ class Normal(distribution.Distribution):
       log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, x], name):
+      with ops.name_scope(name, values=[self._mu, self._sigma, x]):
         return math_ops.log(self.cdf(x))
 
   def prob(self, x, name="prob"):
@@ -298,7 +298,7 @@ class Normal(distribution.Distribution):
       entropy: tensor of dtype `dtype`, the entropy.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma], name):
+      with ops.name_scope(name, values=[self._mu, self._sigma]):
         two_pi_e1 = constant_op.constant(
             2 * math.pi * math.exp(1), dtype=self.dtype)
         # Use broadcasting rules to calculate the full broadcast sigma.
@@ -318,7 +318,7 @@ class Normal(distribution.Distribution):
         of the distributions determined by broadcasting the hyperparameters.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu, self._sigma, n], name):
+      with ops.name_scope(name, values=[self._mu, self._sigma, n]):
         broadcast_shape = (self._mu + self._sigma).get_shape()
         n = ops.convert_to_tensor(n)
         shape = array_ops.concat(0, ([n], array_ops.shape(self.mean())))
@@ -360,7 +360,7 @@ def _kl_normal_normal(n_a, n_b, name=None):
   Returns:
     Batchwise KL(n_a || n_b)
   """
-  with ops.op_scope([n_a.mu, n_b.mu], name, "kl_normal_normal"):
+  with ops.name_scope(name, "kl_normal_normal", [n_a.mu, n_b.mu]):
     one = constant_op.constant(1, dtype=n_a.dtype)
     two = constant_op.constant(2, dtype=n_a.dtype)
     half = constant_op.constant(0.5, dtype=n_a.dtype)

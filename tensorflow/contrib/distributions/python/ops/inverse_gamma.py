@@ -88,7 +88,7 @@ class InverseGamma(distribution.Distribution):
     """
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    with ops.op_scope([alpha, beta], name) as scope:
+    with ops.name_scope(name, values=[alpha, beta]) as scope:
       self._name = scope
       with ops.control_dependencies([check_ops.assert_positive(
           alpha), check_ops.assert_positive(beta)] if validate_args else []):
@@ -147,7 +147,7 @@ class InverseGamma(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._broadcast_tensor], name):
+      with ops.name_scope(name, values=[self._broadcast_tensor]):
         return array_ops.shape(self._broadcast_tensor)
 
   def get_batch_shape(self):
@@ -170,7 +170,7 @@ class InverseGamma(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], dtype=dtypes.int32)
 
   def get_event_shape(self):
@@ -199,7 +199,7 @@ class InverseGamma(distribution.Distribution):
     alpha = self._alpha
     beta = self._beta
     with ops.name_scope(self.name):
-      with ops.op_scope([alpha, beta], name):
+      with ops.name_scope(name, values=[alpha, beta]):
         mean_if_defined = beta / (alpha - 1.0)
         if self.allow_nan_stats:
           alpha_gt_1 = alpha > 1.0
@@ -225,7 +225,7 @@ class InverseGamma(distribution.Distribution):
       The mode for every batch member, a `Tensor` with same `dtype` as self.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta], name):
+      with ops.name_scope(name, values=[self._alpha, self._beta]):
         return self._beta / (self._alpha + 1.0)
 
   def variance(self, name="variance"):
@@ -244,7 +244,7 @@ class InverseGamma(distribution.Distribution):
     alpha = self._alpha
     beta = self._beta
     with ops.name_scope(self.name):
-      with ops.op_scope([alpha, beta], name):
+      with ops.name_scope(name, values=[alpha, beta]):
         var_if_defined = (math_ops.square(self._beta) /
                           (math_ops.square(self._alpha - 1.0) *
                            (self._alpha - 2.0)))
@@ -274,7 +274,7 @@ class InverseGamma(distribution.Distribution):
       TypeError: if `x` and `alpha` are different dtypes.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta, x], name):
+      with ops.name_scope(name, values=[self._alpha, self._beta, x]):
         alpha = self._alpha
         beta = self._beta
         x = ops.convert_to_tensor(x)
@@ -312,7 +312,7 @@ class InverseGamma(distribution.Distribution):
       log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta, x], name):
+      with ops.name_scope(name, values=[self._alpha, self._beta, x]):
         x = ops.convert_to_tensor(x)
         x = control_flow_ops.with_dependencies([check_ops.assert_positive(x)] if
                                                self.validate_args else [], x)
@@ -333,7 +333,7 @@ class InverseGamma(distribution.Distribution):
       cdf: tensor of dtype `dtype`, the CDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta, x], name):
+      with ops.name_scope(name, values=[self._alpha, self._beta, x]):
         return math_ops.igammac(self._alpha, self._beta / x)
 
   def entropy(self, name="entropy"):
@@ -355,7 +355,7 @@ class InverseGamma(distribution.Distribution):
       entropy: tensor of dtype `dtype`, the entropy.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._beta], name):
+      with ops.name_scope(name, values=[self._alpha, self._beta]):
         alpha = self._alpha
         beta = self._beta
         return (alpha + math_ops.log(beta) + math_ops.lgamma(alpha) -
@@ -377,7 +377,7 @@ class InverseGamma(distribution.Distribution):
           with values of type `self.dtype`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([n, self._alpha, self._beta], name):
+      with ops.name_scope(name, values=[n, self._alpha, self._beta]):
         one = constant_op.constant(1.0, dtype=self.dtype)
         return one / random_ops.random_gamma([n],
                                              self._alpha,

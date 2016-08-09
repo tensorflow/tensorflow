@@ -82,7 +82,7 @@ class OperatorPDFull(operator_pd_cholesky.OperatorPDCholesky):
       name:  A name to prepend to all ops created by this class.
     """
     with ops.name_scope(name):
-      with ops.op_scope([matrix], 'init'):
+      with ops.name_scope('init', values=[matrix]):
         matrix = ops.convert_to_tensor(matrix)
         # Check symmetric here.  Positivity will be verified by checking the
         # diagonal of the Cholesky factor inside the parent class.  The Cholesky

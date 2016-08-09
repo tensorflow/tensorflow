@@ -28,7 +28,8 @@ from tensorflow.python.ops import nn
 
 def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
   """Returns prediction and loss for mean squared error regression."""
-  with ops.op_scope([tensor_in, labels], name, "mean_squared_error_regressor"):
+  with ops.name_scope(name, "mean_squared_error_regressor",
+                      [tensor_in, labels]):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
     if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
       predictions = array_ops_.squeeze(predictions, squeeze_dims=[1])
@@ -56,7 +57,7 @@ def softmax_classifier(tensor_in,
   Returns:
     Prediction and loss tensors.
   """
-  with ops.op_scope([tensor_in, labels], name, "softmax_classifier"):
+  with ops.name_scope(name, "softmax_classifier", [tensor_in, labels]):
     logits = nn.xw_plus_b(tensor_in, weights, biases)
     if class_weight is not None:
       logits = math_ops.mul(logits, class_weight)

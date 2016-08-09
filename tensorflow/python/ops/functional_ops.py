@@ -89,7 +89,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  with ops.op_scope([elems], name, "foldl"):
+  with ops.name_scope(name, "foldl", [elems]):
     # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
     varscope = vs.get_variable_scope()
@@ -169,7 +169,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
-  with ops.op_scope([elems], name, "foldr"):
+  with ops.name_scope(name, "foldr", [elems]):
     # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
     varscope = vs.get_variable_scope()
@@ -302,7 +302,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  with ops.op_scope(elems_flat, name, "map"):
+  with ops.name_scope(name, "map", elems_flat):
     # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
     varscope = vs.get_variable_scope()
@@ -487,7 +487,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  with ops.op_scope(elems_flat, name, "scan"):
+  with ops.name_scope(name, "scan", elems_flat):
     # Any get_variable calls in fn will cache the first call locally
     # and not issue repeated network I/O requests for each iteration.
     varscope = vs.get_variable_scope()
