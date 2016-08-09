@@ -33,6 +33,9 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+using Eigen::internal::complex64;
+using Eigen::internal::complex128;
+
 namespace functor {
 
 template <typename O, typename I>
@@ -55,7 +58,9 @@ struct CastFunctor<CPUDevice, O, I> {
   FN(arg0, int64);             \
   FN(arg0, Eigen::half);       \
   FN(arg0, float);             \
-  FN(arg0, double)
+  FN(arg0, double);            \
+  FN(arg0, complex64);         \
+  FN(arg0, complex128)
 
 #define CURRY_TYPES3(FN, arg0, arg1) \
   FN(arg0, arg1, bool);              \
@@ -67,7 +72,9 @@ struct CastFunctor<CPUDevice, O, I> {
   FN(arg0, arg1, int64);             \
   FN(arg0, arg1, Eigen::half);       \
   FN(arg0, arg1, float);             \
-  FN(arg0, arg1, double)
+  FN(arg0, arg1, double);            \
+  FN(arg0, arg1, complex64);         \
+  FN(arg0, arg1, complex128)
 
 #define CAST_CASE(DEVICE, IN, OUT)                                         \
   if (DataTypeToEnum<IN>::value == src_dtype_ &&                           \
@@ -134,6 +141,8 @@ class CpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, CPUDevice, Eigen::half);
     CURRY_TYPES3(CAST_CASE, CPUDevice, float);
     CURRY_TYPES3(CAST_CASE, CPUDevice, double);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, complex64);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, complex128);
 
     if (src_dtype_ == DT_BFLOAT16 && dst_dtype_ == DT_FLOAT) {
       work_ = [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
@@ -191,6 +200,8 @@ class GpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, GPUDevice, Eigen::half);
     CURRY_TYPES3(CAST_CASE, GPUDevice, float);
     CURRY_TYPES3(CAST_CASE, GPUDevice, double);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, complex64);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, complex128);
     CAST_CASE(GPUDevice, float, bfloat16);
     CAST_CASE(GPUDevice, bfloat16, float);
     return Unimplemented();
@@ -219,6 +230,8 @@ CURRY_TYPES2(REGISTER_CAST_GPU, int64);
 CURRY_TYPES2(REGISTER_CAST_GPU, Eigen::half);
 CURRY_TYPES2(REGISTER_CAST_GPU, float);
 CURRY_TYPES2(REGISTER_CAST_GPU, double);
+CURRY_TYPES2(REGISTER_CAST_GPU, complex64);
+CURRY_TYPES2(REGISTER_CAST_GPU, complex128);
 REGISTER_CAST_GPU(float, bfloat16);
 REGISTER_CAST_GPU(bfloat16, float);
 
