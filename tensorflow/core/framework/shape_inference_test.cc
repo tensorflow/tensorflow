@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -1039,6 +1040,129 @@ TEST(ShapeInferenceTest, Max) {
   EXPECT_EQ(d_2, out);
   EXPECT_TRUE(c.Max(d_2, d_2, &out).ok());
   EXPECT_EQ(d_2, out);
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_UnknownShapes) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"?", "?", "?"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_UnknownDims) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[?,?]", "[?]", "[?]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_InvalidIndicesRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[?]", "[?]", "[?]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            c.ValidateSparseTensor(indices, values, shape).code());
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_InvalidNumElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[4]", "[3]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            c.ValidateSparseTensor(indices, values, shape).code());
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_InvalidRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[5]", "[4]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            c.ValidateSparseTensor(indices, values, shape).code());
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_UnknownNumIndexElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[?,3]", "[5]", "[3]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_UnknownNumValueElements) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[?]", "[3]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_UnknownIndexRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,?]", "[5]", "[3]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor_UnknownShapeRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[5]", "[?]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
+}
+
+TEST(ShapeInferenceTest, ValidateSparseTensor) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(3, 1), {"[5,3]", "[5]", "[3]"}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(c.ValidateSparseTensor(indices, values, shape));
 }
 
 }  // namespace shape_inference

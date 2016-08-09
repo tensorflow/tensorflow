@@ -19,7 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::Dimension;
 using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 REGISTER_OP("SetSize")
     .Input("set_indices: int64")
@@ -57,9 +59,66 @@ REGISTER_OP("DenseToDenseSetOperation")
     .Output("result_values: T")
     .Output("result_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Matrix(c->Dim(c->input(0), 0), 2));
-      c->set_output(1, c->Vector(c->UnknownDim()));
-      c->set_output(2, c->Vector(c->UnknownDim()));
+      if (c->num_inputs() != 2) {
+        return errors::InvalidArgument("len(inputs) != 2.");
+      }
+      // The following should stay in sync with `ComputeDenseToDense` shape
+      // assertions in kernels/set_kernels.cc, and `_dense_to_dense_shape` in
+      // python/ops/set_ops.py.
+      // Dimension n contains the set values to be compared, so ranks and the
+      // first n-1 dimensions of inputs and output must match.
+      const Dimension* output_rank;
+      const Shape* input0_shape = c->input(0);
+      if (c->RankKnown(input0_shape)) {
+        const int32 input0_rank = c->Rank(input0_shape);
+        if (input0_rank < 2) {
+          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
+                                         input0_rank, ".");
+        }
+        const Shape* input1_shape = c->input(1);
+        if (c->RankKnown(input1_shape)) {
+          const int32 rank = c->Rank(input1_shape);
+          if (input0_rank != rank) {
+            return errors::InvalidArgument("Ranks do not match: input 0 ",
+                                           input0_rank, ", input 1 ", rank,
+                                           ".");
+          }
+          const Shape* group0_shape;
+          TF_RETURN_IF_ERROR(
+              c->Subshape(input0_shape, 0, rank - 1, &group0_shape));
+          const Shape* group1_shape;
+          TF_RETURN_IF_ERROR(
+              c->Subshape(input1_shape, 0, rank - 1, &group1_shape));
+          const Shape* unused_shape;
+          TF_RETURN_IF_ERROR(
+              c->Merge(group0_shape, group1_shape, &unused_shape));
+        }
+        output_rank = c->MakeDim(input0_rank);
+      } else {
+        const Shape* input1_shape = c->input(1);
+        if (c->RankKnown(input1_shape)) {
+          const int32 input1_rank = c->Rank(input1_shape);
+          if (input1_rank < 2) {
+            return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
+                                           input1_rank, ".");
+          }
+          output_rank = c->MakeDim(input1_rank);
+        } else {
+          output_rank = c->UnknownDim();
+        }
+      }
+      const Dimension* output_num_elements = c->Dim(input0_shape, 0);
+      if (!c->ValueKnown(output_num_elements)) {
+        const Shape* input1_shape = c->input(1);
+        output_num_elements = c->Dim(input1_shape, 0);
+        if (!c->ValueKnown(output_num_elements)) {
+          output_num_elements = c->UnknownDim();
+        }
+      }
+
+      c->set_output(0, c->Matrix(output_num_elements, output_rank));
+      c->set_output(1, c->Vector(output_num_elements));
+      c->set_output(2, c->Vector(output_rank));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -96,9 +155,36 @@ REGISTER_OP("DenseToSparseSetOperation")
     .Output("result_values: T")
     .Output("result_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Matrix(c->Dim(c->input(0), 0), 2));
-      c->set_output(1, c->Vector(c->UnknownDim()));
-      c->set_output(2, c->Vector(c->UnknownDim()));
+      if (c->num_inputs() != 4) {
+        return errors::InvalidArgument("len(inputs) != 4.");
+      }
+      // The following should stay in sync with `ComputeDenseToSparse` shape
+      // assertions in kernels/set_kernels.cc, and `_dense_to_sparse_shape` in
+      // python/ops/set_ops.py.
+      // Dimension n contains the set values to be compared, so ranks and the
+      // first n-1 dimensions of inputs and output must match.
+      const Dimension* output_rank;
+      const Shape* input0_shape = c->input(0);
+      if (c->RankKnown(input0_shape)) {
+        const int32 input0_rank = c->Rank(input0_shape);
+        if (input0_rank < 2) {
+          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
+                                         input0_rank, ".");
+        }
+        output_rank = c->MakeDim(input0_rank);
+      } else {
+        output_rank = c->UnknownDim();
+      }
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(1), c->input(2), c->input(3)));
+      const Dimension* output_num_elements = c->Dim(input0_shape, 0);
+      if (!c->ValueKnown(output_num_elements)) {
+        output_num_elements = c->UnknownDim();
+      }
+
+      c->set_output(0, c->Matrix(output_num_elements, output_rank));
+      c->set_output(1, c->Vector(output_num_elements));
+      c->set_output(2, c->Vector(output_rank));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -150,7 +236,17 @@ REGISTER_OP("SparseToSparseSetOperation")
     .Output("result_values: T")
     .Output("result_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      if (c->num_inputs() != 6) {
+        return errors::InvalidArgument("len(inputs) != 6.");
+      }
+      // The following should stay in sync with `ComputeSparseToSparse` shape
+      // assertions in kernels/set_kernels.cc, and `_sparse_to_sparse_shape` in
+      // python/ops/set_ops.py.
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(3), c->input(4), c->input(5)));
+      c->set_output(0, c->Matrix(c->UnknownDim(), c->UnknownDim()));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(c->UnknownDim()));
       return Status::OK();

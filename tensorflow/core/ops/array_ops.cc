@@ -850,6 +850,10 @@ REGISTER_OP("EditDistance")
     .Attr("T: type")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(3), c->input(4), c->input(5)));
       const Tensor* hypothesis_shape_t = c->input_tensor(2);
       const Tensor* truth_shape_t = c->input_tensor(5);
       if (hypothesis_shape_t == nullptr || truth_shape_t == nullptr) {

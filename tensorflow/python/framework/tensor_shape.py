@@ -755,11 +755,17 @@ class TensorShape(object):
       raise ValueError("Shape %s is not fully defined" % self)
 
   def as_list(self):
-    """Returns a list of integers or None for each dimension.
+    """Returns a list of integers or `None` for each dimension.
 
     Returns:
-      A list of integers or None for each dimension.
+      `None` if shape is unknown; otherwise, a list of integers or `None` for
+      each dimension.
+
+    Raises:
+      ValueError: if `self` is completely unknown.
     """
+    if self._dims is None:
+      raise ValueError("as_list() is not defined on an unknown TensorShape.")
     return [dim.value for dim in self._dims]
 
   def as_proto(self):
