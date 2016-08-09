@@ -218,5 +218,21 @@ class SliceTest(tf.test.TestCase):
       for _ in c:
         pass
 
+  def testComputedShape(self):
+    # NOTE(mrry): We cannot currently handle partially-known values,
+    # because `tf.slice()` uses -1 to specify a wildcard size, and
+    # this can't be handled using the
+    # `tensor_util.constant_value_as_shape()` trick.
+    a = tf.constant([[1, 2, 3], [4, 5, 6]])
+    begin = tf.constant(0)
+    size = tf.constant(1)
+    b = tf.slice(a, [begin, 0], [size, 2])
+    self.assertEqual([1, 2], b.get_shape())
+
+    begin = tf.placeholder(tf.int32, shape=())
+    c = tf.slice(a, [begin, 0], [-1, 2])
+    self.assertEqual([None, 2], c.get_shape().as_list())
+
+
 if __name__ == "__main__":
   tf.test.main()

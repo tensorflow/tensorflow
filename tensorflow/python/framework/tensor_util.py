@@ -594,6 +594,14 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.concatenate(values, axis=dim)
+  elif tensor.op.type == "Pack":
+    values = []
+    for x in tensor.op.inputs:
+      value = constant_value(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.array(values)
   else:
     return None
 

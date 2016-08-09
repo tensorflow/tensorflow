@@ -1512,17 +1512,22 @@ def _SliceShape(op):
   ndims = begin_shape.merge_with(sizes_shape)[0].value
   if ndims is not None:
     input_shape.assert_has_rank(ndims)
-  begin_value = tensor_util.constant_value(op.inputs[1])
+  # NOTE(mrry): Use `constant_value_as_shape()` to handle
+  # partially-known values.
+  begin_value = tensor_util.constant_value_as_shape(
+      op.inputs[1]).with_rank(ndims)
+  # NOTE(mrry): We can't use `constant_value_as_shape()` for `sizes`
+  # because it might contain -1, which can't be represented as a
+  # `TensorShape`.
   sizes_value = tensor_util.constant_value(op.inputs[2])
   if sizes_value is not None:
     returned_dims = []
-    for i, slice_size in enumerate(sizes_value.ravel()):
+    for i, (slice_size, begin_dim) in enumerate(zip(sizes_value.ravel(),
+                                                    begin_value.dims)):
       if slice_size != -1:
         returned_dims.append(slice_size)
-      elif begin_value is not None:
-        returned_dims.append(input_shape[i] - begin_value[i])
       else:
-        returned_dims.append(None)
+        returned_dims.append(input_shape[i] - begin_dim)
     return [tensor_shape.TensorShape(returned_dims)]
   else:
     if input_shape.ndims is not None:
