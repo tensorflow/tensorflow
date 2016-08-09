@@ -54,6 +54,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_ios",
     "tf_copts",
     "tf_cc_test",
     "tf_cc_tests",
@@ -641,6 +642,27 @@ cc_library(
         "manual",
         "notap",
     ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_cc",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+# Native library support for iOS applications.
+#
+# bazel  build --config=ios_x86_64 \
+# //third_party/tensorflow/core:ios_tensorflow_lib
+cc_library(
+    name = "ios_tensorflow_lib",
+    srcs = if_ios([
+        ":android_op_registrations_and_gradients",
+        "//tensorflow/core:android_srcs",
+        "//tensorflow/core/kernels:android_core_ops",
+        "//tensorflow/core/kernels:android_extended_ops",
+    ]),
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",

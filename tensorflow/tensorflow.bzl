@@ -101,6 +101,12 @@ def if_android(a):
       "//conditions:default": [],
   })
 
+def if_ios(a):
+  return select({
+      "//tensorflow:ios": a,
+      "//conditions:default": [],
+  })
+
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
@@ -112,6 +118,7 @@ def tf_copts():
                     "-O2",
                   ],
                   "//tensorflow:darwin": [],
+                  "//tensorflow:ios": ["-std=c++11",],
                   "//conditions:default": ["-pthread"]}))
 
 def tf_opts_nortti_if_android():
