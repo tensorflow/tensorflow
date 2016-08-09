@@ -81,6 +81,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
 
+import struct
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -371,6 +372,38 @@ def ensure_dir_exists(dir_name):
     os.makedirs(dir_name)
 
 
+def write_list_of_floats_to_file(list_of_floats , file_path):
+  """Writes a given list of floats to a binary file.
+
+  Args:
+    list_of_floats: List of floats we want to write to a file.
+    file_path: Path to a file where list of floats will be stored.
+
+  """
+
+  s = struct.pack('d' * BOTTLENECK_TENSOR_SIZE, *list_of_floats)
+  with open(file_path, 'wb') as f:
+    f.write(s)
+
+
+def read_list_of_floats_from_file(file_path):
+  """Reads list of floats from a given file.
+
+  Args:    
+    file_path: Path to a file where list of floats was stored.
+  Returns:
+    Array of bottleneck values (list of floats).
+
+  """
+
+  with open(file_path, 'rb') as f:
+    s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
+    return list(s)
+
+
+bottleneck_path_2_bottleneck_values = {}
+
+
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                              category, bottleneck_dir, jpeg_data_tensor,
                              bottleneck_tensor):
@@ -402,24 +435,32 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
   ensure_dir_exists(sub_dir_path)
   bottleneck_path = get_bottleneck_path(image_lists, label_name, index,
                                         bottleneck_dir, category)
-  if not os.path.exists(bottleneck_path):
-    print('Creating bottleneck at ' + bottleneck_path)
-    image_path = get_image_path(image_lists, label_name, index, image_dir,
-                                category)
-    if not gfile.Exists(image_path):
-      tf.logging.fatal('File does not exist %s', image_path)
-    image_data = gfile.FastGFile(image_path, 'rb').read()
-    bottleneck_values = run_bottleneck_on_image(sess, image_data,
-                                                jpeg_data_tensor,
-                                                bottleneck_tensor)
-    bottleneck_string = ','.join(str(x) for x in bottleneck_values)
-    with open(bottleneck_path, 'w') as bottleneck_file:
-      bottleneck_file.write(bottleneck_string)
 
-  with open(bottleneck_path, 'r') as bottleneck_file:
-    bottleneck_string = bottleneck_file.read()
-  bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
-  return bottleneck_values
+  # if key in map, take it form there and  return
+  # else
+  #   if file does not exist
+  #     create bottleneck file
+  #   read file from disk
+  #   put bottleneck values to map
+  #   return
+
+  if bottleneck_path in bottleneck_path_2_bottleneck_values:
+    assert (bottleneck_path in bottleneck_path_2_bottleneck_values), "Attempt to use unassigned key value."
+    return bottleneck_path_2_bottleneck_values[bottleneck_path]
+  else:
+    if not os.path.exists(bottleneck_path):
+      print('Creating bottleneck at ' + bottleneck_path)
+      image_path = get_image_path(image_lists, label_name, index, image_dir, category)
+      if not gfile.Exists(image_path):
+        tf.logging.fatal('File does not exist %s', image_path)
+      image_data = gfile.FastGFile(image_path, 'rb').read()
+      bottleneck_values = run_bottleneck_on_image(sess, image_data, jpeg_data_tensor, bottleneck_tensor)
+      write_list_of_floats_to_file(bottleneck_values, bottleneck_path)
+
+    bottleneck_values = read_list_of_floats_from_file(bottleneck_path)
+    assert(not (bottleneck_path in bottleneck_path_2_bottleneck_values)), "Attempt to overwrite map value."
+    bottleneck_path_2_bottleneck_values[bottleneck_path] = bottleneck_values
+    return bottleneck_values
 
 
 def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
