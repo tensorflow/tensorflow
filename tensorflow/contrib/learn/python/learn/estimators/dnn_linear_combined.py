@@ -185,7 +185,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         return state_ops.assign_add(global_step, 1).op, loss
 
   def _get_eval_ops(self, features, targets, metrics=None):
-    raise NotImplementedError
+    """See base class."""
+    features = self._get_feature_dict(features)
+    logits = self._logits(features)
+    return self._target_column.get_eval_ops(features, logits, targets, metrics)
 
   def _get_predict_ops(self, features):
     """See base class."""
@@ -435,12 +438,6 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     return super(DNNLinearCombinedClassifier, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
 
-  def _get_eval_ops(self, features, targets, metrics=None):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    logits = self._logits(features)
-    return self._target_column.get_eval_ops(features, logits, targets, metrics)
-
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
   """A regressor for TensorFlow Linear and DNN joined training models.
@@ -571,11 +568,3 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         enable_centered_bias=enable_centered_bias,
         target_column=target_column,
         config=config)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    logits = self._logits(features)
-    return self._target_column.get_eval_ops(features, logits, targets, metrics)
-
-
