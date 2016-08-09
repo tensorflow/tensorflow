@@ -69,8 +69,11 @@ ops.RegisterShape("AsString")(common_shapes.unchanged_shape)
 @ops.RegisterShape("ReduceJoin")
 def _ReduceJoinShape(op):
   """Shape function for the ReduceJoin op."""
+  reduction_indices = tensor_util.constant_value(op.inputs[1])
+  if reduction_indices is None:
+    return [tensor_shape.unknown_shape()]
+
   input_shape = op.inputs[0].get_shape()
-  reduction_indices = np.ravel(tensor_util.constant_value(op.inputs[1]))
   keep_dims = op.get_attr("keep_dims")
 
   if input_shape.ndims is None:
@@ -80,10 +83,7 @@ def _ReduceJoinShape(op):
     raise ValueError("Input string tensor cannot be a scalar.")
 
   true_indices = set()
-  for reduction_index in reduction_indices:
-    if reduction_index is None:
-      return [tensor_shape.unknown_shape()]
-
+  for reduction_index in np.ravel(reduction_indices):
     if (reduction_index < -input_shape.ndims or
         reduction_index >= input_shape.ndims):
       raise ValueError("Invalid reduction dimension %d for input with %d "
@@ -100,8 +100,9 @@ def _ReduceJoinShape(op):
     true_indices.add(true_index)
 
   returned_dims = []
+  reduce_all = reduction_indices.size == 0
   for i, dim in enumerate(input_shape.dims):
-    if i in true_indices:
+    if reduce_all or i in true_indices:
       if keep_dims:
         returned_dims.append(1)
     else:
