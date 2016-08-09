@@ -252,13 +252,12 @@ def _slice_channels(image):
     list of tensor, one for each channel.
   """
 
-  image_shape = image.get_shape()
-  image_rank = len(image_shape)
+  image_rank = array_ops.rank(image)
 
   begin = [0] * (image_rank - 1)
   size = [-1] * (image_rank - 1) + [1]
 
-  channels = [array_ops.slice(image, begin + [i], size) for i in range(image_shape[-1])]
+  channels = [array_ops.slice(image, begin + [i], size) for i in range(3)]
   return channels
 
 
@@ -1152,7 +1151,7 @@ def adjust_hue(image, delta, name=None):
     # floating point number since delta is [-0.5, 0.5].
     hue = math_ops.mod(hue + (delta + 1.), 1.)
 
-    hsv_altered = array_ops.concat(len(image.get_shape()) - 1, [hue, saturation, value])
+    hsv_altered = array_ops.concat(array_ops.rank(image) - 1, [hue, saturation, value])
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
@@ -1224,7 +1223,7 @@ def adjust_saturation(image, saturation_factor, name=None):
     saturation *= saturation_factor
     saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
 
-    hsv_altered = array_ops.concat(len(image.get_shape()) - 1, [hue, saturation, value])
+    hsv_altered = array_ops.concat(array_ops.rank(image) - 1, [hue, saturation, value])
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
