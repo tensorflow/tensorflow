@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -92,6 +93,9 @@ class Classifier(estimator.Estimator):
                                             metrics=metrics,
                                             name=name)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns predicted classes for given features.
 
@@ -122,6 +126,9 @@ class Classifier(estimator.Estimator):
     else:
       return predictions[self.CLASS_OUTPUT]
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(
       self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns predicted probabilty distributions for given features.

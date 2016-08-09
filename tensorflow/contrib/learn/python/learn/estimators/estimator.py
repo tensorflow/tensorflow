@@ -31,6 +31,7 @@ import six
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
@@ -50,6 +51,13 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
+
+
+AS_ITERABLE_DATE = '2016-09-15'
+AS_ITERABLE_INSTRUCTIONS = (
+    'The default behavior of predict() is changing. The default value for\n'
+    'as_iterable will change to True, and then the flag will be removed\n'
+    'altogether. The behavior of this flag is described below.')
 
 
 class ModeKeys(object):
@@ -289,6 +297,8 @@ class BaseEstimator(
       eval_results.update({'global_step': global_step})
     return eval_results
 
+  @deprecated_arg_values(
+      AS_ITERABLE_DATE, AS_ITERABLE_INSTRUCTIONS, as_iterable=False)
   def predict(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
       as_iterable=False):

@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
@@ -395,6 +396,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         target_column=target_column,
         config=config)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns predicted classes for given features.
 
@@ -418,6 +422,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     else:
       return np.argmax(predictions, axis=1)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(
       self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns prediction probabilities for given features.

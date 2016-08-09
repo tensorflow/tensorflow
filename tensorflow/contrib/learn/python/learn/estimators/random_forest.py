@@ -21,6 +21,7 @@ import numpy as np
 import six
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import monitors as mon
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -103,6 +104,9 @@ class TensorForestEstimator(estimator.BaseEstimator):
     super(TensorForestEstimator, self).__init__(model_dir=model_dir,
                                                 config=config)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(
       self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns prediction probabilities for given features (classification).
@@ -126,6 +130,9 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return super(TensorForestEstimator, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict(
       self, x=None, input_fn=None, axis=None, batch_size=None,
       as_iterable=False):
