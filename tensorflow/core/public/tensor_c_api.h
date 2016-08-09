@@ -62,7 +62,7 @@ extern "C" {
 // --------------------------------------------------------------------------
 // TF_DataType holds the type for a scalar value.  E.g., one slot in a tensor.
 // The enum values here are identical to corresponding values in types.proto.
-typedef enum {
+enum TF_DataType {
   TF_FLOAT = 1,
   TF_DOUBLE = 2,
   TF_INT32 = 3,  // Int32 tensors are always in 'host' memory.
@@ -83,12 +83,12 @@ typedef enum {
   TF_UINT16 = 17,
   TF_COMPLEX128 = 18,  // Double-precision complex
   TF_HALF = 19,
-} TF_DataType;
+};
 
 // --------------------------------------------------------------------------
 // TF_Code holds an error code.  The enum values here are identical to
 // corresponding values in error_codes.proto.
-typedef enum {
+enum TF_Code {
   TF_OK = 0,
   TF_CANCELLED = 1,
   TF_UNKNOWN = 2,
@@ -106,7 +106,7 @@ typedef enum {
   TF_INTERNAL = 13,
   TF_UNAVAILABLE = 14,
   TF_DATA_LOSS = 15,
-} TF_Code;
+};
 
 // --------------------------------------------------------------------------
 // TF_Status holds error information.  It either has an OK code, or
@@ -181,7 +181,7 @@ typedef struct TF_Tensor TF_Tensor;
 //      (*deallocator)(data, len, deallocator_arg)
 // Clients must provide a custom deallocator function so they can pass in
 // memory managed by something like numpy.
-extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
+extern TF_Tensor* TF_NewTensor(TF_DataType, const long long* dims, int num_dims,
                                void* data, size_t len,
                                void (*deallocator)(void* data, size_t len,
                                                    void* arg),
@@ -198,7 +198,7 @@ extern int TF_NumDims(const TF_Tensor*);
 
 // Return the length of the tensor in the "dim_index" dimension.
 // REQUIRES: 0 <= dim_index < TF_NumDims(tensor)
-extern int64_t TF_Dim(const TF_Tensor* tensor, int dim_index);
+extern long long TF_Dim(const TF_Tensor* tensor, int dim_index);
 
 // Return the size of the underlying data in bytes.
 extern size_t TF_TensorByteSize(const TF_Tensor*);
@@ -317,9 +317,9 @@ extern void TF_SetAttrStringList(TF_NodeDescription* desc,
                                  const void* const* values, const int* lengths,
                                  int num_values);
 extern void TF_SetAttrInt(TF_NodeDescription* desc, const char* attr_name,
-                          int64_t value);
+                          long long value);
 extern void TF_SetAttrIntList(TF_NodeDescription* desc, const char* attr_name,
-                              const int64_t* values, int num_values);
+                              const long long* values, int num_values);
 extern void TF_SetAttrFloat(TF_NodeDescription* desc, const char* attr_name,
                             float value);
 extern void TF_SetAttrFloatList(TF_NodeDescription* desc, const char* attr_name,
@@ -337,13 +337,13 @@ extern void TF_SetAttrTypeList(TF_NodeDescription* desc, const char* attr_name,
 // `dims` points to an array of length `num_dims`.  `dims[i]` must be
 // >= -1, with -1 meaning "unknown dimension".
 extern void TF_SetAttrShape(TF_NodeDescription* desc, const char* attr_name,
-                            const int64_t* dims, int num_dims);
+                            const long long* dims, int num_dims);
 // `dims` and `num_dims` must point to arrays of length `num_shapes`.
 // Set `num_dims[i]` to -1 to represent "unknown rank".  Otherwise,
 // `dims[i]` points to an array of length `num_dims[i]`.  `dims[i][j]`
 // must be >= -1, with -1 meaning "unknown dimension".
 extern void TF_SetAttrShapeList(TF_NodeDescription* desc, const char* attr_name,
-                                const int64_t* const* dims, const int* num_dims,
+                                const long long* const* dims, const int* num_dims,
                                 int num_shapes);
 // `proto` must point to an array of `proto_len` bytes representing a
 // binary-serialized TensorShapeProto.

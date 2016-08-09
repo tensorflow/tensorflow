@@ -132,7 +132,7 @@ struct TF_Tensor {
   TensorBuffer* buffer;
 };
 
-TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
+TF_Tensor* TF_NewTensor(TF_DataType dtype, const long long* dims, int num_dims,
                         void* data, size_t len,
                         void (*deallocator)(void* data, size_t len, void* arg),
                         void* deallocator_arg) {
@@ -174,8 +174,8 @@ void TF_DeleteTensor(TF_Tensor* t) {
 
 TF_DataType TF_TensorType(const TF_Tensor* t) { return t->dtype; }
 int TF_NumDims(const TF_Tensor* t) { return t->shape.dims(); }
-int64_t TF_Dim(const TF_Tensor* t, int dim_index) {
-  return static_cast<int64_t>(t->shape.dim_size(dim_index));
+long long TF_Dim(const TF_Tensor* t, int dim_index) {
+  return static_cast<long long>(t->shape.dim_size(dim_index));
 }
 size_t TF_TensorByteSize(const TF_Tensor* t) { return t->buffer->size(); }
 void* TF_TensorData(const TF_Tensor* t) { return t->buffer->data(); }
@@ -359,10 +359,10 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
   for (size_t i = 0; i < dims.size(); ++i) {
     dimvec[i] = dims[i];
   }
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(long long) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
   return TF_NewTensor(TF_STRING,
-                      reinterpret_cast<const int64_t*>(dimvec.data()),
+                      reinterpret_cast<const long long*>(dimvec.data()),
                       dimvec.size(), base, size, DeleteArray, base);
 }
 
@@ -386,9 +386,9 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
     nelems *= shape.dim_size(i);
   }
   CHECK_EQ(nelems, 0);
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+  static_assert(sizeof(long long) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
-  return TF_NewTensor(dtype, reinterpret_cast<const int64_t*>(dims.data()),
+  return TF_NewTensor(dtype, reinterpret_cast<const long long*>(dims.data()),
                       shape.dims(), reinterpret_cast<void*>(&empty), 0,
                       [](void*, size_t, void*) {}, nullptr);
 }
@@ -731,15 +731,15 @@ void TF_SetAttrStringList(TF_NodeDescription* desc, const char* attr_name,
 }
 
 void TF_SetAttrInt(TF_NodeDescription* desc, const char* attr_name,
-                   int64_t value) {
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                   long long value) {
+  static_assert(sizeof(long long) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
   desc->node_builder.Attr(attr_name, static_cast<tensorflow::int64>(value));
 }
 
 void TF_SetAttrIntList(TF_NodeDescription* desc, const char* attr_name,
-                       const int64_t* values, int num_values) {
-  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                       const long long* values, int num_values) {
+  static_assert(sizeof(long long) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
   desc->node_builder.Attr(
       attr_name,
@@ -785,10 +785,10 @@ void TF_SetAttrTypeList(TF_NodeDescription* desc, const char* attr_name,
 }
 
 void TF_SetAttrShape(TF_NodeDescription* desc, const char* attr_name,
-                     const int64_t* dims, int num_dims) {
+                     const long long* dims, int num_dims) {
   PartialTensorShape shape;
   if (num_dims >= 0) {
-    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+    static_assert(sizeof(long long) == sizeof(tensorflow::int64),
                   "64-bit int types should match in size");
     shape = PartialTensorShape(ArraySlice<tensorflow::int64>(
         reinterpret_cast<const tensorflow::int64*>(dims), num_dims));
@@ -797,7 +797,7 @@ void TF_SetAttrShape(TF_NodeDescription* desc, const char* attr_name,
 }
 
 void TF_SetAttrShapeList(TF_NodeDescription* desc, const char* attr_name,
-                         const int64_t* const* dims, const int* num_dims,
+                         const long long* const* dims, const int* num_dims,
                          int num_shapes) {
   std::vector<PartialTensorShape> shapes;
   shapes.reserve(num_shapes);
@@ -805,7 +805,7 @@ void TF_SetAttrShapeList(TF_NodeDescription* desc, const char* attr_name,
     if (num_dims[i] < 0) {
       shapes.emplace_back();
     } else {
-      static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+      static_assert(sizeof(long long) == sizeof(tensorflow::int64),
                     "64-bit int types should match in size");
       shapes.emplace_back(ArraySlice<tensorflow::int64>(
           reinterpret_cast<const tensorflow::int64*>(dims[i]), num_dims[i]));
