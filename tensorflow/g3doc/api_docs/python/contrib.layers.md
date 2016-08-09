@@ -584,7 +584,7 @@ L1 regularization encourages sparsity.
 
 
 *  <b>`scale`</b>: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
-*  <b>`scope`</b>: An optional op_scope name.
+*  <b>`scope`</b>: An optional scope name.
 
 ##### Returns:
 
@@ -608,7 +608,7 @@ Small values of L2 can help prevent overfitting the training data.
 
 
 *  <b>`scale`</b>: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
-*  <b>`scope`</b>: An optional op_scope name.
+*  <b>`scope`</b>: An optional scope name.
 
 ##### Returns:
 
@@ -630,7 +630,7 @@ Returns a function that applies the sum of multiple regularizers.
 
 
 *  <b>`regularizer_list`</b>: A list of regularizers to apply.
-*  <b>`scope`</b>: An optional op_scope name
+*  <b>`scope`</b>: An optional scope name
 
 ##### Returns:
 
