@@ -164,6 +164,8 @@ class BaseEstimator(
   """
   __metaclass__ = abc.ABCMeta
 
+  # Note that for Google users, this is overriden with
+  # learn_runner.EstimatorConfig.
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
 

@@ -24,7 +24,12 @@ from tensorflow.python import GPUOptions
 
 
 class RunConfig(object):
-  """This class specifies the specific configurations for the run."""
+  """This class specifies the specific configurations for the run.
+
+  If you're a Google-internal user using command line flags with learn_runner.py
+  (for instance, to do distributed training or to use parameter servers), you
+  probably want to use learn_runner.EstimatorConfig instead.
+  """
 
   # TODO(wicke): Move options out once functionality is covered by monitors
   def __init__(self,
@@ -34,7 +39,7 @@ class RunConfig(object):
                num_cores=4,
                log_device_placement=False,
                gpu_memory_fraction=1,
-               tf_random_seed=42,
+               tf_random_seed=None,
                save_summary_steps=100,
                save_checkpoints_secs=60,
                keep_checkpoint_max=5,

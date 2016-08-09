@@ -713,29 +713,6 @@ py_binary(
     ],
 )
 
-py_binary(
-    name = "runner_flags_test_util",
-    srcs = [
-        "python/learn/tests/runner_flags_test_util.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-sh_test(
-    name = "runner_flags_test",
-    size = "small",
-    srcs = [
-        "python/learn/tests/runner_flags_test.sh",
-    ],
-    data = [
-        ":runner_flags_test_util",
-    ],
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(

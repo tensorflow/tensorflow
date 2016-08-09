@@ -22,9 +22,6 @@ import tensorflow as tf
 from tensorflow.contrib.learn.python.learn import learn_runner
 
 
-FLAGS = learn_runner.FLAGS
-
-
 class TestExperiment(tf.contrib.learn.Experiment):
 
   def __init__(self, default=None):
@@ -47,59 +44,40 @@ def build_non_experiment(output_dir):
 
 class MainTest(tf.test.TestCase):
 
-  def setUp(self):
-    # Make sure the flags exist. It's unclear why this is necessary.
-    if not hasattr(FLAGS, "output_dir"):
-      learn_runner.flags.DEFINE_string("output_dir", "/tmp", "Fake")
-    if not hasattr(FLAGS, "schedule"):
-      learn_runner.flags.DEFINE_string("schedule", "simple_task", "Fake")
-
   def test_run(self):
-    FLAGS.output_dir = "/tmp"
-    FLAGS.schedule = "simple_task"
-    self.assertEqual("simple_task, default=None.",
-                     learn_runner.run(build_experiment))
+    self.assertEqual(
+        "simple_task, default=None.",
+        learn_runner.run(
+            build_experiment, output_dir="/tmp", schedule="simple_task"))
 
   def test_fail_no_output_dir(self):
-    FLAGS.output_dir = ""
-    FLAGS.schedule = "simple_test"
-    self.assertRaisesRegexp(RuntimeError,
-                            "Must specify an output directory",
-                            learn_runner.run, build_experiment)
+    self.assertRaisesRegexp(ValueError, "Must specify an output directory",
+                            learn_runner.run, build_experiment, "",
+                            "simple_task")
 
   def test_fail_no_schedule(self):
-    FLAGS.output_dir = "/tmp"
-    FLAGS.schedule = ""
-    self.assertRaisesRegexp(RuntimeError, "Must specify a schedule",
-                            learn_runner.run, build_experiment)
+    self.assertRaisesRegexp(ValueError, "Must specify a schedule",
+                            learn_runner.run, build_experiment, "/tmp", "")
 
   def test_fail_non_callable(self):
-    FLAGS.output_dir = "/tmp"
-    FLAGS.schedule = "simple_test"
-    self.assertRaisesRegexp(TypeError,
-                            "Experiment builder .* is not callable",
-                            learn_runner.run, "not callable")
+    self.assertRaisesRegexp(TypeError, "Experiment builder .* is not callable",
+                            learn_runner.run, "not callable", "/tmp",
+                            "simple_test")
 
   def test_fail_not_experiment(self):
-    FLAGS.output_dir = "/tmp"
-    FLAGS.schedule = "simple_test"
     self.assertRaisesRegexp(
         TypeError, "Experiment builder did not return an Experiment",
-        learn_runner.run, build_non_experiment)
+        learn_runner.run, build_non_experiment, "/tmp", "simple_test")
 
   def test_fail_non_existent_task(self):
-    FLAGS.output_dir = "/tmp"
-    FLAGS.schedule = "mirage"
     self.assertRaisesRegexp(
         ValueError, "Schedule references non-existent task",
-        learn_runner.run, build_experiment)
+        learn_runner.run, build_experiment, "/tmp", "mirage")
 
   def test_fail_non_callable_task(self):
-    FLAGS.output_dir = "/tmp"
-    FLAGS.schedule = "default"
     self.assertRaisesRegexp(
         TypeError, "Schedule references non-callable member",
-        learn_runner.run, build_experiment)
+        learn_runner.run, build_experiment, "/tmp", "default")
 
 
 if __name__ == "__main__":
