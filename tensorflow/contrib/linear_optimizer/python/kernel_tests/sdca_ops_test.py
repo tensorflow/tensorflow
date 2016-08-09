@@ -373,9 +373,9 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(0.328394 + 0.131364, loss.eval(), atol=0.01)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 0, 0, 1], predicted_labels.eval())
-        self.assertAllClose(0.01,
+        self.assertAllClose(0.0,
                             lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
+                            rtol=2e-2,
                             atol=1e-2)
 
   def testImbalancedWithExampleWeights(self):
@@ -411,9 +411,9 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(0.408044, loss.eval(), atol=0.012)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 1], predicted_labels.eval())
-        self.assertAllClose(0.01,
+        self.assertAllClose(0.0,
                             lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
+                            rtol=2e-2,
                             atol=1e-2)
 
   def testInstancesOfOneClassOnly(self):
@@ -493,7 +493,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
       # Approximate gap should be very close to 0.0. (In fact, because the gap
       # is only approximate, it is likely that upon convergence the duality gap
       # can have a tiny negative value).
-      self.assertAllClose(0.00,
+      self.assertAllClose(0.0,
                           lr.approximate_duality_gap().eval(),
                           atol=1e-2)
 

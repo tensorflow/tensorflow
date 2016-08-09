@@ -31,16 +31,14 @@ class SquaredLossUpdater : public DualLossUpdater {
   // Note: There is a typo in the formula in the paper: the denominator should
   // be 1 + ||x_i||^2/(\lambda n) (without the 2 multiplier).
   //
-  // TODO(vgodet): Changes to support num_partitions_unused and the derivation
-  // for squared loss loss.
-  double ComputeUpdatedDual(const int num_partitions_unused, const double label,
+  // The CoCoA+ modification is detailed in readme.md.
+  double ComputeUpdatedDual(const int num_partitions, const double label,
                             const double example_weight,
                             const double current_dual, const double wx,
-                            const double weighted_example_norm,
-                            const double primal_loss_unused,
-                            const double dual_loss_unused) const final {
+                            const double weighted_example_norm) const final {
     const double delta_numerator = label - current_dual - wx;
-    const double delta_denominator = 1 + weighted_example_norm * example_weight;
+    const double delta_denominator =
+        1 + num_partitions * weighted_example_norm * example_weight;
     return current_dual + delta_numerator / delta_denominator;
   }
 
