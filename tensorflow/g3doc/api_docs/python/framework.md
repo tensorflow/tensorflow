@@ -2182,11 +2182,17 @@ Returns a list of Dimensions, or None if the shape is unspecified.
 
 #### `tf.TensorShape.as_list()` {#TensorShape.as_list}
 
-Returns a list of integers or None for each dimension.
+Returns a list of integers or `None` for each dimension.
 
 ##### Returns:
 
-  A list of integers or None for each dimension.
+  `None` if shape is unknown; otherwise, a list of integers or `None` for
+  each dimension.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `self` is completely unknown.
 
 
 - - -
