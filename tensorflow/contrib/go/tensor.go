@@ -55,14 +55,14 @@ func (e *ErrInvalidTensorType) Error() string {
 	return fmt.Sprintf("Invalid tensor data type, tensor data type: '%s', required data type: '%s'", e.TensorType, e.ExpectedType)
 }
 
-// ErrTensorTypeNotSupported is returned when the tensor type is still not
+// ErrTensorTypeNotSupported is returned when the tensor type is not
 // supported.
 type ErrTensorTypeNotSupported struct {
 	TensotType DataType
 }
 
 func (e *ErrTensorTypeNotSupported) Error() string {
-	return fmt.Sprintf("The tensor data type '%s' is still not supported", e.TensotType)
+	return fmt.Sprintf("The tensor data type '%s' is not supported", e.TensotType)
 }
 
 // ErrDimsOutOfTensorRange is returned when the specified number of dimensions
@@ -97,13 +97,13 @@ func (e *ErrSliceExpected) Error() string {
 	return fmt.Sprintf("The argument must be a Slice, but the data type is: '%s'", e.DataType)
 }
 
-// ErrDataTypeNotSupported is returned when the data type is not suported.
+// ErrDataTypeNotSupported is returned when the data type is not supported.
 type ErrDataTypeNotSupported struct {
 	DataType string
 }
 
 func (e *ErrDataTypeNotSupported) Error() string {
-	return fmt.Sprintf("The type of the provided data is not suported: '%s'", e.DataType)
+	return fmt.Sprintf("The type of the provided data is not supported: '%s'", e.DataType)
 }
 
 var (
@@ -130,7 +130,8 @@ var (
 	// DTUint16 corresponds to TF_UINT16.
 	DTUint16 = DataType(TF_UINT16)
 
-	// The next data types are still not supported
+	//NOTE: The next data types are still not supported
+
 	// DTBfloat corresponds to TF_BFLOAT16.
 	DTBfloat = DataType(TF_BFLOAT16)
 	// DTComplex corresponds to TF_COMPLEX.
@@ -165,7 +166,8 @@ func NewTensorWithShape(shape TensorShape, data interface{}) (*Tensor, error) {
 		}
 	}
 
-	dataType, err := getDataTypeFromReflect(v.Type().Elem().Kind(), int64(v.Type().Elem().Size()))
+	elem := v.Type().Elem()
+	dataType, err := getDataTypeFromReflect(elem.Kind(), int64(elem.Size()))
 	if err != nil {
 		return nil, err
 	}
