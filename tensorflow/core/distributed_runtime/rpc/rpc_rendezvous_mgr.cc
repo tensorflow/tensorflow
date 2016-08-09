@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/types.h"
@@ -79,13 +80,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     // We don't clear opts_ and assume that Init will set up the state for
     // opts_ appropriately.
     req_.Clear();
-    if (resp_.ByteSize() > 128) {
-      // Clear memory from resp_ if it is too large
-      RecvTensorResponse empty;
-      resp_.Swap(&empty);
-    } else {
-      resp_.Clear();
-    }
+    resp_.Clear();
     {
       mutex_lock l(mu_);
       status_ = Status::OK();
@@ -112,11 +107,9 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     return status_;
   }
 
-  const TensorProto& tensor_proto() const { return resp_.tensor(); }
+  const Tensor& tensor() const { return resp_.tensor(); }
 
-  const RecvTensorResponse& response() const { return resp_; }
-
-  bool is_dead() const { return resp_.is_dead(); }
+  bool is_dead() const { return resp_.metadata().is_dead(); }
 
   Device* dst_device() const { return dst_device_; }
   const Rendezvous::Args& recv_args() const { return recv_args_; }
@@ -127,6 +120,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
+    resp_.set_allocator(allocator_ == nullptr ? cpu_allocator() : allocator_);
     using namespace std::placeholders;
     StatusCallback cb = std::bind(
         [this](std::function<void()> recv_done,
@@ -139,8 +133,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
           recv_done();
         },
         std::move(recv_done), _1);
-    wi_->RecvTensorAsync(&opts_, &req_, &resp_,
-                         nullptr /* TensorBufAllocator */, std::move(cb));
+    wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
   }
 
   string src_worker_;
@@ -150,7 +143,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   Device* dst_device_;
   CallOptions opts_;
   RecvTensorRequest req_;
-  RecvTensorResponse resp_;
+  TensorResponse resp_;
   Rendezvous::Args recv_args_;
   Rendezvous::DoneCallback done_;
 
@@ -321,12 +314,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     // If StartAbort was called prior to DeregisterCall, then the
     // current status should be bad.
     Status s = call->status();
-    Tensor val;
-    if (s.ok()) {
-      s = call->dst_device()->MakeTensorFromProto(
-          call->tensor_proto(), call->recv_args().alloc_attrs, &val);
-    }
-    call->done()(s, Args(), call->recv_args(), val, call->is_dead());
+    call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
     cache_->ReleaseWorker(call->src_worker_, call->wi_);
     call->wi_ = nullptr;
     call_freelist_.Release(call);
