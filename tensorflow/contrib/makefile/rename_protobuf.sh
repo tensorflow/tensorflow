@@ -44,42 +44,43 @@ mv tensorflow/contrib/makefile/downloads/protobuf/src/google/protobuf \
 find . \
  -type f \
  \( -name "*.cc" -or -name "*.h" \) \
- -exec sed -i -e \
+ -exec sed -i '' \
  's%#include \([<"]\)google/protobuf/%#include \1google/protobuf3/%' {} \;
 find . \
  -type f \
  -name "*.proto" \
- -exec sed -i -e \
+ -exec sed -i '' \
  's%import \(.*\)\([<"]\)google/protobuf/%import \1\2google/protobuf3/%' {} \;
 
 # Rename the namespace mentions.
 find . \
  -type f \
  \( -name "*.cc" -or -name "*.h" \) \
- -exec sed -i -e \
+ -exec sed -i '' \
  's%namespace protobuf\([^3]\)%namespace protobuf3\1%' {} \;
 find . \
  -type f \
  \( -name "*.cc" -or -name "*.h" \) \
- -exec sed -i -e \
+ -exec sed -i '' \
  's%protobuf::%protobuf3::%g' {} \;
-sed -i -e 's%::google::protobuf;%google::protobuf3;%' \
+sed -i '' 's%::google::protobuf;%google::protobuf3;%' \
  tensorflow/core/platform/default/protobuf.h
 
 # Fix up a couple of special build scripts that look for particular files.
-sed -i -e 's%src/google/protobuf/message.cc%src/google/protobuf3/message.cc%' \
+sed -i '' 's%src/google/protobuf/message.cc%src/google/protobuf3/message.cc%' \
  tensorflow/contrib/makefile/downloads/protobuf/configure.ac 
-sed -i -e 's%src/google/protobuf/stubs/common.h%src/google/protobuf3/stubs/common.h%' \
+sed -i '' 's%src/google/protobuf/stubs/common.h%src/google/protobuf3/stubs/common.h%' \
  tensorflow/contrib/makefile/downloads/protobuf/autogen.sh
 
 # Update the locations within the protobuf makefile.
-sed -i -e 's%google/protobuf/%google/protobuf3/%g' \
+sed -i '' 's%google/protobuf/%google/protobuf3/%g' \
  tensorflow/contrib/makefile/downloads/protobuf/src/Makefile.am
 
 # Make sure protoc can find the new google/protobuf3 paths by putting them at
 # the root directory.
-cp -r tensorflow/contrib/makefile/downloads/protobuf/src/google/ .
+cp -r tensorflow/contrib/makefile/downloads/protobuf/src/google .
 
 # Update the protobuf commands used in the makefile.
-sed -i -e 's%$(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(PROTOGENDIR)%tensorflow/contrib/makefile/rename_protoc.sh $(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(PROTOGENDIR)%' tensorflow/contrib/makefile/Makefile
-sed -i -e 's%$(PROTO_TEXT) \\%tensorflow/contrib/makefile/rename_proto_text.sh $(PROTO_TEXT) \\%' tensorflow/contrib/makefile/Makefile
+sed -i '' 's%$(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(PROTOGENDIR)%tensorflow/contrib/makefile/rename_protoc.sh $(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(PROTOGENDIR)%' tensorflow/contrib/makefile/Makefile
+sed -i '' 's%$(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(HOST_GENDIR)%tensorflow/contrib/makefile/rename_protoc.sh $(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(HOST_GENDIR)%' tensorflow/contrib/makefile/Makefile
+sed -i '' 's%$(PROTO_TEXT) \\%tensorflow/contrib/makefile/rename_prototext.sh $(PROTO_TEXT) \\%' tensorflow/contrib/makefile/Makefile

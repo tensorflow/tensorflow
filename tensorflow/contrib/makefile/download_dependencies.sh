@@ -54,8 +54,8 @@ sed -e 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DATA );#sta
 -i '' \
 eigen-latest/eigen/src/Core/arch/NEON/Complex.h
 
-git clone https://github.com/google/re2.git ${DOWNLOADS_DIR}/re2
-git clone https://github.com/google/gemmlowp.git ${DOWNLOADS_DIR}/gemmlowp
-git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
+git clone https://github.com/google/re2.git re2
+git clone https://github.com/google/gemmlowp.git gemmlowp
+git clone https://github.com/google/protobuf.git protobuf
 
 echo "download_dependencies.sh completed successfully."

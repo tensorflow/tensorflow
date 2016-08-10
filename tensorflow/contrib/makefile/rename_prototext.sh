@@ -20,14 +20,15 @@ shift
 ${PROTO_TEXT_COMMAND} $*
 
 # Assumes a fixed order for the arguments.
-PROTO_FILE=${@: -1}
-CC_FILE=${${PROTO_FILE}/%.proto/.pb_text.h}
-H_FILE=${${PROTO_FILE}/%.proto/.pb_text.cc}
-GEN_DIR=${@: -4}
-GEN_CC=${GEN_DIR}/{`basename $CC_FILE`}
-GEN_H=${GEN_DIR}/{`basename $H_FILE`}
+PROTO_LAST_FOUR_ARGS=(${@: -4})
+PROTO_FILE=${PROTO_LAST_FOUR_ARGS[3]}
+CC_FILE=${PROTO_FILE%.proto}.pb_text.cc
+H_FILE=${PROTO_FILE%.proto}.pb_text.h
+GEN_DIR=${PROTO_LAST_FOUR_ARGS[0]}
+GEN_CC=${GEN_DIR}/${CC_FILE#tensorflow/core}
+GEN_H=${GEN_DIR}/${H_FILE#tensorflow/core}
 
-sed -i -e 's%protobuf::%protobuf3::%g' ${GEN_CC}
-sed -i -e 's%protobuf::%protobuf3::%g' ${GEN_H}
-sed -i -e 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_CC}
-sed -i -e 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_H}
+sed -i '' 's%protobuf::%protobuf3::%g' ${GEN_CC}
+sed -i '' 's%protobuf::%protobuf3::%g' ${GEN_H}
+sed -i '' 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_CC}
+sed -i '' 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_H}

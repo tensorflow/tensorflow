@@ -20,14 +20,15 @@ shift
 ${PROTO_C_COMMAND} $*
 
 # Assumes that the order is always <some flags> *.protofile --cpp_out dir
-PROTO_FILE=${@: -3}
-CC_FILE=${${PROTO_FILE}/%.proto/.pb.h}
-H_FILE=${${PROTO_FILE}/%.proto/.pb.cc}
-GEN_DIR=${@: -1}
-GEN_CC=${GEN_DIR}/{$CC_FILE}
-GEN_H=${GEN_DIR}/{$H_FILE}
+PROTO_LAST_THREE_ARGS=(${@: -3})
+PROTO_FILE=${PROTO_LAST_THREE_ARGS[0]}
+CC_FILE=${PROTO_FILE%.proto}.pb.cc
+H_FILE=${PROTO_FILE%.proto}.pb.h
+GEN_DIR=${PROTO_LAST_THREE_ARGS[2]}
+GEN_CC=${GEN_DIR}/${CC_FILE}
+GEN_H=${GEN_DIR}/${H_FILE}
 
-sed -i -e 's%protobuf::%protobuf3::%g' ${GEN_CC}
-sed -i -e 's%protobuf::%protobuf3::%g' ${GEN_H}
-sed -i -e 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_CC}
-sed -i -e 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_H}
+sed -i '' 's%protobuf::%protobuf3::%g' ${GEN_CC}
+sed -i '' 's%protobuf::%protobuf3::%g' ${GEN_H}
+sed -i '' 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_CC}
+sed -i '' 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_H}
