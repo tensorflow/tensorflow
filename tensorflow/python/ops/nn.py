@@ -108,6 +108,7 @@ concatenated.
 @@separable_conv2d
 @@atrous_conv2d
 @@conv2d_transpose
+@@conv1d
 @@conv3d
 
 ## Pooling
