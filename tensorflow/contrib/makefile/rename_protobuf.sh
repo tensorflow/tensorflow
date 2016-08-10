@@ -24,6 +24,18 @@
 # throughout the protobuf and TensorFlow code.
 # This is a massive hack, and if possible it's recommended that you switch your
 # whole application to protobuf v3 so there's no mismatch with TensorFlow.
+#
+# To use this script, run the following sequence:
+# tensorflow/contrib/makefile/download_dependencies.sh
+# tensorflow/contrib/makefile/rename_protobuf.sh
+#
+# You can then build the source as normal. For example on iOS:
+# tensorflow/contrib/makefile/compile_ios_protobuf.sh
+# tensorflow/contrib/makefile/compile_ios_tensorflow.sh
+#
+# Note that this script modifies the source code in-place, so once it's been run
+# it's no longer suitable for further manual modifications, since the difference
+# with the top of tree will already be large. 
 
 mv tensorflow/contrib/makefile/downloads/protobuf/src/google/protobuf \
  tensorflow/contrib/makefile/downloads/protobuf//src/google/protobuf3
@@ -67,3 +79,7 @@ sed -i -e 's%google/protobuf/%google/protobuf3/%g' \
 # Make sure protoc can find the new google/protobuf3 paths by putting them at
 # the root directory.
 cp -r tensorflow/contrib/makefile/downloads/protobuf/src/google/ .
+
+# Update the protobuf commands used in the makefile.
+sed -i -e 's%$(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(PROTOGENDIR)%tensorflow/contrib/makefile/rename_protoc.sh $(PROTOC) $(PROTOCFLAGS) $< --cpp_out $(PROTOGENDIR)%' tensorflow/contrib/makefile/Makefile
+sed -i -e 's%$(PROTO_TEXT) \\%tensorflow/contrib/makefile/rename_proto_text.sh $(PROTO_TEXT) \\%' tensorflow/contrib/makefile/Makefile
