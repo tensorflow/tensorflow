@@ -54,8 +54,8 @@ Can be used as a normalizer function for conv2d and fully_connected.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size `[batch_size, height, width, channels]`
-          or `[batch_size, channels]`.
+*  <b>`inputs`</b>: a tensor with 2 or more dimensions, where the first dimension has
+    `batch_size`. The normalization is over all but the last dimension.
 *  <b>`decay`</b>: decay for the moving average.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
