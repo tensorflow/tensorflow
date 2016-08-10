@@ -739,7 +739,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -800,6 +800,9 @@ checkpoints per device.
     `as_saver_def()` call of the `Saver` that was created for that `Graph`.
 *  <b>`builder`</b>: Optional `SaverBuilder` to use if a `saver_def` was not provided.
     Defaults to `BaseSaverBuilder()`.
+*  <b>`defer_build`</b>: If `True`, defer adding the save and restore ops to the
+    `build()` call. In that case `build()` should be called before
+    finalizing the graph or using the saver.
 
 ##### Raises:
 
@@ -851,6 +854,7 @@ path can be passed directly to a call to `restore()`.
 *  <b>`TypeError`</b>: If `sess` is not a `Session`.
 *  <b>`ValueError`</b>: If `latest_filename` contains path components, or if it
     collides with `save_path`.
+*  <b>`RuntimeError`</b>: If save and restore ops weren't built.
 
 
 - - -
@@ -927,6 +931,13 @@ Generates a `SaverDef` representation of this saver.
 
 
 #### Other Methods
+- - -
+
+#### `tf.train.Saver.build()` {#Saver.build}
+
+Builds saver_def.
+
+
 - - -
 
 #### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False)` {#Saver.export_meta_graph}
