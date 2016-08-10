@@ -280,6 +280,7 @@
   * [`as_string`](../../api_docs/python/string_ops.md#as_string)
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
   * [`string_join`](../../api_docs/python/string_ops.md#string_join)
+  * [`string_split`](../../api_docs/python/string_ops.md#string_split)
   * [`string_to_hash_bucket`](../../api_docs/python/string_ops.md#string_to_hash_bucket)
   * [`string_to_hash_bucket_fast`](../../api_docs/python/string_ops.md#string_to_hash_bucket_fast)
   * [`string_to_hash_bucket_strong`](../../api_docs/python/string_ops.md#string_to_hash_bucket_strong)
