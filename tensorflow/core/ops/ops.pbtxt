@@ -10706,7 +10706,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce over.  Dimensions are reduced in the\norder specified.  If `reduction_indices` has higher rank than `1`, it is\nflattened.  Omitting `reduction_indices` is equivalent to passing\n`[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported."
+    description: "The dimensions to reduce over.  Dimensions are reduced in the\norder specified.  Omitting `reduction_indices` is equivalent to passing\n`[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported."
     type: DT_INT32
   }
   output_arg {
