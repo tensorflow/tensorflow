@@ -364,6 +364,19 @@ cc_library(
 )
 
 py_test(
+    name = "framework_common_shapes_test",
+    size = "small",
+    srcs = ["framework/common_shapes_test.py"],
+    main = "framework/common_shapes_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
     name = "framework_ops_test",
     size = "small",
     srcs = ["framework/ops_test.py"],
