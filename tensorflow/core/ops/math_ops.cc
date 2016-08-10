@@ -1109,6 +1109,68 @@ Status SegmentReductionShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status SparseSegmentReductionShapeFn(InferenceContext* c) {
+  const Shape* data_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+
+  const Shape* indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices_shape));
+
+  const Shape* segment_ids_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &segment_ids_shape));
+
+  // indices and segment_ids should merge cleanly.
+  const Shape* unused;
+  TF_RETURN_IF_ERROR(c->Merge(indices_shape, segment_ids_shape, &unused));
+
+  const Shape* subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
+
+  const Shape* out;
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+  const Shape* data_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+
+  const Shape* indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices_shape));
+
+  // indices and segment_ids should merge cleanly.
+  const Shape* unused;
+  TF_RETURN_IF_ERROR(c->Merge(c->input(2), indices_shape, &unused));
+
+  // output_dim0 should be a scalar
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+
+  const Shape* subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
+
+  const Tensor* dim0 = c->input_tensor(3);
+  const Shape* dim0_shape;
+  if (dim0 == nullptr) {
+    // We don't have the value at inference time, so the output
+    // shape is unknown.
+    dim0_shape = c->Vector(InferenceContext::kUnknownDim);
+  } else {
+    auto dim0_value = dim0->scalar<int32>()();
+    if (dim0_value < 0) {
+      return errors::InvalidArgument(
+          "Cannot specify a negative value for output_dim0");
+    }
+    dim0_shape = c->Vector(dim0_value);
+  }
+
+  const Shape* out;
+  TF_RETURN_IF_ERROR(c->Concatenate(dim0_shape, subshape, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("SegmentSum")
@@ -1327,6 +1389,7 @@ REGISTER_OP("SparseSegmentSum")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor.
 
@@ -1374,6 +1437,7 @@ REGISTER_OP("SparseSegmentMean")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the mean along sparse segments of a tensor.
 
@@ -1400,6 +1464,7 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentMean.
 
@@ -1418,6 +1483,7 @@ REGISTER_OP("SparseSegmentSqrtN")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor divided by the sqrt of N.
 
@@ -1443,6 +1509,7 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentSqrtN.
 

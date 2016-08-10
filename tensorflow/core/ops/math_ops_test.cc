@@ -315,6 +315,38 @@ TEST(MathOpsTest, UnsortedSegmentSum_ShapeFn) {
               op, "[3];[3];?");
 }
 
+TEST(MathOpsTest, SparseSegment_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSegmentSum");
+  op.input_tensors.resize(3);
+  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "[2,4,3];[3];[3]", "[?,d0_1,d0_2]");
+
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[2,4,3];[];[3]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[2,4,3];[3];[3,4]");
+
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 3 and 4", op,
+              "[2,4,3];[3];[4]");
+}
+
+TEST(MathOpsTest, SparseSegmentGrad_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSegmentMeanGrad");
+  op.input_tensors.resize(4);
+  INFER_OK(op, "?;?;?;?", "?");
+  INFER_OK(op, "[2,4,3];[3];[3];[]", "[?,d0_1,d0_2]");
+
+  Tensor num_segments_t = test::AsScalar(100);
+  op.input_tensors[3] = &num_segments_t;
+  INFER_OK(op, "[2,4,3];[3];[3];[]", "[100,d0_1,d0_2]");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op,
+              "[2,4,3];[3];[3];[1,1]");
+
+  // Negative value is not allowed
+  num_segments_t = test::AsScalar(-100);
+  op.input_tensors[3] = &num_segments_t;
+  INFER_ERROR("Cannot specify a negative value", op, "[2,4,3];[3];[3];[]");
+}
+
 TEST(MathOpsTest, BatchMatMul_ShapeFn) {
   ShapeInferenceTestOp op("BatchMatMul");
   auto set_adj = [&op](bool adj_x, bool adj_y) {
