@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
-#include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -88,7 +87,9 @@ class GrpcRemoteWorker : public WorkerInterface {
   }
 
   void RecvTensorAsync(CallOptions* call_opts, const RecvTensorRequest* request,
-                       TensorResponse* response, StatusCallback done) override {
+                       RecvTensorResponse* response,
+                       TensorBufAllocator allocator,
+                       StatusCallback done) override {
     VLOG(1) << "RecvTensorAsync req: " << request->DebugString();
     int64 start_usec = Env::Default()->NowMicros();
     // Don't propagate dma_ok over gRPC.
@@ -116,12 +117,12 @@ class GrpcRemoteWorker : public WorkerInterface {
         if (logger_->LoggingActive()) {
           int64 end_usec = Env::Default()->NowMicros();
           int64 step_id = request->step_id();
-          int64 bytes = response->tensor().TotalBytes();
+          int64 bytes = response->tensor().ByteSize();
           int64 send_start_usec = start_usec;
           // If a send start time was reported by the other side, use
           // that instead.  Maybe we should mark the display if we're using
           // our local time instead of the remote start time?
-          if (response->metadata().send_start_micros()) {
+          if (response->send_start_micros()) {
             // send_start_micros is the timestamp taken when the
             // remote machine began to send the RecvTensor response.
             // Due to clock skew between source and dest machines, it
@@ -133,7 +134,7 @@ class GrpcRemoteWorker : public WorkerInterface {
             // the RecvTensor request, and must have been sent before
             // it was received.
             send_start_usec =
-                std::max(start_usec, response->metadata().send_start_micros());
+                std::max(start_usec, response->send_start_micros());
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
           const string& key = request->rendezvous_key();
@@ -149,7 +150,7 @@ class GrpcRemoteWorker : public WorkerInterface {
           }
         }
         VLOG(2) << "done callback, req: " << request->DebugString()
-                << " response " << response->metadata().DebugString();
+                << " response " << response->DebugString();
         delete req_copy;
         done(s);
       };

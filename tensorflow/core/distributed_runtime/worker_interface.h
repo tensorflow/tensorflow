@@ -29,8 +29,10 @@ namespace tensorflow {
 // Status callback.
 typedef std::function<void(const Status&)> StatusCallback;
 
-// Custom decoder for a response to RecvTensorAsync.
-class TensorResponse;
+// Allocator callback for out-of-band transfers.
+class TensorShape;
+typedef std::function<void*(size_t, const DataType&, const TensorShape&)>
+    TensorBufAllocator;
 
 // Interface for talking with the TensorFlow Worker service.
 class WorkerInterface {
@@ -63,7 +65,8 @@ class WorkerInterface {
 
   virtual void RecvTensorAsync(CallOptions* opts,
                                const RecvTensorRequest* request,
-                               TensorResponse* response,
+                               RecvTensorResponse* response,
+                               TensorBufAllocator allocator,
                                StatusCallback done) = 0;
 
   virtual void LoggingAsync(const LoggingRequest* request,
