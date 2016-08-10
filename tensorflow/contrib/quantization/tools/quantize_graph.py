@@ -963,7 +963,7 @@ class GraphRewriter(object):
         output_graph.node.extend([output_node])
     return output_graph
 
-  def remove_unneeded_nodes(self, input_graph):
+  def remove_unneeded_nodes(self, input_graph, name_whitelist=[]):
     """Prunes out nodes that aren't needed for inference.
 
     There are nodes like Identity and CheckNumerics that are only useful
@@ -983,7 +983,7 @@ class GraphRewriter(object):
     input_nodes = input_graph.node
     names_to_remove = {}
     for node in input_nodes:
-      if node.op in types_to_remove:
+      if node.name not in name_whitelist and node.op in types_to_remove:
         names_to_remove[node.name] = True
 
     nodes_after_removal = []
@@ -1004,7 +1004,7 @@ class GraphRewriter(object):
     types_to_splice = {"Identity": True}
     names_to_splice = {}
     for node in nodes_after_removal:
-      if node.op in types_to_splice:
+      if node.name not in name_whitelist and node.op in types_to_splice:
         # We don't want to remove nodes that have control edge inputs, because
         # they might be involved in subtle dependency issues that removing them
         # will jeopardize.
