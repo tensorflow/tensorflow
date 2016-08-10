@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -192,8 +192,8 @@ class CUDAHostAllocator : public SubAllocator {
     if (num_bytes > 0) {
       ptr = stream_exec_->HostMemoryAllocate(num_bytes);
       if (ptr == nullptr) {
-        LOG(FATAL) << "could not allocate pinned host memory of size: "
-                   << num_bytes;
+        LOG(WARNING) << "could not allocate pinned host memory of size: "
+                     << num_bytes;
       }
     }
     return ptr;

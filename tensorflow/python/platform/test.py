@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,6 +59,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.util.all_util import make_all
@@ -67,10 +68,15 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import assert_equal_graph_def
 
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient_error
-from tensorflow.python.kernel_tests.gradient_checker import compute_gradient
+from tensorflow.python.ops.gradient_checker import compute_gradient_error
+from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import
 
+import sys
+if sys.version_info.major == 2:
+  import mock                # pylint: disable=g-import-not-at-top,unused-import
+else:
+  from unittest import mock  # pylint: disable=g-import-not-at-top
 
 # Import Benchmark class
 Benchmark = googletest.Benchmark  # pylint: disable=invalid-name
@@ -92,9 +98,27 @@ def get_temp_dir():
   return googletest.GetTempDir()
 
 
+def test_src_dir_path(relative_path):
+  """Creates an absolute test srcdir path given a relative path.
+
+  Args:
+    relative_path: a path relative to tensorflow root.
+      e.g. "core/platform".
+
+  Returns:
+    An absolute path to the linked in runfiles.
+  """
+  return googletest.test_src_dir_path(relative_path)
+
+
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return test_util.IsGoogleCudaEnabled()
+
+
+def is_gpu_available():
+  """Returns whether TensorFlow can access a GPU."""
+  return any(x.device_type == 'GPU' for x in device_lib.list_local_devices())
 
 
 __all__ = make_all(__name__)

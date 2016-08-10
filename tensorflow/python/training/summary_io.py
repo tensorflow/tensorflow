@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -103,6 +103,7 @@ class SummaryWriter(object):
     self._event_queue = six.moves.queue.Queue(max_queue)
     self._ev_writer = pywrap_tensorflow.EventsWriter(
         compat.as_bytes(os.path.join(self._logdir, "events")))
+    self._closed = False
     self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
                                       flush_secs)
     # For storing used tags for session.run() outputs.
@@ -111,6 +112,17 @@ class SummaryWriter(object):
     if graph is not None or graph_def is not None:
       # Calling it with both graph and graph_def for backward compatibility.
       self.add_graph(graph=graph, graph_def=graph_def)
+
+  def reopen(self):
+    """Reopens the summary writer.
+
+    Can be called after `close()` to add more events in the same directory.
+    The events will go into a new events file.
+
+    Does nothing if the summary writer was not closed.
+    """
+    if self._closed:
+      self._closed = False
 
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
@@ -161,7 +173,8 @@ class SummaryWriter(object):
     Args:
       event: An `Event` protocol buffer.
     """
-    self._event_queue.put(event)
+    if not self._closed:
+      self._event_queue.put(event)
 
   def _add_graph_def(self, graph_def, global_step=None):
     graph_bytes = graph_def.SerializeToString()
@@ -265,6 +278,7 @@ class SummaryWriter(object):
     """
     self.flush()
     self._ev_writer.Close()
+    self._closed = True
 
 
 class _EventLoggerThread(threading.Thread):

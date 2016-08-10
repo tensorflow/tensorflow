@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 REGISTER_OP("QuantizedMatMul")
     .Input("a: T1")
@@ -33,6 +38,18 @@ REGISTER_OP("QuantizedMatMul")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Perform a quantized matrix multiplication of  `a` by the matrix `b`.
 
@@ -63,6 +80,15 @@ REGISTER_OP("QuantizeDownAndShrinkRange")
     .Output("output_max: float")
     .Attr("Tinput: quantizedtype")
     .Attr("out_type: quantizedtype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Convert the quantized 'input' tensor into a lower-precision 'output', using the
 actual distribution of the values to maximize the usage of the lower bit depth

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -163,7 +163,7 @@ class AUCUsingHistogramTest(tf.test.TestCase):
                                           self.rng, frac_true)
       # Fetch current auc, and verify that fetching again doesn't change it.
       auc_eval = auc.eval()
-      self.assertEqual(auc_eval, auc.eval())
+      self.assertAlmostEqual(auc_eval, auc.eval(), places=5)
 
     msg = ('nbins: %s, desired_auc: %s, score_range: %s, '
            'num_records: %s, frac_true: %s, num_updates: %s') % (nbins,

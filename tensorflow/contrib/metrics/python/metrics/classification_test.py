@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,6 +29,18 @@ class ClassificationTest(tf.test.TestCase):
     with self.test_session() as session:
       pred = tf.placeholder(tf.int32, shape=[None])
       labels = tf.placeholder(tf.int32, shape=[None])
+      acc = classification.accuracy(pred, labels)
+      result = session.run(acc,
+                           feed_dict={
+                               pred: [1, 0, 1, 0],
+                               labels: [1, 1, 0, 0]
+                           })
+      self.assertEqual(result, 0.5)
+
+  def testAccuracy1DBool(self):
+    with self.test_session() as session:
+      pred = tf.placeholder(tf.bool, shape=[None])
+      labels = tf.placeholder(tf.bool, shape=[None])
       acc = classification.accuracy(pred, labels)
       result = session.run(acc,
                            feed_dict={

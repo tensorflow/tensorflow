@@ -1,6 +1,6 @@
 Represents a sparse tensor.
 
-Tensorflow represents a sparse tensor as three separate dense tensors:
+TensorFlow represents a sparse tensor as three separate dense tensors:
 `indices`, `values`, and `shape`.  In Python, the three tensors are
 collected into a `SparseTensor` class for ease of use.  If you have separate
 `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
@@ -85,6 +85,13 @@ The non-zero values in the represented dense tensor.
 
 - - -
 
+#### `tf.SparseTensor.shape` {#SparseTensor.shape}
+
+A 1-D Tensor of int64 representing the shape of the dense tensor.
+
+
+- - -
+
 #### `tf.SparseTensor.dtype` {#SparseTensor.dtype}
 
 The `DType` of elements in this tensor.
@@ -92,9 +99,9 @@ The `DType` of elements in this tensor.
 
 - - -
 
-#### `tf.SparseTensor.shape` {#SparseTensor.shape}
+#### `tf.SparseTensor.op` {#SparseTensor.op}
 
-A 1-D Tensor of int64 representing the shape of the dense tensor.
+The `Operation` that produces `values` as an output.
 
 
 - - -

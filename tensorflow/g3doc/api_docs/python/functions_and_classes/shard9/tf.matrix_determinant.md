@@ -1,6 +1,6 @@
 ### `tf.matrix_determinant(input, name=None)` {#matrix_determinant}
 
-Calculates the determinant of a square matrix.
+Computes the determinant of a square matrix.
 
 ##### Args:
 

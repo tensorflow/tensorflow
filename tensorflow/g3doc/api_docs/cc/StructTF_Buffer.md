@@ -18,7 +18,7 @@
 
 
 
-#### `void(* TF_Buffer::data_deallocator) (void *data, size_t length))(void *data, size_t length)` {#void_TF_Buffer_data_deallocator_void_data_size_t_length_}
+#### `void(* TF_Buffer::data_deallocator)(void *data, size_t length))(void *data, size_t length)` {#void_TF_Buffer_data_deallocator_void_data_size_t_length_}
 
 
 

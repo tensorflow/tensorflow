@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -124,6 +124,8 @@ void TestCopies(const Tensor& t) {
     LOG(INFO) << "Move assignment";
     Tensor t2 = t;
     Tensor t3 = std::move(t2);
+    Tensor* t4 = &t3;
+    *t4 = std::move(t3);
     test::ExpectTensorEqual<T>(t, t3);
     EXPECT_TRUE(t3.IsInitialized());
     EXPECT_FALSE(t2.IsInitialized());
@@ -636,6 +638,67 @@ TEST(Tensor_Complex, SimpleWithHelper128) {
       z_expected.vec<complex128>()(i) = 1;
     }
     test::ExpectTensorNear<complex128>(z, z_expected, 1e-5);
+  }
+}
+
+namespace {
+
+// An allocator that always returns nullptr, for testing
+// failures to allocate.
+class DummyCPUAllocator : public Allocator {
+ public:
+  DummyCPUAllocator() {}
+  string Name() override { return "cpu"; }
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return nullptr;
+  }
+  void DeallocateRaw(void* ptr) override { return; }
+};
+
+}  // namespace
+
+TEST(Tensor, FailureToAllocate) {
+  TensorShape shape({1});
+  DummyCPUAllocator allocator;
+  {
+    Tensor a(&allocator, DT_FLOAT, shape);
+    ASSERT_FALSE(a.IsInitialized());
+  }
+
+  // Float
+  {
+    Tensor t(DT_FLOAT, TensorShape({1}));
+    t.vec<float>()(0) = 1.0;
+    TensorProto proto;
+    t.AsProtoField(&proto);
+
+    // FromProto should fail nicely.
+    Tensor a(&allocator, DT_FLOAT, TensorShape({1}));
+    ASSERT_FALSE(a.FromProto(&allocator, proto));
+  }
+
+  // String
+  {
+    Tensor t(DT_STRING, TensorShape({1}));
+    t.vec<string>()(0) = "foo";
+    TensorProto proto;
+    t.AsProtoField(&proto);
+
+    // FromProto should fail nicely.
+    Tensor a(&allocator, DT_STRING, TensorShape({1}));
+    ASSERT_FALSE(a.FromProto(&allocator, proto));
+  }
+
+  // Half
+  {
+    Tensor t(DT_HALF, TensorShape({1}));
+    t.vec<Eigen::half>()(0) = Eigen::half(1.0);
+    TensorProto proto;
+    t.AsProtoField(&proto);
+
+    // FromProto should fail nicely.
+    Tensor a(&allocator, DT_HALF, TensorShape({1}));
+    ASSERT_FALSE(a.FromProto(&allocator, proto));
   }
 }
 

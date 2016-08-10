@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,9 @@ set -e
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
+
+pip install wheel
+pip3 install wheel
 
 # Use pip to install numpy to the latest version, instead of 1.8.2 through
 # apt-get
@@ -76,3 +79,10 @@ pip3 install py-cpuinfo
 # pylint tests require the following:
 pip install pylint
 pip3 install pylint
+
+# pep8 tests require the following:
+pip install pep8
+pip3 install pep8
+
+# tf.mock require the following for python2:
+pip install mock

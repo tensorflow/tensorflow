@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,6 +92,20 @@ def GetTempDir():
   if not os.path.isdir(temp_dir):
     os.mkdir(temp_dir, 0o755)
   return temp_dir
+
+
+def test_src_dir_path(relative_path):
+  """Creates an absolute test srcdir path given a relative path.
+
+  Args:
+    relative_path: a path relative to tensorflow root.
+      e.g. "contrib/session_bundle/example".
+
+  Returns:
+    An absolute path to the linked in runfiles.
+  """
+  return os.path.join(os.environ['TEST_SRCDIR'],
+                      "org_tensorflow/tensorflow", relative_path)
 
 
 def StatefulSessionAvailable():

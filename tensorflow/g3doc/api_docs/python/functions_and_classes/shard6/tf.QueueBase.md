@@ -24,6 +24,15 @@ Enqueues one element to this queue.
 If the queue is full when this operation executes, it will block
 until the element has been enqueued.
 
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed before this operation runs,
+`tf.errors.AbortedError` will be raised. If this operation is
+blocked, and either (i) the queue is closed by a close operation
+with `cancel_pending_enqueues=True`, or (ii) the session is
+[closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
+
 ##### Args:
 
 
@@ -49,6 +58,15 @@ same size in the 0th dimension.
 If the queue is full when this operation executes, it will block
 until all of the elements have been enqueued.
 
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed before this operation runs,
+`tf.errors.AbortedError` will be raised. If this operation is
+blocked, and either (i) the queue is closed by a close operation
+with `cancel_pending_enqueues=True`, or (ii) the session is
+[closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
+
 ##### Args:
 
 
@@ -70,6 +88,14 @@ Dequeues one element from this queue.
 
 If the queue is empty when this operation executes, it will block
 until there is an element to dequeue.
+
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed, the queue is empty, and there are no pending
+enqueue operations that can fulfil this request,
+`tf.errors.OutOfRangeError` will be raised. If the session is
+[closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
 
 ##### Args:
 
@@ -93,6 +119,14 @@ components in the dequeued tuple will have size `n` in the 0th dimension.
 
 If the queue is closed and there are less than `n` elements left, then an
 `OutOfRange` exception is raised.
+
+At runtime, this operation may raise an error if the queue is
+[closed](#QueueBase.close) before or during its execution. If the
+queue is closed, the queue contains fewer than `n` elements, and
+there are no pending enqueue operations that can fulfil this
+request, `tf.errors.OutOfRangeError` will be raised. If the
+session is [closed](../../api_docs/python/client.md#Session.close),
+`tf.errors.CancelledError` will be raised.
 
 ##### Args:
 
@@ -190,18 +224,20 @@ shape and name to use for the corresponding queue component in `dtypes`.
 Dequeues and concatenates `n` elements from this queue.
 
 **Note** This operation is not supported by all queues.  If a queue does not
-support DequeueUpTo, then an Unimplemented exception is raised.
+support DequeueUpTo, then a `tf.errors.UnimplementedError` is raised.
 
-This operation concatenates queue-element component tensors along the
-0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size `n` in the 0th dimension.
+This operation concatenates queue-element component tensors along
+the 0th dimension to make a single component tensor. If the queue
+has not been closed, all of the components in the dequeued tuple
+will have size `n` in the 0th dimension.
 
-If the queue is closed and there are more than `0` but less than `n`
-elements remaining, then instead of raising an `OutOfRange` exception like
-`dequeue_many`, the remaining elements are returned immediately.
-If the queue is closed and there are `0` elements left in the queue, then
-an `OutOfRange` exception is raised just like in `dequeue_many`.
-Otherwise the behavior is identical to `dequeue_many`:
+If the queue is closed and there are more than `0` but fewer than
+`n` elements remaining, then instead of raising a
+`tf.errors.OutOfRangeError` like [`dequeue_many`](#QueueBase.dequeue_many),
+less than `n` elements are returned immediately.  If the queue is
+closed and there are `0` elements left in the queue, then a
+`tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
+Otherwise the behavior is identical to `dequeue_many`.
 
 ##### Args:
 

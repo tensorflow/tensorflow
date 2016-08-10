@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ from setuptools import find_packages, setup, Command, Extension
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.8.0'
+_VERSION = '0.10.0rc0'
 
 numpy_version = "1.8.2"
 if platform.system() == "Darwin":
@@ -47,7 +47,8 @@ if sys.version_info.major == 3:
   REQUIRED_PACKAGES.append('wheel >= 0.26')
 else:
   REQUIRED_PACKAGES.append('wheel')
-
+  # mock comes with unittest.mock for python3, need to install for python2
+  REQUIRED_PACKAGES.append('mock >= 2.0.0')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
@@ -107,21 +108,16 @@ class InstallHeaders(Command):
     # directories for -I
     install_dir = re.sub('/google/protobuf/src', '', install_dir)
 
-    # Copy eigen code into tensorflow/include,
-    # tensorflow/include/external/eigen_archive/eigen-eigen-<revision>,
-    # and tensorflow/include/eigen-eigen-<revision>.
+    # Copy eigen code into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    if re.search(r'(external/eigen_archive/eigen-eigen-\w+)', install_dir):
-      extra_dirs = [re.sub('/external/eigen_archive', '', install_dir),
-                    re.sub(r'external/eigen_archive/eigen-eigen-\w+', '',
-                           install_dir)]
-      for extra_dir in extra_dirs:
-        if not os.path.exists(extra_dir):
-          self.mkpath(extra_dir)
-        self.copy_file(header, extra_dir)
+    if 'external/eigen_archive/' in install_dir:
+      extra_dir = install_dir.replace('external/eigen_archive', '')
+      if not os.path.exists(extra_dir):
+        self.mkpath(extra_dir)
+      self.copy_file(header, extra_dir)
 
     if not os.path.exists(install_dir):
       self.mkpath(install_dir)
@@ -183,6 +179,7 @@ setup(
                        'tensorboard/dist/index.html',
                        'tensorboard/dist/tf-tensorboard.html',
                        'tensorboard/lib/css/global.css',
+                       'tensorboard/TAG',
                      ] + matches,
     },
     zip_safe=False,

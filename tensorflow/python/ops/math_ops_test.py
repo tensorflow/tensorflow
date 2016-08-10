@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import constant_op
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 exp = np.exp
@@ -84,12 +87,44 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
-    y = np.array([-3, -2, -1], dtype=np.int32)
-    z = (x - y)*(x - y)
+    for dtype in [np.int32, np.float16]:
+      x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
+      y = np.array([-3, -2, -1], dtype=dtype)
+      z = (x - y)*(x - y)
+      with self.test_session():
+        z_tf = math_ops.squared_difference(x, y).eval()
+        self.assertAllClose(z, z_tf)
+
+class ScalarMulTest(test_util.TensorFlowTestCase):
+  def testAcceptsRefs(self):
+    var = variables.Variable(10)
+    result = math_ops.scalar_mul(3, var)
+    init = variables.initialize_all_variables()
+    with self.test_session() as sess:
+      sess.run(init)
+      self.assertEqual(30, result.eval())
+
+  def testAcceptsConstant(self):
+    const = constant_op.constant(10)
+    result = math_ops.scalar_mul(3, const)
     with self.test_session():
-      z_tf = math_ops.squared_difference(x, y).eval()
-      self.assertAllClose(z, z_tf)
+      self.assertEqual(30, result.eval())
+
+  def testAcceptsTensor(self):
+    tensor = array_ops.ones([10, 10])
+    result = math_ops.scalar_mul(3, tensor)
+    expected = array_ops.ones([10, 10]) * 3
+
+    with self.test_session():
+      self.assertAllEqual(expected.eval(), result.eval())
+
+  def testAcceptsIndexedSlices(self):
+    values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
+    indices = constant_op.constant([0, 2, 5])
+    x = math_ops.scalar_mul(-3, ops.IndexedSlices(values, indices))
+    with self.test_session():
+      self.assertAllEqual(x.values.eval(), [[-6, -9], [-15, -21], [0, 3]])
+      self.assertAllEqual(x.indices.eval(), [0, 2, 5])
 
 if __name__ == "__main__":
   googletest.main()

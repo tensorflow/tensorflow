@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,9 +19,14 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/mem.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/mem.h
 
-// Do nothing for this platform
+// Do nothing for this platform.
+
 #define TF_ANNOTATE_MEMORY_IS_INITIALIZED(ptr, bytes) \
   do {                                                \
+  } while (0)
+
+#define TF_ANNOTATE_BENIGN_RACE(ptr, description) \
+  do {                                            \
   } while (0)
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_DYNAMIC_ANNOTATIONS_H_

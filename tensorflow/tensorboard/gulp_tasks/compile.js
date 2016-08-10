@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,12 +27,19 @@ var tsProject = ts.createProject('./tsconfig.json', {
 
 
 module.exports = function() {
-  var isComponent = filter(['components/**/*.js']);
+  var isComponent = filter([
+    'components/tf-*/**/*.ts',
+    'components/vz-*/**/*.ts',
+    'typings/**/*.ts',
+    // TODO(danmane): add plottable to the typings registry after updating it
+    // and remove this.
+    'components/plottable/plottable.d.ts'
+  ]);
 
   return tsProject.src()
+           .pipe(isComponent)
            .pipe(ts(tsProject))
            .js
-            .pipe(isComponent)
-            .pipe(gulp.dest('.'))
+            .pipe(gulp.dest('.'));
 
 }

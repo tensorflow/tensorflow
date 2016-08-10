@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,15 +25,21 @@ namespace io {
 
 PyRecordWriter::PyRecordWriter() {}
 
-PyRecordWriter* PyRecordWriter::New(const string& filename) {
-  WritableFile* file;
+PyRecordWriter* PyRecordWriter::New(const string& filename,
+                                    const string& compression_type_string) {
+  std::unique_ptr<WritableFile> file;
   Status s = Env::Default()->NewWritableFile(filename, &file);
   if (!s.ok()) {
     return nullptr;
   }
   PyRecordWriter* writer = new PyRecordWriter;
-  writer->file_ = file;
-  writer->writer_ = new RecordWriter(writer->file_);
+  writer->file_ = file.release();
+
+  RecordWriterOptions options;
+  if (compression_type_string == "ZLIB") {
+    options.compression_type = RecordWriterOptions::ZLIB_COMPRESSION;
+  }
+  writer->writer_ = new RecordWriter(writer->file_, options);
   return writer;
 }
 

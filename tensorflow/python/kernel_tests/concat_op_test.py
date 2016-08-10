@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -274,17 +274,22 @@ class ConcatOpTest(tf.test.TestCase):
     # Rank doesn't match.
     with self.assertRaises(ValueError):
       tf.concat(1, [tf.constant(10.0, shape=[4, 4, 4, 4]),
-                           tf.constant(20.0, shape=[4, 4, 4])])
+                    tf.constant(20.0, shape=[4, 4, 4])])
 
     # Dimensions don't match in a non-concat dim.
     with self.assertRaises(ValueError):
       tf.concat(1, [tf.constant(10.0, shape=[1, 2, 1]),
-                           tf.constant(20.0, shape=[3, 2, 1])])
+                    tf.constant(20.0, shape=[3, 2, 1])])
 
     # concat_dim out of range.
     with self.assertRaises(ValueError):
       tf.concat(3, [tf.constant(10.0, shape=[4, 4, 4]),
-                           tf.constant(20.0, shape=[4, 4, 4])])
+                    tf.constant(20.0, shape=[4, 4, 4])])
+
+    # concat_dim < 0
+    with self.assertRaises(ValueError):
+      tf.concat(-1, [tf.constant(10.0, shape=[4, 4, 4]),
+                     tf.constant(20.0, shape=[4, 4, 4])])
 
   def testShapeWithUnknownConcatDim(self):
     p1 = tf.placeholder(tf.float32)

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,3 +23,5 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
+from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SparseFeatureColumn
+from tensorflow.contrib.linear_optimizer.python.sdca_optimizer import SDCAOptimizer

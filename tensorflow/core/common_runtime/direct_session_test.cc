@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -805,6 +805,7 @@ class BlockingOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     blocking_op_state->MoveToState(0, 1);
     blocking_op_state->AwaitState(2);
+    blocking_op_state->MoveToState(2, 3);
 
     Tensor* out = nullptr;
     const Tensor& in = ctx->input(0);
@@ -815,14 +816,32 @@ class BlockingOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
 REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
 
-TEST(DirectSessionTest, TestSessionInterOpThreads) {
-  Graph g(OpRegistry::Global());
+static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
+  FunctionDefLibrary library_graph_def;
+  if (use_function_lib) {
+    const string lib = R"proto(
+        signature: {
+          name: "BlockingOpFn" input_arg: { name: "x" type: DT_FLOAT }
+                               output_arg: { name: "y" type: DT_FLOAT }}
+        node: { ret: "y" op: "BlockingOp" arg: "x" })proto";
+    CHECK(protobuf::TextFormat::ParseFromString(
+        lib, library_graph_def.add_function()));
+  }
+
+  FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
+  Graph g(&flib);
   Tensor t(DT_FLOAT, TensorShape({}));
   t.scalar<float>()() = {1.2};
   Node* x = test::graph::Constant(&g, t);
-  Node* y = test::graph::Unary(&g, "BlockingOp", x);
+  Node* y;
+  if (use_function_lib) {
+    y = test::graph::Unary(&g, "BlockingOpFn", x);
+  } else {
+    y = test::graph::Unary(&g, "BlockingOp", x);
+  }
   GraphDef def;
   test::graph::ToGraphDef(&g, &def);
+  *def.mutable_library() = library_graph_def;
 
   // Create session with two inter-op thread pools.
   SessionOptions options;
@@ -832,9 +851,13 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
   (*options.config.mutable_device_count())["CPU"] = 2;
+
+  options.config.add_session_inter_op_thread_pool();
   auto* p = options.config.add_session_inter_op_thread_pool();
-  p->set_num_threads(1);  // This one has only one thread.
-  p = options.config.add_session_inter_op_thread_pool();
+  p->set_num_threads(1);
+  const int kLargePool = 0;
+  const int kSmallPool = 1;
+
   std::unique_ptr<Session> session(NewSession(options));
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def));
@@ -862,19 +885,30 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
   // For blocking states:
   // - Starts at 0, BlockingOp::Compute will move to 1.
   // - This main thread will wait for 1, then move to 2 when other ops are done.
-  //   Moving to 2 unblocks the blocking op.
+  //   Moving to 2 unblocks the blocking op, which then moves to state 3.
+
+  // Run the graph once on the non-limited pool.
+  thread::ThreadPool* tp1 = new thread::ThreadPool(Env::Default(), "tp1", 1);
+  blocking_op_state = new BlockingOpState();
+  add_session_run_call(tp1, y, kLargePool);
+  blocking_op_state->AwaitState(1);
+  blocking_op_state->MoveToState(1, 2);
+  blocking_op_state->AwaitState(3);
+  blocking_op_state->MoveToState(3, 0);
+  delete tp1;
+  num_done = 0;
+
+  tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
 
   // Launch 2 session run calls. Neither will finish until the blocking op is
-  // unblocked, because it is using all threads in inter_op pool #0.
-  thread::ThreadPool* tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
-  blocking_op_state = new BlockingOpState();
-  add_session_run_call(tp1, y, 0 /* inter_op_pool */);
+  // unblocked, because it is using all threads in the small pool.
+  add_session_run_call(tp1, y, kSmallPool);
   blocking_op_state->AwaitState(1);  // Wait for the blocking op to Compute.
 
   // These will block on <BlockingOpState>.
   const int kBlockedThreads = 3;
   for (int i = 0; i < kBlockedThreads; ++i) {
-    add_session_run_call(tp1, x, 0 /* inter_op_pool */);
+    add_session_run_call(tp1, x, kSmallPool);
   }
 
   // Launch session calls using the other inter-op pool. These will finish
@@ -882,7 +916,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
   thread::ThreadPool* tp2 = new thread::ThreadPool(Env::Default(), "tp2", 3);
   const int kUnblockedThreads = 4;
   for (int i = 0; i < kUnblockedThreads; ++i) {
-    add_session_run_call(tp2, x, 1 /* inter_op_pool */);
+    add_session_run_call(tp2, x, kLargePool);
   }
   delete tp2;
   EXPECT_EQ(kUnblockedThreads, num_done.load());
@@ -893,6 +927,14 @@ TEST(DirectSessionTest, TestSessionInterOpThreads) {
   EXPECT_EQ(kUnblockedThreads + kBlockedThreads + 1, num_done.load());
   delete blocking_op_state;
   blocking_op_state = nullptr;
+}
+
+TEST(DirectSessionTest, TestSessionInterOpThreads) {
+  TestSessionInterOpThreadsImpl(false /* use_function_lib */);
+}
+
+TEST(DirectSessionTest, TestSessionInterOpThreadsWithFunctions) {
+  TestSessionInterOpThreadsImpl(true /* use_function_lib */);
 }
 
 TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {

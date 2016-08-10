@@ -29,7 +29,7 @@ py_library(
         ":client_testlib",
         ":framework",
         ":framework_test_lib",
-        ":kernel_tests/gradient_checker",
+        ":gradient_checker",
         ":platform",
         ":platform_test",
         ":summary",
@@ -42,7 +42,10 @@ py_library(
     name = "platform",
     srcs = glob(["platform/*.py"]),
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/core:protos_all_py"],
+    deps = [
+        ":pywrap_tensorflow",
+        "//tensorflow/core:protos_all_py",
+    ],
 )
 
 py_library(
@@ -134,8 +137,8 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
-        "@protobuf//:protobuf",
         "//tensorflow/core:framework_headers_lib",
+        "@protobuf//:protobuf",
     ],
 )
 
@@ -154,10 +157,8 @@ py_test(
 
 cc_library(
     name = "python_op_gen",
-    srcs = [
-        "framework/python_op_gen.cc",
-        "framework/python_op_gen.h",
-    ],
+    srcs = ["framework/python_op_gen.cc"],
+    hdrs = ["framework/python_op_gen.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
@@ -181,17 +182,16 @@ cc_library(
 py_library(
     name = "framework_for_generated_wrappers",
     srcs = [
+        "framework/constant_op.py",
         "framework/device.py",
         "framework/dtypes.py",
         "framework/function.py",
+        "framework/op_def_library.py",
         "framework/op_def_registry.py",
         "framework/ops.py",
         "framework/registry.py",
         "framework/tensor_shape.py",
         "framework/versions.py",
-        # TODO(josh11b): Move this to the framework directory
-        "ops/op_def_library.py",
-        "ops/constant_op.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -205,16 +205,14 @@ py_library(
 py_library(
     name = "framework",
     srcs = [
-        # TODO(mrry): Move this to the framework directory.
-        "client/graph_util.py",
+        "framework/common_shapes.py",
         "framework/errors.py",
         "framework/framework_lib.py",
+        "framework/graph_util.py",
         "framework/importer.py",
+        "framework/load_library.py",
         "framework/random_seed.py",
         "framework/tensor_util.py",
-        "framework/load_library.py",
-        # TODO(josh11b): Move this to the framework directory
-        "ops/common_shapes.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -253,6 +251,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":device_lib",
         ":framework_test_lib",
         ":platform_test",
     ],
@@ -406,6 +405,20 @@ py_test(
 )
 
 py_test(
+    name = "framework_random_seed_test",
+    size = "small",
+    srcs = ["framework/random_seed_test.py"],
+    main = "framework/random_seed_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":ops",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
     name = "framework_tensor_shape_div_test",
     size = "small",
     srcs = ["framework/tensor_shape_div_test.py"],
@@ -463,8 +476,8 @@ py_test(
 py_test(
     name = "op_def_library_test",
     size = "small",
-    srcs = ["ops/op_def_library_test.py"],
-    main = "ops/op_def_library_test.py",
+    srcs = ["framework/op_def_library_test.py"],
+    main = "framework/op_def_library_test.py",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_test_lib",
@@ -539,11 +552,23 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "data_flow_ops",
     hidden = [
+        "Barrier",
+        "BarrierClose",
+        "BarrierIncompleteSize",
+        "BarrierInsertMany",
+        "BarrierReadySize",
+        "BarrierTakeMany",
+        "PriorityQueue",
         "FIFOQueue",
         "HashTable",
         "InitializeTable",
+        "InitializeTableFromTextFile",
+        "LookupTableExport",
         "LookupTableFind",
+        "LookupTableInsert",
         "LookupTableSize",
+        "MutableHashTable",
+        "MutableHashTableOfTensors",
         "Mutex",
         "MutexAcquire",
         "MutexRelease",
@@ -599,6 +624,7 @@ tf_gen_op_wrapper_py(
         "ReaderNumRecordsProduced",
         "ReaderNumWorkUnitsCompleted",
         "ReaderRead",
+        "ReaderReadUpTo",
         "ReaderReset",
         "ReaderRestoreState",
         "ReaderSerializeState",
@@ -632,6 +658,7 @@ tf_gen_op_wrapper_py(
         "MergeSummary",
         "Print",
         "ScalarSummary",
+        "TensorSummary",
     ],
     require_shape_functions = True,
 )
@@ -640,6 +667,7 @@ tf_gen_op_wrapper_py(
     name = "math_ops",
     hidden = [
         "Abs",
+        "AddN",
         "All",
         "Any",
         "BatchMatMul",
@@ -655,6 +683,8 @@ tf_gen_op_wrapper_py(
         "MatMul",
         "Sigmoid",
         "Tanh",
+        "SigmoidGrad",
+        "TanhGrad",
     ],
     require_shape_functions = True,
 )
@@ -698,10 +728,12 @@ tf_gen_op_wrapper_py(
 tf_gen_op_wrapper_py(
     name = "random_ops",
     hidden = [
+        "RandomGamma",
         "RandomUniform",
         "RandomUniformInt",
         "RandomShuffle",
         "RandomStandardNormal",
+        "ParameterizedTruncatedNormal",
         "TruncatedNormal",
     ],
     require_shape_functions = True,
@@ -711,6 +743,7 @@ tf_gen_op_wrapper_py(
     name = "script_ops",
     hidden = [
         "PyFunc",
+        "PyFuncStateless",
     ],
     require_shape_functions = True,
 )
@@ -737,6 +770,7 @@ tf_gen_op_wrapper_py(
         "SparseSplit",
         "SparseSelectLastK",
         "SparseReorder",
+        "SparseReshape",
         "SparseToDense",
         "SparseTensorDenseAdd",
         "SparseTensorDenseMatMul",
@@ -773,6 +807,7 @@ py_library(
         "ops/clip_ops.py",
         "ops/control_flow_grad.py",
         "ops/control_flow_ops.py",
+        "ops/ctc_ops.py",
         "ops/data_flow_grad.py",
         "ops/data_flow_ops.py",
         "ops/embedding_ops.py",
@@ -819,6 +854,7 @@ py_library(
         "ops/state_grad.py",
         "ops/state_ops.py",
         "ops/string_ops.py",
+        "ops/summary_ops.py",
         "ops/template.py",
         "ops/tensor_array_grad.py",
         "ops/tensor_array_ops.py",
@@ -845,6 +881,18 @@ py_library(
         ":sparse_ops",
         ":string_ops",
         ":user_ops",
+    ],
+)
+
+py_library(
+    name = "gradient_checker",
+    srcs = [
+        "ops/gradient_checker.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":ops",
     ],
 )
 
@@ -883,9 +931,36 @@ py_library(
 
 py_library(
     name = "util",
-    srcs = glob(["util/**/*.py"]),
+    srcs = glob(
+        ["util/**/*.py"],
+        exclude = ["util/example_parser*"],
+    ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
+)
+
+py_test(
+    name = "util_nest_test",
+    size = "small",
+    srcs = ["util/nest_test.py"],
+    main = "util/nest_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "util_example_parser_configuration",
+    srcs = ["util/example_parser_configuration.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+    ],
 )
 
 tf_proto_library(
@@ -919,6 +994,21 @@ py_test(
 )
 
 py_test(
+    name = "util_example_parser_configuration_test",
+    size = "small",
+    srcs = ["util/example_parser_configuration_test.py"],
+    main = "util/example_parser_configuration_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        ":util_example_parser_configuration",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
     name = "events_writer_test",
     size = "small",
     srcs = [
@@ -929,6 +1019,21 @@ py_test(
         ":framework_test_lib",
         ":lib",
         ":platform_test",
+    ],
+)
+
+py_test(
+    name = "quantize_training_test",
+    size = "small",
+    srcs = [
+        "client/quantize_training_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":lib",
+        ":platform_test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -952,6 +1057,27 @@ cuda_py_tests(
     ],
 )
 
+py_library(
+    name = "net_lib",
+    testonly = 1,
+    srcs = ["util/net_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+    ],
+)
+
+py_tests(
+    name = "net_lib_test",
+    size = "small",
+    srcs = [
+        "util/net_lib_test.py",
+    ],
+    additional_deps = [
+        ":net_lib",
+    ],
+)
+
 tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
@@ -960,6 +1086,8 @@ tf_cuda_library(
         ":construction_fails_op",
         ":numpy_lib",
         ":test_ops_kernels",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:direct_session",
@@ -976,15 +1104,17 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",
+        "client/net_lib.i",
+        "client/quantize_training.i",
         "client/tf_session.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
+        "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "platform/numpy.i",
-        "training/saver_io.i",
         "training/server_lib.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
@@ -998,6 +1128,9 @@ tf_py_wrap_cc(
         ":tf_session_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//util/python:python_headers",
@@ -1037,6 +1170,14 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "localhost_cluster_performance_test",
+    size = "medium",
+    srcs = [
+        "training/localhost_cluster_performance_test.py",
+    ],
+)
+
 py_library(
     name = "timeline",
     srcs = ["client/timeline.py"],
@@ -1072,20 +1213,30 @@ py_test(
 )
 
 py_test(
+    name = "session_debug_test",
+    size = "small",
+    srcs = ["debug/session_debug_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":framework_test_lib",
+        ":session",
+    ],
+)
+
+cuda_py_test(
     name = "timeline_test",
     size = "small",
     srcs = ["client/timeline_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":timeline",
-        "//tensorflow:tensorflow_py",
     ],
 )
 
 py_test(
     name = "graph_util_test",
     size = "small",
-    srcs = ["client/graph_util_test.py"],
+    srcs = ["framework/graph_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
@@ -1094,93 +1245,14 @@ py_test(
     ],
 )
 
-py_library(
-    name = "kernel_tests/gradient_checker",
-    srcs = ["kernel_tests/gradient_checker.py"],
+py_test(
+    name = "file_io_test",
+    size = "small",
+    srcs = ["lib/io/file_io_test.py"],
     srcs_version = "PY2AND3",
-)
-
-medium_kernel_test_list = glob([
-    "kernel_tests/concat_op_test.py",
-    "kernel_tests/division_future_test.py",
-    "kernel_tests/fft_ops_test.py",
-    "kernel_tests/rnn_test.py",
-    "kernel_tests/scatter_ops_test.py",
-    "kernel_tests/seq2seq_test.py",
-    "kernel_tests/slice_op_test.py",
-    "kernel_tests/sparse_ops_test.py",
-    "kernel_tests/sparse_matmul_op_test.py",
-    "kernel_tests/sparse_tensor_dense_matmul_op_test.py",
-])
-
-sharded_kernel_test_list = glob([
-    "kernel_tests/batch_matrix_band_part_op_test.py",
-    "kernel_tests/cwise_ops_test.py",
-    "kernel_tests/embedding_ops_test.py",
-    "kernel_tests/linalg_grad_test.py",
-    "kernel_tests/conv_ops_3d_test.py",
-])
-
-cpu_only_kernel_test_list = glob([
-    "kernel_tests/attention_ops_test.py",
-    "kernel_tests/barrier_ops_test.py",
-    "kernel_tests/bcast_ops_test.py",
-    "kernel_tests/benchmark_test.py",
-    "kernel_tests/candidate_sampler_ops_test.py",
-    "kernel_tests/cholesky_op_test.py",
-    "kernel_tests/clip_ops_test.py",
-    "kernel_tests/decode_csv_op_test.py",
-    "kernel_tests/decode_raw_op_test.py",
-    "kernel_tests/determinant_op_test.py",
-    "kernel_tests/diag_op_test.py",
-    "kernel_tests/edit_distance_op_test.py",
-    "kernel_tests/fifo_queue_test.py",
-    "kernel_tests/identity_op_py_test.py",
-    "kernel_tests/in_topk_op_test.py",
-    "kernel_tests/io_ops_test.py",
-    "kernel_tests/listdiff_op_test.py",
-    "kernel_tests/logging_ops_test.py",
-    "kernel_tests/lookup_table_op_test.py",
-    "kernel_tests/lrn_op_py_test.py",
-    "kernel_tests/matrix_inverse_op_test.py",
-    "kernel_tests/matrix_solve_op_test.py",
-    "kernel_tests/matrix_triangular_solve_op_test.py",
-    "kernel_tests/matrix_solve_ls_op_test.py",
-    "kernel_tests/mutex_ops_test.py",
-    "kernel_tests/parsing_ops_test.py",
-    "kernel_tests/partitioned_variables_test.py",
-    "kernel_tests/queue_ops_test.py",
-    "kernel_tests/random_shuffle_queue_test.py",
-    "kernel_tests/save_restore_ops_test.py",
-    "kernel_tests/segment_reduction_ops_test.py",
-    "kernel_tests/self_adjoint_eig_op_test.py",
-    "kernel_tests/sparse_add_op_test.py",
-    "kernel_tests/sparse_concat_op_test.py",
-    "kernel_tests/sparse_split_op_test.py",
-    "kernel_tests/sparse_reorder_op_test.py",
-    "kernel_tests/sparse_to_dense_op_test.py",
-    "kernel_tests/sparsemask_op_test.py",
-    "kernel_tests/summary_ops_test.py",
-    "kernel_tests/template_test.py",
-    "kernel_tests/topk_op_test.py",
-    "kernel_tests/unique_op_test.py",
-    "kernel_tests/variable_scope_test.py",
-    "kernel_tests/variables_test.py",
-    "kernel_tests/where_op_test.py",
-])
-
-py_tests(
-    name = "cpu_only_kernel_tests",
-    size = "small",
-    srcs = cpu_only_kernel_test_list,
-)
-
-py_tests(
-    name = "reader_ops_test",
-    size = "small",
-    srcs = ["kernel_tests/reader_ops_test.py"],
-    additional_deps = [
+    deps = [
         ":lib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1192,12 +1264,18 @@ cuda_py_tests(
         exclude = [
             "ops/image_ops_test.py",
             "ops/nn_batchnorm_test.py",
-            "ops/nn_conv_test.py",
             "ops/nn_test.py",
             "ops/nn_xent_test.py",
             "ops/op_def_library_test.py",
+            "ops/special_math_ops_test.py",
         ],
     ),
+)
+
+cuda_py_test(
+    name = "special_math_ops_test",
+    size = "small",
+    srcs = ["ops/special_math_ops_test.py"],
 )
 
 cuda_py_tests(
@@ -1205,34 +1283,9 @@ cuda_py_tests(
     size = "medium",
     srcs = [
         "ops/nn_batchnorm_test.py",
-        "ops/nn_conv_test.py",
         "ops/nn_test.py",
         "ops/nn_xent_test.py",
     ],
-)
-
-cuda_py_tests(
-    name = "kernel_tests",
-    size = "small",
-    srcs = glob(
-        ["kernel_tests/*_test.py"],
-        exclude = [
-            "**/reader_ops_test.py",
-        ] + cpu_only_kernel_test_list + medium_kernel_test_list + sharded_kernel_test_list,
-    ),
-)
-
-cuda_py_tests(
-    name = "medium_kernel_tests",
-    size = "medium",
-    srcs = medium_kernel_test_list,
-)
-
-cuda_py_tests(
-    name = "kernel_tests_with_sharding",
-    size = "medium",
-    srcs = sharded_kernel_test_list,
-    shard_count = 50,
 )
 
 cuda_py_tests(
@@ -1257,10 +1310,23 @@ cuda_py_tests(
             "training/server_lib_test.py",
             "training/session_manager_test.py",
             "training/supervisor_test.py",
+            "training/saver_large_variable_test.py",
+            "training/localhost_cluster_performance_test.py",
         ],
     ),
     additional_deps = [
         ":training",
+    ],
+)
+
+py_test(
+    name = "saver_large_variable_test",
+    size = "small",
+    srcs = ["training/saver_large_variable_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/30379628
+    deps = [
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1292,6 +1358,7 @@ py_tests(
         ["training/input_test.py"],
     ),
     additional_deps = [
+        "//tensorflow:tensorflow_py",
         ":training",
     ],
 )
@@ -1306,6 +1373,7 @@ py_library(
     deps = [
         ":client",
         ":framework",
+        ":ops",
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":util",

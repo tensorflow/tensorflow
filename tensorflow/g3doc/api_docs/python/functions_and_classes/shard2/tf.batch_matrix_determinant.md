@@ -1,9 +1,9 @@
 ### `tf.batch_matrix_determinant(input, name=None)` {#batch_matrix_determinant}
 
-Calculates the determinants for a batch of square matrices.
+Computes the determinants for a batch of square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. The output is a 1-D tensor containing the determinants
+form square matrices. The output is a tensor containing the determinants
 for all input submatrices `[..., :, :]`.
 
 ##### Args:

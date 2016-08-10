@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,15 +25,19 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
 ops.NoGradient("CholeskyGrad")
 ops.NoGradient("BatchCholeskyGrad")
+ops.NoGradient("SelfAdjointEig")
+ops.NoGradient("BatchSelfAdjointEig")
+ops.NoGradient("SelfAdjointEigV2")
+ops.NoGradient("BatchSelfAdjointEigV2")
+ops.NoGradient("Svd")
+ops.NoGradient("BatchSvd")
 
 
 @ops.RegisterGradient("MatrixInverse")
@@ -74,7 +78,7 @@ def _BatchMatrixDeterminantGrad(op, grad):
   c = op.outputs[0]
   a_adj_inv = linalg_ops.batch_matrix_inverse(a, adjoint=True)
   multipliers = array_ops.reshape(
-      grad * c, c.get_shape().concatenate(tensor_shape.TensorShape([1, 1])))
+      grad * c, array_ops.concat(0, [array_ops.shape(c), [1, 1]]))
   return multipliers * a_adj_inv
 
 

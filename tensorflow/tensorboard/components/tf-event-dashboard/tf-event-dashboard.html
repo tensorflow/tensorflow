@@ -1,9 +1,11 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="tf-run-selector.html">
+<link rel="import" href="tf-smoothing-input.html">
 <link rel="import" href="tf-x-type-selector.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
-<link rel="import" href="tf-chart.html">
+<link rel="import" href="../tf-chart-scaffold/tf-chart-scaffold.html">
+<link rel="import" href="../vz-line-chart/vz-line-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
@@ -24,7 +26,7 @@ charts are larger.
 Organizationally, the #plumbing div contains components that have no concrete
 manifestation and just effect data bindings or data loading. The #sidebar contains
 shared controls like the tf-categorizer, tf-run-selector, and tf-x-type-selector.
-The #center div contains tf-charts embedded inside tf-collapsable-panes.
+The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
 -->
 <dom-module id="tf-event-dashboard">
   <template>
@@ -46,8 +48,15 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           ></tf-categorizer>
           <paper-checkbox
             id="download-option"
-            checked="{{_show_download_links}}"
+            checked="{{_showDownloadLinks}}"
           >Data download links</paper-checkbox>
+        <tf-smoothing-input
+          enabled="{{_smoothingEnabled}}"
+          decay="{{_smoothingDecay}}"
+          step="0.001"
+          min="0"
+          max="1"
+          ></tf-smoothing-input>
         </div>
         <div class="sidebar-section">
           <tf-x-type-selector
@@ -76,25 +85,28 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
                 <div class="card">
                   <span class="card-title">[[tag]]</span>
                   <div class="card-content">
-                    <tf-chart
+                    <tf-chart-scaffold
                       tag="[[tag]]"
                       data-provider="[[dataProvider]]"
-                      type="scalar"
-                      id="chart"
-                      selected-runs="[[validRuns(tag, selectedRuns.*, run2tag.*)]]"
-                      x-type="[[xType]]"
-                      color-scale="[[colorScale]]"
-                      on-keyup="toggleSelected"
-                      tabindex="2"
-                    ></tf-chart>
+                      visible-series="[[validRuns(tag, selectedRuns.*, run2tag.*)]]"
+                      >
+                      <vz-line-chart
+                        id="chart"
+                        x-type="[[xType]]"
+                        color-scale="[[colorScale]]"
+                        smoothing-decay="[[_smoothingDecay]]"
+                        smoothing-enabled="[[_smoothingEnabled]]"
+                        on-keyup="toggleSelected"
+                        tabindex="2"
+                      ></vz-line-chart>
+                    </tf-chart-scaffold>
                     <paper-icon-button
                       class="expand-button"
-                      shift$="[[_show_download_links]]"
                       icon="fullscreen"
                       on-tap="toggleSelected"
                     ></paper-icon-button>
                   </div>
-                  <template is="dom-if" if="[[_show_download_links]]">
+                  <template is="dom-if" if="[[_showDownloadLinks]]">
                     <div class="card-bottom-row">
                       <tf-downloader
                         selected-runs="[[selectedRuns]]"
@@ -121,7 +133,7 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
     Polymer({
       is: "tf-event-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-chart"),
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],
       properties: {
@@ -135,7 +147,15 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           type: Array,
           computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
         },
-        _show_download_links: Boolean,
+        _showDownloadLinks: {
+          type: Boolean,
+          notify: true,
+          value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
+              false),
+          observer: '_showDownloadLinksObserver'
+        },
+        _smoothingDecay: Number,
+        _smoothingEnabled: Boolean,
         colorScale: {
           type: Object,
           notify: true,
@@ -146,13 +166,6 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
           this.fire("rendered");
         });
       },
-      observers: ['redraw(_show_download_links)'],
-      redraw: function(_show_download_links) {
-        var els = this.getElementsByTagName("tf-chart");
-        for (var i=0; i<els.length; i++) {
-          els[i].redraw();
-        }
-      },
       _getVisibleTags: function() {
         var keys = this.selectedRuns;
         var dict = this.run2tag;
@@ -161,13 +174,15 @@ The #center div contains tf-charts embedded inside tf-collapsable-panes.
       _getScalarUrl: function() {
         return this.router.scalars;
       },
+      _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
+          '_showDownloadLinks', false),
       toggleSelected: function(e) {
         var currentTarget = Polymer.dom(e.currentTarget);
         var parentDiv = currentTarget.parentNode.parentNode;
         parentDiv.classList.toggle("selected");
-        var chart = currentTarget.previousElementSibling;
-        if (chart) {
-          chart.redraw();
+        var chartScaffold = currentTarget.previousElementSibling;
+        if (chartScaffold) {
+          chartScaffold.chart().redraw();
         }
       },
       validRuns: function(tag, runsChange, run2tagChange) {

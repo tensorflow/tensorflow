@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
 
 
 class VariablesTestCase(tf.test.TestCase):
@@ -195,6 +196,17 @@ class VariablesTestCase(tf.test.TestCase):
       self.assertAllClose(2.0, var_x.eval())
       self.assertAllClose(3.0, var_y.eval())
       self.assertAllClose(5.0, tf.add(var_x, var_y).eval())
+
+  def testZeroSizeVarSameAsConst(self):
+    with self.test_session():
+      zero_size_var = tf.Variable(tf.zeros([0, 2]))
+      zero_size_const = tf.ones([2, 0])
+      variable_mul = tf.matmul(zero_size_const, zero_size_var)
+      const_mul = tf.matmul(zero_size_const, zero_size_const, transpose_b=True)
+      tf.initialize_all_variables().run()
+      variable_output = variable_mul.eval()
+      self.assertAllClose(const_mul.eval(), variable_output)
+      self.assertAllClose([[0., 0.], [0., 0.]], variable_output)
 
   def testCachingDevice(self):
     with self.test_session():
@@ -386,6 +398,23 @@ class IsInitializedTest(tf.test.TestCase):
       v.initializer.run()
       self.assertEqual(0, sess.run(uninited).size)
 
+  def testZeroSizeVarInitialized(self):
+    with tf.Graph().as_default(), self.test_session() as sess:
+      v = tf.Variable(tf.zeros([0, 2]), name="v")
+      uninited = tf.report_uninitialized_variables()
+      v.initializer.run()  # not strictly necessary
+      self.assertEqual(0, sess.run(uninited).size)
+
+  def testTrainingWIthZeroSizeVar(self):
+    with tf.Graph().as_default(), self.test_session() as sess:
+      a = tf.Variable(tf.zeros([0, 2]))
+      b = tf.Variable(tf.ones([2, 2]))
+      objective = tf.reduce_sum(b + tf.matmul(a, a, transpose_a=True))
+      tf.initialize_all_variables().run()
+      do_opt = tf.train.GradientDescentOptimizer(0.1).minimize(objective)
+      sess.run([do_opt])
+      self.assertAllClose([[0.9, 0.9], [0.9, 0.9]], b.eval())
+
 
 class ObsoleteIsInitializedTest(tf.test.TestCase):
 
@@ -416,6 +445,27 @@ class ObsoleteIsInitializedTest(tf.test.TestCase):
         inited.op.run()
       v.initializer.run()
       inited.op.run()
+
+
+class VariableContainerTest(tf.test.TestCase):
+
+  def testContainer(self):
+    with tf.Graph().as_default():
+      v0 = tf.Variable([0])
+      with tf.container("l1"):
+        v1 = tf.Variable([1])
+        with tf.container("l2"):
+          v2 = tf.Variable([2])
+          special_v = state_ops.variable_op([1], tf.float32, container="l3")
+        v3 = tf.Variable([3])
+      v4 = tf.Variable([4])
+    self.assertEqual(tf.compat.as_bytes(""), v0.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l1"), v1.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l2"), v2.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l3"),
+                     special_v.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes("l1"), v3.op.get_attr("container"))
+    self.assertEqual(tf.compat.as_bytes(""), v4.op.get_attr("container"))
 
 
 if __name__ == "__main__":

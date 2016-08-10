@@ -1,0 +1,363 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		590E7D881D02091F00DF5523 /* libprotobuf-lite.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 590E7D861D02091F00DF5523 /* libprotobuf-lite.a */; };
+		590E7D8A1D0209DD00DF5523 /* libprotobuf.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 590E7D871D02091F00DF5523 /* libprotobuf.a */; };
+		59A3D0011CF4E68100C4259F /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFF21CF4E68100C4259F /* AppDelegate.mm */; };
+		59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */; };
+		59A3D0051CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF71CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt */; };
+		59A3D0071CF4E68100C4259F /* tensorflow_inception_graph.pb in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF91CF4E68100C4259F /* tensorflow_inception_graph.pb */; };
+		59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */; };
+		59A3D0091CF4E68100C4259F /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFC1CF4E68100C4259F /* main.mm */; };
+		59A3D00B1CF4E68100C4259F /* RunModelViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */; };
+		59A3D00C1CF4E68100C4259F /* RunModelViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 59A3D0001CF4E68100C4259F /* RunModelViewController.xib */; };
+		59A3D0141CF4E82500C4259F /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A3D0131CF4E82500C4259F /* CoreGraphics.framework */; };
+		59A3D0181CF4E86100C4259F /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59A3D0171CF4E86100C4259F /* UIKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		590E7D861D02091F00DF5523 /* libprotobuf-lite.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libprotobuf-lite.a"; path = "../../makefile/gen/protobuf_ios/lib/libprotobuf-lite.a"; sourceTree = "<group>"; };
+		590E7D871D02091F00DF5523 /* libprotobuf.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libprotobuf.a; path = ../../makefile/gen/protobuf_ios/lib/libprotobuf.a; sourceTree = "<group>"; };
+		5911579B1CF4011C00C31E3A /* tf_ios_makefile_example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tf_ios_makefile_example.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		59A3CFF11CF4E68100C4259F /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		59A3CFF21CF4E68100C4259F /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
+		59A3CFF41CF4E68100C4259F /* cropped_panda.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cropped_panda.jpg; sourceTree = "<group>"; };
+		59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grace_hopper.jpg; sourceTree = "<group>"; };
+		59A3CFF61CF4E68100C4259F /* imagenet_2012_challenge_label_map_proto.pbtxt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = imagenet_2012_challenge_label_map_proto.pbtxt; sourceTree = "<group>"; };
+		59A3CFF71CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = imagenet_comp_graph_label_strings.txt; sourceTree = "<group>"; };
+		59A3CFF81CF4E68100C4259F /* LICENSE */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		59A3CFF91CF4E68100C4259F /* tensorflow_inception_graph.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = tensorflow_inception_graph.pb; sourceTree = "<group>"; };
+		59A3CFFA1CF4E68100C4259F /* ios_image_load.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ios_image_load.h; sourceTree = "<group>"; };
+		59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_image_load.mm; sourceTree = "<group>"; };
+		59A3CFFC1CF4E68100C4259F /* main.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		59A3CFFD1CF4E68100C4259F /* RunModel-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "RunModel-Info.plist"; sourceTree = "<group>"; };
+		59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RunModelViewController.h; sourceTree = "<group>"; };
+		59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
+		59A3D0001CF4E68100C4259F /* RunModelViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = RunModelViewController.xib; sourceTree = "<group>"; };
+		59A3D0131CF4E82500C4259F /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		59A3D0151CF4E83D00C4259F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		59A3D0171CF4E86100C4259F /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		591157981CF4011C00C31E3A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				590E7D8A1D0209DD00DF5523 /* libprotobuf.a in Frameworks */,
+				590E7D881D02091F00DF5523 /* libprotobuf-lite.a in Frameworks */,
+				59A3D0181CF4E86100C4259F /* UIKit.framework in Frameworks */,
+				59A3D0141CF4E82500C4259F /* CoreGraphics.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		591157921CF4011C00C31E3A = {
+			isa = PBXGroup;
+			children = (
+				590E7D861D02091F00DF5523 /* libprotobuf-lite.a */,
+				590E7D871D02091F00DF5523 /* libprotobuf.a */,
+				59A3D0171CF4E86100C4259F /* UIKit.framework */,
+				59A3D0151CF4E83D00C4259F /* Foundation.framework */,
+				59A3D0131CF4E82500C4259F /* CoreGraphics.framework */,
+				59A3CFF11CF4E68100C4259F /* AppDelegate.h */,
+				59A3CFF21CF4E68100C4259F /* AppDelegate.mm */,
+				59A3CFF31CF4E68100C4259F /* data */,
+				59A3CFFA1CF4E68100C4259F /* ios_image_load.h */,
+				59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */,
+				59A3CFFC1CF4E68100C4259F /* main.mm */,
+				59A3CFFD1CF4E68100C4259F /* RunModel-Info.plist */,
+				59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */,
+				59A3CFFF1CF4E68100C4259F /* RunModelViewController.mm */,
+				59A3D0001CF4E68100C4259F /* RunModelViewController.xib */,
+				5911579C1CF4011C00C31E3A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5911579C1CF4011C00C31E3A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5911579B1CF4011C00C31E3A /* tf_ios_makefile_example.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		59A3CFF31CF4E68100C4259F /* data */ = {
+			isa = PBXGroup;
+			children = (
+				59A3CFF41CF4E68100C4259F /* cropped_panda.jpg */,
+				59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */,
+				59A3CFF61CF4E68100C4259F /* imagenet_2012_challenge_label_map_proto.pbtxt */,
+				59A3CFF71CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt */,
+				59A3CFF81CF4E68100C4259F /* LICENSE */,
+				59A3CFF91CF4E68100C4259F /* tensorflow_inception_graph.pb */,
+			);
+			path = data;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5911579A1CF4011C00C31E3A /* tf_ios_makefile_example */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 591157B21CF4011D00C31E3A /* Build configuration list for PBXNativeTarget "tf_ios_makefile_example" */;
+			buildPhases = (
+				591157971CF4011C00C31E3A /* Sources */,
+				591157981CF4011C00C31E3A /* Frameworks */,
+				591157991CF4011C00C31E3A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = tf_ios_makefile_example;
+			productName = tf_ios_makefile_example;
+			productReference = 5911579B1CF4011C00C31E3A /* tf_ios_makefile_example.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		591157931CF4011C00C31E3A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0720;
+				ORGANIZATIONNAME = Google;
+				TargetAttributes = {
+					5911579A1CF4011C00C31E3A = {
+						CreatedOnToolsVersion = 7.2;
+						DevelopmentTeam = 85Z3VXS37U;
+					};
+				};
+			};
+			buildConfigurationList = 591157961CF4011C00C31E3A /* Build configuration list for PBXProject "tf_ios_makefile_example" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 591157921CF4011C00C31E3A;
+			productRefGroup = 5911579C1CF4011C00C31E3A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5911579A1CF4011C00C31E3A /* tf_ios_makefile_example */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		591157991CF4011C00C31E3A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59A3D00C1CF4E68100C4259F /* RunModelViewController.xib in Resources */,
+				59A3D0051CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt in Resources */,
+				59A3D0071CF4E68100C4259F /* tensorflow_inception_graph.pb in Resources */,
+				59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		591157971CF4011C00C31E3A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59A3D0091CF4E68100C4259F /* main.mm in Sources */,
+				59A3D0011CF4E68100C4259F /* AppDelegate.mm in Sources */,
+				59A3D00B1CF4E68100C4259F /* RunModelViewController.mm in Sources */,
+				59A3D0081CF4E68100C4259F /* ios_image_load.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		591157B01CF4011D00C31E3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		591157B11CF4011D00C31E3A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		591157B31CF4011D00C31E3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../../..",
+					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
+					"$(SRCROOT)/../../makefile/downloads",
+					"$(SRCROOT)/../../makefile/gen/proto",
+					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
+				);
+				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
+					"$(SRCROOT)/../../makefile/gen/lib",
+				);
+				OTHER_LDFLAGS = (
+					"-force_load",
+					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
+					"-Xlinker",
+					"-S",
+					"-Xlinker",
+					"-x",
+					"-Xlinker",
+					"-dead_strip",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		591157B41CF4011D00C31E3A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../../..",
+					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
+					"$(SRCROOT)/../../makefile/downloads",
+					"$(SRCROOT)/../../makefile/gen/proto",
+					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
+				);
+				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
+					"$(SRCROOT)/../../makefile/gen/lib",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"-force_load",
+					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
+					"-Xlinker",
+					"-S",
+					"-Xlinker",
+					"-x",
+					"-Xlinker",
+					"-dead_strip",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		591157961CF4011C00C31E3A /* Build configuration list for PBXProject "tf_ios_makefile_example" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				591157B01CF4011D00C31E3A /* Debug */,
+				591157B11CF4011D00C31E3A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		591157B21CF4011D00C31E3A /* Build configuration list for PBXNativeTarget "tf_ios_makefile_example" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				591157B31CF4011D00C31E3A /* Debug */,
+				591157B41CF4011D00C31E3A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 591157931CF4011C00C31E3A /* Project object */;
+}

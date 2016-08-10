@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -276,6 +276,16 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       enqueue_op.run()
       self.assertEqual([], dequeued_t.eval().tolist())
 
+  def testEmptyDequeueUpToWithDynamicShape(self):
+    with self.test_session():
+      q = tf.PaddingFIFOQueue(10, tf.float32, shapes=((None,),))
+      enqueue_op = q.enqueue(([10.0],))
+      dequeued_t = q.dequeue_up_to(0)
+
+      self.assertEqual([], dequeued_t.eval().tolist())
+      enqueue_op.run()
+      self.assertEqual([], dequeued_t.eval().tolist())
+
   def testConstructPaddingFIFOQueueWithNoShape(self):
     with self.test_session():
       with self.assertRaisesRegexp(
@@ -322,6 +332,18 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_op = q.enqueue_many((elems,))
       dequeued_t = q.dequeue_many(4)
+
+      enqueue_op.run()
+
+      self.assertAllEqual(elems[0:4], dequeued_t.eval())
+      self.assertAllEqual(elems[4:8], dequeued_t.eval())
+
+  def testDequeueUpToNoBlocking(self):
+    with self.test_session():
+      q = tf.PaddingFIFOQueue(10, tf.float32, ((),))
+      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_up_to(4)
 
       enqueue_op.run()
 
@@ -418,6 +440,62 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       enqueue_ops = [q.enqueue((str_elems[i], int_elems[i])) for i in range(6)]
 
       dequeued_t = q.dequeue_many(5)
+      dequeued_single_t = q.dequeue()
+
+      for enqueue_op in enqueue_ops:
+        enqueue_op.run()
+      string_val, int_val = sess.run(dequeued_t)
+
+      self.assertAllEqual(
+          [[b"a", b"", b""], [b"ab", b"", b""], [b"abc", b"", b""],
+           [b"abc", b"d", b""], [b"abc", b"d", b"e"]], string_val)
+      self.assertAllEqual(
+          [[[1, 0, 0]],
+           [[2, 0, 0]],
+           [[3, 0, 0]],
+           [[1, 2, 0]],
+           [[1, 2, 3]]],
+          int_val)
+      self.assertTrue(
+          tf.TensorShape(string_val.shape).is_compatible_with(
+              dequeued_t[0].get_shape()))
+      self.assertTrue(
+          tf.TensorShape(int_val.shape).is_compatible_with(
+              dequeued_t[1].get_shape()))
+
+      string_val, int_val = sess.run(dequeued_single_t)
+      self.assertAllEqual([b"abc", b"d", b"e", b"f"], string_val)
+      self.assertAllEqual([[1, 2, 3, 4]], int_val)
+      self.assertTrue(
+          tf.TensorShape(string_val.shape).is_compatible_with(
+              dequeued_single_t[0].get_shape()))
+      self.assertTrue(
+          tf.TensorShape(int_val.shape).is_compatible_with(
+              dequeued_single_t[1].get_shape()))
+
+  def testMultiDequeueUpToPartiallyKnownShapesAndVariableInputNoBlocking(self):
+    with self.test_session() as sess:
+      q = tf.PaddingFIFOQueue(10, (tf.string, tf.int32),
+                              shapes=((None,), (1, None)))
+      str_elems = [
+          ["a"],
+          ["ab"],
+          ["abc"],
+          ["abc", "d"],
+          ["abc", "d", "e"],
+          ["abc", "d", "e", "f"]]
+
+      int_elems = [
+          [[1]],
+          [[2]],
+          [[3]],
+          [[1, 2]],
+          [[1, 2, 3]],
+          [[1, 2, 3, 4]]]
+
+      enqueue_ops = [q.enqueue((str_elems[i], int_elems[i])) for i in range(6)]
+
+      dequeued_t = q.dequeue_up_to(5)
       dequeued_single_t = q.dequeue()
 
       for enqueue_op in enqueue_ops:
@@ -576,6 +654,29 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
         thread.join()
       self.assertItemsEqual(elems, dequeued_elems)
 
+  def testParallelDequeueUpTo(self):
+    with self.test_session() as sess:
+      q = tf.PaddingFIFOQueue(1000, tf.float32, shapes=((),))
+      elems = [10.0 * x for x in range(1000)]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(101)
+
+      enqueue_op.run()
+      close_op.run()
+
+      # Dequeue up to 101 items in parallel on 10 threads, from closed queue.
+      dequeued_elems = []
+
+      def dequeue():
+        dequeued_elems.extend(sess.run(dequeued_t))
+      threads = [self.checkedThread(target=dequeue) for _ in range(10)]
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+      self.assertItemsEqual(elems, dequeued_elems)
+
   def testParallelEnqueueAndDequeue(self):
     with self.test_session() as sess:
       q = tf.PaddingFIFOQueue(50, tf.float32, shapes=((),))
@@ -703,6 +804,33 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
 
       self.assertAllEqual(elems, dequeued_elems)
 
+  def testBlockingDequeueUpTo(self):
+    with self.test_session() as sess:
+      q = tf.PaddingFIFOQueue(10, tf.float32, ((),))
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_up_to(4)
+
+      dequeued_elems = []
+
+      def enqueue():
+        # The enqueue_op should run after the dequeue op has blocked.
+        # TODO(mrry): Figure out how to do this without sleeping.
+        time.sleep(0.1)
+        sess.run(enqueue_op)
+
+      def dequeue():
+        dequeued_elems.extend(sess.run(dequeued_t).tolist())
+
+      enqueue_thread = self.checkedThread(target=enqueue)
+      dequeue_thread = self.checkedThread(target=dequeue)
+      enqueue_thread.start()
+      dequeue_thread.start()
+      enqueue_thread.join()
+      dequeue_thread.join()
+
+      self.assertAllEqual(elems, dequeued_elems)
+
   def testDequeueManyWithTensorParameter(self):
     with self.test_session():
       # Define a first queue that contains integer counts.
@@ -772,6 +900,28 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       close_op.run()
       dequeue_thread.join()
 
+  def testDequeueUpToFromClosedQueueReturnsRemainder(self):
+    with self.test_session() as sess:
+      q = tf.PaddingFIFOQueue(10, tf.float32, ((),))
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(3)
+
+      enqueue_op.run()
+
+      def dequeue():
+        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
+        self.assertAllEqual(elems[3:], sess.run(dequeued_t))
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
   def testBlockingDequeueFromClosedEmptyQueue(self):
     with self.test_session() as sess:
       q = tf.PaddingFIFOQueue(10, tf.float32, ((),))
@@ -804,6 +954,31 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
 
       def dequeue():
         self.assertAllEqual(elems, sess.run(dequeued_t))
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          sess.run(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testBlockingDequeueManyButNotAllFromClosedQueue(self):
+    with self.test_session() as sess:
+      q = tf.PaddingFIFOQueue(10, tf.float32, ((),))
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_many(3)
+
+      enqueue_op.run()
+
+      def dequeue():
+        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
                                      "is closed and has insufficient"):
@@ -891,6 +1066,26 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       q = tf.PaddingFIFOQueue(10, tf.float32, ((),))
       close_op = q.close()
       dequeued_t = q.dequeue_many(4)
+
+      def dequeue():
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          sess.run(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testBlockingDequeueUpToFromClosedEmptyQueue(self):
+    with self.test_session() as sess:
+      q = tf.PaddingFIFOQueue(10, tf.float32, ((),))
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(4)
 
       def dequeue():
         # Expect the operation to fail due to the queue being closed.

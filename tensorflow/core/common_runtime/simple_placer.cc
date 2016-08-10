@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,37 +33,31 @@ namespace tensorflow {
 
 namespace {
 
-// Returns a list of devices sorted by name from 'devices' whose type is in
-// 'supported_device_types'.  This function searches in order of the device
-// types in 'supported_device_types' and returns the *first* subset of devices
-// that match.
-//
-// For example, if supported_device_types contains {GPU, CPU} and
-// 'devices' contains CPU and GPU devices, the returned vector will
-// include *only* GPU devices, since that is higher in the priority
-// order in 'supported_device_types'.
+// Returns a list of devices sorted by preferred type and then name
+// from 'devices' whose type is in 'supported_device_types'.  This
+// function searches the device types in 'supported_device_types' and
+// returns the subset of devices that match.
 std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
     const DeviceTypeVector& supported_device_types) {
   std::vector<Device*> filtered_devices;
-  auto device_sort = [](const Device* a, const Device* b) {
-    return a->name() < b->name();
-  };
   for (DeviceType d : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) == d) {
         filtered_devices.emplace_back(device);
       }
     }
-
-    // If there are any devices under this device type, return this
-    // subset.
-    if (!filtered_devices.empty()) {
-      std::sort(filtered_devices.begin(), filtered_devices.end(), device_sort);
-      return filtered_devices;
-    }
   }
 
+  auto device_sort = [](const Device* a, const Device* b) {
+    // First sort by prioritized device type and then by device name.
+    return std::make_pair(
+               DeviceSet::DeviceTypeOrder(DeviceType(a->device_type())),
+               StringPiece(a->name())) <
+           std::make_pair(
+               DeviceSet::DeviceTypeOrder(DeviceType(b->device_type())),
+               StringPiece(b->name()));
+  };
   std::sort(filtered_devices.begin(), filtered_devices.end(), device_sort);
   return filtered_devices;
 }
@@ -586,6 +580,24 @@ class ColocationGraph {
   std::unordered_map<string, const Node*> colocation_group_root_;
 };
 
+// Returns true if the node only depends on its input's metadata
+// (shape).  Not necessarily a complete list.
+bool IsMetadataNode(const Node* node) {
+  const string& node_type = node->type_string();
+  return (node_type == "Size" || node_type == "Shape" || node_type == "Rank");
+}
+
+// Returns true if the node has no inputs and produces outputs
+// that are consumed by a single node.
+//
+// TODO(vrv): Currently this handles only nodes with one output, but
+// this could be extended to handle the case where a node has many
+// outputs that are connected to nodes in the same colocation group.
+bool IsGeneratorNode(const Node* node) {
+  return node->num_inputs() == 0 && node->num_outputs() == 1 &&
+         node->out_edges().size() == 1 && !IsRefType(node->output_type(0));
+}
+
 }  // namespace
 
 SimplePlacer::SimplePlacer(Graph* graph, const DeviceSet* devices,
@@ -689,6 +701,7 @@ Status SimplePlacer::Run() {
   // 3. For each node, assign a device based on the constraints in the
   // disjoint node set.
   std::vector<Device*> devices;
+  std::vector<Node*> second_pass;
   for (Node* node : graph_->nodes()) {
     // Skip the source and sink nodes.
     if (!node->IsOp()) {
@@ -696,6 +709,17 @@ Status SimplePlacer::Run() {
     }
     // Skip nodes that already have an assigned name.
     if (!node->assigned_device_name().empty()) {
+      continue;
+    }
+
+    // Heuristic A: prefer to place "generators" with their only
+    // consumers.
+    //
+    // If this is a node with no inputs and a single (non-ref)
+    // consumer, we save this for a second pass, so that the
+    // consumer's placement is chosen.
+    if (IsGeneratorNode(node)) {
+      second_pass.push_back(node);
       continue;
     }
 
@@ -710,20 +734,89 @@ Status SimplePlacer::Run() {
     // Returns the first device in sorted devices list so we will always
     // choose the same device.
     //
-    // TODO(vrv): Factor this assignment out into a pluggable algorithm,
-    // so that SimplePlacer is responsible for enforcing preconditions
-    // and we can experiment with other algorithms when given a choice of
-    // devices.
-    node->set_assigned_device_name(devices[0]->name());
-    // Log placement if log_device_placement is set.
-    if (options_ && options_->config.log_device_placement()) {
-      printf("%s: %s\n", node->name().c_str(),
-             node->assigned_device_name().c_str());
-      LOG(INFO) << node->name() << ": " << node->assigned_device_name();
+    // TODO(vrv): Factor this assignment out into a pluggable
+    // algorithm, so that SimplePlacer is responsible for enforcing
+    // preconditions and we can experiment with other algorithms when
+    // given a choice of devices. Once we have a better idea of the
+    // types of heuristics we want to use and the information needed
+    // to perform good placement we can add an interface for this.
+    string assigned_device = devices[0]->name();
+
+    // Heuristic B: If the node only operates on metadata, not data,
+    // then it is desirable to place that metadata node with its
+    // input.
+    if (IsMetadataNode(node)) {
+      // Make sure that the input device type is in the list of supported
+      // device types for this node.
+      const Node* input = (*node->in_edges().begin())->src();
+      // TODO(vrv): if the input is empty, consider postponing this
+      // node's assignment to the second pass, so that we handle the
+      // case where a metadata node's input comes from a backedge
+      // of a loop.
+      const string& input_device_name = input->assigned_device_name();
+      if (CanAssignToDevice(input_device_name, devices)) {
+        assigned_device = input_device_name;
+      }
     }
+
+    AssignAndLog(assigned_device, node);
+  }
+
+  // 4. Perform a second pass assignment for those nodes explicitly
+  // skipped during the first pass.
+  for (Node* node : second_pass) {
+    status = colocation_graph.GetDevicesForNode(node, &devices);
+    if (!status.ok()) {
+      return AttachDef(
+          errors::InvalidArgument("Cannot assign a device to node '",
+                                  node->name(), "': ", status.error_message()),
+          node->def());
+    }
+
+    string assigned_device = devices[0]->name();
+
+    // Heuristic A application.
+    if (IsGeneratorNode(node)) {
+      const Node* output = (*node->out_edges().begin())->dst();
+      const string& output_device_name = output->assigned_device_name();
+      if (CanAssignToDevice(output_device_name, devices)) {
+        assigned_device = output_device_name;
+      }
+    }
+
+    AssignAndLog(assigned_device, node);
   }
 
   return Status::OK();
+}
+
+bool SimplePlacer::CanAssignToDevice(const string& candidate_device_name,
+                                     const std::vector<Device*> devices) const {
+  if (!candidate_device_name.empty()) {
+    // Can we assign to the same device?  Check by validating that
+    // the device type of 'candidate_device_name' is present
+    // in 'devices'.
+    const Device* other_device =
+        devices_->FindDeviceByName(candidate_device_name);
+    if (std::any_of(devices.begin(), devices.end(), [other_device](Device* d) {
+          return d->device_type() == other_device->device_type();
+        })) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void SimplePlacer::AssignAndLog(const string& assigned_device,
+                                Node* node) const {
+  node->set_assigned_device_name(assigned_device);
+  // Log placement if log_device_placement is set.
+  if (options_ && options_->config.log_device_placement()) {
+    printf("%s: %s\n", node->name().c_str(),
+           node->assigned_device_name().c_str());
+    LOG(INFO) << node->name() << ": " << node->assigned_device_name();
+  }
 }
 
 }  // namespace tensorflow

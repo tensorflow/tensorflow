@@ -20,7 +20,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -30,18 +30,32 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 ##### Args:
 
 
-*  <b>`alpha`</b>: `float` or `double` tensor, the shape params of the
+*  <b>`alpha`</b>: Floating point tensor, the shape params of the
     distribution(s).
     alpha must contain only positive values.
-*  <b>`beta`</b>: `float` or `double` tensor, the inverse scale params of the
+*  <b>`beta`</b>: Floating point tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
+*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
+    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
+    and the inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to prepend to all ops created by this distribution.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if `alpha` and `beta` are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.allow_nan_stats` {#Gamma.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -172,6 +186,13 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.is_continuous` {#Gamma.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.is_reparameterized` {#Gamma.is_reparameterized}
 
 
@@ -197,9 +218,23 @@ Log CDF of observations `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.log_pdf(x, name='log_pdf')` {#Gamma.log_pdf}
+#### `tf.contrib.distributions.Gamma.log_pdf(value, name='log_pdf')` {#Gamma.log_pdf}
 
-Log pdf of observations in `x` under these Gamma distribution(s).
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.log_pmf(value, name='log_pmf')` {#Gamma.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.log_prob(x, name='log_prob')` {#Gamma.log_prob}
+
+Log prob of observations in `x` under these Gamma distribution(s).
 
 ##### Args:
 
@@ -210,7 +245,7 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 ##### Raises:
 
@@ -220,9 +255,29 @@ Log pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.mean` {#Gamma.mean}
+#### `tf.contrib.distributions.Gamma.mean(name='mean')` {#Gamma.mean}
 
 Mean of each batch member.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.mode(name='mode')` {#Gamma.mode}
+
+Mode of each batch member.
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
+and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mode for every batch member, a `Tensor` with same `dtype` as self.
 
 
 - - -
@@ -234,7 +289,21 @@ Name to prepend to all ops.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.pdf(x, name='pdf')` {#Gamma.pdf}
+#### `tf.contrib.distributions.Gamma.pdf(value, name='pdf')` {#Gamma.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.pmf(value, name='pmf')` {#Gamma.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.prob(x, name='prob')` {#Gamma.prob}
 
 Pdf of observations in `x` under these Gamma distribution(s).
 
@@ -247,7 +316,7 @@ Pdf of observations in `x` under these Gamma distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the PDFs of `x`
+*  <b>`prob`</b>: tensor of dtype `dtype`, the PDFs of `x`
 
 ##### Raises:
 
@@ -257,16 +326,43 @@ Pdf of observations in `x` under these Gamma distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.sample(n, seed=None, name=None)` {#Gamma.sample}
+#### `tf.contrib.distributions.Gamma.sample(sample_shape=(), seed=None, name='sample')` {#Gamma.sample}
 
-Generate `n` samples.
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
 
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw from each distribution.
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.sample_n(n, seed=None, name='sample_n')` {#Gamma.sample_n}
+
+Draws `n` samples from the Gamma distribution(s).
+
+See the doc for tf.random_gamma for further detail.
+
+##### Args:
+
+
+*  <b>`n`</b>: Python integer, the number of observations to sample from each
+    distribution.
+*  <b>`seed`</b>: Python integer, the random seed for this operation.
+*  <b>`name`</b>: Optional name for the operation.
 
 ##### Returns:
 
@@ -277,7 +373,21 @@ Generate `n` samples.
 
 - - -
 
-#### `tf.contrib.distributions.Gamma.variance` {#Gamma.variance}
+#### `tf.contrib.distributions.Gamma.std(name='std')` {#Gamma.std}
+
+Standard deviation of this distribution.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.validate_args` {#Gamma.validate_args}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.variance(name='variance')` {#Gamma.variance}
 
 Variance of each batch member.
 

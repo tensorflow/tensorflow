@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -563,6 +563,39 @@ class ConstantValueTest(tf.test.TestCase):
          np_val[2, :, :]])
     c_val = tf.contrib.util.constant_value(tf_val)
     self.assertIs(None, c_val)
+
+
+class ConstantValueAsShapeTest(tf.test.TestCase):
+
+  def testConstant(self):
+    np_val = np.random.rand(3).astype(np.int32)
+    tf_val = tf.constant(np_val)
+    self.assertEqual(tf.TensorShape(np_val),
+                     tensor_util.constant_value_as_shape(tf_val))
+
+    tf_val = tf.constant([], dtype=tf.int32)
+    self.assertEqual(tf.TensorShape([]),
+                     tensor_util.constant_value_as_shape(tf_val))
+
+  def testShape(self):
+    tf_val = tf.shape(tf.constant(0.0, shape=[1, 2, 3]))
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual(tf.TensorShape([1, 2, 3]), c_val)
+
+  def testPack(self):
+    tf_val = tf.pack([tf.constant(16), 37, tf.placeholder(tf.int32)])
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([16, 37, None], c_val.as_list())
+
+  def testConcat(self):
+    tf_val = tf.concat(0, [[16, 37], tf.placeholder(tf.int32, shape=(2,))])
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([16, 37, None, None], c_val.as_list())
+
+    tf_val = tf.concat(0,
+                       [[16, 37], tf.placeholder(tf.int32, shape=(1,)), [48]])
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([16, 37, None, 48], c_val.as_list())
 
 
 if __name__ == "__main__":

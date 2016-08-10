@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -124,6 +124,10 @@ class LibCurlProxy : public LibCurl {
     CHECK(dll_handle_);
     return curl_easy_cleanup_(curl);
   }
+  char* curl_easy_escape(CURL* curl, const char* str, int length) override {
+    CHECK(dll_handle_);
+    return curl_easy_escape_(curl, str, length);
+  }
 
   curl_slist* curl_slist_append(curl_slist* list, const char* str) override {
     CHECK(dll_handle_);
@@ -133,6 +137,11 @@ class LibCurlProxy : public LibCurl {
   void curl_slist_free_all(curl_slist* list) override {
     CHECK(dll_handle_);
     return curl_slist_free_all_(list);
+  }
+
+  void curl_free(void* p) override {
+    CHECK(dll_handle_);
+    curl_free_(p);
   }
 
  private:
@@ -157,6 +166,8 @@ class LibCurlProxy : public LibCurl {
     BIND_CURL_FUNC(curl_slist_append);
     BIND_CURL_FUNC(curl_slist_free_all);
     BIND_CURL_FUNC(curl_easy_cleanup);
+    BIND_CURL_FUNC(curl_easy_escape);
+    BIND_CURL_FUNC(curl_free);
 
 #undef BIND_CURL_FUNC
 
@@ -178,6 +189,8 @@ class LibCurlProxy : public LibCurl {
   curl_slist* (*curl_slist_append_)(curl_slist* list,
                                     const char* str) = nullptr;
   void (*curl_slist_free_all_)(curl_slist* list) = nullptr;
+  char* (*curl_easy_escape_)(CURL* curl, const char* str, int length) = nullptr;
+  void (*curl_free_)(void* p) = nullptr;
 };
 }  // namespace
 
@@ -229,6 +242,13 @@ Status HttpRequest::Init() {
     return s;
   }
   return Status::OK();
+}
+
+string HttpRequest::EscapeString(const string& str) {
+  char* out_char_str = libcurl_->curl_easy_escape(curl_, str.c_str(), 0);
+  string out_str(out_char_str);
+  libcurl_->curl_free(out_char_str);
+  return out_str;
 }
 
 Status HttpRequest::SetUri(const string& uri) {
@@ -283,7 +303,7 @@ Status HttpRequest::SetPostRequest(const string& body_filepath) {
   }
   post_body_ = fopen(body_filepath.c_str(), "r");
   if (!post_body_) {
-    return errors::InvalidArgument("Couldnt' open the specified file: " +
+    return errors::InvalidArgument("Couldn't open the specified file: " +
                                    body_filepath);
   }
   fseek(post_body_, 0, SEEK_END);
@@ -401,13 +421,13 @@ Status HttpRequest::Send() {
   uint64 response_code;
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code);
 
-  if (curl_result != CURLE_OK) {
-    return errors::Internal(string("curl error: ") + error_buffer);
-  }
   switch (response_code) {
     case 200:  // OK
     case 204:  // No Content
     case 206:  // Partial Content
+      if (curl_result != CURLE_OK) {
+        return errors::Internal(string("curl error: ") + error_buffer);
+      }
       if (response_buffer_ && response_string_piece_) {
         *response_string_piece_ = StringPiece(response_buffer_, written_size);
       }
@@ -423,7 +443,7 @@ Status HttpRequest::Send() {
       }
       return Status::OK();
     default:
-      return errors::Internal(
+      return errors::Unavailable(
           strings::StrCat("Unexpected HTTP response code ", response_code));
   }
 }

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ class SessionOpsTest(tf.test.TestCase):
       h = sess.run(h)
 
       # Feed a tensor handle.
-      f, x = tf.get_session_tensor(tf.int32)
+      f, x = tf.get_session_tensor(h.handle, tf.int32)
       y = tf.mul(x, 10)
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
@@ -72,7 +72,7 @@ class SessionOpsTest(tf.test.TestCase):
       p, h = sess.run([p, h])
 
       # Run by feeding a tensor handle.
-      f, x = tf.get_session_tensor(tf.int32)
+      f, x = tf.get_session_tensor(h.handle, tf.int32)
       if p:
         y = tf.mul(x, 10)
       else:
@@ -89,7 +89,7 @@ class SessionOpsTest(tf.test.TestCase):
       h = sess.run(h)
 
       # Do some computation.
-      f, x = tf.get_session_tensor(tf.int32)
+      f, x = tf.get_session_tensor(h.handle, tf.int32)
       # Must define the loop body outside the loop.
       h_x = tf.get_session_handle(tf.add(x, 1))
       for _ in range(100):
@@ -106,7 +106,7 @@ class SessionOpsTest(tf.test.TestCase):
       h = sess.run(h)
 
       # Do some computation.
-      f, x = tf.get_session_tensor(tf.int32)
+      f, x = tf.get_session_tensor(h.handle, tf.int32)
       b = tf.constant(100)
       p = tf.less(x, b)
       # Must define the loop body outside the loop.
@@ -128,7 +128,7 @@ class SessionOpsTest(tf.test.TestCase):
       h = sess.run(h)
 
       # Feed a tensor handle.
-      f, x = tf.get_session_tensor(tf.int32)
+      f, x = tf.get_session_tensor(h.handle, tf.int32)
       y = tf.mul(x, 10)
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
@@ -139,7 +139,16 @@ class SessionOpsTest(tf.test.TestCase):
         h = sess.run(h)
         self.assertEqual(100, sess.run(y, feed_dict={f: h.handle}))
 
-  def testHandleDeleter(self):
+  def testHandleDelete(self):
+    with self.test_session() as sess:
+      # Return a handle.
+      a = tf.constant(10)
+      b = tf.constant(5)
+      c = tf.mul(a, b)
+      h = tf.get_session_handle(c)
+      sess.run(h).delete()
+
+  def testHandleDeleteRaw(self):
     with self.test_session() as sess:
       # Return a handle.
       a = tf.constant(10)
@@ -149,9 +158,9 @@ class SessionOpsTest(tf.test.TestCase):
       h = sess.run(h)
 
       # Delete using a raw tensor handle.
-      h = h.get_raw_handle()
-      f, x = tf.delete_session_tensor()
-      sess.run(x, feed_dict={f: h})
+      raw_h = h.get_raw_handle()
+      f, x = tf.delete_session_tensor(raw_h)
+      sess.run(x, feed_dict={f: raw_h})
 
   def testMultiDevices(self):
     with self.test_session() as sess:
@@ -162,8 +171,49 @@ class SessionOpsTest(tf.test.TestCase):
         b = tf.constant(2.0)
         b_handle = sess.run(tf.get_session_handle(b))
 
-      a_p, a_t = tf.get_session_tensor(tf.float32)
-      b_p, b_t = tf.get_session_tensor(tf.float32)
+      a_p, a_t = tf.get_session_tensor(a_handle.handle, tf.float32)
+      b_p, b_t = tf.get_session_tensor(b_handle.handle, tf.float32)
+      c = tf.add(a_t, b_t)
+      c_handle = sess.run(
+          tf.get_session_handle(c),
+          feed_dict={a_p: a_handle.handle,
+                     b_p: b_handle.handle})
+      self.assertEqual(3.0, c_handle.eval())
+
+  def testHandleGC(self):
+    with self.test_session() as sess:
+      # initial values live on CPU
+      with tf.device("/cpu:0"):
+        one = tf.constant(1, dtype=tf.float32)
+        one_handle = sess.run(tf.get_session_handle(one))
+        x_handle = sess.run(tf.get_session_handle(one))
+
+      # addition lives on GPU
+      with tf.device("/gpu:0"):
+        add_h1, add_t1 = tf.get_session_tensor(one_handle.handle, tf.float32)
+        add_h2, add_t2 = tf.get_session_tensor(x_handle.handle, tf.float32)
+        add_op = tf.add(add_t1, add_t2)
+        add_output = tf.get_session_handle(add_op)
+
+      # add 1 to tensor 20 times
+      for _ in range(20):
+        x_handle = sess.run(add_output,
+                            feed_dict={add_h1: one_handle.handle,
+                                       add_h2: x_handle.handle})
+
+  def testHandlePlacement(self):
+    with self.test_session() as sess:
+      a = tf.constant(1.0)
+      a_handle_op = tf.get_session_handle(a)
+      b = tf.constant(2.0)
+      b_handle_op = tf.get_session_handle(b)
+
+      a_handle = sess.run(a_handle_op)
+      b_handle = sess.run(b_handle_op)
+
+      a_p, a_t = tf.get_session_tensor(a_handle.handle, tf.float32)
+      b_p, b_t = tf.get_session_tensor(b_handle.handle, tf.float32)
+
       c = tf.add(a_t, b_t)
       c_handle = sess.run(
           tf.get_session_handle(c),

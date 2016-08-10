@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, device, g)) {
+      if (DoConstantFolding(cf_opts, runtime, device, g)) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;

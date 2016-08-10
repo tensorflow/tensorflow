@@ -29,7 +29,7 @@ to:
 
 [TOC]
 
-## Define the Op's interface 
+## Define the Op's interface
 
 You define the interface of an Op by registering it with the TensorFlow system.
 In the registration, you specify the name of your Op, its inputs (types and
@@ -90,7 +90,7 @@ class ZeroOutOp : public OpKernel {
     Tensor* output_tensor = NULL;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->template flat<int32>();
+    auto output = output_tensor->flat<int32>();
 
     // Set all but the first element of the output tensor to 0.
     const int N = input.size();
@@ -238,7 +238,7 @@ Then run your test:
 $ bazel test tensorflow/python:zero_out_op_test
 ```
 
-## Validation 
+## Validation
 
 The example above assumed that the Op applied to a tensor of any shape.  What
 if it only applied to vectors?  That means adding a check to the above OpKernel
@@ -480,8 +480,8 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 Note in particular that the values of type `type` use [the `DT_*` names
 for the types](../../resources/dims_types.md#data-types).
 
-### Polymorphism 
-#### Type Polymorphism 
+### Polymorphism
+#### Type Polymorphism
 
 For ops that can take different types as input or produce different output
 types, you can specify [an attr](#attrs) in
@@ -709,7 +709,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 ```
 
-#### List Inputs and Outputs 
+#### List Inputs and Outputs
 
 In addition to being able to accept or produce different types, ops can consume
 or produce a variable number of tensors.
@@ -927,7 +927,7 @@ There are several ways to preserve backwards-compatibility.
 
 5. Namespace any new Ops you create, by prefixing the Op names with something
    unique to your project. This avoids having your Op colliding with any Ops
-   that might be included in future versions of Tensorflow.
+   that might be included in future versions of TensorFlow.
 
 6. Plan ahead! Try to anticipate future uses for the Op. Some signature changes
    can't be done in a compatible way (for example, making a list of the same
@@ -946,7 +946,7 @@ new optional arguments to the end.  Generally incompatible changes may only be
 made when TensorFlow's changes major versions, and must conform to the
 [`GraphDef` version semantics](../../resources/versions.md#graphs).
 
-## GPU Support 
+## GPU Support
 
 You can implement different OpKernels and register one for CPU and another for
 GPU, just like you can [register kernels for different types](#polymorphism).
@@ -1011,13 +1011,13 @@ function which computes gradients with respect to the ops' inputs given
 gradients with respect to the ops' outputs.
 
 Mathematically, if an op computes \\(y = f(x)\\) the registered gradient op
-converts gradients \\(\partial / \partial y\\) with respect to \\(y\\) into
-gradients \\(\partial / \partial x\\) with respect to \\(x\\) via the chain
-rule:
+converts gradients \\(\partial L/ \partial y\\) of loss \\(L\\) with respect to
+\\(y\\) into gradients \\(\partial L/ \partial x\\) with respect to \\(x\\) via
+the chain rule:
 
-$$\frac{\partial}{\partial x}
-    = \frac{\partial}{\partial y} \frac{\partial y}{\partial x}
-    = \frac{\partial}{\partial y} \frac{\partial f}{\partial x}.$$
+$$\frac{\partial L}{\partial x}
+    = \frac{\partial L}{\partial y} \frac{\partial y}{\partial x}
+    = \frac{\partial L}{\partial y} \frac{\partial f}{\partial x}.$$
 
 In the case of `ZeroOut`, only one entry in the input affects the output, so the
 gradient with respect to the input is a sparse "one hot" tensor.  This is

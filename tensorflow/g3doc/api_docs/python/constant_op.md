@@ -119,7 +119,7 @@ tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
 
 *  <b>`tensor`</b>: A `Tensor`.
 *  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
-  `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64` or `complex128`.
+  `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -512,11 +512,11 @@ Draws samples from a multinomial distribution.
 
 Example:
 
-  samples = tf.multinomial(tf.log([[0.5, 0.5]]), 10)
-  # samples has shape [1, 10], where each value is either 0 or 1.
-
-  samples = tf.multinomial([[1, -1, -1]], 10)
-  # samples is equivalent to tf.zeros([1, 10], dtype=tf.int64).
+```python
+# samples has shape [1, 5], where each value is either 0 or 1 with equal
+# probability.
+samples = tf.multinomial(tf.log([[10., 10.]]), 5)
+```
 
 ##### Args:
 
@@ -533,6 +533,54 @@ Example:
 ##### Returns:
 
   The drawn samples of shape `[batch_size, num_samples]`.
+
+
+- - -
+
+### `tf.random_gamma(shape, alpha, beta=None, dtype=tf.float32, seed=None, name=None)` {#random_gamma}
+
+Draws `shape` samples from each of the given Gamma distribution(s).
+
+`alpha` is the shape parameter describing the distribution(s), and `beta` is
+the inverse scale parameter(s).
+
+Example:
+
+  samples = tf.random_gamma([10], [0.5, 1.5])
+  # samples has shape [10, 2], where each slice [:, 0] and [:, 1] represents
+  # the samples drawn from each distribution
+
+  samples = tf.random_gamma([7, 5], [0.5, 1.5])
+  # samples has shape [7, 5, 2], where each slice [:, :, 0] and [:, :, 1]
+  # represents the 7x5 samples drawn from each of the two distributions
+
+  samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
+  # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
+
+##### Args:
+
+
+*  <b>`shape`</b>: A 1-D integer Tensor or Python array. The shape of the output samples
+    to be drawn per alpha/beta-parameterized distribution.
+*  <b>`alpha`</b>: A Tensor or Python value or N-D array of type `dtype`. `alpha`
+    provides the shape parameter(s) describing the gamma distribution(s) to
+    sample. Must be broadcastable with `beta`.
+*  <b>`beta`</b>: A Tensor or Python value or N-D array of type `dtype`. Defaults to 1.
+    `beta` provides the inverse scale parameter(s) of the gamma
+    distribution(s) to sample. Must be broadcastable with `alpha`.
+*  <b>`dtype`</b>: The type of alpha, beta, and the output: `float16`, `float32`, or
+    `float64`.
+*  <b>`seed`</b>: A Python integer. Used to create a random seed for the distributions.
+    See
+    [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+    for behavior.
+*  <b>`name`</b>: Optional name for the operation.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
+    values of type `dtype`.
 
 
 - - -
@@ -634,5 +682,40 @@ with tf.Session() as sess2:
 
 
 *  <b>`seed`</b>: integer.
+
+
+
+## Other Functions and Classes
+- - -
+
+### `tf.contrib.graph_editor.ops(*args, **kwargs)` {#ops}
+
+Helper to select operations.
+
+##### Args:
+
+
+*  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
+    tf.Operation. tf.Tensor instances are silently ignored.
+*  <b>`**kwargs`</b>: 'graph': tf.Graph in which to perform the regex query.This is
+    required when using regex.
+    'positive_filter': an elem if selected only if positive_filter(elem) is
+      True. This is optional.
+    'restrict_ops_regex': a regular expression is ignored if it doesn't start
+      with the substring "(?#ops)".
+
+##### Returns:
+
+  list of tf.Operation
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
+    or if an argument in args is not an (array of) tf.Operation
+    or an (array of) tf.Tensor (silently ignored) or a string
+    or a regular expression.
+*  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular
+    expression is used without passing a graph as a keyword argument.
 
 

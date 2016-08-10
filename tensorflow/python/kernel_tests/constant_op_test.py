@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -388,6 +388,14 @@ class OnesTest(tf.test.TestCase):
     self.assertShapeEqual(np_ans, d)
     self.assertShapeEqual(np_ans, z)
 
+  def testAutoPack(self):
+    with self.test_session():
+      h = tf.placeholder(tf.int32, shape=[])
+      w = tf.placeholder(tf.int32, shape=[])
+      z = tf.ones([h, w])
+      out = z.eval(feed_dict={h: 4, w: 16})
+    self.assertAllEqual(out, np.array([[1] * 16] * 4))
+
   def testDtype(self):
     with self.test_session():
       d = tf.fill([2, 3], 12., name="fill")
@@ -414,9 +422,9 @@ class OnesTest(tf.test.TestCase):
 class OnesLikeTest(tf.test.TestCase):
 
   def testOnesLike(self):
-    for dtype in (tf.float32, tf.float64, tf.int32,
+    for dtype in [tf.float32, tf.float64, tf.int32,
                   tf.uint8, tf.int16, tf.int8,
-                  tf.complex64, tf.complex128, tf.int64):
+                  tf.complex64, tf.complex128, tf.int64]:
       numpy_dtype = dtype.as_numpy_dtype
       with self.test_session():
         # Creates a tensor of non-zero values with shape 2 x 3.
@@ -507,6 +515,9 @@ class FillTest(tf.test.TestCase):
     f = tf.fill(
         tf.placeholder(tf.int32, shape=(4,)), 3.0)
     self.assertEqual([None, None, None, None], f.get_shape().as_list())
+
+    f = tf.fill([tf.placeholder(tf.int32, shape=()), 17], 1.0)
+    self.assertEqual([None, 17], f.get_shape().as_list())
 
   def testGradient(self):
     with self.test_session():

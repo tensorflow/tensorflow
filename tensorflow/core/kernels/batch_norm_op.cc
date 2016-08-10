@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -159,9 +159,9 @@ class BatchNormGradOp : public OpKernel {
                               .TypeConstraint<T>("T"),             \
                           BatchNormOp<CPUDevice, T>);
 
-REGISTER_KERNEL(Eigen::half);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_half(REGISTER_KERNEL);
+TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_double(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -179,8 +179,8 @@ namespace functor {
 
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 
-DECLARE_GPU_SPECS(Eigen::half);
-DECLARE_GPU_SPECS(float);
+TF_CALL_half(DECLARE_GPU_SPECS);
+TF_CALL_float(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -191,8 +191,8 @@ DECLARE_GPU_SPECS(float);
                               .TypeConstraint<T>("T"),             \
                           BatchNormOp<GPUDevice, T>);
 
-REGISTER_GPU_KERNEL(Eigen::half);
-REGISTER_GPU_KERNEL(float);
+TF_CALL_half(REGISTER_GPU_KERNEL);
+TF_CALL_float(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA
@@ -203,9 +203,9 @@ REGISTER_GPU_KERNEL(float);
                               .TypeConstraint<T>("T"),                 \
                           BatchNormGradOp<CPUDevice, T>);
 
-REGISTER_KERNEL(Eigen::half);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_half(REGISTER_KERNEL);
+TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_double(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -226,8 +226,8 @@ namespace functor {
 
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 
-DECLARE_GPU_SPECS(Eigen::half);
-DECLARE_GPU_SPECS(float);
+TF_CALL_half(DECLARE_GPU_SPECS);
+TF_CALL_float(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -238,8 +238,8 @@ DECLARE_GPU_SPECS(float);
                               .TypeConstraint<T>("T"),                 \
                           BatchNormGradOp<GPUDevice, T>);
 
-REGISTER_GPU_KERNEL(Eigen::half);
-REGISTER_GPU_KERNEL(float);
+TF_CALL_half(REGISTER_GPU_KERNEL);
+TF_CALL_float(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA

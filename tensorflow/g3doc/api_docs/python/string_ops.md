@@ -81,6 +81,8 @@ The hash function is deterministic on the content of the string within the
 process.
 
 Note that the hash function may change from time to time.
+This functionality will be deprecated and it's recommended to use
+`tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
 
 ##### Args:
 
@@ -151,5 +153,66 @@ tf.reduce_join(a, []) ==> ["abcd"]
   A `Tensor` of type `string`.
   Has shape equal to that of the input with reduced dimensions removed or
   set to `1` depending on `keep_dims`.
+
+
+- - -
+
+### `tf.string_join(inputs, separator=None, name=None)` {#string_join}
+
+Joins the strings in the given list of string tensors into one tensor;
+
+with the given separator (default is an empty separator).
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A list of at least 1 `Tensor` objects of type `string`.
+    A list of string tensors.  The tensors must all have the same shape,
+    or be scalars.  Scalars may be mixed in; these will be broadcast to the shape
+    of non-scalar inputs.
+*  <b>`separator`</b>: An optional `string`. Defaults to `""`.
+    string, an optional join separator.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`.
+
+
+
+## Conversion
+
+- - -
+
+### `tf.as_string(input, precision=None, scientific=None, shortest=None, width=None, fill=None, name=None)` {#as_string}
+
+Converts each entry in the given tensor to strings.  Supports many numeric
+
+types and boolean.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`, `complex64`, `float32`, `float64`, `bool`, `int8`.
+*  <b>`precision`</b>: An optional `int`. Defaults to `-1`.
+    The post-decimal precision to use for floating point numbers.
+    Only used if precision > -1.
+*  <b>`scientific`</b>: An optional `bool`. Defaults to `False`.
+    Use scientific notation for floating point numbers.
+*  <b>`shortest`</b>: An optional `bool`. Defaults to `False`.
+    Use shortest representation (either scientific or standard) for
+    floating point numbers.
+*  <b>`width`</b>: An optional `int`. Defaults to `-1`.
+    Pad pre-decimal numbers to this width.
+    Applies to both floating point and integer numbers.
+    Only used if width > -1.
+*  <b>`fill`</b>: An optional `string`. Defaults to `""`.
+    The value to pad if width > -1.  If empty, pads with spaces.
+    Another typical value is '0'.  String cannot be longer than 1 character.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`.
 
 

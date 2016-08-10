@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,7 +104,8 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
 // Note that unlike SingleExampleProtoToTensors, output tensors are
 // allocated using a provided Allocator within this method.
 Status BatchExampleProtoToTensors(
-    const std::vector<Example>& examples, const std::vector<string>& names,
+    const std::vector<const Example*>& examples,
+    const std::vector<string>& names,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features, Allocator* allocator,
     std::vector<Tensor>* output_dense_values_tensor,

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -382,7 +382,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if is_quantized:
     numpy_dtype = dtype
 
-  if dtype is not None and not dtype.base_dtype == numpy_dtype.base_dtype:
+  if dtype is not None and (not hasattr(dtype, "base_dtype") or
+                            dtype.base_dtype != numpy_dtype.base_dtype):
     raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
 
   # If shape is not given, get the shape from the numpy array.
@@ -628,3 +629,55 @@ def constant_value(tensor):
     # conservatively prevent it from being fed.
     tensor.graph.prevent_feeding(tensor)
   return ret
+
+
+def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
+  """A version of `constant_value()` that returns a `TensorShape`.
+
+  This version should be used when a constant tensor value is
+  interpreted as a (possibly partial) shape, e.g. in the shape
+  function for `tf.reshape()`. By explicitly requesting a
+  `TensorShape` as the return value, it is possible to represent
+  unknown dimensions; by contrast, `constant_value()` is
+  all-or-nothing.
+
+  Args:
+    tensor: The rank-1 Tensor to be evaluated.
+
+  Returns:
+    A `TensorShape` based on the constant value of the given `tensor`.
+  """
+  shape = tensor.get_shape().with_rank(1)
+  if tensor.get_shape() == [0]:
+    return tensor_shape.scalar()
+  elif tensor.op.type == "Shape":
+    return tensor.op.inputs[0].get_shape()
+  elif tensor.op.type == "Pack":
+    ret = tensor_shape.scalar()  # Empty list.
+    for pack_input in tensor.op.inputs:
+      # `pack_input` must be a scalar. Attempt to evaluate it, and append it
+      # to `ret`.
+      pack_input_val = constant_value(pack_input)
+      if pack_input_val is None or pack_input_val < 0:
+        new_dim = tensor_shape.Dimension(None)
+      else:
+        new_dim = tensor_shape.Dimension(pack_input_val)
+      ret = ret.concatenate([new_dim])
+    return ret
+  elif tensor.op.type == "Concat":
+    # We assume that `tensor.op.inputs[0]` evaluates to 0, as this is
+    # the only legal value when concatenating vectors, and it will
+    # have been checked by a previous shape function.
+    ret = tensor_shape.scalar()  # Empty list.
+    for concat_input in tensor.op.inputs[1:]:
+      # `concat_input` must be a vector. Attempt to evaluate it as a shape,
+      # and concatenate it with `ret`.
+      ret = ret.concatenate(constant_value_as_shape(concat_input))
+    return ret
+  else:
+    ret = tensor_shape.unknown_shape(shape[0].value)
+    value = constant_value(tensor)
+    if value is not None:
+      ret = ret.merge_with(tensor_shape.TensorShape(
+          [d if d != -1 else None for d in value]))
+    return ret

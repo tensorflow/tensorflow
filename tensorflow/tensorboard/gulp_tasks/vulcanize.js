@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ var replace = require('gulp-replace');
 var rename = require('gulp-rename');
 var header = require('gulp-header');
 
-var HEADER_STR = '<!-- Copyright 2015 Google Inc. All Rights Reserved.\n\
+var HEADER_STR = '<!-- Copyright 2015 The TensorFlow Authors. All Rights Reserved.\n\
 \n\
 Licensed under the Apache License, Version 2.0 (the "License");\n\
 you may not use this file except in compliance with the License.\n\
@@ -74,16 +74,6 @@ module.exports = function(overwrite) {
         .pipe(replace(scriptRegex, ''))
         .pipe(header(HEADER_STR))
         .pipe(rename('tf-tensorboard.html' + suffix))
-        .pipe(gulp.dest('./dist'));
-
-
-    gulp.src('components/tf-tensorboard/tf-tensorboard-demo.html')
-        .pipe(vulcanize({
-          inlineScripts: true,
-          inlineCss: true,
-          stripComments: true,
-        }))
-        .pipe(header(HEADER_STR))
         .pipe(gulp.dest('./dist'));
   }
 }

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -230,8 +230,11 @@ Status SingleExampleProtoToTensors(
     const Tensor& default_value = feature_config.default_value;
     bool required = (default_value.NumElements() == 0);
     const auto& feature_found = feature_dict.find(key);
+    const bool feature_has_data =  // Found key & data type is set
+        (feature_found != feature_dict.end() &&
+         (feature_found->second.kind_case() != Feature::KIND_NOT_SET));
 
-    bool required_ok = (feature_found != feature_dict.end()) || !required;
+    const bool required_ok = feature_has_data || !required;
     if (!required_ok) {
       return errors::InvalidArgument("Name: ", example_name, ", Feature: ", key,
                                      " is required but could not be found.");
@@ -239,7 +242,7 @@ Status SingleExampleProtoToTensors(
 
     // Perform the FeatureDenseCopy into the output dense_values tensor (if
     // the value is present).
-    if (feature_found != feature_dict.end()) {
+    if (feature_has_data) {
       const Feature& f = feature_found->second;
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
@@ -266,7 +269,7 @@ Status SingleExampleProtoToTensors(
     const DataType& dtype = feature_config.dtype;
     const auto& feature_found = feature_dict.find(key);
 
-    bool feature_has_data =  // Found key & data type is set
+    const bool feature_has_data =  // Found key & data type is set
         (feature_found != feature_dict.end() &&
          (feature_found->second.kind_case() != Feature::KIND_NOT_SET));
 
@@ -310,16 +313,17 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
 }
 
 Status BatchExampleProtoToTensors(
-    const std::vector<Example>& examples, const std::vector<string>& names,
+    const std::vector<const Example*>& examples,
+    const std::vector<string>& names,
     const std::vector<FixedLenFeature>& fixed_len_features,
     const std::vector<VarLenFeature>& var_len_features, Allocator* allocator,
     std::vector<Tensor>* output_dense_values_tensor,
     std::vector<Tensor>* output_sparse_indices_tensor,
     std::vector<Tensor>* output_sparse_values_tensor,
     std::vector<Tensor>* output_sparse_shapes_tensor) {
-  int batch_size = examples.size();
+  const int batch_size = examples.size();
 
-  bool has_names = (names.size() > 0);
+  const bool has_names = (names.size() > 0);
   if (has_names) {
     if (names.size() != examples.size()) {
       return errors::InvalidArgument(
@@ -353,7 +357,7 @@ Status BatchExampleProtoToTensors(
   }
 
   for (int b = 0; b < examples.size(); ++b) {
-    const Example& ex = examples[b];
+    const Example& ex = *(examples[b]);
     const string& example_name = (has_names) ? names[b] : "<unknown>";
     SingleExampleProtoToTensors(
         ex, example_name, b, fixed_len_features, var_len_features,

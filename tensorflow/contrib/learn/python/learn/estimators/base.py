@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,17 +21,24 @@ from __future__ import print_function
 
 import json
 import os
+import types
+
+import numpy as np
+import six
 from six import string_types
 
+
+from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.contrib.learn.python.learn.io.data_feeder import setup_train_data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.contrib.learn.python.learn.learn_io.data_feeder import setup_train_data_feeder
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _write_with_backup(filename, content):
@@ -54,61 +60,8 @@ def _copy_dir(dir_in, dir_out):
       gfile.Copy(name_in, name_out, overwrite=True)
 
 
-def _new_tf_model_fn(model_fn, class_weight):
-  """Backward compatibility way of adding class weight and IS_TRAINING.
-
-  TODO(ipolosukhin): Remove this function after new layers are available.
-  Specifically:
-   * dropout and batch norm should work via update ops.
-   * class weights should be retrieved from weights column or hparams.
-
-  Args:
-    model_fn: Core model function.
-    class_weight: Class weight.
-  Returns:
-    Model function.
-  """
-  def _model_fn(features, targets, mode):
-    ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
-    if class_weight is not None:
-      constant_op.constant(class_weight, name='class_weight')
-    return model_fn(features, targets)
-  return _model_fn
-
-
 class TensorFlowEstimator(estimator.Estimator):
-  """Base class for all TensorFlow estimators.
-
-  Parameters:
-    model_fn: Model function, that takes input X, y tensors and outputs
-      prediction and loss tensors.
-    n_classes: Number of classes in the target.
-    batch_size: Mini batch size.
-    steps: Number of steps to run over data.
-    optimizer: Optimizer name (or class), for example "SGD", "Adam",
-      "Adagrad".
-    learning_rate: If this is constant float value, no decay function is used.
-      Instead, a customized decay function can be passed that accepts
-      global_step as parameter and returns a Tensor.
-      e.g. exponential decay function:
-      def exp_decay(global_step):
-          return tf.train.exponential_decay(
-              learning_rate=0.1, global_step,
-              decay_steps=2, decay_rate=0.001)
-    clip_gradients: Clip norm of the gradients to this value to stop
-      gradient explosion.
-    class_weight: None or list of n_classes floats. Weight associated with
-      classes for loss computation. If not given, all classes are supposed to
-      have weight one.
-    continue_training: when continue_training is True, once initialized
-      model will be continuely trained on every call of fit.
-    config: RunConfig object that controls the configurations of the
-      session, e.g. num_cores, gpu_memory_fraction, etc.
-    verbose: Controls the verbosity, possible values:
-      0: the algorithm and debug information is muted.
-      1: trainer prints the progress.
-      2: log device placement is printed.
-  """
+  """Base class for all TensorFlow estimators."""
 
   def __init__(self,
                model_fn,
@@ -122,12 +75,54 @@ class TensorFlowEstimator(estimator.Estimator):
                continue_training=False,
                config=None,
                verbose=1):
+    """Initializes a TensorFlowEstimator instance.
+
+    Args:
+      model_fn: Model function, that takes input `x`, `y` tensors and outputs
+        prediction and loss tensors.
+      n_classes: Number of classes in the target.
+      batch_size: Mini batch size.
+      steps: Number of steps to run over data.
+      optimizer: Optimizer name (or class), for example "SGD", "Adam",
+        "Adagrad".
+      learning_rate: If this is constant float value, no decay function is used.
+        Instead, a customized decay function can be passed that accepts
+        global_step as parameter and returns a Tensor.
+        e.g. exponential decay function:
+
+        ````python
+        def exp_decay(global_step):
+            return tf.train.exponential_decay(
+                learning_rate=0.1, global_step,
+                decay_steps=2, decay_rate=0.001)
+        ````
+
+      clip_gradients: Clip norm of the gradients to this value to stop
+        gradient explosion.
+      class_weight: None or list of n_classes floats. Weight associated with
+        classes for loss computation. If not given, all classes are supposed to
+        have weight one.
+      continue_training: when continue_training is True, once initialized
+        model will be continuely trained on every call of fit.
+      config: RunConfig object that controls the configurations of the
+        session, e.g. num_cores, gpu_memory_fraction, etc.
+      verbose: Controls the verbosity, possible values:
+
+        * 0: the algorithm and debug information is muted.
+        * 1: trainer prints the progress.
+        * 2: log device placement is printed.
+    """
+    self.class_weight = class_weight
+    self.learning_rate = learning_rate
+    self.clip_gradients = clip_gradients
+    if isinstance(optimizer, six.string_types):
+      if optimizer not in layers.OPTIMIZER_CLS_NAMES:
+        raise ValueError(
+            'Optimizer name should be one of [%s], you provided %s.' %
+            (', '.join(layers.OPTIMIZER_CLS_NAMES), optimizer))
+    self.optimizer = optimizer
     super(TensorFlowEstimator, self).__init__(
-        model_fn=_new_tf_model_fn(model_fn, class_weight),
-        classification=n_classes > 1,
-        learning_rate=learning_rate,
-        optimizer=optimizer,
-        clip_gradients=clip_gradients,
+        model_fn=self._get_model_fn(model_fn),
         config=config)
     self.n_classes = n_classes
     self.batch_size = batch_size
@@ -142,7 +137,6 @@ class TensorFlowEstimator(estimator.Estimator):
     Note: called first time constructs the graph and initializers
     variables. Consecutives times it will continue training the same model.
     This logic follows partial_fit() interface in scikit-learn.
-
     To restart learning, create new estimator.
 
     Args:
@@ -189,7 +183,6 @@ class TensorFlowEstimator(estimator.Estimator):
     This method is expected to be called several times consecutively
     on different or the same chunks of the dataset. This either can
     implement iterative training or out-of-core/online training.
-
     This is especially useful when the whole dataset is too big to
     fit in memory at the same time. Or when model is taking long time
     to converge, and you want to split up training into subparts.
@@ -229,12 +222,11 @@ class TensorFlowEstimator(estimator.Estimator):
     return preds
 
   def predict(self, x, axis=1, batch_size=None):
-    """Predict class or regression for X.
+    """Predict class or regression for `x`.
 
-    For a classification model, the predicted class for each sample in X is
-    returned. For a regression model, the predicted value based on X is
+    For a classification model, the predicted class for each sample in `x` is
+    returned. For a regression model, the predicted value based on `x` is
     returned.
-
     Args:
       x: array-like matrix, [n_samples, n_features...] or iterator.
       axis: Which axis to argmax for classification.
@@ -251,7 +243,7 @@ class TensorFlowEstimator(estimator.Estimator):
     return self._predict(x, axis=axis, batch_size=batch_size)
 
   def predict_proba(self, x, batch_size=None):
-    """Predict class probability of the input samples X.
+    """Predict class probability of the input samples `x`.
 
     Args:
       x: array-like matrix, [n_samples, n_features...] or iterator.
@@ -273,28 +265,9 @@ class TensorFlowEstimator(estimator.Estimator):
     Returns:
       Tensor.
     """
+    if self._graph is None:
+      raise NotFittedError
     return self._graph.get_tensor_by_name(name)
-
-  def get_tensor_value(self, name):
-    """Returns value of the tensor give by name.
-
-    Args:
-      name: string, name of the tensor.
-
-    Returns:
-      Numpy array - value of the tensor.
-    """
-    if name.endswith(':0'):
-      name = name[:-2]
-    return checkpoints.load_variable(self.model_dir, name)
-
-  def get_variable_names(self):
-    """Returns list of all variable names in this model.
-
-    Returns:
-      List of names.
-    """
-    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
 
   def save(self, path):
     """Saves checkpoints and graph to given path.
@@ -353,7 +326,7 @@ class TensorFlowEstimator(estimator.Estimator):
       raise ValueError("Restore folder doesn't contain model definition.")
     # list of parameters that are allowed to be reconfigured
     reconfigurable_params = ['_config']
-    _config = config
+    _config = config  # pylint: disable=unused-variable,invalid-name
     with gfile.Open(model_def_filename) as fmodel:
       model_def = json.loads(fmodel.read())
       # TensorFlow binding requires parameters to be strings not unicode.
@@ -383,20 +356,147 @@ class TensorFlowEstimator(estimator.Estimator):
     result._restore(path)
     return result
 
+  def _get_model_fn(self, model_fn):
+    """Backward compatibility way of adding class weight and IS_TRAINING.
+
+    TODO(ipolosukhin): Remove this function after new layers are available.
+    Specifically:
+     * dropout and batch norm should work via update ops.
+     * class weights should be retrieved from weights column or hparams.
+
+    Args:
+      model_fn: Core model function.
+
+    Returns:
+      Model function.
+    """
+    def _model_fn(features, targets, mode):
+      """Model function."""
+      ops.get_default_graph().add_to_collection('IS_TRAINING', mode == 'train')
+      if self.class_weight is not None:
+        constant_op.constant(self.class_weight, name='class_weight')
+      predictions, loss = model_fn(features, targets)
+      if isinstance(self.learning_rate, types.FunctionType):
+        learning_rate = self.learning_rate(contrib_framework.get_global_step())
+      else:
+        learning_rate = self.learning_rate
+      if isinstance(self.optimizer, types.FunctionType):
+        optimizer = self.optimizer(learning_rate)
+      else:
+        optimizer = self.optimizer
+      train_op = layers.optimize_loss(
+          loss,
+          contrib_framework.get_global_step(),
+          learning_rate=learning_rate,
+          optimizer=optimizer,
+          clip_gradients=self.clip_gradients)
+      return predictions, loss, train_op
+    return _model_fn
+
 
 class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
   """TensorFlow Base Transformer class."""
 
-  def transform(self, X):
-    """Transform X using trained transformer."""
+  def transform(self, x):
+    """Transform `x` using trained transformer."""
     return(super(TensorFlowBaseTransformer, self).predict(
-        X, axis=1, batch_size=None))
+        x, axis=1, batch_size=None))
 
-  def fit(self, X, y=None, monitor=None, logdir=None):
+  def fit(self, x, y=None, monitor=None, logdir=None):
     """Fit a transformer."""
     return(super(TensorFlowBaseTransformer, self).fit(
-        X, y, monitors=None, logdir=None))
+        x, y, monitors=None, logdir=None))
 
-  def fit_transform(self, X, y=None, monitor=None, logdir=None):
-    """Fit transformer and transform X using trained transformer."""
-    return self.fit(X, y, monitor=None, logdir=None).transform(X)
+  def fit_transform(self, x, y=None, monitor=None, logdir=None):
+    """Fit transformer and transform `x` using trained transformer."""
+    return self.fit(x, y, monitor=None, logdir=None).transform(x)
+
+
+class DeprecatedMixin(object):
+  """This is mixin for deprecated TensorFlowYYY classes."""
+
+  def __init__(self, *args, **kwargs):
+    this_class = type(self).__name__
+    alternative_class = this_class[len('TensorFlow'):]
+    logging.warning(
+        '%s class is deprecated. Please consider using %s as an alternative.',
+        this_class, alternative_class)
+    # Handle deprecated arguments.
+    self.__deprecated_n_classes = kwargs.get('n_classes', 0)
+    if self.__deprecated_n_classes < 1 and 'n_classes' in kwargs:
+      kwargs.pop('n_classes')
+    self.batch_size = kwargs.pop('batch_size', 32)
+    self.steps = kwargs.pop('steps', 200)
+    if 'optimizer' in kwargs or 'learning_rate' in kwargs:
+      self.learning_rate = kwargs.pop('learning_rate', 0.1)
+      self.optimizer = kwargs.pop('optimizer', 'Adagrad')
+      if isinstance(self.learning_rate, types.FunctionType):
+        raise ValueError('Function-like learning_rate are not supported '
+                         'consider using custom Estimator.')
+      else:
+        learning_rate = self.learning_rate
+      if isinstance(self.optimizer, types.FunctionType):
+        optimizer = self.optimizer(learning_rate)
+      elif isinstance(self.optimizer, six.string_types):
+        optimizer = layers.OPTIMIZER_CLS_NAMES[self.optimizer](learning_rate)
+      else:
+        optimizer = self.optimizer
+      kwargs['optimizer'] = optimizer
+    if 'class_weight' in kwargs:
+      raise ValueError('Sorry we switched interface for providing class '
+                       'weights. Please use weight column instead which '
+                       'provides more granular control (per example).')
+    if 'clip_gradients' in kwargs:
+      logging.warning('clip_gradients argument in %s is now converted to '
+                      'gradient_clip_norm.' % this_class)
+      kwargs['gradient_clip_norm'] = kwargs.pop('clip_gradients')
+    else:
+      kwargs['gradient_clip_norm'] = 5.0
+    if 'continue_training' in kwargs:
+      logging.warning('continue_training argument in %s is now ignored.' %
+                      this_class)
+      kwargs.pop('continue_training')
+    if 'verbose' in kwargs:
+      logging.warning('verbose argument in %s is now ignored.' %
+                      this_class)
+      kwargs.pop('verbose')
+    super(DeprecatedMixin, self).__init__(*args, **kwargs)
+
+  def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
+    if logdir is not None:
+      self._model_dir = logdir
+    return super(DeprecatedMixin, self).fit(
+        x=x, y=y, steps=steps or self.steps,
+        batch_size=batch_size or self.batch_size, monitors=monitors)
+
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              axis=1):
+    """Predict class or regression for `x`."""
+    if x is not None:
+      predict_data_feeder = setup_train_data_feeder(
+          x, None, n_classes=None,
+          batch_size=batch_size or self.batch_size,
+          shuffle=False, epochs=1)
+      result = super(DeprecatedMixin, self)._infer_model(
+          input_fn=predict_data_feeder.input_builder,
+          feed_fn=predict_data_feeder.get_feed_dict_fn(),
+          outputs=outputs)
+    else:
+      result = super(DeprecatedMixin, self)._infer_model(
+          input_fn=input_fn, outputs=outputs)
+    if self.__deprecated_n_classes > 1 and axis is not None:
+      return np.argmax(result, axis)
+    return result
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None):
+    return self.predict(x=x, input_fn=input_fn, batch_size=batch_size,
+                        outputs=outputs, axis=None)
+
+  def save(self, path):
+    """Saves checkpoints and graph to given path.
+
+    Args:
+      path: Folder to save model to.
+    """
+    # Copy model dir into new path.
+    _copy_dir(self.model_dir, path)

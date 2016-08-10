@@ -10,9 +10,9 @@ languages like Go, Java, JavaScript, Lua, R, and perhaps others. With
 [SWIG](http://swig.org), it's relatively easy to develop a TensorFlow interface
 for your favorite language.
 
-Note: Many practical aspects of usage are covered in the Mechanics tab, and
-some additional documentation not specific to any particular language API is
-available in the Resources tab.
+Note: Many practical aspects of usage are covered in the TUTORIALS and 
+HOW TO tab, and some additional documentation not specific to any 
+particular language API is available in the RESOURCES tab.
 
 * [Python API](python/index.md)
 * [C++ API](cc/index.md)

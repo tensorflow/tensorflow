@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -64,6 +64,11 @@ class VarianceScalingInitializerTest(tf.test.TestCase):
         TypeError,
         'Cannot create initializer for non-floating point type.'):
       tf.contrib.layers.variance_scaling_initializer(dtype=tf.int32)
+    initializer = tf.contrib.layers.variance_scaling_initializer()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Cannot create initializer for non-floating point type.'):
+      initializer([], dtype=tf.int32)
 
   def _test_variance(self, initializer, shape, variance, factor, mode, uniform):
     with tf.Graph().as_default() as g:

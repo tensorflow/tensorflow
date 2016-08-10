@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -153,6 +153,13 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
     self._WriteToFile('a', 'c')
     self._LoadAllEvents()
     self.assertTrue(self._watcher.OutOfOrderWritesDetected())
+
+  def testDoesntCrashWhenFileIsDeleted(self):
+    self._WriteToFile('a', 'a')
+    self._LoadAllEvents()
+    os.remove(os.path.join(self._directory, 'a'))
+    self._WriteToFile('b', 'b')
+    self.assertWatcherYields(['b'])
 
 
 if __name__ == '__main__':

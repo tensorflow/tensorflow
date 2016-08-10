@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <dlfcn.h>
 #include <memory>
+#include <unordered_set>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -48,11 +48,39 @@ Status LoadLibrary(const char* library_filename, void** result,
   Env* env = Env::Default();
   void* lib;
   OpList op_list;
+  std::unordered_set<string> seen_op_names;
   {
     mutex_lock lock(mu);
+    Status s = OpRegistry::Global()->ProcessRegistrations();
+    if (!s.ok()) {
+      return s;
+    }
     TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(
-        [&op_list](const OpDef& opdef) { *op_list.add_op() = opdef; }));
-    TF_RETURN_IF_ERROR(env->LoadLibrary(library_filename, &lib));
+        [&op_list, &seen_op_names](const Status& s,
+                                   const OpDef& opdef) -> Status {
+          if (errors::IsAlreadyExists(s)) {
+            if (seen_op_names.find(opdef.name()) == seen_op_names.end()) {
+              // Over writing a registration of an op not in this custom op
+              // library. Treat this as not an error.
+              return Status::OK();
+            }
+          }
+          if (s.ok()) {
+            *op_list.add_op() = opdef;
+            seen_op_names.insert(opdef.name());
+          }
+          return s;
+        }));
+    OpRegistry::Global()->DeferRegistrations();
+    s = env->LoadLibrary(library_filename, &lib);
+    if (s.ok()) {
+      s = OpRegistry::Global()->ProcessRegistrations();
+    }
+    if (!s.ok()) {
+      OpRegistry::Global()->ClearDeferredRegistrations();
+      TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(nullptr));
+      return s;
+    }
     TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(nullptr));
   }
   string str;

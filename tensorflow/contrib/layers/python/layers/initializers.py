@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -102,12 +102,13 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
     TypeError: if `mode` is not in ['FAN_IN', 'FAN_OUT', 'FAN_AVG'].
   """
   if not dtype.is_floating:
-    raise TypeError('Cannot create initializer for non-floating point '
-                    'type.')
+    raise TypeError('Cannot create initializer for non-floating point type.')
   if mode not in ['FAN_IN', 'FAN_OUT', 'FAN_AVG']:
     raise TypeError('Unknow mode %s [FAN_IN, FAN_OUT, FAN_AVG]', mode)
   def _initializer(shape, dtype=dtype):
     """Initializer function."""
+    if not dtype.is_floating:
+      raise TypeError('Cannot create initializer for non-floating point type.')
     # Estimating fan_in and fan_out is not possible to do perfectly, but we try.
     # This is the right thing for matrix multiply and convolutions.
     fan_in = float(shape[-2])

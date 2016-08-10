@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,6 +97,9 @@ class HttpRequest {
   /// The object is not designed to be re-used after Send() is executed.
   virtual Status Send();
 
+  // Url encodes str and returns a new string.
+  virtual string EscapeString(const string& str);
+
  private:
   /// A write callback in the form which can be accepted by libcurl.
   static size_t WriteCallback(const void* ptr, size_t size, size_t nmemb,
@@ -164,6 +167,8 @@ class LibCurl {
   virtual void curl_easy_cleanup(CURL* curl) = 0;
   virtual curl_slist* curl_slist_append(curl_slist* list, const char* str) = 0;
   virtual void curl_slist_free_all(curl_slist* list) = 0;
+  virtual char* curl_easy_escape(CURL* curl, const char* str, int length) = 0;
+  virtual void curl_free(void* p) = 0;
 };
 
 }  // namespace tensorflow

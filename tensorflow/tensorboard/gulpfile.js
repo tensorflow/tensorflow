@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,9 +39,9 @@ gulp.task('test', ['tslint', 'compile'], getTask('test'));
 
 gulp.task('watch', [], function() {
   // Avoid watching generated .d.ts in the build (aka output) directory.
-  return gulp.watch('components/tf-*/**/*.ts',
-          {ignoreInitial: true},
-          ['compile', 'tslint.permissive']);
+  return gulp.watch(
+      ['components/tf-*/**/*.ts', 'components/vz-*/**/*.ts'],
+      {ignoreInitial: true}, ['compile', 'tslint.permissive']);
 });
 
 

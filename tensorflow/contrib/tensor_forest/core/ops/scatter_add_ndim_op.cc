@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,19 +19,23 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/logging.h"
 
 
 namespace tensorflow {
 
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 using tensorforest::CheckTensorBounds;
 
 REGISTER_OP("ScatterAddNdim")
-  .Input("input: Ref(float)")
-  .Input("indices: int32")
-  .Input("deltas: float")
-
-  .Doc(R"doc(
+    .Input("input: Ref(float)")
+    .Input("indices: int32")
+    .Input("deltas: float")
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .Doc(R"doc(
   Add elements in deltas to mutable input according to indices.
 
   input: A N-dimensional float tensor to mutate.
@@ -44,7 +48,6 @@ REGISTER_OP("ScatterAddNdim")
     input dimensions.
   deltas: `deltas[i]` is the value to add to input at index indices[i][:]
 )doc");
-
 
 class ScatterAddNdim : public OpKernel {
  public:

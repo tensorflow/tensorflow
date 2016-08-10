@@ -1,21 +1,88 @@
-# Changes Since Last Release
 
-## Features & Improvements
+# Release 0.10.0
+
+## Major Features and Improvements
+
+* Added support for C++ shape inference
+* Added graph-construction C API
+* Major revision to the graph-construction C++ API
+* Support makefile build for iOS
+* Added Mac GPU support
+* Full version of TF-Slim available as `tf.contrib.slim`
+* Added k-Means clustering and WALS matrix factorization
+
+## Big Fixes and Other Changes
+
+* Allow gradient computation for scalar values.
+* Performance improvements for gRPC
+* Improved support for fp16
+* New high-level ops in tf.contrib.{layers,metrics}
+* New features for TensorBoard, such as shape display, exponential smoothing
+* Faster and more stable Google Cloud Storage (GCS) filesystem support
+* Support for zlib compression and decompression for TFRecordReader and TFRecordWriter
+* Support for reading (animated) GIFs
+* Improved support for SparseTensor
+* Added support for more probability distributions (Dirichlet, Beta, Bernoulli, etc.)
+* Added Python interfaces to reset resource containers.
+* Many bugfixes and performance improvements
+* Many documentation fixes
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Alex Rothberg, Andrew Royer, Austin Marshall, @BlackCoal, Bob Adolf, Brian Diesel, Charles-Emmanuel Dias, @chemelnucfin, Chris Lesniewski, Daeyun Shin, Daniel Rodriguez, Danijar Hafner, Darcy Liu, Kristinn R. Thórisson, Daniel Castro, Dmitry Savintsev, Kashif Rasul, Dylan Paiton, Emmanuel T. Odeke, Ernest Grzybowski, Gavin Sherry, Gideon Dresdner, Gregory King, Harold Cooper, @heinzbeinz, Henry Saputra, Huarong Huo, Huazuo Gao, Igor Babuschkin, Igor Macedo Quintanilha, Ivan Ukhov, James Fysh, Jan Wilken Dörrie, Jihun Choi, Johnny Lim, Jonathan Raiman, Justin Francis, @lilac, Li Yi, Marc Khoury, Marco Marchesi, Max Melnick, Micael Carvalho, @mikowals, Mostafa Gazar, Nico Galoppo, Nishant Agrawal, Petr Janda, Yuncheng Li, @raix852, Robert Rose, @Robin-des-Bois, Rohit Girdhar, Sam Abrahams, satok16, Sergey Kishchenko, Sharkd Tu, @shotat, Siddharth Agrawal, Simon Denel, @sono-bfio, SunYeop Lee, Thijs Vogels, @tobegit3hub, @Undo1, Wang Yang, Wenjian Huang, Yaroslav Bulatov, Yuan Tang, Yunfeng Wang, Ziming Dong
+
+We are also grateful to all who filed issues or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
+
+# Release 0.9.0
+
+## Major Features and Improvements
+
+* Python 3.5 support and binaries
+* Added iOS support
+* Added support for processing on GPUs on MacOS
+* Added makefile for better cross-platform build support (C API only)
+* fp16 support and improved complex128 support for many ops
+* Higher level functionality in contrib.{layers,losses,metrics,learn}
+* More features to Tensorboard
+* Improved support for string embedding and sparse features
+* The RNN api is finally "official" (see, e.g., `tf.nn.dynamic_rnn`,
+  `tf.nn.rnn`, and the classes in `tf.nn.rnn_cell`).
 * TensorBoard now has an Audio Dashboard, with associated audio summaries.
-* TensorBoard now has a reload button, and supports auto-reloading
-* TensorBoard scalar charts now show tooltips with more information
-* TensorBoard now supports run filtering
-* TensorBoard has color changes: the same run always gets the same hue
+
+## Big Fixes and Other Changes
+
+* Turned on CuDNN Autotune.
+* Added support for using third-party Python optimization algorithms (contrib.opt).
+* Google Cloud Storage filesystem support.
+* HDF5 support
+* Add support for 3d convolutions and pooling.
+* Update gRPC release to 0.14.
+* Eigen version upgrade.
+* Switch to eigen thread pool
+* `tf.nn.moments()` now accepts a `shift` argument. Shifting by a good estimate
+  of the mean improves numerical stability. Also changes the behavior of the
+  `shift` argument to `tf.nn.sufficient_statistics()`.
+* Performance improvements
+* Many bugfixes
+* Many documentation fixes
+* TensorBoard fixes: graphs with only one data point, Nan values, 
+  reload button and auto-reload, tooltips in scalar charts, run 
+  filtering, stable colors
 * Tensorboard graph visualizer now supports run metadata. Clicking on nodes
   while viewing a stats for a particular run will show runtime statistics, such
   as memory or compute usage. Unused nodes will be faded out.
 
-## Bug Fixes and Other Changes
-* TensorBoard now displays graphs with only one data point
-* TensorBoard now visually displays NaN values
-* `tf.nn.moments()` now accepts a `shift` argument. Shifting by a good estimate
-  of the mean improves numerical stability. Also changes the behavior of the
-  `shift` argument to `tf.nn.sufficient_statistics()`.
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aaron Schumacher, Aidan Dang, Akihiko ITOH, Aki Sukegawa, Arbit Chen, Aziz Alto, Danijar Hafner, Erik Erwitt, Fabrizio Milo, Felix Maximilian Möller, Henry Saputra, Sung Kim, Igor Babuschkin, Jan Zikes, Jeremy Barnes, Jesper Steen Møller, Johannes Mayer, Justin Harris, Kashif Rasul, Kevin Robinson, Loo Rong Jie, Lucas Moura, Łukasz Bieniasz-Krzywiec, Mario Cho, Maxim Grechkin, Michael Heilman, Mostafa Rahmani, Mourad Mourafiq, @ninotoshi, Orion Reblitz-Richardson, Yuncheng Li, @raoqiyu, Robert DiPietro, Sam Abrahams, Sebastian Raschka, Siddharth Agrawal, @snakecharmer1024, Stephen Roller, Sung Kim, SunYeop Lee, Thijs Vogels, Till Hoffmann, Victor Melo, Ville Kallioniemi, Waleed Abdulla, Wenjian Huang, Yaroslav Bulatov, Yeison Rodriguez, Yuan Tang, Yuxin Wu, @zhongzyd, Ziming Dong, Zohar Jackson
+
+We are also grateful to all who filed issues or helped resolve them, asked and 
+answered questions, and were part of inspiring discussions. 
 
 # Release 0.8.0
 
@@ -54,7 +121,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-Abhinav Upadhyay, Aggelos Avgerinos, Alan Wu, Alexander G. de G. Matthews, Aleksandr Yahnev, @amchercashin, Andy Kitchen, Aurelien Geron, Awni Hannun, @BanditCat, Bas Veeling, Cameron Chen, @cg31, Cheng-Lung Sung, Christopher Bonnett, Dan Becker, Dan Van Boxel, Daniel Golden, Danijar Hafner, Danny Goodman, Dave Decker, David Dao, David Kretch, Dongjoon Hyun, Dustin Dorroh, @e-lin, Eurico Doirado, Erik Erwitt, Fabrizio Milo, @gaohuazuo, Iblis Lin, Igor Babuschkin, Isaac Hodes, Isaac Turner, Iván Vallés, J Yegerlehner, Jack Zhang, James Wexler, Jan Zikes, Jay Young, Jeff Hodges, @jmtatsch, Johnny Lim, Jonas Meinertz Hansen, Kanit Wongsuphasawat, Kashif Rasul, Ken Shirriff, Kenneth Mitchner, Kenta Yonekura, Konrad Magnusson, Konstantin Lopuhin, @lahwran, @lekaha, @liyongsea, Lucas Adams, @makseq, Mandeep Singh, @manipopopo, Mark Amery, Memo Akten, Michael Heilman, Michael Peteuil, Nathan Daly, Nicolas Fauchereau, @ninotoshi, Olav Nymoen, @panmari, @papelita1234, Pedro Lopes, Pranav Sailesh Mani, RJ Ryan, Rob Culliton, Robert DiPietro, @ronrest, Sam Abrahams, Sarath Shekkizhar, Scott Graham, Sebastian Raschka, Sung Kim, Surya Bhupatiraju, Syed Ahmed, Till Hoffmann, @timsl, @urimend, @vesnica, Vlad Frolov, Vlad Zagorodniy, Wei-Ting Kuo, Wenjian Huang, William Dmitri Breaden Madden, Wladimir Schmidt, Yuwen Yan, Yuxin Wu, Yuya Kusakabe, @zhongzyd, @znah.
+Abhinav Upadhyay, Aggelos Avgerinos, Alan Wu, Alexander G. de G. Matthews, Aleksandr Yahnev, @amchercashin, Andy Kitchen, Aurelien Geron, Awni Hannun, @BanditCat, Bas Veeling, Cameron Chen, @cg31, Cheng-Lung Sung, Christopher Bonnett, Dan Becker, Dan Van Boxel, Daniel Golden, Danijar Hafner, Danny Goodman, Dave Decker, David Dao, David Kretch, Dongjoon Hyun, Dustin Dorroh, @e-lin, Eurico Doirado, Erik Erwitt, Fabrizio Milo, @gaohuazuo, Iblis Lin, Igor Babuschkin, Isaac Hodes, Isaac Turner, Iván Vallés, J Yegerlehner, Jack Zhang, James Wexler, Jan Zikes, Jay Young, Jeff Hodges, @jmtatsch, Johnny Lim, Jonas Meinertz Hansen, Kanit Wongsuphasawat, Kashif Rasul, Ken Shirriff, Kenneth Mitchner, Kenta Yonekura, Konrad Magnusson, Konstantin Lopuhin, @lahwran, @lekaha, @liyongsea, Lucas Adams, @makseq, Mandeep Singh, @manipopopo, Mark Amery, Memo Akten, Michael Heilman, Michael Peteuil, Nathan Daly, Nicolas Fauchereau, @ninotoshi, Olav Nymoen, @panmari, @papelita1234, Pedro Lopes, Pranav Sailesh Mani, RJ Ryan, Rob Culliton, Robert DiPietro, @ronrest, Sam Abrahams, Sarath Shekkizhar, Scott Graham, Sebastian Raschka, Sung Kim, Surya Bhupatiraju, Syed Ahmed, Till Hoffmann, @timsl, @urimend, @vesnica, Vlad Frolov, Vlad Zagorodniy, Wei-Ting Kuo, Wenjian Huang, William Dmitri Breaden Madden, Wladimir Schmidt, Yuan Tang, Yuwen Yan, Yuxin Wu, Yuya Kusakabe, @zhongzyd, @znah.
 
 We are also grateful to all who filed issues or helped resolve them, asked and 
 answered questions, and were part of inspiring discussions. 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -79,7 +80,9 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   std::vector<string> output_names = {y->name() + ":0"};
   std::vector<string> target_nodes = {y_neg->name()};
   std::vector<Tensor> outputs;
+  const int64 start_micros = Env::Default()->NowMicros();
   Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
   TF_ASSERT_OK(s);
 
   DirectSession* ds = static_cast<DirectSession*>(session.get());
@@ -95,13 +98,10 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(5, cm->AllocationId(node, 0));
       } else if (node->name() == y_neg->name()) {
         EXPECT_LE(8, cm->MaxMemorySize(node, 0));
-        EXPECT_EQ(6, cm->AllocationId(node, 0));
+        EXPECT_EQ(7, cm->AllocationId(node, 0));
       }
-      // Check the execution time. Since it's highly variable, we'll
-      // use a large window: anything between 1 and 10000 microseconds is
-      // considered ok.
-      EXPECT_LE(1, cm->MaxExecutionTime(node));
-      EXPECT_GE(10000, cm->MaxExecutionTime(node));
+      EXPECT_LE(0, cm->MaxExecutionTime(node));
+      EXPECT_GE(run_duration_micros, cm->MaxExecutionTime(node));
     }
     graph_cnt++;
   }

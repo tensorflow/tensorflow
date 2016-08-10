@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -132,7 +132,7 @@ def main(unused_argv=None):
     tag = resource_loader.load_resource('tensorboard/TAG').strip()
     logging.info('TensorBoard is tag: %s', tag)
   except IOError:
-    logging.warning('Unable to read TensorBoard tag')
+    logging.info('Unable to read TensorBoard tag')
     tag = ''
 
   status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)

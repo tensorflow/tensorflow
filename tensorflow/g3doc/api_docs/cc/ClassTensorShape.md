@@ -60,6 +60,18 @@ Copy the specified shape.
 
 
 
+#### `tensorflow::TensorShape::TensorShape(TensorShape &&b)` {#tensorflow_TensorShape_TensorShape}
+
+Move the specified shape. After moving, is safe for destruction and.
+
+
+
+#### `void tensorflow::TensorShape::operator=(TensorShape &&b)` {#void_tensorflow_TensorShape_operator_}
+
+
+
+
+
 #### `void tensorflow::TensorShape::Clear()` {#void_tensorflow_TensorShape_Clear}
 
 Clear a tensor shape.

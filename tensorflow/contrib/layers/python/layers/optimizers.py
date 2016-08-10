@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,17 +20,18 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as vars_
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as optimizer_
 from tensorflow.python.training import training as train
 
@@ -43,6 +44,13 @@ OPTIMIZER_CLS_NAMES = {
     "SGD": train.GradientDescentOptimizer,
 }
 
+OPTIMIZER_SUMMARIES = [
+    "learning_rate",
+    "loss",
+    "gradients",
+    "gradient_norm",
+]
+
 
 def optimize_loss(loss,
                   global_step,
@@ -51,11 +59,12 @@ def optimize_loss(loss,
                   gradient_noise_scale=None,
                   gradient_multipliers=None,
                   clip_gradients=None,
-                  moving_average_decay=0.9,
+                  moving_average_decay=None,
                   learning_rate_decay_fn=None,
                   update_ops=None,
                   variables=None,
-                  name=None):
+                  name=None,
+                  summaries=None):
   """Given loss and parameters for optimizer, returns a training op.
 
   Args:
@@ -75,8 +84,8 @@ def optimize_loss(loss,
                           If present, gradients for specified
                           variables will be multiplied by given constant.
     clip_gradients: float or `None`, clips gradients by this value.
-    moving_average_decay: float or None, takes into account previous loss
-                          to make learning smoother due to outliers.
+    moving_average_decay: Deprecated. float or None, takes into account previous
+                          loss to make learning smoother due to outliers.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
                             `Tensor`s, returns `Tensor`.
                             Can be used to implement any learning rate decay
@@ -87,6 +96,9 @@ def optimize_loss(loss,
     variables: list of variables to optimize or
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
+    summaries: List of internal quantities to visualize on tensorboard. If not
+               set only the loss and the learning rate will be reported. The
+               complete list is in OPTIMIZER_SUMMARIES.
 
   Returns:
     Training op.
@@ -96,8 +108,8 @@ def optimize_loss(loss,
   """
   with vs.variable_op_scope([loss, global_step], name, "OptimizeLoss"):
     # Update ops take UPDATE_OPS collection if not provided.
-    update_ops = (set(update_ops or []) or
-                  set(ops.get_collection(ops.GraphKeys.UPDATE_OPS)))
+    if update_ops is None:
+      update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
     # Make sure update ops are ran before computing loss.
     if update_ops:
       with ops.control_dependencies(update_ops):
@@ -105,7 +117,10 @@ def optimize_loss(loss,
       loss = control_flow_ops.with_dependencies([barrier], loss)
 
     # Moving average of the loss with decay.
+    # TODO(b/30439864): moving_average_decay should be removed.
     if moving_average_decay is not None:
+      logging.warn("'moving_average_decay' is deprecated. Please use "
+                   "tensorboard's builtin averaging instead.")
       # Generate moving averages of the loss.
       loss_averages = train.ExponentialMovingAverage(moving_average_decay,
                                                      name="avg")
@@ -125,8 +140,12 @@ def optimize_loss(loss,
       raise ValueError("Learning rate should be 0d Tensor or float. "
                        "Got %s of type %s" % (
                            str(learning_rate), str(type(learning_rate))))
+    if summaries is None:
+      summaries = ["loss", "learning_rate"]
     if learning_rate_decay_fn is not None:
       lr = learning_rate_decay_fn(lr, global_step)
+      if "learning_rate" in summaries:
+        logging_ops.scalar_summary("learning_rate", lr)
 
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):
@@ -166,7 +185,8 @@ def optimize_loss(loss,
       gradients = _clip_gradients_by_norm(gradients, clip_gradients)
 
     # Add scalar summary for loss.
-    logging_ops.scalar_summary("loss", loss)
+    if "loss" in summaries:
+      logging_ops.scalar_summary("loss", loss)
 
     # Add histograms for variables, gradients and gradient norms.
     for gradient, variable in gradients:
@@ -176,10 +196,12 @@ def optimize_loss(loss,
         grad_values = gradient
 
       if grad_values is not None:
-        logging_ops.histogram_summary(variable.name, variable)
-        logging_ops.histogram_summary(variable.name + "/gradients", grad_values)
-        logging_ops.histogram_summary(variable.name + "/gradient_norm",
-                                      clip_ops.global_norm([grad_values]))
+        if "gradients" in summaries:
+          logging_ops.histogram_summary(variable.name + "/gradients",
+                                        grad_values)
+        if "gradient_norm" in summaries:
+          logging_ops.histogram_summary(variable.name + "/gradient_norm",
+                                        clip_ops.global_norm([grad_values]))
 
     # Create gradient updates.
     grad_updates = opt.apply_gradients(gradients,
@@ -208,6 +230,9 @@ def _add_scaled_noise_to_gradients(grads_and_vars, gradient_noise_scale):
   gradients, variables = zip(*grads_and_vars)
   noisy_gradients = []
   for gradient in gradients:
+    if gradient is None:
+      noisy_gradients.append(None)
+      continue
     if isinstance(gradient, ops.IndexedSlices):
       gradient_shape = gradient.dense_shape
     else:
@@ -221,9 +246,15 @@ def _multiply_gradients(grads_and_vars, gradient_multipliers):
   """Multiply specified gradients."""
   multiplied_grads_and_vars = []
   for grad, var in grads_and_vars:
-    if var in gradient_multipliers or var.name in gradient_multipliers:
+    if (grad is not None and
+        (var in gradient_multipliers or var.name in gradient_multipliers)):
       key = var if var in gradient_multipliers else var.name
-      grad *= constant_op.constant(
+      multiplier = constant_op.constant(
           gradient_multipliers[key], dtype=dtypes.float32)
+      if isinstance(grad, ops.IndexedSlices):
+        grad_values = grad.values * multiplier
+        grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
+      else:
+        grad *= multiplier
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars

@@ -15,7 +15,7 @@ decayed_learning_rate = learning_rate *
                         decay_rate ^ (global_step / decay_steps)
 ```
 
-If the argument `staircase` is `True`, then `global_step /decay_steps` is an
+If the argument `staircase` is `True`, then `global_step / decay_steps` is an
 integer division and the decayed learning rate follows a staircase function.
 
 Example: decay every 100000 steps with a base of 0.96:
@@ -28,7 +28,7 @@ learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
                                            100000, 0.96, staircase=True)
 # Passing global_step to minimize() will increment it at each step.
 learning_step = (
-    tf.GradientDescentOptimizer(learning_rate)
+    tf.train.GradientDescentOptimizer(learning_rate)
     .minimize(...my loss..., global_step=global_step)
 )
 ```
@@ -44,8 +44,9 @@ learning_step = (
     Must be positive.  See the decay computation above.
 *  <b>`decay_rate`</b>: A scalar `float32` or `float64` `Tensor` or a
     Python number.  The decay rate.
-*  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals.
-*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to 'ExponentialDecay'
+*  <b>`staircase`</b>: Boolean.  It `True` decay the learning rate at discrete intervals
+*  <b>`name`</b>: String.  Optional name of the operation.  Defaults to
+    'ExponentialDecay'
 
 ##### Returns:
 

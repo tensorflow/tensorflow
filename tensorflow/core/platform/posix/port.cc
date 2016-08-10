@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,6 +76,10 @@ void* aligned_malloc(size_t size, int minimum_alignment) {
 }
 
 void aligned_free(void* aligned_memory) { free(aligned_memory); }
+
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
+  // No-op.
+}
 
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
 

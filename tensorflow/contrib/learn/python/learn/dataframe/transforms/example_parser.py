@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ class ExampleParser(transform.Transform):
   def feature_definitions(self):
     return self._ordered_features
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     parsed_values = parsing_ops.parse_example(input_tensors[0],
                                               features=self._ordered_features)
     # pylint: disable=not-callable

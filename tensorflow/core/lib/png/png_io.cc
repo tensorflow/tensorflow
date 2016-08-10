@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/png/png_io.h"
+#include "tensorflow/core/platform/host_info.h"  // endian
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/png.h"
-#include "tensorflow/core/platform/types.h"  // endian
 
 namespace tensorflow {
 namespace png {
@@ -256,9 +256,9 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
   png_set_packing(context->png_ptr);
   context->num_passes = png_set_interlace_handling(context->png_ptr);
 
-#ifdef IS_LITTLE_ENDIAN
-  if (desired_channel_bits > 8) png_set_swap(context->png_ptr);
-#endif  // IS_LITTLE_ENDIAN
+  if (desired_channel_bits > 8 && port::kLittleEndian) {
+    png_set_swap(context->png_ptr);
+  }
 
   // convert palette to rgb(a) if needs be.
   if (context->color_type == PNG_COLOR_TYPE_PALETTE)
@@ -384,9 +384,7 @@ bool WriteImageToBuffer(
   }
 
   png_write_info(png_ptr, info_ptr);
-#ifdef IS_LITTLE_ENDIAN
-  if (channel_bits > 8) png_set_swap(png_ptr);
-#endif  // IS_LITTLE_ENDIAN
+  if (channel_bits > 8 && port::kLittleEndian) png_set_swap(png_ptr);
 
   png_byte* row = reinterpret_cast<png_byte*>(const_cast<void*>(image));
   for (; height--; row += row_bytes) png_write_row(png_ptr, row);

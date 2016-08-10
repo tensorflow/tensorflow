@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import tensorflow as tf
 
 from tensorflow.contrib import ffmpeg
 from tensorflow.python.client import client_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import docs
 from tensorflow.python.framework import framework_lib
 
@@ -48,14 +49,24 @@ def get_module_to_name():
       tf.errors: "tf.errors",
       tf.image: "tf.image",
       tf.nn: "tf.nn",
+      tf.nn.rnn_cell: "tf.nn.rnn_cell",
       tf.train: "tf.train",
       tf.python_io: "tf.python_io",
+      tf.summary: "tf.summary",
       tf.test: "tf.test",
+      tf.contrib.bayesflow.stochastic_graph: (
+          "tf.contrib.bayesflow.stochastic_graph"),
       tf.contrib.copy_graph: "tf.contrib.copy_graph",
       tf.contrib.distributions: "tf.contrib.distributions",
       tf.contrib.ffmpeg: "tf.contrib.ffmpeg",
+      tf.contrib.framework: "tf.contrib.framework",
+      tf.contrib.graph_editor: "tf.contrib.graph_editor",
       tf.contrib.layers: "tf.contrib.layers",
       tf.contrib.learn: "tf.contrib.learn",
+      tf.contrib.learn.monitors: (
+          "tf.contrib.learn.monitors"),
+      tf.contrib.losses: "tf.contrib.losses",
+      tf.contrib.rnn: "tf.contrib.rnn",
       tf.contrib.metrics: "tf.contrib.metrics",
       tf.contrib.util: "tf.contrib.util",
   }
@@ -87,36 +98,45 @@ def all_libraries(module_to_name, members, documented):
       library("framework", "Building Graphs", framework_lib),
       library("check_ops", "Asserts and boolean checks."),
       library("constant_op", "Constants, Sequences, and Random Values",
-              prefix=PREFIX_TEXT),
-      library("state_ops", "Variables",
+              constant_op, prefix=PREFIX_TEXT),
+      library("state_ops",
+              "Variables",
               exclude_symbols=["create_partitioned_variables"],
               prefix=PREFIX_TEXT),
-      library("array_ops", "Tensor Transformations",
-              exclude_symbols=["list_diff"], prefix=PREFIX_TEXT),
-      library("math_ops", "Math",
+      library("array_ops",
+              "Tensor Transformations",
+              exclude_symbols=["list_diff"],
+              prefix=PREFIX_TEXT),
+      library("math_ops",
+              "Math",
               exclude_symbols=["sparse_matmul", "arg_min", "arg_max",
                                "lin_space", "sparse_segment_mean_grad"],
               prefix=PREFIX_TEXT),
-      library("string_ops", "Strings", prefix=PREFIX_TEXT),
+      library("string_ops", "Strings",
+              prefix=PREFIX_TEXT),
       library("histogram_ops", "Histograms"),
       library("control_flow_ops", "Control Flow", prefix=PREFIX_TEXT),
       library("functional_ops", "Higher Order Functions", prefix=PREFIX_TEXT),
+      library("tensor_array_ops", "TensorArray Operations", prefix=PREFIX_TEXT),
       library("session_ops", "Tensor Handle Operations", prefix=PREFIX_TEXT),
       library("image", "Images", tf.image, exclude_symbols=["ResizeMethod"],
               prefix=PREFIX_TEXT),
-      library("sparse_ops", "Sparse Tensors",
+      library("sparse_ops",
+              "Sparse Tensors",
               exclude_symbols=["serialize_sparse", "serialize_many_sparse",
                                "deserialize_many_sparse"],
               prefix=PREFIX_TEXT),
-      library("io_ops", "Inputs and Readers",
+      library("io_ops",
+              "Inputs and Readers",
               exclude_symbols=["LookupTableBase", "HashTable",
-                               "PaddingFIFOQueue",
                                "initialize_all_tables",
                                "parse_single_sequence_example",
                                "string_to_hash_bucket"],
               prefix=PREFIX_TEXT),
       library("python_io", "Data IO (Python functions)", tf.python_io),
-      library("nn", "Neural Network", tf.nn,
+      library("nn",
+              "Neural Network",
+              tf.nn,
               exclude_symbols=["conv2d_backprop_input",
                                "conv2d_backprop_filter", "avg_pool_grad",
                                "max_pool_grad", "max_pool_grad_with_argmax",
@@ -125,23 +145,37 @@ def all_libraries(module_to_name, members, documented):
                                "softsign_grad", "xw_plus_b", "relu_layer",
                                "lrn", "batch_norm_with_global_normalization",
                                "batch_norm_with_global_normalization_grad",
-                               "all_candidate_sampler",
-                               "rnn", "state_saving_rnn", "bidirectional_rnn",
-                               "dynamic_rnn", "seq2seq", "rnn_cell"],
+                               "all_candidate_sampler", "seq2seq"],
               prefix=PREFIX_TEXT),
+      library("rnn_cell", "Neural Network RNN Cells", tf.nn.rnn_cell),
       library("client", "Running Graphs", client_lib),
-      library("train", "Training", tf.train,
+      library("train",
+              "Training",
+              tf.train,
               exclude_symbols=["Feature", "Features", "BytesList", "FloatList",
                                "Int64List", "Example", "InferenceExample",
-                               "FeatureList", "FeatureLists",
-                               "RankingExample", "SequenceExample"]),
-      library("script_ops", "Wraps python functions", prefix=PREFIX_TEXT),
+                               "FeatureList", "FeatureLists", "RankingExample",
+                               "SequenceExample"]),
+      library("script_ops",
+              "Wraps python functions",
+              prefix=PREFIX_TEXT),
+      library("summary", "Summary Operations", tf.summary),
       library("test", "Testing", tf.test),
+      library("contrib.bayesflow.stochastic_graph",
+              "BayesFlow Stochastic Graph (contrib)",
+              tf.contrib.bayesflow.stochastic_graph),
       library("contrib.distributions", "Statistical distributions (contrib)",
               tf.contrib.distributions),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
+      library("contrib.framework", "Framework (contrib)", tf.contrib.framework),
+      library("contrib.graph_editor", "Graph Editor (contrib)",
+              tf.contrib.graph_editor),
       library("contrib.layers", "Layers (contrib)", tf.contrib.layers),
       library("contrib.learn", "Learn (contrib)", tf.contrib.learn),
+      library("contrib.learn.monitors", "Monitors (contrib)",
+              tf.contrib.learn.monitors),
+      library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
+      library("contrib.rnn", "RNN (contrib)", tf.contrib.rnn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
@@ -152,10 +186,16 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
                    "HistogramProto", "ConfigProto", "NodeDef", "GraphDef",
                    "GPUOptions", "GraphOptions", "RunOptions", "RunMetadata",
                    "SessionInterface", "BaseSession", "NameAttrList",
-                   "AttrValue", "TensorArray", "OptimizerOptions",
+                   "AttrValue", "OptimizerOptions",
                    "CollectionDef", "MetaGraphDef", "QueueRunnerDef",
                    "SaverDef", "VariableDef", "TestCase", "GrpcServer",
                    "ClusterDef", "JobDef", "ServerDef"]
+
+# TODO(skleinfeld, deannarubin) Address shortname
+# conflict between tf.contrib.learn.NanLossDuringTrainingError and
+# tf.contrib.learn.monitors.NanLossDuringTrainingError, arising due
+# to imports in learn/python/learn/__init__.py
+EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError"])
 
 
 def main(unused_argv):
@@ -166,7 +206,7 @@ def main(unused_argv):
   # Document libraries
   documented = set()
   module_to_name = get_module_to_name()
-  members = docs.collect_members(module_to_name)
+  members = docs.collect_members(module_to_name, exclude=EXCLUDE)
   libraries = all_libraries(module_to_name, members, documented)
 
   # Define catch_all library before calling write_libraries to avoid complaining

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -151,6 +151,9 @@ class Optimizer(object):
     # Dictionary of slots.
     #  {slot_name : { variable_to_train: slot_for_the_variable, ...}, ... }
     self._slots = {}
+
+  def get_name(self):
+    return self._name
 
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,

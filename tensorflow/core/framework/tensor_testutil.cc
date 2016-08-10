@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ namespace test {
 
 template <typename T>
 bool IsClose(const T& x, const T& y, double atol, double rtol) {
-  return fabs(x - y) < atol + rtol * fabs(x);
+  // Need x == y so that infinities are close to themselves
+  return x == y || fabs(x - y) < atol + rtol * fabs(x);
 }
 
 template <typename T>

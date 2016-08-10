@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -83,6 +83,46 @@ class SoftmaxTest(tf.test.TestCase):
     self.assertLess(err, eps)
 
 
+class LogPoissonLossTest(tf.test.TestCase):
+
+  def _log_poisson_loss(self, x, z, compute_full_loss=False):
+    lpl = np.exp(x) - z * x
+    if compute_full_loss:
+      stirling_approx = z * np.log(z) - z + 0.5 * np.log(2. * np.pi * z)
+      lpl += np.ma.masked_array(stirling_approx, mask=(z <= 1)).filled(0.)
+    return lpl
+
+  def testLogPoissonLoss(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+    z_np = np.random.randint(0, 5, size=x_shape).astype(np.float32)
+    y_np = self._log_poisson_loss(x_np, z_np, compute_full_loss=False)
+    y_np_stirling = self._log_poisson_loss(x_np, z_np, compute_full_loss=True)
+    with self.test_session():
+      y_tf = tf.nn.log_poisson_loss(x_np, z_np, compute_full_loss=False)
+      y_tf_stirling = tf.nn.log_poisson_loss(x_np, z_np, compute_full_loss=True)
+      y_tf_np = y_tf.eval()
+      y_tf_np_stirling = y_tf_stirling.eval()
+    eps = 1e-3
+    self.assertAllClose(y_tf_np, y_np, eps)
+    self.assertAllClose(y_tf_np_stirling, y_np_stirling, eps)
+
+  def testGradient(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float64)
+    z_np = np.random.randint(0, 5, size=x_shape).astype(np.float64)
+    with self.test_session():
+      x_tf = tf.constant(x_np)
+      y_tf = tf.nn.log_poisson_loss(x_tf, z_np, compute_full_loss=False)
+      y_tf_stirling = tf.nn.log_poisson_loss(x_tf, z_np, compute_full_loss=True)
+      err = tf.test.compute_gradient_error(x_tf, x_shape, y_tf, x_shape)
+      err_stirling = tf.test.compute_gradient_error(x_tf, x_shape,
+                                                    y_tf_stirling, x_shape)
+    eps = 1e-6
+    self.assertLess(err, eps)
+    self.assertLess(err_stirling, eps)
+
+
 class LogSoftmaxTest(tf.test.TestCase):
 
   def _log_softmax(self, x):
@@ -116,11 +156,13 @@ class LogSoftmaxTest(tf.test.TestCase):
 class L2LossTest(tf.test.TestCase):
 
   def testL2Loss(self):
-    with self.test_session():
-      x = tf.constant([1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x")
-      l2loss = tf.nn.l2_loss(x)
-      value = l2loss.eval()
-    self.assertAllClose(7.0, value)
+    for dtype in [tf.float32, tf.float64]:
+      with self.test_session():
+        x = tf.constant([1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x",
+                        dtype=dtype)
+        l2loss = tf.nn.l2_loss(x)
+        value = l2loss.eval()
+      self.assertAllClose(7.0, value)
 
   def testGradient(self):
     x_shape = [20, 7, 3]

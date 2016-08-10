@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -715,7 +715,7 @@ struct gemm_pack_rhs<
                   std::min<Index>(peeled_k - c * patch_rows * patch_depth -
                                       r * patch_depth + startDepth,
                                   patch_depth);
-              eigen_assert(max_depth % packet_size == 0);
+              eigen_assert((max_depth - startDepth) % packet_size == 0);
               for (Index d = startDepth; d < max_depth; d += packet_size) {
                 eigen_assert(k < peeled_k);
                 PacketBlock<Packet, 4> kernel;
@@ -837,7 +837,6 @@ struct gemm_pack_rhs<
     EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
 
     const Index packet_cols4 = (cols / 4) * 4;
-    const bool non_standard_patches = rhs.nonStandardPatches();
 
     for (Index j2 = 0; j2 < packet_cols4; j2 += 4) {
       const SubMapper dm0 = rhs.getLinearMapper(0, j2 + 0);
@@ -846,7 +845,7 @@ struct gemm_pack_rhs<
       const SubMapper dm3 = rhs.getLinearMapper(0, j2 + 3);
 
       if (!rhs.nonStandardPatches()) {
-        for (Index k; k < depth; k++) {
+        for (Index k = 0; k < depth; k++) {
           block[0] = dm0.loadCoeffStandard(k);
           block[1] = dm1.loadCoeffStandard(k);
           block[2] = dm2.loadCoeffStandard(k);
@@ -854,7 +853,7 @@ struct gemm_pack_rhs<
           block += 4;
         }
       } else {
-        for (Index k; k < depth; k++) {
+        for (Index k = 0; k < depth; k++) {
           block[0] = dm0(k);
           block[1] = dm1(k);
           block[2] = dm2(k);

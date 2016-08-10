@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 
@@ -30,13 +30,13 @@ from tensorflow.python.ops import math_ops
 @ops.RegisterGradient("Pack")
 def _PackGrad(op, grad):
   """Gradient for pack op."""
-  return array_ops.unpack(grad, num=op.get_attr("N"))
+  return array_ops.unpack(grad, num=op.get_attr("N"), axis=op.get_attr("axis"))
 
 
 @ops.RegisterGradient("Unpack")
-def _UnpackGrad(_, *grads):
+def _UnpackGrad(op, *grads):
   """Gradient for unpack op."""
-  return array_ops.pack(grads)
+  return array_ops.pack(grads, axis=op.get_attr("axis"))
 
 
 @ops.RegisterGradient("Concat")
@@ -149,6 +149,46 @@ def _SliceGrad(op, grad):
   return array_ops.pad(grad, paddings), None, None
 
 
+@ops.RegisterGradient("StridedSlice")
+def _StridedSliceGrad(op, grad):
+  """Gradient for StridedSlice op."""
+  x = array_ops.shape(op.inputs[0])
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+
+  return array_ops.strided_slice_grad(
+      x,
+      begin,
+      end,
+      strides,
+      grad,
+      begin_mask=op.get_attr("begin_mask"),
+      end_mask=op.get_attr("end_mask"),
+      ellipsis_mask=op.get_attr("ellipsis_mask"),
+      new_axis_mask=op.get_attr("new_axis_mask"),
+      shrink_axis_mask=op.get_attr("shrink_axis_mask")), None, None, None
+
+
+@ops.RegisterGradient("StridedSliceGrad")
+def _StridedSliceGradGrad(op, grad):
+  """Gradient for StridedSliceGrad op."""
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+
+  return None, None, None, None, array_ops.strided_slice(
+      grad,
+      begin,
+      end,
+      strides,
+      begin_mask=op.get_attr("begin_mask"),
+      end_mask=op.get_attr("end_mask"),
+      ellipsis_mask=op.get_attr("ellipsis_mask"),
+      new_axis_mask=op.get_attr("new_axis_mask"),
+      shrink_axis_mask=op.get_attr("shrink_axis_mask"))
+
+
 @ops.RegisterGradient("Split")
 def _SplitGrad(op, *grads):
   return None, array_ops.concat(op.inputs[0], list(grads))
@@ -176,6 +216,22 @@ def _BatchMatrixDiagPartGrad(_, grad):
   return array_ops.batch_matrix_diag(grad)
 
 
+@ops.RegisterGradient("BatchMatrixSetDiag")
+def _BatchMatrixSetDiagGrad(op, grad):
+  diag_shape = op.inputs[1].get_shape()
+  diag_shape = diag_shape.merge_with(op.inputs[0].get_shape()[:-1])
+  diag_shape = diag_shape.merge_with(grad.get_shape()[:-1])
+  if diag_shape.is_fully_defined():
+    diag_shape = diag_shape.as_list()
+  else:
+    diag_shape = array_ops.shape(grad)
+    diag_shape = array_ops.slice(diag_shape, [0], [array_ops.rank(grad) - 1])
+  grad_input = array_ops.batch_matrix_set_diag(
+      grad, array_ops.zeros(diag_shape, dtype=grad.dtype))
+  grad_diag = array_ops.batch_matrix_diag_part(grad)
+  return (grad_input, grad_diag)
+
+
 @ops.RegisterGradient("BatchMatrixBandPart")
 def _BatchMatrixBandPartGrad(op, grad):
   num_lower = op.inputs[1]
@@ -198,6 +254,7 @@ ops.NoGradient("ZerosLike")
 
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
+  """Gradient for Gather op."""
   if op.inputs[0].get_shape().is_fully_defined():
     dense_shape = constant_op.constant(op.inputs[0].get_shape().as_list())
     values_shape = [-1] + op.inputs[0].get_shape()[1:].as_list()
@@ -215,6 +272,12 @@ def _GatherGrad(op, grad):
 @ops.RegisterGradient("GatherNd")
 def _GatherNdGrad(unused_op, unused_grad):
   raise NotImplementedError("Gradient for gather_nd is not implemented.")
+
+
+@ops.RegisterGradient("CheckNumerics")
+def _CheckNumericsGrad(_, grad):
+  """Gradient for check_numerics op."""
+  return grad
 
 
 @ops.RegisterGradient("Identity")
@@ -380,3 +443,8 @@ def _MirrorPadGradGrad(op, grad):
   # pylint: disable=protected-access
   return [gen_array_ops._mirror_pad(grad, op.inputs[1], mode=mode), None]
   # pylint: enable=protected-access
+
+
+@ops.RegisterGradient("QuantizeAndDequantize")
+def _QuantizeAndDequantizeGrad(_, grad):
+  return grad

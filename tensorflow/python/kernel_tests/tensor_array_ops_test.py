@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import tensor_array_grad
@@ -35,7 +34,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testTensorArrayWriteRead(self):
     with self.test_session(use_gpu=self._use_gpu) as session:
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3)
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=False)
 
       w0 = ta.write(0, [[4.0, 5.0]])
       w1 = w0.write(1, [[1.0]])
@@ -84,7 +83,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
     dtype = tf_dtype.as_numpy_dtype()
     with self.test_session(use_gpu=self._use_gpu):
       ta = tensor_array_ops.TensorArray(
-          dtype=tf_dtype, tensor_array_name="foo", size=3)
+          dtype=tf_dtype, tensor_array_name="foo", size=3, infer_shape=False)
 
       if tf_dtype == tf.string:
         # In Python3, np.str is unicode, while we always want bytes
@@ -158,6 +157,9 @@ class TensorArrayCPUTest(tf.test.TestCase):
       self.assertAllEqual(convert(2.0), d1)
       self.assertAllEqual(convert(3.0), d2)
 
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf_dtype, tensor_array_name="foo", size=3)
+
       # Unpack a matrix into vectors
       w1 = ta.unpack(convert([[1.0, 1.1], [2.0, 2.1], [3.0, 3.1]]))
       r0 = w1.read(0)
@@ -182,7 +184,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
     dtype = tf_dtype.as_numpy_dtype()
     with self.test_session(use_gpu=self._use_gpu) as session:
       ta = tensor_array_ops.TensorArray(
-          dtype=tf_dtype, tensor_array_name="foo", size=3)
+          dtype=tf_dtype, tensor_array_name="foo", size=3, infer_shape=False)
 
       if tf_dtype == tf.string:
         # In Python3, np.str is unicode, while we always want bytes
@@ -240,7 +242,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testTensorGradArrayWriteRead(self):
     with self.test_session(use_gpu=self._use_gpu) as session:
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3)
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=False)
       g_ta = ta.grad("grad")
 
       w0 = ta.write(0, [[4.0, 5.0]])
@@ -270,7 +272,8 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testTensorGradArrayDynamicWriteRead(self):
     with self.test_session(use_gpu=self._use_gpu) as session:
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=0, dynamic_size=True)
+          dtype=tf.float32, tensor_array_name="foo", size=0, dynamic_size=True,
+          infer_shape=False)
 
       w0 = ta.write(0, [[4.0, 5.0]])
       w1 = w0.write(1, [[1.0]])
@@ -386,7 +389,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testTensorArrayConcatIncompatibleShapesFails(self):
     with self.test_session(use_gpu=self._use_gpu):
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3)
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=False)
 
       w1 = ta.write(0, 3.0)
       w2 = w1.write(1, 4.0)
@@ -397,7 +400,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
         w3.concat().eval()
 
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3)
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=False)
 
       w1 = ta.write(0, [3.0])
       w2 = w1.write(1, [4.0])
@@ -412,7 +415,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testTensorArraySplitIncompatibleShapesFails(self):
     with self.test_session(use_gpu=self._use_gpu):
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3)
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=False)
 
       with self.assertRaisesOpError(
           r"Expected lengths to be a vector, received shape: \[\]"):
@@ -429,7 +432,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
         ta.split(1.0, [1]).flow.eval()
 
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=2)
+          dtype=tf.float32, tensor_array_name="foo", size=2, infer_shape=False)
 
       with self.assertRaisesOpError(
           r"TensorArray's size is not equal to the size of lengths "
@@ -440,7 +443,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def _testTensorArrayWriteGradientAddMultipleAdds(self, dtype):
     with self.test_session(use_gpu=self._use_gpu):
       ta = tensor_array_ops.TensorArray(
-          dtype=dtype, tensor_array_name="foo", size=3)
+          dtype=dtype, tensor_array_name="foo", size=3, infer_shape=False)
       ta_grad = ta.grad("grad")
 
       c = lambda x: np.asarray(x, dtype=dtype.as_numpy_dtype)
@@ -458,7 +461,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
       # Assert that if multiple_writes_aggregate is not enabled,
       # multiple writes raise an exception.
       with self.assertRaisesOpError(
-          r"TensorArray foo: Could not write to TensorArray index 2 because "
+          r"TensorArray foo_.*: Could not write to TensorArray index 2 because "
           r"it has already been written to."):
         w1.flow.eval()
 
@@ -474,7 +477,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testTensorArrayWriteGradientAddMultipleAdds(self):
     for dtype in (tf.int32, tf.int64, tf.float32,
                   tf.float64, tf.complex64, tf.complex128):
-        self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
+      self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
 
   def testMultiTensorArray(self):
     with self.test_session(use_gpu=self._use_gpu):
@@ -491,7 +494,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
       r = r1 + r2
       self.assertAllClose(9.0, r.eval())
 
-  def testDuplicateTensorArrayFails(self):
+  def testDuplicateTensorArrayHasDifferentName(self):
     with self.test_session(use_gpu=self._use_gpu) as session:
       h1 = tensor_array_ops.TensorArray(
           size=1, dtype=tf.float32, tensor_array_name="foo")
@@ -499,13 +502,20 @@ class TensorArrayCPUTest(tf.test.TestCase):
       h2 = tensor_array_ops.TensorArray(
           size=1, dtype=tf.float32, tensor_array_name="foo")
       c2 = h2.write(0, 5.0)
-      with self.assertRaises(errors.AlreadyExistsError):
-        session.run([c1.flow, c2.flow])
+      _, _, c1h, c2h = session.run([c1.flow, c2.flow, c1.handle, c2.handle])
+      c1h = [x.decode("ascii") for x in c1h]
+      c2h = [x.decode("ascii") for x in c2h]
+      self.assertEqual(c1h[0], "_tensor_arrays")
+      self.assertEqual(c2h[0], "_tensor_arrays")
+      self.assertTrue(c1h[1].startswith("foo_"))
+      self.assertTrue(c2h[1].startswith("foo_"))
+      self.assertNotEqual(c1h[1], c2h[1])
 
   def _testTensorArrayGradientWriteReadType(self, dtype):
     with self.test_session(use_gpu=self._use_gpu) as session:
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.as_dtype(dtype), tensor_array_name="foo", size=3)
+          dtype=tf.as_dtype(dtype), tensor_array_name="foo", size=3,
+          infer_shape=False)
 
       c = lambda x: np.array(x, dtype=dtype)
 
@@ -682,15 +692,10 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testWriteCloseTensorArray(self):
     with self.test_session(use_gpu=self._use_gpu):
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3)
+          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=False)
       w0 = ta.write(0, [[4.0, 5.0]])
       w1 = w0.write(1, [3.0])
       w1.close().run()  # Expected to run without problems
-
-      with self.assertRaisesOpError(
-          r"TensorArray foo has already been closed."):
-        with tf.control_dependencies([w1.close()]):
-          w1.write(2, 3.0).flow.eval()
 
   def _testWhileLoopWritePackGradients(self, dynamic_size, dtype):
     np_dtype = dtype.as_numpy_dtype
@@ -843,12 +848,14 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testWriteShape(self):
     with self.test_session():
       ta = tensor_array_ops.TensorArray(
-          dtype=tf.float32, tensor_array_name="foo", size=3, infer_shape=True)
+          dtype=tf.float32, tensor_array_name="foo", size=3)
       c0 = tf.constant([4.0, 5.0])
       w0 = ta.write(0, c0)
       r0 = w0.read(0)
       self.assertAllEqual(c0.get_shape(), r0.get_shape())
 
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3)
       c1 = tf.constant([6.0, 7.0])
       w1 = w0.write(1, c1)
       r0 = w1.read(0)
@@ -856,6 +863,8 @@ class TensorArrayCPUTest(tf.test.TestCase):
       self.assertAllEqual(c0.get_shape(), r0.get_shape())
       self.assertAllEqual(c1.get_shape(), r1.get_shape())
 
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf.float32, tensor_array_name="foo", size=3)
       c2 = tf.constant([4.0, 5.0, 6.0])
       with self.assertRaises(ValueError):
         w0.write(0, c2)
@@ -916,10 +925,60 @@ class TensorArrayCPUTest(tf.test.TestCase):
       grad_r0_vals = session.run(grad_r0)[0]
       self.assertAllEqual(grad_r0_vals, [1.0, 0.0])
 
+  def testTensorArrayUnpackDynamic(self):
+    with self.test_session(use_gpu=self._use_gpu) as sess:
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32, size=3,
+                                        dynamic_size=True)
+      x = tf.constant([1.0, 2.0, 3.0])
+      w0 = ta.unpack(x)
+      w1 = w0.write(3, 4.0)
+      r = w1.pack()
+      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), r.eval())
+      grad = tf.gradients(ys=[r], xs=[x])
+      self.assertAllEqual(np.array([1.0, 1.0, 1.0]),
+                          sess.run(grad)[0])
+
+  def testTensorArraySplitDynamic(self):
+    with self.test_session(use_gpu=self._use_gpu) as sess:
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32, size=3,
+                                        dynamic_size=True)
+      x = tf.constant([1.0, 2.0, 3.0])
+      w0 = ta.split(x, [1, 1, 1])
+      w1 = w0.write(3, [4.0])
+      r = w1.concat()
+      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), r.eval())
+      grad = tf.gradients(ys=[r], xs=[x])
+      self.assertAllEqual(np.array([1.0, 1.0, 1.0]),
+                          sess.run(grad)[0])
+
+  def testTensorArrayEvalEmpty(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32,
+                                        size=0,
+                                        dynamic_size=False,
+                                        infer_shape=False)
+      with self.assertRaisesOpError(
+          "TensorArray has size zero, but element shape <unknown> is not fully "
+          "defined. Currently only static shapes are supported when packing "
+          "zero-size TensorArrays."):
+        ta.pack().eval()
+
+  def testTensorArrayEvalEmptyWithDefault(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32,
+                                        size=0,
+                                        dynamic_size=False,
+                                        infer_shape=True)
+      self.assertEqual(0, ta.size().eval())
+      ta.unpack(tf.zeros([0, 3, 5]))
+      self.assertAllEqual([0, 3, 5], ta.pack().eval().shape)
+      # Concatenating zero tensors along their first dimension gives a
+      # first dimension of zero
+      self.assertAllEqual([0, 5], ta.concat().eval().shape)
+
 
 class TensorArrayGPUTest(TensorArrayCPUTest):
   _use_gpu = True
-
 
 if __name__ == "__main__":
   tf.test.main()

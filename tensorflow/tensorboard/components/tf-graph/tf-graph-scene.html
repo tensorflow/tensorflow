@@ -56,8 +56,8 @@
   stroke-width: 3;
 }
 
-:content .annotation.meta.selected > .nodeshape > rect,
-:content .annotation.meta.selected > .annotation-node > rect {
+::content .annotation.meta.selected > .nodeshape > rect,
+::content .annotation.meta.selected > .annotation-node > rect {
   stroke: red;
   stroke-width: 2;
 }
@@ -72,11 +72,12 @@
 ::content .faded rect,
 ::content .faded ellipse,
 ::content .faded path,
+::content .faded use,
 ::content #rectHatch line,
 ::content #ellipseHatch line {
-  color: var(--tb-graph-faded) !important;
+  color: #e0d4b3 !important;
   fill: white;
-  stroke: var(--tb-graph-faded) !important;
+  stroke: #e0d4b3 !important;
 }
 
 
@@ -88,7 +89,8 @@
   fill: url(#rectHatch) !important;
 }
 
-::content .faded ellipse {
+::content .faded ellipse,
+::content .faded use {
   fill: url(#ellipseHatch) !important;
 }
 
@@ -96,6 +98,81 @@
   opacity: 0;
 }
 
+/* Rules used for input-tracing. */
+::content .input-highlight > * > rect,
+::content .input-highlight > * > ellipse,
+::content .input-highlight > * > use
+{
+  fill: white;
+  stroke: #ff9800 !important;
+}
+
+/*  - Faded non-input styling */
+::content .non-input > * > rect,
+::content .non-input > * > ellipse,
+::content .non-input > * > use,
+/* For Const nodes. */
+::content .non-input > * > .constant:not([class*="input-highlight"]) >
+  .annotation-node > ellipse,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect {
+  stroke: #e0d4b3 !important;
+  stroke-width: inherit;
+  stroke-dasharray: inherit;
+}
+
+
+::content .non-input path {
+  visibility: hidden;
+}
+
+::content .non-input > .nodeshape > rect,
+::content .non-input > .annotation-node > rect,
+/* For styling of annotation nodes of non-input nodes. */
+::content .non-input > g > .annotation > .annotation-node > rect
+{
+  fill: url(#rectHatch) !important;
+}
+
+::content .non-input ellipse,
+::content .non-input use {
+  fill: url(#ellipseHatch) !important;
+}
+
+::content .non-input > text {
+  opacity: 0;
+}
+
+::content .non-input .annotation > .annotation-edge {
+  marker-end: url(#annotation-arrowhead-faded);
+}
+
+::content .non-input .annotation > .annotation-edge.refline {
+  marker-start: url(#ref-annotation-arrowhead-faded);
+}
+
+/* Input edges. */
+::content .input-edge-highlight > text {
+  fill: black !important;
+}
+::content .input-edge-highlight > path,
+::content .input-highlight > .in-annotations > .annotation > .annotation-edge,
+::content .input-highlight-selected > .in-annotations > .annotation >
+.annotation-edge {
+  stroke: #999 !important;
+}
+
+/* Non-input edges. */
+::content .non-input-edge-highlight,
+::content .non-input > g > .annotation > path,
+/* Annotation styles (label and edges respectively). */
+::content .non-input > g >
+.annotation:not(.input-highlight):not(.input-highlight-selected) >
+.annotation-label
+/*.annotation-edge*/
+{
+  visibility: hidden;
+}
 
 /* --- Op Node --- */
 
@@ -266,7 +343,7 @@
 }
 
 ::content #annotation-arrowhead-faded {
-  fill: var(--tb-graph-faded);
+  fill: #e0d4b3;
 }
 
 ::content #ref-annotation-arrowhead {
@@ -274,7 +351,7 @@
 }
 
 ::content #ref-annotation-arrowhead-faded {
-  fill: var(--tb-graph-faded);
+  fill: #e0d4b3;
 }
 
 ::content .annotation > .annotation-label {
@@ -638,6 +715,7 @@ Polymer({
     tf.graph.util.time('tf-graph-scene (build scene):', function() {
       tf.graph.scene.buildGroup(d3.select(this.$.root), renderHierarchy.root, this);
       tf.graph.scene.addGraphClickListener(this.$.svg, this);
+      tf.graph.scene.node.traceInputs(renderHierarchy);
     }.bind(this));
     // Update the minimap again when the graph is done animating.
     setTimeout(function() {
@@ -802,6 +880,13 @@ Polymer({
     }, this);
   },
 
+  /**
+   * Handles new node selection. 1) Updates the selected-state of each node,
+   * 2) triggers input tracing.
+   * @param selectedNode {string} The name of the newly selected node.
+   * @param oldSelectedNode {string} The name of the previously selected node.
+   * @private
+   */
   _selectedNodeChanged: function(selectedNode, oldSelectedNode) {
     if (selectedNode === oldSelectedNode) {
       return;
@@ -814,9 +899,13 @@ Polymer({
       this._updateNodeState(oldSelectedNode);
     }
 
+    tf.graph.scene.node.traceInputs(this.renderHierarchy);
+
     if (!selectedNode) {
       return;
     }
+
+
     // Update the minimap to reflect the highlighted (selected) node.
     this.minimap.update();
     var node = this.renderHierarchy.hierarchy.node(selectedNode);

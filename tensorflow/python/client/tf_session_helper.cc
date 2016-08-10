@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <cstring>
 
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/tf_status_helper.h"
 
 namespace tensorflow {
 
@@ -416,7 +416,7 @@ void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
     }
 
     tensorflow::int64 nelems = 1;
-    gtl::InlinedVector<tensorflow::int64, 4> dims;
+    gtl::InlinedVector<int64_t, 4> dims;
     for (int i = 0; i < PyArray_NDIM(array); ++i) {
       dims.push_back(PyArray_SHAPE(array)[i]);
       nelems *= dims[i];
@@ -553,7 +553,7 @@ void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
 void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
                           const NameVector& output_names,
                           const NameVector& target_nodes, TF_Status* out_status,
-                          char** out_handle) {
+                          const char** out_handle) {
   Py_BEGIN_ALLOW_THREADS;
   TF_PRunSetup(
       session, const_cast<const char**>(input_names.data()), input_names.size(),
@@ -571,6 +571,13 @@ void TF_PRun_wrapper(TF_Session* session, const char* handle,
                      TF_Status* out_status, PyObjectVector* out_values) {
   TF_Run_wrapper_helper(session, handle, nullptr, inputs, output_names,
                         NameVector(), out_status, out_values, nullptr);
+}
+
+// Wrapper for TF_Reset that converts the string vectors to character arrays.
+void TF_Reset_wrapper(const TF_SessionOptions* opt,
+                      const NameVector& containers, TF_Status* out_status) {
+  TF_Reset(opt, const_cast<const char**>(containers.data()), containers.size(),
+           out_status);
 }
 
 string EqualGraphDefWrapper(const string& actual, const string& expected) {

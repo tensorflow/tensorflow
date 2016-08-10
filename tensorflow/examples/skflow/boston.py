@@ -11,35 +11,46 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+"""Example of DNNRegressor for Housing dataset."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from sklearn import datasets, cross_validation, metrics
+from sklearn import cross_validation
+from sklearn import metrics
 from sklearn import preprocessing
+import tensorflow as tf
+from tensorflow.contrib import learn
 
-from tensorflow.contrib import skflow
 
-# Load dataset
-boston = datasets.load_boston()
-X, y = boston.data, boston.target
+def main(unused_argv):
+  # Load dataset
+  boston = learn.datasets.load_dataset('boston')
+  x, y = boston.data, boston.target
 
-# Split dataset into train / test
-X_train, X_test, y_train, y_test = cross_validation.train_test_split(X, y,
-    test_size=0.2, random_state=42)
+  # Split dataset into train / test
+  x_train, x_test, y_train, y_test = cross_validation.train_test_split(
+      x, y, test_size=0.2, random_state=42)
 
-# Scale data (training set) to 0 mean and unit standard deviation.
-scaler = preprocessing.StandardScaler()
-X_train = scaler.fit_transform(X_train)
+  # Scale data (training set) to 0 mean and unit standard deviation.
+  scaler = preprocessing.StandardScaler()
+  x_train = scaler.fit_transform(x_train)
 
-# Build 2 layer fully connected DNN with 10, 10 units respectively.
-regressor = skflow.TensorFlowDNNRegressor(hidden_units=[10, 10],
-    steps=5000, learning_rate=0.1, batch_size=1)
+  # Build 2 layer fully connected DNN with 10, 10 units respectively.
+  feature_columns = learn.infer_real_valued_columns_from_input(x_train)
+  regressor = learn.DNNRegressor(
+      feature_columns=feature_columns, hidden_units=[10, 10])
 
-# Fit
-regressor.fit(X_train, y_train)
+  # Fit
+  regressor.fit(x_train, y_train, steps=5000, batch_size=1)
 
-# Predict and score
-score = metrics.mean_squared_error(regressor.predict(scaler.transform(X_test)), y_test)
+  # Predict and score
+  y_predicted = regressor.predict(scaler.transform(x_test))
+  score = metrics.mean_squared_error(y_predicted, y_test)
 
-print('MSE: {0:f}'.format(score))
+  print('MSE: {0:f}'.format(score))
+
+
+if __name__ == '__main__':
+  tf.app.run()
+

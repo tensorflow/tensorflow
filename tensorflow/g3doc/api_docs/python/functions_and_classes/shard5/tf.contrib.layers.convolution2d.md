@@ -10,6 +10,9 @@ None and a `biases_initializer` is provided then a `biases` variable would be
 created and added the activations. Finally, if `activation_fn` is not `None`,
 it is applied to the activations as well.
 
+Performs a'trous convolution with input stride equal to rate if rate is
+greater than one.
+
 ##### Args:
 
 
@@ -21,6 +24,9 @@ it is applied to the activations as well.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: one of `VALID` or `SAME`.
+*  <b>`rate`</b>: integer. If less than or equal to 1, a standard convolution is used.
+    If greater than 1, than the a'trous convolution is applied and `stride`
+    must be set to 1.
 *  <b>`activation_fn`</b>: activation function.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
     `normalize_fn` is provided then `biases_initializer` and
@@ -35,9 +41,16 @@ it is applied to the activations as well.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
     a dictionay containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
 *  <b>`scope`</b>: Optional scope for `variable_op_scope`.
 
 ##### Returns:
 
   a tensor representing the output of the operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if both 'rate' and `stride` are larger than one.
 

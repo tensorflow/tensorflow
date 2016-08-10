@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // The methods are exposed to Java to allow for interaction with the native
-// Tensorflow code. See
-// tensorflow/examples/android/src/org/tensorflow/TensorflowClassifier.java
+// TensorFlow code. See
+// tensorflow/examples/android/src/org/tensorflow/TensorFlowClassifier.java
 // for the Java counterparts.
 
 #ifndef ORG_TENSORFLOW_JNI_TENSORFLOW_JNI_H_  // NOLINT
@@ -28,18 +28,18 @@ extern "C" {
 #endif  // __cplusplus
 
 #define TENSORFLOW_METHOD(METHOD_NAME) \
-  Java_org_tensorflow_demo_TensorflowClassifier_##METHOD_NAME  // NOLINT
+  Java_org_tensorflow_demo_TensorFlowClassifier_##METHOD_NAME  // NOLINT
 
-JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorflow)(
+JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
     JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model,
-    jstring labels, jint num_classes, jint model_input_size, jint image_mean);
+    jstring labels, jint num_classes, jint model_input_size, jint image_mean,
+    jfloat image_std, jstring input_name, jstring output_name);
 
-JNIEXPORT jstring JNICALL
-TENSORFLOW_METHOD(classifyImageBmp)(
-    JNIEnv* env, jobject thiz, jobject bitmap);
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(classifyImageBmp)(JNIEnv* env,
+                                                              jobject thiz,
+                                                              jobject bitmap);
 
-JNIEXPORT jstring JNICALL
-TENSORFLOW_METHOD(classifyImageRgb)(
+JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(classifyImageRgb)(
     JNIEnv* env, jobject thiz, jintArray image, jint width, jint height);
 
 #ifdef __cplusplus

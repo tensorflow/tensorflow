@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ limitations under the License.
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DNN_H_
+
+#include <limits>
 
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -354,7 +356,7 @@ class FilterDescriptor {
 // Arguments:
 // - zero_padding_height: padding of the "y dimension" of the input data. Note
 //    that this is different from the height of the filter.
-// - zero_padding_width: analogouus to the height above, but in the "x
+// - zero_padding_width: analogous to the height above, but in the "x
 //    dimension".
 // - vertical_filter_stride: the convolution slides a 2-dimensional window of
 //    filter-height-by-filter-width over the input layer -- the center of that
@@ -550,7 +552,34 @@ class ProfileResult {
  private:
   bool is_valid_ = false;
   AlgorithmType algorithm_ = kDefaultAlgorithm;
-  float elapsed_time_in_ms_ = -1.0f;
+  float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
+};
+
+// Describe the configuration for the algorithms that will used.
+//
+// Arguments:
+//  algorithm: the primary algorithm that should be used.
+//  algorithm_no_scratch: a secondary algorithm that should be used, if the
+//    the allocation for the scratch memory fails.
+class AlgorithmConfig {
+ public:
+  AlgorithmConfig()
+      : algorithm_(kDefaultAlgorithm),
+        algorithm_no_scratch_(kDefaultAlgorithm) {}
+  explicit AlgorithmConfig(AlgorithmType algorithm)
+      : algorithm_(algorithm), algorithm_no_scratch_(kDefaultAlgorithm) {}
+  AlgorithmConfig(AlgorithmType algorithm, AlgorithmType algorithm_no_scratch)
+      : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
+  AlgorithmType algorithm() const { return algorithm_; }
+  void set_algorithm(AlgorithmType val) { algorithm_ = val; }
+  AlgorithmType algorithm_no_scratch() const { return algorithm_no_scratch_; }
+  void set_algorithm_no_scratch(AlgorithmType val) {
+    algorithm_no_scratch_ = val;
+  }
+
+ private:
+  AlgorithmType algorithm_;
+  AlgorithmType algorithm_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -710,7 +739,8 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
-      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
   virtual bool GetConvolveAlgorithms(
@@ -738,7 +768,8 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half>* output_data,
       ScratchAllocator* scratch_allocator,
-      AlgorithmType algorithm, ProfileResult* output_profile_result) = 0;
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) = 0;
 
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
@@ -767,7 +798,7 @@ class DnnSupport {
   //  filter_descriptor: dimensions of the convolution filter.
   //  filter_data: coefficients for the convolution filter.
   //  output_descriptor: dimensions of the output gradients, which is the same
-  //    as the dimensions of the ouput.
+  //    as the dimensions of the output.
   //  backward_output_data: un-owned device memory region which contains the
   //    backprop of the output.
   //  convolution_descriptor: stride of the convolution filter.
@@ -784,7 +815,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& input_descriptor,
       DeviceMemory<float>* backward_input_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the backward convolution pass for
@@ -800,7 +832,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& input_descriptor,
       DeviceMemory<Eigen::half>* backward_input_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for filter) operation
@@ -813,7 +846,7 @@ class DnnSupport {
   //  input_data: un-owned device memory region which contains the
   //    convolution input.
   //  output_descriptor: dimensions of the output gradients, which is the same
-  //    as the dimensions of the ouput.
+  //    as the dimensions of the output.
   //  backward_output_data: un-owned device memory region which contains the
   //    backprop of the output.
   //  convolution_descriptor: stride of the convolution filter.
@@ -830,7 +863,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<float>* backward_filter_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the backward convolution pass for
@@ -846,7 +880,8 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const FilterDescriptor& filter_descriptor,
       DeviceMemory<Eigen::half>* backward_filter_data,
-      ScratchAllocator* scratch_allocator, AlgorithmType algorithm,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a single-precision backward convolution (for bias) operation onto
@@ -1011,6 +1046,13 @@ class DnnSupport {
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<float>* output_data) = 0;
 
+  virtual bool DoPoolForward(Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<Eigen::half>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<Eigen::half>* output_data) = 0;
+
   // Performs differentiation of the pooling operation.
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
@@ -1021,6 +1063,15 @@ class DnnSupport {
                               const DeviceMemory<float>& input_diff_data,
                               DeviceMemory<float>* output_diff_data) = 0;
 
+  virtual bool DoPoolBackward(Stream* stream,
+                              const dnn::PoolingDescriptor& pooling_dimensions,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              const DeviceMemory<Eigen::half>& input_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              const DeviceMemory<Eigen::half>& output_data,
+                              const DeviceMemory<Eigen::half>& input_diff_data,
+                              DeviceMemory<Eigen::half>* output_diff_data) = 0;
+
   // Applies local response normalization to the values from
   // input_data and writes the result to output_data. See comments on
   // NormalizeDescriptor for a description of local response
@@ -1029,6 +1080,43 @@ class DnnSupport {
                            const dnn::NormalizeDescriptor& normalize_descriptor,
                            const DeviceMemory<float>& input_data,
                            DeviceMemory<float>* output_data) = 0;
+
+  // Applies local response normalization to the values from input_data and
+  // writes the result to output_data.
+  //
+  // Similar to DoNormalize, but normalizes across feature maps and allows for
+  // specifying the dimensions of the tensor.
+  //
+  // See comments on NormalizeDescriptor for a description of local response
+  // normalization.
+  virtual bool DoNormalizeWithDimensions(
+      Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
+      const dnn::BatchDescriptor& dimensions,
+      const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
+    return false;
+  }
+
+  // Performs backpropagation for the normalization operation
+  //
+  // Given raw data, its corresponding normalized output, and a gradient of some
+  // unspecified function with respect to the normalized variables, computes the
+  // gradient of that unspecified function with respect to the raw variables.
+  //
+  // The normalized data input array is expected to match the output that would
+  // be obtained by running the raw data input array through the DoNormalize
+  // method above.
+  //
+  // See comments on NormalizeDescriptor for a description of local response
+  // normalization.
+  virtual bool DoNormalizeBackwardWithDimensions(
+      Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
+      const dnn::BatchDescriptor& dimensions,
+      const DeviceMemory<float>& raw_data,
+      const DeviceMemory<float>& normalized_data,
+      const DeviceMemory<float>& normalized_variable_gradient,
+      DeviceMemory<float>* raw_variable_gradient) {
+    return false;
+  }
 
   // Applies an activation function (see ActivationMode) to all of the values
   // held on the device in 'input_data', whose dimensions are described by

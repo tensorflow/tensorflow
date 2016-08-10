@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -120,15 +121,13 @@ class Conv3DOp : public BinaryOp<T> {
   Padding padding_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    Conv3DOp<CPUDevice, float>);
-
-#ifndef __ANDROID__
-REGISTER_KERNEL_BUILDER(
-    Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<double>("T"),
-    Conv3DOp<CPUDevice, double>);
-#endif
+#define REGISTER_CPU_KERNEL(T)                                  \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      Conv3DOp<CPUDevice, T>);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+#undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
 
@@ -160,9 +159,12 @@ struct LaunchConvOp<GPUDevice, T> {
     int64 out_cols = output->dim_size(3);
 
     if (padding == Padding::SAME) {
-      pad_planes = (out_planes - 1) * strides[0] + filter_planes - in_planes;
-      pad_rows = (out_rows - 1) * strides[1] + filter_rows - in_rows;
-      pad_cols = (out_cols - 1) * strides[2] + filter_cols - in_cols;
+      pad_planes = std::max<int64>(
+          0, (out_planes - 1) * strides[0] + filter_planes - in_planes);
+      pad_rows = std::max<int64>(
+          0, (out_rows - 1) * strides[1] + filter_rows - in_rows);
+      pad_cols = std::max<int64>(
+          0, (out_cols - 1) * strides[2] + filter_cols - in_cols);
     }
 
     // NOTE: This only works in NHWC.
@@ -240,6 +242,9 @@ struct LaunchConvOp<GPUDevice, T> {
         transformed_input.tensor<T, 5>());
     input = transformed_input;
 
+    CHECK(pad_rows >= 0 && pad_cols >= 0 && pad_planes >= 0)
+        << "Negative paddings: (" << pad_rows << ", " << pad_cols << ", "
+        << pad_planes << ")";
     perftools::gputools::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(in_batch)
         .set_feature_map_count(in_depth)

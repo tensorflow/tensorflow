@@ -347,6 +347,12 @@ with g.name_scope('my_layer') as scope:
   output = tf.nn.relu(affine, name=scope)
 ```
 
+NOTE: This constructor validates the given `name`. Valid scope
+names match one of the following regular expressions:
+
+    [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (for scopes at the root)
+    [A-Za-z0-9_.\\-/]* (for other scopes)
+
 ##### Args:
 
 
@@ -355,6 +361,11 @@ with g.name_scope('my_layer') as scope:
 ##### Returns:
 
   A context manager that installs `name` as a new name scope.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `name` is not a valid scope name. The rules are the
 
 
 
@@ -762,6 +773,57 @@ is eventually placed.
 
 - - -
 
+#### `tf.Graph.container(container_name)` {#Graph.container}
+
+Returns a context manager that specifies the resource container to use.
+
+Stateful operations, such as variables and queues, can maintain their
+states on devices so that they can be shared by multiple processes.
+A resource container is a string name under which these stateful
+operations are tracked. These resources can be released or cleared
+with `tf.Session.reset()`.
+
+For example:
+
+```python
+with g.container('experiment0'):
+  # All stateful Operations constructed in this context will be placed
+  # in resource container "experiment0".
+  v1 = tf.Variable([1.0])
+  v2 = tf.Variable([2.0])
+  with g.container("experiment1"):
+    # All stateful Operations constructed in this context will be
+    # placed in resource container "experiment1".
+    v3 = tf.Variable([3.0])
+    q1 = tf.FIFOQueue(10, tf.float32)
+  # All stateful Operations constructed in this context will be
+  # be created in the "experiment0".
+  v4 = tf.Variable([4.0])
+  q1 = tf.FIFOQueue(20, tf.float32)
+  with g.container(""):
+    # All stateful Operations constructed in this context will be
+    # be placed in the default resource container.
+    v5 = tf.Variable([5.0])
+    q3 = tf.FIFOQueue(30, tf.float32)
+
+# Resets container "experiment0", after which the state of v1, v2, v4, q1
+# will become undefined (such as unitialized).
+tf.Session.reset(target, ["experiment0"])
+```
+
+##### Args:
+
+
+*  <b>`container_name`</b>: container name string.
+
+##### Returns:
+
+  A context manager for defining resource containers for stateful ops,
+    yields the container name.
+
+
+- - -
+
 #### `tf.Graph.get_all_collection_keys()` {#Graph.get_all_collection_keys}
 
 Returns a list of collections used in this graph.
@@ -776,8 +838,22 @@ Returns `True` if and only if `tensor` is feedable.
 
 - - -
 
+#### `tf.Graph.is_fetchable(tensor_or_op)` {#Graph.is_fetchable}
+
+Returns `True` if and only if `tensor_or_op` is fetchable.
+
+
+- - -
+
 #### `tf.Graph.prevent_feeding(tensor)` {#Graph.prevent_feeding}
 
 Marks the given `tensor` as unfeedable in this graph.
+
+
+- - -
+
+#### `tf.Graph.prevent_fetching(op)` {#Graph.prevent_fetching}
+
+Marks the given `op` as unfetchable in this graph.
 
 

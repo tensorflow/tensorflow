@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,9 +70,6 @@ fi
 
 # Optional arguments - environment variables. For example:
 # CI_DOCKER_EXTRA_PARAMS='-it --rm' CI_COMMAND_PREFIX='' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
-if [[ "${CI_DOCKER_EXTRA_PARAMS}" != *"--rm"* ]]; then
-  CI_DOCKER_EXTRA_PARAMS="--rm ${CI_DOCKER_EXTRA_PARAMS}"
-fi
 CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
 "${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
@@ -119,7 +116,7 @@ DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | sed -e 's/=/_/g' -e 's/,/-/g')
 DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
-echo "WORKSAPCE: ${WORKSPACE}"
+echo "WORKSPACE: ${WORKSPACE}"
 echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[@]}"
 echo "COMMAND: ${COMMAND[@]}"
 echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[@]}"
@@ -142,7 +139,10 @@ fi
 # Run the command inside the container.
 echo "Running '${COMMAND[@]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
-docker run \
+# By default we cleanup - remove the container once it finish running (--rm)
+# and share the PID namespace (--pid=host) so the process inside does not have
+# pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
+docker run --rm --pid=host \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=$(id -u --name)" \

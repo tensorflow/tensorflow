@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,8 @@ def as_bytes(bytes_or_text):
   elif isinstance(bytes_or_text, bytes):
     return bytes_or_text
   else:
-    raise TypeError('Expected binary or unicode string, got %r' % bytes_or_text)
+    raise TypeError('Expected binary or unicode string, got %r' %
+                    (bytes_or_text,))
 
 
 def as_text(bytes_or_text):

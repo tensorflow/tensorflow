@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -708,14 +708,21 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
-    : function_defs_(other.function_defs_), func_grad_(other.func_grad_) {}
+    : default_registry_(other.default_registry_), func_grad_(other.func_grad_) {
+  for (const auto& it : other.function_defs_) {
+    TF_CHECK_OK(AddFunctionDef(it.second->fdef));
+  }
+}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
+    const OpRegistryInterface* default_registry,
     const FunctionDefLibrary& def_lib)
-    : function_defs_(def_lib.function_size()) {
+    : default_registry_(default_registry),
+      function_defs_(def_lib.function_size()) {
   for (const auto& fdef : def_lib.function()) {
     // The latter function definition wins.
-    function_defs_[fdef.signature().name()] = fdef;
+    auto& ptr = function_defs_[fdef.signature().name()];
+    ptr.reset(new FunctionDefAndOpRegistration(fdef));
   }
   for (const auto& grad : def_lib.gradient()) {
     func_grad_[grad.function_name()] = grad.gradient_func();
@@ -729,16 +736,18 @@ const FunctionDef* FunctionLibraryDefinition::Find(const string& name) const {
   if (iter == function_defs_.end()) {
     return nullptr;
   } else {
-    return &iter->second;
+    return &iter->second->fdef;
   }
 }
 
 Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
-  if (!function_defs_.insert({fdef.signature().name(), fdef}).second) {
+  auto& ptr = function_defs_[fdef.signature().name()];
+  if (ptr != nullptr) {
     return errors::InvalidArgument("Function with name: ",
                                    fdef.signature().name(),
                                    " already exists in function library.");
   }
+  ptr.reset(new FunctionDefAndOpRegistration(fdef));
   return Status::OK();
 }
 
@@ -746,19 +755,20 @@ string FunctionLibraryDefinition::FindGradient(const string& func) const {
   return gtl::FindWithDefault(func_grad_, func, "");
 }
 
-const OpDef* FunctionLibraryDefinition::LookUp(const string& op,
-                                               Status* status) const {
-  auto fdef = Find(op);
-  if (fdef != nullptr) {
-    return &(fdef->signature());
+Status FunctionLibraryDefinition::LookUp(
+    const string& op, const OpRegistrationData** op_reg_data) const {
+  auto iter = function_defs_.find(op);
+  if (iter != function_defs_.end()) {
+    *op_reg_data = &iter->second->op_registration_data;
+    return Status::OK();
   }
-  return OpRegistry::Global()->LookUp(op, status);
+  return default_registry_->LookUp(op, op_reg_data);
 }
 
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
   for (const auto& f : function_defs_) {
-    *lib.add_function() = f.second;
+    *lib.add_function() = f.second->fdef;
   }
   for (const auto& g : func_grad_) {
     GradientDef* gd = lib.add_gradient();
@@ -845,7 +855,10 @@ FunctionDef FunctionDefHelper::Define(const string& name,
   for (const auto& a : arg_def) b.Input(a);
   for (const auto& r : ret_def) b.Output(r);
   for (const auto& a : attr_def) b.Attr(a);
-  TF_CHECK_OK(b.Finalize(fdef.mutable_signature()));
+
+  OpRegistrationData op_reg_data;
+  TF_CHECK_OK(b.Finalize(&op_reg_data));
+  fdef.mutable_signature()->Swap(&op_reg_data.op_def);
   for (const auto& n : node_def) {
     *(fdef.add_node()) = n.ToProto();
   }

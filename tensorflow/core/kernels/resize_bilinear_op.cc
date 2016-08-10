@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -159,15 +159,12 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
-REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        ResizeBilinearOpGrad<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("ResizeBilinearGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<Eigen::half>("T"),
-                        ResizeBilinearOpGrad<CPUDevice, Eigen::half>);
-REGISTER_KERNEL_BUILDER(
-    Name("ResizeBilinearGrad").Device(DEVICE_CPU).TypeConstraint<double>("T"),
-    ResizeBilinearOpGrad<CPUDevice, double>);
+#define REGISTER_CPU_GRAD_KERNEL(T)                                         \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("ResizeBilinearGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      ResizeBilinearOpGrad<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_GRAD_KERNEL);
+TF_CALL_float(REGISTER_CPU_GRAD_KERNEL);
+TF_CALL_double(REGISTER_CPU_GRAD_KERNEL);
+
 }  // namespace tensorflow

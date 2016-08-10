@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
  public:
   virtual ~CudnnScratchAllocator() {}
   CudnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
-      : memory_limit_(memory_limit), context_(context) {}
+      : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   virtual int64 GetMemoryLimitInBytes(
       perftools::gputools::Stream* stream) override {
     return memory_limit_;
@@ -56,7 +56,10 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
       perftools::gputools::DeviceMemory<uint8>>
   AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
-
+    if (byte_size > memory_limit_) {
+      return perftools::gputools::port::StatusOr<
+          perftools::gputools::DeviceMemory<uint8>>();
+    }
     AllocationAttributes allocation_attr;
     allocation_attr.no_retry_on_failure = true;
     Status allocation_status(context_->allocate_temp(
@@ -69,14 +72,17 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
+    total_byte_size_ += byte_size;
     return perftools::gputools::port::StatusOr<
         perftools::gputools::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
+  int64 TotalByteSize() { return total_byte_size_; }
 
  private:
   int64 memory_limit_;
+  int64 total_byte_size_;
   OpKernelContext* context_;
   std::vector<Tensor> allocated_tensors_;
 };
@@ -120,48 +126,42 @@ struct ConvParameters {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// A helper class that looks up algorithm from conv-parameters. It is heavily
-// biased toward the last-seen parameter.
-template <>
-class ConvAlgorithmMap<GPUDevice> {
+// A helper class that looks up the best autotuned config from parameters. It
+// is heavily biased toward the last-seen parameters.
+template <typename Parameters, typename Config>
+class AutoTuneMap {
  public:
-  typedef perftools::gputools::dnn::AlgorithmType AlgorithmType;
-
-  ConvAlgorithmMap() {}
-
-  bool Find(const ConvParameters& parameters, AlgorithmType* algorithm) const {
+  AutoTuneMap() {}
+  bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
-    if (algorithm_map_.empty()) {
+    if (params_config_map_.empty()) {
       return false;
     }
-    if (parameters != last_conv_parameters_) {
-      auto iter = algorithm_map_.find(parameters);
-      if (iter == algorithm_map_.end()) {
+    if (params != last_params_) {
+      auto iter = params_config_map_.find(params);
+      if (iter == params_config_map_.end()) {
         return false;
       }
-      last_conv_parameters_ = parameters;
-      last_algorithm_ = iter->second;
+      last_params_ = params;
+      last_config_ = iter->second;
     }
-    *algorithm = last_algorithm_;
+    *config = last_config_;
     return true;
   }
-
-  void Insert(const ConvParameters& parameters, AlgorithmType algorithm) {
+  void Insert(const ConvParameters& params, const Config& config) {
     mutex_lock lock(mu_);
-    last_conv_parameters_ = parameters;
-    last_algorithm_ = algorithm;
-    algorithm_map_[parameters] = algorithm;
+    last_params_ = params;
+    last_config_ = config;
+    params_config_map_[params] = config;
   }
 
  private:
-  AlgorithmType FindAlgorithm(const ConvParameters& parameters);
-
   mutable mutex mu_;
-  std::map<ConvParameters, AlgorithmType> algorithm_map_ GUARDED_BY(mu_);
-  mutable ConvParameters last_conv_parameters_ GUARDED_BY(mu_);
-  mutable AlgorithmType last_algorithm_ GUARDED_BY(mu_);
+  std::map<Parameters, Config> params_config_map_ GUARDED_BY(mu_);
+  mutable Parameters last_params_ GUARDED_BY(mu_);
+  mutable Config last_config_ GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvAlgorithmMap);
+  TF_DISALLOW_COPY_AND_ASSIGN(AutoTuneMap);
 };
 
 }  // namespace tensorflow

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 # Usage:
 #   create_tf_cluster.sh <num_workers> <num_parameter_servers>
 #
-# In addition, this script obeys values in the folllowing environment variables:
+# In addition, this script obeys values in the following environment variables:
 #   TF_DIST_LOCAL_CLUSTER:        create TensorFlow cluster on local machine
 #   TF_DIST_SERVER_DOCKER_IMAGE:  overrides the default docker image to launch
 #                                 TensorFlow (GRPC) servers with

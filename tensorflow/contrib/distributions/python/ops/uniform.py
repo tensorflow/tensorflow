@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,25 +18,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.distribution import ContinuousDistribution  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-class Uniform(ContinuousDistribution):
+class Uniform(distribution.Distribution):
   """Uniform distribution with `a` and `b` parameters.
 
   The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
   """
 
-  def __init__(self, a=0.0, b=1.0, name="Uniform"):
+  def __init__(self,
+               a=0.0,
+               b=1.0,
+               validate_args=True,
+               allow_nan_stats=False,
+               name="Uniform"):
     """Construct Uniform distributions with `a` and `b`.
 
     The parameters `a` and `b` must be shaped in a way that supports
@@ -61,20 +67,27 @@ class Uniform(ContinuousDistribution):
     ```
 
     Args:
-      a: `float` or `double` tensor, the minimum endpoint.
-      b: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
+      a: Floating point tensor, the minimum endpoint.
+      b: Floating point tensor, the maximum endpoint. Must be > `a`.
+      validate_args: Whether to assert that `a > b`. If `validate_args` is
+        `False` and inputs are invalid, correct behavior is not guaranteed.
+      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+        batch member.  If `True`, batch members with valid parameters leading to
+        undefined statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Raises:
-      InvalidArgumentError: if `a >= b`.
+      InvalidArgumentError: if `a >= b` and `validate_args=True`.
     """
+    self._allow_nan_stats = allow_nan_stats
+    self._validate_args = validate_args
     with ops.op_scope([a, b], name):
-      with ops.control_dependencies([check_ops.assert_less(a, b)]):
-        a = ops.convert_to_tensor(a, name="a")
-        b = ops.convert_to_tensor(b, name="b")
-        if a.dtype != b.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
-                          (a.dtype, b.dtype))
+      with ops.control_dependencies([check_ops.assert_less(
+          a, b, message="uniform not defined when a > b.")] if validate_args
+                                    else []):
+        a = array_ops.identity(a, name="a")
+        b = array_ops.identity(b, name="b")
 
     self._a = a
     self._b = b
@@ -83,6 +96,16 @@ class Uniform(ContinuousDistribution):
     self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((a, b))
+
+  @property
+  def allow_nan_stats(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._allow_nan_stats
+
+  @property
+  def validate_args(self):
+    """Boolean describing behavior on invalid input."""
+    return self._validate_args
 
   @property
   def name(self):
@@ -94,14 +117,16 @@ class Uniform(ContinuousDistribution):
 
   def batch_shape(self, name="batch_shape"):
     with ops.name_scope(self.name):
-      return array_ops.shape(self._ones(), name=name)
+      with ops.op_scope([], name):
+        return array_ops.shape(self._ones())
 
   def get_batch_shape(self):
     return self._batch_shape
 
   def event_shape(self, name="event_shape"):
     with ops.name_scope(self.name):
-      return constant_op.constant(1, name=name)
+      with ops.op_scope([], name):
+        return constant_op.constant([], dtype=dtypes.int32)
 
   def get_event_shape(self):
     return self._event_shape
@@ -114,7 +139,7 @@ class Uniform(ContinuousDistribution):
   def b(self):
     return self._b
 
-  def pdf(self, x, name="pdf"):
+  def prob(self, x, name="prob"):
     """The PDF of observations in `x` under these Uniform distribution(s).
 
     Args:
@@ -122,11 +147,11 @@ class Uniform(ContinuousDistribution):
       name: The name to give this op.
 
     Returns:
-      pdf: tensor of dtype `dtype`, the pdf values of `x`. If `x` is `nan`, will
-          return `nan`.
+      prob: tensor of dtype `dtype`, the prob values of `x`. If `x` is `nan`,
+          will return `nan`.
     """
-    with ops.op_scope([self.a, self.b, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.a, self.b, x], name):
         x = ops.convert_to_tensor(x, name="x")
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
@@ -138,10 +163,10 @@ class Uniform(ContinuousDistribution):
                 math_ops.logical_or(broadcasted_x < self.a,
                                     broadcasted_x > self.b),
                 array_ops.zeros_like(broadcasted_x),
-                (1.0 / self.range) * array_ops.ones_like(broadcasted_x)))
+                (1.0 / self.range()) * array_ops.ones_like(broadcasted_x)))
 
-  def log_pdf(self, x, name="log_pdf"):
-    return super(Uniform, self).log_pdf(x, name)
+  def log_prob(self, x, name="log_prob"):
+    return super(Uniform, self).log_prob(x, name)
 
   def cdf(self, x, name="cdf"):
     """CDF of observations in `x` under these Uniform distribution(s).
@@ -154,24 +179,23 @@ class Uniform(ContinuousDistribution):
       cdf: tensor of dtype `dtype`, the CDFs of `x`. If `x` is `nan`, will
           return `nan`.
     """
-    with ops.op_scope([self.a, self.b, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.a, self.b, x], name):
         x = ops.convert_to_tensor(x, name="x")
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
                           (x.dtype, self.dtype))
 
-    broadcasted_x = x * self._ones()
-    return math_ops.select(broadcasted_x < self.a,
-                           array_ops.zeros_like(broadcasted_x),
-                           math_ops.select(broadcasted_x >= self.b,
-                                           array_ops.ones_like(broadcasted_x),
-                                           (broadcasted_x - self.a) /
-                                           self.range))
+        broadcasted_x = x * self._ones()
+        zeros = array_ops.zeros_like(x + self.a + self.b, dtype=self.dtype)
+        ones = array_ops.ones_like(x + self.a + self.b, dtype=self.dtype)
+        result_if_not_big = math_ops.select(
+            x < self.a, zeros, (broadcasted_x - self.a) / self.range())
+        return math_ops.select(x >= self.b, ones, result_if_not_big)
 
   def log_cdf(self, x, name="log_cdf"):
-    with ops.op_scope([self.a, self.b, x], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.a, self.b, x], name):
         x = ops.convert_to_tensor(x, name="x")
         return math_ops.log(self.cdf(x))
 
@@ -184,11 +208,11 @@ class Uniform(ContinuousDistribution):
     Returns:
       entropy: tensor of dtype `dtype`, the entropy.
     """
-    with ops.op_scope([self.a, self.b], self.name):
-      with ops.name_scope(name):
-        return math_ops.log(self.range)
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.a, self.b, self.range()], name):
+        return math_ops.log(self.range())
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Uniform Distributions.
 
     Args:
@@ -200,12 +224,12 @@ class Uniform(ContinuousDistribution):
       samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
           with values of type `self.dtype`.
     """
-    with ops.op_scope([self.a, self.b, n], self.name):
-      with ops.name_scope(name):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.a, self.b, n], name):
         n = ops.convert_to_tensor(n, name="n")
         n_val = tensor_util.constant_value(n)
 
-        shape = array_ops.concat(0, [array_ops.pack([n]), self.batch_shape()])
+        shape = array_ops.concat(0, ([n], self.batch_shape()))
         samples = random_ops.random_uniform(shape=shape,
                                             dtype=self.dtype,
                                             seed=seed)
@@ -216,20 +240,28 @@ class Uniform(ContinuousDistribution):
         samples.set_shape(inferred_shape)
 
         return (array_ops.expand_dims(self.a, 0) + array_ops.expand_dims(
-            self.range, 0) * samples)
+            self.range(), 0) * samples)
 
-  @property
-  def mean(self):
-    return (self.a + self.b) / 2
+  def mean(self, name="mean"):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self._a, self._b], name):
+        return (self.a + self.b) / 2
 
-  @property
-  def variance(self):
-    return math_ops.square(self.range) / 12
+  def variance(self, name="variance"):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.range()], name):
+        return math_ops.square(self.range()) / 12.
 
-  @property
-  def range(self):
+  def std(self, name="std"):
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.range()], name):
+        return self.range() / math_ops.sqrt(12.)
+
+  def range(self, name="range"):
     """`b - a`."""
-    return self.b - self.a
+    with ops.name_scope(self.name):
+      with ops.op_scope([self.a, self.b], name):
+        return self.b - self.a
 
   @property
   def is_reparameterized(self):
@@ -242,3 +274,7 @@ class Uniform(ContinuousDistribution):
 
   def _zeros(self):
     return array_ops.zeros_like(self.a + self.b)
+
+  @property
+  def is_continuous(self):
+    return True

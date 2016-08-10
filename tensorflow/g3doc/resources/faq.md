@@ -147,7 +147,7 @@ graphs and running steps; we also have an experimental API for
 
 We would like to support more client languages, as determined by community
 interest. TensorFlow has a
-[C-based client API](https://www.tensorflow.org/code/tensorflow/core/public/tensor_c_api.h)
+[C-based client API](https://www.tensorflow.org/code/tensorflow/c/c_api.h)
 that makes it easy to build a client in many different languages. We invite
 contributions of new language bindings.
 

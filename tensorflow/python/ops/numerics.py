@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Connects all float and double tensors to CheckNumericsOp."""
+"""Connects all half, float and double tensors to CheckNumericsOp."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -47,10 +47,10 @@ def verify_tensor_all_finite(t, msg, name=None):
 def add_check_numerics_ops():
   """Connect a `check_numerics` to every floating point tensor.
 
-  `check_numerics` operations themselves are added for each `float` or `double`
-  tensor in the graph. For all ops in the graph, the `check_numerics` op for
-  all of its (`float` or `double`) inputs is guaranteed to run before the
-  `check_numerics` op on any of its outputs.
+  `check_numerics` operations themselves are added for each `half`, `float`,
+  or `double` tensor in the graph. For all ops in the graph, the
+  `check_numerics` op for all of its (`half`, `float`, or `double`) inputs
+  is guaranteed to run before the `check_numerics` op on any of its outputs.
 
   Returns:
     A `group` op depending on all `check_numerics` ops added.

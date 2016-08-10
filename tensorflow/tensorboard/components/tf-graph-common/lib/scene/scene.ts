@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -172,19 +172,24 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
  *
  * @param container
  * @param tagName tag name.
- * @param className (optional) Class name.
+ * @param className (optional) Class name or a list of class names.
  * @param before (optional) reference DOM node for insertion.
  * @return selection of the element
  */
-export function selectOrCreateChild(container, tagName: string,
-    className?: string, before?) {
+export function selectOrCreateChild(
+    container, tagName: string, className?: string | string[], before?) {
   let child = selectChild(container, tagName, className);
   if (!child.empty()) {
     return child;
   }
   let newElement =
       document.createElementNS('http://www.w3.org/2000/svg', tagName);
-  if (className) {
+
+  if (className instanceof Array) {
+    for (let i = 0; i < className.length; i++) {
+      newElement.classList.add(className[i]);
+    }
+  } else {
     newElement.classList.add(className);
   }
 
@@ -205,17 +210,27 @@ export function selectOrCreateChild(container, tagName: string,
  *
  * @param container
  * @param tagName tag name.
- * @param className (optional) Class name.
+ * @param className (optional) Class name or list of class names.
  * @return selection of the element, or an empty selection
  */
-export function selectChild(container, tagName: string, className?: string) {
+export function selectChild(
+    container, tagName: string, className?: string | string[]) {
   let children = container.node().childNodes;
   for (let i = 0; i < children.length; i++) {
     let child = children[i];
-    if (child.tagName === tagName &&
-        (!className || child.classList.contains(className))
-          ) {
-      return d3.select(child);
+    if (child.tagName === tagName) {
+      if (className instanceof Array) {
+        let hasAllClasses = true;
+        for (let j = 0; j < className.length; j++) {
+          hasAllClasses =
+              hasAllClasses && child.classList.contains(className[j]);
+        }
+        if (hasAllClasses) {
+          return d3.select(child);
+        }
+      } else if ((!className || child.classList.contains(className))) {
+        return d3.select(child);
+      }
     }
   }
   return d3.select(null);

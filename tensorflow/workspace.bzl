@@ -4,10 +4,17 @@
 # within the workspace (e.g. "tensorflow/"), and tf_repo_name is the name of the
 # local_repository rule (e.g. "@tf").
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+
+  # These lines need to be changed when updating Eigen. They are parsed from
+  # this file by the cmake and make builds to determine the eigen version and hash.
+  eigen_version = "b4fa9622b809"
+  eigen_sha256 = "2862840c2de9c0473a4ef20f8678949ae89ab25965352ee53329e63ba46cec62"
+
   native.new_http_archive(
     name = "eigen_archive",
-    url = "https://bitbucket.org/eigen/eigen/get/f3a13643ac1f.tar.gz",
-    sha256 = "a9266e60366cddb371a23d86b11a297eee86372a89ef4b38a3509012f9cc37ec",
+    url = "https://bitbucket.org/eigen/eigen/get/" + eigen_version + ".tar.gz",
+    sha256 = eigen_sha256,
+    strip_prefix = "eigen-eigen-" + eigen_version,
     build_file = path_prefix + "eigen.BUILD",
   )
 
@@ -20,7 +27,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.git_repository(
     name = "gemmlowp",
     remote = "https://github.com/google/gemmlowp.git",
-    commit = "96d3acab46fbb03855ca22c2ee2bb9831ac8c83c",
+    commit = "8b20dd2ce142115857220bd6a35e8a081b3e0829",
   )
 
   native.new_http_archive(
@@ -57,6 +64,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
+    name = "gif_archive",
+    url = "http://ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
+    sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
+    build_file = path_prefix + "gif.BUILD",
+  )
+
+  native.new_http_archive(
     name = "six_archive",
     url = "https://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz#md5=34eed507548117b2ab523ab14b2f8b55",
     sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
@@ -76,7 +90,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "gmock_archive",
-    url = "https://archive.openswitch.net/gmock-1.7.0.zip",
+    url = "http://pkgs.fedoraproject.org/repo/pkgs/gmock/gmock-1.7.0.zip/073b984d8798ea1594f5e44d85b20d66/gmock-1.7.0.zip",
     sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
     build_file = path_prefix + "gmock.BUILD",
   )
@@ -92,8 +106,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.bind(
-      name = "python_headers",
-      actual = tf_repo_name + "//util/python:python_headers",
+    name = "python_headers",
+    actual = tf_repo_name + "//util/python:python_headers",
   )
 
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
@@ -108,11 +122,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@protobuf//:protoc_lib",
   )
 
-  native.git_repository(
+  native.new_git_repository(
     name = "grpc",
-    commit = "2bc7d80",
+    commit = "39650266",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
+    build_file = path_prefix + "grpc.BUILD",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
@@ -139,11 +154,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  native.new_git_repository(
+  native.git_repository(
     name = "boringssl_git",
-    commit = "e72df93461c6d9d2b5698f10e16d3ab82f5adde3",
-    remote = "https://boringssl.googlesource.com/boringssl",
-    build_file = path_prefix + "boringssl.BUILD",
+    remote = "https://github.com/google/boringssl.git",
+    commit = "bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",  # 2016-07-11
+  )
+
+  native.new_git_repository(
+    name = "nanopb_git",
+    commit = "1251fa1",
+    remote = "https://github.com/nanopb/nanopb.git",
+    build_file = path_prefix + "nanopb.BUILD",
+  )
+
+  native.bind(
+    name = "nanopb",
+    actual = "@nanopb_git//:nanopb",
   )
 
   native.new_http_archive(
@@ -173,4 +199,3 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
     build_file = path_prefix + "zlib.BUILD",
   )
-

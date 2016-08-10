@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ from tensorflow.python.platform import tf_logging as logging
 __all__ = ['add_model_variable',
            'assert_global_step',
            'assert_or_get_global_step',
+           'assign_from_checkpoint',
+           'assign_from_values',
            'create_global_step',
            'get_global_step',
            'get_or_create_global_step',
@@ -227,10 +229,6 @@ def variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                                        collections=collections,
                                        caching_device=caching_device)
 
-# TODO(sguada) move it to ops.GraphKeys or to contrib.framework.GraphKeys
-# Collection containing all the variables created using model_variables.
-MODEL_VARIABLES = '_model_variables_'
-
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
@@ -249,8 +247,8 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     collections: A list of collection names to which the Variable will be added.
-      Note that the variable is always also added to the tf.GraphKeys.VARIABLES
-      and MODEL_VARIABLES collections.
+      Note that the variable is always also added to the `GraphKeys.VARIABLES`
+      and `GraphKeys.MODEL_VARIABLES` collections.
     caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.
@@ -261,9 +259,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
     The created or existing variable.
   """
   collections = list(collections or [])
-
-  # Make sure variables are added to tf.GraphKeys.VARIABLES and MODEL_VARIABLES
-  collections += [ops.GraphKeys.VARIABLES, MODEL_VARIABLES]
+  collections += [ops.GraphKeys.VARIABLES, ops.GraphKeys.MODEL_VARIABLES]
   return variable(name, shape=shape, dtype=dtype,
                   initializer=initializer, regularizer=regularizer,
                   trainable=trainable, collections=collections,
@@ -271,13 +267,13 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
 
 
 def add_model_variable(var):
-  """Adds a variable to the MODEL_VARIABLES collection.
+  """Adds a variable to the `GraphKeys.MODEL_VARIABLES` collection.
 
   Args:
     var: a variable.
   """
-  if var not in ops.get_collection(MODEL_VARIABLES):
-    ops.add_to_collection(MODEL_VARIABLES, var)
+  if var not in ops.get_collection(ops.GraphKeys.MODEL_VARIABLES):
+    ops.add_to_collection(ops.GraphKeys.MODEL_VARIABLES, var)
 
 
 def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
@@ -308,7 +304,7 @@ def get_model_variables(scope=None, suffix=None):
   Returns:
     a list of variables in colelction with scope and suffix.
   """
-  return get_variables(scope, suffix, MODEL_VARIABLES)
+  return get_variables(scope, suffix, ops.GraphKeys.MODEL_VARIABLES)
 
 
 def get_local_variables(scope=None, suffix=None):
@@ -520,6 +516,7 @@ class VariableDeviceChooser(object):
 
   def __init__(self,
                num_tasks=0,
+               job_name='ps',
                device_type='CPU',
                device_index=0):
     """Initialize VariableDeviceChooser.
@@ -534,22 +531,23 @@ class VariableDeviceChooser(object):
 
     Args:
       num_tasks: number of tasks.
+      job_name: String, a name for the parameter server job.
       device_type: Optional device type string (e.g. "CPU" or "GPU")
       device_index: int.  Optional device index.  If left
         unspecified, device represents 'any' device_index.
     """
-    self._job_name = 'ps' if num_tasks > 0 else None
+    self._job_name = job_name
     self._device_type = device_type
     self._device_index = device_index
     self._num_tasks = num_tasks
     self._next_task_id = 0
 
   def __call__(self, op):
-    device_spec = tf_device.DeviceSpec(job=self._job_name,
-                                       device_type=self._device_type,
+    device_spec = tf_device.DeviceSpec(device_type=self._device_type,
                                        device_index=self._device_index)
     if self._num_tasks > 0:
       task_id = self._next_task_id
       self._next_task_id = (self._next_task_id + 1) % self._num_tasks
+      device_spec.job = self._job_name
       device_spec.task = task_id
     return device_spec.to_string()

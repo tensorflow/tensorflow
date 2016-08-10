@@ -19,9 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
-from tensorflow.contrib import ctc
+from tensorflow.contrib import bayesflow
+from tensorflow.contrib import copy_graph
 from tensorflow.contrib import distributions
+from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
+from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
@@ -32,8 +35,7 @@ from tensorflow.contrib import metrics
 from tensorflow.contrib import opt
 from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
-from tensorflow.contrib import skflow
+from tensorflow.contrib import slim
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import testing
 from tensorflow.contrib import util
-from tensorflow.contrib import copy_graph

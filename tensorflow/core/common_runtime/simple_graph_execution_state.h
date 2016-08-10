@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-class SessionOptions;
+struct SessionOptions;
 class StepStats;
 class Timeline;
 
@@ -47,8 +47,12 @@ struct SimpleGraphExecutionStateOptions {
 // A SimpleClientGraph is simply a sub-graph of the full graph as induced by
 // BuildGraphOptions.
 struct SimpleClientGraph {
+  explicit SimpleClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib)
+      : flib_def(std::move(flib)), graph(flib_def.get()) {}
+  // Each client-graph gets its own function library since optimization passes
+  // post rewrite for execution might want to introduce new functions.
+  std::unique_ptr<FunctionLibraryDefinition> flib_def;
   Graph graph;
-  explicit SimpleClientGraph(const OpRegistryInterface* ops) : graph(ops) {}
   int32 placement_version;
 };
 
@@ -78,7 +82,7 @@ struct SimpleClientGraph {
 
 class SimpleGraphExecutionState {
  public:
-  SimpleGraphExecutionState(const OpRegistryInterface* ops,
+  SimpleGraphExecutionState(const FunctionDefLibrary& func_def_lib,
                             const SimpleGraphExecutionStateOptions& options);
 
   virtual ~SimpleGraphExecutionState();
@@ -100,13 +104,14 @@ class SimpleGraphExecutionState {
   // in *this, but currently does not transfer any other placement
   // or cost model information to the new graph.
   Status Extend(const GraphDef& extension_def,
-                SimpleGraphExecutionState** out) const;
+                std::unique_ptr<SimpleGraphExecutionState>* out) const;
 
   // Builds a SimpleClientGraph (a sub-graph of the full graph as induced by
   // the Node set specified in "options").  If successful, returns OK
   // and the caller takes the ownership of "*out". Otherwise, returns
   // an error.
-  Status BuildGraph(const BuildGraphOptions& options, SimpleClientGraph** out);
+  Status BuildGraph(const BuildGraphOptions& options,
+                    std::unique_ptr<SimpleClientGraph>* out);
 
   // Returns OK if the named node is found in the placed full graph owned
   // by this execution_state, and sets *out to the NodeDef for that node.
@@ -153,10 +158,13 @@ class SimpleGraphExecutionState {
   void SaveStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void RestoreStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  const OpRegistryInterface* const ops_;   // Not owned
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
+
+  // 'flib_def_' is initialized from the initial graph def's library,
+  // and may be updated by a graph optimization pass.
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
   // The dataflow graph owned by this object.
   Graph* graph_ GUARDED_BY(mu_);

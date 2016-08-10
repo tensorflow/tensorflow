@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
@@ -56,6 +56,10 @@ class RMSPropOptimizer(optimizer.Optimizer):
                use_locking=False,
                name="RMSProp"):
     """Construct a new RMSProp optimizer.
+
+    Note that in dense implement of this algorithm, m_t and v_t will 
+    update even if g is zero, but in sparse implement, m_t and v_t 
+    will not update in iterations g is zero.
 
     Args:
       learning_rate: A Tensor or a floating point value.  The learning rate.
@@ -105,4 +109,14 @@ class RMSPropOptimizer(optimizer.Optimizer):
         grad, use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
-    raise NotImplementedError()
+    rms = self.get_slot(var, "rms")
+    mom = self.get_slot(var, "momentum")
+    return training_ops.sparse_apply_rms_prop(
+        var, rms, mom,
+        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+        math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
+        grad.values,
+        grad.indices,
+        use_locking=self._use_locking)

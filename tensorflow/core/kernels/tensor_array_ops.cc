@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -147,14 +147,19 @@ class TensorArrayOp : public TensorArrayCreationOp {
     const int32 size = tensor_size->scalar<int32>()();
 
     auto handle = tensor_array_output_handle->flat<string>();
+    string unique_tensor_array_name =
+        strings::StrCat(tensor_array_name_, "_",
+                        TensorArray::tensor_array_counter.fetch_add(1));
     handle(0) = "_tensor_arrays";
-    handle(1) = tensor_array_name_;
+    handle(1) = unique_tensor_array_name;
 
     TensorArray* tensor_array = new TensorArray(
         dtype_, *tensor_array_output_handle, size, dynamic_size_,
-        false /* multiple_writes_aggregate */, clear_after_read_);
+        false /* multiple_writes_aggregate */, false /* is_grad */,
+        -1 /* marked_size */, clear_after_read_);
 
-    TF_RETURN_IF_ERROR(rm->Create(handle(0), tensor_array_name_, tensor_array));
+    TF_RETURN_IF_ERROR(
+        rm->Create(handle(0), unique_tensor_array_name, tensor_array));
 
     *output_tensor_array = tensor_array;
 
@@ -216,14 +221,17 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
-    int32 array_size;
     TF_RETURN_IF_ERROR(rm->Lookup(container, tensor_array_name, &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
     // Once gradients are being calculated, the forward TensorArray
     // may no longer be resized by new Writes.
     tensor_array->DisableDynamicSize();
+
+    int32 array_size;
+    int32 marked_size;
     TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
+    TF_RETURN_IF_ERROR(tensor_array->MarkedSize(&marked_size));
 
     if (!tensor_array->GradientsAllowed()) {
       return errors::InvalidArgument(
@@ -233,11 +241,12 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           "writes are performed to the same index.");
     }
 
-    auto creator = [this, tensor_array, array_size,
+    auto creator = [this, tensor_array, array_size, marked_size,
                     tensor_array_output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           tensor_array->ElemType(), *tensor_array_output_handle, array_size,
           false /* dynamic_size */, true /* multiple_writes_aggregate */,
+          true /* is_grad */, marked_size /* marked_size */,
           true /* close_after_read */);
       TF_RETURN_IF_ERROR((*ret)->CopyShapesFrom(tensor_array));
       return Status::OK();
@@ -411,6 +420,7 @@ class TensorArrayPackOp : public OpKernel {
   explicit TensorArrayPackOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttr("element_shape", &element_shape_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -421,27 +431,46 @@ class TensorArrayPackOp : public OpKernel {
 
     core::ScopedUnref unref(tensor_array);
     int32 array_size;
-    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
+    OP_REQUIRES_OK(ctx, tensor_array->PackOrConcatSize(&array_size));
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
         errors::InvalidArgument(
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
 
-    // Simplest case
+    // If there are no elements, return a zero-element Tensor with
+    // shape [0] + element_shape_
     if (array_size == 0) {
-      Tensor empty(dtype_, TensorShape({}));
-      ctx->set_output(0, empty);
+      OP_REQUIRES(ctx, element_shape_.IsFullyDefined(),
+                  errors::Unimplemented(
+                      "TensorArray has size zero, but element shape ",
+                      element_shape_.DebugString(),
+                      " is not fully defined. "
+                      "Currently only static shapes are supported when packing "
+                      "zero-size TensorArrays."));
+      TensorShape empty_shape;
+      element_shape_.AsTensorShape(&empty_shape);
+      empty_shape.InsertDim(0, 0);
+      Tensor* empty_unused;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &empty_unused));
       return;
     }
 
     // Read all the PersistentTensors into a vector to keep track of
     // their memory.
     std::vector<PersistentTensor> values;
-    Status s = tensor_array->ReadMany<Device, T>(ctx, &values);
+    Status s = tensor_array->ReadMany<Device, T>(ctx, &values, array_size);
     OP_REQUIRES_OK(ctx, s);
 
     const Tensor* value_0_t = values[0].AccessTensor(ctx);
+
+    OP_REQUIRES(
+        ctx, element_shape_.IsCompatibleWith(value_0_t->shape()),
+        errors::InvalidArgument("TensorArray was passed element_shape ",
+                                element_shape_.DebugString(),
+                                " which does not match the Tensor at index 0: ",
+                                value_0_t->shape().DebugString()));
+
     TensorShape output_shape(value_0_t->shape());
     output_shape.InsertDim(0, array_size);
 
@@ -486,6 +515,7 @@ class TensorArrayPackOp : public OpKernel {
 
  private:
   DataType dtype_;
+  PartialTensorShape element_shape_;
 };
 
 #define REGISTER_PACK(type)                                  \
@@ -540,6 +570,8 @@ class TensorArrayConcatOp : public OpKernel {
   explicit TensorArrayConcatOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttr("element_shape_except0",
+                                             &element_shape_except0_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -555,19 +587,32 @@ class TensorArrayConcatOp : public OpKernel {
             " but Op requested dtype ", DataTypeString(dtype_), "."));
 
     int32 array_size;
-    OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
+    OP_REQUIRES_OK(ctx, tensor_array->PackOrConcatSize(&array_size));
 
-    // Simplest case
+    // If there are no elements, return a zero-element Tensor with
+    // shape [0] + element_shape_except0_
     if (array_size == 0) {
-      Tensor empty(dtype_, TensorShape({}));
-      ctx->set_output(0, empty);
+      OP_REQUIRES(
+          ctx, element_shape_except0_.IsFullyDefined(),
+          errors::Unimplemented(
+              "TensorArray has size zero, but element_shape_except0 ",
+              element_shape_except0_.DebugString(),
+              " is not fully defined. "
+              "Currently only static shapes are supported when concatenating "
+              "zero-size TensorArrays."));
+      TensorShape empty_shape;
+      element_shape_except0_.AsTensorShape(&empty_shape);
+      empty_shape.InsertDim(0, 0);
+      Tensor* empty_unused;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &empty_unused));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, {0}, &empty_unused));
       return;
     }
 
     // Read all the PersistentTensors into a vector to keep track of
     // their memory.
     std::vector<PersistentTensor> values;
-    Status s = tensor_array->ReadMany<Device, T>(ctx, &values);
+    Status s = tensor_array->ReadMany<Device, T>(ctx, &values, array_size);
     OP_REQUIRES_OK(ctx, s);
 
     std::vector<const Tensor*> value_tensors;
@@ -598,6 +643,13 @@ class TensorArrayConcatOp : public OpKernel {
       if (i == 0) {
         output_shape = value_shape_t;
         output_shape_except0 = value_shape_t_except0;
+        OP_REQUIRES(
+            ctx, element_shape_except0_.IsCompatibleWith(output_shape_except0),
+            errors::InvalidArgument(
+                "TensorArray was passed element_shape_except0 ",
+                element_shape_except0_.DebugString(),
+                " but index 0 has (excepting dimension 0) shape: ",
+                value_shape_t_except0.DebugString(), " which does not match."));
       } else {
         OP_REQUIRES(ctx, output_shape_except0 == value_shape_t_except0,
                     errors::InvalidArgument(
@@ -646,6 +698,7 @@ class TensorArrayConcatOp : public OpKernel {
 
  private:
   DataType dtype_;
+  PartialTensorShape element_shape_except0_;
 };
 
 #define REGISTER_CONCAT(type)                                \
@@ -767,6 +820,9 @@ class TensorArrayUnpackOp : public OpKernel {
 
       write_values.push_back(persistent_tensor);
     }
+
+    // Record the pack size of the TensorArray.
+    OP_REQUIRES_OK(ctx, tensor_array->SetMarkedSize(array_size));
 
     Status s =
         tensor_array->WriteOrAggregateMany<Device, T>(ctx, &write_values);
@@ -907,6 +963,9 @@ class TensorArraySplitOp : public OpKernel {
 
       write_values.push_back(persistent_tensor);
     }
+
+    // Record the concat size of the TensorArray.
+    OP_REQUIRES_OK(ctx, tensor_array->SetMarkedSize(array_size));
 
     Status s =
         tensor_array->WriteOrAggregateMany<Device, T>(ctx, &write_values);

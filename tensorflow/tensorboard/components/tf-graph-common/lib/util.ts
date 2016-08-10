@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -192,5 +192,59 @@ module tf.graph.util {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Given a list of strings, it returns a new list of strings with the longest
+   * common prefix removed. If the common prefix is one of the strings in the
+   * list, it returns the original strings.
+   */
+  export function removeCommonPrefix(strings: string[]) {
+    if (strings.length < 2) {
+      return strings;
+    }
+
+    let index = 0;
+    let largestIndex = 0;
+    // Find the shortest name across all strings.
+    let minLength = _.min(_.map(strings, str => str.length));
+    while (true) {
+      index++;
+      let prefixes = _.map(strings, str => str.substring(0, index));
+      let allTheSame = prefixes.every((prefix, i) => {
+        return (i === 0 ? true : prefix === prefixes[i - 1]);
+      });
+      if (allTheSame) {
+        if (index >= minLength) {
+          // There is a string whose whole name is a prefix to other string.
+          // In this case, we return the original list of string.
+          return strings;
+        }
+        largestIndex = index;
+      } else {
+        break;
+      }
+    }
+    return _.map(strings, str => str.substring(largestIndex));
+  }
+
+  /**
+   * Given a queryString, aka ?foo=1&bar=2, return the object representation.
+   */
+  export function getQueryParams(queryString: string) {
+    if (queryString.charAt(0) === '?') {
+      queryString = queryString.slice(1);
+    }
+
+    let queryParams = _.chain(queryString.split('&'))
+                          .map((item) => {
+                            if (item) {
+                              return item.split('=');
+                            }
+                          })
+                          .compact()
+                          .value();
+
+    return _.object(queryParams);
   }
 }

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ TEST(LogisticLoss, ComputeDualLoss) {
               1e-3);
 }
 
-// TODO(sibyl-Aix6ihai): Add tests for dual update.
+// TODO(vgodet): Add tests for dual update.
 // TODO(sibyl-toe9oF2e): Add tests for squared loss.
 
 TEST(HingeLoss, ComputePrimalLoss) {
@@ -125,38 +125,38 @@ TEST(HingeLoss, ComputeUpdatedDual) {
   // weighted_example_norm=100.0, it turns out that the optimal value to update
   // the dual to is 0.507 which is within the permitted range and thus should be
   // the value returned.
-  EXPECT_NEAR(
-      0.507,
-      loss_updater.ComputeUpdatedDual(
-          1.0 /* label */, 1.0 /* example weight */, 0.5 /* current_dual */,
-          0.3 /* wx */, 100.0 /* weighted_example_norm */,
-          0.0 /* unused_primal_loss */, 0.0 /* unused_dual_loss */),
-      1e-3);
+  EXPECT_NEAR(0.507,
+              loss_updater.ComputeUpdatedDual(
+                  1 /* num partitions */, 1.0 /* label */,
+                  1.0 /* example weight */, 0.5 /* current_dual */,
+                  0.3 /* wx */, 100.0 /* weighted_example_norm */,
+                  0.0 /* unused_primal_loss */, 0.0 /* unused_dual_loss */),
+              1e-3);
 
   // When label=1.0, example_weight=1.0, current_dual=-0.5, wx=0.3 and
   // weighted_example_norm=10.0, it turns out that the optimal value to update
   // the dual to is -0.43. However, this is outside the allowed [0.0, 1.0] range
   // and hence the closest permitted value (0.0) should be returned instead.
-  EXPECT_NEAR(
-      0.0,
-      loss_updater.ComputeUpdatedDual(
-          1.0 /* label */, 1.0 /* example weight */, -0.5 /* current_dual */,
-          0.3 /* wx */, 10.0 /* weighted_example_norm */,
-          0.0 /* unused_primal_loss */, 0.0 /* unused_dual_loss */),
-      1e-3);
+  EXPECT_NEAR(0.0,
+              loss_updater.ComputeUpdatedDual(
+                  1 /* num partitions */, 1.0 /* label */,
+                  1.0 /* example weight */, -0.5 /* current_dual */,
+                  0.3 /* wx */, 10.0 /* weighted_example_norm */,
+                  0.0 /* unused_primal_loss */, 0.0 /* unused_dual_loss */),
+              1e-3);
 
   // When label=-1.0, example_weight=2.0, current_dual=-1.0, wx=0.3 and
   // weighted_example_norm=10.0, it turns out that the optimal value to update
   // the dual to is -1.065. However, this is outside the allowed [-1.0, 0.0]
   // range and hence the closest permitted value (-1.0) should be returned
   // instead.
-  EXPECT_NEAR(
-      -1.0,
-      loss_updater.ComputeUpdatedDual(
-          -1.0 /* label */, 2.0 /* example weight */, -1.0 /* current_dual */,
-          0.3 /* wx */, 10.0 /* weighted_example_norm */,
-          0.0 /* unused_primal_loss */, 0.0 /* unused_dual_loss */),
-      1e-3);
+  EXPECT_NEAR(-1.0,
+              loss_updater.ComputeUpdatedDual(
+                  1 /* num partitions */, -1.0 /* label */,
+                  2.0 /* example weight */, -1.0 /* current_dual */,
+                  0.3 /* wx */, 10.0 /* weighted_example_norm */,
+                  0.0 /* unused_primal_loss */, 0.0 /* unused_dual_loss */),
+              1e-3);
 }
 
 }  // namespace

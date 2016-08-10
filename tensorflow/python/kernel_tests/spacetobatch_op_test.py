@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,16 +27,15 @@ class SpaceToBatchTest(tf.test.TestCase):
   """Tests input-output pairs for the SpaceToBatch and BatchToSpace ops."""
 
   def _testPad(self, inputs, paddings, block_size, outputs):
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        # outputs = space_to_batch(inputs)
-        x_tf = tf.space_to_batch(
-            tf.to_float(inputs), paddings, block_size=block_size)
-        self.assertAllEqual(x_tf.eval(), outputs)
-        # inputs = batch_to_space(outputs)
-        x_tf = tf.batch_to_space(
-            tf.to_float(outputs), paddings, block_size=block_size)
-        self.assertAllEqual(x_tf.eval(), inputs)
+    with self.test_session():
+      # outputs = space_to_batch(inputs)
+      x_tf = tf.space_to_batch(
+          tf.to_float(inputs), paddings, block_size=block_size)
+      self.assertAllEqual(x_tf.eval(), outputs)
+      # inputs = batch_to_space(outputs)
+      x_tf = tf.batch_to_space(
+          tf.to_float(outputs), paddings, block_size=block_size)
+      self.assertAllEqual(x_tf.eval(), inputs)
 
   def _testOne(self, inputs, block_size, outputs):
     paddings = np.zeros((2, 2), dtype=np.int32)

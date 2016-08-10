@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,21 +36,22 @@ def _summary_iterator(test_dir):
   Returns:
     A summary_iterator
   """
-  event_paths = glob.glob(os.path.join(test_dir, "event*"))
+  event_paths = sorted(glob.glob(os.path.join(test_dir, "event*")))
   return tf.train.summary_iterator(event_paths[-1])
+
+
+def _test_dir(test_name):
+  test_dir = os.path.join(tf.test.get_temp_dir(), test_name)
+  if os.path.exists(test_dir):
+    shutil.rmtree(test_dir)
+  return test_dir
 
 
 class SupervisorTest(tf.test.TestCase):
 
-  def _TestDir(self, test_name):
-    test_dir = os.path.join(tf.test.get_temp_dir(), test_name)
-    if os.path.exists(test_dir):
-      shutil.rmtree(test_dir)
-    return test_dir
-
   # This test does not test much.
   def testBasics(self):
-    logdir = self._TestDir("basics")
+    logdir = _test_dir("basics")
     with tf.Graph().as_default():
       my_op = tf.constant(1.0)
       sv = tf.train.Supervisor(logdir=logdir)
@@ -61,7 +62,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testManagedSession(self):
-    logdir = self._TestDir("managed_session")
+    logdir = _test_dir("managed_session")
     with tf.Graph().as_default():
       my_op = tf.constant(1.0)
       sv = tf.train.Supervisor(logdir=logdir)
@@ -72,7 +73,7 @@ class SupervisorTest(tf.test.TestCase):
       self.assertTrue(sv.should_stop())
 
   def testManagedSessionUserError(self):
-    logdir = self._TestDir("managed_user_error")
+    logdir = _test_dir("managed_user_error")
     with tf.Graph().as_default():
       my_op = tf.constant(1.0)
       sv = tf.train.Supervisor(logdir=logdir)
@@ -90,7 +91,7 @@ class SupervisorTest(tf.test.TestCase):
       self.assertEqual(1, last_step)
 
   def testManagedSessionIgnoreOutOfRangeError(self):
-    logdir = self._TestDir("managed_out_of_range")
+    logdir = _test_dir("managed_out_of_range")
     with tf.Graph().as_default():
       my_op = tf.constant(1.0)
       sv = tf.train.Supervisor(logdir=logdir)
@@ -108,45 +109,53 @@ class SupervisorTest(tf.test.TestCase):
       self.assertEqual(3, last_step)
 
   def testManagedSessionDoNotKeepSummaryWriter(self):
-    logdir = self._TestDir("managed_not_keep_summary_writer")
+    logdir = _test_dir("managed_not_keep_summary_writer")
     with tf.Graph().as_default():
       summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
       sv = tf.train.Supervisor(logdir=logdir, summary_op=None)
       with sv.managed_session("", close_summary_writer=True,
                               start_standard_services=False) as sess:
         sv.summary_computed(sess, sess.run(summ))
+      # Sleep 1.2s to make sure that the next event file has a different name
+      # than the current one.
+      time.sleep(1.2)
       with sv.managed_session("", close_summary_writer=True,
                               start_standard_services=False) as sess:
         sv.summary_computed(sess, sess.run(summ))
-    # The summary iterator should report the summary once as we closed
-    # the summary writer across the 2 sessions.
-    rr = _summary_iterator(logdir)
-    # The first event should list the file_version.
-    ev = next(rr)
-    self.assertEquals("brain.Event:2", ev.file_version)
+    event_paths = sorted(glob.glob(os.path.join(logdir, "event*")))
+    self.assertEquals(2, len(event_paths))
+    # The two event files should have the same contents.
+    for path in event_paths:
+      # The summary iterator should report the summary once as we closed the
+      # summary writer across the 2 sessions.
+      rr = tf.train.summary_iterator(path)
+      # The first event should list the file_version.
+      ev = next(rr)
+      self.assertEquals("brain.Event:2", ev.file_version)
 
-    # The next one has the graph.
-    ev = next(rr)
-    self.assertTrue(ev.graph_def)
+      # The next one has the graph.
+      ev = next(rr)
+      self.assertTrue(ev.graph_def)
 
-    # The next one should have the values from the summary.
-    # But only once.
-    ev = next(rr)
-    self.assertProtoEquals("""
-      value { tag: 'c1' simple_value: 1.0 }
-      value { tag: 'c2' simple_value: 2.0 }
-      value { tag: 'c3' simple_value: 3.0 }
-      """, ev.summary)
+      # The next one should have the values from the summary.
+      # But only once.
+      ev = next(rr)
+      self.assertProtoEquals("""
+        value { tag: 'c1' simple_value: 1.0 }
+        value { tag: 'c2' simple_value: 2.0 }
+        value { tag: 'c3' simple_value: 3.0 }
+        """, ev.summary)
 
-    # The next one should be a stop message if we closed cleanly.
-    ev = next(rr)
-    self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
+      # The next one should be a stop message if we closed cleanly.
+      ev = next(rr)
+      self.assertEquals(tf.SessionLog.STOP, ev.session_log.status)
 
-    # We should be done.
-    self.assertRaises(StopIteration, lambda: next(rr))
+      # We should be done.
+      with self.assertRaises(StopIteration):
+        next(rr)
 
   def testManagedSessionKeepSummaryWriter(self):
-    logdir = self._TestDir("managed_keep_summary_writer")
+    logdir = _test_dir("managed_keep_summary_writer")
     with tf.Graph().as_default():
       summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
       sv = tf.train.Supervisor(logdir=logdir)
@@ -200,7 +209,7 @@ class SupervisorTest(tf.test.TestCase):
   def testManagedEndOfInputOneQueue(self):
     # Tests that the supervisor finishes without an error when using
     # a fixed number of epochs, reading from a single queue.
-    logdir = self._TestDir("managed_end_of_input_one_queue")
+    logdir = _test_dir("managed_end_of_input_one_queue")
     os.makedirs(logdir)
     data_path = self._csv_data(logdir)
     with tf.Graph().as_default():
@@ -218,7 +227,7 @@ class SupervisorTest(tf.test.TestCase):
     # Tests that the supervisor finishes without an error when using
     # a fixed number of epochs, reading from two queues, the second
     # one producing a batch from the first one.
-    logdir = self._TestDir("managed_end_of_input_two_queues")
+    logdir = _test_dir("managed_end_of_input_two_queues")
     os.makedirs(logdir)
     data_path = self._csv_data(logdir)
     with tf.Graph().as_default():
@@ -236,7 +245,7 @@ class SupervisorTest(tf.test.TestCase):
   def testManagedMainErrorTwoQueues(self):
     # Tests that the supervisor correctly raises a main loop
     # error even when using multiple queues for input.
-    logdir = self._TestDir("managed_main_error_two_queues")
+    logdir = _test_dir("managed_main_error_two_queues")
     os.makedirs(logdir)
     data_path = self._csv_data(logdir)
     with self.assertRaisesRegexp(RuntimeError, "fail at step 3"):
@@ -259,7 +268,7 @@ class SupervisorTest(tf.test.TestCase):
               sess.run(shuff_rec)
 
   def testSessionConfig(self):
-    logdir = self._TestDir("session_config")
+    logdir = _test_dir("session_config")
     with tf.Graph().as_default():
       with tf.device("/cpu:1"):
         my_op = tf.constant([1.0])
@@ -272,7 +281,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testChiefCanWriteEvents(self):
-    logdir = self._TestDir("can_write")
+    logdir = _test_dir("can_write")
     with tf.Graph().as_default():
       summ = tf.scalar_summary(["c1", "c2", "c3"], tf.constant([1.0, 2.0, 3.0]))
       sv = tf.train.Supervisor(is_chief=True, logdir=logdir, summary_op=None)
@@ -338,7 +347,7 @@ class SupervisorTest(tf.test.TestCase):
         sv.summary_computed(sess, sess.run(summ))
 
   def testLogdirButExplicitlyNoSummaryWriter(self):
-    logdir = self._TestDir("explicit_no_summary_writer")
+    logdir = _test_dir("explicit_no_summary_writer")
     with tf.Graph().as_default():
       tf.Variable([1.0], name="foo")
       const = tf.constant([1.0, 2.0, 3.0])
@@ -352,7 +361,7 @@ class SupervisorTest(tf.test.TestCase):
         sv.summary_computed(sess, sess.run(summ))
 
   def testNoLogdirButExplicitSummaryWriter(self):
-    logdir = self._TestDir("explicit_summary_writer")
+    logdir = _test_dir("explicit_summary_writer")
     with tf.Graph().as_default():
       const = tf.constant([1.0, 2.0, 3.0])
       summ = tf.scalar_summary(["c1", "c2", "c3"], const)
@@ -410,7 +419,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.prepare_or_wait_for_session("")
 
   def testInitOp(self):
-    logdir = self._TestDir("default_init_op")
+    logdir = _test_dir("default_init_op")
     with tf.Graph().as_default():
       v = tf.Variable([1.0, 2.0, 3.0])
       sv = tf.train.Supervisor(logdir=logdir)
@@ -419,7 +428,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testInitFn(self):
-    logdir = self._TestDir("default_init_op")
+    logdir = _test_dir("default_init_op")
     with tf.Graph().as_default():
       v = tf.Variable([1.0, 2.0, 3.0])
       def _init_fn(sess):
@@ -430,7 +439,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testInitOpWithFeedDict(self):
-    logdir = self._TestDir("feed_dict_init_op")
+    logdir = _test_dir("feed_dict_init_op")
     with tf.Graph().as_default():
       p = tf.placeholder(tf.float32, shape=(3,))
       v = tf.Variable(p, name="v")
@@ -442,7 +451,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testLocalInitOp(self):
-    logdir = self._TestDir("default_local_init_op")
+    logdir = _test_dir("default_local_init_op")
     with tf.Graph().as_default():
       # A local variable.
       v = tf.Variable([1.0, 2.0, 3.0],
@@ -466,7 +475,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testLocalInitOpForNonChief(self):
-    logdir = self._TestDir("default_local_init_op_non_chief")
+    logdir = _test_dir("default_local_init_op_non_chief")
     with tf.Graph().as_default():
       with tf.device("/job:localhost"):
               # A local variable.
@@ -486,7 +495,7 @@ class SupervisorTest(tf.test.TestCase):
 
   def testInitOpFails(self):
     server = tf.train.Server.create_local_server()
-    logdir = self._TestDir("default_init_op_fails")
+    logdir = _test_dir("default_init_op_fails")
     with tf.Graph().as_default():
       v = tf.Variable([1.0, 2.0, 3.0], name="v")
       tf.Variable([4.0, 5.0, 6.0], name="w")
@@ -498,7 +507,7 @@ class SupervisorTest(tf.test.TestCase):
 
   def testInitOpFailsForTransientVariable(self):
     server = tf.train.Server.create_local_server()
-    logdir = self._TestDir("default_init_op_fails_for_local_variable")
+    logdir = _test_dir("default_init_op_fails_for_local_variable")
     with tf.Graph().as_default():
       v = tf.Variable([1.0, 2.0, 3.0], name="v",
                       collections=[tf.GraphKeys.LOCAL_VARIABLES])
@@ -511,7 +520,7 @@ class SupervisorTest(tf.test.TestCase):
         sv.prepare_or_wait_for_session(server.target)
 
   def testSetupFail(self):
-    logdir = self._TestDir("setup_fail")
+    logdir = _test_dir("setup_fail")
     with tf.Graph().as_default():
       tf.Variable([1.0, 2.0, 3.0], name="v")
       with self.assertRaisesRegexp(ValueError, "must have their device set"):
@@ -521,7 +530,7 @@ class SupervisorTest(tf.test.TestCase):
       tf.train.Supervisor(logdir=logdir, is_chief=False)
 
   def testDefaultGlobalStep(self):
-    logdir = self._TestDir("default_global_step")
+    logdir = _test_dir("default_global_step")
     with tf.Graph().as_default():
       tf.Variable(287, name="global_step")
       sv = tf.train.Supervisor(logdir=logdir)
@@ -530,7 +539,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
 
   def testRestoreFromMetaGraph(self):
-    logdir = self._TestDir("restore_from_meta_graph")
+    logdir = _test_dir("restore_from_meta_graph")
     with tf.Graph().as_default():
       tf.Variable(1, name="v0")
       sv = tf.train.Supervisor(logdir=logdir)
@@ -565,7 +574,7 @@ class SupervisorTest(tf.test.TestCase):
   # right away and get to run once before sv.stop() returns.
   # We still sleep a bit to make the test robust.
   def testStandardServicesWithoutGlobalStep(self):
-    logdir = self._TestDir("standard_services_without_global_step")
+    logdir = _test_dir("standard_services_without_global_step")
     # Create a checkpoint.
     with tf.Graph().as_default():
       v = tf.Variable([1.0], name="foo")
@@ -602,7 +611,7 @@ class SupervisorTest(tf.test.TestCase):
   # Same as testStandardServicesNoGlobalStep but with a global step.
   # We should get a summary about the step time.
   def testStandardServicesWithGlobalStep(self):
-    logdir = self._TestDir("standard_services_with_global_step")
+    logdir = _test_dir("standard_services_with_global_step")
     # Create a checkpoint.
     with tf.Graph().as_default():
       v = tf.Variable([123], name="global_step")
@@ -656,12 +665,12 @@ class SupervisorTest(tf.test.TestCase):
 
   def testNoQueueRunners(self):
     with tf.Graph().as_default(), self.test_session() as sess:
-      sv = tf.train.Supervisor(logdir=self._TestDir("no_queue_runners"))
+      sv = tf.train.Supervisor(logdir=_test_dir("no_queue_runners"))
       self.assertEqual(0, len(sv.start_queue_runners(sess)))
       sv.stop()
 
   def testPrepareSessionAfterStopForChief(self):
-    logdir = self._TestDir("prepare_after_stop_chief")
+    logdir = _test_dir("prepare_after_stop_chief")
     with tf.Graph().as_default():
       sv = tf.train.Supervisor(logdir=logdir, is_chief=True)
 
@@ -680,7 +689,7 @@ class SupervisorTest(tf.test.TestCase):
       self.assertTrue(sv.should_stop())
 
   def testPrepareSessionAfterStopForNonChief(self):
-    logdir = self._TestDir("prepare_after_stop_nonchief")
+    logdir = _test_dir("prepare_after_stop_nonchief")
     with tf.Graph().as_default():
       sv = tf.train.Supervisor(logdir=logdir, is_chief=False)
 
@@ -697,6 +706,7 @@ class SupervisorTest(tf.test.TestCase):
       sv.stop()
       sess2.close()
       self.assertTrue(sv.should_stop())
+
 
 if __name__ == "__main__":
   tf.test.main()

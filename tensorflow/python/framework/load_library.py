@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,11 @@ def load_op_library(library_filename):
 
   Pass "library_filename" to a platform-specific mechanism for dynamically
   loading a library. The rules for determining the exact location of the
-  library are platform-specific and are not documented here.
+  library are platform-specific and are not documented here. When the
+  library is loaded, ops and kernels registered in the library via the
+  REGISTER_* macros are made available in the TensorFlow process. Note
+  that ops with the same name as an existing op are rejected and not
+  registered with the process.
 
   Args:
     library_filename: Path to the plugin.

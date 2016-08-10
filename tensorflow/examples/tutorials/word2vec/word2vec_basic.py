@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ filename = maybe_download('text8.zip', 31344016)
 def read_data(filename):
   """Extract the first file enclosed in a zip file as a list of words"""
   with zipfile.ZipFile(filename) as f:
-    data = f.read(f.namelist()[0]).split()
+    data = tf.compat.as_str(f.read(f.namelist()[0])).split()
   return data
 
 words = read_data(filename)

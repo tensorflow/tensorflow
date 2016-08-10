@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -176,7 +176,7 @@ def time_tensorflow_run(session, target, info_string):
     start_time = time.time()
     _ = session.run(target)
     duration = time.time() - start_time
-    if i > num_steps_burn_in:
+    if i >= num_steps_burn_in:
       if not i % 10:
         print ('%s: step %d, duration = %.3f' %
                (datetime.now(), i - num_steps_burn_in, duration))

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -188,7 +188,8 @@ export function parseGraphPbTxt(input: Blob):
 /**
  * Parses a blob of proto txt file into a StepStats object.
  */
-function parseStatsPbTxt(input: Blob): Promise<tf.graph.proto.StepStats> {
+export function parseStatsPbTxt(input: Blob):
+    Promise<tf.graph.proto.StepStats> {
   return parsePbtxtFile(input, METADATA_REPEATED_FIELDS)
       .then(obj => obj['step_stats']);
 }

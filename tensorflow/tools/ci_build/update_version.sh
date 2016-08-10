@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -101,7 +101,7 @@ OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"
 check_existence file "${OS_SETUP}"
 
 sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
-
+sed -i -r -e "s/(.*export TF_BINARY_URL.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[[:alnum:]]+)(-gpu.*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
 
 
@@ -130,6 +130,13 @@ TEST_SERVER_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/server/Dockerfile.test"
 check_existence file "${TEST_SERVER_DOCKER_FILE}"
 
 sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${TEST_SERVER_DOCKER_FILE}"
+
+# Update tensorflow/tools/gcs_test/Dockerfile
+GCS_TEST_DOCKER_FILE="${TF_SRC_DIR}/tools/gcs_test/Dockerfile"
+
+check_existence file "${GCS_TEST_DOCKER_FILE}"
+
+sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${GCS_TEST_DOCKER_FILE}"
 
 
 # Updates to be made if there are major / minor version changes

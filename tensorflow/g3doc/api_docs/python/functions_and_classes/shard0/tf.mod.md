@@ -2,6 +2,9 @@
 
 Returns element-wise remainder of division.
 
+*NOTE*: `Mod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 

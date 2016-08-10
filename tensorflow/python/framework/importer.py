@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -231,12 +231,17 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     producer_op_dict = {op.name: op for op in producer_op_list.op}
 
-  with ops.op_scope(input_map.values(), name, 'import'):
+  with ops.op_scope(input_map.values(), name, 'import') as scope:
     g = ops.get_default_graph()
     g.graph_def_versions.CopyFrom(graph_def.versions)
 
-    with ops.name_scope('_inputs'):
-      input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
+    if input_map:
+      if not scope:
+        # The caller must have passed `name=''`.
+        raise ValueError('tf.import_graph_def() requires a non-empty `name` '
+                         'if `input_map` is used.')
+      with ops.name_scope('_inputs'):
+        input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
 
     # NOTE(mrry): We do this in two passes, because there may be a cycle in
     # `graph_def`.

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -314,8 +314,17 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   if (CFDictionaryGetValueIfPresent(kext_infos, kDriverKextIdentifier, (const void**)&cuda_driver_info)) {
     // NOTE: OSX CUDA driver does not currently store the same driver version
     // in kCFBundleVersionKey as is returned by cuDriverGetVersion
-    const char * version = CFStringGetCStringPtr((CFStringRef)CFDictionaryGetValue(cuda_driver_info, kCFBundleVersionKey), kCFStringEncodingUTF8);
     CFRelease(kext_infos);
+    const CFStringRef str = (CFStringRef)CFDictionaryGetValue(
+        cuda_driver_info, kCFBundleVersionKey);
+    const char *version = CFStringGetCStringPtr(str, kCFStringEncodingUTF8);
+
+    // version can be NULL in which case treat it as empty string
+    // see
+    // https://developer.apple.com/library/mac/documentation/CoreFoundation/Conceptual/CFStrings/Articles/AccessingContents.html#//apple_ref/doc/uid/20001184-100980-TPXREF112
+    if (version == NULL) {
+      return StringToDriverVersion("");
+    }
     return StringToDriverVersion(version);
   }
   CFRelease(kext_infos);

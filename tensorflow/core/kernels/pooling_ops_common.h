@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,12 +57,12 @@ struct PoolParameters {
   int col_stride;
   int depth_stride;
 
-  int out_height;
-  int out_width;
+  int64 out_height;
+  int64 out_width;
   int out_depth;
 
-  int pad_rows;
-  int pad_cols;
+  int64 pad_rows;
+  int64 pad_cols;
   int pad_depth;
 
   TensorFormat data_format;
@@ -111,6 +111,17 @@ class MaxPoolingOp : public OpKernel {
                                 0, params.forward_output_shape(), &output));
 
     if (params.depth_window > 1) {
+      // Validate spec against the current implementation.  A
+      // relaxation of these requirements would be ideal.
+      OP_REQUIRES(context, params.depth % params.depth_window == 0,
+                  errors::Unimplemented(
+                      "Depthwise max pooling requires "
+                      "the depth window to evenly divide the input depth."));
+      OP_REQUIRES(
+          context, params.depth_window == params.depth_stride,
+          errors::Unimplemented("Depthwise max pooling requires "
+                                "the depth window to equal the depth stride."));
+
       DepthwiseMaxPool(context, output, tensor_in, params);
     } else {
       SpatialMaxPool(context, output, tensor_in, params, padding_);
@@ -290,13 +301,13 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
                 ? 0
                 : (hpad - params.window_rows) / params.row_stride + 1;
         const int h_end =
-            std::min(hpad / params.row_stride + 1, params.out_height);
+            std::min<int>(hpad / params.row_stride + 1, params.out_height);
         const int w_start =
             (wpad < params.window_cols)
                 ? 0
                 : (wpad - params.window_cols) / params.col_stride + 1;
         const int w_end =
-            std::min(wpad / params.col_stride + 1, params.out_width);
+            std::min<int>(wpad / params.col_stride + 1, params.out_width);
         const int in_offset =
             (b * params.tensor_in_rows + h) * params.tensor_in_cols + w;
         Eigen::DSizes<Eigen::DenseIndex, 2> in_indices(0, in_offset);
@@ -311,7 +322,7 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
       }
     }
   }
-  DCHECK_GT(out_count.minCoeff(), 0);
+  DCHECK_GT(out_count.minCoeff(), T(0));
   out_mat.array().rowwise() /= out_count.transpose().array();
 }
 

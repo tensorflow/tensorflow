@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,4 +40,11 @@ bool CudnnUseAutotune() {
   return ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", true);
 }
 
+namespace internal {
+
+bool AvgPoolUseCudnn() {
+  return ReadBoolFromEnvVar("TF_AVGPOOL_USE_CUDNN", false);
+}
+
+}  // namespace internal
 }  // namespace tensorflow

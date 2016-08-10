@@ -5,13 +5,15 @@
 <link rel="import" href="../paper-toolbar/paper-toolbar.html">
 <link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-header-panel/paper-header-panel.html">
+<link rel="import" href="../tf-globals/tf-globals.html">
 <link rel="import" href="../tf-event-dashboard/tf-event-dashboard.html">
-<link rel="import" href="../tf-histogram-dashboard/tf-histogram-dashboard.html">
+<link rel="import" href="../tf-distribution-dashboard/tf-distribution-dashboard.html">
 <link rel="import" href="../tf-image-dashboard/tf-image-dashboard.html">
 <link rel="import" href="../tf-audio-dashboard/tf-audio-dashboard.html">
 <link rel="import" href="../tf-graph-dashboard/tf-graph-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../tf-storage/tf-storage.html">
 
 <!--
 tf-tensorboard is the frontend entry point for TensorBoard.
@@ -19,7 +21,6 @@ tf-tensorboard is the frontend entry point for TensorBoard.
 It implements a toolbar (via paper-header-panel and paper-toolbar) that
 allows the user to toggle between various dashboards.
 -->
-<script src="tensorboard.js"></script>
 <script src="autoReloadBehavior.js"></script>
 <dom-module id="tf-tensorboard">
   <template>
@@ -86,15 +87,14 @@ allows the user to toggle between various dashboards.
           <tf-graph-dashboard
             id="graphs"
             backend="[[_backend]]"
-            router="[[router]]"
           ></tf-graph-dashboard>
         </template>
 
-        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
-          <tf-histogram-dashboard
-            id="histograms"
+        <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
+          <tf-distribution-dashboard
+            id="distributions"
             backend="[[_backend]]"
-          ></tf-histogram-dashboard>
+          ></tf-distribution-dashboard>
         </template>
       </div>
     </paper-header-panel>
@@ -170,11 +170,13 @@ allows the user to toggle between various dashboards.
       properties: {
         router: {
           type: Object,
-          value: function() {return TF.Backend.router()},
+          value: function() {
+            return TF.Backend.router();
+          },
         },
         _backend: {
           type: Object,
-          computed: "_makeBackend(router)",
+          computed: "_makeBackend(router, demoDir)",
         },
         // Which tab is selected (events, graph, images etc).
         mode: {
@@ -182,26 +184,35 @@ allows the user to toggle between various dashboards.
           computed: '_getModeFromIndex(modeIndex)',
           notify: true,
         },
-        // If true, tab switching in TensorBoard will not update
-        // location hash. Hash update interferes with selenium tests.
-        noHash: {
-          type: Boolean,
-          value: false
-        },
         tabs: {
           type: Array,
           readOnly: true,
-          value: TF.TensorBoard.TABS,
+          value: TF.Globals.TABS,
+        },
+        // If this is set to a string, TensorBoard will switch to "demo mode"
+        // and attempt to load serialized json data from that directory. You can
+        // generate conformant json using
+        // tensorboard/scripts/serialize_tensorboard.py
+        demoDir: {
+          type: String,
+          value: null,
+        },
+        // Set this to true to store state in URI hash. Should be true for all non-test purposes.
+        useHash: {
+          type: Boolean,
+          value: false,
         },
       },
       _getModeFromIndex: function(modeIndex) {
         var mode = this.tabs[modeIndex];
-        if (!this.noHash) {
-          window.location.hash = mode;
-        }
+        TF.URIStorage.setString(TF.URIStorage.TAB, mode);
         return mode;
       },
-      _makeBackend: function(router) {
+      _makeBackend: function(router, demoDir) {
+        // use the demoDir if it is set, otherwise use the provided router
+        if (demoDir != null) {
+          router = TF.Backend.router(demoDir, true);
+        }
         return new TF.Backend.Backend(router);
       },
       _modeIsEvents: function(mode) {
@@ -216,8 +227,8 @@ allows the user to toggle between various dashboards.
       _modeIsGraphs: function(mode) {
         return mode === "graphs";
       },
-      _modeIsHistograms: function(mode) {
-        return mode === "histograms";
+      _modeIsDistributions: function(mode) {
+        return mode === "distributions";
       },
       selectedDashboard: function() {
         var dashboard = this.$$("#" + this.mode);
@@ -227,17 +238,18 @@ allows the user to toggle between various dashboards.
         return dashboard;
       },
       ready: function() {
+        TF.Globals.USE_HASH = this.useHash;
+
         this._getModeFromHash();
         window.addEventListener('hashchange', function() {
           this._getModeFromHash();
         }.bind(this));
       },
       _getModeFromHash: function() {
-        // Return the mode as it is stored in the hash.
-        var tabName = window.location.hash.trim().slice(1);
+        var tabName = TF.URIStorage.getString(TF.URIStorage.TAB);
         var modeIndex = this.tabs.indexOf(tabName);
         if (modeIndex == -1 && this.modeIndex == null) {
-          // Selecting the first tab as default.
+          // Select the first tab as default.
           this.set('modeIndex', 0);
         }
         if (modeIndex != -1 && modeIndex != this.modeIndex) {

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ namespace tensorflow {
 
 namespace {
 
-// The requested lifetime of a auth bearer token.
+// The requested lifetime of an auth bearer token.
 constexpr int kRequestedTokenLifetimeSec = 3600;
 
 // The crypto algorithm to be used with OAuth.

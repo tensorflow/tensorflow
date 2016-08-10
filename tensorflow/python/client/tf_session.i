@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -213,7 +213,7 @@ tensorflow::ImportNumpy();
       reinterpret_cast<const char*>($1.data), $1.length);
 }
 
-// Include the functions from tensor_c_api.h, except TF_Run.
+// Include the functions from c_api.h, except TF_Run.
 %ignoreall
 %unignore TF_Code;
 %unignore TF_Status;
@@ -238,20 +238,16 @@ tensorflow::ImportNumpy();
 %unignore TF_NewLibrary;
 %unignore TF_LoadLibrary;
 %unignore TF_GetOpList;
-%include "tensorflow/core/public/tensor_c_api.h"
+%include "tensorflow/c/c_api.h"
 %ignoreall
 
 %insert("python") %{
   def TF_NewSessionOptions(target=None, config=None):
+    # NOTE: target and config are validated in the session constructor.
     opts = _TF_NewSessionOptions()
     if target is not None:
-      from tensorflow.python.util import compat
-      _TF_SetTarget(opts, compat.as_bytes(target))
+      _TF_SetTarget(opts, target)
     if config is not None:
-      from tensorflow.core.protobuf import config_pb2
-      if not isinstance(config, config_pb2.ConfigProto):
-        raise TypeError("Expected config_pb2.ConfigProto, "
-                        "but got %s" % type(config))
       from tensorflow.python.framework import errors
       with errors.raise_exception_on_not_ok_status() as status:
         config_str = config.SerializeToString()
@@ -289,6 +285,18 @@ tensorflow::ImportNumpy();
 %rename(TF_PRun) tensorflow::TF_PRun_wrapper;
 %unignore tensorflow;
 %unignore TF_PRun;
+
+%unignore tensorflow::TF_Reset_wrapper;
+%insert("python") %{
+def TF_Reset(target, containers=None, config=None):
+  from tensorflow.python.framework import errors
+  opts = TF_NewSessionOptions(target=target, config=config)
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      TF_Reset_wrapper(opts, containers, status)
+  finally:
+    TF_DeleteSessionOptions(opts)
+%}
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

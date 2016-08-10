@@ -45,7 +45,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=True, allow_nan_stats=False, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -57,18 +57,32 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 ##### Args:
 
 
-*  <b>`df`</b>: `float` or `double` tensor, the degrees of freedom of the
+*  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s). `df` must contain only positive values.
-*  <b>`mu`</b>: `float` or `double` tensor, the means of the distribution(s).
-*  <b>`sigma`</b>: `float` or `double` tensor, the scaling factor for the
+*  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
+*  <b>`sigma`</b>: Floating point tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
+*  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
+    `validate_args` is `False` and inputs are invalid, correct behavior is
+    not guaranteed.
+*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
+    batch member.  If `True`, batch members with valid parameters leading to
+    undefined statistics will return NaN for this statistic.
 *  <b>`name`</b>: The name to give Ops created by the initializer.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if mu and sigma are different dtypes.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.allow_nan_stats` {#StudentT.allow_nan_stats}
+
+Boolean describing behavior when a stat is undefined for batch member.
 
 
 - - -
@@ -139,6 +153,13 @@ The entropy of Student t distribution(s).
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.is_continuous` {#StudentT.is_continuous}
+
+
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.is_reparameterized` {#StudentT.is_reparameterized}
 
 
@@ -153,9 +174,23 @@ Log CDF.
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.log_pdf(x, name='log_pdf')` {#StudentT.log_pdf}
+#### `tf.contrib.distributions.StudentT.log_pdf(value, name='log_pdf')` {#StudentT.log_pdf}
 
-Log pdf of observations in `x` under these Student's t-distribution(s).
+Log of the probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.log_pmf(value, name='log_pmf')` {#StudentT.log_pmf}
+
+Log of the probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.log_prob(x, name='log_prob')` {#StudentT.log_prob}
+
+Log prob of observations in `x` under these Student's t-distribution(s).
 
 ##### Args:
 
@@ -166,12 +201,32 @@ Log pdf of observations in `x` under these Student's t-distribution(s).
 ##### Returns:
 
 
-*  <b>`log_pdf`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.mean` {#StudentT.mean}
+#### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
+
+Mean of the distribution.
+
+The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
+`self.allow_nan_stats=False`, then an exception will be raised rather than
+returning `NaN`.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name to give this op.
+
+##### Returns:
+
+  The mean for every batch member, a `Tensor` with same `dtype` as self.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.mode(name='mode')` {#StudentT.mode}
 
 
 
@@ -192,7 +247,21 @@ Locations of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.pdf(x, name='pdf')` {#StudentT.pdf}
+#### `tf.contrib.distributions.StudentT.pdf(value, name='pdf')` {#StudentT.pdf}
+
+The probability density function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.pmf(value, name='pmf')` {#StudentT.pmf}
+
+The probability mass function.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.prob(x, name='prob')` {#StudentT.prob}
 
 The PDF of observations in `x` under these Student's t distribution(s).
 
@@ -206,12 +275,36 @@ The PDF of observations in `x` under these Student's t distribution(s).
 ##### Returns:
 
 
-*  <b>`pdf`</b>: tensor of dtype `dtype`, the pdf values of `x`.
+*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`.
 
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.sample(n, seed=None, name='sample')` {#StudentT.sample}
+#### `tf.contrib.distributions.StudentT.sample(sample_shape=(), seed=None, name='sample')` {#StudentT.sample}
+
+Generate samples of the specified shape for each batched distribution.
+
+Note that a call to `sample()` without arguments will generate a single
+sample per batched distribution.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
+    samples.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
+
+##### Returns:
+
+
+*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
+      `sample_shape + self.batch_shape + self.event_shape`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.sample_n(n, seed=None, name='sample_n')` {#StudentT.sample_n}
 
 Sample `n` observations from the Student t Distributions.
 
@@ -238,8 +331,43 @@ Scaling factors of these Student's t distribution(s).
 
 - - -
 
-#### `tf.contrib.distributions.StudentT.variance` {#StudentT.variance}
+#### `tf.contrib.distributions.StudentT.std(name='std')` {#StudentT.std}
 
 
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.validate_args` {#StudentT.validate_args}
+
+Boolean describing behavior on invalid input.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
+
+Variance of the distribution.
+
+Variance for Student's T equals
+
+```
+df / (df - 2), when df > 2
+infinity, when 1 < df <= 2
+NaN, when df <= 1
+```
+
+The NaN state occurs because mean is undefined for `df <= 1`, and if
+`self.allow_nan_stats` is `False`, an exception will be raised if any batch
+members fall into this state.
+
+##### Args:
+
+
+*  <b>`name`</b>: A name for this op.
+
+##### Returns:
+
+  The variance for every batch member, a `Tensor` with same `dtype` as self.
 
 

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ error = _logger.error
 fatal = _logger.fatal
 info = _logger.info
 warn = _logger.warn
-warning = _logger.warn
+warning = _logger.warning
 
 _level_names = {
     FATAL: 'FATAL',

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -260,52 +260,48 @@ class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 
 }  // namespace
 
-Status PosixFileSystem::NewRandomAccessFile(const string& fname,
-                                            RandomAccessFile** result) {
+Status PosixFileSystem::NewRandomAccessFile(
+    const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
-  *result = NULL;
   Status s;
   int fd = open(translated_fname.c_str(), O_RDONLY);
   if (fd < 0) {
     s = IOError(fname, errno);
   } else {
-    *result = new PosixRandomAccessFile(translated_fname, fd);
+    result->reset(new PosixRandomAccessFile(translated_fname, fd));
   }
   return s;
 }
 
 Status PosixFileSystem::NewWritableFile(const string& fname,
-                                        WritableFile** result) {
+                                        std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "w");
   if (f == NULL) {
-    *result = NULL;
     s = IOError(fname, errno);
   } else {
-    *result = new PosixWritableFile(translated_fname, f);
+    result->reset(new PosixWritableFile(translated_fname, f));
   }
   return s;
 }
 
-Status PosixFileSystem::NewAppendableFile(const string& fname,
-                                          WritableFile** result) {
+Status PosixFileSystem::NewAppendableFile(
+    const string& fname, std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "a");
   if (f == NULL) {
-    *result = NULL;
     s = IOError(fname, errno);
   } else {
-    *result = new PosixWritableFile(translated_fname, f);
+    result->reset(new PosixWritableFile(translated_fname, f));
   }
   return s;
 }
 
 Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, ReadOnlyMemoryRegion** result) {
+    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string translated_fname = TranslateName(fname);
-  *result = nullptr;
   Status s = Status::OK();
   int fd = open(translated_fname.c_str(), O_RDONLY);
   if (fd < 0) {
@@ -318,7 +314,7 @@ Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
     if (address == MAP_FAILED) {
       s = IOError(fname, errno);
     } else {
-      *result = new PosixReadOnlyMemoryRegion(address, st.st_size);
+      result->reset(new PosixReadOnlyMemoryRegion(address, st.st_size));
     }
     close(fd);
   }
@@ -380,6 +376,19 @@ Status PosixFileSystem::GetFileSize(const string& fname, uint64* size) {
     s = IOError(fname, errno);
   } else {
     *size = sbuf.st_size;
+  }
+  return s;
+}
+
+Status PosixFileSystem::Stat(const string& fname, FileStatistics* stats) {
+  Status s;
+  struct stat sbuf;
+  if (stat(TranslateName(fname).c_str(), &sbuf) != 0) {
+    s = IOError(fname, errno);
+  } else {
+    stats->length = sbuf.st_size;
+    stats->mode = sbuf.st_mode;
+    stats->mtime_nsec = sbuf.st_mtime * 1e9;
   }
   return s;
 }

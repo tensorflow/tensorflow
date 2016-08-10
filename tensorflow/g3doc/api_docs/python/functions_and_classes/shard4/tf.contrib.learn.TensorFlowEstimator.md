@@ -1,39 +1,47 @@
 Base class for all TensorFlow estimators.
-
-Parameters:
-  model_fn: Model function, that takes input X, y tensors and outputs
-    prediction and loss tensors.
-  n_classes: Number of classes in the target.
-  batch_size: Mini batch size.
-  steps: Number of steps to run over data.
-  optimizer: Optimizer name (or class), for example "SGD", "Adam",
-    "Adagrad".
-  learning_rate: If this is constant float value, no decay function is used.
-    Instead, a customized decay function can be passed that accepts
-    global_step as parameter and returns a Tensor.
-    e.g. exponential decay function:
-    def exp_decay(global_step):
-        return tf.train.exponential_decay(
-            learning_rate=0.1, global_step,
-            decay_steps=2, decay_rate=0.001)
-  clip_gradients: Clip norm of the gradients to this value to stop
-    gradient explosion.
-  class_weight: None or list of n_classes floats. Weight associated with
-    classes for loss computation. If not given, all classes are supposed to
-    have weight one.
-  continue_training: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
-  config: RunConfig object that controls the configurations of the
-    session, e.g. num_cores, gpu_memory_fraction, etc.
-  verbose: Controls the verbosity, possible values:
-    0: the algorithm and debug information is muted.
-    1: trainer prints the progress.
-    2: log device placement is printed.
 - - -
 
 #### `tf.contrib.learn.TensorFlowEstimator.__init__(model_fn, n_classes, batch_size=32, steps=200, optimizer='Adagrad', learning_rate=0.1, clip_gradients=5.0, class_weight=None, continue_training=False, config=None, verbose=1)` {#TensorFlowEstimator.__init__}
 
+Initializes a TensorFlowEstimator instance.
 
+##### Args:
+
+
+*  <b>`model_fn`</b>: Model function, that takes input `x`, `y` tensors and outputs
+    prediction and loss tensors.
+*  <b>`n_classes`</b>: Number of classes in the target.
+*  <b>`batch_size`</b>: Mini batch size.
+*  <b>`steps`</b>: Number of steps to run over data.
+*  <b>`optimizer`</b>: Optimizer name (or class), for example "SGD", "Adam",
+    "Adagrad".
+*  <b>`learning_rate`</b>: If this is constant float value, no decay function is used.
+    Instead, a customized decay function can be passed that accepts
+    global_step as parameter and returns a Tensor.
+    e.g. exponential decay function:
+
+    ````python
+    def exp_decay(global_step):
+        return tf.train.exponential_decay(
+            learning_rate=0.1, global_step,
+            decay_steps=2, decay_rate=0.001)
+    ````
+
+
+*  <b>`clip_gradients`</b>: Clip norm of the gradients to this value to stop
+    gradient explosion.
+*  <b>`class_weight`</b>: None or list of n_classes floats. Weight associated with
+    classes for loss computation. If not given, all classes are supposed to
+    have weight one.
+*  <b>`continue_training`</b>: when continue_training is True, once initialized
+    model will be continuely trained on every call of fit.
+*  <b>`config`</b>: RunConfig object that controls the configurations of the
+    session, e.g. num_cores, gpu_memory_fraction, etc.
+*  <b>`verbose`</b>: Controls the verbosity, possible values:
+
+    * 0: the algorithm and debug information is muted.
+    * 1: trainer prints the progress.
+    * 2: log device placement is printed.
 
 
 - - -
@@ -52,7 +60,6 @@ Neural network model from provided `model_fn` and training data.
 Note: called first time constructs the graph and initializers
 variables. Consecutives times it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
-
 To restart learning, create new estimator.
 
 ##### Args:
@@ -88,7 +95,8 @@ Get parameters for this estimator.
 
 
 *  <b>`deep`</b>: boolean, optional
-    If True, will return the parameters for this estimator and
+
+    If `True`, will return the parameters for this estimator and
     contained subobjects that are estimators.
 
 ##### Returns:
@@ -111,22 +119,6 @@ Returns tensor by name.
 ##### Returns:
 
   Tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowEstimator.get_tensor_value(name)` {#TensorFlowEstimator.get_tensor_value}
-
-Returns value of the tensor give by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
 
 
 - - -
@@ -172,7 +164,6 @@ Incremental fit on a batch of samples.
 This method is expected to be called several times consecutively
 on different or the same chunks of the dataset. This either can
 implement iterative training or out-of-core/online training.
-
 This is especially useful when the whole dataset is too big to
 fit in memory at the same time. Or when model is taking long time
 to converge, and you want to split up training into subparts.
@@ -197,10 +188,10 @@ to converge, and you want to split up training into subparts.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict(x, axis=1, batch_size=None)` {#TensorFlowEstimator.predict}
 
-Predict class or regression for X.
+Predict class or regression for `x`.
 
-For a classification model, the predicted class for each sample in X is
-returned. For a regression model, the predicted value based on X is
+For a classification model, the predicted class for each sample in `x` is
+returned. For a regression model, the predicted value based on `x` is
 returned.
 
 ##### Args:
@@ -225,7 +216,7 @@ returned.
 
 #### `tf.contrib.learn.TensorFlowEstimator.predict_proba(x, batch_size=None)` {#TensorFlowEstimator.predict_proba}
 
-Predict class probability of the input samples X.
+Predict class probability of the input samples `x`.
 
 ##### Args:
 
@@ -301,25 +292,5 @@ component of a nested object.
 
 
 *  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowEstimator.train(input_fn, steps, monitors=None)` {#TensorFlowEstimator.train}
-
-Trains a model given input builder function.
-
-##### Args:
-
-
-*  <b>`input_fn`</b>: Input builder function, returns tuple of dicts or
-            dict and Tensor.
-*  <b>`steps`</b>: number of steps to train model for.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-            inside the training loop.
-
-##### Returns:
-
-  Returns self.
 
 

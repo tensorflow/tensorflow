@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
@@ -444,7 +444,7 @@ export function joinAndAggregateStats(
   // Reset stats for each group node.
   _.each(h.getNodeMap(), (node, nodeName) => {
     if (node.isGroupNode) {
-      node.stats = new NodeStats(0, 0, null);
+      node.stats = new NodeStats(null);
       (<GroupNode>node).deviceHistogram = {};
     }
   });

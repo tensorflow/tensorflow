@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ set -e
 # Install dependencies from ubuntu deb repository.
 apt-get update
 
-apt-get install -y \
+apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
@@ -37,6 +37,7 @@ apt-get install -y \
     python-virtualenv \
     python3-dev \
     python3-pip \
+    rsync \
     sudo \
     swig \
     unzip \

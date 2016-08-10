@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@
 # If any of the following environment variable has non-empty values, it will
 # be mapped into the docker container to override the default values (see
 # dist_test.sh)
-#   TF_DIST_GRPC_SERVER_URL:      URL to an existing Tensorflow GRPC server.
+#   TF_DIST_GRPC_SERVER_URL:      URL to an existing TensorFlow GRPC server.
 #                                 If set to any non-empty and valid value (e.g.,
 #                                 grpc://1.2.3.4:2222), it will cause the test
 #                                 to bypass the k8s cluster setup and

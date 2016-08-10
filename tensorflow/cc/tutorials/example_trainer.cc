@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,31 +49,33 @@ struct Options {
 GraphDef CreateGraphDef() {
   // TODO(jeff,opensource): This should really be a more interesting
   // computation.  Maybe turn this into an mnist model instead?
-  GraphDefBuilder b;
+  Scope root = Scope::NewRootScope();
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
-  // Store rows [3, 2] and [-1, 0] in row major format.
-  Node* a = Const({3.f, 2.f, -1.f, 0.f}, {2, 2}, b.opts());
 
-  // x is from the feed.
-  Node* x = Const({0.f}, {2, 1}, b.opts().WithName("x"));
+  // a = [3 2; -1 0]
+  auto a = Const(root, {{3.f, 2.f}, {-1.f, 0.f}});
 
-  // y = A * x
-  Node* y = MatMul(a, x, b.opts().WithName("y"));
+  // x = [1.0; 1.0]
+  auto x = Const(root.WithOpName("x"), {{1.f}, {1.f}});
+
+  // y = a * x
+  auto y = MatMul(root.WithOpName("y"), a, x);
 
   // y2 = y.^2
-  Node* y2 = Square(y, b.opts());
+  auto y2 = Square(root, y);
 
   // y2_sum = sum(y2)
-  Node* y2_sum = Sum(y2, Const(0, b.opts()), b.opts());
+  auto y2_sum = Sum(root, y2, 0);
 
   // y_norm = sqrt(y2_sum)
-  Node* y_norm = Sqrt(y2_sum, b.opts());
+  auto y_norm = Sqrt(root, y2_sum);
 
   // y_normalized = y ./ y_norm
-  Div(y, y_norm, b.opts().WithName("y_normalized"));
+  Div(root.WithOpName("y_normalized"), y, y_norm);
 
   GraphDef def;
-  TF_CHECK_OK(b.ToGraphDef(&def));
+  TF_CHECK_OK(root.ToGraphDef(&def));
+
   return def;
 }
 
@@ -82,9 +84,12 @@ string DebugString(const Tensor& x, const Tensor& y) {
   CHECK_EQ(y.NumElements(), 2);
   auto x_flat = x.flat<float>();
   auto y_flat = y.flat<float>();
-  const float lambda = y_flat(0) / x_flat(0);
+  // Compute an estimate of the eigenvalue via
+  //      (x' A x) / (x' x) = (x' y) / (x' x)
+  // and exploit the fact that x' x = 1 by assumption
+  Eigen::Tensor<float, 0, Eigen::RowMajor> lambda = (x_flat * y_flat).sum();
   return strings::Printf("lambda = %8.6f x = [%8.6f %8.6f] y = [%8.6f %8.6f]",
-                         lambda, x_flat(0), x_flat(1), y_flat(0), y_flat(1));
+                         lambda(), x_flat(0), x_flat(1), y_flat(0), y_flat(1));
 }
 
 void ConcurrentSteps(const Options* opts, int session_index) {
@@ -106,7 +111,11 @@ void ConcurrentSteps(const Options* opts, int session_index) {
     step_threads.Schedule([&session, opts, session_index, step]() {
       // Randomly initialize the input.
       Tensor x(DT_FLOAT, TensorShape({2, 1}));
-      x.flat<float>().setRandom();
+      auto x_flat = x.flat<float>();
+      x_flat.setRandom();
+      Eigen::Tensor<float, 0, Eigen::RowMajor> inv_norm =
+          x_flat.square().sum().sqrt().inverse();
+      x_flat = x_flat * inv_norm();
 
       // Iterations.
       std::vector<Tensor> outputs;

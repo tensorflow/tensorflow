@@ -1,6 +1,6 @@
 ### `tf.matrix_inverse(input, adjoint=None, name=None)` {#matrix_inverse}
 
-Calculates the inverse of a square invertible matrix or its adjoint (conjugate
+Computes the inverse of a square invertible matrix or its adjoint (conjugate
 
 transpose).
 

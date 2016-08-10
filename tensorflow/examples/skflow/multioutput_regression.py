@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import datasets
 from sklearn.metrics import mean_squared_error
 
 from tensorflow.contrib import learn

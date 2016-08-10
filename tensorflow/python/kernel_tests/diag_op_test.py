@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -69,6 +69,95 @@ class BatchMatrixDiagTest(tf.test.TestCase):
 
 
 class BatchMatrixDiagGpuTest(BatchMatrixDiagTest):
+  _use_gpu = True
+
+
+class BatchMatrixSetDiagTest(tf.test.TestCase):
+  _use_gpu = False
+
+  def testVector(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v = np.array([1.0, 2.0, 3.0])
+      mat = np.array([[0.0, 1.0, 0.0],
+                      [1.0, 0.0, 1.0],
+                      [1.0, 1.0, 1.0]])
+      mat_set_diag = np.array([[1.0, 1.0, 0.0],
+                               [1.0, 2.0, 1.0],
+                               [1.0, 1.0, 3.0]])
+      output = tf.batch_matrix_set_diag(mat, v)
+      self.assertEqual((3, 3), output.get_shape())
+      self.assertAllEqual(mat_set_diag, output.eval())
+
+  def testBatchVector(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v_batch = np.array([[-1.0, -2.0, -3.0],
+                          [-4.0, -5.0, -6.0]])
+      mat_batch = np.array(
+          [[[1.0, 0.0, 3.0],
+            [0.0, 2.0, 0.0],
+            [1.0, 0.0, 3.0]],
+           [[4.0, 0.0, 4.0],
+            [0.0, 5.0, 0.0],
+            [2.0, 0.0, 6.0]]])
+
+      mat_set_diag_batch = np.array(
+          [[[-1.0, 0.0, 3.0],
+            [0.0, -2.0, 0.0],
+            [1.0, 0.0, -3.0]],
+           [[-4.0, 0.0, 4.0],
+            [0.0, -5.0, 0.0],
+            [2.0, 0.0, -6.0]]])
+      output = tf.batch_matrix_set_diag(mat_batch, v_batch)
+      self.assertEqual((2, 3, 3), output.get_shape())
+      self.assertAllEqual(mat_set_diag_batch, output.eval())
+
+  def testInvalidShape(self):
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 2"):
+      tf.batch_matrix_set_diag(0, [0])
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 1"):
+      tf.batch_matrix_set_diag([[0]], 0)
+
+  def testInvalidShapeAtEval(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      v = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesOpError("input must be at least 2-dim"):
+        tf.batch_matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
+      with self.assertRaisesOpError(
+          r"but received input shape: \[1,1\] and diagonal shape: \[\]"):
+        tf.batch_matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
+
+  def testGrad(self):
+    shapes = ((3, 4, 4), (7, 4, 8, 8))
+    with self.test_session(use_gpu=self._use_gpu):
+      for shape in shapes:
+        x = tf.constant(np.random.rand(*shape), dtype=tf.float32)
+        x_diag = tf.constant(np.random.rand(*shape[:-1]), dtype=tf.float32)
+        y = tf.batch_matrix_set_diag(x, x_diag)
+        error_x = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
+                                                 y, y.get_shape().as_list())
+        self.assertLess(error_x, 1e-4)
+        error_x_diag = tf.test.compute_gradient_error(
+            x_diag, x_diag.get_shape().as_list(),
+            y, y.get_shape().as_list())
+        self.assertLess(error_x_diag, 1e-4)
+
+  def testGradWithNoShapeInformation(self):
+    with self.test_session(use_gpu=self._use_gpu) as sess:
+      v = tf.placeholder(dtype=tf.float32)
+      mat = tf.placeholder(dtype=tf.float32)
+      grad_input = tf.placeholder(dtype=tf.float32)
+      output = tf.batch_matrix_set_diag(mat, v)
+      grads = tf.gradients(output, [mat, v], grad_ys=grad_input)
+      grad_input_val = np.random.rand(3, 3).astype(np.float32)
+      grad_vals = sess.run(
+          grads, feed_dict={v: 2 * np.ones(3), mat: np.ones((3, 3)),
+                            grad_input: grad_input_val})
+      self.assertAllEqual(np.diag(grad_input_val), grad_vals[1])
+      self.assertAllEqual(grad_input_val - np.diag(np.diag(grad_input_val)),
+                          grad_vals[0])
+
+
+class BatchMatrixSetDiagGpuTest(BatchMatrixSetDiagTest):
   _use_gpu = True
 
 
@@ -230,21 +319,21 @@ class DiagTest(tf.test.TestCase):
                   [[5.5 + 5.5j, 6.6 + 6.6j], [7.7 + 7.7j, 8.8 + 8.8j]]],
                   dtype = np.complex64)
     expected_ans = np.array(
-        [[[[[[1.1 + 1.1j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+        [[[[[[1.1 + 1.1j, 0 + 0j], [0 + 0j, 0 + 0j]],
             [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]],
-           [[[0 + 0j, 2.2 + 2.2j], [0 + 0j, 0 + 0j]], 
+           [[[0 + 0j, 2.2 + 2.2j], [0 + 0j, 0 + 0j]],
                [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]]],
-          [[[[0 + 0j, 0 + 0j], [3.3 + 3.3j, 0 + 0j]], 
+          [[[[0 + 0j, 0 + 0j], [3.3 + 3.3j, 0 + 0j]],
               [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]],
-           [[[0 + 0j, 0 + 0j], [0 + 0j, 4.4 + 4.4j]], 
+           [[[0 + 0j, 0 + 0j], [0 + 0j, 4.4 + 4.4j]],
                [[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]]]]],
-         [[[[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+         [[[[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]],
              [[5.5 + 5.5j, 0 + 0j], [0 + 0j, 0 + 0j]]],
-           [[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+           [[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]],
                [[0 + 0j, 6.6 + 6.6j], [0 + 0j, 0 + 0j]]]],
-          [[[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+          [[[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]],
               [[0 + 0j, 0 + 0j], [7.7 + 7.7j, 0 + 0j]]],
-           [[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]], 
+           [[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]],
                [[0 + 0j, 0 + 0j], [0 + 0j, 8.8 + 8.8j]]]]]],
            dtype = np.complex64)
     self.diagOp(x, np.complex64, expected_ans)

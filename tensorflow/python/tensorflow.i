@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,8 +28,10 @@ limitations under the License.
 
 %include "tensorflow/python/client/tf_session.i"
 %include "tensorflow/python/client/device_lib.i"
+%include "tensorflow/python/client/net_lib.i"
+%include "tensorflow/python/client/quantize_training.i"
 
-%include "tensorflow/python/training/saver_io.i"
+%include "tensorflow/python/lib/io/file_io.i"
 %include "tensorflow/python/training/server_lib.i"
 
 %include "tensorflow/python/framework/python_op_gen.i"

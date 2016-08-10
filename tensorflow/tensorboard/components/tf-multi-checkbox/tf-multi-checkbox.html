@@ -1,9 +1,10 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
 <link rel="import" href="../tf-dashboard-common/run-color-style.html">
-<link rel="import" href="../paper-input/paper-input.html">
+<link rel="import" href="../tf-storage/tf-storage.html">
 
 <!--
 tf-multi-checkbox creates a list of checkboxes that can be used to toggle on or off
@@ -13,8 +14,6 @@ associated tooltip value. Checkboxes can be highlighted, hidden, and re-ordered.
 tf-multi-checkbox assumes that the names may be very long compared to the width
 of the checkbox, and the number of names may also be very large, and works to
 handle these situations gracefully.
-
-
 -->
 
 <dom-module id="tf-multi-checkbox">
@@ -22,13 +21,13 @@ handle these situations gracefully.
   <style include="run-color-style"></style>
 
   <template>
-    <div id="outer-container" class="scrollbar">
       <paper-input
         id="runs-regex"
         no-label-float
         label="Write a regex to filter runs"
-        bind-value="{{regexInput}}"
+        value="{{regexInput}}"
       ></paper-input>
+    <div id="outer-container" class="scrollbar">
       <template
         is="dom-repeat"
         items="[[namesMatchingRegex]]"
@@ -66,9 +65,10 @@ handle these situations gracefully.
       height: 100%;
     }
     #outer-container {
-      overflow-y: scroll;
+      overflow-y: auto;
       overflow-x: hidden;
       width: 100%;
+      height: 0; /* Quirk to make firefox add scrolling instead of expand div */
       flex-grow: 1;
       flex-shrink: 1;
       word-wrap: break-word;
@@ -119,7 +119,12 @@ handle these situations gracefully.
     is: "tf-multi-checkbox",
     properties: {
       names: Array, // All the runs in consideration
-      regexInput: {type: String, value: "",}, // Regex for filtering the runs
+
+      regexInput: {
+        type: String,
+        value: TF.URIStorage.getStringInitializer("regexInput", ""),
+        observer: "_regexInputObserver"
+      }, // Regex for filtering the runs
       regex: {
         type: Object,
         computed: "makeRegex(regexInput)"
@@ -194,11 +199,13 @@ handle these situations gracefully.
       // e.g. if TensorBoard was opened into a new tab that isn't visible.
       // As a workaround... we know requestAnimationFrame won't fire until the
       // page has focus, so updateStyles again on requestAnimationFrame.
-      window.requestAnimationFrame(() => this.updateStyles());
+      var _this = this;
+      window.requestAnimationFrame(function() {_this.updateStyles();});
     },
     _checkboxChange: function(e) {
-      var name = e.srcElement.name;
-      var checked = e.srcElement.checked;
+      var target = e.srcElement || e.target; // Firefox doesn't have srcElement.
+      var name = target.name;
+      var checked = target.checked;
       this.runToIsCheckedMapping[name] = checked;
       // n.b. notifyPath won't work because run names may have periods.
       this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
@@ -209,15 +216,15 @@ handle these situations gracefully.
     _initializeRuns: function(change) {
       this.outSelected = change.base.slice();
     },
+    _regexInputObserver: TF.URIStorage.getStringObserver("regexInput", ""),
     toggleAll: function() {
+      var _this = this;
       var allOn = this.namesMatchingRegex
-                    .filter((n) => !this.runToIsCheckedMapping[n])
+                    .filter(function(n) {return !_this.runToIsCheckedMapping[n]})
                     .length === 0;
-
-      this.namesMatchingRegex.forEach((n) => this.runToIsCheckedMapping[n] = !allOn);
+      this.namesMatchingRegex.forEach(function(n) {_this.runToIsCheckedMapping[n] = !allOn});
       this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
     },
   });
   </script>
-
 </dom-module>

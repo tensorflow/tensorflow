@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,10 +26,9 @@ import tensorflow as tf
 class DepthToSpaceTest(tf.test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs):
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf = tf.depth_to_space(tf.to_float(inputs), block_size)
-        self.assertAllEqual(x_tf.eval(), outputs)
+    with self.test_session():
+      x_tf = tf.depth_to_space(tf.to_float(inputs), block_size)
+      self.assertAllEqual(x_tf.eval(), outputs)
 
   def testBasic(self):
     x_np = [[[[1, 2, 3, 4]]]]

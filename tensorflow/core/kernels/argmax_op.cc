@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class ArgOp : public OpKernel {
 
     OP_REQUIRES(context, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
     OP_REQUIRES(context, dim < input_dims,
-                errors::InvalidArgument("Minimum tensor rank: ", dim,
+                errors::InvalidArgument("Minimum tensor rank: ", dim + 1,
                                         " but got: ", input_dims));
     OP_REQUIRES(
         context, input.dim_size(dim) > 0,

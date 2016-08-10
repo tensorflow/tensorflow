@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -164,6 +164,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
       wall_time: (optional) Total wall time in seconds
       throughput: (optional) Throughput (in MB/s)
       extras: (optional) Dict mapping string keys to additional benchmark info.
+        Values may be either floats or values that are convertible to strings.
       name: (optional) Override the BenchmarkEntry name with `name`.
         Otherwise it is inferred from the top-level method name.
     """
@@ -189,7 +190,8 @@ class TensorFlowBenchmark(Benchmark):
                        burn_iters=2,
                        min_iters=10,
                        store_trace=False,
-                       name=None):
+                       name=None,
+                       extras=None):
     """Run an op or tensor in the given session.  Report the results.
 
     Args:
@@ -205,6 +207,8 @@ class TensorFlowBenchmark(Benchmark):
         in the extras field "full_trace_chrome_format".
       name: (optional) Override the BenchmarkEntry name with `name`.
         Otherwise it is inferred from the top-level method name.
+      extras: (optional) Dict mapping string keys to additional benchmark info.
+        Values may be either floats or values that are convertible to strings.
     """
     for _ in range(burn_iters):
       sess.run(op_or_tensor, feed_dict=feed_dict)
@@ -218,7 +222,7 @@ class TensorFlowBenchmark(Benchmark):
       delta = end_time - start_time
       deltas[i] = delta
 
-    extras = {}
+    extras = extras if extras is not None else {}
     if store_trace:
       run_options = config_pb2.RunOptions(
           trace_level=config_pb2.RunOptions.FULL_TRACE)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@
 # ==============================================================================
 # Install packages required by Python3.5 build
 
+# TODO(cais): Remove this file once we upgrade to ubuntu:16.04 docker images for
+# Python 3.5 builds.
+
 set -e
 
 # fkrull/deadsnakes is for Python3.5
@@ -27,7 +30,7 @@ tar xzf swig-3.0.8.tar.gz
 
 pushd /swig-3.0.8
 
-apt-get install -y libpcre3-dev
+apt-get install -y --no-install-recommends libpcre3-dev
 ./configure
 make
 make install
@@ -40,7 +43,20 @@ rm -rf swig-3.0.8
 rm -f swig-3.0.8.tar.gz
 
 # Install Python 3.5 and dev library
-apt-get install -y python3.5 libpython3.5-dev
+apt-get install -y --no-install-recommends python3.5 libpython3.5-dev
+
+# Install pip3.4 and numpy for Python 3.4
+# This strange-looking install step is a stopgap measure to make the genrule
+# contrib/session_bundle/example:half_plus_two pass. The genrule calls Python
+# (via bazel) directly, but calls the wrong version of Python (3.4) because
+# bazel does not support specification of Python minor versions yet. So we
+# install numpy for Python3.4 here so that the genrule will at least not
+# complain about missing numpy. Once we upgrade to 16.04 for Python 3.5 builds,
+# this will no longer be necessary.
+wget -q https://bootstrap.pypa.io/get-pip.py
+python3.4 get-pip.py
+
+pip3 install --upgrade numpy==1.11.0
 
 # Install pip3.5
 wget -q https://bootstrap.pypa.io/get-pip.py

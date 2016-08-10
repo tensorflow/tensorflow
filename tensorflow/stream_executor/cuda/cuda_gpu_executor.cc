@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -235,6 +235,8 @@ bool CUDAExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   }
 
   if (on_disk_spec != nullptr) {
+    LOG(WARNING) << "loading CUDA kernel from disk is not supported";
+    return false;
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
 
@@ -906,7 +908,8 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   // could use the file::* utilities).
   FILE *file = fopen(filename.c_str(), "r");
   if (file == nullptr) {
-    LOG(ERROR) << "could not open file to read NUMA node: " << filename;
+    LOG(ERROR) << "could not open file to read NUMA node: " << filename
+               << "\nYour kernel may have been built without NUMA support.";
     return kUnknownNumaNode;
   }
 

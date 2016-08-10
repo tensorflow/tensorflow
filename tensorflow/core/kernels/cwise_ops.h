@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,13 +35,30 @@ struct scalar_fmod2_op {
     return std::fmod(a, b);
   }
 };
-
 template <typename T>
 struct functor_traits<scalar_fmod2_op<T>> {
   enum {
     Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
     PacketAccess = false,
   };
+};
+
+// TODO(rmlarsen): This is a workaround for upstream change
+// https://bitbucket.org/eigen/eigen/commits/f339468d04d0f87caeb6cab9aef568627e9f6ea9
+// that renamed scalar_binary_pow_op to scalar_pow_op and deleted the unary
+// version of the latter. Remove once we upgrade to Eigen 3.3.
+template <typename Scalar, typename Exponent>
+struct scalar_binary_pow_op_google {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_binary_pow_op_google)
+  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
+                                             const Exponent& b) const {
+    return numext::pow(a, b);
+  }
+};
+
+template <typename Scalar, typename Exponent>
+struct functor_traits<scalar_binary_pow_op_google<Scalar, Exponent>> {
+  enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
 template <typename T, typename DivOrMod>
@@ -477,7 +494,7 @@ struct safe_mod : base<T, Eigen::internal::safe_div_or_mod_op<
 };
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_binary_pow_op<T, T> > {};
+struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T> > {};

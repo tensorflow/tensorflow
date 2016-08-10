@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -286,7 +286,7 @@ bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
     const char c = *p;
     if (c < '0' || c > '9') break;
     uint64 new_v = (v * 10) + (c - '0');
-    if (new_v < v) {
+    if (new_v / 8 < v) {
       // Overflow occurred
       return false;
     }

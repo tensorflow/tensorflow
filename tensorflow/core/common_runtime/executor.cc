@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -467,10 +467,57 @@ class ExecutorState {
   // Either a tensor pointer (pass-by-reference) or a tensor (pass-by-value).
   // TODO(yuanbyu): A better way to do "has_value"?
   struct Entry {
-    Tensor val = *kEmptyTensor;  // A tensor value.
+    Entry() {}
+    Entry(const Entry& other)
+        : ref(other.ref),
+          ref_mu(other.ref_mu),
+          has_value(other.has_value),
+          val_field_is_set(other.val_field_is_set),
+          alloc_attr(other.alloc_attr),
+          device_context(other.device_context) {
+      if (val_field_is_set) {
+        val.Init(*other.val);
+      }
+    }
+    ~Entry() {
+      if (val_field_is_set) val.Destroy();
+    }
+
+    Entry& operator=(const Entry& other) {
+      if (val_field_is_set) {
+        val.Destroy();
+      }
+      ref = other.ref;
+      ref_mu = other.ref_mu;
+      has_value = other.has_value;
+      val_field_is_set = other.val_field_is_set;
+      alloc_attr = other.alloc_attr;
+      device_context = other.device_context;
+      if (val_field_is_set) {
+        val.Init(*other.val);
+      }
+      return *this;
+    }
+
+    // Clears the <val> field.
+    void ClearVal() {
+      if (val_field_is_set) {
+        val.Destroy();
+        val_field_is_set = false;
+      }
+    }
+
+    // A tensor value, if val_field_is_set.
+    ManualConstructor<Tensor> val;
+
     Tensor* ref = nullptr;       // A tensor reference.
     mutex* ref_mu = nullptr;     // mutex for *ref if ref is not nullptr.
-    bool has_value = false;      // Whether the value exists
+
+    // Whether the value exists, either in <val> or <ref>.
+    bool has_value = false;
+
+    bool val_field_is_set = false;
+
     // The attributes of the allocator that creates the tensor.
     AllocatorAttributes alloc_attr;
 
@@ -479,8 +526,8 @@ class ExecutorState {
     DeviceContext* device_context = nullptr;
   };
 
-  // Contains a map from node id to the DeviceContext object that was
-  // assigned by the device at the beginning of a step.
+  // Contains a value for [node->id()] for the device context assigned by the
+  // device at the beginning of a step.
   DeviceContextMap device_context_map_;
 
   struct IterationState {
@@ -645,6 +692,43 @@ class ExecutorState {
     }
   };
 
+  // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
+  // have that many nodes in the ready queue, so we just use a vector and
+  // don't free up memory from the queue as we consume nodes.
+  class TaggedNodeReadyQueue {
+   public:
+    TaggedNodeReadyQueue() : front_index_(0) {}
+
+    void push_back(TaggedNode node) { ready_.push_back(node); }
+    TaggedNode front() const {
+      DCHECK_LT(front_index_, ready_.size());
+      return ready_[front_index_];
+    }
+    void pop_front() {
+      DCHECK_LT(front_index_, ready_.size());
+      front_index_++;
+      if ((front_index_ == ready_.size()) || (front_index_ > 16384)) {
+        if (front_index_ == ready_.size()) {
+          ready_.clear();
+        } else {
+          // Lots of unused entries at beginning of vector: move everything down
+          // to start of vector.
+          ready_.erase(ready_.begin(), ready_.begin() + front_index_);
+        }
+        front_index_ = 0;
+      }
+    }
+    bool empty() const { return ready_.empty(); }
+    const TaggedNode* begin() const { return ready_.begin() + front_index_; }
+    const TaggedNode* end() const { return ready_.end(); }
+
+   private:
+    gtl::InlinedVector<TaggedNode, 16> ready_;
+    int front_index_;
+  };
+
+  struct AsyncState;
+
   typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
   typedef gtl::InlinedVector<Entry, 4> EntryVector;
 
@@ -767,15 +851,12 @@ class ExecutorState {
   // "node" just finishes. Takes ownership of "stats". Returns true if
   // execution has completed.
   bool NodeDone(const Status& s, const Node* node, const TaggedNodeSeq& ready,
-                NodeExecStats* stats, std::deque<TaggedNode>* inline_ready);
-
-  // Call Process() on all nodes in 'inline_ready'.
-  void ProcessInline(const std::deque<TaggedNode>& inline_ready);
+                NodeExecStats* stats, TaggedNodeReadyQueue* inline_ready);
 
   // Schedule all the expensive nodes in 'ready', and put all the inexpensive
   // nodes in 'ready' into 'inline_ready'.
   void ScheduleReady(const TaggedNodeSeq& ready,
-                     std::deque<TaggedNode>* inline_ready);
+                     TaggedNodeReadyQueue* inline_ready);
 
   // Provide debugging output about an outstanding node in the executor.
   void DumpCompletedNodeState(const int node_id, const Entry* input_vector);
@@ -788,6 +869,7 @@ class ExecutorState {
 
   // Provide debugging output of the state of the executor.
   void DumpState();
+  const Tensor* GetTensorValueForDump(const Entry& input);
 
   // One thread of control finishes.
   void Finish();
@@ -844,7 +926,7 @@ ExecutorState::~ExecutorState() {
   }
 
   for (auto it : device_context_map_) {
-    it.second->Unref();
+    it->Unref();
   }
 
   delete slice_reader_cache_;
@@ -905,43 +987,55 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   }
 }
 
-namespace {
+// State kept alive for executing an asynchronous node in another
+// thread.  NOTE: We need to make a copy of p.input,
+// p.input_device_contexts, and p.input_alloc_attrs for asynchronous
+// kernels because OpKernelContext methods like input_type(i) needs
+// the param points to valid input type vector. It's not an issue for
+// sync kernels because these vectors are kept on the stack.
+struct ExecutorState::AsyncState {
+  AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
+             const NodeItem& _item, Entry* _first_input, NodeExecStats* _stats)
+      : saved_inputs(*p.inputs),
+        saved_input_device_contexts(*p.input_device_contexts),
+        saved_input_alloc_attrs(*p.input_alloc_attrs),
+        params(p),
+        tagged_node(_tagged_node),
+        item(_item),
+        first_input(_first_input),
+        // ParamsButClearingEigenGPUDevice does equivalent of
+        //   params.eigen_gpu_device = nullptr;
+        ctx(ParamsButClearingEigenGPUDevice(&params), item.num_outputs),
+        stats(_stats) {
+    params.inputs = &saved_inputs;
+    params.input_device_contexts = &saved_input_device_contexts;
+    params.input_alloc_attrs = &saved_input_alloc_attrs;
+  }
 
-// Helpers to make a copy of 'p' and makes a copy of the input type
-// vector and the device context vector.
-//
-// NOTE: We need to make a copy of p.input for asynchronous kernel
-// because OpKernelContext methods like input_type(i) needs the param
-// points to valid input type vector. It's not an issue for sync
-// kernels because the type vector is kept on the stack.
-OpKernelContext::Params* CopyParams(const OpKernelContext::Params& p) {
-  OpKernelContext::Params* ret = new OpKernelContext::Params;
-  *ret = p;
-  // Ensure the copy of Params will make a new eigen GPU device if
-  // necessary.
-  ret->eigen_gpu_device = nullptr;
-  ret->inputs = new TensorValueVec(*p.inputs);
-  ret->input_device_contexts = new DeviceContextVec(*p.input_device_contexts);
-  ret->input_alloc_attrs = new AllocatorAttributeVec(*p.input_alloc_attrs);
-  return ret;
-}
+  TensorValueVec saved_inputs;
+  DeviceContextVec saved_input_device_contexts;
+  AllocatorAttributeVec saved_input_alloc_attrs;
+  OpKernelContext::Params params;
+  TaggedNode tagged_node;
+  NodeItem item;
+  Entry* first_input;
+  OpKernelContext ctx;
+  NodeExecStats* stats;
 
-// Helpers to delete 'p' and copies made by CopyParams.
-void DeleteParams(OpKernelContext::Params* p) {
-  // No need to delete p->eigen_gpu_device since that is deleted in
-  // p's destructor
-  delete p->inputs;
-  delete p->input_device_contexts;
-  delete p->input_alloc_attrs;
-  delete p;
-}
-
-}  // namespace
+ private:
+  OpKernelContext::Params* ParamsButClearingEigenGPUDevice(
+      OpKernelContext::Params* p) {
+    // Ensure OpKernelContext constructor will make a new eigen GPU device if
+    // necessary.
+    p->eigen_gpu_device = nullptr;  // Force allocation
+    return p;
+  }
+};
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   const NodeItem* nodes = impl_->nodes_;
   TaggedNodeSeq ready;
-  std::deque<TaggedNode> inline_ready;
+  TaggedNodeReadyQueue inline_ready;
 
   // Parameters passed to OpKernel::Compute.
   TensorValueVec inputs;
@@ -955,6 +1049,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   // track allocations if and only if we are collecting statistics
   params.track_allocations = (stats_collector_ != nullptr);
   params.log_memory = log_memory_;
+  params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
   params.session_state = session_state_;
   params.tensor_store = tensor_store_;
@@ -967,6 +1062,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.inputs = &inputs;
   params.input_device_contexts = &input_device_contexts;
   params.input_alloc_attrs = &input_alloc_attrs;
+  params.runner = &runner_;
 
   Status s;
   NodeExecStats* stats = nullptr;
@@ -992,9 +1088,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     }
 
     // Set the device_context for this node id, if it exists.
-    auto dc_it = device_context_map_.find(id);
-    if (dc_it != device_context_map_.end()) {
-      params.op_device_context = dc_it->second;
+    if (node->id() < device_context_map_.size()) {
+      params.op_device_context = device_context_map_[node->id()];
     }
 
     if (stats_collector_) {
@@ -1027,11 +1122,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       s = PrepareInputs(item, first_input, &inputs, &input_device_contexts,
                         &input_alloc_attrs, &is_input_dead);
       if (!s.ok()) {
-        // Clear the inputs to maintain the invariant that completed
-        // nodes have no valid input tensors.
+        // Clear inputs.
         int num_inputs = item.num_inputs;
         for (int i = 0; i < num_inputs; ++i) {
-          (first_input + i)->val = *kEmptyTensor;
+          (first_input + i)->ClearVal();
         }
         // TODO(misard) Replace with a finer-grain enabling flag once we
         // add better optional debugging support.
@@ -1058,52 +1152,57 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         AsyncOpKernel* async = item.kernel->AsAsync();
         DCHECK(async != nullptr);
         launched_asynchronously = true;
-        auto pcopy = CopyParams(params);
-        auto ctx = new OpKernelContext(pcopy, item.num_outputs);
-        auto done = [this, tagged_node, item, first_input, ctx, stats, pcopy,
-                     device]() {
+        AsyncState* state =
+            new AsyncState(params, tagged_node, item, first_input, stats);
+
+        auto done = [this, state]() {
+
+          Device* device = impl_->params_.device;
+          NodeExecStats* stats = state->stats;      // Shorthand
+          Entry* first_input = state->first_input;  // Shorthand
+
           if (vlog_) {
             VLOG(2) << this << " Async kernel done: "
-                    << SummarizeNodeDef(item.node->def());
+                    << SummarizeNodeDef(state->item.node->def());
           }
           if (stats_collector_) nodestats::SetOpEnd(stats);
           EntryVector outputs;
-          Status s = ProcessOutputs(item, ctx, &outputs, stats);
-          if (stats_collector_) nodestats::SetMemory(stats, ctx);
+          Status s = ProcessOutputs(state->item, &state->ctx, &outputs, stats);
+          if (stats_collector_) nodestats::SetMemory(stats, &state->ctx);
           // Clears inputs.
-          int num_inputs = item.num_inputs;
+          const int num_inputs = state->item.num_inputs;
           for (int i = 0; i < num_inputs; ++i) {
-            (first_input + i)->val = *kEmptyTensor;
+            (first_input + i)->ClearVal();
           }
           // TODO(misard) Replace with a finer-grain enabling flag once we
           // add better optional debugging support.
           if (vlog_ && VLOG_IS_ON(1)) {
             mutex_lock l(mu_);
-            tagged_node.input_frame->GetIteration(tagged_node.input_iter)
-                ->mark_completed(tagged_node.node->id());
+            state->tagged_node.input_frame
+                ->GetIteration(state->tagged_node.input_iter)
+                ->mark_completed(state->tagged_node.node->id());
           }
           TaggedNodeSeq ready;
           if (s.ok()) {
-            PropagateOutputs(tagged_node, outputs, &ready);
+            PropagateOutputs(state->tagged_node, outputs, &ready);
           }
           outputs.clear();
-          if (s.ok() && pcopy->device->RequiresRecordingAccessedTensors()) {
+          if (s.ok() && impl_->device_record_tensor_accesses_) {
             // Get the list of all tensors accessed during the execution
             TensorReferenceVector accessed;
-            ctx->retrieve_accessed_tensors(&accessed);
+            state->ctx.retrieve_accessed_tensors(&accessed);
             if (stats_collector_)
               nodestats::SetReferencedTensors(stats, accessed);
             // callee takes ownership of the vector
-            device->ConsumeListOfAccessedTensors(ctx->op_device_context(),
+            device->ConsumeListOfAccessedTensors(state->ctx.op_device_context(),
                                                  accessed);
           }
-          bool completed = NodeDone(s, item.node, ready, stats, nullptr);
-          delete ctx;
-          DeleteParams(pcopy);
+          bool completed = NodeDone(s, state->item.node, ready, stats, nullptr);
+          delete state;
           if (completed) Finish();
         };
         if (stats_collector_) nodestats::SetOpStart(stats);
-        device->ComputeAsync(async, ctx, done);
+        device->ComputeAsync(async, &state->ctx, done);
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
@@ -1134,7 +1233,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       // Clears inputs.
       const int num_inputs = item.num_inputs;
       for (int i = 0; i < num_inputs; ++i) {
-        (first_input + i)->val = *kEmptyTensor;
+        (first_input + i)->ClearVal();
       }
       // TODO(misard) Replace with a finer-grain enabling flag once we
       // add better optional debugging support.
@@ -1196,7 +1295,11 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
     if (!entry->has_value) {
       if (!is_merge) {
         DCHECK(IsTransferNode(node));
-        inp->tensor = &entry->val;
+        DCHECK(!entry->val_field_is_set);
+        entry->has_value = true;
+        entry->val_field_is_set = true;
+        entry->val.Init(*kEmptyTensor);
+        inp->tensor = entry->val.get();
         *is_input_dead = true;
       }
       continue;
@@ -1207,7 +1310,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
             errors::InvalidArgument(i, "-th input expects a ref type"),
             item.kernel->def());
       }
-      inp->tensor = &entry->val;
+      inp->tensor = entry->val.get();
     } else {
       if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
         return AttachDef(
@@ -1224,9 +1327,14 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         // under the mutex.
         {
           mutex_lock l(*(entry->ref_mu));
-          entry->val = *entry->ref;
+          DCHECK(!entry->val_field_is_set);
+          entry->val.Init(*entry->ref);
+          entry->val_field_is_set = true;
         }
-        inp->tensor = &entry->val;
+        entry->ref = nullptr;
+        entry->ref_mu = nullptr;
+
+        inp->tensor = entry->val.get();
       }
     }
   }
@@ -1254,9 +1362,15 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 
   // Get the device_context for this node id, if it exists.
   DeviceContext* device_context = nullptr;
-  auto dc_it = device_context_map_.find(node->id());
-  if (dc_it != device_context_map_.end()) {
-    device_context = dc_it->second;
+  if (node->id() < device_context_map_.size()) {
+    device_context = device_context_map_[node->id()];
+  }
+
+  // Experimental: debugger (tfdb) access to intermediate node completion.
+  if (item.num_outputs == 0 && impl_->params_.node_outputs_cb != nullptr) {
+    // If the node has no output, invoke the callback with output slot set to
+    // -1, signifying that this is a no-output node.
+    impl_->params_.node_outputs_cb(item.node->name(), -1, nullptr, false, ctx);
   }
 
   for (int i = 0; i < item.num_outputs; ++i) {
@@ -1270,7 +1384,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       }
     } else {
       Entry* out = &((*outputs)[i]);
-      out->has_value = true;
 
       // Set the device context of the output entry.
       out->device_context = device_context;
@@ -1286,6 +1399,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
           nodestats::SetOutput(stats, i, val.tensor);
         }
         if (val.is_ref()) {
+          out->has_value = true;
           out->ref = val.tensor;
           out->ref_mu = val.mutex_if_ref;
           if (log_memory_) {
@@ -1298,13 +1412,28 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
                                           ctx->step_id(), i, to_log);
           }
+
+          // Experimental: debugger (tfdb) access to intermediate node outputs.
+          if (impl_->params_.node_outputs_cb != nullptr) {
+            impl_->params_.node_outputs_cb(item.node->name(), i, out->ref, true,
+                                           ctx);
+          }
         } else {
           // NOTE that std::move is used here, so val.tensor goes to
           // uninitialized state (val.tensor->IsInitialized return false).
-          out->val = std::move(*val.tensor);
+          DCHECK(!out->val_field_is_set);
+          out->has_value = true;
+          out->val_field_is_set = true;
+          out->val.Init(std::move(*val.tensor));
           if (log_memory_) {
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
-                                          ctx->step_id(), i, out->val);
+                                          ctx->step_id(), i, *out->val);
+          }
+
+          // Experimental: debugger access to intermediate node outputs.
+          if (impl_->params_.node_outputs_cb != nullptr) {
+            impl_->params_.node_outputs_cb(item.node->name(), i, out->val.get(),
+                                           false, ctx);
           }
         }
       } else {
@@ -1477,7 +1606,7 @@ void ExecutorState::AddLoopInv(FrameState* frame, const Node* node,
 
 bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              const TaggedNodeSeq& ready, NodeExecStats* stats,
-                             std::deque<TaggedNode>* inline_ready) {
+                             TaggedNodeReadyQueue* inline_ready) {
   if (stats_collector_) {
     nodestats::SetAllEnd(stats);
     stats_collector_->UpdateCostModelNode(stats, impl_->graph_, node);
@@ -1522,19 +1651,8 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
   return completed;
 }
 
-void ExecutorState::ProcessInline(const std::deque<TaggedNode>& inline_ready) {
-  if (inline_ready.empty()) return;
-  int64 scheduled_usec = 0;
-  if (stats_collector_) {
-    scheduled_usec = nodestats::NowInUsec();
-  }
-  for (auto& tagged_node : inline_ready) {
-    Process(tagged_node, scheduled_usec);
-  }
-}
-
 void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
-                                  std::deque<TaggedNode>* inline_ready) {
+                                  TaggedNodeReadyQueue* inline_ready) {
   if (ready.empty()) return;
 
   int64 scheduled_usec = 0;
@@ -1578,6 +1696,16 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   }
 }
 
+const Tensor* ExecutorState::GetTensorValueForDump(const Entry& input) {
+  if (!input.has_value) {
+    return kEmptyTensor;
+  } else if (input.ref == nullptr) {
+    return input.val.get();
+  } else {
+    return input.ref;
+  }
+}
+
 void ExecutorState::DumpCompletedNodeState(const int node_id,
                                            const Entry* input_vector) {
   const NodeItem& node_item = impl_->nodes_[node_id];
@@ -1586,7 +1714,7 @@ void ExecutorState::DumpCompletedNodeState(const int node_id,
   const int input_base = node_item.input_start;
   for (int i = 0; i < node.num_inputs(); ++i) {
     const Entry& input = input_vector[input_base + i];
-    CHECK(!input.val.IsInitialized());
+    CHECK(!GetTensorValueForDump(input)->IsInitialized());
   }
 }
 
@@ -1600,12 +1728,7 @@ void ExecutorState::DumpPendingNodeState(
     bool has_ready_input = false;
     for (int i = 0; i < node.num_inputs(); ++i) {
       const Entry& input = input_vector[input_base + i];
-      const Tensor* tensor;
-      if (input.ref == nullptr) {
-        tensor = &input.val;
-      } else {
-        tensor = input.ref;
-      }
+      const Tensor* tensor = GetTensorValueForDump(input);
       if (tensor->IsInitialized()) {
         has_ready_input = true;
         break;
@@ -1618,12 +1741,7 @@ void ExecutorState::DumpPendingNodeState(
   LOG(WARNING) << "    Pending Node: " << node.DebugString();
   for (int i = 0; i < node.num_inputs(); ++i) {
     const Entry& input = input_vector[input_base + i];
-    const Tensor* tensor;
-    if (input.ref == nullptr) {
-      tensor = &input.val;
-    } else {
-      tensor = input.ref;
-    }
+    const Tensor* tensor = GetTensorValueForDump(input);
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "      Input " << i << ": "
                    << strings::StrCat(
@@ -1643,12 +1761,7 @@ void ExecutorState::DumpActiveNodeState(const int node_id,
   const int input_base = node_item.input_start;
   for (int i = 0; i < node.num_inputs(); ++i) {
     const Entry& input = input_vector[input_base + i];
-    const Tensor* tensor;
-    if (input.ref == nullptr) {
-      tensor = &input.val;
-    } else {
-      tensor = input.ref;
-    }
+    const Tensor* tensor = GetTensorValueForDump(input);
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "      Input " << i << ": "
                    << strings::StrCat(
@@ -1678,12 +1791,7 @@ void ExecutorState::DumpIterationState(IterationState* iteration) {
   size_t total_bytes = 0;
   for (int i = 0; i < impl_->total_input_tensors_; ++i) {
     const Entry& input = iteration->input_tensors[i];
-    const Tensor* tensor;
-    if (input.ref == nullptr) {
-      tensor = &input.val;
-    } else {
-      tensor = input.ref;
-    }
+    const Tensor* tensor = GetTensorValueForDump(input);
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "    Input " << i << ": "
                    << strings::StrCat("Tensor<type: ",

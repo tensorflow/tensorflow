@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,18 +34,14 @@ class DType(object):
   * `tf.bfloat16`: 16-bit truncated floating-point.
   * `tf.complex64`: 64-bit single-precision complex.
   * `tf.complex128`: 128-bit double-precision complex.
-
   * `tf.int8`: 8-bit signed integer.
   * `tf.uint8`: 8-bit unsigned integer.
   * `tf.uint16`: 16-bit unsigned integer.
   * `tf.int16`: 16-bit signed integer.
   * `tf.int32`: 32-bit signed integer.
   * `tf.int64`: 64-bit signed integer.
-
   * `tf.bool`: Boolean.
-
   * `tf.string`: String.
-
   * `tf.qint8`: Quantized 8-bit signed integer.
   * `tf.quint8`: Quantized 8-bit unsigned integer.
   * `tf.qint16`: Quantized 16-bit signed integer.
@@ -209,7 +205,7 @@ class DType(object):
         (bool, string, complex64, complex128)):
       raise TypeError("Cannot find maximum value of %s." % self)
 
-    # there is no simple way to get the min value of a dtype, we have to check
+    # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
     try:
       return np.finfo(self.as_numpy_dtype()).max
@@ -244,8 +240,13 @@ class DType(object):
 
   def __eq__(self, other):
     """Returns True iff this DType refers to the same type as `other`."""
-    return (other is not None
-            and self._type_enum == as_dtype(other).as_datatype_enum)
+    if other is None:
+      return False
+    try:
+      dtype = as_dtype(other).as_datatype_enum
+      return self._type_enum == dtype
+    except TypeError:
+      return False
 
   def __ne__(self, other):
     """Returns True iff self != other."""

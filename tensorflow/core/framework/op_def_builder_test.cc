@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -38,10 +39,12 @@ class OpDefBuilderTest : public ::testing::Test {
  protected:
   OpDefBuilder b() { return OpDefBuilder("Test"); }
 
-  void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto) {
-    OpDef op_def;
-    Status status = builder.Finalize(&op_def);
+  void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto,
+                     OpShapeInferenceFn* shape_fn_out = nullptr) {
+    OpRegistrationData op_reg_data;
+    Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);
+    OpDef& op_def = op_reg_data.op_def;
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
@@ -50,13 +53,18 @@ class OpDefBuilderTest : public ::testing::Test {
       CanonicalizeAttrTypeListOrder(&op_def);
       CanonicalizeAttrTypeListOrder(&expected);
       EXPECT_EQ(op_def.ShortDebugString(), expected.ShortDebugString());
+
+      if (shape_fn_out) {
+        *shape_fn_out = op_reg_data.shape_inference_fn;
+      }
     }
   }
 
   void ExpectOrdered(const OpDefBuilder& builder, StringPiece proto) {
-    OpDef op_def;
-    Status status = builder.Finalize(&op_def);
+    OpRegistrationData op_reg_data;
+    Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);
+    OpDef& op_def = op_reg_data.op_def;
     if (status.ok()) {
       OpDef expected;
       protobuf::TextFormat::ParseFromString(
@@ -66,8 +74,8 @@ class OpDefBuilderTest : public ::testing::Test {
   }
 
   void ExpectFailure(const OpDefBuilder& builder, string error) {
-    OpDef op_def;
-    Status status = builder.Finalize(&op_def);
+    OpRegistrationData op_reg_data;
+    Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
       EXPECT_EQ(status.error_message(), error);
@@ -571,6 +579,27 @@ attr {
   minimum: 1
 }
 )proto");
+}
+
+TEST_F(OpDefBuilderTest, SetShapeFn) {
+  auto fn = [](shape_inference::InferenceContext* c) {
+    return errors::Unknown("ShapeFn was called");
+  };
+  OpShapeInferenceFn fn_out;
+  ExpectSuccess(
+      b().SetShapeFn(fn).Attr("dtype: type"),
+      "attr { name: \"dtype\" type: \"type\" allowed_values { list { } } }",
+      &fn_out);
+  ASSERT_TRUE(fn_out != nullptr);
+  EXPECT_EQ("ShapeFn was called", fn_out(nullptr).error_message());
+}
+
+TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {
+  auto fn = [](shape_inference::InferenceContext* c) {
+    return errors::Unknown("ShapeFn was called");
+  };
+  ExpectFailure(b().SetShapeFn(fn).SetShapeFn(fn),
+                "SetShapeFn called twice for Op Test");
 }
 
 }  // namespace

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ from __future__ import print_function
 import collections
 import re
 
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import logging_ops
@@ -596,6 +596,10 @@ def parse_single_sequence_example(
   `FixedLenSequenceFeature` is mapped to a `Tensor`, each of the specified type.
   The shape will be `(T,) + df.shape` for `FixedLenSequenceFeature` `df`, where
   `T` is the length of the associated `FeatureList` in the `SequenceExample`.
+  For instance, `FixedLenSequenceFeature([])` yields a scalar 1-D `Tensor` of
+  static shape `[None]` and dynamic shape `[T]`, while
+  `FixedLenSequenceFeature([k])` (for `int k >= 1`) yields a 2-D matrix `Tensor`
+  of static shape `[None, k]` and dynamic shape `[T, k]`.
 
   Each `SparseTensor` corresponding to `sequence_features` represents a ragged
   vector.  Its indices are `[time, index]`, where `time` is the `FeatureList`

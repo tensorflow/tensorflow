@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 module TF.Backend {
-  // TODO(cassandrax): Remove this interface.
   export interface RunEnumeration {
     histograms: string[];
     compressedHistogramTuples: string[];
@@ -25,7 +24,6 @@ module TF.Backend {
     run_metadata: string[];
   }
 
-  // TODO(cassandrax): Remove this interface.
   export interface RunsResponse { [runName: string]: RunEnumeration; }
 
   export type RunToTag = {[run: string]: string[]};
@@ -99,8 +97,6 @@ module TF.Backend {
 
     /**
      * Returns a listing of all the available data in the TensorBoard backend.
-     * Will be deprecated in the future, in favor of
-     * per-data-type methods.
      */
     public runs(): Promise<RunsResponse> {
       return this.requestManager.request(this.router.runs());
@@ -108,8 +104,6 @@ module TF.Backend {
 
     /**
      * Return a promise showing the Run-to-Tag mapping for scalar data.
-     * TODO(cassandrax): Replace this with the direct route, when
-     * available.
      */
     public scalarRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'scalars'));
@@ -117,8 +111,6 @@ module TF.Backend {
 
     /**
      * Return a promise showing the Run-to-Tag mapping for histogram data.
-     * TODO(cassandrax): Replace this with the direct route, when
-     * available.
      */
     public histogramRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'histograms'));
@@ -126,8 +118,6 @@ module TF.Backend {
 
     /**
      * Return a promise showing the Run-to-Tag mapping for image data.
-     * TODO(cassandrax): Replace this with the direct route, when
-     * available.
      */
     public imageRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'images'));
@@ -135,8 +125,6 @@ module TF.Backend {
 
     /**
      * Return a promise showing the Run-to-Tag mapping for audio data.
-     * TODO(cassandrax): Replace this with the direct route, when
-     * available.
      */
     public audioRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'audio'));
@@ -145,8 +133,6 @@ module TF.Backend {
     /**
      * Return a promise showing the Run-to-Tag mapping for compressedHistogram
      * data.
-     * TODO(cassandrax): Replace this with the direct route, when
-     * available.
      */
     public compressedHistogramRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'compressedHistograms'));
@@ -154,8 +140,6 @@ module TF.Backend {
 
     /**
      * Return a promise showing list of runs that contain graphs.
-     * TODO(cassandrax): Replace this with the direct route, when
-     * available.
      */
     public graphRuns(): Promise<string[]> {
       return this.runs().then(
@@ -164,8 +148,6 @@ module TF.Backend {
 
     /**
      * Return a promise showing the Run-to-Tag mapping for run_metadata objects.
-     * TODO(cassandrax): Replace this with the direct route, when
-     * available.
      */
     public runMetadataRuns(): Promise<RunToTag> {
       return this.runs().then((x) => _.mapValues(x, 'run_metadata'));

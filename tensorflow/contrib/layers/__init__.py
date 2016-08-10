@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,19 @@ This package provides several ops that take care of creating variables that are
 used internally in a consistent way and provide the building blocks for many
 common machine learning algorithms.
 
+@@avg_pool2d
+@@batch_norm
 @@convolution2d
+@@convolution2d_in_plane
+@@convolution2d_transpose
+@@flatten
 @@fully_connected
+@@max_pool2d
+@@one_hot_encoding
+@@repeat
+@@separable_convolution2d
+@@stack
+@@unit_norm
 
 Aliases for fully_connected which set a default activation function are
 available: `relu`, `relu6` and `linear`.

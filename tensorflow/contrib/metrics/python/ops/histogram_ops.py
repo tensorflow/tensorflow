@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,10 +23,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.metrics.python.ops import metric_ops_util
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import logging_ops
@@ -78,6 +79,8 @@ def auc_using_histogram(boolean_labels,
     collections = [ops.GraphKeys.LOCAL_VARIABLES]
   with variable_scope.variable_op_scope(
       [boolean_labels, scores, score_range], name, 'auc_using_histogram'):
+    scores, boolean_labels = metric_ops_util.remove_squeezable_dimensions(
+        scores, boolean_labels)
     score_range = ops.convert_to_tensor(score_range, name='score_range')
     boolean_labels, scores = _check_labels_and_scores(
         boolean_labels, scores, check_shape)

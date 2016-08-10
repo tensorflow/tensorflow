@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
-# TF_BUILD_NO_CACHING_VIRTUALENV, NO_TEST_ON_INSTALL
+# NO_TEST_ON_INSTALL
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
@@ -32,10 +32,6 @@
 # TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES overrides the default extra pip packages
 # to be installed in virtualenv before test_installation.sh is called. Multiple
 # pakcage names are separated with spaces.
-#
-# TF_BUILD_NO_CACHING_VIRTUALENV: If set to any non-empty and non-0 value,
-# will cause the script to force remove any existing (cached) virtualenv
-# directory.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
 # part will be skipped.
@@ -52,6 +48,13 @@
 # --integration_tests will cause the integration tests (integration_tests.sh)
 # to run.
 #
+
+# Fixed naming patterns for wheel (.whl) files given different python versions
+if [[ $(uname) == "Linux" ]]; then
+  declare -A WHL_TAGS
+  WHL_TAGS=(["2.7"]="cp27-none" ["3.4"]="cp34-cp34m" ["3.5"]="cp35-cp35m")
+fi
+
 
 INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
 
@@ -103,7 +106,8 @@ fi
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
-if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
+if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
+   [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
   bazel build -c opt ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
       die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
@@ -132,9 +136,13 @@ fi
 # This info will be useful for determining the directory of the local pip
 # installation of Python
 PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f-2)
+if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
+  die "ERROR: Unable to determine the major.minor version of Python"
+fi
 
 echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
+
 
 # Build PIP Wheel file
 PIP_TEST_ROOT="pip_test"
@@ -144,31 +152,50 @@ rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
 bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
     die "build_pip_package FAILED"
 
-# Perform installation
 WHL_PATH=$(ls ${PIP_WHL_DIR}/tensorflow*.whl)
 if [[ $(echo ${WHL_PATH} | wc -w) -ne 1 ]]; then
   die "ERROR: Failed to find exactly one built TensorFlow .whl file in "\
 "directory: ${PIP_WHL_DIR}"
 fi
 
+# If on Linux, rename the whl file properly so it will have the python
+# version tags and platform tags that won't cause pip install issues.
+if [[ $(uname) == "Linux" ]]; then
+  PY_TAGS=${WHL_TAGS[${PY_MAJOR_MINOR_VER}]}
+
+  if [[ ! -z "${PY_TAGS}" ]]; then
+    PLATFORM_TAG=$(to_lower "$(uname)_$(uname -m)")
+    WHL_DIR=$(dirname "${WHL_PATH}")
+    WHL_BASE_NAME=$(basename "${WHL_PATH}")
+
+    NEW_WHL_BASE_NAME=$(echo ${WHL_BASE_NAME} | cut -d \- -f 1)-\
+$(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
+
+    if [[ ! -f "${WHL_DIR}/${NEW_WHL_BASE_NAME}" ]]; then
+      cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}" && \
+        echo "Copied wheel file: ${WHL_BASE_NAME} --> ${NEW_WHL_BASE_NAME}" || \
+        die "ERROR: Failed to copy wheel file to ${NEW_WHL_BASE_NAME}"
+    fi
+  fi
+fi
+
 echo "whl file path = ${WHL_PATH}"
 
-# Install, in user's local home folder
+
+# Perform installation
 echo "Installing pip whl file: ${WHL_PATH}"
 
 # Create virtualenv directory for install test
 VENV_DIR="${PIP_TEST_ROOT}/venv"
-if [[ -d "${VENV_DIR}" ]] &&
-   [[ ! -z "${TF_BUILD_NO_CACHING_VIRTUALENV}" ]] &&
-   [[ "${TF_BUILD_NO_CACHING_VIRTUALENV}" != "0" ]]; then
-  echo "TF_BUILD_NO_CACHING_VIRTUALENV=${TF_BUILD_NO_CACHING_VIRTUALENV}:"
-  echo "Removing existing virtualenv directory: ${VENV_DIR}"
 
-  rm -rf "${VENV_DIR}" || \
+if [[ -d "${VENV_DIR}" ]]; then
+  rm -rf "${VENV_DIR}" && \
+      echo "Removed existing virtualenv directory: ${VENV_DIR}" || \
       die "Failed to remove existing virtualenv directory: ${VENV_DIR}"
 fi
 
-mkdir -p ${VENV_DIR} || \
+mkdir -p ${VENV_DIR} && \
+    echo "Created virtualenv directory: ${VENV_DIR}" || \
     die "FAILED to create virtualenv directory: ${VENV_DIR}"
 
 # Verify that virtualenv exists

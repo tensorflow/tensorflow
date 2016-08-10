@@ -3,7 +3,7 @@ A Reader that outputs the records from a TFRecords file.
 See ReaderBase for supported methods.
 - - -
 
-#### `tf.TFRecordReader.__init__(name=None)` {#TFRecordReader.__init__}
+#### `tf.TFRecordReader.__init__(name=None, options=None)` {#TFRecordReader.__init__}
 
 Create a TFRecordReader.
 
@@ -11,6 +11,7 @@ Create a TFRecordReader.
 
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`options`</b>: A TFRecordOptions object (optional).
 
 
 - - -
@@ -71,6 +72,33 @@ finished with the previous file).
 
 *  <b>`key`</b>: A string scalar Tensor.
 *  <b>`value`</b>: A string scalar Tensor.
+
+
+- - -
+
+#### `tf.TFRecordReader.read_up_to(queue, num_records, name=None)` {#TFRecordReader.read_up_to}
+
+Returns up to num_records (key, value pairs) produced by a reader.
+
+Will dequeue a work unit from queue if necessary (e.g., when the
+Reader needs to start reading from a new file since it has
+finished with the previous file).
+It may return less than num_records even before the last batch.
+
+##### Args:
+
+
+*  <b>`queue`</b>: A Queue or a mutable string Tensor representing a handle
+    to a Queue, with string work items.
+*  <b>`num_records`</b>: Number of records to read.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of Tensors (keys, values).
+
+*  <b>`keys`</b>: A 1-D string Tensor.
+*  <b>`values`</b>: A 1-D string Tensor.
 
 
 - - -

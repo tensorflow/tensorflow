@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -255,6 +255,10 @@ class Variable(object):
 
     if collections is None:
       collections = [ops.GraphKeys.VARIABLES]
+    if not isinstance(collections, (list, tuple, set)):
+      raise ValueError(
+          "collections argument to Variable constructor must be a list, tuple, "
+          "or set. Got %s of type %s" % (collections, type(collections)))
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
@@ -610,6 +614,15 @@ class Variable(object):
     else:
       setattr(Variable, operator, lambda a, b: Variable._RunOp(operator, a, b))
 
+  # NOTE(mrry): This enables the Variable's overloaded "right" binary
+  # operators to run when the left operand is an ndarray, because it
+  # accords the Variable class higher priority than an ndarray, or a
+  # numpy matrix.
+  # TODO(mrry): Convert this to using numpy's __numpy_ufunc__
+  # mechanism, which allows more control over how Variables interact
+  # with ndarrays.
+  __array_priority__ = 100
+
   @staticmethod
   def _RunOp(operator, a, b):
     """Run the operator 'op' for 'a'.
@@ -746,6 +759,92 @@ class Variable(object):
     self._save_slice_info = save_slice_info
 
 
+class _PartitionedVariable(object):
+  """Wrapper around a list of partitioned `Variable`.
+
+  May get merged into the main `Variable` class.
+  """
+
+  def __init__(self, name, shape, dtype, variable_list, partitions):
+    """Creates a new partitioned variable wrapper.
+
+    Args:
+      name: Overall name of the variables.
+      shape: Overall shape of the variables.
+      dtype: Type of the variables.
+      variable_list: List of `Variable` that comprise this partitioned variable.
+      partitions: List of number of partitions for each dimension.
+    """
+    self._name = name
+    self._shape = shape
+    self._dtype = dtype
+    self._variable_list = variable_list
+    self._partitions = partitions
+    self._as_tensor = None
+
+  def as_tensor(self):
+    """Returns the overall concatenated value as a `Tensor`.
+
+    Returns:
+      `Tensor` containing the concatenated value.
+    """
+    if self._as_tensor is not None:
+      return self._as_tensor
+
+    if len(self._variable_list) == 1:
+      with ops.name_scope(None):
+        self._as_tensor = array_ops.identity(self._variable_list[0],
+                                             name=self._name)
+        return self._as_tensor
+
+    if all([p < 2 for p in self._partitions]):
+      partition_ix = 0
+    else:
+      partition_ix = [i for i, p in enumerate(self._partitions) if p > 1][0]
+    with ops.name_scope(self._name + "/ConcatPartitions/"):
+      concatenated = array_ops.concat(partition_ix, self._variable_list)
+    with ops.name_scope(None):
+      # Be sure to cache the concatenated tensor to not do extraneous
+      # computations.
+      self._as_tensor = array_ops.identity(concatenated, name=self._name)
+    return self._as_tensor
+
+  @staticmethod
+  def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):
+    _ = name
+    if dtype is not None and not dtype.is_compatible_with(v.dtype):
+      raise ValueError(
+          "Incompatible type conversion requested to type '%s' for variable "
+          "of type '%s'" % (dtype.name, v.dtype.name))
+    if as_ref:
+      raise NotImplementedError(
+          "_PartitionedVariable doesn't support being used as a reference.")
+    else:
+      return v.as_tensor()
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def dtype(self):
+    return self._dtype
+
+  def get_shape(self):
+    return self._shape
+
+  def _get_variable_list(self):
+    return self._variable_list
+
+  def _get_partitions(self):
+    return self._partitions
+
+  def assign(self, value, use_locking=False):
+    _ = value, use_locking
+    raise NotImplementedError(
+        "assign() has not been implemented for _PartitionedVariable.")
+
+
 def all_variables():
   """Returns all variables that must be saved/restored.
 
@@ -772,6 +871,7 @@ def trainable_variables():
   """
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
 
+
 def local_variables():
   """Returns all variables created with collection=[LOCAL_VARIABLES].
 
@@ -779,6 +879,16 @@ def local_variables():
     A list of local Variable objects.
   """
   return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+
+
+def model_variables():
+  """Returns all variables in the MODEL_VARIABLES collection.
+
+  Returns:
+    A list of local Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
+
 
 def moving_average_variables():
   """Returns all variables that maintain their moving averages.
@@ -939,6 +1049,9 @@ def report_uninitialized_variables(var_list=None,
 ops.register_tensor_conversion_function(Variable,
                                         Variable._TensorConversionFunction)
 Variable._OverloadAllOperators()
+
+ops.register_tensor_conversion_function(
+    _PartitionedVariable, _PartitionedVariable._TensorConversionFunction)
 # pylint: enable=protected-access
 
 ops.register_dense_tensor_like_type(Variable)

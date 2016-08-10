@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Helper macros and typemaps for use in Tensorflow swig files.
+// Helper macros and typemaps for use in TensorFlow swig files.
 //
 %{
   #include <memory>
@@ -146,6 +146,7 @@ std::vector<type>* OUTPUT (std::vector<type> temp),
 %enddef
 
 _LIST_OUTPUT_TYPEMAP(string, _SwigBytes_FromString);
+_LIST_OUTPUT_TYPEMAP(long long, PyLong_FromLongLong);
 _LIST_OUTPUT_TYPEMAP(unsigned long long, PyLong_FromUnsignedLongLong);
 
 %typemap(in) uint64 {
@@ -178,6 +179,7 @@ _LIST_OUTPUT_TYPEMAP(unsigned long long, PyLong_FromUnsignedLongLong);
 %enddef
 
 _COPY_TYPEMAPS(unsigned long long, uint64);
+_COPY_TYPEMAPS(long long, int64);
 
 // SWIG macros for explicit API declaration.
 // Usage:

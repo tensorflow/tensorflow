@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,7 +75,9 @@ class DequantizeOp : public OpKernel {
            scale_factor) +
           min_range;
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      QuantizedTensorToFloatInPlace<T>(input, min_range, max_range, output);
+      QuantizedTensorToFloatInPlaceUsingEigen<T>(
+          ctx->template eigen_device<Device>(), input, min_range, max_range,
+          output);
     }
   }
 

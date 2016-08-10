@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -136,7 +136,7 @@ class EditDistanceTest(tf.test.TestCase):
         normalize=True,
         expected_output=expected_output)
 
-  def testEditDistanceMissingHypothesis(self):
+  def testEditDistanceZeroLengthHypothesis(self):
     hypothesis_indices = np.empty((0, 2), dtype=np.int64)
     hypothesis_values = []
     hypothesis_shape = [1, 0]
@@ -151,14 +151,29 @@ class EditDistanceTest(tf.test.TestCase):
         normalize=True,
         expected_output=expected_output)
 
-  def testEditDistanceMissingTruth(self):
+  def testEditDistanceZeroLengthTruth(self):
     hypothesis_indices = [[0, 0]]
     hypothesis_values = [0]
     hypothesis_shape = [1, 1]
     truth_indices = np.empty((0, 2), dtype=np.int64)
     truth_values = []
     truth_shape = [1, 0]
-    expected_output = [np.inf]  # Normalized, divide by zero
+    expected_output = [np.inf]  # Normalized, loss is 1/0 = inf
+
+    self._testEditDistance(
+        hypothesis=(hypothesis_indices, hypothesis_values, hypothesis_shape),
+        truth=(truth_indices, truth_values, truth_shape),
+        normalize=True,
+        expected_output=expected_output)
+
+  def testEditDistanceZeroLengthHypothesisAndTruth(self):
+    hypothesis_indices = np.empty((0, 2), dtype=np.int64)
+    hypothesis_values = []
+    hypothesis_shape = [1, 0]
+    truth_indices = np.empty((0, 2), dtype=np.int64)
+    truth_values = []
+    truth_shape = [1, 0]
+    expected_output = [0]  # Normalized is 0 because of exact match
 
     self._testEditDistance(
         hypothesis=(hypothesis_indices, hypothesis_values, hypothesis_shape),

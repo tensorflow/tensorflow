@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -259,6 +259,10 @@ class TensorShapeUtils {
 
   static bool IsMatrix(const TensorShape& shape) { return shape.dims() == 2; }
 
+  static bool IsSquareMatrix(const TensorShape& shape) {
+    return shape.dims() == 2 && shape.dim_size(0) == shape.dim_size(1);
+  }
+
   static bool IsMatrixOrHigher(const TensorShape& shape) {
     return shape.dims() >= 2;
   }
@@ -267,6 +271,8 @@ class TensorShapeUtils {
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
   static Status MakeShape(const int32* dims, int64 n, TensorShape* out);
   static Status MakeShape(const int64* dims, int64 n, TensorShape* out);
+  static Status MakeShape(gtl::ArraySlice<int32> shape, TensorShape* out);
+  static Status MakeShape(gtl::ArraySlice<int64> shape, TensorShape* out);
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 

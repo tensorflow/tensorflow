@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,10 +49,6 @@ string StackTraceIfVLOG10() {
     return "";
   }
 }
-
-// Maximum stack depth to report when generating backtrace on mem allocation
-// (for GPU memory leak checker)
-static const int kMaxStackDepth = 256;
 
 // Make sure the executor is done with its work; we know (because this isn't
 // publicly visible) that all enqueued work is quick.

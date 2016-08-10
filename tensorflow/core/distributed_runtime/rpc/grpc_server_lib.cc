@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -182,8 +182,8 @@ Status GrpcServer::Init() {
 
   // Finish setting up worker environment.
   worker_env_.graph_mgr = new GraphMgr(&worker_env_);
-  worker_env_.rendezvous_mgr = new RpcRendezvousMgr(&worker_env_);
   worker_env_.compute_pool = ComputePool(sess_opts);
+  worker_env_.rendezvous_mgr = new RpcRendezvousMgr(&worker_env_);
 
   return Status::OK();
 }

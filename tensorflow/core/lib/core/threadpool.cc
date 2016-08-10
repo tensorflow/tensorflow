@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,15 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/threadpool.h"
 
-#ifdef TENSORFLOW_USE_EIGEN_THREADPOOL
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#else
-#include <deque>
-#include <thread>
-#include <vector>
-#endif
-
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -33,13 +27,15 @@ limitations under the License.
 namespace tensorflow {
 namespace thread {
 
-#ifdef TENSORFLOW_USE_EIGEN_THREADPOOL
-
 struct EigenEnvironment {
   typedef Thread EnvThread;
-  struct Task {
+  struct TaskImpl {
     std::function<void()> f;
+    Context context;
     uint64 trace_id;
+  };
+  struct Task {
+    std::unique_ptr<TaskImpl> f;
   };
 
   Env* const env_;
@@ -65,16 +61,21 @@ struct EigenEnvironment {
       port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
                                  id);
     }
-    return Task{std::move(f), id};
+    return Task{
+        std::unique_ptr<TaskImpl>(new TaskImpl{
+            std::move(f), Context(ContextKind::kThread), id,
+        }),
+    };
   }
 
   void ExecuteTask(const Task& t) {
-    if (t.trace_id != 0) {
+    WithContext wc(t.f->context);
+    if (t.f->trace_id != 0) {
       port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, t.trace_id);
-      t.f();
+          port::Tracing::EventCategory::kRunClosure, t.f->trace_id);
+      t.f->f();
     } else {
-      t.f();
+      t.f->f();
     }
   }
 };
@@ -83,15 +84,14 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
   Impl(Env* env, const ThreadOptions& thread_options, const string& name,
        int num_threads)
       : Eigen::ThreadPoolTempl<EigenEnvironment>(
-            num_threads, EigenEnvironment(env, thread_options, name)),
-        num_threads_(num_threads) {}
+            num_threads, EigenEnvironment(env, thread_options, name)) {}
 
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn) {
 #ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
     CHECK_GE(total, 0);
     CHECK_EQ(total, (int64)(Eigen::Index)total);
-    Eigen::ThreadPoolDevice device(this, num_threads_);
+    Eigen::ThreadPoolDevice device(this, this->NumThreads());
     device.parallelFor(
         total, Eigen::TensorOpCost(0, 0, cost_per_unit),
         [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
@@ -99,130 +99,7 @@ struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
     CHECK(0);  // should not be used with the old thread pool
 #endif
   }
-
-  int NumThreads() const { return num_threads_; };
-
-  const int num_threads_;
 };
-
-#else
-
-struct ThreadPool::Impl {
-  Impl(Env* env, const ThreadOptions& thread_options, const string& name,
-       int num_threads);
-  ~Impl();
-  void Schedule(std::function<void()> fn);
-  void ParallelFor(int64 total, int64 cost_per_unit,
-                   std::function<void(int64, int64)> fn) {
-    CHECK(0);  // should not be used with the old thread pool
-  }
-
-  int NumThreads() const { return threads_.size(); };
-
- private:
-  struct Waiter {
-    condition_variable cv;
-    bool ready;
-  };
-
-  struct Task {
-    std::function<void()> fn;
-    uint64 id;
-  };
-
-  void WorkerLoop();
-
-  const string name_;
-  mutex mu_;
-  std::vector<Thread*> threads_;  // All threads
-  std::vector<Waiter*> waiters_;  // Stack of waiting threads.
-  std::deque<Task> pending_;      // Queue of pending work
-};
-
-ThreadPool::Impl::Impl(Env* env, const ThreadOptions& thread_options,
-                       const string& name, int num_threads)
-    : name_(name) {
-  for (int i = 0; i < num_threads; i++) {
-    threads_.push_back(
-        env->StartThread(thread_options, name, [this]() { WorkerLoop(); }));
-  }
-}
-
-ThreadPool::Impl::~Impl() {
-  {
-    // Wait for all work to get done.
-    mutex_lock l(mu_);
-
-    // Inform every thread to exit.
-    for (size_t i = 0; i < threads_.size(); ++i) {
-      pending_.push_back({nullptr, 0});
-    }
-
-    // Wakeup all waiters.
-    for (auto w : waiters_) {
-      w->ready = true;
-      w->cv.notify_one();
-    }
-  }
-
-  // Wait for threads to finish.
-  for (auto t : threads_) {
-    delete t;
-  }
-}
-
-void ThreadPool::Impl::Schedule(std::function<void()> fn) {
-  uint64 id = 0;
-  if (port::Tracing::IsActive()) {
-    id = port::Tracing::UniqueId();
-    port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
-                               id);
-  }
-
-  mutex_lock l(mu_);
-  pending_.push_back({fn, id});
-  if (!waiters_.empty()) {
-    Waiter* w = waiters_.back();
-    waiters_.pop_back();
-    w->ready = true;
-    w->cv.notify_one();
-  }
-}
-
-void ThreadPool::Impl::WorkerLoop() {
-  // Set the processor flag to flush denormals to zero
-  port::ScopedFlushDenormal flush;
-
-  port::Tracing::RegisterCurrentThread(name_.c_str());
-  mutex_lock l(mu_);
-  Waiter w;
-  while (true) {
-    while (pending_.empty()) {
-      // Wait for work to be assigned to me
-      w.ready = false;
-      waiters_.push_back(&w);
-      while (!w.ready) {
-        w.cv.wait(l);
-      }
-    }
-    // Pick up pending work
-    Task t = pending_.front();
-    pending_.pop_front();
-    if (t.fn == nullptr) {
-      break;
-    }
-    mu_.unlock();
-    if (t.id != 0) {
-      port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, t.id);
-      t.fn();
-    } else {
-      t.fn();
-    }
-    mu_.lock();
-  }
-}
-#endif
 
 ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
     : ThreadPool(env, ThreadOptions(), name, num_threads) {}
@@ -247,6 +124,8 @@ void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
 }
 
 int ThreadPool::NumThreads() const { return impl_->NumThreads(); }
+
+int ThreadPool::CurrentThreadId() const { return impl_->CurrentThreadId(); }
 
 }  // namespace thread
 }  // namespace tensorflow

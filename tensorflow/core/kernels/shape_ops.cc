@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -253,6 +253,8 @@ class ExpandDimsOp : public OpKernel {
                            " and output shape ", output_shape.DebugString()));
     }
   }
+
+  bool IsExpensive() override { return false; }
 };
 REGISTER_KERNEL_BUILDER(Name("ExpandDims").Device(DEVICE_CPU).HostMemory("dim"),
                         ExpandDimsOp);
@@ -341,6 +343,8 @@ class SqueezeOp : public OpKernel {
                                       output_shape.DebugString()));
     }
   }
+
+  bool IsExpensive() override { return false; }
 
  private:
   std::unordered_set<int32> squeeze_dims_;

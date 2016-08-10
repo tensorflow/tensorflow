@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,12 +21,89 @@ limitations under the License.
 #include <stdlib.h>
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace {
+
+template <typename T>
+T locale_independent_strtonum(const char* str, const char** endptr) {
+  static const std::unordered_map<string, T> special_nums = {
+      {"inf", std::numeric_limits<T>::infinity()},
+      {"+inf", std::numeric_limits<T>::infinity()},
+      {"-inf", -std::numeric_limits<T>::infinity()},
+      {"infinity", std::numeric_limits<T>::infinity()},
+      {"+infinity", std::numeric_limits<T>::infinity()},
+      {"-infinity", -std::numeric_limits<T>::infinity()},
+      {"nan", std::numeric_limits<T>::quiet_NaN()},
+      {"+nan", std::numeric_limits<T>::quiet_NaN()},
+      {"-nan", -std::numeric_limits<T>::quiet_NaN()},
+  };
+  std::stringstream s(str);
+
+  // Check if str is one of the special numbers.
+  string special_num_str;
+  s >> special_num_str;
+
+  for (int i = 0; i < special_num_str.length(); ++i) {
+    special_num_str[i] =
+        std::tolower(special_num_str[i], std::locale::classic());
+  }
+
+  auto entry = special_nums.find(special_num_str);
+  if (entry != special_nums.end()) {
+    *endptr = str + (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
+                             : s.tellg());
+    return entry->second;
+  } else {
+    // Perhaps it's a hex number
+    if (special_num_str.compare(0, 2, "0x") == 0 ||
+        special_num_str.compare(0, 3, "-0x") == 0) {
+      return strtol(str, const_cast<char**>(endptr), 16);
+    }
+  }
+  // Reset the stream
+  s.str(str);
+  s.clear();
+  // Use the "C" locale
+  s.imbue(std::locale::classic());
+
+  T result;
+  s >> result;
+
+  // Set to result to what strto{f,d} functions would have returned. If the
+  // number was outside the range, the stringstream sets the fail flag, but
+  // returns the +/-max() value, whereas strto{f,d} functions return +/-INF.
+  bool real_fail = false;
+  if (s.fail()) {
+    real_fail = true;
+    if (result == std::numeric_limits<T>::max()) {
+      result = std::numeric_limits<T>::infinity();
+      real_fail = false;
+    } else if (result == -std::numeric_limits<T>::max()) {
+      result = -std::numeric_limits<T>::infinity();
+      real_fail = false;
+    }
+  }
+
+  if (endptr) {
+    *endptr =
+        str +
+        (real_fail
+             ? static_cast<std::iostream::pos_type>(0)
+             : (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
+                        : s.tellg()));
+  }
+  return result;
+}
+
+}  // namespace
+
 namespace strings {
 
 char* FastInt32ToBufferLeft(int32 i, char* buffer) {
@@ -90,7 +167,8 @@ char* DoubleToBuffer(double value, char* buffer) {
     // larger than the precision we asked for.
     DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
 
-    full_precision_needed = strtod(buffer, NULL) != value;
+    full_precision_needed =
+        locale_independent_strtonum<double>(buffer, NULL) != value;
   }
 
   if (full_precision_needed) {
@@ -226,8 +304,8 @@ bool safe_strtou32(StringPiece str, uint32* value) {
 }
 
 bool safe_strtof(const char* str, float* value) {
-  char* endptr;
-  *value = strtof(str, &endptr);
+  const char* endptr;
+  *value = locale_independent_strtonum<float>(str, &endptr);
   while (isspace(*endptr)) ++endptr;
   // Ignore range errors from strtod/strtof.
   // The values it returns on underflow and
@@ -237,8 +315,8 @@ bool safe_strtof(const char* str, float* value) {
 }
 
 bool safe_strtod(const char* str, double* value) {
-  char* endptr;
-  *value = strtod(str, &endptr);
+  const char* endptr;
+  *value = locale_independent_strtonum<double>(str, &endptr);
   while (isspace(*endptr)) ++endptr;
   // Ignore range errors from strtod/strtof.
   // The values it returns on underflow and

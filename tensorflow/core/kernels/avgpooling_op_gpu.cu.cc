@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ typedef Eigen::GpuDevice GPUDevice;
 #define DEFINE_GPU_KERNELS(T) \
   template struct functor::SpatialAvgPooling<GPUDevice, T>;
 
+DEFINE_GPU_KERNELS(Eigen::half)
 DEFINE_GPU_KERNELS(float)
 
 #undef DEFINE_GPU_KERNELS
@@ -57,7 +58,7 @@ __global__ void AvePoolBackwardNHWC(const int nthreads,
     const int phend = min(h / stride_h + 1, pooled_height);
     const int pwstart = (w < kernel_w) ? 0 : (w - kernel_w) / stride_w + 1;
     const int pwend = min(w / stride_w + 1, pooled_width);
-    dtype gradient = 0;
+    dtype gradient(0);
     const dtype* const top_diff_slice =
         top_diff + n * pooled_height * pooled_width * channels + c;
     for (int ph = phstart; ph < phend; ++ph) {
@@ -104,6 +105,12 @@ template bool RunAvePoolBackwardNHWC(
     const int pooled_width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
     float* const bottom_diff, const GPUDevice& d);
+template bool RunAvePoolBackwardNHWC(
+    const Eigen::half* const top_diff, const int num, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    Eigen::half* const bottom_diff, const GPUDevice& d);
 
 }  // end namespace tensorflow
 

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/core/util/reporter.h"
 #include "tensorflow/core/util/stat_summarizer.h"
 
 namespace tensorflow {
@@ -47,7 +48,7 @@ namespace benchmark_model {
 Status InitializeSession(int num_threads, const string& graph,
                          std::unique_ptr<Session>* session,
                          std::unique_ptr<StatSummarizer>* stats) {
-  LOG(INFO) << "Loading Tensorflow.";
+  LOG(INFO) << "Loading TensorFlow.";
 
   tensorflow::SessionOptions options;
   tensorflow::ConfigProto& config = options.config;
@@ -60,7 +61,7 @@ Status InitializeSession(int num_threads, const string& graph,
   tensorflow::GraphDef tensorflow_graph;
   Status s = ReadBinaryProto(Env::Default(), graph, &tensorflow_graph);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
+    LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return s;
   }
 
@@ -68,7 +69,7 @@ Status InitializeSession(int num_threads, const string& graph,
 
   s = (*session)->Create(tensorflow_graph);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Session: " << s;
+    LOG(ERROR) << "Could not create TensorFlow Session: " << s;
     return s;
   }
 
@@ -117,15 +118,16 @@ Status RunBenchmark(DataType input_data_type, TensorShape input_shape,
   s = session->Run(run_options, input_tensors, output_names, {},
                    &output_tensors, &run_metadata);
 
+  if (!s.ok()) {
+    LOG(ERROR) << "Error during inference: " << s;
+  }
+
   assert(run_metadata.has_step_stats());
 
   const StepStats& step_stats = run_metadata.step_stats();
 
   stats->ProcessStepStats(step_stats);
 
-  if (!s.ok()) {
-    LOG(ERROR) << "Error during inference: " << s;
-  }
   return s;
 }
 
@@ -167,6 +169,8 @@ int Main(int argc, char** argv) {
   int num_runs = 50;
   string run_delay = "-1.0";
   int num_threads = -1;
+  string benchmark_name = "";
+  string output_prefix = "";
 
   const bool parse_result = ParseFlags(
       &argc, argv, {
@@ -178,6 +182,8 @@ int Main(int argc, char** argv) {
                        Flag("num_runs", &num_runs),                    //
                        Flag("run_delay", &run_delay),                  //
                        Flag("num_threads", &num_threads),              //
+                       Flag("benchmark_name", &benchmark_name),        //
+                       Flag("output_prefix", &output_prefix),          //
                    });
 
   if (!parse_result) {
@@ -199,6 +205,8 @@ int Main(int argc, char** argv) {
   LOG(INFO) << "Num runs: [" << num_runs << "]";
   LOG(INFO) << "Inter-run delay (seconds): [" << run_delay << "]";
   LOG(INFO) << "Num threads: [" << num_threads << "]";
+  LOG(INFO) << "Benchmark name: [" << benchmark_name << "]";
+  LOG(INFO) << "Output prefix: [" << output_prefix << "]";
 
   std::unique_ptr<Session> session;
   std::unique_ptr<StatSummarizer> stats;
@@ -219,15 +227,39 @@ int Main(int argc, char** argv) {
   for (int i = 0; i < sizes.size(); ++i) {
     input_shape.AddDim(sizes[i]);
   }
+
+  const int64 start_time = Env::Default()->NowMicros();
   Status time_status =
       TimeMultipleRuns(sleep_seconds, num_runs, input_data_type, input_shape,
                        input_layer, output_layer, session.get(), stats.get());
+  const int64 end_time = Env::Default()->NowMicros();
+  const double wall_time = (end_time - start_time) / 1000000.0;
+
   if (!time_status.ok()) {
     LOG(ERROR) << "Timing failed with " << time_status;
     return -1;
   }
 
   stats->PrintStepStats();
+
+  if (!benchmark_name.empty() && !output_prefix.empty()) {
+    // Compute the total number of values per input.
+    int64 total_size = 1;
+    for (int32 size : sizes) {
+      total_size *= size;
+    }
+
+    // Throughput in MB/s
+    const double throughput = DataTypeSize(input_data_type) * total_size *
+                              num_runs / static_cast<double>(wall_time) /
+                              (1024 * 1024);
+
+    // Report the stats.
+    TestReporter reporter(output_prefix, benchmark_name);
+    reporter.Initialize();
+    reporter.Benchmark(num_runs, -1.0, wall_time, throughput);
+    reporter.Close();
+  }
 
   return 0;
 }
