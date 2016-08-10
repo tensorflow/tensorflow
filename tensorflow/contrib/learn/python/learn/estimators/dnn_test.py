@@ -72,20 +72,19 @@ class DNNClassifierTest(tf.test.TestCase):
       return
     iris = tf.contrib.learn.datasets.load_iris()
     kwargs = {
-            "n_classes": 3,
-            "optimizer" : "Adam",
-            "hidden_units" : [3, 4]
+        'n_classes': 3,
+        'optimizer': 'Adam',
+        'hidden_units': [3, 4]
     }
 
     classifier = tf.contrib.learn.DNNClassifier(**kwargs)
 
     scores = cross_val_score(
-      classifier,
-      iris.data[1:5],
-      iris.target[1:5],
-      scoring="accuracy",
-      fit_params={"steps": 2}
-    )
+        classifier,
+        iris.data[1:5],
+        iris.target[1:5],
+        scoring='accuracy',
+        fit_params={'steps': 100})
     self.assertAllClose(scores, [1, 1, 1])
 
 
