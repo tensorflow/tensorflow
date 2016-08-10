@@ -7,6 +7,7 @@ Detach both the inputs and the outputs of a subgraph view.
 
 *  <b>`sgv`</b>: the subgraph view to be detached. This argument is converted to a
     subgraph using the same rules as the function subgraph.make_view.
+    Note that sgv is modified in place.
 *  <b>`control_inputs`</b>: A boolean indicating whether control inputs are enabled.
 *  <b>`control_outputs`</b>: An instance of util.ControlOutputs or None. If not None,
     control outputs are enabled.
@@ -17,10 +18,10 @@ Detach both the inputs and the outputs of a subgraph view.
 
 ##### Returns:
 
-  A new subgraph view of the detached subgraph.
-    Note that sgv is also modified in place.
-  A list of the created input placeholders.
-  A list of the created output placeholders.
+  A tuple `(sgv, detached_inputs, detached_outputs)` where:
+  `sgv` is a new subgraph view of the detached subgraph;
+  `detach_inputs` is a list of the created input placeholders;
+  `detach_outputs` is a list of the created output placeholders.
 
 ##### Raises:
 

@@ -7,9 +7,9 @@ on the tf.Graph. Note that in this documentation, the term "subgraph" is often
 used as substitute to "subgraph view".
 
 A subgraph contains:
-- a list of input tensors, accessible via the "inputs" property.
-- a list of output tensors, accessible via the "outputs" property.
-- and the operations in between, accessible via the "ops" property.
+* a list of input tensors, accessible via the "inputs" property.
+* a list of output tensors, accessible via the "outputs" property.
+* and the operations in between, accessible via the "ops" property.
 
 An subgraph can be seen as a function F(i0, i1, ...) -> o0, o1, ... It is a
 function which takes as input some input tensors and returns as output some
@@ -45,27 +45,27 @@ the subgraph now represent the function M(F(...)) where M is the function
 M(a,b)->b,b.
 
 It is useful to describe three other kind of tensors:
-- internal: an internal tensor is a tensor connecting operations contained
-in the subgraph. One example in the subgraph representing the two operations
-A and B connected sequentially: -> A -> B ->. The middle arrow is an internal
-tensor.
-- actual input: an input tensor of the subgraph, regardless of whether it is
+* internal: an internal tensor is a tensor connecting operations contained
+  in the subgraph. One example in the subgraph representing the two
+  operations A and B connected sequentially: -> A -> B ->. The middle arrow
+  is an internal tensor.
+* actual input: an input tensor of the subgraph, regardless of whether it is
   listed in "inputs" or not (masked-out).
-- actual output: an output tensor of the subgraph, regardless of whether it is
+* actual output: an output tensor of the subgraph, regardless of whether it is
   listed in "outputs" or not (masked-out).
-- hidden input: an actual input which has been masked-out using an
+* hidden input: an actual input which has been masked-out using an
   input remapping. In other word, a hidden input is a non-internal tensor
   not listed as a input tensor and one of whose consumers belongs to
   the subgraph.
-- hidden output: a actual output which has been masked-out using an output
+* hidden output: a actual output which has been masked-out using an output
   remapping. In other word, a hidden output is a non-internal tensor
   not listed as an output and one of whose generating operations belongs to
   the subgraph.
 
 Here are some usefull guarantees about an instance of a SubGraphView:
-- the input (or output) tensors are not internal.
-- the input (or output) tensors are either "connected" or "passthrough".
-- the passthrough tensors are not connected to any of the operation of
+* the input (or output) tensors are not internal.
+* the input (or output) tensors are either "connected" or "passthrough".
+* the passthrough tensors are not connected to any of the operation of
 the subgraph.
 
 Note that there is no guarantee that an operation in a subgraph contributes
@@ -150,7 +150,7 @@ does not copy the underlying part of the tf.Graph.
 
 ##### Returns:
 
-  a new instance identical to the original one.
+  A new instance identical to the original one.
 
 
 - - -
@@ -195,7 +195,7 @@ Find the input index corresponding to the given input tensor t.
 
 ##### Returns:
 
-  the index in the self.inputs list.
+  The index in the self.inputs list.
 
 ##### Raises:
 
@@ -244,7 +244,7 @@ Find the output index corresponding to given output tensor t.
 
 ##### Returns:
 
-  the index in the self.outputs list.
+  The index in the self.outputs list.
 
 ##### Raises:
 

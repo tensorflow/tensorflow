@@ -16,7 +16,7 @@ Helper to select tensors.
 
 ##### Returns:
 
-  list of tf.Tensor
+  A list of tf.Tensor.
 
 ##### Raises:
 

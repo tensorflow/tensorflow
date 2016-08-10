@@ -33,8 +33,7 @@ tf.reduce_join(a, []) ==> ["abcd"]
     The input to be joined.  All reduced indices must have non-zero size.
 *  <b>`reduction_indices`</b>: A `Tensor` of type `int32`.
     The dimensions to reduce over.  Dimensions are reduced in the
-    order specified.  If `reduction_indices` has higher rank than `1`, it is
-    flattened.  Omitting `reduction_indices` is equivalent to passing
+    order specified.  Omitting `reduction_indices` is equivalent to passing
     `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
 *  <b>`keep_dims`</b>: An optional `bool`. Defaults to `False`.
     If `True`, retain reduced dimensions with length `1`.
