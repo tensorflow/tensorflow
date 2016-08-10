@@ -201,4 +201,4 @@ For in depth information on how to use the *graph* tab to visualize your graph,
 see [TensorBoard: Graph Visualization](../../how_tos/graph_viz/index.md).
 
 For more usage information on TensorBoard in general, see the [TensorBoard
-Readme](../../../tensorboard/README.md).
+README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md).
