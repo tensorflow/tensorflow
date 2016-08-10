@@ -46,7 +46,16 @@ class SvdOpTest(tf.test.TestCase):
 
 def _GetSvdOpTest(dtype_, shape_):
 
-  def CompareSingularVectors(self, x, y, atol):
+  def CompareSingularVectors(self, x, y, rank, atol):
+    # We only compare the first 'rank' singular vectors since the
+    # remainder form an arbitrary orthonormal basis for the
+    # (row- or column-) null space, whose exact value depends on
+    # implementation details. Notice that since we check that the
+    # matrices of singular vectors are unitary elsewhere, we do
+    # implicitly test that the trailing vectors of x and y span the
+    # same space.
+    x = x[..., 0:rank]
+    y = y[..., 0:rank]
     # Singular vectors are only unique up to sign (complex phase factor for
     # complex matrices), so we normalize the signs first.
     signs = np.sign(np.sum(np.divide(x, y), -2, keepdims=True))
@@ -79,7 +88,7 @@ def _GetSvdOpTest(dtype_, shape_):
     if dtype_ == np.float32:
       atol = 5e-6
     else:
-      atol = 1e-15
+      atol = 1e-14
     self.assertAllClose(identity.eval(), xx.eval(), atol=atol)
 
   def Test(self):
@@ -123,9 +132,10 @@ def _GetSvdOpTest(dtype_, shape_):
                                  full_matrices=full_matrices)
           self.assertAllClose(np_s, tf_s.eval(), atol=atol)
           if compute_uv:
-            CompareSingularVectors(self, np_u, tf_u.eval(), atol)
-            CompareSingularVectors(self, np.swapaxes(np_v, -2, -1), tf_v.eval(),
+            CompareSingularVectors(self, np_u, tf_u.eval(), min(shape_[-2:]),
                                    atol)
+            CompareSingularVectors(self, np.swapaxes(np_v, -2, -1), tf_v.eval(),
+                                   min(shape_[-2:]), atol)
             CheckApproximation(self, x, tf_u, tf_s, tf_v, full_matrices, atol)
             CheckUnitary(self, tf_u)
             CheckUnitary(self, tf_v)
