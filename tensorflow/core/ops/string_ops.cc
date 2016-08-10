@@ -95,7 +95,7 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Joins a string Tensor across the given dimensions.
 
@@ -125,8 +125,7 @@ tf.reduce_join(a, []) ==> ["abcd"]
 
 inputs: The input to be joined.  All reduced indices must have non-zero size.
 reduction_indices: The dimensions to reduce over.  Dimensions are reduced in the
-  order specified.  If `reduction_indices` has higher rank than `1`, it is
-  flattened.  Omitting `reduction_indices` is equivalent to passing
+  order specified.  Omitting `reduction_indices` is equivalent to passing
   `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
 keep_dims: If `True`, retain reduced dimensions with length `1`.
 separator: The separator to use when joining.

@@ -644,5 +644,65 @@ Status UnknownShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status ReductionShape(InferenceContext* c) {
+  const Shape* input = c->input(0);
+
+  const Shape* indices;
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
+
+  const Tensor* reduction_indices_t = c->input_tensor(1);
+  if (reduction_indices_t == nullptr || !c->RankKnown(input)) {
+    // If we do not have the reduction values at runtime, or the
+    // rank of the input, we don't know the output shape.
+    return shape_inference::UnknownShape(c);
+  }
+
+  bool keep_dims;
+  TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));
+
+  // Validate rank of input.
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 1, &input));
+  const int32 input_rank = c->Rank(input);
+
+  std::set<int32> true_indices;
+  auto reduction_indices = reduction_indices_t->flat<int32>();
+  for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
+    int32 reduction_index = reduction_indices(i);
+    if (reduction_index < -input_rank || reduction_index >= input_rank) {
+      return errors::InvalidArgument("Invalid reduction dimension ",
+                                     reduction_index, " for input with ",
+                                     input_rank, " dimensions.");
+    }
+
+    int32 wrapped_index = reduction_index;
+    if (wrapped_index < 0) {
+      wrapped_index += input_rank;
+    }
+
+    const Dimension* reduce_dim = c->Dim(input, wrapped_index);
+    if (c->ValueKnown(reduce_dim) && c->Value(reduce_dim) == 0) {
+      return errors::InvalidArgument("Cannot reduce dimension ",
+                                     reduction_index, " with size 0");
+    }
+
+    true_indices.insert(wrapped_index);
+  }
+
+  std::vector<const Dimension*> dims;
+  bool reduce_all = reduction_indices_t->NumElements() == 0;
+  for (int i = 0; i < input_rank; ++i) {
+    if (reduce_all || true_indices.count(i) > 0) {
+      if (keep_dims) {
+        dims.emplace_back(c->MakeDim(1));
+      }
+    } else {
+      dims.emplace_back(c->Dim(input, i));
+    }
+  }
+
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

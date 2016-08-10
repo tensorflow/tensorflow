@@ -17,35 +17,21 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-TEST(StringOpsTest, ReduceJoin_ShapeFn) {
-  ShapeInferenceTestOp op("ReduceJoin");
-
-#if 0
-  INFER_OK(op, "?;?;?;?", "");
-  INFER_OK(op, "[];[2];?;?", "");
-
-  // Filename must be scalar.
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[?];?;?;?");
-
-  // tensor_names must be vector matching number data elements (2 in this test).
-  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[];[2,3];?;?");
-  INFER_ERROR("Dimension must be 2 but is 3", op, "[];[3];?;?");
-#endif
-}
 
 TEST(StringOpsTest, StringJoin_ShapeFn) {
   ShapeInferenceTestOp op("StringJoin");
   int n = 3;
   std::vector<NodeDefBuilder::NodeOut> src_list;
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_STRING);
-  TF_CHECK_OK(NodeDefBuilder("test", "StringJoin")
-                  .Input(src_list)
-                  .Attr("n", n)
-                  .Finalize(&op.node_def));
+  TF_ASSERT_OK(NodeDefBuilder("test", "StringJoin")
+                   .Input(src_list)
+                   .Attr("n", n)
+                   .Finalize(&op.node_def));
 
   // If all inputs are scalar, return a scalar.
   INFER_OK(op, "[];[];[]", "[]");

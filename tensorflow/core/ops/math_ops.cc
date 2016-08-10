@@ -973,6 +973,7 @@ REGISTER_OP("Sum")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the sum of elements across dimensions of a tensor.
 
@@ -993,6 +994,7 @@ REGISTER_OP("Mean")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the mean of elements across dimensions of a tensor.
 
@@ -1013,6 +1015,7 @@ REGISTER_OP("Prod")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the product of elements across dimensions of a tensor.
 
@@ -1033,6 +1036,7 @@ REGISTER_OP("Min")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the minimum of elements across dimensions of a tensor.
 
@@ -1053,6 +1057,7 @@ REGISTER_OP("Max")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the maximum of elements across dimensions of a tensor.
 
@@ -1527,6 +1532,7 @@ REGISTER_OP("All")
     .Input("reduction_indices: int32")
     .Output("output: bool")
     .Attr("keep_dims: bool = false")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical and" of elements across dimensions of a tensor.
 
@@ -1546,6 +1552,7 @@ REGISTER_OP("Any")
     .Input("reduction_indices: int32")
     .Attr("keep_dims: bool = false")
     .Output("output: bool")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical or" of elements across dimensions of a tensor.
 
