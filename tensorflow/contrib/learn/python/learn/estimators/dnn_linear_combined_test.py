@@ -465,7 +465,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertEquals(2, len(classifier.linear_weights_))
     self.assertEquals(1, len(classifier.linear_weights_['linear/age/weight']))
     self.assertEquals(
-        100, len(classifier.linear_weights_['linear/language_weights']))
+        100, len(classifier.linear_weights_['linear/language/weights']))
 
   def testLinearOnlyOneFeature(self):
     """Tests that linear-only instantiation works for one feature only."""

@@ -99,6 +99,11 @@ class Executor {
                                  OpKernelContext* ctx)>
         NodeOutputsCallback;
     NodeOutputsCallback node_outputs_cb = nullptr;
+
+    // A function called to initialize the step_resource_manager before first
+    // use.
+    typedef std::function<void(ResourceMgr*)> StepResourceMgrInitFn;
+    StepResourceMgrInitFn step_resource_manager_init;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
@@ -128,7 +133,7 @@ struct LocalExecutorParams {
   Device* device;
 
   // The library runtime support.
-  FunctionLibraryRuntime* function_library;
+  FunctionLibraryRuntime* function_library = nullptr;
 
   // create_kernel returns an instance of op kernel based on NodeDef.
   // delete_kernel is called for every kernel used by the executor

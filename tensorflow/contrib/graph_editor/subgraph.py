@@ -164,25 +164,30 @@ class SubGraphView(object):
       TypeError: if inside_ops cannot be converted to a list of tf.Operation or
         if passthrough_ts cannot be converted to a list of tf.Tensor.
     """
+
     inside_ops = util.make_list_of_op(inside_ops)
     passthrough_ts = util.make_list_of_t(passthrough_ts)
     ops_and_ts = inside_ops + passthrough_ts
     if ops_and_ts:
       self._graph = util.get_unique_graph(ops_and_ts)
+      self._ops = inside_ops
+
+      # Compute inside and outside tensor
+      inputs, outputs, insides = select.compute_boundary_ts(inside_ops)
+
+      # Compute passthrough tensors, silently ignoring the non-passthrough ones.
+      all_tensors = frozenset(inputs + outputs + list(insides))
+      self._passthrough_ts = [t for t in passthrough_ts if t not in all_tensors]
+
+      # Set inputs and outputs.
+      self._input_ts = inputs + self._passthrough_ts
+      self._output_ts = outputs + self._passthrough_ts
     else:
       self._graph = None
-    self._ops = inside_ops
-
-    # Compute inside and outside tensor
-    inputs, outputs, insides = select.compute_boundary_ts(inside_ops)
-
-    # Compute passthrough tensors, silently ignoring the non-passthrough ones.
-    all_tensors = frozenset(inputs + outputs + list(insides))
-    self._passthrough_ts = [t for t in passthrough_ts if t not in all_tensors]
-
-    # Set inputs and outputs.
-    self._input_ts = inputs + self._passthrough_ts
-    self._output_ts = outputs + self._passthrough_ts
+      self._passthrough_ts = []
+      self._input_ts = []
+      self._output_ts = []
+      self._ops = []
 
   def __copy__(self):
     """Create a copy of this subgraph.
@@ -412,23 +417,27 @@ class SubGraphView(object):
       raise AssertionError("More than 1 op named: {}!".format(op_name))
     return res[0]
 
-  def __getitem__(self, op_name):
-    return self.find_op_by_name(op_name)
-
   def __str__(self):
-    res = StringIO()
+    if not self:
+      return "SubGraphView: empty"
+    def op_name(op):
+      return op.name
     def tensor_name(t):
       if t in self._passthrough_ts:
         return "{} *".format(t.name)
       else:
         return t.name
-    print("SubGraphView:", file=res)
-    print("** ops:", file=res)
-    print("\n".join([op.name for op in self._ops]), file=res)
-    print("** inputs:", file=res)
-    print("\n".join([tensor_name(t) for t in self._input_ts]), file=res)
-    print("** outputs:", file=res)
-    print("\n".join([tensor_name(t) for t in self._output_ts]), file=res)
+    def print_list(name, iterable, get_name):
+      if iterable:
+        print("** {}[{}]:".format(name, len(iterable)), file=res)
+        print("\n".join([get_name(elem) for elem in iterable]), file=res)
+      else:
+        print("** {}: empty".format(name), file=res)
+    res = StringIO()
+    print("SubGraphView (graphid={}):".format(id(self.graph)), file=res)
+    print_list("ops", self._ops, op_name)
+    print_list("inputs", self._input_ts, tensor_name)
+    print_list("outputs", self._output_ts, tensor_name)
     return res.getvalue()
 
   @property
@@ -466,9 +475,12 @@ class SubGraphView(object):
     """The passthrough tensors, going straight from input to output."""
     return util.ListView(self._passthrough_ts)
 
-  def __nonzero__(self):
+  def __bool__(self):
     """Allows for implicit boolean conversion."""
     return self._graph is not None
+
+  # Python 3 wants __bool__, Python 2.7 wants __nonzero__
+  __nonzero__ = __bool__
 
   def op(self, op_id):
     """Get an op by its index."""
@@ -556,7 +568,7 @@ def _check_graph(sgv, graph):
   """
   if not isinstance(sgv, SubGraphView):
     raise TypeError("Expected a SubGraphView, got: {}".format(type(graph)))
-  if graph is None or sgv.graph is None:
+  if graph is None or not sgv.graph:
     return sgv
   if not isinstance(graph, tf_ops.Graph):
     raise TypeError("Expected a tf.Graph, got: {}".format(type(graph)))

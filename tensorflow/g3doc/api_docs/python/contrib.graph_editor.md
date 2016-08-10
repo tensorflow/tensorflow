@@ -3,9 +3,162 @@
 # Graph Editor (contrib)
 [TOC]
 
-Graph editor module allows to modify an existing graph in place.
+# TensorFlow Graph Editor.
+
+The TensorFlow Graph Editor library allows for modification of an existing
+tf.Graph instance in-place.
+
+The author's github username is [purpledog](https://github.com/purpledog).
+
+## Library overview
+
+Appending new nodes is the only graph editing operation allowed by the
+TensorFlow core library. The Graph Editor library is an attempt to allow for
+other kinds of editing operations, namely, *rerouting* and *transforming*.
+
+* *rerouting* is a local operation consisting in re-plugging existing tensors
+  (the edges of the graph). Operations (the nodes) are not modified by this
+  operation. For example, rerouting can be used to insert an operation adding
+  noise in place of an existing tensor.
+* *transforming* is a global operation consisting in transforming a graph into
+  another. By default, a transformation is a simple copy but it can be
+  customized to achieved other goals. For instance, a graph can be transformed
+  into another one in which noise is added after all the operations of a
+  specific type.
+
+**Important: modifying a graph in-place with the Graph Editor must be done
+`offline`, that is, without any active sessions.**
+
+Of course new operations can be appended online but Graph Editor specific
+operations like rerouting and transforming can currently only be done offline.
+
+Here is an example of what you **cannot** do:
+
+* Build a graph.
+* Create a session and run the graph.
+* Modify the graph with the Graph Editor.
+* Re-run the graph with the `same` previously created session.
+
+To edit an already running graph, follow these steps:
+
+* Build a graph.
+* Create a session and run the graph.
+* Save the graph state and terminate the session
+* Modify the graph with the Graph Editor.
+* create a new session and restore the graph state
+* Re-run the graph with the newly created session.
+
+Note that this procedure is very costly because a new session must be created
+after any modifications. Among other things, it takes time because the entire
+graph state must be saved and restored again.
+
+### Sub-graph
+
+Most of the functions in the Graph Editor library operate on *sub-graph*.
+More precisely, they take as input arguments instances of the SubGraphView class
+(or anything which can be converted to it). Doing so allows the same function
+to transparently operate on single operations as well as sub-graph of any size.
+
+A subgraph can be created in several ways:
+
+* using a list of ops:
+
+```python
+my_sgv = ge.sgv(ops)
+```
+
+* from a name scope:
+
+```python
+my_sgv = ge.sgv_scope("foo/bar", graph=tf.get_default_graph())
+```
+
+* using regular expression:
+
+```python
+my_sgv = ge.sgv("foo/.*/.*read$", graph=tf.get_default_graph())
+```
+
+Note the Graph Editor is meant to manipulate several graphs at the same time,
+typically during transform or copy operation. For that reason,
+to avoid any confusion, the default graph is never used and the graph on
+which to operate must always be explicitely given. This is the reason why
+*graph=tf.get_default_graph()* is used in the code snippets above.
+
+
+### Modules
+
+* util: utility functions.
+* select: various selection methods of TensorFlow tensors and operations.
+* match: TensorFlow graph matching. Think of this as regular expressions for
+  graphs (but not quite yet).
+* reroute: various ways of rerouting tensors to different consuming ops like
+  *swap* or *reroute_a2b*.
+* subgraph: the SubGraphView class, which enables subgraph manipulations in a
+  TensorFlow tf.Graph.
+* edit: various editing functions operating on subgraphs like *detach*,
+  *connect* or *bypass*.
+* transform: the Transformer class, which enables transforming
+  (or simply copying) a subgraph into another one.
 
 ## Other Functions and Classes
+- - -
+
+### `class tf.contrib.graph_editor.ControlOutputs` {#ControlOutputs}
+
+The control outputs topology.
+- - -
+
+#### `tf.contrib.graph_editor.ControlOutputs.__init__(graph)` {#ControlOutputs.__init__}
+
+Create a dictionary of control-output dependencies.
+
+##### Args:
+
+
+*  <b>`graph`</b>: a tf.Graph.
+
+##### Returns:
+
+  A dictionary where a key is a tf.Operation instance and the corresponding
+  value is a list of all the ops which have the key as one of their
+  control-input dependencies.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: graph is not a tf.Graph.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.ControlOutputs.get(op)` {#ControlOutputs.get}
+
+return the control outputs of op.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.ControlOutputs.get_all()` {#ControlOutputs.get_all}
+
+
+
+
+- - -
+
+#### `tf.contrib.graph_editor.ControlOutputs.graph` {#ControlOutputs.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.graph_editor.ControlOutputs.update()` {#ControlOutputs.update}
+
+Update the control outputs if the graph has changed.
+
+
+
 - - -
 
 ### `class tf.contrib.graph_editor.SubGraphView` {#SubGraphView}
@@ -423,13 +576,14 @@ transform_op_handler: handle the transformation of a tf.Operation.
 assign_collections_handler: handle the assignment of collections.
   This handler defaults to assigning new collections created under the
   given name-scope.
-transform_input_handler: handle the transform of the inputs to the given
-  subgraph. This handler defaults to creating placeholders instead of the
-  ops just before the input tensors of the subgraph.
-transform_hidden_input_handler: handle the transform of the hidden inputs of
-  the subgraph, that is, the inputs which are not listed in sgv.inputs.
-  This handler defaults to a transform which keep the same input if the
-  source and destination graphs are the same, otherwise use placeholders.
+transform_external_input_handler: handle the transform of the inputs to
+  the given subgraph. This handler defaults to creating placeholders
+  instead of the ops just before the input tensors of the subgraph.
+transform_external_hidden_input_handler: handle the transform of the
+  hidden inputs of the subgraph, that is, the inputs which are not listed
+  in sgv.inputs. This handler defaults to a transform which keep the same
+  input if the source and destination graphs are the same, otherwise
+  use placeholders.
 transform_original_op_hanlder: handle the transform of original_op. This
   handler defaults to transforming original_op only if they are in the
   subgraph, otherwise they are ignored.
@@ -474,6 +628,7 @@ Bypass the given subgraph by connecting its inputs to its outputs.
 
   A new subgraph view of the bypassed subgraph.
     Note that sgv is also modified in place.
+  A list of the created input placeholders.
 
 ##### Raises:
 
@@ -501,8 +656,8 @@ Connect the outputs of sgv0 to the inputs of sgv1.
 
 ##### Returns:
 
-  Two new subgraph views (now connected). sgv0 and svg1 are also modified
-    in place.
+  The modified sgv0 (now connected to sgv1).
+  The modified sgv1 (now connected to sgv0).
 
 ##### Raises:
 
@@ -534,6 +689,8 @@ Detach both the inputs and the outputs of a subgraph view.
 
   A new subgraph view of the detached subgraph.
     Note that sgv is also modified in place.
+  A list of the created input placeholders.
+  A list of the created output placeholders.
 
 ##### Raises:
 
@@ -559,6 +716,7 @@ Detach the inputs of a subgraph view.
 
   A new subgraph view of the detached subgraph.
     Note that sgv is also modified in place.
+  A list of the created input placeholders.
 
 ##### Raises:
 
@@ -585,6 +743,7 @@ Detach the outputa of a subgraph view.
 
   A new subgraph view of the detached subgraph.
     Note that sgv is also modified in place.
+  A list of the created output placeholders.
 
 ##### Raises:
 

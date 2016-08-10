@@ -118,6 +118,7 @@ a scalar string.
 
 
 For example:
+
 ```
 # tensor `a` is [["a", "b"], ["c", "d"]]
 tf.reduce_join(a, 0) ==> ["ac", "bd"]

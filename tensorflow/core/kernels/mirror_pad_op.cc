@@ -100,7 +100,7 @@ class MirrorPadOp : public OpKernel {
         OP_REQUIRES(
             context, before < in0.dim_size(d) && after < in0.dim_size(d),
             errors::InvalidArgument("paddings must be less than"
-                                    "than the dimension size: ",
+                                    " the dimension size: ",
                                     before, ", ", after, " not less than ",
                                     in0.dim_size(d)));
       }
@@ -108,8 +108,11 @@ class MirrorPadOp : public OpKernel {
       output_shape.AddDim(before + in0.dim_size(d) + after);
     }
 
-    if (dims == 0) {
-      context->set_output(0, in0);
+    if (output_shape.num_elements() == in0.NumElements()) {
+      // When num_elements == 0, shape may have changed.
+      Tensor out;
+      CHECK(out.CopyFrom(in0, output_shape));
+      context->set_output(0, out);
       return;
     }
 
@@ -258,14 +261,14 @@ class MirrorPadGradOp : public OpKernel {
       } else if (offset_ == 1) {  // REFLECT mode.
         OP_REQUIRES(context, before < out_size && after < out_size,
                     errors::InvalidArgument("paddings must be less than"
-                                            "than the output dimension size: ",
+                                            " the output dimension size: ",
                                             before, ", ", after,
                                             " not less than ", out_size));
       }
       output_shape.AddDim(out_size);
     }
 
-    if (dims == 0) {
+    if (output_shape == in0.shape()) {
       context->set_output(0, in0);
       return;
     }

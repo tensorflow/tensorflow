@@ -78,6 +78,33 @@ class SVMTest(tf.test.TestCase):
     self.assertLess(loss, 0.1)
     self.assertAlmostEqual(accuracy, 1.0, places=3)
 
+  def testMultiDimensionalRealValuedFeaturesWithL2Regularization(self):
+    """Tests SVM with multi-dimensional real features and L2 regularization."""
+
+    # This is identical to the one in testRealValuedFeaturesWithL2Regularization
+    # where 2 tensors (dense features) of shape [3, 1] have been replaced by a
+    # single tensor (dense feature) of shape [3, 2].
+    def input_fn():
+      return {
+          'example_id': tf.constant(['1', '2', '3']),
+          'multi_dim_feature': tf.constant(
+              [[0.5, 1.0], [1.0, -1.0], [1.0, 0.5]]),
+      }, tf.constant([[1], [0], [1]])
+
+    multi_dim_feature = tf.contrib.layers.real_valued_column(
+        'multi_dim_feature', dimension=2)
+    svm_classifier = tf.contrib.learn.SVM(feature_columns=[multi_dim_feature],
+                                          example_id_column='example_id',
+                                          l1_regularization=0.0,
+                                          l2_regularization=1.0)
+    svm_classifier.fit(input_fn=input_fn, steps=30)
+    metrics = svm_classifier.evaluate(input_fn=input_fn, steps=1)
+    loss = metrics['loss']
+    accuracy = metrics['accuracy']
+    self.assertGreater(loss, 0.01)
+    self.assertLess(loss, 0.1)
+    self.assertAlmostEqual(accuracy, 1.0, places=3)
+
   def testRealValuedFeaturesWithMildL1Regularization(self):
     """Tests SVM classifier with real valued features and L2 regularization."""
 
@@ -141,9 +168,10 @@ class SVMTest(tf.test.TestCase):
       return {
           'example_id': tf.constant(['1', '2', '3']),
           'price': tf.constant([[0.8], [0.6], [0.3]]),
-          'country': tf.SparseTensor(values=['IT', 'US', 'GB'],
-                                     indices=[[0, 0], [1, 0], [2, 0]],
-                                     shape=[3, 1]),
+          'country': tf.SparseTensor(
+              values=['IT', 'US', 'GB'],
+              indices=[[0, 0], [1, 0], [2, 0]],
+              shape=[3, 1]),
       }, tf.constant([[0], [1], [1]])
 
     price = tf.contrib.layers.real_valued_column('price')
@@ -172,8 +200,7 @@ class SVMTest(tf.test.TestCase):
         tf.contrib.layers.real_valued_column('price'),
         boundaries=[500.0, 700.0])
     sq_footage_bucket = tf.contrib.layers.bucketized_column(
-        tf.contrib.layers.real_valued_column('sq_footage'),
-        boundaries=[650.0])
+        tf.contrib.layers.real_valued_column('sq_footage'), boundaries=[650.0])
 
     svm_classifier = tf.contrib.learn.SVM(
         feature_columns=[price_bucket, sq_footage_bucket],
@@ -192,9 +219,10 @@ class SVMTest(tf.test.TestCase):
           'example_id': tf.constant(['1', '2', '3']),
           'price': tf.constant([[0.6], [0.8], [0.3]]),
           'sq_footage': tf.constant([[900.0], [700.0], [600.0]]),
-          'country': tf.SparseTensor(values=['IT', 'US', 'GB'],
-                                     indices=[[0, 0], [1, 3], [2, 1]],
-                                     shape=[3, 5]),
+          'country': tf.SparseTensor(
+              values=['IT', 'US', 'GB'],
+              indices=[[0, 0], [1, 3], [2, 1]],
+              shape=[3, 5]),
           'weights': tf.constant([[3.0], [1.0], [1.0]])
       }, tf.constant([[1], [0], [1]])
 
@@ -205,8 +233,7 @@ class SVMTest(tf.test.TestCase):
     country = tf.contrib.layers.sparse_column_with_hash_bucket(
         'country', hash_bucket_size=5)
     sq_footage_country = tf.contrib.layers.crossed_column(
-        [sq_footage_bucket, country],
-        hash_bucket_size=10)
+        [sq_footage_bucket, country], hash_bucket_size=10)
     svm_classifier = tf.contrib.learn.SVM(
         feature_columns=[price, sq_footage_bucket, country, sq_footage_country],
         example_id_column='example_id',

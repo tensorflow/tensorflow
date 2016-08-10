@@ -84,7 +84,7 @@ new_git_repository(
   name = "iron_autogrow_textarea",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-autogrow-textarea.git",
-  tag = "v1.0.11",
+  tag = "v1.0.12",
 )
 
 new_git_repository(
@@ -161,7 +161,7 @@ new_git_repository(
   name = "iron_input",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-input.git",
-  tag = "v1.0.7",
+  tag = "1.0.10",
 )
 
 new_git_repository(
@@ -210,7 +210,7 @@ new_git_repository(
   name = "iron_selector",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-selector.git",
-  tag = "v1.2.4",
+  tag = "v1.5.2",
 )
 
 new_git_repository(
@@ -273,7 +273,7 @@ new_git_repository(
   name = "paper_dropdown_menu",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-dropdown-menu.git",
-  tag = "v1.1.3",
+  tag = "v1.3.2",
 )
 
 new_git_repository(
@@ -294,7 +294,7 @@ new_git_repository(
   name = "paper_input",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-input.git",
-  tag = "v1.1.5",
+  tag = "v1.1.14",
 )
 
 new_git_repository(
@@ -322,7 +322,7 @@ new_git_repository(
   name = "paper_menu_button",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-menu-button.git",
-  tag = "v1.2.0",
+  tag = "v1.5.0",
 )
 
 new_git_repository(

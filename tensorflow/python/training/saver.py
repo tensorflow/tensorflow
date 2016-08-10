@@ -503,7 +503,7 @@ class BaseSaverBuilder(object):
     if max_to_keep is None:
       max_to_keep = 0
 
-    with ops.op_scope([vs.var for vs in vars_to_save], name, "save") as name:
+    with ops.name_scope(name, "save", [vs.var for vs in vars_to_save]) as name:
       # Add the Constant string tensor for the filename.
       filename_tensor = constant_op.constant(filename)
 

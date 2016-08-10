@@ -96,7 +96,8 @@ def auc_using_histogram(boolean_labels,
 
 def _check_labels_and_scores(boolean_labels, scores, check_shape):
   """Check the rank of labels/scores, return tensor versions."""
-  with ops.op_scope([boolean_labels, scores], '_check_labels_and_scores'):
+  with ops.name_scope('_check_labels_and_scores',
+                      values=[boolean_labels, scores]):
     boolean_labels = ops.convert_to_tensor(boolean_labels,
                                            name='boolean_labels')
     scores = ops.convert_to_tensor(scores, name='scores')
@@ -222,7 +223,7 @@ def _auc_convert_hist_to_auc(hist_true_acc, hist_false_acc, nbins):
 def _strict_1d_cumsum(tensor, len_tensor):
   """Cumsum of a 1D tensor with defined shape by padding and convolving."""
   # Assumes tensor shape is fully defined.
-  with ops.op_scope([tensor], 'strict_1d_cumsum'):
+  with ops.name_scope('strict_1d_cumsum', values=[tensor]):
     if len_tensor == 0:
       return constant_op.constant([])
     len_pad = len_tensor - 1
@@ -235,7 +236,7 @@ def _strict_1d_cumsum(tensor, len_tensor):
 # See:  https://github.com/tensorflow/tensorflow/issues/813
 def _strict_conv1d(x, h):
   """Return x * h for rank 1 tensors x and h."""
-  with ops.op_scope([x, h], 'strict_conv1d'):
+  with ops.name_scope('strict_conv1d', values=[x, h]):
     x = array_ops.reshape(x, (1, -1, 1, 1))
     h = array_ops.reshape(h, (-1, 1, 1, 1))
     result = nn_ops.conv2d(x, h, [1, 1, 1, 1], 'SAME')

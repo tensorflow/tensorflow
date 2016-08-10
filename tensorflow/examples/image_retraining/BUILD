@@ -21,8 +21,13 @@ py_test(
     name = "retrain_test",
     size = "small",
     srcs = [
+        "label_image.py",
         "retrain.py",
         "retrain_test.py",
+    ],
+    data = [
+        ":data/labels.txt",
+        "//tensorflow/examples/label_image:data/grace_hopper.jpg",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -35,7 +40,9 @@ py_test(
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
+        [
+            "**/*",
+        ],
         exclude = [
             "**/METADATA",
             "**/OWNERS",

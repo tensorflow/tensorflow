@@ -21,6 +21,7 @@ import numpy as np
 import six
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import monitors as mon
 
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -54,24 +55,28 @@ def _assert_float32(tensors):
       raise TypeError('Expected dtype=float32, %s.' % tensor)
 
 
-class LossMonitor(mon.EveryN):
+class TensorForestLossMonitor(mon.EveryN):
   """Terminates training when training loss stops decreasing."""
 
   def __init__(self,
                early_stopping_rounds,
                every_n_steps):
-    super(LossMonitor, self).__init__(every_n_steps=every_n_steps)
+    super(TensorForestLossMonitor, self).__init__(every_n_steps=every_n_steps)
     self.early_stopping_rounds = early_stopping_rounds
     self.min_loss = None
     self.min_loss_step = 0
 
+  def step_begin(self, step):
+    super(TensorForestLossMonitor, self).step_begin(step)
+    return [self._loss_op_name]
+
   def set_estimator(self, est):
     """This function gets called in the same graph as _get_train_ops."""
-    super(LossMonitor, self).set_estimator(est)
+    super(TensorForestLossMonitor, self).set_estimator(est)
     self._loss_op_name = est.training_loss.name
 
   def every_n_step_end(self, step, outputs):
-    super(LossMonitor, self).every_n_step_end(step, outputs)
+    super(TensorForestLossMonitor, self).every_n_step_end(step, outputs)
     current_loss = outputs[self._loss_op_name]
     if self.min_loss is None or current_loss < self.min_loss:
       self.min_loss = current_loss
@@ -99,6 +104,9 @@ class TensorForestEstimator(estimator.BaseEstimator):
     super(TensorForestEstimator, self).__init__(model_dir=model_dir,
                                                 config=config)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(
       self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns prediction probabilities for given features (classification).
@@ -122,6 +130,9 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return super(TensorForestEstimator, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict(
       self, x=None, input_fn=None, axis=None, batch_size=None,
       as_iterable=False):
@@ -162,10 +173,10 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    _assert_float32(features)
-    _assert_float32(targets)
     features, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    _assert_float32(features)
+    _assert_float32(labels)
 
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner,
@@ -186,18 +197,18 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return train, self.training_loss
 
   def _get_predict_ops(self, features):
-    _assert_float32(features)
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,
         **self.construction_args)
     features, spec = data_ops.ParseDataTensorOrDict(features)
+    _assert_float32(features)
     return graph_builder.inference_graph(features, data_spec=spec)
 
   def _get_eval_ops(self, features, targets, metrics):
-    _assert_float32(features)
-    _assert_float32(targets)
     features, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    _assert_float32(features)
+    _assert_float32(labels)
 
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,

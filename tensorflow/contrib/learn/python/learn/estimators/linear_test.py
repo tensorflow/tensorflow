@@ -159,23 +159,6 @@ class LinearClassifierTest(tf.test.TestCase):
     loss = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss, 0.05)
 
-  def testSdcaOptimizerRealValuedFeatureWithInvalidDimension(self):
-    """Tests a ValueError is raised if a real valued feature has dimension>1."""
-
-    def input_fn():
-      return {
-          'example_id': tf.constant(['1', '2']),
-          'sq_footage': tf.constant([[800.0, 200.0], [650.0, 500.0]])
-      }, tf.constant([[1.0], [0.0]])
-
-    sq_footage = tf.contrib.layers.real_valued_column('sq_footage', dimension=2)
-    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
-        example_id_column='example_id')
-    classifier = tf.contrib.learn.LinearClassifier(feature_columns=[sq_footage],
-                                                   optimizer=sdca_optimizer)
-    with self.assertRaises(ValueError):
-      _ = classifier.fit(input_fn=input_fn, steps=100)
-
   def testSdcaOptimizerRealValuedFeatures(self):
     """Tests LinearClasssifier with SDCAOptimizer and real valued features."""
 
@@ -195,6 +178,28 @@ class LinearClassifierTest(tf.test.TestCase):
         feature_columns=[maintenance_cost, sq_footage],
         weight_column_name='weights',
         optimizer=sdca_optimizer)
+    classifier.fit(input_fn=input_fn, steps=100)
+    loss = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss, 0.05)
+
+  def testSdcaOptimizerRealValuedFeatureWithHigherDimension(self):
+    """Tests SDCAOptimizer with real valued features of higher dimension."""
+
+    # input_fn is identical to the one in testSdcaOptimizerRealValuedFeatures
+    # where 2 1-dimensional dense features have been replaced by 1 2-dimensional
+    # feature.
+    def input_fn():
+      return {
+          'example_id': tf.constant(['1', '2']),
+          'dense_feature': tf.constant([[500.0, 800.0], [200.0, 600.0]])
+      }, tf.constant([[0.0], [1.0]])
+
+    dense_feature = tf.contrib.layers.real_valued_column(
+        'dense_feature', dimension=2)
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id')
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[dense_feature], optimizer=sdca_optimizer)
     classifier.fit(input_fn=input_fn, steps=100)
     loss = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss, 0.05)

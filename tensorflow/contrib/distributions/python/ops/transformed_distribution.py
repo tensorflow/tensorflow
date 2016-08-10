@@ -87,7 +87,7 @@ class TransformedDistribution(distribution.Distribution):
     """
     if not issubclass(base_dist_cls, distribution.Distribution):
       raise TypeError("base_dist_cls must be a subclass of Distribution.")
-    with ops.op_scope(base_dist_args.values(), name) as scope:
+    with ops.name_scope(name, values=base_dist_args.values()) as scope:
       self._name = scope
       self._base_dist = base_dist_cls(**base_dist_args)
     self._transform = transform
@@ -187,7 +187,7 @@ class TransformedDistribution(distribution.Distribution):
           not returned from `sample`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([y], name):
+      with ops.name_scope(name, values=[y]):
         y = ops.convert_to_tensor(y)
         if y.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %

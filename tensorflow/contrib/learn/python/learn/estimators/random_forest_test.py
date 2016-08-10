@@ -25,14 +25,6 @@ import tensorflow as tf
 
 class TensorForestTrainerTests(tf.test.TestCase):
 
-  def testFloat64(self):
-    hparams = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
-        num_trees=3, max_nodes=1000, num_classes=3, num_features=4)
-    classifier = tf.contrib.learn.TensorForestEstimator(hparams)
-    iris = tf.contrib.learn.datasets.load_iris()
-    with self.assertRaisesRegexp(TypeError, 'float32'):
-      classifier.fit(x=iris.data, y=iris.target, steps=100)
-
   def testClassification(self):
     """Tests multi-class classification using matrix data as input."""
     hparams = tf.contrib.tensor_forest.python.tensor_forest.ForestHParams(
@@ -43,7 +35,8 @@ class TensorForestTrainerTests(tf.test.TestCase):
     data = iris.data.astype(np.float32)
     target = iris.target.astype(np.float32)
 
-    classifier.fit(x=data, y=target, steps=100)
+    monitors = [tf.contrib.learn.TensorForestLossMonitor(10, 10)]
+    classifier.fit(x=data, y=target, steps=100, monitors=monitors)
     classifier.evaluate(x=data, y=target, steps=10)
 
   def testRegression(self):
@@ -59,7 +52,8 @@ class TensorForestTrainerTests(tf.test.TestCase):
     data = boston.data.astype(np.float32)
     target = boston.target.astype(np.float32)
 
-    regressor.fit(x=data, y=target, steps=100)
+    monitors = [tf.contrib.learn.TensorForestLossMonitor(10, 10)]
+    regressor.fit(x=data, y=target, steps=100, monitors=monitors)
     regressor.evaluate(x=data, y=target, steps=10)
 
 

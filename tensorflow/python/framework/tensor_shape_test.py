@@ -349,6 +349,29 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertFalse(s3 == "a string")
     self.assertTrue(s3 != "a string")
 
+    # eq and neq are not symmetric for unknown shapes.
+    unk0 = tensor_shape.unknown_shape()
+    self.assertFalse(unk0 == s1)
+    self.assertFalse(s1 == unk0)
+    with self.assertRaises(ValueError):
+      unk0 != s1  # pylint: disable=pointless-statement
+    with self.assertRaises(ValueError):
+      s1 != unk0  # pylint: disable=pointless-statement
+    unk1 = tensor_shape.unknown_shape()
+    self.assertTrue(unk0 == unk1)
+    self.assertTrue(unk1 == unk0)
+    with self.assertRaises(ValueError):
+      unk0 != unk1  # pylint: disable=pointless-statement
+    with self.assertRaises(ValueError):
+      unk1 != unk0  # pylint: disable=pointless-statement
+
+  def testAsList(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 "not defined on an unknown TensorShape"):
+      tensor_shape.unknown_shape().as_list()
+    self.assertAllEqual([None, None], tensor_shape.unknown_shape(2).as_list())
+    self.assertAllEqual([2, None, 4], tensor_shape.TensorShape(
+        (2, None, 4)).as_list())
 
 if __name__ == "__main__":
   googletest.main()

@@ -64,7 +64,7 @@ def prefetch_queue(tensors,
     names = None
     tensor_list = tensors
 
-  with ops.op_scope(tensor_list, name, "prefetch_queue") as name:
+  with ops.name_scope(name, "prefetch_queue", tensor_list) as name:
     dtypes = [t.dtype for t in tensor_list]
     shapes = [t.get_shape() for t in tensor_list]
     queue = data_flow_ops.FIFOQueue(capacity=capacity,

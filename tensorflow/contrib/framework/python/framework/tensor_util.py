@@ -133,12 +133,12 @@ def reduce_sum_n(tensors, name=None):
   tensors = [math_ops.reduce_sum(t, name='%s/sum' % t.op.name) for t in tensors]
   if len(tensors) == 1:
     return tensors[0]
-  with ops.op_scope(tensors, name, 'reduce_sum_n') as scope:
+  with ops.name_scope(name, 'reduce_sum_n', tensors) as scope:
     return math_ops.add_n(tensors, name=scope)
 
 
 def _all_equal(tensor0, tensor1):
-  with ops.op_scope([tensor0, tensor1], 'all_equal') as scope:
+  with ops.name_scope('all_equal', values=[tensor0, tensor1]) as scope:
     return math_ops.reduce_all(
         math_ops.equal(tensor0, tensor1, name='equal'), name=scope)
 
@@ -152,7 +152,7 @@ def _is_rank(expected_rank, actual_tensor):
   Returns:
     New tensor.
   """
-  with ops.op_scope([actual_tensor], 'is_rank') as scope:
+  with ops.name_scope('is_rank', values=[actual_tensor]) as scope:
     expected = ops.convert_to_tensor(expected_rank, name='expected')
     actual = array_ops.rank(actual_tensor, name='actual')
     return math_ops.equal(expected, actual, name=scope)
@@ -168,7 +168,7 @@ def _is_shape(expected_shape, actual_tensor, actual_shape=None):
   Returns:
     New tensor.
   """
-  with ops.op_scope([actual_tensor], 'is_shape') as scope:
+  with ops.name_scope('is_shape', values=[actual_tensor]) as scope:
     is_rank = _is_rank(array_ops.size(expected_shape), actual_tensor)
     if actual_shape is None:
       actual_shape = array_ops.shape(actual_tensor, name='actual')
@@ -188,7 +188,7 @@ def _assert_shape_op(expected_shape, actual_tensor):
   Returns:
     New assert tensor.
   """
-  with ops.op_scope([actual_tensor], 'assert_shape') as scope:
+  with ops.name_scope('assert_shape', values=[actual_tensor]) as scope:
     actual_shape = array_ops.shape(actual_tensor, name='actual')
     is_shape = _is_shape(expected_shape, actual_tensor, actual_shape)
     return logging_ops.Assert(
@@ -208,7 +208,7 @@ def with_same_shape(expected_tensor, tensor):
   Returns:
     Tuple of (actual_tensor, label_tensor), possibly with assert ops added.
   """
-  with ops.op_scope([expected_tensor, tensor], '%s/' % tensor.op.name):
+  with ops.name_scope('%s/' % tensor.op.name, values=[expected_tensor, tensor]):
     tensor_shape = expected_tensor.get_shape()
     expected_shape = (
         tensor_shape.as_list() if tensor_shape.is_fully_defined()
@@ -277,7 +277,7 @@ def with_shape(expected_shape, tensor):
   actual_shape = tensor.get_shape()
 
   if not actual_shape.is_fully_defined() or is_tensor(expected_shape):
-    with ops.op_scope([tensor], '%s/' % tensor.op.name):
+    with ops.name_scope('%s/' % tensor.op.name, values=[tensor]):
       if not is_tensor(expected_shape) and (len(expected_shape) < 1):
         # TODO(irving): Remove scalar special case
         return array_ops.reshape(tensor, [])
@@ -291,7 +291,7 @@ def with_shape(expected_shape, tensor):
       not actual_shape.is_compatible_with(expected_shape)):
     if (len(expected_shape) < 1) and actual_shape.is_compatible_with([1]):
       # TODO(irving): Remove scalar special case.
-      with ops.op_scope([tensor], '%s/' % tensor.op.name):
+      with ops.name_scope('%s/' % tensor.op.name, values=[tensor]):
         return array_ops.reshape(tensor, [])
     raise ValueError('Invalid shape for tensor %s, expected %s, got %s.' % (
         tensor.name, expected_shape, actual_shape))

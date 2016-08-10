@@ -62,7 +62,7 @@ class Categorical(distribution.Distribution):
     self._name = name
     self._dtype = dtype
     self._validate_args = validate_args
-    with ops.op_scope([logits], name):
+    with ops.name_scope(name, values=[logits]):
       self._logits = ops.convert_to_tensor(logits, name="logits")
       logits_shape = array_ops.shape(self._logits)
       self._batch_rank = array_ops.size(logits_shape) - 1
@@ -126,7 +126,7 @@ class Categorical(distribution.Distribution):
       The log-probabilities of the classes indexed by `k`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([k, self.logits], name):
+      with ops.name_scope(name, values=[k, self.logits]):
         k = ops.convert_to_tensor(k, name="k")
 
         logits = self.logits * array_ops.ones_like(
@@ -164,7 +164,7 @@ class Categorical(distribution.Distribution):
       An `int64` `Tensor` with shape `[n, batch_shape, event_shape]`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.logits, n], name):
+      with ops.name_scope(name, values=[self.logits, n]):
         n = ops.convert_to_tensor(n, name="n")
         logits_2d = array_ops.reshape(
             self.logits, array_ops.pack([-1, self.num_classes]))
@@ -179,7 +179,7 @@ class Categorical(distribution.Distribution):
 
   def entropy(self, name="sample"):
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         logits_2d = array_ops.reshape(
             self.logits, array_ops.pack([-1, self.num_classes]))
         histogram_2d = nn_ops.softmax(logits_2d)
@@ -191,7 +191,7 @@ class Categorical(distribution.Distribution):
 
   def mode(self, name="mode"):
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
         ret = math_ops.cast(ret, self._dtype)
         ret.set_shape(self.get_batch_shape())

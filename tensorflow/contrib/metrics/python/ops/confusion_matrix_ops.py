@@ -66,8 +66,8 @@ def confusion_matrix(predictions, labels, num_classes=None,
     ValueError: If both predictions and labels are not 1-D vectors and do not
                 have the same size.
   """
-  with ops.op_scope([predictions, labels, num_classes], name,
-                    'confusion_matrix') as name:
+  with ops.name_scope(name, 'confusion_matrix',
+                      [predictions, labels, num_classes]) as name:
     predictions, labels = metric_ops_util.remove_squeezable_dimensions(
         ops.convert_to_tensor(
             predictions, name='predictions', dtype=dtypes.int64),

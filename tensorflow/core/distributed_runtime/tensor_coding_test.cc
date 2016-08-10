@@ -32,7 +32,7 @@ class StringSource : public TensorResponse::Source {
       : s_(s), stream_(nullptr), block_size_(block_size) {}
   virtual ~StringSource() { DeleteStream(); }
 
-  protobuf::io::ZeroCopyInputStream* contents() {
+  protobuf::io::ZeroCopyInputStream* contents() override {
     DeleteStream();
     stream_ = new (&space_)
         protobuf::io::ArrayInputStream(s_->data(), s_->size(), block_size_);
@@ -68,7 +68,8 @@ class TensorResponseTest : public ::testing::Test {
 
     StringSource source(&encoded, 1024);
 
-    TensorResponse response(cpu_allocator());
+    TensorResponse response;
+    response.set_allocator(cpu_allocator());
     for (int i = 0; i < 2; i++) {  // Twice so we exercise reuse of "response"
       Status s = response.ParseFrom(&source);
       EXPECT_TRUE(s.ok());
@@ -156,7 +157,8 @@ static void BM_TensorResponse(int iters, int arg) {
   string encoded = MakeFloatTensorTestCase(arg);
   testing::StartTiming();
   while (--iters > 0) {
-    TensorResponse response(cpu_allocator());
+    TensorResponse response;
+    response.set_allocator(cpu_allocator());
     StringSource source(&encoded, -1);
     Status s = response.ParseFrom(&source);
     if (iters == 1) {

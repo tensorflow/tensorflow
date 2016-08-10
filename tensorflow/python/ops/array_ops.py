@@ -104,7 +104,6 @@ _baseslice = slice
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
 
-
 def shape(input, name=None):
   """Returns the shape of a tensor.
 
@@ -124,10 +123,31 @@ def shape(input, name=None):
   Returns:
     A `Tensor` of type `int32`.
   """
-  with ops.op_scope([input], name, "Shape") as name:
+  return shape_internal(input, name, optimize=True)
+
+
+def shape_internal(input, name=None, optimize=True):
+  """Returns the shape of a tensor.
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+    optimize: if true, encode the shape as a constant when possible.
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.name_scope(name, "Shape", [input]) as name:
     if isinstance(input, ops.SparseTensor):
       return gen_math_ops.cast(input.shape, dtypes.int32)
     else:
+      input_tensor = ops.convert_to_tensor(input)
+      input_shape = input_tensor.get_shape()
+      # Static shape inference can be incorrect when loops are involved: disable
+      # shape optimization in this case to avoid generating invalid constants.
+      optimize &= input_tensor.graph._get_control_flow_context() is None
+      if optimize and input_shape.is_fully_defined():
+        return constant(input_shape.as_list(), dtypes.int32, name=name)
       return gen_array_ops.shape(input, name=name)
 
 
@@ -151,11 +171,32 @@ def size(input, name=None):
   Returns:
     A `Tensor` of type `int32`.
   """
-  with ops.op_scope([input], name, "Size") as name:
+  return size_internal(input, name, optimize=True)
+
+
+def size_internal(input, name=None, optimize=True):
+  """Returns the size of a tensor.
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+    optimize: if true, encode the size as a constant when possible.
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, ops.SparseTensor):
       return gen_math_ops._prod(gen_math_ops.cast(input.shape, dtypes.int32), 0,
                                 name=name)
     else:
+      input_tensor = ops.convert_to_tensor(input)
+      input_shape = input_tensor.get_shape()
+      # Static shape inference can be incorrect when loops are involved: disable
+      # shape optimization in this case to avoid generating invalid constants.
+      optimize &= input_tensor.graph._get_control_flow_context() is None
+      if optimize and input_shape.is_fully_defined():
+        return constant(input_shape.num_elements(), dtypes.int32, name=name)
       return gen_array_ops.size(input, name=name)
 
 
@@ -183,10 +224,31 @@ def rank(input, name=None):
   Returns:
     A `Tensor` of type `int32`.
   """
-  with ops.op_scope([input], name, "Rank") as name:
+  return rank_internal(input, name, optimize=True)
+
+
+def rank_internal(input, name=None, optimize=True):
+  """Returns the rank of a tensor.
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+    optimize: if true, encode the rank as a constant when possible.
+
+  Returns:
+    A `Tensor` of type `int32`.
+  """
+  with ops.name_scope(name, "Rank", [input]) as name:
     if isinstance(input, ops.SparseTensor):
       return gen_array_ops.size(input.shape, name=name)
     else:
+      input_tensor = ops.convert_to_tensor(input)
+      input_shape = input_tensor.get_shape()
+      # Static shape inference can be incorrect when loops are involved: disable
+      # shape optimization in this case to avoid generating invalid constants.
+      optimize &= input_tensor.graph._get_control_flow_context() is None
+      if optimize and input_shape.ndims is not None:
+        return constant(input_shape.ndims, dtypes.int32, name=name)
       return gen_array_ops.rank(input, name=name)
 
 
@@ -266,8 +328,8 @@ def _SliceHelper(tensor, slice_spec):
 
   # pack possibly involves often involves no tensors, so we must use op_scope
   # correct graph
-  with ops.op_scope([tensor] + begin + end + strides, None,
-                    "strided_slice") as name:
+  with ops.name_scope(None, "strided_slice",
+                      [tensor] + begin + end + strides) as name:
     begin_pack, end_pack, strides_pack = pack(begin), pack(end), pack(strides)
     return strided_slice(tensor,
                          begin_pack,
@@ -805,7 +867,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
     indices = squeeze(where(mask), squeeze_dims=[1])
     return gather(reshaped_tensor, indices)
 
-  with ops.op_scope([tensor, mask], name):
+  with ops.name_scope(name, values=[tensor, mask]):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     mask = ops.convert_to_tensor(mask, name="mask")
 
@@ -866,7 +928,7 @@ def sparse_mask(a, mask_indices, name=None):
   Returns:
     The masked `IndexedSlices` instance.
   """
-  with ops.op_scope([a, mask_indices], name, "sparse_mask") as name:
+  with ops.name_scope(name, "sparse_mask", [a, mask_indices]) as name:
     indices = a.indices
     out_indices, to_gather = listdiff(indices, mask_indices)
     out_values = gather(a.values, to_gather, name=name)
@@ -975,7 +1037,7 @@ def transpose(a, perm=None, name="transpose"):
   Returns:
     A transposed `Tensor`.
   """
-  with ops.op_scope([a], name, "transpose") as name:
+  with ops.name_scope(name, "transpose", [a]) as name:
     if perm is None:
       rank = gen_array_ops.rank(a)
       perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
@@ -1019,7 +1081,7 @@ def batch_matrix_transpose(a, name="batch_matrix_transpose"):
   Raises:
     ValueError:  If `a` is determined statically to have `rank < 2`.
   """
-  with ops.op_scope([a], name):
+  with ops.name_scope(name, values=[a]):
     a = ops.convert_to_tensor(a, name="a")
 
     # If we know the number of dimensions (statically), we can do two things:
@@ -1063,7 +1125,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   Returns:
     A `Tensor` with all elements set to zero.
   """
-  with ops.op_scope([shape], name, "zeros") as name:
+  with ops.name_scope(name, "zeros", [shape]) as name:
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(0, shape=shape, dtype=dtype, name=name)
@@ -1074,7 +1136,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   return output
 
 
-def zeros_like(tensor, dtype=None, name=None):
+def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
@@ -1093,21 +1155,23 @@ def zeros_like(tensor, dtype=None, name=None):
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
     `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
+    optimize: if true, attempt to statically determine the shape of 'tensor'
+    and encode it as a constant.
 
   Returns:
     A `Tensor` with all elements set to zero.
   """
-  with ops.op_scope([tensor], name, "zeros_like") as name:
+  with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     if dtype is not None and tensor.dtype != dtype:
-      ret = zeros(shape(tensor), dtype, name=name)
+      ret = zeros(shape_internal(tensor, optimize=optimize), dtype, name=name)
       ret.set_shape(tensor.get_shape())
       return ret
     else:
       return gen_array_ops._zeros_like(tensor, name=name)
 
 
-def ones_like(tensor, dtype=None, name=None):
+def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the same
@@ -1126,13 +1190,15 @@ def ones_like(tensor, dtype=None, name=None):
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
     `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
+    optimize: if true, attempt to statically determine the shape of 'tensor'
+    and encode it as a constant.
 
   Returns:
     A `Tensor` with all elements set to 1.
   """
-  with ops.op_scope([tensor], name, "ones_like") as name:
+  with ops.name_scope(name, "ones_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    ones_shape = shape(tensor)
+    ones_shape = shape_internal(tensor, optimize=optimize)
     if dtype is None:
       dtype = tensor.dtype
     ret = ones(ones_shape, dtype=dtype, name=name)
@@ -1160,7 +1226,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   Returns:
     A `Tensor` with all elements set to 1.
   """
-  with ops.op_scope([shape], name, "ones") as name:
+  with ops.name_scope(name, "ones", [shape]) as name:
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(1, shape=shape, dtype=dtype, name=name)
@@ -1383,7 +1449,7 @@ def meshgrid(*args, **kwargs):
   if indexing not in ("xy", "ij"):
     raise ValueError("indexing parameter must be either 'xy' or 'ij'")
 
-  with ops.op_scope(args, name, "meshgrid") as name:
+  with ops.name_scope(name, "meshgrid", args) as name:
     num_inputs = len(args)
     ones = (1,) * num_inputs
 
@@ -1446,17 +1512,22 @@ def _SliceShape(op):
   ndims = begin_shape.merge_with(sizes_shape)[0].value
   if ndims is not None:
     input_shape.assert_has_rank(ndims)
-  begin_value = tensor_util.constant_value(op.inputs[1])
+  # NOTE(mrry): Use `constant_value_as_shape()` to handle
+  # partially-known values.
+  begin_value = tensor_util.constant_value_as_shape(
+      op.inputs[1]).with_rank(ndims)
+  # NOTE(mrry): We can't use `constant_value_as_shape()` for `sizes`
+  # because it might contain -1, which can't be represented as a
+  # `TensorShape`.
   sizes_value = tensor_util.constant_value(op.inputs[2])
   if sizes_value is not None:
     returned_dims = []
-    for i, slice_size in enumerate(sizes_value.ravel()):
+    for i, (slice_size, begin_dim) in enumerate(zip(sizes_value.ravel(),
+                                                    begin_value.dims)):
       if slice_size != -1:
         returned_dims.append(slice_size)
-      elif begin_value is not None:
-        returned_dims.append(input_shape[i] - begin_value[i])
       else:
-        returned_dims.append(None)
+        returned_dims.append(input_shape[i] - begin_dim)
     return [tensor_shape.TensorShape(returned_dims)]
   else:
     if input_shape.ndims is not None:
@@ -1473,10 +1544,15 @@ SHRINK_AXIS = -2
 
 # PEP-8 naming
 # pylint: disable=invalid-name
-def _compute_size_of_strided_dim(spec, size):
+def _compute_size_of_strided_dim(shrink, spec, size):
+  """Computes the size of a single strided slice dimension."""
+
   unknown = None  # Document what None means here.
   use_full_range = None  # Document other use of None.
-
+  # if this is a shrink axis (i.e. a non-range index)
+  # it either will produce an error or return 1
+  if shrink:
+    return 1
   if size is unknown or size.value is unknown:
     return unknown
   size = size.value
@@ -1563,6 +1639,7 @@ def _StridedSliceShape(op):
   dense_dims = ndims  # not accounting for newaxis and shrink
   final_shape_gather = []
   full_index = 0
+  dense_shrink_axis = 0
   dense_specs = []
   for dim in range(sparse_dims):
     bit = 1 << dim
@@ -1581,6 +1658,7 @@ def _StridedSliceShape(op):
           None if (begin_mask & bit) else begin_value[dim], None if (
               end_mask & bit) else end_value[dim], strides_value[dim]))
       if shrink_axis_mask & bit:
+        dense_shrink_axis |= (1 << full_index)
         final_shape_gather.append(SHRINK_AXIS)
       else:
         final_shape_gather.append(full_index)
@@ -1590,8 +1668,10 @@ def _StridedSliceShape(op):
   # Compute each dimensions contribution to the "processing" shape
   final_dims = []
   for dim in range(dense_dims):
-    final_dims.append(_compute_size_of_strided_dim(dense_specs[dim],
-                                                   input_shape.dims[dim]))
+    shrink = (dense_shrink_axis & (1 << dim)) != 0
+    final_dims.append(
+        _compute_size_of_strided_dim(shrink, dense_specs[dim], input_shape.dims[
+            dim]))
 
   # Gather the final shape from the processing shape
   final_shape = []
@@ -1978,8 +2058,8 @@ def _MirrorPadGradShape(op):
   for i, dim in enumerate(input_shape.dims):
     if paddings[i, 0] < 0 or paddings[i, 1] < 0:
       raise ValueError("Paddings must be non-negative.")
-    if dim <= paddings[i, 0] + paddings[i, 1]:
-      raise ValueError("Output dimension is not positive.")
+    if dim < paddings[i, 0] + paddings[i, 1]:
+      raise ValueError("Output dimension is negative.")
     output_dims.append(dim - paddings[i, 0] - paddings[i, 1])
   return [tensor_shape.TensorShape(output_dims)]
 
@@ -2108,14 +2188,17 @@ def _TileShape(op):
   """
   multiples_shape = op.inputs[1].get_shape().with_rank(1)
   input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0].value)
-  multiples = tensor_util.constant_value(op.inputs[1])
-  if multiples is None:
-    return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
+  # NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
+  # it is a vector of non-negative integers, and (ii) doing so allows
+  # us to handle partially-known multiples.
+  multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
+      input_shape.ndims)
+  if multiples.ndims is None:
+    return [tensor_shape.unknown_shape()]
   else:
     output_dims = []
-    multiples = multiples.ravel()
-    for i, dim in enumerate(input_shape.dims):
-      output_dims.append(dim * multiples[i])
+    for dim, multiple in zip(input_shape.dims, multiples.dims):
+      output_dims.append(dim * multiple)
     return [tensor_shape.TensorShape(output_dims)]
 
 
@@ -2124,13 +2207,17 @@ def _TileGradShape(op):
   """Shape function for the TileGrad op."""
   multiples_shape = op.inputs[1].get_shape().with_rank(1)
   input_shape = op.inputs[0].get_shape().with_rank(multiples_shape[0])
-  multiples = tensor_util.constant_value(op.inputs[1])
-  if multiples is None:
-    return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
+  # NOTE(mrry): Represent `multiples` as a `TensorShape` because (i)
+  # it is a vector of non-negative integers, and (ii) doing so allows
+  # us to handle partially-known multiples.
+  multiples = tensor_util.constant_value_as_shape(op.inputs[1]).with_rank(
+      input_shape.ndims)
+  if multiples.ndims is None:
+    return [tensor_shape.unknown_shape()]
   else:
     output_dims = []
-    for i, dim in enumerate(input_shape.dims):
-      output_dims.append(dim // multiples[i])
+    for dim, multiple in zip(input_shape.dims, multiples.dims):
+      output_dims.append(dim // multiple)
     return [tensor_shape.TensorShape(output_dims)]
 
 
@@ -2674,8 +2761,8 @@ def one_hot(indices, depth, on_value=None, off_value=None,
     TypeError: If dtype of either `on_value` or `off_value` don't match `dtype`
     TypeError: If dtype of `on_value` and `off_value` don't match one another
   """
-  with ops.op_scope([indices, depth, on_value, off_value,
-            axis, dtype], name, "one_hot") as name:
+  with ops.name_scope(name, "one_hot", [indices, depth, on_value, off_value,
+                                        axis, dtype]) as name:
     on_exists = on_value is not None
     off_exists = off_value is not None
 

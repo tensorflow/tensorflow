@@ -88,7 +88,7 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
     # Run batch through network.
     ...
   """
-  with ops.op_scope(tensors + [labels], name, 'stratified_sample'):
+  with ops.name_scope(name, 'stratified_sample', tensors + [labels]):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     target_probs = ops.convert_to_tensor(target_probs, dtype=dtypes.float32)
@@ -200,8 +200,8 @@ def stratified_sample_unknown_dist(tensors, labels, probs, batch_size,
     # Run batch through network.
     ...
   """
-  with ops.op_scope(tensors + [labels], name,
-                    'stratified_sample_unknown_dist'):
+  with ops.name_scope(name, 'stratified_sample_unknown_dist',
+                      tensors + [labels]):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensors)
     labels = ops.convert_to_tensor(labels)
     probs = ops.convert_to_tensor(probs, dtype=dtypes.float32)
@@ -223,14 +223,16 @@ def stratified_sample_unknown_dist(tensors, labels, probs, batch_size,
         per_class_queues, probs, batch_size)
 
 
-def _estimate_data_distribution(labels, num_classes):
+def _estimate_data_distribution(labels, num_classes, smoothing_constant=10):
   """Estimate data distribution as labels are seen."""
-  # Variable to track running count of classes. Add 1 to avoid division-by-zero,
-  # and to guarantee that calculation of acceptance probabilities is (mostly)
-  # correct.
+  # Variable to track running count of classes. Smooth by a nonzero value to
+  # avoid division-by-zero. Higher values provide more stability at the cost of
+  # slower convergence.
+  if smoothing_constant <= 0:
+    raise ValueError('smoothing_constant must be nonzero.')
   num_examples_per_class_seen = variables.Variable(
-      initial_value=[1] * num_classes, trainable=False, name='class_count',
-      dtype=dtypes.int64)
+      initial_value=[smoothing_constant] * num_classes, trainable=False,
+      name='class_count', dtype=dtypes.int64)
 
   # Update the class-count based on what labels are seen in batch.
   num_examples_per_class_seen = num_examples_per_class_seen.assign_add(

@@ -58,6 +58,11 @@ class ListView(object):
   def __getitem__(self, i):
     return self._list[i]
 
+  def __add__(self, other):
+    if not isinstance(other, list):
+      other = list(other)
+    return list(self) + other
+
 
 # TODO(fkp): very generic code, it should be moved in a more generic place.
 def is_iterable(obj):
@@ -107,10 +112,13 @@ def get_unique_graph(tops, check_types=None, none_if_empty=False):
     raise TypeError("{} is not iterable".format(type(tops)))
   if check_types is None:
     check_types = (tf_ops.Operation, tf_ops.Tensor)
+  elif not is_iterable(check_types):
+    check_types = (check_types,)
   g = None
   for op in tops:
     if not isinstance(op, check_types):
-      raise TypeError("Expected a tf.Operation, got: {}".format(type(op)))
+      raise TypeError("Expected a type in ({}), got: {}".format(
+          ", ".join([str(t) for t in check_types]), type(op)))
     if g is None:
       g = op.graph
     elif g is not op.graph:

@@ -37,9 +37,10 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
-// Constants for the export file names.
-const char kVariablesFilename[] = "export-00000-of-00001";
+// Constants for the export path and file-names.
+const char kExportPath[] = "session_bundle/example/half_plus_two/00000123";
 const char kMetaGraphDefFilename[] = "export.meta";
+const char kVariablesFilename[] = "export-00000-of-00001";
 
 // Function used to rewrite a MetaGraphDef.
 using MetaGraphDefTwiddler = std::function<void(MetaGraphDef*)>;
@@ -51,25 +52,20 @@ Status CopyExport(const string& export_path, const string& variables_filename,
                   const string& meta_graph_def_filename,
                   const MetaGraphDefTwiddler& twiddler) {
   TF_RETURN_IF_ERROR(Env::Default()->CreateDir(export_path));
-  const string orig_path = test_util::TestSrcDirPath(
-      "session_bundle/example/half_plus_two/00000123");
+  const string orig_path = test_util::TestSrcDirPath(kExportPath);
   {
-    const string source =
-        tensorflow::io::JoinPath(orig_path, kVariablesFilename);
-    const string sink =
-        tensorflow::io::JoinPath(export_path, variables_filename);
+    const string source = io::JoinPath(orig_path, kVariablesFilename);
+    const string sink = io::JoinPath(export_path, variables_filename);
 
     string data;
     TF_RETURN_IF_ERROR(ReadFileToString(Env::Default(), source, &data));
     TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), sink, data));
   }
   {
-    const string source =
-        tensorflow::io::JoinPath(orig_path, kMetaGraphDefFilename);
-    const string sink =
-        tensorflow::io::JoinPath(export_path, meta_graph_def_filename);
+    const string source = io::JoinPath(orig_path, kMetaGraphDefFilename);
+    const string sink = io::JoinPath(export_path, meta_graph_def_filename);
 
-    tensorflow::MetaGraphDef graph_def;
+    MetaGraphDef graph_def;
     TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), source, &graph_def));
     twiddler(&graph_def);
     TF_RETURN_IF_ERROR(
@@ -78,13 +74,9 @@ Status CopyExport(const string& export_path, const string& variables_filename,
   return Status::OK();
 }
 
-void BasicTest(const string& export_path) {
-  tensorflow::SessionOptions options;
-  SessionBundle bundle;
-  TF_ASSERT_OK(LoadSessionBundleFromPath(options, export_path, &bundle));
-
-  const string asset_path =
-      tensorflow::io::JoinPath(export_path, kAssetsDirectory);
+void CheckSessionBundle(const string& export_path,
+                        const SessionBundle& bundle) {
+  const string asset_path = io::JoinPath(export_path, kAssetsDirectory);
   // Validate the assets behavior.
   std::vector<Tensor> path_outputs;
   TF_ASSERT_OK(bundle.session->Run({}, {"filename1:0", "filename2:0"}, {},
@@ -93,14 +85,12 @@ void BasicTest(const string& export_path) {
   // Validate the two asset file tensors are set by the init_op and include the
   // base_path and asset directory.
   test::ExpectTensorEqual<string>(
-      test::AsTensor<string>(
-          {tensorflow::io::JoinPath(asset_path, "hello1.txt")},
-          TensorShape({})),
+      test::AsTensor<string>({io::JoinPath(asset_path, "hello1.txt")},
+                             TensorShape({})),
       path_outputs[0]);
   test::ExpectTensorEqual<string>(
-      test::AsTensor<string>(
-          {tensorflow::io::JoinPath(asset_path, "hello2.txt")},
-          TensorShape({})),
+      test::AsTensor<string>({io::JoinPath(asset_path, "hello2.txt")},
+                             TensorShape({})),
       path_outputs[1]);
 
   // Validate the half plus two behavior.
@@ -110,7 +100,7 @@ void BasicTest(const string& export_path) {
   Signatures signatures;
   TF_ASSERT_OK(GetSignatures(bundle.meta_graph_def, &signatures));
   ASSERT_TRUE(signatures.default_signature().has_regression_signature());
-  const tensorflow::serving::RegressionSignature regression_signature =
+  const RegressionSignature regression_signature =
       signatures.default_signature().regression_signature();
 
   const string input_name = regression_signature.input().tensor_name();
@@ -124,15 +114,80 @@ void BasicTest(const string& export_path) {
       outputs[0], test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
 }
 
+void BasicTest(const string& export_path) {
+  SessionOptions options;
+  SessionBundle bundle;
+  TF_ASSERT_OK(LoadSessionBundleFromPath(options, export_path, &bundle));
+  CheckSessionBundle(export_path, bundle);
+}
+
 TEST(LoadSessionBundleFromPath, BasicTensorFlowContrib) {
-  const string export_path = test_util::TestSrcDirPath(
-      "session_bundle/example/half_plus_two/00000123");
+  const string export_path = test_util::TestSrcDirPath(kExportPath);
   BasicTest(export_path);
+}
+
+TEST(LoadSessionBundleFromPath, BasicTestRunOptions) {
+  const string export_path = test_util::TestSrcDirPath(kExportPath);
+
+  // Use default session-options.
+  SessionOptions session_options;
+
+  // Setup run-options with full-traces.
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::FULL_TRACE);
+
+  SessionBundle bundle;
+  TF_ASSERT_OK(LoadSessionBundleFromPathUsingRunOptions(
+      session_options, run_options, export_path, &bundle));
+  CheckSessionBundle(export_path, bundle);
+}
+
+TEST(LoadSessionBundleFromPath, BasicTestRunOptionsThreadPool) {
+  const string export_path = test_util::TestSrcDirPath(kExportPath);
+  const int32 threadpool_index = 1;
+
+  // Setup session-options with separate thread-pools.
+  SessionOptions session_options;
+  session_options.config.add_session_inter_op_thread_pool();
+  session_options.config.add_session_inter_op_thread_pool()->set_num_threads(2);
+
+  // Setup run-options with the threadpool index to use.
+  RunOptions run_options;
+  run_options.set_inter_op_thread_pool(threadpool_index);
+
+  SessionBundle bundle;
+  TF_ASSERT_OK(LoadSessionBundleFromPathUsingRunOptions(
+      session_options, run_options, export_path, &bundle));
+  CheckSessionBundle(export_path, bundle);
+}
+
+TEST(LoadSessionBundleFromPath, BasicTestRunOptionsThreadPoolInvalid) {
+  const string export_path = test_util::TestSrcDirPath(kExportPath);
+  const int32 invalid_threadpool_index = 2;
+
+  // Setup session-options with separate thread-pools.
+  SessionOptions session_options;
+  session_options.config.add_session_inter_op_thread_pool();
+  session_options.config.add_session_inter_op_thread_pool()->set_num_threads(2);
+
+  // Setup run-options with an invalid threadpool index.
+  RunOptions run_options;
+  run_options.set_inter_op_thread_pool(invalid_threadpool_index);
+
+  SessionBundle bundle;
+  Status status = LoadSessionBundleFromPathUsingRunOptions(
+      session_options, run_options, export_path, &bundle);
+
+  // Expect failed session run calls with invalid run-options.
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("Invalid inter_op_thread_pool: 2"))
+      << status.error_message();
 }
 
 TEST(LoadSessionBundleFromPath, BadExportPath) {
   const string export_path = test_util::TestSrcDirPath("/tmp/bigfoot");
-  tensorflow::SessionOptions options;
+  SessionOptions options;
   options.target = "local";
   SessionBundle bundle;
   const auto status = LoadSessionBundleFromPath(options, export_path, &bundle);
@@ -158,7 +213,7 @@ class SessionBundleTest : public ::testing::Test {
     // Construct a unique path name based on the test name.
     const ::testing::TestInfo* const test_info =
         ::testing::UnitTest::GetInstance()->current_test_info();
-    const string export_path = tensorflow::io::JoinPath(
+    const string export_path = io::JoinPath(
         testing::TmpDir(),
         strings::StrCat(test_info->test_case_name(), test_info->name()));
     TF_CHECK_OK(CopyExport(export_path, variables_filename,
@@ -166,7 +221,7 @@ class SessionBundleTest : public ::testing::Test {
     return export_path;
   }
 
-  tensorflow::SessionOptions options_;
+  SessionOptions options_;
   SessionBundle bundle_;
   Status status_;
 };

@@ -107,6 +107,13 @@ def binary_svm_target(label_name=None, weight_column_name=None):
                                 weight_column_name=weight_column_name)
 
 
+class ProblemType(object):
+  UNSPECIFIED = 0
+  CLASSIFICATION = 1
+  LINEAR_REGRESSION = 2
+  LOGISTIC_REGRESSION = 3
+
+
 class _TargetColumn(object):
   """_TargetColumn is the abstraction for a single head in a model.
 
@@ -124,7 +131,7 @@ class _TargetColumn(object):
   """
 
   def __init__(self, loss_fn, num_label_columns, label_name,
-               weight_column_name):
+               weight_column_name, problem_type):
     if not loss_fn:
       raise ValueError("loss_fn must be provided")
     if num_label_columns is None:  # n_classes can be 0
@@ -134,6 +141,7 @@ class _TargetColumn(object):
     self._num_label_columns = num_label_columns
     self._label_name = label_name
     self._weight_column_name = weight_column_name
+    self._problem_type = problem_type
 
   def logits_to_predictions(self, logits, proba=False):
     # Abstrat, Subclasses must implement.
@@ -162,6 +170,10 @@ class _TargetColumn(object):
       return array_ops.reshape(
           math_ops.to_float(features[self._weight_column_name]),
           shape=(-1,))
+
+  @property
+  def problem_type(self):
+    return self._problem_type
 
   def loss(self, logits, target, features):
     """Returns loss tensor for this head.
@@ -200,7 +212,8 @@ class _RegressionTargetColumn(_TargetColumn):
         loss_fn=loss_fn,
         num_label_columns=target_dimension,
         label_name=label_name,
-        weight_column_name=weight_column_name)
+        weight_column_name=weight_column_name,
+        problem_type=ProblemType.LINEAR_REGRESSION)
 
   def logits_to_predictions(self, logits, proba=False):
     if self.num_label_columns == 1:
@@ -228,7 +241,8 @@ class _MultiClassTargetColumn(_TargetColumn):
         loss_fn=loss_fn,
         num_label_columns=1 if n_classes == 2 else n_classes,
         label_name=label_name,
-        weight_column_name=weight_column_name)
+        weight_column_name=weight_column_name,
+        problem_type=ProblemType.CLASSIFICATION)
 
   def logits_to_predictions(self, logits, proba=False):
     if self.num_label_columns == 1:

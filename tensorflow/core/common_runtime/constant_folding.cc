@@ -173,9 +173,9 @@ Device* GetCPUDevice() {
   mutex_lock l(mu);
   if (!device) {
     std::vector<Device*> devices;
-    DeviceFactory::GetFactory(DEVICE_CPU)
-        ->CreateDevices(SessionOptions{}, "", &devices);
-    if (devices.size() > 0) {
+    Status s = DeviceFactory::GetFactory(DEVICE_CPU)
+                   ->CreateDevices(SessionOptions{}, "", &devices);
+    if (s.ok() && devices.size() > 0) {
       device = devices[0];
     }
   }
@@ -383,6 +383,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts,
   };
   LocalExecutorParams params;
   params.device = device;
+  params.function_library = function_library;
   params.create_kernel = [device, constant_graph](const NodeDef& ndef,
                                                   OpKernel** kernel) {
     return CreateNonCachedKernel(device, nullptr, ndef,

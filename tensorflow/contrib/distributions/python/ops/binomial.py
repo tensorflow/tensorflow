@@ -132,7 +132,7 @@ class Binomial(distribution.Distribution):
     self._logits, self._p = distribution_util.get_logits_and_prob(
         name=name, logits=logits, p=p, validate_args=validate_args)
 
-    with ops.op_scope([n], name):
+    with ops.name_scope(name, values=[n]):
       with ops.control_dependencies([
           check_ops.assert_non_negative(
               n, message="n has negative components."),
@@ -203,7 +203,7 @@ class Binomial(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], name=name, dtype=dtypes.int32)
 
   def get_event_shape(self):
@@ -239,13 +239,13 @@ class Binomial(distribution.Distribution):
   def variance(self, name="variance"):
     """Variance of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p], name):
+      with ops.name_scope(name, values=[self._n, self._p]):
         return self._n * self._p * (1 - self._p)
 
   def std(self, name="std"):
     """Standard deviation of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p], name):
+      with ops.name_scope(name, values=[self._n, self._p]):
         return math_ops.sqrt(self.variance())
 
   def mode(self, name="mode"):
@@ -262,7 +262,7 @@ class Binomial(distribution.Distribution):
       The mode of the Binomial distribution.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p], name):
+      with ops.name_scope(name, values=[self._n, self._p]):
         return math_ops.floor((self._n + 1) * self._p)
 
   def log_prob(self, counts, name="log_prob"):
@@ -286,7 +286,7 @@ class Binomial(distribution.Distribution):
     n = self._n
     p = self._p
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p, counts], name):
+      with ops.name_scope(name, values=[self._n, self._p, counts]):
         counts = self._check_counts(counts)
 
         prob_prob = counts * math_ops.log(p) + (

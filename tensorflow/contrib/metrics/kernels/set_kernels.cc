@@ -415,6 +415,9 @@ template <typename T>
 void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
   const Tensor& set1_t = ctx->input(0);
   const Tensor& set2_t = ctx->input(1);
+  // The following should stay in sync with `_dense_to_dense_shape` shape
+  // assertions in python/ops/set_ops.py, and `SetShapeFn` for
+  // `DenseToDenseSetOperation` in ops/set_ops.cc.
   const TensorShape group_shape =
       GroupShapeFromInputs(ctx, set1_t.shape(), set2_t.shape());
 
@@ -462,6 +465,9 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
   const Tensor& set1_t = ctx->input(0);
   const sparse::SparseTensor set2_st =
       SparseTensorFromContext(ctx, 1, validate_indices_);
+  // The following should stay in sync with `_dense_to_sparse_shape` shape
+  // assertions in python/ops/set_ops.py, and `SetShapeFn` for
+  // `DenseToSparseSetOperation` in ops/set_ops.cc.
   const TensorShape group_shape =
       GroupShapeFromInputs(ctx, set1_t.shape(), set2_st.shape());
 
@@ -569,6 +575,9 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
       SparseTensorFromContext(ctx, 0, validate_indices_);
   const sparse::SparseTensor set2_st =
       SparseTensorFromContext(ctx, 3, validate_indices_);
+  // The following should stay in sync with `_sparse_to_sparse_shape` shape
+  // assertions in python/ops/set_ops.py, and `SetShapeFn` for
+  // `SparseToSparseSetOperation` in ops/set_ops.cc.
   const TensorShape group_shape =
       GroupShapeFromInputs(ctx, set1_st.shape(), set2_st.shape());
 

@@ -200,11 +200,20 @@ class GraphIOTest(tf.test.TestCase):
 
   def _create_temp_file(self, lines):
     tempdir = tempfile.mkdtemp()
-    filename = os.path.join(tempdir, "file.csv")
+    filename = os.path.join(tempdir, "temp_file")
     gfile.Open(filename, "w").write(lines)
     return filename
 
-  def test_read_csv(self):
+  def _create_sorted_temp_files(self, lines_list):
+    tempdir = tempfile.mkdtemp()
+    filenames = []
+    for i, lines in enumerate(lines_list):
+      filename = os.path.join(tempdir, "temp_file%05d" % i)
+      gfile.Open(filename, "w").write(lines)
+      filenames.append(filename)
+    return filenames
+
+  def test_read_text_lines(self):
     gfile.Glob = self._orig_glob
     filename = self._create_temp_file("ABC\nDEF\nGHK\n")
 
@@ -214,9 +223,9 @@ class GraphIOTest(tf.test.TestCase):
 
     with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
       inputs = tf.contrib.learn.io.read_batch_examples(
-          filename, batch_size,
-          reader=tf.TextLineReader, randomize_input=False,
-          num_epochs=1, queue_capacity=queue_capacity, name=name)
+          filename, batch_size, reader=tf.TextLineReader,
+          randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
+          name=name)
       session.run(tf.initialize_local_variables())
 
       coord = tf.train.Coordinator()
@@ -230,7 +239,33 @@ class GraphIOTest(tf.test.TestCase):
 
       coord.request_stop()
 
-  def test_batch_reader(self):
+  def test_read_text_lines_multifile(self):
+    gfile.Glob = self._orig_glob
+    filenames = self._create_sorted_temp_files(["ABC\n", "DEF\nGHK\n"])
+
+    batch_size = 1
+    queue_capacity = 5
+    name = "my_batch"
+
+    with tf.Graph().as_default() as g, self.test_session(graph=g) as session:
+      inputs = tf.contrib.learn.io.read_batch_examples(
+          filenames, batch_size, reader=tf.TextLineReader,
+          randomize_input=False, num_epochs=1, queue_capacity=queue_capacity,
+          name=name)
+      session.run(tf.initialize_local_variables())
+
+      coord = tf.train.Coordinator()
+      tf.train.start_queue_runners(session, coord=coord)
+
+      self.assertAllEqual(session.run(inputs), [b"ABC"])
+      self.assertAllEqual(session.run(inputs), [b"DEF"])
+      self.assertAllEqual(session.run(inputs), [b"GHK"])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run(inputs)
+
+      coord.request_stop()
+
+  def test_batch_text_lines(self):
     gfile.Glob = self._orig_glob
     filename = self._create_temp_file("A\nB\nC\nD\nE\n")
 
@@ -255,7 +290,7 @@ class GraphIOTest(tf.test.TestCase):
 
       coord.request_stop()
 
-  def test_keyed_read_csv(self):
+  def test_keyed_read_text_lines(self):
     gfile.Glob = self._orig_glob
     filename = self._create_temp_file("ABC\nDEF\nGHK\n")
 

@@ -159,7 +159,7 @@ class _Bijector(object):
       `Tensor`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([x], name):
+      with ops.name_scope(name, values=[x]):
         x = ops.convert_to_tensor(x)
         return self._forward(x)
 
@@ -174,7 +174,7 @@ class _Bijector(object):
       `Tensor`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([x], name):
+      with ops.name_scope(name, values=[x]):
         x = ops.convert_to_tensor(x)
         try:
           return self._inverse(x)
@@ -194,7 +194,7 @@ class _Bijector(object):
       `Tensor`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([x], name):
+      with ops.name_scope(name, values=[x]):
         x = ops.convert_to_tensor(x)
         try:
           return self._inverse_log_det_jacobian(x)
@@ -218,7 +218,7 @@ class _Bijector(object):
       `Tensor`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([x], name):
+      with ops.name_scope(name, values=[x]):
         x = ops.convert_to_tensor(x)
         try:
           return self._inverse_and_inverse_log_det_jacobian(x)

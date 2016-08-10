@@ -1045,8 +1045,13 @@ class DirectSessionFactory : public SessionFactory {
       EnableCPUAllocatorFullStats(true);
     }
     std::vector<Device*> devices;
-    DeviceFactory::AddDevices(options, "/job:localhost/replica:0/task:0",
-                              &devices);
+    Status s = DeviceFactory::AddDevices(
+        options, "/job:localhost/replica:0/task:0", &devices);
+    if (!s.ok()) {
+      LOG(ERROR) << s;
+      return nullptr;
+    }
+
     return new DirectSession(options, new DeviceMgr(devices));
   }
 };

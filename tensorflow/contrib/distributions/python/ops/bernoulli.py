@@ -103,7 +103,7 @@ class Bernoulli(distribution.Distribution):
 
   def batch_shape(self, name="batch_shape"):
     with ops.name_scope(self.name):
-      with ops.op_scope([self._batch_shape], name):
+      with ops.name_scope(name, values=[self._batch_shape]):
         return array_ops.identity(self._batch_shape)
 
   def get_batch_shape(self):
@@ -111,7 +111,7 @@ class Bernoulli(distribution.Distribution):
 
   def event_shape(self, name="event_shape"):
     with ops.name_scope(self.name):
-      with ops.op_scope([self._batch_shape], name):
+      with ops.name_scope(name, values=[self._batch_shape]):
         return array_ops.constant([], dtype=self._batch_shape.dtype)
 
   def get_event_shape(self):
@@ -155,7 +155,7 @@ class Bernoulli(distribution.Distribution):
     # TODO(jaana): The current sigmoid_cross_entropy_with_logits has
     # inconsistent  behavior for logits = inf/-inf.
     with ops.name_scope(self.name):
-      with ops.op_scope([self.logits, event], name):
+      with ops.name_scope(name, values=[self.logits, event]):
         event = ops.convert_to_tensor(event, name="event")
         event = math_ops.cast(event, self.logits.dtype)
         logits = self.logits
@@ -183,7 +183,7 @@ class Bernoulli(distribution.Distribution):
           `self.dtype`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.p, n], name):
+      with ops.name_scope(name, values=[self.p, n]):
         n = ops.convert_to_tensor(n, name="n")
         new_shape = array_ops.concat(0, ([n], self.batch_shape()))
         uniform = random_ops.random_uniform(
@@ -204,7 +204,7 @@ class Bernoulli(distribution.Distribution):
     """
     # TODO(jaana): fix inconsistent behavior between cpu and gpu at -inf/inf.
     with ops.name_scope(self.name):
-      with ops.op_scope([self.logits], name):
+      with ops.name_scope(name, values=[self.logits]):
         return (-self.logits * (math_ops.sigmoid(
             self.logits) - 1) + math_ops.log(
                 math_ops.exp(-self.logits) + 1))
@@ -219,7 +219,7 @@ class Bernoulli(distribution.Distribution):
       mean: `Tensor` of the same type and shape as `p`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.p], name):
+      with ops.name_scope(name, values=[self.p]):
         return array_ops.identity(self.p)
 
   def mode(self, name="mode"):
@@ -234,7 +234,7 @@ class Bernoulli(distribution.Distribution):
       mode: binary `Tensor` of type self.dtype.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.p, self.q], name):
+      with ops.name_scope(name, values=[self.p, self.q]):
         return math_ops.cast(self.p > self.q, self.dtype)
 
   def variance(self, name="variance"):
@@ -247,7 +247,7 @@ class Bernoulli(distribution.Distribution):
       variance: `Tensor` of the same type and shape as `p`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.p, self.q], name):
+      with ops.name_scope(name, values=[self.p, self.q]):
         return self.q * self.p
 
   def std(self, name="std"):
@@ -281,7 +281,7 @@ def _kl_bernoulli_bernoulli(a, b, name=None):
   Returns:
     Batchwise KL(a || b)
   """
-  with ops.op_scope([a.logits, b.logits], name, "kl_bernoulli_bernoulli"):
+  with ops.name_scope(name, "kl_bernoulli_bernoulli", [a.logits, b.logits]):
     return (math_ops.sigmoid(a.logits) * (-nn.softplus(-a.logits) +
                                           nn.softplus(-b.logits)) +
             math_ops.sigmoid(-a.logits) * (-nn.softplus(a.logits) +

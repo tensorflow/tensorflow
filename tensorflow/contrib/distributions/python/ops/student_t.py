@@ -120,7 +120,7 @@ class StudentT(distribution.Distribution):
     """
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    with ops.op_scope([df, mu, sigma], name) as scope:
+    with ops.name_scope(name, values=[df, mu, sigma]) as scope:
       with ops.control_dependencies([check_ops.assert_positive(
           df), check_ops.assert_positive(sigma)] if validate_args else []):
         self._df = ops.convert_to_tensor(df, name="df")
@@ -179,7 +179,7 @@ class StudentT(distribution.Distribution):
       The mean for every batch member, a `Tensor` with same `dtype` as self.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu], name):
+      with ops.name_scope(name, values=[self._mu]):
         result_if_defined = self._mu * self._ones()
         if self.allow_nan_stats:
           df_gt_1 = self._df > self._ones()
@@ -195,7 +195,7 @@ class StudentT(distribution.Distribution):
 
   def mode(self, name="mode"):
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mu], name):
+      with ops.name_scope(name, values=[self._mu]):
         return array_ops.identity(self._mu)
 
   def variance(self, name="variance"):
@@ -220,7 +220,7 @@ class StudentT(distribution.Distribution):
       The variance for every batch member, a `Tensor` with same `dtype` as self.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._df, self._sigma], name):
+      with ops.name_scope(name, values=[self._df, self._sigma]):
         result_where_finite = (
             self._zeros()
             + math_ops.square(self._sigma) * self._df / (self._df - 2))
@@ -245,12 +245,12 @@ class StudentT(distribution.Distribution):
 
   def std(self, name="std"):
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return math_ops.sqrt(self.variance())
 
   def batch_shape(self, name="batch_shape"):
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return array_ops.shape(self._ones())
 
   def get_batch_shape(self):
@@ -258,7 +258,7 @@ class StudentT(distribution.Distribution):
 
   def event_shape(self, name="event_shape"):
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], dtype=math_ops.int32)
 
   def get_event_shape(self):
@@ -275,7 +275,7 @@ class StudentT(distribution.Distribution):
       log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._df, self._mu, self._sigma, x], name):
+      with ops.name_scope(name, values=[self._df, self._mu, self._sigma, x]):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
@@ -299,7 +299,7 @@ class StudentT(distribution.Distribution):
       prob: tensor of dtype `dtype`, the prob values of `x`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._df, self._mu, self._sigma, x], name):
+      with ops.name_scope(name, values=[self._df, self._mu, self._sigma, x]):
         x = ops.convert_to_tensor(x)
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
@@ -321,7 +321,7 @@ class StudentT(distribution.Distribution):
       entropy: tensor of dtype `dtype`, the entropy.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._df, self._sigma], name):
+      with ops.name_scope(name, values=[self._df, self._sigma]):
         u = array_ops.expand_dims(self._df + self._zeros(), -1)
         v = array_ops.expand_dims(self._ones(), -1)
         beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
@@ -344,7 +344,7 @@ class StudentT(distribution.Distribution):
           with values of type `self.dtype`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._df, self._mu, self._sigma, n], name):
+      with ops.name_scope(name, values=[self._df, self._mu, self._sigma, n]):
         n = ops.convert_to_tensor(n, name="n")
         n_val = tensor_util.constant_value(n)
 

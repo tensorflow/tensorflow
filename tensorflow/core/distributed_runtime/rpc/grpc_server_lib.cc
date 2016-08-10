@@ -86,7 +86,8 @@ Status GrpcServer::Init() {
   string name_prefix =
       strings::StrCat("/job:", server_def_.job_name(), "/replica:0", "/task:",
                       server_def_.task_index());
-  DeviceFactory::AddDevices(sess_opts, name_prefix, &master_env_.local_devices);
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
+                                               &master_env_.local_devices));
   worker_env_.device_mgr = new DeviceMgr(master_env_.local_devices);
   string unused;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),

@@ -80,6 +80,16 @@ class PadOp : public OpKernel {
           (allow_legacy_scalars() && d == in0.dims()) ? 1 : in0.dim_size(d);
       output_shape.AddDim(before_d + size_d + after_d);
     }
+
+    // If there is no padding to be done, forward the input to output.
+    if (output_shape.num_elements() == in0.NumElements()) {
+      // When num_elements == 0, shape may have changed.
+      Tensor out;
+      CHECK(out.CopyFrom(in0, output_shape));
+      context->set_output(0, out);
+      return;
+    }
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 

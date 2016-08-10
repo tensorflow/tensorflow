@@ -231,7 +231,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     producer_op_dict = {op.name: op for op in producer_op_list.op}
 
-  with ops.op_scope(input_map.values(), name, 'import') as scope:
+  with ops.name_scope(name, 'import', input_map.values()) as scope:
     g = ops.get_default_graph()
     g.graph_def_versions.CopyFrom(graph_def.versions)
 

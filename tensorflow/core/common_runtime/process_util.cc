@@ -51,19 +51,21 @@ void SchedClosure(std::function<void()> closure) {
     const uint64 id = port::Tracing::UniqueId();
     port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
                                id);
-    std::function<void()> wrapper = [closure, id]() {
-      port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, id);
-      closure();
-    };
-    Env::Default()->SchedClosure(wrapper);
+    std::function<void()> wrapper = std::bind(
+        [id](std::function<void()> closure) {
+          port::Tracing::ScopedActivity region(
+              port::Tracing::EventCategory::kRunClosure, id);
+          closure();
+        },
+        std::move(closure));
+    Env::Default()->SchedClosure(std::move(wrapper));
   } else {
-    Env::Default()->SchedClosure(closure);
+    Env::Default()->SchedClosure(std::move(closure));
   }
 }
 
 void SchedNonBlockingClosureAfter(int64 micros, std::function<void()> closure) {
-  Env::Default()->SchedClosureAfter(micros, closure);
+  Env::Default()->SchedClosureAfter(micros, std::move(closure));
 }
 
 }  // namespace tensorflow

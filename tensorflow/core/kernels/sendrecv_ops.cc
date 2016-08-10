@@ -110,23 +110,27 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->output_alloc_attr(0);
-  DoneCallback done_cb = std::move(done);
-  ctx->rendezvous()->RecvAsync(
-      parsed, args,
-      [ctx, done_cb](const Status& s, const Rendezvous::Args& send_args,
-                     const Rendezvous::Args& recv_args, const Tensor& val,
-                     bool is_dead) {
+  using namespace std::placeholders;
+  Rendezvous::DoneCallback done_cb = std::bind(
+      [ctx](DoneCallback done,
+            // Begin unbound arguments.
+            const Status& s, const Rendezvous::Args& send_args,
+            const Rendezvous::Args& recv_args, const Tensor& val,
+            bool is_dead) {
         ctx->SetStatus(s);
         if (s.ok()) {
-          // 'ctx' allocates the output tensor of the expected type.  The
-          // runtime checks whether the tensor received here is the same type.
+          // 'ctx' allocates the output tensor of the expected type.
+          // The runtime checks whether the tensor received here is
+          // the same type.
           if (!is_dead) {
             ctx->set_output(0, val);
           }
           *ctx->is_output_dead() = is_dead;
         }
-        done_cb();
-      });
+        done();
+      },
+      std::move(done), _1, _2, _3, _4, _5);
+  ctx->rendezvous()->RecvAsync(parsed, args, std::move(done_cb));
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);

@@ -371,6 +371,9 @@ filegroup(
     srcs = [
         "index.html",
         "paper-dropdown-menu.html",
+        "paper-dropdown-menu-icons.html",
+        "paper-dropdown-menu-light.html",
+        "paper-dropdown-menu-shared-styles.html",
     ],
 )
 

@@ -381,7 +381,8 @@ class DistributionTensor(StochasticTensor):
       raise TypeError("loss_fn must be callable")
     self._loss_fn = loss_fn
 
-    with ops.op_scope(dist_args.values(), name, "DistributionTensor") as scope:
+    with ops.name_scope(name, "DistributionTensor",
+                        dist_args.values()) as scope:
       self._name = scope
       self._dist = dist_cls(**dist_args)
       self._value = self._create_value()
@@ -480,7 +481,7 @@ class DistributionTensor(StochasticTensor):
       # Can perform pathwise-derivative on this one; no additional loss needed.
       return None
 
-    with ops.op_scope(final_losses, self.name):
+    with ops.name_scope(self.name, values=final_losses):
       with ops.name_scope(name):
         if (self._value_type.stop_gradient or
             isinstance(self._value_type, SampleAndReshapeValue) or
@@ -562,7 +563,7 @@ def surrogate_loss(sample_losses,
     ValueError: if any loss in `sample_losses` does not have dimensionality 1
       or greater.
   """
-  with ops.op_scope(sample_losses, name):
+  with ops.name_scope(name, values=sample_losses):
     fixed_losses = []
     if not isinstance(sample_losses, (list, tuple)):
       raise TypeError("sample_losses must be a list or tuple")

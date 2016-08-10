@@ -51,7 +51,7 @@ def accuracy(predictions, labels, weights=None):
     raise ValueError('Dtypes of predictions and labels should match. '
                      'Given: predictions (%r) and labels (%r)' %
                      (predictions.dtype, labels.dtype))
-  with ops.op_scope([predictions, labels], 'accuracy'):
+  with ops.name_scope('accuracy', values=[predictions, labels]):
     is_correct = math_ops.cast(
         math_ops.equal(predictions, labels), dtypes.float32)
     if weights is not None:

@@ -179,7 +179,7 @@ class _ShapeUtil(object):
     if x is None:
       raise ValueError('Input was None which does not have known ndims.')
     with ops.name_scope(self.name):
-      with ops.op_scope([x], name):
+      with ops.name_scope(name, values=[x]):
         ndims = ops.convert_to_tensor(x).get_shape().ndims
         if ndims is None:
           raise ValueError('ShapeUtil assumes static number of '
@@ -255,7 +255,7 @@ class _ShapeUtil(object):
     if not sample and not batch and not event:
       return []
     with ops.name_scope(self._name):
-      with ops.op_scope([x], name):
+      with ops.name_scope(name, values=[x]):
         x = ops.convert_to_tensor(x)
         shape = (x.get_shape().as_list()
                  if x.get_shape().is_fully_defined()

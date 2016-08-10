@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
@@ -299,6 +300,50 @@ class InferenceContext {
       return errors::InvalidArgument("Cannot infer shape because dimension ",
                                      name, " is not known.");
     }
+    return Status::OK();
+  }
+
+  // Validates the 3 component tensors of a sparse tensor have the proper
+  // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
+  Status ValidateSparseTensor(const Shape* indices_shape,
+                              const Shape* values_shape,
+                              const Shape* shape_shape) {
+    // Validate ranks.
+    const Shape* unused_shape;
+    TF_RETURN_IF_ERROR(WithRank(indices_shape, 2, &unused_shape));
+    TF_RETURN_IF_ERROR(WithRank(values_shape, 1, &unused_shape));
+    TF_RETURN_IF_ERROR(WithRank(shape_shape, 1, &unused_shape));
+
+    // Number of elements in indices and values must match.
+    const Dimension* num_index_elements_dim = Dim(indices_shape, 0);
+    if (ValueKnown(num_index_elements_dim)) {
+      const Dimension* num_values_elements_dim = Dim(values_shape, 0);
+      if (ValueKnown(num_values_elements_dim)) {
+        int64 num_index_elements = Value(num_index_elements_dim);
+        int64 num_values_elements = Value(num_values_elements_dim);
+        if (num_index_elements != num_values_elements) {
+          return errors::InvalidArgument(
+              "Number of elements in index (", num_index_elements,
+              ") and values (", num_values_elements, ") do not match.");
+        }
+      }
+    }
+
+    // Rank embedded in indices must match shape.
+    const Dimension* index_rank_dim = Dim(indices_shape, 1);
+    if (ValueKnown(index_rank_dim)) {
+      const Dimension* shape_rank_dim = Dim(shape_shape, 0);
+      if (ValueKnown(shape_rank_dim)) {
+        int64 index_rank = Value(index_rank_dim);
+        int32 shape_rank = Value(shape_rank_dim);
+        if (index_rank != shape_rank) {
+          return errors::InvalidArgument("Index rank (", index_rank,
+                                         ") and shape rank (", shape_rank,
+                                         ") do not match.");
+        }
+      }
+    }
+
     return Status::OK();
   }
 

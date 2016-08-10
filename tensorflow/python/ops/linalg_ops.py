@@ -244,7 +244,7 @@ def cholesky_solve(chol, rhs, name=None):
   # To solve C C^* x = rhs, we
   # 1. Solve C y = rhs for y, thus y = C^* x
   # 2. Solve C^* x = y for x
-  with ops.op_scope([chol, rhs], name, "cholesky_solve"):
+  with ops.name_scope(name, "cholesky_solve", [chol, rhs]):
     y = gen_linalg_ops.matrix_triangular_solve(
         chol, rhs, adjoint=False, lower=True)
     x = gen_linalg_ops.matrix_triangular_solve(
@@ -286,7 +286,7 @@ def batch_cholesky_solve(chol, rhs, name=None):
   # To solve C C^* x = rhs, we
   # 1. Solve C y = rhs for y, thus y = C^* x
   # 2. Solve C^* x = y for x
-  with ops.op_scope([chol, rhs], name, "batch_cholesky_solve"):
+  with ops.name_scope(name, "batch_cholesky_solve", [chol, rhs]):
     y = gen_linalg_ops.batch_matrix_triangular_solve(
         chol, rhs, adjoint=False, lower=True)
     x = gen_linalg_ops.batch_matrix_triangular_solve(

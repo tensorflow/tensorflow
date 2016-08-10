@@ -61,7 +61,7 @@ class Exponential(gamma.Gamma):
     # true in the parent class "Gamma."  Therefore, passing
     # allow_nan_stats=False
     # through to the parent class results in unnecessary asserts.
-    with ops.op_scope([lam], name):
+    with ops.name_scope(name, values=[lam]):
       lam = ops.convert_to_tensor(lam)
       self._lam = lam
       super(Exponential, self).__init__(
@@ -93,7 +93,7 @@ class Exponential(gamma.Gamma):
         of the distributions determined by the hyperparameters.
     """
     broadcast_shape = self._lam.get_shape()
-    with ops.op_scope([self.lam, n], name, "ExponentialSample"):
+    with ops.name_scope(name, "ExponentialSample", [self.lam, n]):
       n = ops.convert_to_tensor(n, name="n")
       shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
       # Sample uniformly-at-random from the open-interval (0, 1).

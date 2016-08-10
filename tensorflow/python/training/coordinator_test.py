@@ -101,7 +101,7 @@ class CoordinatorTest(tf.test.TestCase):
     coord = tf.train.Coordinator()
     threads = [
         threading.Thread(target=SleepABit, args=(0.01, coord)),
-        threading.Thread(target=SleepABit, args=(0.02)),
+        threading.Thread(target=SleepABit, args=(0.02,)),
         threading.Thread(target=SleepABit, args=(0.01, coord))]
     for t in threads:
       t.start()

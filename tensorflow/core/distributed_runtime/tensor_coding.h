@@ -32,12 +32,16 @@ class TensorProto;
 // into Tensor contents as well as associated metadata.
 class TensorResponse {
  public:
-  explicit TensorResponse(Allocator* allocator);
+  TensorResponse() {}
+
+  void set_allocator(Allocator* a) { allocator_ = a; }
 
   // Source provides a way for a particular RPC implementation to provide
   // received data to ParseFrom.
   class Source {
    public:
+    virtual ~Source();
+
     // Return the stream that contains the data to be parsed.
     // Note that this method might be invoked more than once if
     // ParseFrom needs to fall back to a more expensive parsing method.
@@ -55,6 +59,15 @@ class TensorResponse {
   // Parse the RecvTensorResponse encoded in the data yielded by
   // source->contents() into *this.
   Status ParseFrom(Source* source);
+
+  // Initialize tensor from *response.
+  // Leaves *response with unspecified contents.
+  Status InitFrom(RecvTensorResponse* response);
+
+  // Initialize tensor metadata from *response and allocate
+  // uninitialized backing storage for actual contents.
+  // Leaves *response with unspecified contents.
+  void InitPartial(RecvTensorResponse* response);
 
   // Return a reference to the parsed tensor.  The tensor will remain
   // live only until *this is destroyed or modified.

@@ -576,15 +576,9 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
             example.ComputeWxAndWeightedExampleNorm(
                 num_partitions_, model_weights, regularizations_);
 
-        const double primal_loss = loss_updater_->ComputePrimalLoss(
-            example_statistics.wx, example_label, example_weight);
-
-        const double dual_loss =
-            loss_updater_->ComputeDualLoss(dual, example_label, example_weight);
         const double new_dual = loss_updater_->ComputeUpdatedDual(
             num_partitions_, example_label, example_weight, dual,
-            example_statistics.wx, example_statistics.normalized_squared_norm,
-            primal_loss, dual_loss);
+            example_statistics.wx, example_statistics.normalized_squared_norm);
 
         // Compute new weights.
         const double normalized_bounded_dual_delta =
@@ -595,8 +589,10 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
 
         // Update example data.
         example_state_data(example_index, 0) = new_dual;
-        example_state_data(example_index, 1) = primal_loss;
-        example_state_data(example_index, 2) = dual_loss;
+        example_state_data(example_index, 1) = loss_updater_->ComputePrimalLoss(
+            example_statistics.wx, example_label, example_weight);
+        example_state_data(example_index, 2) =
+            loss_updater_->ComputeDualLoss(dual, example_label, example_weight);
         example_state_data(example_index, 3) = example_weight;
       }
     };

@@ -14,6 +14,7 @@ Detach the outputa of a subgraph view.
 
   A new subgraph view of the detached subgraph.
     Note that sgv is also modified in place.
+  A list of the created output placeholders.
 
 ##### Raises:
 

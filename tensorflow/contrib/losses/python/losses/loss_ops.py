@@ -272,8 +272,8 @@ def absolute_difference(predictions, targets, weight=1.0, scope=None):
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid.
   """
-  with ops.op_scope([predictions, targets],
-                    scope, "absolute_difference") as scope:
+  with ops.name_scope(scope, "absolute_difference",
+                      [predictions, targets]) as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
       raise ValueError("`weight` cannot be None")
@@ -311,8 +311,8 @@ def sigmoid_cross_entropy(logits, multi_class_labels, weight=1.0,
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid or if `weight` is None.
   """
-  with ops.op_scope([logits, multi_class_labels],
-                    scope, "sigmoid_cross_entropy_loss"):
+  with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
+                      [logits, multi_class_labels]):
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
@@ -354,8 +354,8 @@ def softmax_cross_entropy(logits, onehot_labels, weight=1.0,
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid or if `weight` is None.
   """
-  with ops.op_scope([logits, onehot_labels],
-                    scope, "softmax_cross_entropy_loss"):
+  with ops.name_scope(scope, "softmax_cross_entropy_loss",
+                      [logits, onehot_labels]):
     logits.get_shape().assert_is_compatible_with(onehot_labels.get_shape())
 
     onehot_labels = math_ops.cast(onehot_labels, logits.dtype)
@@ -398,8 +398,8 @@ def log_loss(predictions, targets, weight=1.0, epsilon=1e-7, scope=None):
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid.
   """
-  with ops.op_scope([predictions, targets],
-                    scope, "log_loss") as scope:
+  with ops.name_scope(scope, "log_loss",
+                      [predictions, targets]) as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
       raise ValueError("`weight` cannot be None")
@@ -428,7 +428,7 @@ def hinge_loss(logits, target, scope=None):
   Raises:
     ValueError: If the shapes of `logits` and `target` don't match.
   """
-  with ops.op_scope([logits, target], scope, "hinge_loss") as scope:
+  with ops.name_scope(scope, "hinge_loss", [logits, target]) as scope:
     logits.get_shape().assert_is_compatible_with(target.get_shape())
     # We first need to convert binary labels to -1/1 labels (as floats).
     target = math_ops.to_float(target)
@@ -462,8 +462,8 @@ def sum_of_squares(predictions, targets, weight=1.0, scope=None):
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid.
   """
-  with ops.op_scope([predictions, targets],
-                    scope, "sum_of_squares_loss") as scope:
+  with ops.name_scope(scope, "sum_of_squares_loss",
+                      [predictions, targets]) as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
       raise ValueError("`weight` cannot be None")
@@ -512,8 +512,8 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
     ValueError: If the shape of `predictions` doesn't match that of `targets` or
       if the shape of `weight` is invalid.
   """
-  with ops.op_scope([predictions, targets],
-                    scope, "sum_of_pairwise_squares_loss") as scope:
+  with ops.name_scope(scope, "sum_of_pairwise_squares_loss",
+                      [predictions, targets]) as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
       raise ValueError("`weight` cannot be None")
@@ -575,8 +575,8 @@ def cosine_distance(predictions, targets, dim, weight=1.0, scope=None):
                 mask is provided and its shape doesn't match targets.shape or if
                 the ignore mask is not boolean valued.
   """
-  with ops.op_scope([predictions, targets],
-                    scope, "cosine_distance_loss") as scope:
+  with ops.name_scope(scope, "cosine_distance_loss",
+                      [predictions, targets]) as scope:
     predictions.get_shape().assert_is_compatible_with(targets.get_shape())
     if weight is None:
       raise ValueError("`weight` cannot be None")

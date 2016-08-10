@@ -117,12 +117,12 @@ class Seq2SeqModel(object):
     self.decoder_inputs = []
     self.target_weights = []
     for i in xrange(buckets[-1][0]):  # Last bucket is the biggest one.
-      self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+      self.encoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
                                                 name="encoder{0}".format(i)))
     for i in xrange(buckets[-1][1] + 1):
-      self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[None],
+      self.decoder_inputs.append(tf.placeholder(tf.int32, shape=[batch_size],
                                                 name="decoder{0}".format(i)))
-      self.target_weights.append(tf.placeholder(tf.float32, shape=[None],
+      self.target_weights.append(tf.placeholder(tf.float32, shape=[batch_size],
                                                 name="weight{0}".format(i)))
 
     # Our targets are decoder inputs shifted by one.

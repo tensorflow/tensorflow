@@ -9,6 +9,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -60,10 +61,10 @@ py_library(
     ],
 )
 
-py_tests(
-    name = "platform_tests",
+tf_py_test(
+    name = "resource_loader_test",
     size = "small",
-    srcs = glob(["platform/*_test.py"]),
+    srcs = ["platform/resource_loader_test.py"],
     additional_deps = [
         ":platform",
         ":platform_test",
@@ -1212,18 +1213,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "session_debug_test",
-    size = "small",
-    srcs = ["debug/session_debug_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework",
-        ":framework_test_lib",
-        ":session",
-    ],
-)
-
 cuda_py_test(
     name = "timeline_test",
     size = "small",
@@ -1259,17 +1248,15 @@ py_test(
 cuda_py_tests(
     name = "op_tests",
     size = "small",
-    srcs = glob(
-        ["ops/*_test.py"],
-        exclude = [
-            "ops/image_ops_test.py",
-            "ops/nn_batchnorm_test.py",
-            "ops/nn_test.py",
-            "ops/nn_xent_test.py",
-            "ops/op_def_library_test.py",
-            "ops/special_math_ops_test.py",
-        ],
-    ),
+    srcs = [
+        "ops/control_flow_ops_test.py",
+        "ops/gradient_checker_test.py",
+        "ops/gradients_test.py",
+        "ops/histogram_ops_test.py",
+        "ops/image_grad_test.py",
+        "ops/math_grad_test.py",
+        "ops/math_ops_test.py",
+    ],
 )
 
 cuda_py_test(
@@ -1288,12 +1275,10 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "image_ops_test",
     size = "small",
-    srcs = [
-        "ops/image_ops_test.py",
-    ],
+    srcs = ["ops/image_ops_test.py"],
     data = [
         "//tensorflow/core:image_testdata",
     ],
@@ -1303,17 +1288,29 @@ cuda_py_tests(
 cuda_py_tests(
     name = "training_tests",
     size = "small",
-    srcs = glob(
-        ["training/*_test.py"],
-        exclude = [
-            "training/input_test.py",
-            "training/server_lib_test.py",
-            "training/session_manager_test.py",
-            "training/supervisor_test.py",
-            "training/saver_large_variable_test.py",
-            "training/localhost_cluster_performance_test.py",
-        ],
-    ),
+    srcs = [
+        "training/adadelta_test.py",
+        "training/adagrad_test.py",
+        "training/adam_test.py",
+        "training/basic_loops_test.py",
+        "training/coordinator_test.py",
+        "training/device_setter_test.py",
+        "training/ftrl_test.py",
+        "training/gradient_descent_test.py",
+        "training/learning_rate_decay_test.py",
+        "training/momentum_test.py",
+        "training/moving_averages_test.py",
+        "training/optimizer_test.py",
+        "training/proximal_adagrad_test.py",
+        "training/proximal_gradient_descent_test.py",
+        "training/queue_runner_test.py",
+        "training/rmsprop_test.py",
+        "training/saver_test.py",
+        "training/slot_creator_test.py",
+        "training/summary_writer_test.py",
+        "training/tensorboard_logging_test.py",
+        "training/training_ops_test.py",
+    ],
     additional_deps = [
         ":training",
     ],
@@ -1325,6 +1322,16 @@ py_test(
     srcs = ["training/saver_large_variable_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/30379628
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "saver_large_partitioned_variable_test",
+    size = "medium",
+    srcs = ["training/saver_large_partitioned_variable_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -1351,12 +1358,10 @@ py_test(
     ],
 )
 
-py_tests(
-    name = "training_tests",
+tf_py_test(
+    name = "input_test",
     size = "small",
-    srcs = glob(
-        ["training/input_test.py"],
-    ),
+    srcs = ["training/input_test.py"],
     additional_deps = [
         "//tensorflow:tensorflow_py",
         ":training",
@@ -1383,7 +1388,15 @@ py_library(
 py_tests(
     name = "summary_tests",
     size = "small",
-    srcs = glob(["summary/**/*_test.py"]),
+    srcs = [
+        "summary/event_accumulator_test.py",
+        "summary/event_file_inspector_test.py",
+        "summary/event_multiplexer_test.py",
+        "summary/impl/directory_watcher_test.py",
+        "summary/impl/event_file_loader_test.py",
+        "summary/impl/gcs_file_loader_test.py",
+        "summary/impl/reservoir_test.py",
+    ],
     additional_deps = [
         ":summary",
         ":training",
@@ -1398,6 +1411,19 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+    ],
+)
+
+py_library(
+    name = "gen_docs_combined_lib",
+    srcs = [
+        "framework/gen_docs_combined.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":docs",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
     ],
 )
 
@@ -1424,6 +1450,15 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cuda_py_test(
+    name = "accumulate_n_benchmark",
+    size = "large",
+    srcs = [
+        "ops/accumulate_n_benchmark.py",
+    ],
+    main = "ops/accumulate_n_benchmark.py",
 )
 
 cuda_py_test(

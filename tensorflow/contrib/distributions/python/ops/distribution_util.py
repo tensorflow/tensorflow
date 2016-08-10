@@ -53,7 +53,7 @@ def assert_close(
     return check_ops.assert_equal(
         x, y, data=data, summarize=summarize, message=message, name=name)
 
-  with ops.op_scope([x, y, data], name, "assert_close"):
+  with ops.name_scope(name, "assert_close", [x, y, data]):
     tol = np.finfo(x.dtype.as_numpy_dtype).resolution
     if data is None:
       data = [
@@ -119,7 +119,7 @@ def get_logits_and_prob(
   elif p is not None and logits is not None:
     raise ValueError("Must pass either p or logits, not both.")
   elif p is None:
-    with ops.op_scope([logits], name):
+    with ops.name_scope(name, values=[logits]):
       logits = array_ops.identity(logits, name="logits")
     with ops.name_scope(name):
       with ops.name_scope("p"):
@@ -169,7 +169,7 @@ def log_combinations(n, counts, name="log_combinations"):
   # In general, this is (sum counts)! / sum(counts!)
   # The sum should be along the last dimension of counts.  This is the
   # "distribution" dimension. Here n a priori represents the sum of counts.
-  with ops.op_scope([n, counts], name):
+  with ops.name_scope(name, values=[n, counts]):
     total_permutations = math_ops.lgamma(n + 1)
     counts_factorial = math_ops.lgamma(counts + 1)
     redundant_permutations = math_ops.reduce_sum(counts_factorial,

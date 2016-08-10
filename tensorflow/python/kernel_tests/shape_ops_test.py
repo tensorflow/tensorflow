@@ -486,6 +486,16 @@ class TileTest(tf.test.TestCase):
     tiled = tf.tile(inp, tf.placeholder(tf.int32))
     self.assertIs(None, tiled.get_shape().ndims)
 
+    # Known input and partially known multiples.
+    inp = tf.constant(0.0, shape=[1, 1])
+    tiled = tf.tile(inp, [tf.placeholder(tf.int32), 7])
+    self.assertEqual([None, 7], tiled.get_shape().as_list())
+
+    # Mismatched input rank and multiples length.
+    inp = tf.placeholder(tf.float32, shape=[None, None])
+    with self.assertRaises(ValueError):
+      tiled = tf.tile(inp, tf.placeholder(tf.int32, shape=[3]))
+
 
 if __name__ == "__main__":
   tf.test.main()

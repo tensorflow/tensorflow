@@ -28,7 +28,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.framework.ops import convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
-from tensorflow.python.framework.ops import op_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -69,7 +68,7 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
                default_value,
                num_shards=1,
                name=None):
-    with ops.op_scope([], name, 'sharded_mutable_hash_table') as scope:
+    with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
       super(_ShardedMutableHashTable, self).__init__(key_dtype, value_dtype,
                                                      scope)
       table_shards = []
@@ -95,7 +94,7 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
     return self._table_shards
 
   def size(self, name=None):
-    with ops.op_scope([], name, 'sharded_mutable_hash_table_size'):
+    with ops.name_scope(name, 'sharded_mutable_hash_table_size'):
       sizes = [
           self._table_shards[i].size() for i in range(self._num_shards)
       ]
@@ -221,8 +220,8 @@ class SparseFeatureColumn(object):
     Returns:
       A `SparseFeatureColumn`
     """
-    with op_scope([example_indices, feature_indices], None,
-                  'SparseFeatureColumn'):
+    with name_scope(None, 'SparseFeatureColumn',
+                    [example_indices, feature_indices]):
       self._example_indices = convert_to_tensor(example_indices,
                                                 name='example_indices',
                                                 dtype=dtypes.int64)
@@ -231,7 +230,7 @@ class SparseFeatureColumn(object):
                                                 dtype=dtypes.int64)
     self._feature_values = None
     if feature_values is not None:
-      with op_scope([feature_values], None, 'SparseFeatureColumn'):
+      with name_scope(None, 'SparseFeatureColumn', [feature_values]):
         self._feature_values = convert_to_tensor(feature_values,
                                                  name='feature_values',
                                                  dtype=dtypes.float32)
@@ -239,6 +238,7 @@ class SparseFeatureColumn(object):
   @property
   def example_indices(self):
     """The example indices represented as a dense tensor.
+
     Returns:
       A 1-D Tensor of int64 with shape `[N]`.
     """
@@ -247,6 +247,7 @@ class SparseFeatureColumn(object):
   @property
   def feature_indices(self):
     """The feature indices represented as a dense tensor.
+
     Returns:
       A 1-D Tensor of int64 with shape `[N]`.
     """
@@ -255,13 +256,14 @@ class SparseFeatureColumn(object):
   @property
   def feature_values(self):
     """The feature values represented as a dense tensor.
+
     Returns:
       May return None, or a 1-D Tensor of float32 with shape `[N]`.
     """
     return self._feature_values
 
 
-# TODO(sibyl-Aix6ihai): add op_scope to appropriate methods.
+# TODO(sibyl-Aix6ihai): add name_scope to appropriate methods.
 class SdcaModel(object):
   """Stochastic dual coordinate ascent solver for linear models.
 
@@ -301,7 +303,7 @@ class SdcaModel(object):
     }
     variables: {
       sparse_features_weights: list of tensors of shape [vocab size]
-      dense_features_weights: list of tensors of shape [1]
+      dense_features_weights: list of tensors of shape [dense_feature_dimension]
     }
     options: {
       symmetric_l1_regularization: 0.0
@@ -436,7 +438,8 @@ class SdcaModel(object):
           'dense_features_weights'])
 
       for i in range(len(dense_variables)):
-        result += dense_features[i] * dense_variables[i]
+        result += math_ops.matmul(dense_features[i], array_ops.expand_dims(
+            dense_variables[i], -1))
 
     # Reshaping to allow shape inference at graph construction time.
     return array_ops.reshape(result, [-1])
@@ -480,7 +483,7 @@ class SdcaModel(object):
     """
     # Technically, the op depends on a lot more than the variables,
     # but we'll keep the list short.
-    with op_scope([], name, 'sdca/minimize'):
+    with name_scope(name, 'sdca/minimize'):
       sparse_example_indices = []
       sparse_feature_indices = []
       sparse_features_values = []

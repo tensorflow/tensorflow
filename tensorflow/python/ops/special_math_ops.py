@@ -56,7 +56,7 @@ def lbeta(x, name='lbeta'):
   Raises:
     ValueError:  If `x` is empty with rank one or less.
   """
-  with ops.op_scope([x], name):
+  with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name='x')
     x = control_flow_ops.with_dependencies(
         [check_ops.assert_rank_at_least(x, 1)], x)
