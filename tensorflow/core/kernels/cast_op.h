@@ -45,38 +45,31 @@ namespace internal {
 
 // Eigen can't convert to/from complex numbers, because it is limited to cases
 // that can be static_casted. But numpy is able to cast to/from complex, which
-// we want to emulate. So we add specializations for complex here.
-typedef std::complex<float> complex64;
-typedef std::complex<double> complex128;
-using tensorflow::uint8;
-using tensorflow::int8;
-using tensorflow::uint16;
-using tensorflow::int16;
-using tensorflow::int32;
-using tensorflow::int64;
-
-// These are seperate definitions of what should happen when we cast from/to
-// complex numbers. The actual template specializations are instantiated below.
+// we want to replicate. So we add specializations for complex here.
 template<typename From, typename To>
-struct cast_from_complex_impl {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE To operator()(const From& a) const {
+struct scalar_cast_op<std::complex<From>, To> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+  To operator()(const std::complex<From>& a) const {
+    // Replicate numpy behaviour of returning just the real part
     return static_cast<To>(a.real());
   }
 };
 
 template<typename From, typename To>
-struct cast_to_complex_impl {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE To operator()(const From& a) const {
-    return To(static_cast<typename To::value_type>(a), typename To::value_type(0));
+struct scalar_cast_op<From, std::complex<To>> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+  std::complex<To> operator()(const From& a) const {
+    // Replicate numpy behaviour of setting the imaginary part to 0
+    return std::complex<To>(static_cast<To>(a), To(0));
   }
 };
 
 template<typename From, typename To>
-struct cast_from_to_complex_impl {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE To operator()(
-    const From& a) const {
-    return To(static_cast<typename To::value_type>(a.real()),
-              static_cast<typename To::value_type>(a.imag()));
+struct scalar_cast_op<std::complex<From>, std::complex<To>> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+  std::complex<To> operator()(const std::complex<From>& a) const {
+    return std::complex<To>(static_cast<To>(a.real()),
+                            static_cast<To>(a.imag()));
   }
 };
 
@@ -85,68 +78,16 @@ struct functor_traits_complex_impl {
   enum { Cost = NumTraits<To>::AddCost, PacketAccess = false };
 };
 
-#define FROM_COMPLEX(C, T)                    \
-  template<>                                  \
-  struct scalar_cast_op<C, T>                 \
-    : cast_from_complex_impl<C, T> {};        \
-  template<>                                  \
-  struct functor_traits<scalar_cast_op<C, T>> \
-    : functor_traits_complex_impl<C, T> {}
-
-#define TO_COMPLEX(T, C)                      \
-  template <>                                 \
-  struct scalar_cast_op<T, C>                 \
-    : cast_to_complex_impl<T, C> {};          \
-  template<>                                  \
-  struct functor_traits<scalar_cast_op<T, C>> \
-    : functor_traits_complex_impl<T, C> {}
-
-#define FROM_TO_COMPLEX(C1, C2)                 \
-  template <>                                   \
-  struct scalar_cast_op<C1, C2>                 \
-    : cast_from_to_complex_impl<C1, C2> {};     \
-  template<>                                    \
-  struct functor_traits<scalar_cast_op<C1, C2>> \
-    : functor_traits_complex_impl<C1, C2> {}
-
-#define CURRY_TYPES_FROM(FN, arg0) \
-  FN(arg0, bool);                  \
-  FN(arg0, uint8);                 \
-  FN(arg0, int8);                  \
-  FN(arg0, uint16);                \
-  FN(arg0, int16);                 \
-  FN(arg0, int32);                 \
-  FN(arg0, int64);                 \
-  FN(arg0, Eigen::half);           \
-  FN(arg0, float);                 \
-  FN(arg0, double)
-
-#define CURRY_TYPES_TO(FN, arg0) \
-  FN(bool,        arg0);         \
-  FN(uint8,       arg0);         \
-  FN(int8,        arg0);         \
-  FN(uint16,      arg0);         \
-  FN(int16,       arg0);         \
-  FN(int32,       arg0);         \
-  FN(int64,       arg0);         \
-  FN(Eigen::half, arg0);         \
-  FN(float,       arg0);         \
-  FN(double,      arg0)
-
-CURRY_TYPES_FROM(FROM_COMPLEX, complex64);
-CURRY_TYPES_FROM(FROM_COMPLEX, complex128);
-CURRY_TYPES_TO(TO_COMPLEX, complex64);
-CURRY_TYPES_TO(TO_COMPLEX, complex128);
-FROM_TO_COMPLEX(complex64, complex64);
-FROM_TO_COMPLEX(complex64, complex128);
-FROM_TO_COMPLEX(complex128, complex64);
-FROM_TO_COMPLEX(complex128, complex128);
-
-#undef FROM_COMPLEX
-#undef TO_COMPLEX
-#undef FROM_TO_COMPLEX
-#undef CURRY_TYPES_FROM
-#undef CURRY_TYPES_TO
+template<typename From, typename To>
+struct functor_traits<scalar_cast_op<std::complex<From>, To>>
+  : functor_traits_complex_impl<std::complex<From>, To> {};
+template<typename From, typename To>
+struct functor_traits<scalar_cast_op<From, std::complex<To>>>
+  : functor_traits_complex_impl<From, std::complex<To>> {};
+// Needed to avoid ambiguous partial specialization
+template<typename From, typename To>
+struct functor_traits<scalar_cast_op<std::complex<From>, std::complex<To>>>
+  : functor_traits_complex_impl<std::complex<From>, std::complex<To>> {};
 
 // Specialized cast op impls for bfloat16.
 template <>

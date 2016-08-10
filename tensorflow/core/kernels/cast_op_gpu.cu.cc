@@ -24,8 +24,6 @@ namespace tensorflow {
 namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
-using Eigen::internal::complex64;
-using Eigen::internal::complex128;
 
 template <typename O, typename I>
 struct CastFunctor<GPUDevice, O, I> {
@@ -36,19 +34,19 @@ struct CastFunctor<GPUDevice, O, I> {
 };
 
 #define DEFINE(O, I) template struct CastFunctor<GPUDevice, O, I>
-#define DEFINE_ALL_FROM(in_type) \
-  DEFINE(in_type, bool);         \
-  DEFINE(in_type, uint8);        \
-  DEFINE(in_type, int8);         \
-  DEFINE(in_type, uint16);       \
-  DEFINE(in_type, int16);        \
-  DEFINE(in_type, int32);        \
-  DEFINE(in_type, int64);        \
-  DEFINE(in_type, Eigen::half);  \
-  DEFINE(in_type, float);        \
-  DEFINE(in_type, double);       \
-  DEFINE(in_type, complex64);    \
-  DEFINE(in_type, complex128)
+#define DEFINE_ALL_FROM(in_type)        \
+  DEFINE(in_type, bool);                \
+  DEFINE(in_type, uint8);               \
+  DEFINE(in_type, int8);                \
+  DEFINE(in_type, uint16);              \
+  DEFINE(in_type, int16);               \
+  DEFINE(in_type, int32);               \
+  DEFINE(in_type, int64);               \
+  DEFINE(in_type, Eigen::half);         \
+  DEFINE(in_type, float);               \
+  DEFINE(in_type, double);              \
+  DEFINE(in_type, std::complex<float>); \
+  DEFINE(in_type, std::complex<double>)
 
 DEFINE_ALL_FROM(bool);
 DEFINE_ALL_FROM(uint8);
@@ -60,8 +58,8 @@ DEFINE_ALL_FROM(int64);
 DEFINE_ALL_FROM(Eigen::half);
 DEFINE_ALL_FROM(float);
 DEFINE_ALL_FROM(double);
-DEFINE_ALL_FROM(complex64);
-DEFINE_ALL_FROM(complex128);
+DEFINE_ALL_FROM(std::complex<float>);
+DEFINE_ALL_FROM(std::complex<double>);
 DEFINE(bfloat16, float);
 DEFINE(float, bfloat16);
 
