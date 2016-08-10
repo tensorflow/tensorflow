@@ -269,6 +269,41 @@ class SaverTest(tf.test.TestCase):
       self.assertAllClose(1.0, one.eval())
       self.assertAllClose([2.0, 2.0, 2.0], twos.eval())
 
+  def testVarListShouldBeEmptyInDefferedBuild(self):
+    with tf.Graph().as_default():
+      v = tf.Variable(1.0)
+      with self.assertRaisesRegexp(ValueError, "defer_build"):
+        tf.train.Saver([v], defer_build=True)
+
+  def testBuildShouldBeCalledBeforeSaveInCaseOfDeferBuild(self):
+    save_path = os.path.join(self.get_temp_dir(), "error_deffered_build")
+    with tf.Graph().as_default(), tf.Session() as sess:
+      tf.Variable(1.0)
+      saver = tf.train.Saver(defer_build=True)
+      with self.assertRaisesRegexp(RuntimeError, "build"):
+        saver.save(sess, save_path)
+
+  def testDefferedBuild(self):
+    save_path = os.path.join(self.get_temp_dir(), "deffered_build")
+    with tf.Session("", graph=tf.Graph()) as sess:
+      one = tf.Variable(1.0)
+      save = tf.train.Saver(defer_build=True)
+      # if build is not defered, saver cannot save the `twos`.
+      twos = tf.Variable([2.0, 2.0, 2.0])
+      init = tf.initialize_all_variables()
+      save.build()
+      init.run()
+      save.save(sess, save_path)
+
+    with tf.Session("", graph=tf.Graph()) as sess:
+      one = tf.Variable(0.0)
+      twos = tf.Variable([0.0, 0.0, 0.0])
+      # Saver with no arg, defaults to 'all variables'.
+      save = tf.train.Saver()
+      save.restore(sess, save_path)
+      self.assertAllClose(1.0, one.eval())
+      self.assertAllClose([2.0, 2.0, 2.0], twos.eval())
+
   def testSaveWithGlobalStep(self):
     save_path = os.path.join(self.get_temp_dir(), "ckpt_with_global_step")
     global_step_int = 5

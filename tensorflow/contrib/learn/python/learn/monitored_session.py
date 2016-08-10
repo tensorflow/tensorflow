@@ -80,9 +80,6 @@ class Scaffold(object):
   """
 
   # TODO(touts): consider adding the output dir and summary writer (cached)?
-  # TODO(touts): I do not think we should pass keep_checkpoint_max here.
-  # TODO(touts): Add individual static functions for init_op(), etc. that
-  # implement the caching logic.
 
   def __init__(self,
                init_op=None,
@@ -91,8 +88,7 @@ class Scaffold(object):
                ready_op=None,
                local_init_op=None,
                summary_op=None,
-               saver=None,
-               keep_checkpoint_max=5):
+               saver=None):
     """Create a scaffold.
 
     Args:
@@ -109,8 +105,6 @@ class Scaffold(object):
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.Saver` object to use to save and restore variables.
-      keep_checkpoint_max: Optional parameter to use to construct a saver if
-        none is already there in the graph.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -125,7 +119,6 @@ class Scaffold(object):
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
-    self._keep_checkpoint_max = keep_checkpoint_max
     self._init_feed_dict = init_feed_dict
 
   def finalize(self):
@@ -150,9 +143,9 @@ class Scaffold(object):
       self._saver = Scaffold._get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True,
-                                       max_to_keep=self._keep_checkpoint_max))
+          lambda: training_saver.Saver(sharded=True))
     # pylint: enable=g-long-lambda
+    self._saver.build()
 
     ops.get_default_graph().finalize()
 

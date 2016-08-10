@@ -120,25 +120,25 @@ def _run_with_monitors(session, step, tensors, feed_dict, monitors):
   return outputs, should_stop
 
 
-def _supervised_train(graph,
-                      output_dir,
-                      train_op,
-                      loss_op,
-                      global_step_tensor=None,
-                      init_op=None,
-                      init_feed_dict=None,
-                      init_fn=None,
-                      log_every_steps=10,
-                      supervisor_is_chief=True,
-                      supervisor_master='',
-                      supervisor_save_model_secs=600,
-                      keep_checkpoint_max=5,
-                      supervisor_save_summaries_steps=100,
-                      feed_fn=None,
-                      steps=None,
-                      fail_on_nan_loss=True,
-                      hooks=None,
-                      max_steps=None):
+def _monitored_train(graph,
+                     output_dir,
+                     train_op,
+                     loss_op,
+                     global_step_tensor=None,
+                     init_op=None,
+                     init_feed_dict=None,
+                     init_fn=None,
+                     log_every_steps=10,
+                     supervisor_is_chief=True,
+                     supervisor_master='',
+                     supervisor_save_model_secs=600,
+                     keep_checkpoint_max=5,
+                     supervisor_save_summaries_steps=100,
+                     feed_fn=None,
+                     steps=None,
+                     fail_on_nan_loss=True,
+                     hooks=None,
+                     max_steps=None):
   """Train a model via monitored_session.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
@@ -239,13 +239,12 @@ def _supervised_train(graph,
             {'loss': loss_op.name}, every_n_iter=log_every_steps),
     ])
 
-    # Finalize graph and add savers
-    # TODO(ispir): remove keep_checkpoint_max from Scaffold interface
     scaffold = monitored_session.Scaffold(
         init_op=init_op,
         init_feed_dict=init_feed_dict,
         init_fn=init_fn,
-        keep_checkpoint_max=keep_checkpoint_max)
+        saver=tf_saver.Saver(
+            sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True))
 
     if supervisor_is_chief:
       # See question about adding the summary writer to the scaffold.

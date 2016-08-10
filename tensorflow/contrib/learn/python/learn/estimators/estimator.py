@@ -514,9 +514,10 @@ class BaseEstimator(
       for monitor in deprecated_monitors:
         monitor.set_estimator(self)
 
-      hooks.append(monitor_lib.RunHookAdapterForMonitors(deprecated_monitors))
+      if deprecated_monitors:
+        hooks.append(monitor_lib.RunHookAdapterForMonitors(deprecated_monitors))
 
-      return graph_actions._supervised_train(  # pylint: disable=protected-access
+      return graph_actions._monitored_train(  # pylint: disable=protected-access
           graph=g,
           output_dir=self._model_dir,
           train_op=train_op,

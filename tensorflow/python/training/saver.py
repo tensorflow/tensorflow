@@ -781,7 +781,8 @@ class Saver(object):
                name=None,
                restore_sequentially=False,
                saver_def=None,
-               builder=None):
+               builder=None,
+               defer_build=False):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -839,41 +840,69 @@ class Saver(object):
         `as_saver_def()` call of the `Saver` that was created for that `Graph`.
       builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
         Defaults to `BaseSaverBuilder()`.
+      defer_build: If `True`, defer adding the save and restore ops to the
+        `build()` call. In that case `build()` should be called before
+        finalizing the graph or using the saver.
 
     Raises:
       TypeError: If `var_list` is invalid.
       ValueError: If any of the keys or values in `var_list` are not unique.
     """
-    if not saver_def:
-      if builder is None:
-        builder = BaseSaverBuilder()
-      if var_list is None:
-        var_list = variables.all_variables()
-      if not var_list:
-        raise ValueError("No variables to save")
-      saver_def = builder.build(
-          var_list,
-          reshape=reshape,
-          sharded=sharded,
-          max_to_keep=max_to_keep,
-          keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-          name=name,
-          restore_sequentially=restore_sequentially)
-    if not isinstance(saver_def, saver_pb2.SaverDef):
-      raise ValueError("saver_def must if a saver_pb2.SaverDef: %s" % saver_def)
-    if not saver_def.save_tensor_name:
-      raise ValueError("saver_def must specify the save_tensor_name: %s"
-                       % str(saver_def))
-    if not saver_def.restore_op_name:
-      raise ValueError("saver_def must specify the restore_op_name: %s"
-                       % str(saver_def))
-
-    # Assigns saver_def.
+    if defer_build and var_list:
+      raise ValueError(
+          "If `var_list` is provided then build cannot be deferred. "
+          "Either set defer_build=False or var_list=None.")
+    self._var_list = var_list
+    self._reshape = reshape
+    self._sharded = sharded
+    self._max_to_keep = max_to_keep
+    self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self._name = name
+    self._restore_sequentially = restore_sequentially
     self.saver_def = saver_def
+    self._builder = builder
+    self._is_built = False
+    if not defer_build:
+      self.build()
+    if self.saver_def:
+      self._check_saver_def()
+
+  def build(self):
+    """Builds saver_def."""
+    if self._is_built:
+      return
+    self._is_built = True
+    if not self.saver_def:
+      if self._builder is None:
+        self._builder = BaseSaverBuilder()
+      if self._var_list is None:
+        self._var_list = variables.all_variables()
+      if not self._var_list:
+        raise ValueError("No variables to save")
+      self.saver_def = self._builder.build(
+          self._var_list,
+          reshape=self._reshape,
+          sharded=self._sharded,
+          max_to_keep=self._max_to_keep,
+          keep_checkpoint_every_n_hours=self._keep_checkpoint_every_n_hours,
+          name=self._name,
+          restore_sequentially=self._restore_sequentially)
+    self._check_saver_def()
     # Updates next checkpoint time.
     self._next_checkpoint_time = (
         time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
     self._last_checkpoints = []
+
+  def _check_saver_def(self):
+    if not isinstance(self.saver_def, saver_pb2.SaverDef):
+      raise ValueError("saver_def must if a saver_pb2.SaverDef: %s" %
+                       self.saver_def)
+    if not self.saver_def.save_tensor_name:
+      raise ValueError("saver_def must specify the save_tensor_name: %s" %
+                       str(self.saver_def))
+    if not self.saver_def.restore_op_name:
+      raise ValueError("saver_def must specify the restore_op_name: %s" %
+                       str(self.saver_def))
 
   def _CheckpointFilename(self, p):
     """Returns the checkpoint filename given a `(filename, time)` pair.
@@ -1046,7 +1075,11 @@ class Saver(object):
       TypeError: If `sess` is not a `Session`.
       ValueError: If `latest_filename` contains path components, or if it
         collides with `save_path`.
+      RuntimeError: If save and restore ops weren't built.
     """
+    if not self._is_built:
+      raise RuntimeError(
+          "`build()` should be called before save if deffer_build==True")
     if latest_filename is None:
       latest_filename = "checkpoint"
 
