@@ -780,8 +780,9 @@ checkpoints per device.
 ##### Args:
 
 
-*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names to
-    variables.  If `None`, defaults to the list of all variables.
+*  <b>`var_list`</b>: A list of `Variable`/`SaveableObject`, or a dictionary mapping
+    names to `SaveableObject`s. If `None`, defaults to the list of all
+    saveable objects.
 *  <b>`reshape`</b>: If `True`, allows restoring parameters from a checkpoint
     where the variables have a different shape.
 *  <b>`sharded`</b>: If `True`, shard the checkpoints, one per device.
