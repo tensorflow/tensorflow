@@ -249,7 +249,7 @@ class RNNTest(tf.test.TestCase):
       tf.initialize_all_variables()
       all_vars = tf.all_variables()
       prefix = prefix or "RNN"
-      scope_vars = [v for v in all_vars if v.name.startswith(prefix)]
+      scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
@@ -322,7 +322,7 @@ class GRUTest(tf.test.TestCase):
       # with the proper scope.
       all_vars = tf.all_variables()
       prefix = prefix or "RNN"
-      scope_vars = [v for v in all_vars if v.name.startswith(prefix)]
+      scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
@@ -1383,7 +1383,7 @@ class BidirectionalRNNTest(tf.test.TestCase):
       tf.initialize_all_variables()
       all_vars = tf.all_variables()
       prefix = prefix or "BiRNN"
-      scope_vars = [v for v in all_vars if v.name.startswith(prefix)]
+      scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("BiRNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
@@ -1814,7 +1814,7 @@ class RawRNNTest(tf.test.TestCase):
       # with the proper scope.
       all_vars = tf.all_variables()
       prefix = prefix or "RNN"
-      scope_vars = [v for v in all_vars if v.name.startswith(prefix)]
+      scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
@@ -1873,7 +1873,7 @@ class StateSaverRNNTest(tf.test.TestCase):
       # with the proper scope.
       all_vars = tf.all_variables()
       prefix = prefix or "RNN"
-      scope_vars = [v for v in all_vars if v.name.startswith(prefix)]
+      scope_vars = [v for v in all_vars if v.name.startswith(prefix + "/")]
       tf.logging.info("RNN with scope: %s (%s)"
                       % (prefix, "scope" if use_outer_scope else "str"))
       for v in scope_vars:
