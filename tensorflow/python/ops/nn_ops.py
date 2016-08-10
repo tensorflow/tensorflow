@@ -550,14 +550,14 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
     labels_static_shape = labels.get_shape()
     labels_shape = array_ops.shape(labels)
     if logits.get_shape().ndims is not None and logits.get_shape().ndims == 0:
-      raise ValueError("Logits cannot be scalars - received shape %s.",
+      raise ValueError("Logits cannot be scalars - received shape %s." %
                        logits.get_shape())
     if logits.get_shape().ndims is not None and (
         labels_static_shape.ndims is not None and
         labels_static_shape.ndims != logits.get_shape().ndims - 1):
       raise ValueError("Rank mismatch: Labels rank (received %s) should equal "
-                       "logits rank (received %s) - 1.",
-                       labels_static_shape.ndims, logits.get_shape().ndims)
+                       "logits rank (received %s) - 1." %
+                       (labels_static_shape.ndims, logits.get_shape().ndims))
     # Check if no reshapes are required.
     if logits.get_shape().ndims == 2:
       cost, _ = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
