@@ -268,6 +268,7 @@ def run_epoch(session, model, data, eval_op, verbose=False):
       feed_dict[c] = state[i].c
       feed_dict[h] = state[i].h
     cost, state, _ = session.run(fetches, feed_dict)
+    costs += cost
     iters += model.num_steps
 
     if verbose and step % (epoch_size // 10) == 10:
