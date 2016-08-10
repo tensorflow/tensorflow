@@ -1847,6 +1847,7 @@ def _ArgOpShape(op):
 def _ReductionShape(op):
   """Common shape function for reduction ops."""
   input_shape = op.inputs[0].get_shape()
+  op.inputs[1].get_shape().with_rank_at_most(1)
   reduction_indices = tensor_util.constant_value(op.inputs[1])
   keep_dims = op.get_attr("keep_dims")
   if reduction_indices is None or input_shape.ndims is None:
