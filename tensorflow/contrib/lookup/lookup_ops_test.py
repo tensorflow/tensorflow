@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import numpy as np
+import six
 import tensorflow as tf
 
 
@@ -266,6 +267,59 @@ class MutableHashTableOpTest(tf.test.TestCase):
       sorted_values = np.sort(exported_values.eval())
       self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
       self.assertAllEqual([0, 1, 2], sorted_values)
+
+  def testSaveRestore(self):
+    save_path = os.path.join(self.get_temp_dir(), "hash")
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      v0 = tf.Variable(10.0, name="v0")
+      v1 = tf.Variable(20.0, name="v1")
+
+      default_val = -1
+      keys = tf.constant(["b", "c", "d"], tf.string)
+      values = tf.constant([0, 1, 2], tf.int64)
+      table = tf.contrib.lookup.MutableHashTable(
+          tf.string, tf.int64, default_val, name="t1", checkpoint=True)
+
+      save = tf.train.Saver()
+      tf.initialize_all_variables().run()
+
+      # Check that the parameter nodes have been initialized.
+      self.assertEqual(10.0, v0.eval())
+      self.assertEqual(20.0, v1.eval())
+
+      self.assertAllEqual(0, table.size().eval())
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      val = save.save(sess, save_path)
+      self.assertTrue(isinstance(val, six.string_types))
+      self.assertEqual(save_path, val)
+
+    with self.test_session(graph=tf.Graph()) as sess:
+      v0 = tf.Variable(-1.0, name="v0")
+      v1 = tf.Variable(-1.0, name="v1")
+      default_val = -1
+      table = tf.contrib.lookup.MutableHashTable(
+          tf.string, tf.int64, default_val, name="t1", checkpoint=True)
+      table.insert(
+          tf.constant(["a", "c"], tf.string),
+          tf.constant([12, 24], tf.int64)).run()
+      self.assertAllEqual(2, table.size().eval())
+
+      save = tf.train.Saver()
+
+      # Restore the saved values in the parameter nodes.
+      save.restore(sess, save_path)
+      # Check that the parameter nodes have been restored.
+      self.assertEqual(10.0, v0.eval())
+      self.assertEqual(20.0, v1.eval())
+
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = tf.constant(["a", "b", "c", "d", "e"], tf.string)
+      output = table.lookup(input_string)
+      self.assertAllEqual([-1, 0, 1, 2, -1], output.eval())
 
   def testMutableHashTableOfTensors(self):
     with self.test_session():

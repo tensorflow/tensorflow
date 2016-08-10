@@ -1130,6 +1130,7 @@ def _LookupTableFindShape(op):
 
 
 @ops.RegisterShape("LookupTableInsert")
+@ops.RegisterShape("LookupTableImport")
 def _LookupTableInsertShape(op):
   """Shape function for data_flow_ops._lookup_table_insert."""
   op.inputs[0].get_shape().merge_with(tensor_shape.scalar())

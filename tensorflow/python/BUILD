@@ -579,6 +579,7 @@ tf_gen_op_wrapper_py(
         "InitializeTableFromTextFile",
         "LookupTableExport",
         "LookupTableFind",
+        "LookupTableImport",
         "LookupTableInsert",
         "LookupTableSize",
         "MutableHashTable",
