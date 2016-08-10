@@ -1692,6 +1692,7 @@ tf_kernel_libraries(
         "string_to_hash_bucket_op",
         "reduce_join_op",
         "string_join_op",
+        "string_split_op",
         "as_string_op",
     ],
     deps = [

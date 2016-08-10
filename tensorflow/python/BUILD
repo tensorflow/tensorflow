@@ -781,6 +781,9 @@ tf_gen_op_wrapper_py(
 
 tf_gen_op_wrapper_py(
     name = "string_ops",
+    hidden = [
+        "StringSplit",
+    ],
     require_shape_functions = True,
 )
 
