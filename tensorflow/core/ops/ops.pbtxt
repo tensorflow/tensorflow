@@ -7517,6 +7517,35 @@ op {
   description: "The tensor `keys` must of the same type as the keys of the table.\nThe output `values` is of the type of the table values.\n\nThe scalar `default_value` is the value output for keys not present in the\ntable. It must also be of the same type as the table values."
 }
 op {
+  name: "LookupTableImport"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    description: "Any shape.  Keys to look up."
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    description: "Same shape as `keys`.  Values to associate with keys."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  summary: "Replaces the contents of the table with the specified keys and values."
+  description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
+}
+op {
   name: "LookupTableInsert"
   input_arg {
     name: "table_handle"
@@ -8393,7 +8422,7 @@ op {
     minimum: 1
   }
   summary: "Forwards the value of an available tensor from `inputs` to `output`."
-  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`."
 }
 op {
   name: "MergeSummary"
@@ -10846,7 +10875,7 @@ op {
     minimum: 1
   }
   summary: "Forwards the value of an available tensor from `inputs` to `output`."
-  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`."
 }
 op {
   name: "RefNextIteration"
