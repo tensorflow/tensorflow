@@ -352,6 +352,9 @@ class Coordinator(object):
         threads = self._registered_threads
       else:
         threads = self._registered_threads.union(set(threads))
+      # Copy the set into a list to avoid race conditions where a new thread
+      # is added while we are waiting.
+      threads = list(threads)
 
     # Wait for all threads to stop or for request_stop() to be called.
     while any(t.is_alive() for t in threads) and not self.wait_for_stop(1.0):
