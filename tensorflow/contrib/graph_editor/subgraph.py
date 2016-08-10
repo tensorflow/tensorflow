@@ -28,6 +28,12 @@ from tensorflow.contrib.graph_editor import select
 from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
 
+__all__ = [
+    "SubGraphView",
+    "make_view",
+    "make_view_from_scope",
+]
+
 
 def _check_within_range(mapping, n, repetition):
   """Check is the mapping is valid.
@@ -60,9 +66,9 @@ class SubGraphView(object):
   used as substitute to "subgraph view".
 
   A subgraph contains:
-  - a list of input tensors, accessible via the "inputs" property.
-  - a list of output tensors, accessible via the "outputs" property.
-  - and the operations in between, accessible via the "ops" property.
+  * a list of input tensors, accessible via the "inputs" property.
+  * a list of output tensors, accessible via the "outputs" property.
+  * and the operations in between, accessible via the "ops" property.
 
   An subgraph can be seen as a function F(i0, i1, ...) -> o0, o1, ... It is a
   function which takes as input some input tensors and returns as output some
@@ -98,27 +104,27 @@ class SubGraphView(object):
   M(a,b)->b,b.
 
   It is useful to describe three other kind of tensors:
-  - internal: an internal tensor is a tensor connecting operations contained
-  in the subgraph. One example in the subgraph representing the two operations
-  A and B connected sequentially: -> A -> B ->. The middle arrow is an internal
-  tensor.
-  - actual input: an input tensor of the subgraph, regardless of whether it is
+  * internal: an internal tensor is a tensor connecting operations contained
+    in the subgraph. One example in the subgraph representing the two
+    operations A and B connected sequentially: -> A -> B ->. The middle arrow
+    is an internal tensor.
+  * actual input: an input tensor of the subgraph, regardless of whether it is
     listed in "inputs" or not (masked-out).
-  - actual output: an output tensor of the subgraph, regardless of whether it is
+  * actual output: an output tensor of the subgraph, regardless of whether it is
     listed in "outputs" or not (masked-out).
-  - hidden input: an actual input which has been masked-out using an
+  * hidden input: an actual input which has been masked-out using an
     input remapping. In other word, a hidden input is a non-internal tensor
     not listed as a input tensor and one of whose consumers belongs to
     the subgraph.
-  - hidden output: a actual output which has been masked-out using an output
+  * hidden output: a actual output which has been masked-out using an output
     remapping. In other word, a hidden output is a non-internal tensor
     not listed as an output and one of whose generating operations belongs to
     the subgraph.
 
   Here are some usefull guarantees about an instance of a SubGraphView:
-  - the input (or output) tensors are not internal.
-  - the input (or output) tensors are either "connected" or "passthrough".
-  - the passthrough tensors are not connected to any of the operation of
+  * the input (or output) tensors are not internal.
+  * the input (or output) tensors are either "connected" or "passthrough".
+  * the passthrough tensors are not connected to any of the operation of
   the subgraph.
 
   Note that there is no guarantee that an operation in a subgraph contributes
@@ -213,7 +219,7 @@ class SubGraphView(object):
     Args:
       other: another subgraph-view.
     Returns:
-      a new instance identical to the original one.
+      A new instance identical to the original one.
     Raises:
       TypeError: if other is not an SubGraphView.
     """
@@ -234,7 +240,7 @@ class SubGraphView(object):
     does not copy the underlying part of the tf.Graph.
 
     Returns:
-      a new instance identical to the original one.
+      A new instance identical to the original one.
     """
     return copy.copy(self)
 
@@ -271,14 +277,14 @@ class SubGraphView(object):
 
   def _remap_inputs(self, new_input_indices):
     """Remap the inputs of the subgraph in-place."""
-    _check_within_range(new_input_indices, len(self._input_ts),
-                        repetition=False)
+    _check_within_range(
+        new_input_indices, len(self._input_ts), repetition=False)
     self._input_ts = [self._input_ts[i] for i in new_input_indices]
 
   def _remap_outputs(self, new_output_indices):
     """Remap the outputs of the subgraph in-place."""
-    _check_within_range(new_output_indices, len(self._output_ts),
-                        repetition=True)
+    _check_within_range(
+        new_output_indices, len(self._output_ts), repetition=True)
     self._output_ts = [self._output_ts[i] for i in new_output_indices]
 
   def _remap_outputs_make_unique(self):
@@ -293,7 +299,7 @@ class SubGraphView(object):
     output_ts = list(self._output_ts)
     self._output_ts = []
     for t in output_ts:
-      self._output_ts += [t]*len(t.consumers())
+      self._output_ts += [t] * len(t.consumers())
 
   def remap_outputs_make_unique(self):
     """Remap the outputs so that all the tensors appears only once."""
@@ -315,10 +321,11 @@ class SubGraphView(object):
     Returns:
       A new subgraph view which only contains used operations.
     """
-    ops = select.get_walks_union_ops(self.connected_inputs,
-                                     self.connected_outputs,
-                                     within_ops=self._ops,
-                                     control_inputs=control_inputs)
+    ops = select.get_walks_union_ops(
+        self.connected_inputs,
+        self.connected_outputs,
+        within_ops=self._ops,
+        control_inputs=control_inputs)
     self._ops = [op for op in self._ops if op in ops]
 
   def remove_unused_ops(self, control_inputs=True):
@@ -420,19 +427,23 @@ class SubGraphView(object):
   def __str__(self):
     if not self:
       return "SubGraphView: empty"
+
     def op_name(op):
       return op.name
+
     def tensor_name(t):
       if t in self._passthrough_ts:
         return "{} *".format(t.name)
       else:
         return t.name
+
     def print_list(name, iterable, get_name):
       if iterable:
         print("** {}[{}]:".format(name, len(iterable)), file=res)
         print("\n".join([get_name(elem) for elem in iterable]), file=res)
       else:
         print("** {}: empty".format(name), file=res)
+
     res = StringIO()
     print("SubGraphView (graphid={}):".format(id(self.graph)), file=res)
     print_list("ops", self._ops, op_name)
@@ -516,7 +527,7 @@ class SubGraphView(object):
     Args:
       t: the input tensor of this subgraph view.
     Returns:
-      the index in the self.inputs list.
+      The index in the self.inputs list.
     Raises:
       Error: if t in not an input tensor.
     """
@@ -533,7 +544,7 @@ class SubGraphView(object):
     Args:
       t: the output tensor of this subgraph view.
     Returns:
-      the index in the self.outputs list.
+      The index in the self.outputs list.
     Raises:
       Error: if t in not an output tensor.
     """
