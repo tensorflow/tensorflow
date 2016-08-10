@@ -257,27 +257,17 @@ def run_epoch(session, model, data, eval_op, verbose=False):
   start_time = time.time()
   costs = 0.0
   iters = 0
-  state = []
-  for c, m in model.initial_state: # initial_state: ((c1, m1), (c2, m2))
-    state.append((c.eval(), m.eval()))
+  state = session.run(model.initial_state)
   for step, (x, y) in enumerate(reader.ptb_iterator(data, model.batch_size,
                                                     model.num_steps)):
-    fetches = []
-    fetches.append(model.cost)
-    fetches.append(eval_op)
-    for c, m in model.final_state: # final_state: ((c1, m1), (c2, m2))
-      fetches.append(c)
-      fetches.append(m)
+    fetches = [model.cost, model.final_state, eval_op]
     feed_dict = {}
     feed_dict[model.input_data] = x
     feed_dict[model.targets] = y
-    for i, (c, m) in enumerate(model.initial_state):
-      feed_dict[c], feed_dict[m] = state[i]
-    res = session.run(fetches, feed_dict)
-    cost = res[0]
-    state_flat = res[2:] # [c1, m1, c2, m2]
-    state = [state_flat[i:i+2] for i in range(0, len(state_flat), 2)]
-    costs += cost
+    for i, (c, h) in enumerate(model.initial_state):
+      feed_dict[c] = state[i].c
+      feed_dict[h] = state[i].h
+    cost, state, _ = session.run(fetches, feed_dict)
     iters += model.num_steps
 
     if verbose and step % (epoch_size // 10) == 10:
