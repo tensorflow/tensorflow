@@ -12,6 +12,7 @@ RUN /install/install_deb_packages.sh
 RUN /install/install_pip_packages.sh
 RUN /install/install_bazel.sh
 RUN /install/install_proto3.sh
+RUN /install/install_buildifier.sh
 
 # Set up bazelrc.
 COPY install/.bazelrc /root/.bazelrc

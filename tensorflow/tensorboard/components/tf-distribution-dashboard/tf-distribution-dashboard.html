@@ -1,6 +1,6 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-event-dashboard/tf-run-selector.html">
-<link rel="import" href="../tf-event-dashboard/tf-x-type-selector.html">
+<link rel="import" href="../tf-option-selector/tf-option-selector.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-categorizer/tf-categorizer.html">
@@ -47,10 +47,15 @@ tf-collapsable-panes.
           ></tf-categorizer>
         </div>
         <div class="sidebar-section">
-          <tf-x-type-selector
+          <tf-option-selector
             id="xTypeSelector"
-            out-x-type="{{xType}}"
-          ></tf-x-type-selector>
+            name="Horizontal Axis"
+            selected-id="{{_xType}}"
+            >
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
         </div>
         <div class="sidebar-section">
           <tf-run-selector
@@ -80,7 +85,7 @@ tf-collapsable-panes.
                           tag="[[tag]]"
                           id="chart"
                           selected-runs="[[_array(run)]]"
-                          x-type="[[xType]]"
+                          x-type="[[_xType]]"
                           data-provider="[[dataProvider]]"
                           color-scale="[[colorScale]]"
                           on-keyup="toggleSelected"
@@ -116,6 +121,10 @@ tf-collapsable-panes.
         _visibleTags: {
           type: Array,
           computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
+        },
+        _xType: {
+          type: String,
+          value: "step"
         },
         dataType: {value: "compressedHistogram"},
       },

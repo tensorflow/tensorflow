@@ -74,7 +74,7 @@ class CreateLocalClusterBenchmark(tf.test.Benchmark):
 
   def benchmarkCreateLocalCluster(self):
     deltas = []
-    iters = 50
+    iters = 5
     for _ in range(iters):
       start_time = time.time()
       create_local_cluster(num_workers=1, num_ps=10)

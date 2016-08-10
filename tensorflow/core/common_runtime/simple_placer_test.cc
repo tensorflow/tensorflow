@@ -856,6 +856,8 @@ TEST_F(SimplePlacerTest, TestNoKernelsRegistered) {
       StringPiece(s.error_message())
           .contains(
               "No OpKernel was registered to support Op 'VariableNoKernels'"));
+  EXPECT_TRUE(
+      StringPiece(s.error_message()).contains("<no registered kernels>"));
 }
 
 // Test that placement fails when a kernel is registered but no known
@@ -878,6 +880,7 @@ TEST_F(SimplePlacerTest, TestNoDevicesRegistered) {
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("No OpKernel was registered to support "
                             "Op 'VariableGPU'"));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("device='GPU'"));
 }
 
 // Test that placement fails when a requested device is malformed.

@@ -99,7 +99,7 @@ var TF;
     var Globals;
     (function (Globals) {
         // The names of TensorBoard tabs.
-        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
+        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'distributions'];
         // If true, TensorBoard stores its hash in the URI state.
         // If false, tab switching in TensorBoard will not update location hash,
         // because hash updates interfere with wct_tests.
@@ -526,8 +526,8 @@ var TF;
   <style include="run-color-style"></style>
 
   <template>
-    <div id="outer-container" class="scrollbar">
       <paper-input id="runs-regex" no-label-float="" label="Write a regex to filter runs" value="{{regexInput}}"></paper-input>
+    <div id="outer-container" class="scrollbar">
       <template is="dom-repeat" items="[[namesMatchingRegex]]">
         <div class="run-row">
           <div class="checkbox-container vertical-align-container">
@@ -555,9 +555,10 @@ var TF;
       height: 100%;
     }
     #outer-container {
-      overflow-y: scroll;
+      overflow-y: auto;
       overflow-x: hidden;
       width: 100%;
+      height: 0; /* Quirk to make firefox add scrolling instead of expand div */
       flex-grow: 1;
       flex-shrink: 1;
       word-wrap: break-word;
@@ -692,8 +693,9 @@ var TF;
       window.requestAnimationFrame(function() {_this.updateStyles();});
     },
     _checkboxChange: function(e) {
-      var name = e.srcElement.name;
-      var checked = e.srcElement.checked;
+      var target = e.srcElement || e.target; // Firefox doesn't have srcElement.
+      var name = target.name;
+      var checked = target.checked;
       this.runToIsCheckedMapping[name] = checked;
       // n.b. notifyPath won't work because run names may have periods.
       this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
@@ -918,22 +920,14 @@ var TF;
 
 </style>
 
-<dom-module id="tf-x-type-selector" assetpath="../tf-event-dashboard/">
+<dom-module id="tf-option-selector" assetpath="../tf-option-selector/">
   <template>
-    <div id="buttons">
-      <h3>Horizontal Axis</h3>
-      <paper-button class="x-button selected" id="step" on-tap="_select">
-      step
-      </paper-button>
-      <paper-button class="x-button" id="relative" on-tap="_select">
-      relative
-      </paper-button>
-      <paper-button class="x-button" id="wall_time" on-tap="_select">
-      wall
-      </paper-button>
+    <div id="wrap">
+      <h3>[[name]]</h3>
+      <div class="content-wrapper"><content></content></div>
     </div>
     <style>
-      .x-button {
+      .content-wrapper ::content > * {
         width: 30%;
         font-size: 13px;
         background: none;
@@ -941,38 +935,58 @@ var TF;
         color: var(--tb-ui-dark-accent);
       }
 
-      .x-button:first-of-type {
+      .content-wrapper ::content :first-of-type {
         margin-left: 0;
       }
 
-      .x-button.selected {
+      .content-wrapper ::content .selected {
         background-color: var(--tb-ui-dark-accent);
         color: white!important;
       }
 
-      #buttons h3 {
+      h3 {
         color: var(--paper-grey-800);
         margin: 0;
         font-weight: normal;
         font-size: 14px;
         margin-bottom: 5px;
+        display: block;
+        pointer-events: none;
       }
     </style>
   </template>
   <script>
     Polymer({
-      is: "tf-x-type-selector",
+      is: "tf-option-selector",
       properties: {
-        outXType: {type: String, notify: true, readOnly: true, value: "step"},
+        name: String,
+        selectedId: {
+          type: String,
+          notify: true,
+          observer: '_selectedIdChanged'
+        }
       },
-      _select: function(e) {
-        var _this = this;
-        ["step", "wall_time", "relative"].forEach(function(id) {
-          _this.$[id].classList.remove("selected");
+      attached: function() {
+        this.async(function() {
+          this.getEffectiveChildren().forEach(function(node) {
+            this.listen(node, 'tap', '_selectTarget');
+          }.bind(this));
         });
-        this._setOutXType(e.currentTarget.id);
-        e.currentTarget.classList.add("selected");
       },
+      _selectTarget: function(e) {
+        this.selectedId = e.currentTarget.id;
+      },
+      _selectedIdChanged: function() {
+        var selected = this.queryEffectiveChildren('#' + this.selectedId);
+        if (!selected) {
+          return;
+        }
+
+        this.getEffectiveChildren().forEach(function(node) {
+          node.classList.remove("selected");
+        });
+        selected.classList.add("selected");
+      }
     });
   </script>
 </dom-module>
@@ -1426,25 +1440,9 @@ var Categorizer;
   </script>
 </dom-module>
 
-<dom-module id="tf-line-chart" assetpath="../tf-event-dashboard/">
+<dom-module id="tf-chart-scaffold" assetpath="../tf-chart-scaffold/">
   <template>
-    <svg id="chartsvg"></svg>
-    <div id="tooltip">
-      <table>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Run</th>
-            <th>Value</th>
-            <th>Step</th>
-            <th>Time</th>
-            <th>Relative</th>
-          </tr>
-        </thead>
-        <tbody>
-        </tbody>
-      </table>
-    </div>
+    <content></content>
     <style>
       :host {
         -webkit-user-select: none;
@@ -1455,863 +1453,71 @@ var Categorizer;
         flex-shrink: 1;
         position: relative;
       }
-      svg {
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        flex-grow: 1;
-        flex-shrink: 1;
-      }
-      td {
-        padding-left: 5px;
-        padding-right: 5px;
-        font-size: 13px;
-        opacity: 1;
-      }
-      #tooltip {
-        pointer-events: none;
-        position: absolute;
-        opacity: 0;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        font-size: 14px;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        border-radius: 4px;
-        line-height: 1.4em;
-        padding: 8px;
-        z-index: 5;
-        cursor: none;
-      }
-      .swatch {
-        border-radius: 50%;
-        width: 14px;
-        height: 14px;
-        display: block;
-        border: 2px solid rgba(0,0,0,0);
-      }
-      .closest .swatch {
-        border: 2px solid white;
-      }
-      th {
-        padding-left: 5px;
-        padding-right: 5px;
-        text-align: left;
-      }
-      .distant td {
-        opacity: 0.8;
-      }
-
-      .distant td.swatch {
-        opacity: 1;
-      }
-
-      .ghost {
-        opacity: 0.2;
-        stroke-width: 1px;
-      }
-
     </style>
   </template>
-  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the 'License');
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an 'AS IS' BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
-var Plottable;
-(function (Plottable) {
-    var DragZoomLayer = (function (_super) {
-        __extends(DragZoomLayer, _super);
-        /**
-         * Constructs a SelectionBoxLayer with an attached DragInteraction and
-         * ClickInteraction. On drag, it triggers an animated zoom into the box
-         * that was dragged. On double click, it zooms back out to the original
-         * view, before any zooming.
-         * The zoom animation uses an easing function (default
-         * d3.ease('cubic-in-out')) and is customizable.
-         * Usage: Construct the selection box layer and attach x and y scales,
-         * and then add the layer over the plot you are zooming on using a
-         * Component Group.
-         * TODO(danmane) - merge this into Plottable
-         */
-        function DragZoomLayer(xScale, yScale) {
-            _super.call(this);
-            this.isZoomed = false;
-            this.easeFn = d3.ease('cubic-in-out');
-            this._animationTime = 750;
-            this.xScale(xScale);
-            this.yScale(yScale);
-            this._dragInteraction = new Plottable.Interactions.Drag();
-            this._dragInteraction.attachTo(this);
-            this._doubleClickInteraction = new Plottable.Interactions.DoubleClick();
-            this._doubleClickInteraction.attachTo(this);
-            this.setupCallbacks();
-        }
-        /**
-         * Register a method that calls when the DragZoom interaction starts.
-         */
-        DragZoomLayer.prototype.interactionStart = function (cb) { this.onStart = cb; };
-        /**
-         * Register a method that calls when the DragZoom interaction ends.
-         */
-        DragZoomLayer.prototype.interactionEnd = function (cb) { this.onEnd = cb; };
-        DragZoomLayer.prototype.setupCallbacks = function () {
-            var _this = this;
-            var dragging = false;
-            this._dragInteraction.onDragStart(function (startPoint) {
-                _this.bounds({
-                    topLeft: startPoint,
-                    bottomRight: startPoint,
-                });
-                _this.onStart();
-            });
-            this._dragInteraction.onDrag(function (startPoint, endPoint) {
-                _this.bounds({ topLeft: startPoint, bottomRight: endPoint });
-                _this.boxVisible(true);
-                dragging = true;
-            });
-            this._dragInteraction.onDragEnd(function (startPoint, endPoint) {
-                _this.boxVisible(false);
-                _this.bounds({ topLeft: startPoint, bottomRight: endPoint });
-                if (dragging) {
-                    _this.zoom();
-                }
-                else {
-                    _this.onEnd();
-                }
-                dragging = false;
-            });
-            this._doubleClickInteraction.onDoubleClick(this.unzoom.bind(this));
-        };
-        DragZoomLayer.prototype.animationTime = function (animationTime) {
-            if (animationTime == null) {
-                return this._animationTime;
-            }
-            if (animationTime < 0) {
-                throw new Error('animationTime cannot be negative');
-            }
-            this._animationTime = animationTime;
-            return this;
-        };
-        /**
-         * Set the easing function, which determines how the zoom interpolates
-         * over time.
-         */
-        DragZoomLayer.prototype.ease = function (fn) {
-            if (typeof (fn) !== 'function') {
-                throw new Error('ease function must be a function');
-            }
-            if (fn(0) !== 0 || fn(1) !== 1) {
-                Plottable.Utils.Window.warn('Easing function does not maintain invariant ' +
-                    'f(0)==0 && f(1)==1. Bad behavior may result.');
-            }
-            this.easeFn = fn;
-            return this;
-        };
-        // Zoom into extent of the selection box bounds
-        DragZoomLayer.prototype.zoom = function () {
-            var x0 = this.xExtent()[0].valueOf();
-            var x1 = this.xExtent()[1].valueOf();
-            var y0 = this.yExtent()[1].valueOf();
-            var y1 = this.yExtent()[0].valueOf();
-            if (x0 === x1 || y0 === y1) {
-                return;
-            }
-            if (!this.isZoomed) {
-                this.isZoomed = true;
-            }
-            this.interpolateZoom(x0, x1, y0, y1);
-        };
-        // Restore the scales to their state before any zoom
-        DragZoomLayer.prototype.unzoom = function () {
-            if (!this.isZoomed) {
-                return;
-            }
-            this.isZoomed = false;
-            // Some Plottable magic follows which ensures that when we un-zoom, we
-            // un-zoom to the current extent of the data; i.e. if new data was loaded
-            // since we zoomed, we should un-zoom to the extent of the new data.
-            // this basically replicates the autoDomain logic in Plottable.
-            // it uses the internal methods to get the same boundaries that autoDomain
-            // would, but allows us to interpolate the zoom with a nice animation.
-            var xScale = this.xScale();
-            var yScale = this.yScale();
-            xScale._domainMin = null;
-            xScale._domainMax = null;
-            yScale._domainMin = null;
-            yScale._domainMax = null;
-            var xDomain = xScale._getExtent();
-            var yDomain = yScale._getExtent();
-            this.interpolateZoom(xDomain[0], xDomain[1], yDomain[0], yDomain[1]);
-        };
-        // If we are zooming, disable interactions, to avoid contention
-        DragZoomLayer.prototype.isZooming = function (isZooming) {
-            this._dragInteraction.enabled(!isZooming);
-            this._doubleClickInteraction.enabled(!isZooming);
-        };
-        DragZoomLayer.prototype.interpolateZoom = function (x0f, x1f, y0f, y1f) {
-            var _this = this;
-            var x0s = this.xScale().domain()[0].valueOf();
-            var x1s = this.xScale().domain()[1].valueOf();
-            var y0s = this.yScale().domain()[0].valueOf();
-            var y1s = this.yScale().domain()[1].valueOf();
-            // Copy a ref to the ease fn, so that changing ease wont affect zooms in
-            // progress.
-            var ease = this.easeFn;
-            var interpolator = function (a, b, p) {
-                return d3.interpolateNumber(a, b)(ease(p));
-            };
-            this.isZooming(true);
-            var start = Date.now();
-            var draw = function () {
-                var now = Date.now();
-                var passed = now - start;
-                var p = _this._animationTime === 0 ?
-                    1 :
-                    Math.min(1, passed / _this._animationTime);
-                var x0 = interpolator(x0s, x0f, p);
-                var x1 = interpolator(x1s, x1f, p);
-                var y0 = interpolator(y0s, y0f, p);
-                var y1 = interpolator(y1s, y1f, p);
-                _this.xScale().domain([x0, x1]);
-                _this.yScale().domain([y0, y1]);
-                if (p < 1) {
-                    Plottable.Utils.DOM.requestAnimationFramePolyfill(draw);
-                }
-                else {
-                    _this.onEnd();
-                    _this.isZooming(false);
-                }
-            };
-            draw();
-        };
-        return DragZoomLayer;
-    }(Plottable.Components.SelectionBoxLayer));
-    Plottable.DragZoomLayer = DragZoomLayer;
-})(Plottable || (Plottable = {}));
-</script>
-  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-/* tslint:disable:no-namespace variable-name */
-var TF;
-(function (TF) {
-    var LineChart = (function () {
-        function LineChart(tag, dataFn, xType, colorScale, tooltip) {
-            this.dataFn = dataFn;
-            this.run2datasets = {};
-            this.tag = tag;
-            this.colorScale = colorScale;
-            this.tooltip = tooltip;
-            this.datasets = [];
-            this.smoothDatasets = [];
-            this.run2smoothDatasets = {};
-            // lastPointDataset is a dataset that contains just the last point of
-            // every dataset we're currently drawing.
-            this.lastPointsDataset = new Plottable.Dataset();
-            this.nanDataset = new Plottable.Dataset();
-            // need to do a single bind, so we can deregister the callback from
-            // old Plottable.Datasets. (Deregistration is done by identity checks.)
-            this.onDatasetChanged = this._onDatasetChanged.bind(this);
-            this.buildChart(xType);
-        }
-        LineChart.prototype.buildChart = function (xType) {
-            if (this.outer) {
-                this.outer.destroy();
-            }
-            var xComponents = TF.ChartHelpers.getXComponents(xType);
-            this.xAccessor = xComponents.accessor;
-            this.xScale = xComponents.scale;
-            this.xAxis = xComponents.axis;
-            this.xAxis.margin(0).tickLabelPadding(3);
-            this.yScale = new Plottable.Scales.Linear();
-            this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
-            var yFormatter = TF.ChartHelpers.multiscaleFormatter(TF.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
-            this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
-            this.yAxis.usesTextWidthApproximation(true);
-            this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
-            var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
-            this.gridlines =
-                new Plottable.Components.Gridlines(this.xScale, this.yScale);
-            this.center =
-                new Plottable.Components.Group([this.gridlines, center, this.dzl]);
-            this.outer = new Plottable.Components.Table([
-                [this.yAxis, this.center],
-                [null, this.xAxis]
-            ]);
-        };
-        LineChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
-            var _this = this;
-            this.yAccessor = function (d) { return d.scalar; };
-            var linePlot = new Plottable.Plots.Line();
-            linePlot.x(xAccessor, xScale);
-            linePlot.y(this.yAccessor, yScale);
-            linePlot.attr('stroke', function (d, i, dataset) {
-                return _this.colorScale.scale(dataset.metadata().run);
-            });
-            this.linePlot = linePlot;
-            var group = this.setupTooltips(linePlot);
-            var smoothLinePlot = new Plottable.Plots.Line();
-            smoothLinePlot.x(xAccessor, xScale);
-            smoothLinePlot.y(this.yAccessor, yScale);
-            smoothLinePlot.attr('stroke', function (d, i, dataset) {
-                return _this.colorScale.scale(dataset.metadata().run);
-            });
-            this.smoothLinePlot = smoothLinePlot;
-            // The scatterPlot will display the last point for each dataset.
-            // This way, if there is only one datum for the series, it is still
-            // visible. We hide it when tooltips are active to keep things clean.
-            var scatterPlot = new Plottable.Plots.Scatter();
-            scatterPlot.x(xAccessor, xScale);
-            scatterPlot.y(this.yAccessor, yScale);
-            scatterPlot.attr('fill', function (d) { return _this.colorScale.scale(d.run); });
-            scatterPlot.attr('opacity', 1);
-            scatterPlot.size(TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
-            scatterPlot.datasets([this.lastPointsDataset]);
-            this.scatterPlot = scatterPlot;
-            var nanDisplay = new Plottable.Plots.Scatter();
-            nanDisplay.x(xAccessor, xScale);
-            nanDisplay.y(function (x) { return x.displayY; }, yScale);
-            nanDisplay.attr('fill', function (d) { return _this.colorScale.scale(d.run); });
-            nanDisplay.attr('opacity', 1);
-            nanDisplay.size(TF.ChartHelpers.NAN_SYMBOL_SIZE * 2);
-            nanDisplay.datasets([this.nanDataset]);
-            nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
-            this.nanDisplay = nanDisplay;
-            return new Plottable.Components.Group([nanDisplay, scatterPlot, smoothLinePlot, group]);
-        };
-        /** Updates the chart when a dataset changes. Called every time the data of
-         * a dataset changes to update the charts.
-         */
-        LineChart.prototype._onDatasetChanged = function (dataset) {
-            if (this.smoothingEnabled) {
-                this.smoothDataset(this.getSmoothDataset(dataset.metadata().run));
-                this.updateSpecialDatasets(this.smoothDatasets);
-            }
-            else {
-                this.updateSpecialDatasets(this.datasets);
-            }
-        };
-        /** Constructs special datasets. Each special dataset contains exceptional
-         * values from all of the regular datasets, e.g. last points in series, or
-         * NaN values. Those points will have a `run` and `relative` property added
-         * (since usually those are context in the surrounding dataset).
-         */
-        LineChart.prototype.updateSpecialDatasets = function (datasets) {
-            var lastPointsData = datasets
-                .map(function (d) {
-                var datum = null;
-                // filter out NaNs to ensure last point is a clean one
-                var nonNanData = d.data().filter(function (x) { return !isNaN(x.scalar); });
-                if (nonNanData.length > 0) {
-                    var idx = nonNanData.length - 1;
-                    datum = nonNanData[idx];
-                    datum.run = d.metadata().run;
-                    datum.relative =
-                        TF.ChartHelpers.relativeAccessor(datum, -1, d);
-                }
-                return datum;
-            })
-                .filter(function (x) { return x != null; });
-            this.lastPointsDataset.data(lastPointsData);
-            // Take a dataset, return an array of NaN data points
-            // the NaN points will have a "displayY" property which is the
-            // y-value of a nearby point that was not NaN (0 if all points are NaN)
-            var datasetToNaNData = function (d) {
-                var displayY = null;
-                var data = d.data();
-                var i = 0;
-                while (i < data.length && displayY == null) {
-                    if (!isNaN(data[i].scalar)) {
-                        displayY = data[i].scalar;
-                    }
-                    i++;
-                }
-                if (displayY == null) {
-                    displayY = 0;
-                }
-                var nanData = [];
-                for (i = 0; i < data.length; i++) {
-                    if (!isNaN(data[i].scalar)) {
-                        displayY = data[i].scalar;
-                    }
-                    else {
-                        data[i].run = d.metadata().run;
-                        data[i].displayY = displayY;
-                        data[i].relative = TF.ChartHelpers.relativeAccessor(data[i], -1, d);
-                        nanData.push(data[i]);
-                    }
-                }
-                return nanData;
-            };
-            var nanData = _.flatten(datasets.map(datasetToNaNData));
-            this.nanDataset.data(nanData);
-        };
-        LineChart.prototype.setupTooltips = function (plot) {
-            var _this = this;
-            var pi = new Plottable.Interactions.Pointer();
-            pi.attachTo(plot);
-            // PointsComponent is a Plottable Component that will hold the little
-            // circles we draw over the closest data points
-            var pointsComponent = new Plottable.Component();
-            var group = new Plottable.Components.Group([plot, pointsComponent]);
-            var hideTooltips = function () {
-                _this.tooltip.style('opacity', 0);
-                _this.scatterPlot.attr('opacity', 1);
-                pointsComponent.content().selectAll('.point').remove();
-            };
-            var enabled = true;
-            var disableTooltips = function () {
-                enabled = false;
-                hideTooltips();
-            };
-            var enableTooltips = function () { enabled = true; };
-            this.dzl.interactionStart(disableTooltips);
-            this.dzl.interactionEnd(enableTooltips);
-            pi.onPointerMove(function (p) {
-                if (!enabled) {
-                    return;
-                }
-                var target = {
-                    x: p.x,
-                    y: p.y,
-                    datum: null,
-                    dataset: null,
-                };
-                var centerBBox = _this.gridlines.content().node().getBBox();
-                var datasets = _this.smoothingEnabled ? _this.smoothDatasets : plot.datasets();
-                var points = datasets.map(function (dataset) { return _this.findClosestPoint(target, dataset); });
-                var pointsToCircle = points.filter(function (p) { return p != null &&
-                    Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox); });
-                var pts = pointsComponent.content().selectAll('.point').data(pointsToCircle, function (p) { return p.dataset.metadata().run; });
-                if (points.length !== 0) {
-                    pts.enter().append('circle').classed('point', true);
-                    pts.attr('r', TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
-                        .attr('cx', function (p) { return p.x; })
-                        .attr('cy', function (p) { return p.y; })
-                        .style('stroke', 'none')
-                        .attr('fill', function (p) { return _this.colorScale.scale(p.dataset.metadata().run); });
-                    pts.exit().remove();
-                    _this.drawTooltips(points, target);
-                }
-                else {
-                    hideTooltips();
-                }
-            });
-            pi.onPointerExit(hideTooltips);
-            return group;
-        };
-        LineChart.prototype.drawTooltips = function (points, target) {
-            var _this = this;
-            // Formatters for value, step, and wall_time
-            this.scatterPlot.attr('opacity', 0);
-            var valueFormatter = TF.ChartHelpers.multiscaleFormatter(TF.ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION);
-            var dist = function (p) {
-                return Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
-            };
-            var closestDist = _.min(points.map(dist));
-            points = _.sortBy(points, function (d) { return d.dataset.metadata().run; });
-            var rows = this.tooltip.select('tbody')
-                .html('')
-                .selectAll('tr')
-                .data(points)
-                .enter()
-                .append('tr');
-            // Grey out the point if any of the following are true:
-            // - The cursor is outside of the x-extent of the dataset
-            // - The point is rendered above or below the screen
-            // - The point's y value is NaN
-            rows.classed('distant', function (d) {
-                var firstPoint = d.dataset.data()[0];
-                var lastPoint = _.last(d.dataset.data());
-                var firstX = _this.xScale.scale(_this.xAccessor(firstPoint, 0, d.dataset));
-                var lastX = _this.xScale.scale(_this.xAccessor(lastPoint, 0, d.dataset));
-                var s = d.datum.scalar;
-                var yD = _this.yScale.domain();
-                return target.x < firstX || target.x > lastX || s < yD[0] ||
-                    s > yD[1] || isNaN(s);
-            });
-            rows.classed('closest', function (p) { return dist(p) === closestDist; });
-            // It is a bit hacky that we are manually applying the width to the swatch
-            // and the nowrap property to the text here. The reason is as follows:
-            // the style gets updated asynchronously by Polymer scopeSubtree observer.
-            // Which means we would get incorrect sizing information since the text
-            // would wrap by default. However, we need correct measurements so that
-            // we can stop the text from falling off the edge of the screen.
-            // therefore, we apply the size-critical styles directly.
-            rows.style('white-space', 'nowrap');
-            rows.append('td')
-                .append('span')
-                .classed('swatch', true)
-                .style('background-color', function (d) { return _this.colorScale.scale(d.dataset.metadata().run); });
-            rows.append('td').text(function (d) { return d.dataset.metadata().run; });
-            rows.append('td').text(function (d) {
-                return isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar);
-            });
-            rows.append('td').text(function (d) { return TF.ChartHelpers.stepFormatter(d.datum.step); });
-            rows.append('td').text(function (d) { return TF.ChartHelpers.timeFormatter(d.datum.wall_time); });
-            rows.append('td').text(function (d) { return TF.ChartHelpers.relativeFormatter(TF.ChartHelpers.relativeAccessor(d.datum, -1, d.dataset)); });
-            // compute left position
-            var documentWidth = document.body.clientWidth;
-            var node = this.tooltip.node();
-            var parentRect = node.parentElement.getBoundingClientRect();
-            var nodeRect = node.getBoundingClientRect();
-            // prevent it from falling off the right side of the screen
-            var left = Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
-            this.tooltip.style('left', left + 'px');
-            // compute top position
-            if (parentRect.bottom + nodeRect.height +
-                TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET <
-                document.body.clientHeight) {
-                this.tooltip.style('top', parentRect.bottom + TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
-            }
-            else {
-                this.tooltip.style('bottom', parentRect.top - TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
-            }
-            this.tooltip.style('opacity', 1);
-        };
-        LineChart.prototype.findClosestPoint = function (target, dataset) {
-            var _this = this;
-            var points = dataset.data().map(function (d, i) {
-                var x = _this.xAccessor(d, i, dataset);
-                var y = _this.yAccessor(d, i, dataset);
-                return {
-                    x: _this.xScale.scale(x),
-                    y: _this.yScale.scale(y),
-                    datum: d,
-                    dataset: dataset,
-                };
-            });
-            var idx = _.sortedIndex(points, target, function (p) { return p.x; });
-            if (idx === points.length) {
-                return points[points.length - 1];
-            }
-            else if (idx === 0) {
-                return points[0];
-            }
-            else {
-                var prev = points[idx - 1];
-                var next = points[idx];
-                var prevDist = Math.abs(prev.x - target.x);
-                var nextDist = Math.abs(next.x - target.x);
-                return prevDist < nextDist ? prev : next;
-            }
-        };
-        LineChart.prototype.getSmoothDataset = function (run) {
-            if (this.run2smoothDatasets[run] === undefined) {
-                this.run2smoothDatasets[run] =
-                    new Plottable.Dataset([], { run: run, tag: this.tag });
-            }
-            return this.run2smoothDatasets[run];
-        };
-        LineChart.prototype.smoothDataset = function (dataset) {
-            var _this = this;
-            var data = this.getDataset(dataset.metadata().run).data();
-            // EMA with first step initialized to first element.
-            var smoothedData = _.cloneDeep(data);
-            smoothedData.forEach(function (d, i) {
-                if (i === 0) {
-                    return;
-                }
-                d.scalar = (1.0 - _this.smoothingDecay) * d.scalar +
-                    _this.smoothingDecay * smoothedData[i - 1].scalar;
-            });
-            dataset.data(smoothedData);
-        };
-        LineChart.prototype.getDataset = function (run) {
-            if (this.run2datasets[run] === undefined) {
-                this.run2datasets[run] =
-                    new Plottable.Dataset([], { run: run, tag: this.tag });
-            }
-            return this.run2datasets[run];
-        };
-        /**
-         * Change the runs on the chart.
-         * Changing runs automatically triggers a reload; this ensures that the
-         * newly selected run will have data, and that all the runs will be current
-         * (it would be weird if one run was ahead of the others, and the display
-         * depended on the order in which runs were added)
-         */
-        LineChart.prototype.changeRuns = function (runs) {
-            var _this = this;
-            this.runs = runs;
-            this.reload();
-            runs.reverse(); // draw first run on top
-            this.datasets.forEach(function (d) { return d.offUpdate(_this.onDatasetChanged); });
-            this.datasets = runs.map(function (r) { return _this.getDataset(r); });
-            this.datasets.forEach(function (d) { return d.onUpdate(_this.onDatasetChanged); });
-            this.linePlot.datasets(this.datasets);
-            if (this.smoothingEnabled) {
-                this.smoothDatasets = runs.map(function (r) { return _this.getSmoothDataset(r); });
-                this.smoothLinePlot.datasets(this.smoothDatasets);
-            }
-        };
-        LineChart.prototype.smoothingUpdate = function (decay) {
-            var _this = this;
-            if (!this.smoothingEnabled) {
-                this.linePlot.addClass('ghost');
-                this.smoothingEnabled = true;
-                this.smoothDatasets = this.runs.map(function (r) { return _this.getSmoothDataset(r); });
-                this.smoothLinePlot.datasets(this.smoothDatasets);
-            }
-            this.smoothingDecay = decay;
-            this.smoothDatasets.forEach(function (d) { return _this.smoothDataset(d); });
-            this.updateSpecialDatasets(this.smoothDatasets);
-        };
-        LineChart.prototype.smoothingDisable = function () {
-            if (this.smoothingEnabled) {
-                this.linePlot.removeClass('ghost');
-                this.smoothDatasets = [];
-                this.smoothLinePlot.datasets(this.smoothDatasets);
-                this.smoothingEnabled = false;
-                this.updateSpecialDatasets(this.datasets);
-            }
-        };
-        /**
-         * Reload data for each run in view.
-         */
-        LineChart.prototype.reload = function () {
-            var _this = this;
-            this.runs.forEach(function (run) {
-                var dataset = _this.getDataset(run);
-                _this.dataFn(_this.tag, run).then(function (x) { return dataset.data(x); });
-            });
-        };
-        LineChart.prototype.renderTo = function (target) { this.outer.renderTo(target); };
-        LineChart.prototype.redraw = function () { this.outer.redraw(); };
-        LineChart.prototype.destroy = function () { this.outer.destroy(); };
-        return LineChart;
-    }());
-    TF.LineChart = LineChart;
-})(TF || (TF = {}));
-</script>
-  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-/* tslint:disable:no-namespace variable-name */
-var TF;
-(function (TF) {
-    var ChartHelpers;
-    (function (ChartHelpers) {
-        ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION = 4;
-        ChartHelpers.STEP_FORMATTER_PRECISION = 4;
-        ChartHelpers.Y_AXIS_FORMATTER_PRECISION = 3;
-        ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET = 20;
-        ChartHelpers.TOOLTIP_CIRCLE_SIZE = 4;
-        ChartHelpers.NAN_SYMBOL_SIZE = 6;
-        /* Create a formatter function that will switch between exponential and
-         * regular display depending on the scale of the number being formatted,
-         * and show `digits` significant digits.
-         */
-        function multiscaleFormatter(digits) {
-            return function (v) {
-                var absv = Math.abs(v);
-                if (absv < 1E-15) {
-                    // Sometimes zero-like values get an annoying representation
-                    absv = 0;
-                }
-                var f;
-                if (absv >= 1E4) {
-                    f = d3.format('.' + digits + 'e');
-                }
-                else if (absv > 0 && absv < 0.01) {
-                    f = d3.format('.' + digits + 'e');
-                }
-                else {
-                    f = d3.format('.' + digits + 'g');
-                }
-                return f(v);
-            };
-        }
-        ChartHelpers.multiscaleFormatter = multiscaleFormatter;
-        function accessorize(key) {
-            return function (d, index, dataset) { return d[key]; };
-        }
-        ChartHelpers.accessorize = accessorize;
-        ChartHelpers.stepFormatter = Plottable.Formatters.siSuffix(ChartHelpers.STEP_FORMATTER_PRECISION);
-        function stepX() {
-            var scale = new Plottable.Scales.Linear();
-            var axis = new Plottable.Axes.Numeric(scale, 'bottom');
-            axis.formatter(ChartHelpers.stepFormatter);
-            return {
-                scale: scale,
-                axis: axis,
-                accessor: function (d) { return d.step; },
-            };
-        }
-        ChartHelpers.stepX = stepX;
-        ChartHelpers.timeFormatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
-        function wallX() {
-            var scale = new Plottable.Scales.Time();
-            return {
-                scale: scale,
-                axis: new Plottable.Axes.Time(scale, 'bottom'),
-                accessor: function (d) { return d.wall_time; },
-            };
-        }
-        ChartHelpers.wallX = wallX;
-        ChartHelpers.relativeAccessor = function (d, index, dataset) {
-            // We may be rendering the final-point datum for scatterplot.
-            // If so, we will have already provided the 'relative' property
-            if (d.relative != null) {
-                return d.relative;
-            }
-            var data = dataset.data();
-            // I can't imagine how this function would be called when the data is
-            // empty (after all, it iterates over the data), but lets guard just
-            // to be safe.
-            var first = data.length > 0 ? +data[0].wall_time : 0;
-            return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
-        };
-        ChartHelpers.relativeFormatter = function (n) {
-            // we will always show 2 units of precision, e.g days and hours, or
-            // minutes and seconds, but not hours and minutes and seconds
-            var ret = '';
-            var days = Math.floor(n / 24);
-            n -= (days * 24);
-            if (days) {
-                ret += days + 'd ';
-            }
-            var hours = Math.floor(n);
-            n -= hours;
-            n *= 60;
-            if (hours || days) {
-                ret += hours + 'h ';
-            }
-            var minutes = Math.floor(n);
-            n -= minutes;
-            n *= 60;
-            if (minutes || hours || days) {
-                ret += minutes + 'm ';
-            }
-            var seconds = Math.floor(n);
-            return ret + seconds + 's';
-        };
-        function relativeX() {
-            var scale = new Plottable.Scales.Linear();
-            return {
-                scale: scale,
-                axis: new Plottable.Axes.Numeric(scale, 'bottom'),
-                accessor: ChartHelpers.relativeAccessor,
-            };
-        }
-        ChartHelpers.relativeX = relativeX;
-        // a very literal definition of NaN: true for NaN for a non-number type
-        // or null, etc. False for Infinity or -Infinity
-        ChartHelpers.isNaN = function (x) { return +x !== x; };
-        function getXComponents(xType) {
-            switch (xType) {
-                case 'step':
-                    return stepX();
-                case 'wall_time':
-                    return wallX();
-                case 'relative':
-                    return relativeX();
-                default:
-                    throw new Error('invalid xType: ' + xType);
-            }
-        }
-        ChartHelpers.getXComponents = getXComponents;
-    })(ChartHelpers = TF.ChartHelpers || (TF.ChartHelpers = {}));
-})(TF || (TF = {}));
-</script>
   <script>
     Polymer({
-      is: "tf-line-chart",
+      is: "tf-chart-scaffold",
       properties: {
-        _chart: Object,
-        colorScale: Object,
         tag: String,
-        selectedRuns: Array,
-        smoothingDecay: Number,
-        smoothingEnabled: Boolean,
-        xType: String,
         dataProvider: Function,
-        _initialized: Boolean,
+        visibleSeries: Array,
+        _attached: {
+          type: Boolean,
+          value: false
+        }
       },
       observers: [
-        "_makeChart(tag, dataProvider, xType, colorScale, _initialized)",
-        "_changeRuns(_chart, selectedRuns.*)",
-        "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)"
+        "reload(tag, dataProvider)",
+        "_changeSeries(visibleSeries.*)"
       ],
-      _changeRuns: function(chart) {
-        if (chart.tag !== this.tag) {
-          return; // hack around some weird polymer bug :(
-        }
-        this._chart.changeRuns(this.selectedRuns);
-        this.redraw();
-      },
-      redraw: function() {
-        this._chart.redraw();
-      },
-      reload: function() {
-        this._chart.reload();
-      },
-      _makeChart: function(tag, dataProvider, xType, colorScale, _initialized) {
-        if (!_initialized) {
-          return;
-        }
-        if (this._chart) this._chart.destroy();
-        var tooltip = d3.select(this.$.tooltip);
-        this.scopeSubtree(this.$.tooltip, true);
-        var chart = new TF.LineChart(tag, dataProvider, xType, colorScale, tooltip);
-        var svg = d3.select(this.$.chartsvg);
-        this.async(function() {
-          chart.renderTo(svg);
-          this.scopeSubtree(this.$.chartsvg, true);
-          this._chart = chart;
-        }, 350);
-      },
-      _smoothingChanged: function() {
-        if(!this._chart) {
-          return;
-        }
-        if(this.smoothingEnabled) {
-          this._chart.smoothingUpdate(this.smoothingDecay);
-        }
-        else {
-          this._chart.smoothingDisable();
-        }
-      },
       attached: function() {
-        this._initialized = true;
+        this._attached = true;
+        this._changeSeries();
       },
       detached: function() {
-        this._initialized = false;
+        this._attached = false;
+      },
+      reload: function() {
+        if (!this._attached) {
+          return;
+        }
+        else if (!this.dataProvider) {
+          throw new Error('tf-chart-scaffold requires a dataProvider.');
+        }
+        else if (!this.tag) {
+          throw new Error('tf-chart-scaffold requires a tag.');
+        }
+
+        this.visibleSeries.forEach(function(name) {
+          this.dataProvider(this.tag, name).then(function(data) {
+            this.chart().setSeriesData(name, data);
+          }.bind(this));
+        }.bind(this));
+      },
+      _changeSeries: function() {
+        if (!this._attached) {
+           return;
+        }
+        else if (!this.visibleSeries) {
+          throw new Error('tf-chart-scaffold requires a visibleSeries.');
+        }
+
+        this.chart().setVisibleSeries(this.visibleSeries);
+        this.reload();
+      },
+      chart: function() {
+        var children = this.getEffectiveChildren();
+        if (!children.length) {
+          throw new Error('tf-chart-scaffold has no children');
+        }
+
+        var child = children[0];
+        if (!child.setVisibleSeries || !child.setSeriesData) {
+          throw new Error("tf-chart-scaffold's content doesn't implement the " +
+              "required interface");
+        }
+        return child;
       }
     });
   </script>
@@ -2438,7 +1644,7 @@ var TF;
 
       #center {
         height: 100%;
-        overflow-y: scroll;
+        overflow-y: auto;
         flex-grow: 1;
         flex-shrink: 1;
       }
@@ -2490,9 +1696,9 @@ var TF;
         display: flex;
       }
       .card .card-bottom-row {
-        flex-grow: 0;
-        flex-shrink: 0;
-        padding-left: 10px;
+        position: absolute;
+        left: 50px;
+        bottom: 0;
         padding-right: 10px;
       }
 
@@ -2501,14 +1707,10 @@ var TF;
         width: 100%;
       }
 
-      [shift] {
-        bottom: 20px !important;
-      }
-
       .expand-button {
         position: absolute;
         left: 0px;
-        bottom: 20px;
+        bottom: 0px;
         color: #2196F3;
         display: block;
       }
@@ -2578,7 +1780,7 @@ var TF;
         display: block;
       }
       paper-dropdown-menu {
-        width: 220px;
+        width: 180px;
         --paper-input-container-label: {
           font-size: 10px;
         }
@@ -3452,7 +2654,11 @@ var TF;
         <tf-smoothing-input enabled="{{_smoothingEnabled}}" decay="{{_smoothingDecay}}" step="0.001" min="0" max="1"></tf-smoothing-input>
         </div>
         <div class="sidebar-section">
-          <tf-x-type-selector id="xTypeSelector" out-x-type="{{xType}}"></tf-x-type-selector>
+          <tf-option-selector id="xTypeSelector" name="Horizontal Axis" selected-id="{{_xType}}">
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
         </div>
         <div class="sidebar-section">
           <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
@@ -3467,8 +2673,10 @@ var TF;
                 <div class="card">
                   <span class="card-title">[[tag]]</span>
                   <div class="card-content">
-                    <tf-line-chart tag="[[tag]]" data-provider="[[dataProvider]]" id="chart" selected-runs="[[validRuns(tag, selectedRuns.*, run2tag.*)]]" x-type="[[xType]]" color-scale="[[colorScale]]" smoothing-decay="[[_smoothingDecay]]" smoothing-enabled="[[_smoothingEnabled]]" on-keyup="toggleSelected" tabindex="2"></tf-line-chart>
-                    <paper-icon-button class="expand-button" shift$="[[_showDownloadLinks]]" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
+                    <tf-chart-scaffold tag="[[tag]]" data-provider="[[dataProvider]]" visible-series="[[validRuns(tag, selectedRuns.*, run2tag.*)]]">
+                      <vz-line-chart id="chart" x-type="[[_xType]]" color-scale="[[colorScale]]" smoothing-decay="[[_smoothingDecay]]" smoothing-enabled="[[_smoothingEnabled]]" on-keyup="toggleSelected" tabindex="2"></vz-line-chart>
+                    </tf-chart-scaffold>
+                    <paper-icon-button class="expand-button" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
                   </div>
                   <template is="dom-if" if="[[_showDownloadLinks]]">
                     <div class="card-bottom-row">
@@ -3492,7 +2700,7 @@ var TF;
     Polymer({
       is: "tf-event-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-line-chart"),
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],
       properties: {
@@ -3519,18 +2727,15 @@ var TF;
           type: Object,
           notify: true,
         },
+        _xType: {
+          type: String,
+          value: "step"
+        }
       },
       attached: function() {
         this.async(function() {
           this.fire("rendered");
         });
-      },
-      observers: ['redraw(_showDownloadLinks)'],
-      redraw: function(_showDownloadLinks) {
-        var els = this.getElementsByTagName("tf-line-chart");
-        for (var i=0; i<els.length; i++) {
-          els[i].redraw();
-        }
       },
       _getVisibleTags: function() {
         var keys = this.selectedRuns;
@@ -3546,9 +2751,9 @@ var TF;
         var currentTarget = Polymer.dom(e.currentTarget);
         var parentDiv = currentTarget.parentNode.parentNode;
         parentDiv.classList.toggle("selected");
-        var chart = currentTarget.previousElementSibling;
-        if (chart) {
-          chart.redraw();
+        var chartScaffold = currentTarget.previousElementSibling;
+        if (chartScaffold) {
+          chartScaffold.chart().redraw();
         }
       },
       validRuns: function(tag, runsChange, run2tagChange) {
@@ -3561,7 +2766,7 @@ var TF;
     });
   </script>
 </dom-module>
-<dom-module id="tf-obsolete-histogram-chart" assetpath="../tf-histogram-dashboard/">
+<dom-module id="tf-distribution-chart" assetpath="../tf-distribution-dashboard/">
   <template>
     <svg id="chartsvg"></svg>
     <style>
@@ -3600,8 +2805,8 @@ limitations under the License.
 /* tslint:disable:no-namespace variable-name */
 var TF;
 (function (TF) {
-    var HistogramChart = (function () {
-        function HistogramChart(tag, dataFn, xType, colorScale, tooltip) {
+    var DistributionChart = (function () {
+        function DistributionChart(tag, dataFn, xType, colorScale, tooltip) {
             this.dataFn = dataFn;
             this.run2datasets = {};
             this.tag = tag;
@@ -3617,7 +2822,7 @@ var TF;
          * (it would be weird if one run was ahead of the others, and the display
          * depended on the order in which runs were added)
          */
-        HistogramChart.prototype.changeRuns = function (runs) {
+        DistributionChart.prototype.changeRuns = function (runs) {
             var _this = this;
             this.runs = runs;
             this.reload();
@@ -3627,32 +2832,32 @@ var TF;
         /**
          * Reload data for each run in view.
          */
-        HistogramChart.prototype.reload = function () {
+        DistributionChart.prototype.reload = function () {
             var _this = this;
             this.runs.forEach(function (run) {
                 var dataset = _this.getDataset(run);
                 _this.dataFn(_this.tag, run).then(function (x) { return dataset.data(x); });
             });
         };
-        HistogramChart.prototype.getDataset = function (run) {
+        DistributionChart.prototype.getDataset = function (run) {
             if (this.run2datasets[run] === undefined) {
                 this.run2datasets[run] =
                     new Plottable.Dataset([], { run: run, tag: this.tag });
             }
             return this.run2datasets[run];
         };
-        HistogramChart.prototype.buildChart = function (xType) {
+        DistributionChart.prototype.buildChart = function (xType) {
             if (this.outer) {
                 this.outer.destroy();
             }
-            var xComponents = TF.ChartHelpers.getXComponents(xType);
+            var xComponents = VZ.ChartHelpers.getXComponents(xType);
             this.xAccessor = xComponents.accessor;
             this.xScale = xComponents.scale;
             this.xAxis = xComponents.axis;
             this.xAxis.margin(0).tickLabelPadding(3);
             this.yScale = new Plottable.Scales.Linear();
             this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
-            var yFormatter = TF.ChartHelpers.multiscaleFormatter(TF.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
+            var yFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
             this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
             this.yAxis.usesTextWidthApproximation(true);
             var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
@@ -3661,7 +2866,7 @@ var TF;
             this.center = new Plottable.Components.Group([this.gridlines, center]);
             this.outer = new Plottable.Components.Table([[this.yAxis, this.center], [null, this.xAxis]]);
         };
-        HistogramChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
+        DistributionChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
             var _this = this;
             var percents = [0, 228, 1587, 3085, 5000, 6915, 8413, 9772, 10000];
             var opacities = _.range(percents.length - 1)
@@ -3694,158 +2899,17 @@ var TF;
             this.plots = plots;
             return new Plottable.Components.Group(plots);
         };
-        HistogramChart.prototype.renderTo = function (target) { this.outer.renderTo(target); };
-        HistogramChart.prototype.redraw = function () { this.outer.redraw(); };
-        HistogramChart.prototype.destroy = function () { this.outer.destroy(); };
-        return HistogramChart;
+        DistributionChart.prototype.renderTo = function (target) { this.outer.renderTo(target); };
+        DistributionChart.prototype.redraw = function () { this.outer.redraw(); };
+        DistributionChart.prototype.destroy = function () { this.outer.destroy(); };
+        return DistributionChart;
     }());
-    TF.HistogramChart = HistogramChart;
+    TF.DistributionChart = DistributionChart;
 })(TF || (TF = {}));
 </script>
-  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-/* tslint:disable:no-namespace variable-name */
-var TF;
-(function (TF) {
-    var ChartHelpers;
-    (function (ChartHelpers) {
-        ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION = 4;
-        ChartHelpers.STEP_FORMATTER_PRECISION = 4;
-        ChartHelpers.Y_AXIS_FORMATTER_PRECISION = 3;
-        ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET = 20;
-        ChartHelpers.TOOLTIP_CIRCLE_SIZE = 4;
-        ChartHelpers.NAN_SYMBOL_SIZE = 6;
-        /* Create a formatter function that will switch between exponential and
-         * regular display depending on the scale of the number being formatted,
-         * and show `digits` significant digits.
-         */
-        function multiscaleFormatter(digits) {
-            return function (v) {
-                var absv = Math.abs(v);
-                if (absv < 1E-15) {
-                    // Sometimes zero-like values get an annoying representation
-                    absv = 0;
-                }
-                var f;
-                if (absv >= 1E4) {
-                    f = d3.format('.' + digits + 'e');
-                }
-                else if (absv > 0 && absv < 0.01) {
-                    f = d3.format('.' + digits + 'e');
-                }
-                else {
-                    f = d3.format('.' + digits + 'g');
-                }
-                return f(v);
-            };
-        }
-        ChartHelpers.multiscaleFormatter = multiscaleFormatter;
-        function accessorize(key) {
-            return function (d, index, dataset) { return d[key]; };
-        }
-        ChartHelpers.accessorize = accessorize;
-        ChartHelpers.stepFormatter = Plottable.Formatters.siSuffix(ChartHelpers.STEP_FORMATTER_PRECISION);
-        function stepX() {
-            var scale = new Plottable.Scales.Linear();
-            var axis = new Plottable.Axes.Numeric(scale, 'bottom');
-            axis.formatter(ChartHelpers.stepFormatter);
-            return {
-                scale: scale,
-                axis: axis,
-                accessor: function (d) { return d.step; },
-            };
-        }
-        ChartHelpers.stepX = stepX;
-        ChartHelpers.timeFormatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
-        function wallX() {
-            var scale = new Plottable.Scales.Time();
-            return {
-                scale: scale,
-                axis: new Plottable.Axes.Time(scale, 'bottom'),
-                accessor: function (d) { return d.wall_time; },
-            };
-        }
-        ChartHelpers.wallX = wallX;
-        ChartHelpers.relativeAccessor = function (d, index, dataset) {
-            // We may be rendering the final-point datum for scatterplot.
-            // If so, we will have already provided the 'relative' property
-            if (d.relative != null) {
-                return d.relative;
-            }
-            var data = dataset.data();
-            // I can't imagine how this function would be called when the data is
-            // empty (after all, it iterates over the data), but lets guard just
-            // to be safe.
-            var first = data.length > 0 ? +data[0].wall_time : 0;
-            return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
-        };
-        ChartHelpers.relativeFormatter = function (n) {
-            // we will always show 2 units of precision, e.g days and hours, or
-            // minutes and seconds, but not hours and minutes and seconds
-            var ret = '';
-            var days = Math.floor(n / 24);
-            n -= (days * 24);
-            if (days) {
-                ret += days + 'd ';
-            }
-            var hours = Math.floor(n);
-            n -= hours;
-            n *= 60;
-            if (hours || days) {
-                ret += hours + 'h ';
-            }
-            var minutes = Math.floor(n);
-            n -= minutes;
-            n *= 60;
-            if (minutes || hours || days) {
-                ret += minutes + 'm ';
-            }
-            var seconds = Math.floor(n);
-            return ret + seconds + 's';
-        };
-        function relativeX() {
-            var scale = new Plottable.Scales.Linear();
-            return {
-                scale: scale,
-                axis: new Plottable.Axes.Numeric(scale, 'bottom'),
-                accessor: ChartHelpers.relativeAccessor,
-            };
-        }
-        ChartHelpers.relativeX = relativeX;
-        // a very literal definition of NaN: true for NaN for a non-number type
-        // or null, etc. False for Infinity or -Infinity
-        ChartHelpers.isNaN = function (x) { return +x !== x; };
-        function getXComponents(xType) {
-            switch (xType) {
-                case 'step':
-                    return stepX();
-                case 'wall_time':
-                    return wallX();
-                case 'relative':
-                    return relativeX();
-                default:
-                    throw new Error('invalid xType: ' + xType);
-            }
-        }
-        ChartHelpers.getXComponents = getXComponents;
-    })(ChartHelpers = TF.ChartHelpers || (TF.ChartHelpers = {}));
-})(TF || (TF = {}));
-</script>
-  <script>
+    <script>
     Polymer({
-      is: "tf-obsolete-histogram-chart",
+      is: "tf-distribution-chart",
       properties: {
         _chart: Object,
         colorScale: Object,
@@ -3877,7 +2941,7 @@ var TF;
           return;
         }
         if (this._chart) this._chart.destroy();
-        var chart = new TF.HistogramChart(tag, dataProvider, xType, colorScale);
+        var chart = new TF.DistributionChart(tag, dataProvider, xType, colorScale);
         var svg = d3.select(this.$.chartsvg);
         this.async(function() {
           chart.renderTo(svg);
@@ -3894,7 +2958,7 @@ var TF;
   </script>
 </dom-module>
 
-<dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
+<dom-module id="tf-distribution-dashboard" assetpath="../tf-distribution-dashboard/">
   <template>
     <div id="plumbing">
       <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
@@ -3906,7 +2970,11 @@ var TF;
           <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
         </div>
         <div class="sidebar-section">
-          <tf-x-type-selector id="xTypeSelector" out-x-type="{{xType}}"></tf-x-type-selector>
+          <tf-option-selector id="xTypeSelector" name="Horizontal Axis" selected-id="{{_xType}}">
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
         </div>
         <div class="sidebar-section">
           <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
@@ -3914,7 +2982,7 @@ var TF;
       </div>
 
       <div class="center">
-        <tf-no-data-warning data-type="histogram" show-warning="[[dataNotFound]]"></tf-no-data-warning>
+        <tf-no-data-warning data-type="distribution" show-warning="[[dataNotFound]]"></tf-no-data-warning>
         <template is="dom-repeat" items="[[categories]]">
           <tf-collapsable-pane name="[[item.name]]" count="[[_count(item.tags, selectedRuns.*, runToCompressedHistograms.*)]]">
             <div class="layout horizontal wrap">
@@ -3924,7 +2992,7 @@ var TF;
                     <div class="card">
                       <span class="card-title">[[tag]]</span>
                       <div class="card-content">
-                        <tf-obsolete-histogram-chart tag="[[tag]]" id="chart" selected-runs="[[_array(run)]]" x-type="[[xType]]" data-provider="[[dataProvider]]" color-scale="[[colorScale]]" on-keyup="toggleSelected" tabindex="2"></tf-obsolete-histogram-chart>
+                        <tf-distribution-chart tag="[[tag]]" id="chart" selected-runs="[[_array(run)]]" x-type="[[_xType]]" data-provider="[[dataProvider]]" color-scale="[[colorScale]]" on-keyup="toggleSelected" tabindex="2"></tf-distribution-chart>
                         <paper-icon-button class="expand-button" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
                       </div>
                     </div>
@@ -3942,15 +3010,19 @@ var TF;
 
   <script>
     Polymer({
-      is: "tf-histogram-dashboard",
+      is: "tf-distribution-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-obsolete-histogram-chart"),
+        TF.Dashboard.ReloadBehavior("tf-distribution-chart"),
         TF.Backend.Behavior,
       ],
       properties: {
         _visibleTags: {
           type: Array,
           computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
+        },
+        _xType: {
+          type: String,
+          value: "step"
         },
         dataType: {value: "compressedHistogram"},
       },
@@ -4088,7 +3160,7 @@ var TF;
         height: 100%;
         flex-direction: column;
         padding-top: 20px;
-        overflow: scroll;
+        overflow: auto;
         -webkit-box-sizing: border-box;
         -moz-box-sizing: border-box;
         box-sizing: border-box;
@@ -4126,7 +3198,7 @@ var TF;
       }
       .run-name-cell {
         width: 300px;
-        height: 30px;
+        word-break:break-all;
         text-align: center;
       }
       .noshrink {
@@ -4163,8 +3235,6 @@ var TF;
 
     <style>
       .center {
-        padding-left: 10px;
-        padding-right: 10px;
         height: 100%;
         width: 100%;
         -webkit-box-sizing: border-box;
@@ -4295,7 +3365,7 @@ var TF;
         height: 100%;
         flex-direction: column;
         padding-top: 20px;
-        overflow: scroll;
+        overflow: auto;
         -webkit-box-sizing: border-box;
         -moz-box-sizing: border-box;
         box-sizing: border-box;
@@ -4368,8 +3438,6 @@ var TF;
 
     <style>
       .center {
-        padding-left: 10px;
-        padding-right: 10px;
         height: 100%;
         width: 100%;
         -webkit-box-sizing: border-box;
@@ -13268,7 +12336,7 @@ Polymer({
         _getHasDisplayableNodeStats: function(stats) {
           return tf.graph.util.hasDisplayableNodeStats(stats);
         },
-        _getNodeStatsFormattedBytes(stats) {
+        _getNodeStatsFormattedBytes: function(stats) {
           if (!stats || !stats.totalBytes) {
             return;
           }
@@ -13276,7 +12344,7 @@ Polymer({
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalBytes, tf.graph.util.MEMORY_UNITS);
         },
-        _getNodeStatsFormattedComputeTime(stats) {
+        _getNodeStatsFormattedComputeTime: function(stats) {
           if (!stats || !stats.totalMicros) {
             return;
           }
@@ -13284,7 +12352,7 @@ Polymer({
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalMicros, tf.graph.util.TIME_UNITS);
         },
-        _getNodeStatsFormattedOutputSizes(stats) {
+        _getNodeStatsFormattedOutputSizes: function(stats) {
           if (!stats || !stats.outputSize || !stats.outputSize.length) {
             return;
           }
@@ -14491,8 +13559,8 @@ Polymer({
           <tf-graph-dashboard id="graphs" backend="[[_backend]]"></tf-graph-dashboard>
         </template>
 
-        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
-          <tf-histogram-dashboard id="histograms" backend="[[_backend]]"></tf-histogram-dashboard>
+        <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
+          <tf-distribution-dashboard id="distributions" backend="[[_backend]]"></tf-distribution-dashboard>
         </template>
       </div>
     </paper-header-panel>
@@ -14625,8 +13693,8 @@ Polymer({
       _modeIsGraphs: function(mode) {
         return mode === "graphs";
       },
-      _modeIsHistograms: function(mode) {
-        return mode === "histograms";
+      _modeIsDistributions: function(mode) {
+        return mode === "distributions";
       },
       selectedDashboard: function() {
         var dashboard = this.$$("#" + this.mode);

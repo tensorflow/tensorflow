@@ -13,6 +13,7 @@ Detach the inputs of a subgraph view.
 
   A new subgraph view of the detached subgraph.
     Note that sgv is also modified in place.
+  A list of the created input placeholders.
 
 ##### Raises:
 

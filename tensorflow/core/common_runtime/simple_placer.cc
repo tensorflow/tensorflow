@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -513,9 +514,9 @@ class ColocationGraph {
       // If no kernels are registered for this op type, fail with an error.
       if (member->supported_device_types.empty()) {
         return errors::InvalidArgument(
-            "No OpKernel was registered to support "
-            "Op '",
-            node.def().op(), "' with these attrs");
+            "No OpKernel was registered to support Op '", node.def().op(),
+            "' with these attrs.  Registered kernels:\n",
+            KernelsRegisteredForOp(node.def().op()));
       }
 
       // If the NodeDef contains a device, then we interpret it as a

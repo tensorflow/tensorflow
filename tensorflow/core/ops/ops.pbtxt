@@ -10767,7 +10767,7 @@ op {
     description: "The separator to use when joining."
   }
   summary: "Joins a string Tensor across the given dimensions."
-  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing\nan empty `reduction_indices` joins all strings in linear index order and outputs\na scalar string.\n\n\nFor example:\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
+  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing\nan empty `reduction_indices` joins all strings in linear index order and outputs\na scalar string.\n\n\nFor example:\n\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
 }
 op {
   name: "RefEnter"
@@ -11471,6 +11471,7 @@ op {
         type: DT_UINT8
         type: DT_INT8
         type: DT_INT32
+        type: DT_INT64
         type: DT_BOOL
         type: DT_HALF
         type: DT_FLOAT

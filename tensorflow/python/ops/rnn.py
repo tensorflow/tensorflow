@@ -949,7 +949,7 @@ def _dynamic_rnn_loop(cell,
 
   time = array_ops.constant(0, dtype=dtypes.int32, name="time")
 
-  with ops.op_scope([], "dynamic_rnn") as scope:
+  with ops.name_scope("dynamic_rnn") as scope:
     base_name = scope
 
   def _create_ta(name, dtype):

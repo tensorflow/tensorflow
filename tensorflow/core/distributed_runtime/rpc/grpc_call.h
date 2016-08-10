@@ -183,7 +183,7 @@ class Call : public UntypedCall<Service> {
   // call is cancelled by the client.
   void SetCancelCallback(std::function<void()> callback) {
     mutex_lock l(mu_);
-    cancel_callback_ = callback;
+    cancel_callback_ = std::move(callback);
   }
 
   // Clears any cancellation callback that has been registered for this call.

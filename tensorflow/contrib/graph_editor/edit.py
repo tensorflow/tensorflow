@@ -68,6 +68,7 @@ def detach_inputs(sgv, control_inputs=False):
   Returns:
     A new subgraph view of the detached subgraph.
       Note that sgv is also modified in place.
+    A list of the created input placeholders.
   Raises:
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -98,6 +99,7 @@ def detach_outputs(sgv, control_outputs=None):
   Returns:
     A new subgraph view of the detached subgraph.
       Note that sgv is also modified in place.
+    A list of the created output placeholders.
   Raises:
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -141,6 +143,8 @@ def detach(sgv, control_inputs=False, control_outputs=None, control_ios=None):
   Returns:
     A new subgraph view of the detached subgraph.
       Note that sgv is also modified in place.
+    A list of the created input placeholders.
+    A list of the created output placeholders.
   Raises:
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -164,8 +168,8 @@ def connect(sgv0, sgv1, disconnect_first=False):
       subgraph.make_view.
     disconnect_first: if True the current outputs of sgv0 are disconnected.
   Returns:
-    Two new subgraph views (now connected). sgv0 and svg1 are also modified
-      in place.
+    The modified sgv0 (now connected to sgv1).
+    The modified sgv1 (now connected to sgv0).
   Raises:
     StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -189,6 +193,7 @@ def bypass(sgv):
   Returns:
     A new subgraph view of the bypassed subgraph.
       Note that sgv is also modified in place.
+    A list of the created input placeholders.
   Raises:
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.

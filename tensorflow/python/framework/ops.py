@@ -971,7 +971,7 @@ class SparseTensor(object):
     Returns:
       A `SparseTensor`
     """
-    with op_scope([indices, values, shape], None, "SparseTensor"):
+    with name_scope(None, "SparseTensor", [indices, values, shape]):
       indices = convert_to_tensor(indices, name="indices", dtype=dtypes.int64)
       # Always pass as_ref=True because we want to be able to update
       # values later if it is a VariableOp.
@@ -3464,23 +3464,6 @@ def colocate_with(op, ignore_existing=False):
   return get_default_graph().colocate_with(op, ignore_existing)
 
 
-def name_scope(name):
-  """Wrapper for `Graph.name_scope()` using the default graph.
-
-  See
-  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
-  for more details.
-
-  Args:
-    name: A name for the scope.
-
-  Returns:
-    A context manager that installs `name` as a new name scope in the
-    default graph.
-  """
-  return get_default_graph().name_scope(name)
-
-
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
@@ -3990,18 +3973,20 @@ def get_all_collection_keys():
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def op_scope(values, name, default_name=None):
+def name_scope(name, default_name=None, values=None):
   """Returns a context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
-  same graph, ensures that graph is the default graph, and pushes a
-  name scope.
+  same graph, makes that graph the default graph, and pushes a
+  name scope in that graph (see
+  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+  for more details on that).
 
   For example, to define a new Python op called `my_op`:
 
   ```python
   def my_op(a, b, c, name=None):
-    with tf.op_scope([a, b, c], name, "MyOp") as scope:
+    with tf.name_scope(name, "MyOp", [a, b, c]) as scope:
       a = tf.convert_to_tensor(a, name="a")
       b = tf.convert_to_tensor(b, name="b")
       c = tf.convert_to_tensor(c, name="c")
@@ -4010,25 +3995,41 @@ def op_scope(values, name, default_name=None):
   ```
 
   Args:
-    values: The list of `Tensor` arguments that are passed to the op function.
     name: The name argument that is passed to the op function.
     default_name: The default name to use if the `name` argument is `None`.
+    values: The list of `Tensor` arguments that are passed to the op function.
 
   Returns:
     A context manager for use in defining Python ops. Yields the name scope.
 
   Raises:
-    ValueError: if neither `name` nor `default_name` is provided.
+    ValueError: if neither `name` nor `default_name` is provided
+      but `values` are.
   """
-  g = _get_graph_from_inputs(values)
   n = default_name if name is None else name
-  if n is None:
+  if n is None and values is not None:
+    # We only raise an error if values is not None (provided) because currently
+    # tf.name_scope(None) (values=None then) is sometimes used as an idiom
+    # to reset to top scope.
     raise ValueError(
         "At least one of name (%s) and default_name (%s) must be provided." % (
             name, default_name))
+  if values is None:
+    values = []
+  g = _get_graph_from_inputs(values)
   with g.as_default(), g.name_scope(n) as scope:
     yield scope
 # pylint: enable=g-doc-return-or-yield
+
+
+# pylint: disable=g-doc-return-or-yield
+@contextlib.contextmanager
+def op_scope(values, name, default_name=None):
+  """DEPRECATED. Same as name_scope above, just different argument order."""
+  logging.warn("tf.op_scope(values, name, default_name) is deprecated,"
+               " use tf.name_scope(name, default_name, values)")
+  with name_scope(name, default_name=default_name, values=values) as scope:
+    yield scope
 
 
 _proto_function_registry = registry.Registry("proto functions")

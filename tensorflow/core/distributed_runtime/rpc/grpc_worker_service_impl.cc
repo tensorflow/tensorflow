@@ -117,11 +117,11 @@ WorkerService::Stub::AsyncCleanupAllRaw(::grpc::ClientContext* context,
       channel_.get(), cq, rpcmethod_CleanupAll_, context, request);
 }
 
-::grpc::ClientAsyncResponseReader<RecvTensorResponse>*
+::grpc::ClientAsyncResponseReader<TensorResponse>*
 WorkerService::Stub::AsyncRecvTensorRaw(::grpc::ClientContext* context,
                                         const RecvTensorRequest& request,
                                         ::grpc::CompletionQueue* cq) {
-  return new ::grpc::ClientAsyncResponseReader<RecvTensorResponse>(
+  return new ::grpc::ClientAsyncResponseReader<TensorResponse>(
       channel_.get(), cq, rpcmethod_RecvTensor_, context, request);
 }
 
@@ -143,7 +143,7 @@ WorkerService::Stub::AsyncTracingRaw(::grpc::ClientContext* context,
 
 WorkerService::AsyncService::AsyncService() {
   (void)grpcWorkerService_method_names;
-  for (int i = 0; i < 9; ++i) {
+  for (int i = 0; i < TF_ARRAYSIZE(grpcWorkerService_method_names); ++i) {
     AddMethod(new ::grpc::RpcServiceMethod(grpcWorkerService_method_names[i],
                                            ::grpc::RpcMethod::NORMAL_RPC,
                                            nullptr));

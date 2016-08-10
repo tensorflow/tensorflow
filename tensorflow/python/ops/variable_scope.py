@@ -395,7 +395,7 @@ class _VariableStore(object):
       slice_offset[slice_dim] += var_shape[slice_dim]
 
       var_full_name = "%s/part_%d" % (name, i)
-      with ops.op_scope([], var_full_name + "/PartitionedInitializer"):
+      with ops.name_scope(var_full_name + "/PartitionedInitializer"):
         if initializer is None:
           init = init_ops.uniform_unit_scaling_initializer(
               full_shape=shape.as_list())

@@ -63,8 +63,12 @@ def load_session_bundle_from_path(export_dir, target="", config=None):
     variables_filename = os.path.join(
         export_dir, constants.VARIABLES_FILENAME_PATTERN)
     if not file_io.get_matching_files(variables_filename):
-      raise RuntimeError("Expected variables file missing %s" %
-                         variables_filename)
+      # If graph_util.convert_variables_to_constants() is called on a model
+      # it won't have any variables, and that's OK.
+      #
+      # TODO(yxshi): verify that the graph_def in fact does not have any
+      # reachable variables.
+      variables_filename = None
   assets_dir = os.path.join(export_dir, constants.ASSETS_DIRECTORY)
 
   # Reads meta graph file.
@@ -90,7 +94,8 @@ def load_session_bundle_from_path(export_dir, target="", config=None):
   # Import the graph.
   saver = tf.train.import_meta_graph(meta_graph_def)
   # Restore the session.
-  saver.restore(sess, variables_filename)
+  if variables_filename:
+    saver.restore(sess, variables_filename)
 
   init_op_tensor = None
   if constants.INIT_OP_KEY in collection_def:

@@ -918,8 +918,8 @@ def sequence_loss_by_example(logits, targets, weights,
   if len(targets) != len(logits) or len(weights) != len(logits):
     raise ValueError("Lengths of logits, weights, and targets must be the same "
                      "%d, %d, %d." % (len(logits), len(weights), len(targets)))
-  with ops.op_scope(logits + targets + weights, name,
-                    "sequence_loss_by_example"):
+  with ops.name_scope(name, "sequence_loss_by_example",
+                      logits + targets + weights):
     log_perp_list = []
     for logit, target, weight in zip(logits, targets, weights):
       if softmax_loss_function is None:
@@ -962,7 +962,7 @@ def sequence_loss(logits, targets, weights,
   Raises:
     ValueError: If len(logits) is different from len(targets) or len(weights).
   """
-  with ops.op_scope(logits + targets + weights, name, "sequence_loss"):
+  with ops.name_scope(name, "sequence_loss", logits + targets + weights):
     cost = math_ops.reduce_sum(sequence_loss_by_example(
         logits, targets, weights,
         average_across_timesteps=average_across_timesteps,
@@ -1022,7 +1022,7 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
   all_inputs = encoder_inputs + decoder_inputs + targets + weights
   losses = []
   outputs = []
-  with ops.op_scope(all_inputs, name, "model_with_buckets"):
+  with ops.name_scope(name, "model_with_buckets", all_inputs):
     for j, bucket in enumerate(buckets):
       with variable_scope.variable_scope(variable_scope.get_variable_scope(),
                                          reuse=True if j > 0 else None):

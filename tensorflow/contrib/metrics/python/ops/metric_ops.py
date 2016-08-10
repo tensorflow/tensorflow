@@ -1090,7 +1090,7 @@ def streaming_sparse_recall_at_k(predictions,
   if class_id is not None:
     default_name = '%s_class%d' % (default_name, class_id)
 
-  with ops.op_scope([predictions, labels], name, default_name) as scope:
+  with ops.name_scope(name, default_name, [predictions, labels]) as scope:
     _, top_k_idx = nn.top_k(predictions, k)
     top_k_idx = math_ops.to_int64(top_k_idx)
     tp, tp_update = _streaming_sparse_true_positive_at_k(
@@ -1177,7 +1177,7 @@ def streaming_sparse_precision_at_k(predictions,
   default_name = 'precision_at_%d' % k
   if class_id is not None:
     default_name = '%s_class%d' % (default_name, class_id)
-  with ops.op_scope([predictions, labels], name, default_name) as scope:
+  with ops.name_scope(name, default_name, [predictions, labels]) as scope:
     _, top_k_idx = nn.top_k(predictions, k)
     top_k_idx = math_ops.to_int64(top_k_idx)
     tp, tp_update = _streaming_sparse_true_positive_at_k(
@@ -1284,7 +1284,7 @@ def _streaming_sparse_true_positive_at_k(predictions_idx,
   default_name = 'true_positive_at_%d' % k
   if class_id is not None:
     default_name = '%s_class%d' % (default_name, class_id)
-  with ops.op_scope([predictions_idx, labels], name, default_name) as scope:
+  with ops.name_scope(name, default_name, [predictions_idx, labels]) as scope:
     labels, predictions_idx = _maybe_select_class_id(labels,
                                                      predictions_idx,
                                                      class_id)
@@ -1333,7 +1333,7 @@ def _streaming_sparse_false_positive_at_k(predictions_idx,
   default_name = 'false_positive_at_%d' % k
   if class_id is not None:
     default_name = '%s_class%d' % (default_name, class_id)
-  with ops.op_scope([predictions_idx, labels], name, default_name) as scope:
+  with ops.name_scope(name, default_name, [predictions_idx, labels]) as scope:
     labels, predictions_idx = _maybe_select_class_id(labels,
                                                      predictions_idx,
                                                      class_id)
@@ -1384,7 +1384,7 @@ def _streaming_sparse_false_negative_at_k(predictions_idx,
   default_name = 'false_negative_at_%d' % k
   if class_id is not None:
     default_name = '%s_class%d' % (default_name, class_id)
-  with ops.op_scope([predictions_idx, labels], name, default_name) as scope:
+  with ops.name_scope(name, default_name, [predictions_idx, labels]) as scope:
     labels, predictions_idx = _maybe_select_class_id(labels,
                                                      predictions_idx,
                                                      class_id)

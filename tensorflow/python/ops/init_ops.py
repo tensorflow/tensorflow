@@ -55,46 +55,40 @@ def ones_initializer(shape, dtype=dtypes.float32):
   return array_ops.ones(shape, dtype)
 
 
-def constant_initializer(value=0.0, dtype=dtypes.float32):
+def constant_initializer(value=0, dtype=dtypes.float32):
   """Returns an initializer that generates tensors with a single value.
 
   Args:
     value: A Python scalar. All elements of the initialized variable
       will be set to this value.
-    dtype: The data type. Only floating point types are supported.
+    dtype: The data type.
 
   Returns:
     An initializer that generates tensors with a single value.
-
-  Raises:
-    ValueError: if `dtype` is not a floating point type.
   """
-  def _initializer(shape, dtype=_assert_float_dtype(dtype)):
+  def _initializer(shape, dtype=dtype):
     return constant_op.constant(value, dtype=dtype, shape=shape)
   return _initializer
 
 
-def random_uniform_initializer(minval=0.0, maxval=1.0, seed=None,
+def random_uniform_initializer(minval=0, maxval=None, seed=None,
                                dtype=dtypes.float32):
   """Returns an initializer that generates tensors with a uniform distribution.
 
   Args:
-    minval: a python scalar or a scalar tensor. lower bound of the range
+    minval: A python scalar or a scalar tensor. Lower bound of the range
       of random values to generate.
-    maxval: a python scalar or a scalar tensor. upper bound of the range
-      of random values to generate.
+    maxval: A python scalar or a scalar tensor. Upper bound of the range
+      of random values to generate.  Defaults to 1 for float types.
     seed: A Python integer. Used to create random seeds. See
       [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
       for behavior.
-    dtype: The data type. Only floating point types are supported.
+    dtype: The data type.
 
   Returns:
     An initializer that generates tensors with a uniform distribution.
-
-  Raises:
-    ValueError: if `dtype` is not a floating point type.
   """
-  def _initializer(shape, dtype=_assert_float_dtype(dtype)):
+  def _initializer(shape, dtype=dtype):
     return random_ops.random_uniform(shape, minval, maxval, dtype, seed=seed)
   return _initializer
 

@@ -47,7 +47,7 @@ class BaseDistribution(object):
   def prob(self, value, name="prob"):
     """Probability density/mass function."""
     with ops.name_scope(self.name):
-      with ops.op_scope([value], name):
+      with ops.name_scope(name, values=[value]):
         value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_prob(value))
 
@@ -55,7 +55,7 @@ class BaseDistribution(object):
   def log_prob(self, value, name="log_prob"):
     """Log of the probability density/mass function."""
     with ops.name_scope(self.name):
-      with ops.op_scope([value], name):
+      with ops.name_scope(name, values=[value]):
         value = ops.convert_to_tensor(value)
         return math_ops.log(self.prob(value))
 
@@ -79,8 +79,7 @@ class BaseDistribution(object):
     sample.
 
     Args:
-      sample_shape: int32 `Tensor` or tuple or list. Shape of the generated
-        samples.
+      sample_shape: Rank 1 `int32` `Tensor`. Shape of the generated samples.
       seed: Python integer seed for RNG
       name: name to give to the op.
 
@@ -88,7 +87,7 @@ class BaseDistribution(object):
       samples: a `Tensor` with prepended dimensions `sample_shape`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([sample_shape], name):
+      with ops.name_scope(name, values=[sample_shape]):
         sample_shape = ops.convert_to_tensor(sample_shape,
                                              dtype=dtypes.int32,
                                              name="sample_shape")
@@ -257,7 +256,7 @@ class Distribution(BaseDistribution):
     """
     # For scalar distributions, constant([], int32)
     # with ops.name_scope(self.name):
-    #   with ops.op_scope([tensor_arguments], name):
+    #   with ops.name_scope(name, values=[tensor_arguments]):
     #     Your code here
     pass
 
@@ -284,7 +283,7 @@ class Distribution(BaseDistribution):
       `Tensor` `batch_shape`
     """
     # with ops.name_scope(self.name):
-    #   with ops.op_scope([tensor_arguments], name):
+    #   with ops.name_scope(name, values=[tensor_arguments]):
     #     Your code here
     pass
 
@@ -317,8 +316,7 @@ class Distribution(BaseDistribution):
     sample per batched distribution.
 
     Args:
-      sample_shape: `int32` `Tensor` or tuple or list. Shape of the generated
-        samples.
+      sample_shape: Rank 1 `int32` `Tensor`. Shape of the generated samples.
       seed: Python integer seed for RNG
       name: name to give to the op.
 
@@ -331,7 +329,7 @@ class Distribution(BaseDistribution):
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function."""
     with ops.name_scope(self.name):
-      with ops.op_scope([value], name):
+      with ops.name_scope(name, values=[value]):
         value = ops.convert_to_tensor(value)
         return math_ops.exp(self.log_cdf(value))
 

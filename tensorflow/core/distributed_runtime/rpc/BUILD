@@ -177,6 +177,7 @@ cc_library(
     deps = [
         ":grpc_serialization_traits",
         "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/distributed_runtime:worker_interface",
         "@grpc//:grpc++_unsecure",
     ],
 )

@@ -349,7 +349,7 @@ def log_poisson_loss(log_input, targets, compute_full_loss=False, name=None):
   Raises:
     ValueError: If `log_input` and `targets` do not have the same shape.
   """
-  with ops.op_scope([log_input, targets], name, "log_poisson_loss") as name:
+  with ops.name_scope(name, "log_poisson_loss", [log_input, targets]) as name:
     log_input = ops.convert_to_tensor(log_input, name="log_input")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
@@ -417,7 +417,7 @@ def sigmoid_cross_entropy_with_logits(logits, targets, name=None):
   Raises:
     ValueError: If `logits` and `targets` do not have the same shape.
   """
-  with ops.op_scope([logits, targets], name, "logistic_loss") as name:
+  with ops.name_scope(name, "logistic_loss", [logits, targets]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
@@ -489,7 +489,7 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
   Raises:
     ValueError: If `logits` and `targets` do not have the same shape.
   """
-  with ops.op_scope([logits, targets], name, "logistic_loss") as name:
+  with ops.name_scope(name, "logistic_loss", [logits, targets]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
@@ -526,7 +526,7 @@ def relu_layer(x, weights, biases, name=None):
     A 2-D Tensor computing relu(matmul(x, weights) + biases).
     Dimensions typically: batch, out_units.
   """
-  with ops.op_scope([x, weights, biases], name, "relu_layer") as name:
+  with ops.name_scope(name, "relu_layer", [x, weights, biases]) as name:
     x = ops.convert_to_tensor(x, name="x")
     weights = ops.convert_to_tensor(weights, name="weights")
     biases = ops.convert_to_tensor(biases, name="biases")
@@ -554,7 +554,7 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
   Returns:
     A `Tensor` with the same shape as `x`.
   """
-  with ops.op_scope([x], name, "l2_normalize") as name:
+  with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     square_sum = math_ops.reduce_sum(math_ops.square(x), [dim], keep_dims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
@@ -578,7 +578,7 @@ def zero_fraction(value, name=None):
   Returns:
     The fraction of zeros in `value`, with type `float32`.
   """
-  with ops.op_scope([value], name, "zero_fraction"):
+  with ops.name_scope(name, "zero_fraction", [value]):
     value = ops.convert_to_tensor(value, name="value")
     zero = constant_op.constant(0, dtype=value.dtype, name="zero")
     return math_ops.reduce_mean(
@@ -621,7 +621,7 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
     A 4-D `Tensor` of shape
     `[batch, out_height, out_width, in_channels * channel_multiplier].`
   """
-  with ops.op_scope([input, filter], name, "depthwise") as name:
+  with ops.name_scope(name, "depthwise", [input, filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     filter = ops.convert_to_tensor(filter, name="filter_in")
     # A shape is required to statically compute the number of separable filters.
@@ -693,8 +693,8 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     ValueError: If channel_multiplier * in_channels > out_channels,
       which means that the separable convolution is overparameterized.
   """
-  with ops.op_scope([input, depthwise_filter, pointwise_filter],
-                    name, "separable_conv2d") as name:
+  with ops.name_scope(name, "separable_conv2d",
+                      [input, depthwise_filter, pointwise_filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     depthwise_filter = ops.convert_to_tensor(
         depthwise_filter, name="depthwise_filter")
@@ -750,7 +750,7 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     * the shift by which the mean must be corrected or None if `shift` is None.
   """
   axes = list(set(axes))
-  with ops.op_scope([x, shift], name, "sufficient_statistics"):
+  with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
     if x_shape.is_fully_defined():
@@ -790,7 +790,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.op_scope([counts, mean_ss, variance_ss, shift], name, "normalize"):
+  with ops.name_scope(name, "normalize", [counts, mean_ss, variance_ss, shift]):
     divisor = math_ops.inv(counts, name="divisor")
     if shift is not None:
       shifted_mean = math_ops.mul(mean_ss, divisor, name="shifted_mean")
@@ -830,7 +830,7 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.op_scope([x, axes, shift], name, "moments"):
+  with ops.name_scope(name, "moments", [x, axes, shift]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
     # on 32-bit floats before converting the mean and variance back to fp16
@@ -896,7 +896,7 @@ def batch_normalization(x,
   Returns:
     the normalized, scaled, offset tensor.
   """
-  with ops.op_scope([x, mean, variance, scale, offset], name, "batchnorm"):
+  with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
@@ -1012,8 +1012,8 @@ def _compute_sampled_logits(weights,
   if not isinstance(weights, list):
     weights = [weights]
 
-  with ops.op_scope(weights + [biases, inputs, labels], name,
-                    "compute_sampled_logits"):
+  with ops.name_scope(name, "compute_sampled_logits",
+                      weights + [biases, inputs, labels]):
     if labels.dtype != dtypes.int64:
       labels = math_ops.cast(labels, dtypes.int64)
     labels_flat = array_ops.reshape(labels, [-1])

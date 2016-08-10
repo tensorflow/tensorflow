@@ -94,7 +94,7 @@ def avg_pool2d(inputs,
   Returns:
     A `Tensor` representing the results of the pooling operation.
   """
-  with ops.op_scope([inputs], scope, 'AvgPool2D') as sc:
+  with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -684,7 +684,7 @@ def dropout(inputs,
   Returns:
     a tensor representing the output of the operation.
   """
-  with ops.op_scope([inputs], scope, 'Dropout') as sc:
+  with ops.name_scope(scope, 'Dropout', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
     id_fn = lambda: inputs
@@ -710,7 +710,7 @@ def flatten(inputs,
   Raises:
     ValueError: if inputs.shape is wrong.
   """
-  with ops.op_scope([inputs], scope, 'Flatten') as sc:
+  with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
@@ -864,7 +864,7 @@ def max_pool2d(inputs,
   Raises:
     ValueError: If 'kernel_size' is not a 2-D list
   """
-  with ops.op_scope([inputs], scope, 'MaxPool2D') as sc:
+  with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -895,7 +895,7 @@ def one_hot_encoding(labels,
   Returns:
     one hot encoding of the labels.
   """
-  with ops.op_scope([labels, num_classes], scope, 'OneHotEncoding') as sc:
+  with ops.name_scope(scope, 'OneHotEncoding', [labels, num_classes]) as sc:
     labels = ops.convert_to_tensor(labels)
     if labels.dtype == dtypes.int32:
       labels = standard_ops.to_int64(labels)

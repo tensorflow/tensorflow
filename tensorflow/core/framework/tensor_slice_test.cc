@@ -92,6 +92,29 @@ TEST(TensorSliceTest, Serialization) {
         "start = -1, length = 3: string = -:-1,3",
         s.ToString());
   }
+
+  // int64 parsing
+  {
+    TensorSlice s =
+        TensorSlice::ParseOrDie("9223372036854775807,9223372036854775807");
+    TensorSliceProto proto;
+    s.AsProto(&proto);
+    EXPECT_EQ(
+        "extent { start: 9223372036854775807 length: 9223372036854775807 }",
+        proto.ShortDebugString());
+  }
+
+  // int64 parsing failure
+  {
+    TensorSlice slice;
+    Status s =
+        TensorSlice::Parse("19223372036854775808,19223372036854775808", &slice);
+    EXPECT_EQ(
+        "Invalid argument: Expected a pair of numbers or '-' but got "
+        "'19223372036854775808,19223372036854775808': string = "
+        "19223372036854775808,19223372036854775808",
+        s.ToString());
+  }
 }
 
 // Testing the slice intersection

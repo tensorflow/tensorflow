@@ -218,7 +218,7 @@ class HashTable(InitializableLookupTableBase):
     Returns:
       A `HashTable` object.
     """
-    with ops.op_scope([initializer], name, "hash_table"):
+    with ops.name_scope(name, "hash_table", [initializer]):
       # pylint: disable=protected-access
       table_ref = gen_data_flow_ops._hash_table(
           shared_name=shared_name,
@@ -271,7 +271,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    with ops.op_scope([keys, values], name, "key_value_init") as scope:
+    with ops.name_scope(name, "key_value_init", [keys, values]) as scope:
       self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
       self._values = ops.convert_to_tensor(values,
                                            dtype=value_dtype,
@@ -296,7 +296,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
     """
     # pylint: disable=protected-access
     table._check_table_dtypes(self._keys.dtype, self._values.dtype)
-    with ops.op_scope([table], self._name) as scope:
+    with ops.name_scope(self._name, values=[table]) as scope:
       init_op = gen_data_flow_ops._initialize_table(table.table_ref,
                                                     self._keys,
                                                     self._values,
@@ -456,7 +456,7 @@ class TextFileInitializer(TableInitializerBase):
     """
     # pylint: disable=protected-access
     table._check_table_dtypes(self.key_dtype, self.value_dtype)
-    with ops.op_scope([table], self._name, "text_file_init") as scope:
+    with ops.name_scope(self._name, "text_file_init", [table]) as scope:
       filename = ops.convert_to_tensor(self._filename,
                                        dtypes.string,
                                        name="asset_filepath")
@@ -615,7 +615,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
     The mapped indices. It has the same shape and tensor type (dense or sparse)
     as `tensor`.
   """
-  with ops.op_scope([tensor], name, "string_to_index") as scope:
+  with ops.name_scope(name, "string_to_index", [tensor]) as scope:
     shared_name = ""
     keys = ops.convert_to_tensor(mapping, dtypes.string)
     vocab_size = array_ops.size(keys)
@@ -670,7 +670,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
     The strings values associated to the indices. The resultant dense
     feature value tensor has the same shape as the corresponding `indices`.
   """
-  with ops.op_scope([tensor], name, "index_to_string") as scope:
+  with ops.name_scope(name, "index_to_string", [tensor]) as scope:
     shared_name = ""
     values = ops.convert_to_tensor(mapping, dtypes.string)
     vocab_size = array_ops.size(values)
@@ -760,7 +760,8 @@ class MutableHashTable(LookupInterface):
     Returns:
       A scalar tensor containing the number of elements in this table.
     """
-    with ops.op_scope([self._table_ref], name, "%s_Size" % self._name) as name:
+    with ops.name_scope(name, "%s_Size" % self._name,
+                        [self._table_ref]) as name:
       # pylint: disable=protected-access
       return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
       # pylint: enable=protected-access
@@ -786,8 +787,8 @@ class MutableHashTable(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
-    with ops.op_scope([self._table_ref, keys], name,
-                      "%s_lookup_table_find" % self._name) as name:
+    with ops.name_scope(name, "%s_lookup_table_find" % self._name,
+                        [self._table_ref, keys]) as name:
       # pylint: disable=protected-access
       values = gen_data_flow_ops._lookup_table_find(self._table_ref,
                                                     keys,
@@ -816,8 +817,8 @@ class MutableHashTable(LookupInterface):
         types.
     """
     self._check_table_dtypes(keys.dtype, values.dtype)
-    with ops.op_scope([self._table_ref, keys, values], name,
-                      "%s_lookup_table_insert" % self._name) as name:
+    with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
+                        [self._table_ref, keys, values]) as name:
       # pylint: disable=protected-access
       op = gen_data_flow_ops._lookup_table_insert(
           self._table_ref, keys, values, name=name)
@@ -835,8 +836,8 @@ class MutableHashTable(LookupInterface):
       A pair of tensors with the first tensor containing all keys and the
         second tensors containing all values in the table.
     """
-    with ops.op_scope([self._table_ref], name,
-                      "%s_lookup_table_export_values" % self._name) as name:
+    with ops.name_scope(name, "%s_lookup_table_export_values" % self._name,
+                        [self._table_ref]) as name:
       # pylint: disable=protected-access
       exported_keys, exported_values = gen_data_flow_ops._lookup_table_export(
           self._table_ref,

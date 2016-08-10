@@ -496,6 +496,13 @@ class TensorflowGemmlowpWorkersPool {
   TensorflowGemmlowpWorkersPool(thread::ThreadPool* workers)
       : workers_(workers) {}
 
+  ~TensorflowGemmlowpWorkersPool() {
+    // This workaround ensures that all worker tasks have exited methods in the
+    // BlockingCounter. Without this, there is a race where the context is torn
+    // down while the counter is in use.
+    counter_to_decrement_when_ready_.Reset(0);
+  }
+
   void Prepare(int workers_count) {
     counter_to_decrement_when_ready_.Reset(workers_count);
   }

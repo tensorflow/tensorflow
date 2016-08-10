@@ -37,7 +37,7 @@ class OperatorPDDiagBase(operator_pd.OperatorPDBase):
     self._verify_pd = verify_pd
     self._name = name
     with ops.name_scope(name):
-      with ops.op_scope([diag], 'init'):
+      with ops.name_scope('init', values=[diag]):
         self._diag = self._check_diag(diag)
 
   def _check_diag(self, diag):

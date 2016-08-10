@@ -933,7 +933,7 @@ def adjust_brightness(image, delta):
   Returns:
     A brightness-adjusted tensor of the same shape and type as `image`.
   """
-  with ops.op_scope([image, delta], None, 'adjust_brightness') as name:
+  with ops.name_scope(None, 'adjust_brightness', [image, delta]) as name:
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
@@ -971,7 +971,8 @@ def adjust_contrast(images, contrast_factor):
   Returns:
     The contrast-adjusted image or images.
   """
-  with ops.op_scope([images, contrast_factor], None, 'adjust_contrast') as name:
+  with ops.name_scope(None, 'adjust_contrast',
+                      [images, contrast_factor]) as name:
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
@@ -1077,7 +1078,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
-  with ops.op_scope([image], name, 'convert_image') as name:
+  with ops.name_scope(name, 'convert_image', [image]) as name:
     # Both integer: use integer multiplication in the larger range
     if image.dtype.is_integer and dtype.is_integer:
       scale_in = image.dtype.max
@@ -1138,7 +1139,7 @@ def rgb_to_grayscale(images, name=None):
   Returns:
     The converted grayscale image(s).
   """
-  with ops.op_scope([images], name, 'rgb_to_grayscale') as name:
+  with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
@@ -1168,7 +1169,7 @@ def grayscale_to_rgb(images, name=None):
   Returns:
     The converted grayscale image(s).
   """
-  with ops.op_scope([images], name, 'grayscale_to_rgb') as name:
+  with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = (
@@ -1247,7 +1248,7 @@ def adjust_hue(image, delta, name=None):
   Returns:
     Adjusted image(s), same shape and DType as `image`.
   """
-  with ops.op_scope([image], name, 'adjust_hue') as name:
+  with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
@@ -1322,7 +1323,7 @@ def adjust_saturation(image, saturation_factor, name=None):
   Returns:
     Adjusted image(s), same shape and DType as `image`.
   """
-  with ops.op_scope([image], name, 'adjust_saturation') as name:
+  with ops.name_scope(name, 'adjust_saturation', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype

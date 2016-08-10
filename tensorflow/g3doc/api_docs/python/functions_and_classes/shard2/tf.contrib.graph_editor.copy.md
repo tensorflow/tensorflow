@@ -1,4 +1,4 @@
-### `tf.contrib.graph_editor.copy(sgv, dst_graph=None, dst_scope='', src_scope='')` {#copy}
+### `tf.contrib.graph_editor.copy(sgv, dst_graph=None, dst_scope='', src_scope='', reuse_dst_scope=False)` {#copy}
 
 Copy a subgraph.
 
@@ -10,6 +10,9 @@ Copy a subgraph.
 *  <b>`dst_graph`</b>: the destination graph.
 *  <b>`dst_scope`</b>: the destination scope.
 *  <b>`src_scope`</b>: the source scope.
+*  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
+    Otherwise, the scope is given a unique name based on the one given
+    by postfixing an underscore followed by a digit (default).
 
 ##### Returns:
 

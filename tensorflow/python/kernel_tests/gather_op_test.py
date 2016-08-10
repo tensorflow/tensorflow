@@ -76,7 +76,7 @@ class GatherTest(tf.test.TestCase):
       correct_params_grad = np.zeros(shape)
       for i, g in zip(indices.ravel(), gather_grad.reshape((15,) + shape[1:])):
         correct_params_grad[i] += g
-      self.assertAllEqual(correct_params_grad, params_grad.eval())
+      self.assertAllClose(correct_params_grad, params_grad.eval())
 
   def testUnknownIndices(self):
     params = tf.constant([[0, 1, 2]])

@@ -166,8 +166,32 @@ class TensorFlowEstimator(estimator.Estimator):
                       monitors=monitors)
     return self
 
-  def evaluate(self, x=None, y=None, input_fn=None, steps=None):
-    """See base class."""
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None):
+    """Evaluates given model with provided evaluation data.
+
+    See superclass Estimator for more details.
+
+    Args:
+      x: features.
+      y: targets.
+      input_fn: Input function.
+      feed_fn: Function creating a feed dict every time it is called.
+      batch_size: minibatch size to use on the input.
+      steps: Number of steps for which to evaluate model.
+      metrics: Dict of metric ops to run. If None, the default metrics are used.
+      name: Name of the evaluation.
+
+    Returns:
+      Returns `dict` with evaluation results.
+    """
     feed_fn = None
     if x is not None:
       eval_data_feeder = setup_train_data_feeder(
@@ -175,7 +199,8 @@ class TensorFlowEstimator(estimator.Estimator):
       input_fn, feed_fn = (eval_data_feeder.input_builder,
                            eval_data_feeder.get_feed_dict_fn())
     return self._evaluate_model(
-        input_fn=input_fn, feed_fn=feed_fn, steps=steps or self.steps)
+        input_fn=input_fn, feed_fn=feed_fn, steps=steps or self.steps,
+        name=name)
 
   def partial_fit(self, x, y):
     """Incremental fit on a batch of samples.
@@ -402,14 +427,9 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
     return(super(TensorFlowBaseTransformer, self).predict(
         x, axis=1, batch_size=None))
 
-  def fit(self, x, y=None, monitor=None, logdir=None):
-    """Fit a transformer."""
-    return(super(TensorFlowBaseTransformer, self).fit(
-        x, y, monitors=None, logdir=None))
-
-  def fit_transform(self, x, y=None, monitor=None, logdir=None):
+  def fit_transform(self, x, y=None, monitors=None, logdir=None):
     """Fit transformer and transform `x` using trained transformer."""
-    return self.fit(x, y, monitor=None, logdir=None).transform(x)
+    return self.fit(x, y, monitors=monitors, logdir=logdir).transform(x)
 
 
 class DeprecatedMixin(object):

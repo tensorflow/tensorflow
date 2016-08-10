@@ -31,7 +31,7 @@ from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
-def transform_tensor_into_placeholder_handler(info, t):
+def replace_t_with_placeholder_handler(info, t):
   """Transform a tensor into a placeholder tensor.
 
   This handler is typically used to transform a subgraph input tensor into a
@@ -48,7 +48,7 @@ def transform_tensor_into_placeholder_handler(info, t):
   return t_
 
 
-def keep_same_tensor_if_possible_handler(info, t):
+def keep_t_if_possible_handler(info, t):
   """Transform a tensor into itself (identity) if possible.
 
   This handler transform a tensor into itself if the source and destination
@@ -64,7 +64,7 @@ def keep_same_tensor_if_possible_handler(info, t):
   if info.graph is info.graph_:
     return t
   else:
-    return transform_tensor_into_placeholder_handler(info, t)
+    return replace_t_with_placeholder_handler(info, t)
 
 
 def assign_renamed_collections_handler(info, elem, elem_):
@@ -83,7 +83,7 @@ def assign_renamed_collections_handler(info, elem, elem_):
     info.graph_.add_to_collection(collection_name_, elem_)
 
 
-def transform_optional_op_if_inside_handler(info, op):
+def transform_op_if_inside_handler(info, op, keep_if_possible=True):
   """Transform an optional op only if it is inside the subgraph.
 
   This handler is typically use to handle original op: it is fine to keep them
@@ -92,14 +92,19 @@ def transform_optional_op_if_inside_handler(info, op):
   Args:
     info: Transform._Info instance.
     op: the optional op to transform (or ignore).
+    keep_if_possible: re-attach to the original op if possible, that is,
+      if the source graph and the destination graph are the same.
   Returns:
-    the transformed op or None if ignored.
+    the transformed op or None.
   """
   if op is None: return None
   if op in info.sgv.ops:
     return info.transformer._transform_op(op)  # pylint: disable=protected-access
   else:
-    return None
+    if keep_if_possible and info.graph is info.graph_:
+      return op
+    else:
+      return None
 
 
 def copy_op_handler(info, op):
@@ -113,18 +118,22 @@ def copy_op_handler(info, op):
   """
   # pylint: disable=protected-access
 
-  # If it has control inputs, call this function recursively on each.
-  control_inputs_ = [info.transformer._transform_op(control_input)
-                     for control_input in op.control_inputs]
+  # Transform control inputs:
+  control_inputs_ = [info.transformer.transform_control_input_handler(info, ci)
+                     for ci in op.control_inputs]
+  control_inputs_ = [ci for ci in control_inputs_ if ci is not None]
 
-  # If it has an original_op parameter, copy it
+  # Transform it if any:
   original_op_ = info.transformer.transform_original_op_hanlder(info,
                                                                 op._original_op)
 
-  # If it has inputs, call this function recursively on each.
+  # Transform inputs:
   inputs_ = [info.transformer._transform_t(t) for t in op.inputs]
 
+  # Clone the node def:
   node_def_ = deepcopy(op._node_def)
+
+  # Transform name:
   name_ = info.transformer.new_name(op.name)
   name_ = info.graph_.unique_name(name_)
   node_def_.name = name_
@@ -182,7 +191,7 @@ class Transformer(object):
   class _Info(object):
     """Transformer temporary data.
 
-    An instance of this class hold all the information relevant to a call
+    An instance of this class holds all the information relevant to a call
     to a transformer instance (that is, a call to __call__). An instance
     is created for the life-time of the __call__ function and is passed as
     argument to the handlers.
@@ -200,6 +209,10 @@ class Transformer(object):
       self.transformed_ops = {}
       self.transformed_ts = {}
 
+    def create_ops_mapping(self):
+      """Return the mapping from original ops to transformed ops."""
+      return {op.name: op_.name for op, op_ in iteritems(self.transformed_ops)}
+
   def __init__(self):
     """Transformer constructor.
 
@@ -209,13 +222,14 @@ class Transformer(object):
     assign_collections_handler: handle the assignment of collections.
       This handler defaults to assigning new collections created under the
       given name-scope.
-    transform_input_handler: handle the transform of the inputs to the given
-      subgraph. This handler defaults to creating placeholders instead of the
-      ops just before the input tensors of the subgraph.
-    transform_hidden_input_handler: handle the transform of the hidden inputs of
-      the subgraph, that is, the inputs which are not listed in sgv.inputs.
-      This handler defaults to a transform which keep the same input if the
-      source and destination graphs are the same, otherwise use placeholders.
+    transform_external_input_handler: handle the transform of the inputs to
+      the given subgraph. This handler defaults to creating placeholders
+      instead of the ops just before the input tensors of the subgraph.
+    transform_external_hidden_input_handler: handle the transform of the
+      hidden inputs of the subgraph, that is, the inputs which are not listed
+      in sgv.inputs. This handler defaults to a transform which keep the same
+      input if the source and destination graphs are the same, otherwise
+      use placeholders.
     transform_original_op_hanlder: handle the transform of original_op. This
       handler defaults to transforming original_op only if they are in the
       subgraph, otherwise they are ignored.
@@ -223,15 +237,17 @@ class Transformer(object):
 
     # handlers
     self.transform_op_handler = copy_op_handler
+    self.transform_control_input_handler = transform_op_if_inside_handler
     self.assign_collections_handler = assign_renamed_collections_handler
-    self.transform_input_handler = transform_tensor_into_placeholder_handler
-    self.transform_hidden_input_handler = keep_same_tensor_if_possible_handler
-    self.transform_original_op_hanlder = transform_optional_op_if_inside_handler
+    self.transform_external_input_handler = replace_t_with_placeholder_handler
+    self.transform_external_hidden_input_handler = keep_t_if_possible_handler
+    self.transform_original_op_hanlder = transform_op_if_inside_handler
 
     # temporary per-call variable
     self._info = None
 
-  def __call__(self, sgv, dst_graph, dst_scope, src_scope=""):
+  def __call__(self, sgv, dst_graph, dst_scope, src_scope="",
+               reuse_dst_scope=False):
     """Execute the transformation.
 
     Args:
@@ -242,16 +258,27 @@ class Transformer(object):
         relative path of the transformed nodes are computed. For instance, if
         src_scope is a/ and dst_scoped is b/, then the node a/x/y will have a
         relative path of x/y and will be transformed into b/x/y.
+      reuse_dst_scope: if True the dst_scope is re-used if it already exists.
+        Otherwise, the scope is given a unique name based on the one given
+        by postfixing an underscore followed by a digit (default).
     Returns:
       The transformed subgraph view.
+      A dictionary mapping the name of the original ops to the name of the
+        transformed ops.
     Raises:
-      ValueError: if the argumens are invalid. For instance, if the source and
-        destination are the same.
+      ValueError: if the argumens are invalid.
     """
+    sgv = subgraph.make_view(sgv)
+    if not isinstance(dst_graph, tf_ops.Graph):
+      raise TypeError("Expected a tf.Graph, got: {}".format(type(dst_graph)))
+
     src_scope = util.scope_finalize(src_scope)
     dst_scope = util.scope_finalize(dst_scope)
 
-    sgv = subgraph.make_view(sgv)
+    # Potentially create new scope if reuse_dst_scope is False
+    if dst_scope and not reuse_dst_scope:
+      dst_scope = util.scope_finalize(dst_graph.unique_name(dst_scope[:-1]))
+
     if sgv.graph is dst_graph and not dst_scope:
       logging.warning("The source and the destination are the same! "
                       "Beware: in-place transormation are currently "
@@ -264,8 +291,9 @@ class Transformer(object):
 
     sgv_ = self._transform_sgv(sgv)
 
+    ops_mapping = self._info.create_ops_mapping()
     self._info = None
-    return sgv_
+    return sgv_, ops_mapping
 
   def _transform_sgv(self, sgv):
     """Transform a subgraph view.
@@ -319,11 +347,16 @@ class Transformer(object):
       return self._info.transformed_ts[t]
 
     op, op_index = t.op, t.value_index
+
+    # If op is not in the subgraph:
     if op not in self._info.ops:
-      if t in self._info.sgv.inputs:  # t_ is an input of the subgraph
-        t_ = self.transform_input_handler(self._info, t)
-      else:  # t_ is a hidden input of the subgraph
-        t_ = self.transform_hidden_input_handler(self._info, t)
+      # t_ is an input of the subgraph
+      if t in self._info.sgv.inputs:
+        t_ = self.transform_external_input_handler(self._info, t)
+      # t_ is a hidden input of the subgraph
+      else:
+        t_ = self.transform_external_hidden_input_handler(self._info, t)
+    # If op is in the subgraph, just transform it:
     else:
       op_ = self._transform_op(op)
       t_ = op_.outputs[op_index]
@@ -384,7 +417,8 @@ class Transformer(object):
     return name_
 
 
-def copy(sgv, dst_graph=None, dst_scope="", src_scope=""):
+def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
+         reuse_dst_scope=False):
   """Copy a subgraph.
 
   Args:
@@ -393,6 +427,9 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope=""):
     dst_graph: the destination graph.
     dst_scope: the destination scope.
     src_scope: the source scope.
+    reuse_dst_scope: if True the dst_scope is re-used if it already exists.
+      Otherwise, the scope is given a unique name based on the one given
+      by postfixing an underscore followed by a digit (default).
   Returns:
     the subgraph view of the copied subgraph.
   Raises:
@@ -407,4 +444,5 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope=""):
     raise TypeError("Expected a tf.Graph, got: {}".format(type(dst_graph)))
 
   copier = Transformer()
-  return copier(sgv, dst_graph, dst_scope, src_scope)
+  return copier(sgv, dst_graph, dst_scope, src_scope,
+                reuse_dst_scope=reuse_dst_scope)

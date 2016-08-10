@@ -63,8 +63,8 @@ bool ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
   splits.pop_back();
   shape->Clear();
   for (const auto& s : splits) {
-    int dim;
-    if (!strings::safe_strto32(s, &dim)) {
+    int64 dim;
+    if (!strings::safe_strto64(s, &dim)) {
       *error = strings::StrCat("Non numerical dimension in shape_and_slice: ",
                                shape_and_slice);
       return false;

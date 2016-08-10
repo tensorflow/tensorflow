@@ -22,12 +22,12 @@ import os
 import tensorflow as tf
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.tools import strip_unused
+from tensorflow.python.tools import strip_unused_lib
 
 
-class FreezeGraphTest(test_util.TensorFlowTestCase):
+class StripUnusedTest(test_util.TensorFlowTestCase):
 
-  def testFreezeGraph(self):
+  def testStripUnused(self):
     input_graph_name = "input_graph.pb"
     output_graph_name = "output_graph.pb"
 
@@ -52,9 +52,11 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     output_node_names = "output_node"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
 
-    strip_unused.strip_unused(input_graph_path, input_binary, output_graph_path,
-                              input_node_names, output_node_names,
-                              tf.float32.as_datatype_enum)
+    strip_unused_lib.strip_unused_from_files(input_graph_path, input_binary,
+                                             output_graph_path,
+                                             input_node_names,
+                                             output_node_names,
+                                             tf.float32.as_datatype_enum)
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.

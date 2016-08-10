@@ -207,7 +207,7 @@ class ReverseTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def testReverse1DimAuto(self):
-    for dtype in [np.uint8, np.int8, np.int32, np.bool, np.float16,
+    for dtype in [np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16,
                   np.float32, np.float64, np.complex64, np.complex128]:
       self._reverse1DimAuto(dtype)
 
@@ -491,6 +491,14 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[3:0:-2, 1:3, 1:3]
         _ = grad[3:0:-2, tf.newaxis, 1:3, 2, tf.newaxis]
         _ = grad[3:0:-2, 1:3, 2]
+        _ = grad[:, -1, :]
+        _ = grad[:, -2, :]
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "out of bounds"):
+          _ = grad[:, -200, :]
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "out of bounds"):
+          _ = grad[:, 200, :]
 
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):

@@ -68,7 +68,7 @@ def tensor_summary(display_name,  # pylint: disable=invalid-name
   """
   # pylint: enable=line-too-long
 
-  with ops.op_scope([tensor], name, "TensorSummary") as scope:
+  with ops.name_scope(name, "TensorSummary", [tensor]) as scope:
     val = gen_logging_ops._tensor_summary(display_name=display_name,
                                           tensor=tensor,
                                           description=description,

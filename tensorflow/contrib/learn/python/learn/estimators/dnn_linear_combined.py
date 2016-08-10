@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
@@ -152,6 +153,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     return (self._dnn_model.get_bias(model_dir=self._model_dir) +
             [self.get_variable_value("centered_bias_weight")])
 
+  def _get_target_column(self):
+    """Returns the target column of this Estimator."""
+    return self._target_column
+
   def _get_feature_dict(self, features):
     if isinstance(features, dict):
       return features
@@ -181,7 +186,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         return state_ops.assign_add(global_step, 1).op, loss
 
   def _get_eval_ops(self, features, targets, metrics=None):
-    raise NotImplementedError
+    """See base class."""
+    features = self._get_feature_dict(features)
+    logits = self._logits(features)
+    return self._target_column.get_eval_ops(features, logits, targets, metrics)
 
   def _get_predict_ops(self, features):
     """See base class."""
@@ -388,6 +396,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         target_column=target_column,
         config=config)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns predicted classes for given features.
 
@@ -411,6 +422,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     else:
       return np.argmax(predictions, axis=1)
 
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
   def predict_proba(
       self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns prediction probabilities for given features.
@@ -430,12 +444,6 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     """
     return super(DNNLinearCombinedClassifier, self).predict(
         x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    logits = self._logits(features)
-    return self._target_column.get_eval_ops(features, logits, targets, metrics)
 
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
@@ -567,11 +575,3 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         enable_centered_bias=enable_centered_bias,
         target_column=target_column,
         config=config)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    logits = self._logits(features)
-    return self._target_column.get_eval_ops(features, logits, targets, metrics)
-
-

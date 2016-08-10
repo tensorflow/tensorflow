@@ -118,7 +118,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   chief_queue_runner and get_init_tokens_op generated from this optimizer.
 
   ```python
-  # After the session is created by the superviser and before the main while
+  # After the session is created by the Supervisor and before the main while
   # loop:
   if is_chief and FLAGS.sync_replicas:
     sv.start_queue_runners(sess, [chief_queue_runner])
@@ -335,7 +335,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     local_step = array_ops.reshape(local_step, ())
     is_stale = math_ops.less(local_step, global_step)
 
-    with ops.op_scope(inputs, None, self._name):
+    with ops.name_scope(None, self._name, inputs):
       for grad, var in grads_and_vars:
         var_list.append(var)
         with ops.device(var.device):

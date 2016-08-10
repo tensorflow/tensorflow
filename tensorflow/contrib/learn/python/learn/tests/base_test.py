@@ -72,9 +72,11 @@ class InferredfeatureColumnTest(tf.test.TestCase):
         ["centered_bias_weight",
          "centered_bias_weight/Adagrad",
          "global_step",
-         "linear/_weight",
-         "linear/_weight/Ftrl",
-         "linear/_weight/Ftrl_1",
+         # Double slashes appear because the column name is empty. If it was not
+         # empty, the variable names would be "linear/column_name/_weight" etc.
+         "linear//_weight",
+         "linear//_weight/Ftrl",
+         "linear//_weight/Ftrl_1",
          "linear/bias_weight",
          "linear/bias_weight/Ftrl",
          "linear/bias_weight/Ftrl_1"])
@@ -195,9 +197,11 @@ class BaseTest(tf.test.TestCase):
         ["centered_bias_weight",
          "centered_bias_weight/Adagrad",
          "global_step",
-         "linear/_weight",
-         "linear/_weight/Ftrl",
-         "linear/_weight/Ftrl_1",
+         # Double slashes appear because the column name is empty. If it was not
+         # empty, the variable names would be "linear/column_name/_weight" etc.
+         "linear//_weight",
+         "linear//_weight/Ftrl",
+         "linear//_weight/Ftrl_1",
          "linear/bias_weight",
          "linear/bias_weight/Ftrl",
          "linear/bias_weight/Ftrl_1"])

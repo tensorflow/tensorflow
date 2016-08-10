@@ -183,7 +183,7 @@ def init_variable(v, init, name="init"):
   Returns:
     The operation that initializes v.
   """
-  with ops.op_scope([v, init], None, v.op.name + "/"):
+  with ops.name_scope(None, v.op.name + "/", [v, init]):
     with ops.name_scope(name) as scope:
       with ops.colocate_with(v):
         if callable(init):

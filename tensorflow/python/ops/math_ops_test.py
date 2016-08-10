@@ -40,6 +40,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
       y_tf = math_ops.reduce_sum(x).eval()
       self.assertEqual(y_tf, 21)
 
+
 class RoundTest(test_util.TensorFlowTestCase):
 
   def testRounding(self):
@@ -95,7 +96,9 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
         z_tf = math_ops.squared_difference(x, y).eval()
         self.assertAllClose(z, z_tf)
 
+
 class ScalarMulTest(test_util.TensorFlowTestCase):
+
   def testAcceptsRefs(self):
     var = variables.Variable(10)
     result = math_ops.scalar_mul(3, var)
@@ -125,6 +128,28 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
     with self.test_session():
       self.assertAllEqual(x.values.eval(), [[-6, -9], [-15, -21], [0, 3]])
       self.assertAllEqual(x.indices.eval(), [0, 2, 5])
+
+
+class AccumulateNTest(test_util.TensorFlowTestCase):
+
+  def testFloat(self):
+    np.random.seed(12345)
+    x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
+    tf_x = ops.convert_n_to_tensor(x)
+    for u in tf_x:
+      print("shape=%s" % u.get_shape())
+    with self.test_session():
+      self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x).eval())
+      self.assertAllClose(x[0] * 5, math_ops.accumulate_n([tf_x[0]] * 5).eval())
+
+  def testInt(self):
+    np.random.seed(54321)
+    x = [np.random.randint(-128, 128, (5, 4, 3, 2, 1)) for _ in range(6)]
+    tf_x = ops.convert_n_to_tensor(x)
+    with self.test_session():
+      self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
+      self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
+
 
 if __name__ == "__main__":
   googletest.main()

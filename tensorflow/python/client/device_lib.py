@@ -34,4 +34,5 @@ def list_local_devices():
     m = device_attributes_pb2.DeviceAttributes()
     m.ParseFromString(pb_str)
     return m
-  return [_convert(s) for s in pywrap_tensorflow.DeviceFactory_AddDevices()]
+
+  return [_convert(s) for s in pywrap_tensorflow.list_devices()]

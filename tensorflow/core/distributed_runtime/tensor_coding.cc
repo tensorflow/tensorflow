@@ -17,7 +17,32 @@ limitations under the License.
 
 namespace tensorflow {
 
-TensorResponse::TensorResponse(Allocator* allocator) : allocator_(allocator) {}
+TensorResponse::Source::~Source() {}
+
+Status TensorResponse::InitFrom(RecvTensorResponse* response) {
+  meta_.Swap(response);
+  Status s;
+  if (!tensor_.FromProto(allocator_, meta_.tensor())) {
+    s = errors::InvalidArgument("Cannot parse tensor from response");
+  }
+  // Reduce memory usage for big tensors.
+  {
+    TensorProto empty;
+    meta_.mutable_tensor()->Swap(&empty);
+  }
+  meta_.clear_tensor();
+  return s;
+}
+
+void TensorResponse::InitPartial(RecvTensorResponse* response) {
+  // Everything except content is present in *response.  Content will
+  // arrive later; allocate a Tensor with appropriate storage for that
+  // content.
+  meta_.Swap(response);
+  TensorShape shape(meta_.tensor().tensor_shape());
+  Tensor t(allocator_, meta_.tensor().dtype(), shape);
+  tensor_ = std::move(t);
+}
 
 Status TensorResponse::ParseFrom(Source* source) {
   if (already_used_) {
@@ -140,6 +165,7 @@ bool TensorResponse::ParseTensorSubmessage(
 
 bool TensorResponse::ParseFast(Source* source) {
   protobuf::io::CodedInputStream input(source->contents());
+  input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
   while (true) {
     auto p = input.ReadTagWithCutoff(127);
     int tag = GetTagFieldNumber(p.first);

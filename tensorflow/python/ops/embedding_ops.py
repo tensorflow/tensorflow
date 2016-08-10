@@ -77,7 +77,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
     raise ValueError("Need at least one param")
   if not isinstance(params, list):
     params = [params]
-  with ops.op_scope(params + [ids], name, "embedding_lookup") as name:
+  with ops.name_scope(name, "embedding_lookup", params + [ids]) as name:
     np = len(params)  # Number of partitions
     params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
@@ -252,7 +252,8 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
     # TODO(yleon): Add enhanced node assertions to verify that sp_ids and
     # sp_weights have equal indices and shapes.
 
-  with ops.op_scope(params + [sp_ids], name, "embedding_lookup_sparse") as name:
+  with ops.name_scope(name, "embedding_lookup_sparse",
+                      params + [sp_ids]) as name:
     segment_ids = sp_ids.indices[:, 0]
     if segment_ids.dtype != dtypes.int32:
       segment_ids = math_ops.cast(segment_ids, dtypes.int32)

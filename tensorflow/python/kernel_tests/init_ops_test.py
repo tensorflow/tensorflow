@@ -119,6 +119,16 @@ class ConstantInitializersTest(tf.test.TestCase):
       x.initializer.run()
       self.assertAllEqual(x.eval(), np.ones(shape))
 
+  def testConstantIntInitializer(self):
+    with self.test_session():
+      shape = [2, 3]
+      x = tf.get_variable(
+          "x", shape=shape, dtype=tf.int32,
+          initializer=tf.constant_initializer(7))
+      x.initializer.run()
+      self.assertEqual(x.dtype.base_dtype, tf.int32)
+      self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
+
 
 class RandomNormalInitializationTest(tf.test.TestCase):
 
@@ -178,27 +188,22 @@ class RandomUniformInitializationTest(tf.test.TestCase):
 
   def testInitializerIdentical(self):
     for use_gpu in [False, True]:
-      for dtype in [tf.float32, tf.float64]:
-        init1 = tf.random_uniform_initializer(0.0, 1.0, seed=1, dtype=dtype)
-        init2 = tf.random_uniform_initializer(0.0, 1.0, seed=1, dtype=dtype)
+      for dtype in [tf.float32, tf.float64, tf.int64]:
+        init1 = tf.random_uniform_initializer(0, 7, seed=1, dtype=dtype)
+        init2 = tf.random_uniform_initializer(0, 7, seed=1, dtype=dtype)
         self.assertTrue(identicaltest(self, init1, init2, use_gpu))
 
   def testInitializerDifferent(self):
     for use_gpu in [False, True]:
-      for dtype in [tf.float32, tf.float64]:
-        init1 = tf.random_uniform_initializer(0.0, 1.0, seed=1, dtype=dtype)
-        init2 = tf.random_uniform_initializer(0.0, 1.0, seed=2, dtype=dtype)
+      for dtype in [tf.float32, tf.float64, tf.int32, tf.int64]:
+        init1 = tf.random_uniform_initializer(0, 7, seed=1, dtype=dtype)
+        init2 = tf.random_uniform_initializer(0, 7, seed=2, dtype=dtype)
         self.assertFalse(identicaltest(self, init1, init2, use_gpu))
 
   def testDuplicatedInitializer(self):
     for use_gpu in [False, True]:
       init = tf.random_uniform_initializer(0.0, 1.0)
       self.assertFalse(duplicated_initializer(self, init, use_gpu, 1))
-
-  def testInvalidDataType(self):
-    self.assertRaises(
-        ValueError,
-        tf.random_uniform_initializer, 0.0, 1.0, dtype=tf.string)
 
 
 class UniformUnitScalingInitializationTest(tf.test.TestCase):

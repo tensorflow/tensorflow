@@ -360,6 +360,18 @@ py_test(
 )
 
 py_test(
+    name = "basic_session_run_hooks_test",
+    size = "small",
+    srcs = ["python/learn/tests/basic_session_run_hooks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "tensor_signature_test",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
@@ -642,7 +654,6 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # http://b/29229547
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -682,46 +693,6 @@ py_test(
 )
 
 py_test(
-    name = "wrapped_session_test",
-    size = "small",
-    srcs = ["python/learn/tests/wrapped_session_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
-    name = "coordinated_session_test",
-    size = "small",
-    srcs = ["python/learn/tests/coordinated_session_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
-    name = "recoverable_session_test",
-    size = "small",
-    srcs = ["python/learn/tests/recoverable_session_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
-    name = "supervised_session_test",
-    size = "small",
-    srcs = ["python/learn/tests/supervised_session_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
     name = "summary_writer_cache_test",
     size = "small",
     srcs = ["python/learn/tests/summary_writer_cache_test.py"],
@@ -739,29 +710,6 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "runner_flags_test_util",
-    srcs = [
-        "python/learn/tests/runner_flags_test_util.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-sh_test(
-    name = "runner_flags_test",
-    size = "small",
-    srcs = [
-        "python/learn/tests/runner_flags_test.sh",
-    ],
-    data = [
-        ":runner_flags_test_util",
     ],
 )
 

@@ -42,6 +42,8 @@ namespace {
 /// Constants
 constexpr int32 kShrinkAxis = -1, kNewAxis = -2;
 
+// Sparse slicing specification
+// if one does foo[3:5, ..., -3], this will have 3 length tensors
 struct StridedSliceSparseSpec {
   int64 dims;
   int32 num_add_axis_after_ellipsis;
@@ -53,6 +55,11 @@ struct StridedSliceSparseSpec {
   const int32 new_axis_mask, shrink_axis_mask;
 };
 
+// Dense slicing specification
+// all ellipses and newaxis' are expanded out. So if
+// foo[3:5, ..., -3] where foo is 10 dimensional,
+// each inlinedVector will have 10 entries whereas the
+// sparse had 3 length tensors.
 struct StridedSliceDenseSpec {
   const int64 dims;
   int32 begin_mask;
@@ -60,7 +67,18 @@ struct StridedSliceDenseSpec {
   gtl::InlinedVector<int64, 4>& begin;
   gtl::InlinedVector<int64, 4>& end;
   gtl::InlinedVector<int64, 4>& strides;
+  // This vector helps construct the final shape of the slice.
+  // The final tensor is reduced in rank whenever a single index e.g. foo[3]
+  // is called for. The final tensor increases in rank with tf.newaxis
+  // entries. If an index in this array is positive, the size of the dimension
+  // is obtained from canonical end-begin. Otherwise, if it is a kNewAxis,
+  // it will be 1. A shrunk dimension is skipped.
   gtl::InlinedVector<int32, 4> final_shape_gather_indices;
+  // The dense indexed shrink mask is which processing dimensions
+  // should be shrunk. For example, if foo.shape = (10,10,10,10)
+  // foo[3, ..., 5] has sparse_shrink_axis_mask of 0x5 and
+  // dense_shrink_axis_mask of 0x9, yielding a final shape (10,10).
+  int32 shrink_axis_mask;
 };
 
 }  // namespace
@@ -79,6 +97,7 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
   // What indices to get the final shape from.
   dense->begin_mask = 0;
   dense->end_mask = 0;
+  dense->shrink_axis_mask = 0;
   {
     int full_index = 0;
 
@@ -115,9 +134,15 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
         if (sparse.end_mask & (1 << i)) {
           dense->end_mask |= (1 << full_index);
         }
-        // If shrink, use the shrink code, otherwise use the real value
-        dense->final_shape_gather_indices.push_back(
-            (sparse.shrink_axis_mask & (1 << i)) ? kShrinkAxis : full_index);
+        // If shrink, record where to get the dimensionality from (i.e.
+        // new_axis creates a fake 1 size dimension. Also remember shrink
+        // axis (now in dense form) so we can ignore dense->end below.
+        if (sparse.shrink_axis_mask & (1 << i)) {
+          dense->final_shape_gather_indices.push_back(kShrinkAxis);
+          dense->shrink_axis_mask |= (1 << full_index);
+        } else {
+          dense->final_shape_gather_indices.push_back(full_index);
+        }
         full_index++;
       }
     }
@@ -238,8 +263,25 @@ static void SharedValidation(
                    : x_fwd > valid_range[1] ? valid_range[1] : x_fwd;
       }
     };
-    begin_i = canonical(begin_i, 0);
-    end_i = canonical(end_i, 1);
+    if (dense_spec.shrink_axis_mask & (1 << i)) {
+      // If we are shrinking, the end index is now possibly incorrect. In
+      // particular foo[-1] produces sparse_begin = -1, sparse_end = 0.
+      // and canonical puts these to n-1 and 0, which implies a degenerate
+      // interval. Fortunately, it is now safe to re-create end as begin+1.
+      int64 x_fwd = begin_i < 0 ? dim_i + begin_i : begin_i;
+      begin_i = x_fwd;
+      end_i = begin_i + 1;
+      OP_REQUIRES(context, stride_i > 0,
+                  errors::InvalidArgument("only stride 1 allowed on"
+                                          " non-range indexing."));
+      OP_REQUIRES(
+          context, x_fwd >= 0 && x_fwd < dim_i,
+          errors::InvalidArgument("slice index ", begin_i, " of dimension ", i,
+                                  " out of bounds."));
+    } else {
+      begin_i = canonical(begin_i, 0);
+      end_i = canonical(end_i, 1);
+    }
     // Update optimization values
     (*is_simple_slice) &= stride_i == 1;
     bool take_all_in_dimension =

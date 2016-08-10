@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import uuid
 
-
 import tensorflow as tf
+
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _ShardedMutableHashTable
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
@@ -81,19 +81,6 @@ def make_example_dict(example_protos, example_weights):
               example_ids=['%d' % i for i in range(0, len(example_protos))])
 
 
-def make_dense_examples_dict(dense_feature_values, weights, labels):
-  dense_feature_tensors = ([
-      tf.reshape(
-          tf.convert_to_tensor(values, dtype=tf.float32), [-1, 1])
-      for values in dense_feature_values
-  ])
-  return dict(sparse_features=[],
-              dense_features=dense_feature_tensors,
-              example_weights=weights,
-              example_labels=labels,
-              example_ids=['%d' % i for i in range(0, len(labels))])
-
-
 def make_variable_dict(max_age, max_gender):
   # TODO(sibyl-toe9oF2e):  Figure out how to derive max_age & max_gender from
   # examples_dict.
@@ -103,14 +90,48 @@ def make_variable_dict(max_age, max_gender):
               dense_features_weights=[])
 
 
-def make_dense_variable_dict(num_dense_features):
-  feature_weights = ([
-      tf.Variable(tf.zeros([1],
-                           dtype=tf.float32))
-      for _ in range(0, num_dense_features)
-  ])
-  return dict(sparse_features_weights=[],
-              dense_features_weights=feature_weights)
+def make_dense_examples_and_variables_dicts(dense_features_values, weights,
+                                            labels):
+  """Creates examples and variables dictionaries for dense features.
+
+  Variables shapes are inferred from the list of dense feature values passed as
+  argument.
+
+  Args:
+    dense_features_values: The values of the dense features
+    weights: The example weights.
+    labels: The example labels.
+  Returns:
+    One dictionary for the examples and one for the variables.
+  """
+  dense_tensors = []
+  dense_weights = []
+  for dense_feature in dense_features_values:
+    dense_tensor = tf.convert_to_tensor(dense_feature, dtype=tf.float32)
+    check_shape_op = tf.Assert(
+        tf.less_equal(tf.rank(dense_tensor), 2),
+        ['dense_tensor shape must be [batch_size, dimension] or [batch_size]'])
+    # Reshape to [batch_size, dense_column_dimension].
+    with tf.control_dependencies([check_shape_op]):
+      dense_tensor = tf.reshape(dense_tensor,
+                                [dense_tensor.get_shape().as_list()[0], -1])
+    dense_tensors.append(dense_tensor)
+    # Add variables of shape [feature_column_dimension].
+    dense_weights.append(
+        tf.Variable(
+            tf.zeros(
+                [dense_tensor.get_shape().as_list()[1]], dtype=tf.float32)))
+
+  examples_dict = dict(
+      sparse_features=[],
+      dense_features=dense_tensors,
+      example_weights=weights,
+      example_labels=labels,
+      example_ids=['%d' % i for i in range(0, len(labels))])
+  variables_dict = dict(
+      sparse_features_weights=[], dense_features_weights=dense_weights)
+
+  return examples_dict, variables_dict
 
 
 def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
@@ -132,7 +153,7 @@ CONTAINER = uuid.uuid4().hex
 
 # TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
 # TODO(sibyl-vie3Poto): Refactor tests to avoid repetition of boilerplate code.
-class SdcaOptimizerTest(TensorFlowTestCase):
+class SdcaModelTest(TensorFlowTestCase):
   """Base SDCA optimizer test class for any loss type."""
 
   def _single_threaded_test_session(self):
@@ -141,7 +162,7 @@ class SdcaOptimizerTest(TensorFlowTestCase):
     return self.test_session(use_gpu=False, config=config)
 
 
-class SdcaWithLogisticLossTest(SdcaOptimizerTest):
+class SdcaWithLogisticLossTest(SdcaModelTest):
   """SDCA optimizer test class for logistic loss."""
 
   def testSimple(self):
@@ -352,9 +373,9 @@ class SdcaWithLogisticLossTest(SdcaOptimizerTest):
         self.assertAllClose(0.328394 + 0.131364, loss.eval(), atol=0.01)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 0, 0, 1], predicted_labels.eval())
-        self.assertAllClose(0.01,
+        self.assertAllClose(0.0,
                             lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
+                            rtol=2e-2,
                             atol=1e-2)
 
   def testImbalancedWithExampleWeights(self):
@@ -390,9 +411,9 @@ class SdcaWithLogisticLossTest(SdcaOptimizerTest):
         self.assertAllClose(0.408044, loss.eval(), atol=0.012)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 1], predicted_labels.eval())
-        self.assertAllClose(0.01,
+        self.assertAllClose(0.0,
                             lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
+                            rtol=2e-2,
                             atol=1e-2)
 
   def testInstancesOfOneClassOnly(self):
@@ -436,7 +457,7 @@ class SdcaWithLogisticLossTest(SdcaOptimizerTest):
   # epoch are repeated, since example id may be duplicated.
 
 
-class SdcaWithLinearLossTest(SdcaOptimizerTest):
+class SdcaWithLinearLossTest(SdcaModelTest):
   """SDCA optimizer test class for linear (squared) loss."""
 
   def testSimple(self):
@@ -472,7 +493,7 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
       # Approximate gap should be very close to 0.0. (In fact, because the gap
       # is only approximate, it is likely that upon convergence the duality gap
       # can have a tiny negative value).
-      self.assertAllClose(0.00,
+      self.assertAllClose(0.0,
                           lr.approximate_duality_gap().eval(),
                           atol=1e-2)
 
@@ -598,11 +619,10 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
 
   def testDenseFeaturesWithDefaultWeights(self):
     with self._single_threaded_test_session():
-      examples = make_dense_examples_dict(
-          dense_feature_values=[[1.0, 0.0], [0.0, 1.0]],
+      examples, variables = make_dense_examples_and_variables_dicts(
+          dense_features_values=[[[1.0], [0.0]], [0.0, 1.0]],
           weights=[1.0, 1.0],
           labels=[10.0, -5.0])
-      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
@@ -629,11 +649,10 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
 
   def testDenseFeaturesWithArbitraryWeights(self):
     with self._single_threaded_test_session():
-      examples = make_dense_examples_dict(
-          dense_feature_values=[[1.0, 0.0], [0.0, 1.0]],
+      examples, variables = make_dense_examples_and_variables_dicts(
+          dense_features_values=[[[1.0, 0.0], [0.0, 1.0]]],
           weights=[20.0, 10.0],
           labels=[10.0, -5.0])
-      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=5.0,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
@@ -661,7 +680,7 @@ class SdcaWithLinearLossTest(SdcaOptimizerTest):
       self.assertAllClose(2175.0 / 270.0, loss.eval(), atol=0.01)
 
 
-class SdcaWithHingeLossTest(SdcaOptimizerTest):
+class SdcaWithHingeLossTest(SdcaModelTest):
   """SDCA optimizer test class for hinge loss."""
 
   def testSimple(self):
@@ -710,14 +729,14 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
 
   def testDenseFeaturesPerfectlySeparable(self):
     with self._single_threaded_test_session():
-      examples = make_dense_examples_dict(
-          dense_feature_values=[[1.0, 1.0], [1.0, -1.0]],
+      examples, variables = make_dense_examples_and_variables_dicts(
+          dense_features_values=[[1.0, 1.0], [1.0, -1.0]],
           weights=[1.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2)
-      options = dict(symmetric_l2_regularization=1.0,
-                     symmetric_l1_regularization=0,
-                     loss_type='hinge_loss')
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='hinge_loss')
       model = SdcaModel(CONTAINER, examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = model.predictions(examples)
@@ -741,11 +760,10 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
 
   def testDenseFeaturesSeparableWithinMargins(self):
     with self._single_threaded_test_session():
-      examples = make_dense_examples_dict(
-          dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
+      examples, variables = make_dense_examples_and_variables_dicts(
+          dense_features_values=[[[1.0, 0.5], [1.0, -0.5]]],
           weights=[1.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
@@ -771,11 +789,10 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
 
   def testDenseFeaturesWeightedExamples(self):
     with self._single_threaded_test_session():
-      examples = make_dense_examples_dict(
-          dense_feature_values=[[1.0, 1.0], [0.5, -0.5]],
+      examples, variables = make_dense_examples_and_variables_dicts(
+          dense_features_values=[[[1.0], [1.0]], [[0.5], [-0.5]]],
           weights=[3.0, 1.0],
           labels=[1.0, 0.0])
-      variables = make_dense_variable_dict(2)
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
@@ -802,7 +819,7 @@ class SdcaWithHingeLossTest(SdcaOptimizerTest):
       self.assertAllClose(0.4, regularized_loss.eval(), atol=0.02)
 
 
-class SparseFeatureColumnTest(SdcaOptimizerTest):
+class SparseFeatureColumnTest(SdcaModelTest):
   """Tests for SparseFeatureColumn.
   """
 
@@ -823,7 +840,7 @@ class SparseFeatureColumnTest(SdcaOptimizerTest):
     with self._single_threaded_test_session():
       self.assertAllEqual(expected_feature_values, sfc.feature_values.eval())
 
-class SdcaFprintTest(SdcaOptimizerTest):
+class SdcaFprintTest(SdcaModelTest):
   """Tests for the SdcaFprint op.
 
   This is one way of enforcing the platform-agnostic nature of SdcaFprint.
@@ -843,7 +860,7 @@ class SdcaFprintTest(SdcaOptimizerTest):
                           out_data.eval())
 
 
-class ShardedMutableHashTableTest(SdcaOptimizerTest):
+class ShardedMutableHashTableTest(SdcaModelTest):
   """Tests for the _ShardedMutableHashTable class."""
 
   def testShardedMutableHashTable(self):

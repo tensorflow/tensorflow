@@ -253,7 +253,7 @@ def switch(data, pred, dtype=None, name=None):
     `(output_false, output_true)`: If `pred` is true, data will be forwarded
     to `output_true`, otherwise it goes to `output_false`.
   """
-  with ops.op_scope([data, pred], name, "Switch") as name:
+  with ops.name_scope(name, "Switch", [data, pred]) as name:
     data = ops.convert_to_tensor_or_indexed_slices(data, dtype=dtype,
                                                    name="data", as_ref=True)
     pred = ops.convert_to_tensor(pred, name="pred")
@@ -353,7 +353,7 @@ def merge(inputs, name=None):
   """
   if any([inp is None for inp in inputs]):
     raise ValueError("At least one of the merge inputs is None: %s" % inputs)
-  with ops.op_scope(inputs, name, "Merge") as name:
+  with ops.name_scope(name, "Merge", inputs) as name:
     inputs = [ops.convert_to_tensor_or_indexed_slices(inp, as_ref=True)
               for inp in inputs]
     if all([isinstance(v, ops.Tensor) for v in inputs]):
@@ -371,7 +371,7 @@ def merge(inputs, name=None):
       return ops.SparseTensor(indices, values, dense_shape), chosen_index
     else:
       # For now convert all the inputs as IndexedSlices.
-      inputs = math_ops._as_indexed_slices_list(inputs)
+      inputs = math_ops._as_indexed_slices_list(inputs, optimize=False)
       values, _ = merge([inp.values for inp in inputs], name=name)
       indices, chosen_index = gen_control_flow_ops._merge(
           [inp.indices for inp in inputs], name="indices")
@@ -452,7 +452,7 @@ def _AddNextAndBackEdge(m, v):
     m.op._update_input(1, v)   # pylint: disable=protected-access
   elif isinstance(m, ops.IndexedSlices):
     # pylint: disable=protected-access
-    v = math_ops._as_indexed_slices(v)
+    v = math_ops._as_indexed_slices(v, optimize=False)
     v = _NextIteration(v)
     m.values.op._update_input(1, v.values)
     m.indices.op._update_input(1, v.indices)
@@ -902,7 +902,7 @@ class ControlFlowState(object):
       else:
         # Only the shape of value is needed for backprop.
         forward_ctxt.outer_context.Enter()
-        shape = array_ops.shape(val)
+        shape = array_ops.shape_internal(val, optimize=False)
         forward_ctxt.outer_context.Exit()
         # Save the shape to a stack.
         history_shape = outer_grad_state.AddForwardAccumulator(shape)
@@ -920,7 +920,7 @@ class ControlFlowState(object):
         # with the right shape.
         result = array_ops.zeros(val_shape.dims, val.dtype)
       else:
-        result = array_ops.zeros_like(val)
+        result = array_ops.zeros_like(val, optimize=False)
     return result
 
   def ZerosLike(self, op, index):
@@ -963,13 +963,13 @@ class ControlFlowState(object):
         branch = op_ctxt.branch
         op_ctxt.outer_context.Enter()
         val = _SwitchRefOrTensor(op.inputs[0], pred)[1 - branch]
-        zeros_shape = array_ops.shape(val)
+        zeros_shape = array_ops.shape_internal(val, optimize=False)
         op_ctxt.outer_context.Exit()
         val.op._set_control_flow_context(op_ctxt)
         zeros_shape.op._set_control_flow_context(op_ctxt)
       else:
         op_ctxt.Enter()
-        zeros_shape = array_ops.shape(val)
+        zeros_shape = array_ops.shape_internal(val, optimize=False)
         op_ctxt.Exit()
 
       # Add forward accumulator for shape.
@@ -1054,13 +1054,13 @@ def ZerosLikeOutsideLoop(op, index):
   """Create zeros_like for the specified output of an op."""
   val = op.outputs[index]
   if not IsSwitch(op):
-    return array_ops.zeros_like(val)
+    return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()
     pred = op_ctxt.pred
     branch = op_ctxt.branch
     switch_val = switch(op.inputs[0], pred)[1 - branch]
-    zeros_shape = array_ops.shape(switch_val)
+    zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
     return array_ops.zeros(zeros_shape, dtype=val.dtype)
 
 
@@ -1320,7 +1320,7 @@ def cond(pred, fn1, fn2, name=None):
   ```
 
   """
-  with ops.op_scope([pred], name, "cond") as name:
+  with ops.name_scope(name, "cond", [pred]) as name:
     if not callable(fn1):
       raise TypeError("fn1 must be callable.")
     if not callable(fn2):
@@ -1664,7 +1664,7 @@ class WhileContext(ControlFlowContext):
       if self.outer_context:
         forward_ctxt = self.grad_state.forward_ctxt
         forward_ctxt.outer_context.Enter()
-        zeros_shape = array_ops.shape(value)
+        zeros_shape = array_ops.shape_internal(value, optimize=False)
         forward_ctxt.outer_context.Exit()
         history_zeros_shape = grad_state.AddForwardAccumulator(zeros_shape)
         self.outer_context.Enter()
@@ -1673,7 +1673,7 @@ class WhileContext(ControlFlowContext):
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
       else:
-        zeros_shape = array_ops.shape(value)
+        zeros_shape = array_ops.shape_internal(value, optimize=False)
         acc = array_ops.zeros(zeros_shape, grad.dtype)
       acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
@@ -1720,7 +1720,7 @@ class WhileContext(ControlFlowContext):
                                         name="b_acc")
       if self.outer_context: self.outer_context.Exit()
     else:
-      values_shape = array_ops.shape(op.inputs[0])[1:]
+      values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
       values_shape = array_ops.concat(0, [[1], values_shape])
       values_acc = array_ops.zeros(values_shape)
     indices_acc = constant_op.constant([0], indices.dtype)
@@ -1732,7 +1732,10 @@ class WhileContext(ControlFlowContext):
                                          shape=dense_shape.get_shape())
         if self.outer_context: self.outer_context.Exit()
       else:
-        shape_acc = array_ops.zeros_like(array_ops.shape(op.inputs[0]))
+        shape_acc = array_ops.zeros_like(
+            array_ops.shape_internal(
+                op.inputs[0], optimize=False),
+            optimize=False)
 
     if self.outer_context: self.outer_context.Exit()
 
@@ -1982,7 +1985,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     ijk_final = tf.while_loop(c, b, ijk_0)
     ```
   """
-  with ops.op_scope(loop_vars, name, "while") as name:
+  with ops.name_scope(name, "while", loop_vars) as name:
     if not loop_vars:
       raise ValueError("No loop variables provided")
     if not callable(cond):
@@ -2065,8 +2068,8 @@ def with_dependencies(dependencies, output_tensor, name=None):
   Raises:
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
-  with ops.op_scope(dependencies + [output_tensor], name,
-                    "control_dependency") as name:
+  with ops.name_scope(name, "control_dependency",
+                      dependencies + [output_tensor]) as name:
     with ops.colocate_with(output_tensor):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_indexed_slices(output_tensor)
@@ -2110,7 +2113,7 @@ def group(*inputs, **kwargs):
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
-  with ops.op_scope(inputs, name, "group_deps") as name:
+  with ops.name_scope(name, "group_deps", inputs) as name:
     # Grouping no inputs means do nothing
     if not inputs:
       return no_op(name=name)
@@ -2173,7 +2176,7 @@ def tuple(tensors, name=None, control_inputs=None):
       objects.
 
   """
-  with ops.op_scope(tensors, name, "tuple") as name:
+  with ops.name_scope(name, "tuple", tensors) as name:
     gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
       for c in control_inputs:
@@ -2288,7 +2291,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     raise TypeError("default must be callable.")
 
   preds, fns = map(list, zip(*pfp))
-  with ops.op_scope([preds], name, "case"):
+  with ops.name_scope(name, "case", [preds]):
     if not preds:
       return default()
     not_preds = []

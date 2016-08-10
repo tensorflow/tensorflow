@@ -33,15 +33,14 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 4).reshape(in_shape).astype(nptype)
 
-      for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu) as sess:
-          input_tensor = tf.constant(x, shape=in_shape)
-          resize_out = tf.image.resize_nearest_neighbor(input_tensor,
-                                                      out_shape[1:3])
-          self.assertEqual(out_shape, list(resize_out.get_shape()))
+      with self.test_session() as sess:
+        input_tensor = tf.constant(x, shape=in_shape)
+        resize_out = tf.image.resize_nearest_neighbor(input_tensor,
+                                                    out_shape[1:3])
+        self.assertEqual(out_shape, list(resize_out.get_shape()))
 
-          resize_out = sess.run(resize_out)
-        self.assertEqual(out_shape, list(resize_out.shape))
+        resize_out = sess.run(resize_out)
+      self.assertEqual(out_shape, list(resize_out.shape))
 
   def testGradFromResizeToLargerInBothDims(self):
     in_shape = [1, 2, 3, 1]
@@ -50,17 +49,16 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 6).reshape(in_shape).astype(nptype)
 
-      for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu):
-          input_tensor = tf.constant(x, shape=in_shape)
-          resize_out = tf.image.resize_nearest_neighbor(input_tensor,
-                                                      out_shape[1:3])
-          err = tf.test.compute_gradient_error(input_tensor,
-                                               in_shape,
-                                               resize_out,
-                                               out_shape,
-                                               x_init_value=x)
-        self.assertLess(err, 1e-3)
+      with self.test_session():
+        input_tensor = tf.constant(x, shape=in_shape)
+        resize_out = tf.image.resize_nearest_neighbor(input_tensor,
+                                                    out_shape[1:3])
+        err = tf.test.compute_gradient_error(input_tensor,
+                                             in_shape,
+                                             resize_out,
+                                             out_shape,
+                                             x_init_value=x)
+      self.assertLess(err, 1e-3)
 
   def testGradFromResizeToSmallerInBothDims(self):
     in_shape = [1, 4, 6, 1]
@@ -69,17 +67,16 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 24).reshape(in_shape).astype(nptype)
 
-      for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu):
-          input_tensor = tf.constant(x, shape=in_shape)
-          resize_out = tf.image.resize_nearest_neighbor(input_tensor,
-                                                      out_shape[1:3])
-          err = tf.test.compute_gradient_error(input_tensor,
-                                               in_shape,
-                                               resize_out,
-                                               out_shape,
-                                               x_init_value=x)
-        self.assertLess(err, 1e-3)
+      with self.test_session():
+        input_tensor = tf.constant(x, shape=in_shape)
+        resize_out = tf.image.resize_nearest_neighbor(input_tensor,
+                                                    out_shape[1:3])
+        err = tf.test.compute_gradient_error(input_tensor,
+                                             in_shape,
+                                             resize_out,
+                                             out_shape,
+                                             x_init_value=x)
+      self.assertLess(err, 1e-3)
 
   def testCompareGpuVsCpu(self):
     in_shape = [1, 4, 6, 3]
@@ -195,16 +192,15 @@ class CropAndResizeOpTest(tf.test.TestCase):
     boxes = np.array([[0, 0, 1, 1], [.1, .2, .7, .8]], dtype=np.float32)
     box_ind = np.array([0, 1], dtype=np.int32)
 
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        crops = tf.image.crop_and_resize(
-            tf.constant(image, shape=image_shape),
-            tf.constant(boxes, shape=[num_boxes, 4]),
-            tf.constant(box_ind, shape=[num_boxes]),
-            tf.constant(crop_size, shape=[2]))
-        self.assertEqual(crops_shape, list(crops.get_shape()))
-        crops = sess.run(crops)
-        self.assertEqual(crops_shape, list(crops.shape))
+    with self.test_session() as sess:
+      crops = tf.image.crop_and_resize(
+          tf.constant(image, shape=image_shape),
+          tf.constant(boxes, shape=[num_boxes, 4]),
+          tf.constant(box_ind, shape=[num_boxes]),
+          tf.constant(crop_size, shape=[2]))
+      self.assertEqual(crops_shape, list(crops.get_shape()))
+      crops = sess.run(crops)
+      self.assertEqual(crops_shape, list(crops.shape))
 
   def _randomUniformAvoidAnchors(self, low, high, anchors, radius, num_samples):
     """Generate samples that are far enough from a set of anchor points.
@@ -281,25 +277,24 @@ class CropAndResizeOpTest(tf.test.TestCase):
               boxes = np.array(boxes, dtype=np.float32)
               box_ind = np.arange(batch, dtype=np.int32)
 
-              for use_gpu in [False, True]:
-                with self.test_session(use_gpu=use_gpu):
-                  image_tensor = tf.constant(image, shape=image_shape)
-                  boxes_tensor = tf.constant(boxes, shape=[num_boxes, 4])
-                  box_ind_tensor = tf.constant(box_ind, shape=[num_boxes])
-                  crops = tf.image.crop_and_resize(
-                      image_tensor,
-                      boxes_tensor,
-                      box_ind_tensor,
-                      tf.constant(crop_size, shape=[2]))
+              with self.test_session():
+                image_tensor = tf.constant(image, shape=image_shape)
+                boxes_tensor = tf.constant(boxes, shape=[num_boxes, 4])
+                box_ind_tensor = tf.constant(box_ind, shape=[num_boxes])
+                crops = tf.image.crop_and_resize(
+                    image_tensor,
+                    boxes_tensor,
+                    box_ind_tensor,
+                    tf.constant(crop_size, shape=[2]))
 
-                  err = tf.test.compute_gradient_error(
-                      [image_tensor, boxes_tensor], [image_shape, boxes_shape],
-                      crops,
-                      crops_shape,
-                      delta=delta,
-                      x_init_value=[image, boxes])
+                err = tf.test.compute_gradient_error(
+                    [image_tensor, boxes_tensor], [image_shape, boxes_shape],
+                    crops,
+                    crops_shape,
+                    delta=delta,
+                    x_init_value=[image, boxes])
 
-                self.assertLess(err, 2e-3)
+              self.assertLess(err, 2e-3)
 
 
 if __name__ == "__main__":

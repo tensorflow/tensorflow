@@ -61,9 +61,27 @@ Returns bias of the rnn layer.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.evaluate(x=None, y=None, input_fn=None, steps=None)` {#TensorFlowRNNRegressor.evaluate}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowRNNRegressor.evaluate}
 
-See base class.
+Evaluates given model with provided evaluation data.
+
+See superclass Estimator for more details.
+
+##### Args:
+
+
+*  <b>`x`</b>: features.
+*  <b>`y`</b>: targets.
+*  <b>`input_fn`</b>: Input function.
+*  <b>`feed_fn`</b>: Function creating a feed dict every time it is called.
+*  <b>`batch_size`</b>: minibatch size to use on the input.
+*  <b>`steps`</b>: Number of steps for which to evaluate model.
+*  <b>`metrics`</b>: Dict of metric ops to run. If None, the default metrics are used.
+*  <b>`name`</b>: Name of the evaluation.
+
+##### Returns:
+
+  Returns `dict` with evaluation results.
 
 
 - - -

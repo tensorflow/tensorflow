@@ -182,11 +182,16 @@ module TF.Backend {
       let url = this.router.histograms(tag, run);
       p = this.requestManager.request(url);
       return p.then(map(detupler(createHistogram))).then(function(histos) {
+        // Get the minimum and maximum values across all histograms so that the
+        // visualization is aligned for all timesteps.
+        let min = d3.min(histos, d => d.min);
+        let max = d3.max(histos, d => d.max);
+
         return histos.map(function(histo, i) {
           return {
             wall_time: histo.wall_time,
             step: histo.step,
-            bins: convertBins(histo)
+            bins: convertBins(histo, min, max)
           };
         });
       });
@@ -254,11 +259,65 @@ module TF.Backend {
   }
 
   /** Given a RunToTag, return sorted array of all runs */
-  export function getRuns(r: RunToTag): string[] { return _.keys(r).sort(); }
+  export function getRuns(r: RunToTag): string[] {
+    return _.keys(r).sort(compareTagNames);
+  }
 
   /** Given a RunToTag, return array of all tags (sorted + dedup'd) */
   export function getTags(r: RunToTag): string[] {
-    return _.union.apply(null, _.values(r)).sort();
+    return _.union.apply(null, _.values(r)).sort(compareTagNames);
+  }
+
+  /** Compares tag names asciinumerically broken into components. */
+  export function compareTagNames(a, b: string): number {
+    let ai = 0;
+    let bi = 0;
+    while (true) {
+      if (ai === a.length) return bi === b.length ? 0 : -1;
+      if (bi === b.length) return 1;
+      if (isDigit(a[ai]) && isDigit(b[bi])) {
+        let ais = ai;
+        let bis = bi;
+        ai = consumeNumber(a, ai + 1);
+        bi = consumeNumber(b, bi + 1);
+        let an = parseFloat(a.slice(ais, ai));
+        let bn = parseFloat(b.slice(bis, bi));
+        if (an < bn) return -1;
+        if (an > bn) return 1;
+        continue;
+      }
+      if (isBreak(a[ai])) {
+        if (!isBreak(b[bi])) return -1;
+      } else if (isBreak(b[bi])) {
+        return 1;
+      } else if (a[ai] < b[bi]) {
+        return -1;
+      } else if (a[ai] > b[bi]) {
+        return 1;
+      }
+      ai++;
+      bi++;
+    }
+  }
+
+  function consumeNumber(s: string, i: number): number {
+    let decimal = false;
+    for (; i < s.length; i++) {
+      if (isDigit(s[i])) continue;
+      if (!decimal && s[i] === '.') {
+        decimal = true;
+        continue;
+      }
+      break;
+    }
+    return i;
+  }
+
+  function isDigit(c: string): boolean { return '0' <= c && c <= '9'; }
+
+  function isBreak(c: string): boolean {
+    // TODO(jart): Remove underscore when people stop using it like a slash.
+    return c === '/' || c === '_' || isDigit(c);
   }
 
   /**
@@ -313,34 +372,59 @@ module TF.Backend {
    * Takes histogram data as stored by tensorboard backend and converts it to
    * the standard d3 histogram data format to make it more compatible and easier
    * to visualize. When visualizing histograms, having the left edge and width
-   * makes things quite a bit easier.
+   * makes things quite a bit easier. The bins are also converted to have an
+   * uniform width, what makes the visualization easier to understand.
    *
    * @param histogram A histogram from tensorboard backend.
+   * @param min The leftmost edge. The binning will start on it.
+   * @param max The rightmost edge. The binning will end on it.
+   * @param numBins The number of bins of the converted data. The default of 30
+   * is a sensible default, using more starts to get artifacts because the event
+   * data is stored in buckets, and you start being able to see the aliased
+   * borders between each bucket.
    * @return A histogram bin. Each bin has an x (left edge), a dx (width),
    *     and a y (count).
    *
    * If given rightedges are inclusive, then these left edges (x) are exclusive.
    */
-  export function convertBins(histogram: Histogram) {
+  export function convertBins(
+      histogram: Histogram, min: number, max: number, numBins = 30) {
     if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
       throw(new Error('Edges and counts are of different lengths.'));
     }
 
-    var previousRightEdge = histogram.min;
-    return histogram.bucketRightEdges.map(function(
-        rightEdge: number, i: number) {
+    let binWidth = (max - min) / numBins;
+    let bucketLeft = min;  // Use the min as the starting point for the bins.
+    let bucketPos = 0;
+    return d3.range(min, max, binWidth).map(function(binLeft) {
+      let binRight = binLeft + binWidth;
 
-      // Use the previous bin's rightEdge as the new leftEdge
-      var left = previousRightEdge;
+      // Take the count of each existing bucket, multiply it by the proportion
+      // of overlap with the new bin, then sum and store as the count for the
+      // new bin. If no overlap, will add to zero, if 100% overlap, will include
+      // the full count into new bin.
+      let binY = 0;
+      while (bucketPos < histogram.bucketRightEdges.length) {
+        // Clip the right edge because right-most edge can be infinite-sized.
+        let bucketRight = Math.min(max, histogram.bucketRightEdges[bucketPos]);
 
-      // We need to clip the rightEdge because right-most edge can be
-      // infinite-sized
-      var right = Math.min(histogram.max, rightEdge);
+        let intersect =
+            Math.min(bucketRight, binRight) - Math.max(bucketLeft, binLeft);
+        let count = (intersect / (bucketRight - bucketLeft)) *
+            histogram.bucketCounts[bucketPos];
 
-      // Store rightEdgeValue for next iteration
-      previousRightEdge = rightEdge;
+        binY += intersect > 0 ? count : 0;
 
-      return {x: left, dx: right - left, y: histogram.bucketCounts[i]};
+        // If bucketRight is bigger than binRight, than this bin is finished and
+        // there is data for the next bin, so don't increment bucketPos.
+        if (bucketRight > binRight) {
+          break;
+        }
+        bucketLeft = Math.max(min, bucketRight);
+        bucketPos++;
+      };
+
+      return {x: binLeft, dx: binWidth, y: binY};
     });
   }
 
