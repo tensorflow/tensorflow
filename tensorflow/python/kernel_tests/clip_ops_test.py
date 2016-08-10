@@ -33,7 +33,7 @@ class ClipTest(tf.test.TestCase):
       clip_value = 4.4
       ans = tf.clip_by_value(x, -clip_value, clip_value)
       tf_ans = ans.eval()
-      
+
     self.assertAllClose(np_ans, tf_ans)
 
   def testClipByValueNonFinite(self):
@@ -43,7 +43,7 @@ class ClipTest(tf.test.TestCase):
       clip_value = 4.0
       ans = tf.clip_by_value(x, -clip_value, clip_value)
       tf_ans = ans.eval()
-      
+
     self.assertAllClose(np_ans, tf_ans)
 
   # ClipByNorm tests
