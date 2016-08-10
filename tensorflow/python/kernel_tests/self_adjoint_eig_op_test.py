@@ -55,13 +55,13 @@ def SortEigenDecomposition(e, v):
 
 def _GetSelfAdjointEigTest(dtype_, shape_):
 
-  def CompareEigenVectors(self, x, y, atol):
+  def CompareEigenVectors(self, x, y, tol):
     # Eigenvectors are only unique up to sign so we normalize the signs first.
     signs = np.sign(np.sum(np.divide(x, y), -2, keepdims=True))
     x *= signs
-    self.assertAllClose(x, y, atol)
+    self.assertAllClose(x, y, atol=tol, rtol=tol)
 
-  def CompareEigenDecompositions(self, x_e, x_v, y_e, y_v, atol):
+  def CompareEigenDecompositions(self, x_e, x_v, y_e, y_v, tol):
     num_batches = int(np.prod(x_e.shape[:-1]))
     n = x_e.shape[-1]
     x_e = np.reshape(x_e, [num_batches] + [n])
@@ -71,8 +71,8 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
     for i in range(num_batches):
       x_ei, x_vi = SortEigenDecomposition(x_e[i, :], x_v[i, :, :])
       y_ei, y_vi = SortEigenDecomposition(y_e[i, :], y_v[i, :, :])
-      self.assertAllClose(x_ei, y_ei, atol=atol)
-      CompareEigenVectors(self, x_vi, y_vi, atol)
+      self.assertAllClose(x_ei, y_ei, atol=tol, rtol=tol)
+      CompareEigenVectors(self, x_vi, y_vi, tol)
 
   def Test(self):
     np.random.seed(1)
@@ -85,7 +85,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
     if dtype_ == np.float32:
       atol = 1e-4
     else:
-      atol = 1e-14
+      atol = 1e-12
     for compute_v in False, True:
       np_e, np_v = np.linalg.eig(a)
       with self.test_session():
