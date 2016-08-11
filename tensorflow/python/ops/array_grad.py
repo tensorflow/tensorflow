@@ -59,6 +59,24 @@ def _ConcatGrad(op, grad):
     begin = array_ops.fill(shape_of_shape, 0)
     return mask, begin
 
+  def _ExtractInputShapes(inputs):
+    """Extract the shapes of a set of input tensors."""
+    sizes = []
+    fully_known = True
+    for x in inputs:
+      input_shape = array_ops.shape(x)
+      if not isinstance(input_shape,
+                        ops.Tensor) or input_shape.op.type != "Const":
+        fully_known = False
+        break
+      else:
+        sizes.append(input_shape)
+
+    if fully_known:
+      return sizes
+    else:
+      return array_ops.shape_n(inputs)
+
   # Degenerate concatenation, just return grad.
   if len(op.inputs) == 2:
     return [None, grad]
@@ -67,7 +85,7 @@ def _ConcatGrad(op, grad):
   out_grads = []
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
-    sizes = array_ops.shape_n(op.inputs[1:])
+    sizes = _ExtractInputShapes(op.inputs[1:])
     # pylint: disable=protected-access
     offset = gen_array_ops._concat_offset(concat_dim, sizes)
     # pylint: enable=protected-access
