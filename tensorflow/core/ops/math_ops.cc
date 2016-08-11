@@ -1072,11 +1072,64 @@ keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
 
+namespace {
+
+Status ArgOpShape(shape_inference::InferenceContext* c) {
+  const Shape* dimension_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &dimension_shape));
+
+  const Shape* input_shape = c->input(0);
+  if (!c->RankKnown(input_shape)) {
+    return shape_inference::UnknownShape(c);
+  }
+
+  const int32 input_rank = c->Rank(input_shape);
+  if (input_rank <= 1) {
+    // Reducing a scalar/vector must return a scalar.
+    return shape_inference::ScalarShape(c);
+  }
+
+  const Tensor* dim_t = c->input_tensor(1);
+  if (dim_t == nullptr) {
+    // We don't know the value of the dimension, but we
+    // know the rank of the input, so return the correct
+    // rank with unknown dimensions.
+    std::vector<const Dimension*> dims(input_rank - 1);
+    for (int i = 0; i < dims.size(); ++i) {
+      dims[i] = c->UnknownDim();
+    }
+
+    c->set_output(0, c->MakeShape(dims));
+    return Status::OK();
+  }
+
+  const int32 dimension_val = dim_t->scalar<int32>()();
+  if (dimension_val < 0 || dimension_val >= input_rank) {
+    return errors::InvalidArgument("Dimension (", dimension_val,
+                                   ") must be in the range [0, ", input_rank,
+                                   "), where ", input_rank, " is the ",
+                                   "number of dimensions in the input.");
+  }
+
+  // Return the input shape without the dimension being reduced.
+  std::vector<const Dimension*> dims;
+  for (int i = 0; i < input_rank; ++i) {
+    if (dimension_val != i) {
+      dims.emplace_back(c->Dim(input_shape, i));
+    }
+  }
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: int32")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
@@ -1089,6 +1142,7 @@ REGISTER_OP("ArgMin")
     .Input("dimension: int32")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
 
