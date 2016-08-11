@@ -315,11 +315,6 @@ def _SliceHelper(tensor, slice_spec):
       strides.append(1)
       new_axis_mask |= (1 << index)
     else:
-      try:
-        s = int(s)
-      except TypeError:
-        raise TypeError("Bad slice index %s of type %s" % (s, type(s)))
-
       begin.append(s)
       end.append(s + 1)
       strides.append(1)
@@ -330,11 +325,10 @@ def _SliceHelper(tensor, slice_spec):
   # correct graph
   with ops.name_scope(None, "strided_slice",
                       [tensor] + begin + end + strides) as name:
-    begin_pack, end_pack, strides_pack = pack(begin), pack(end), pack(strides)
     return strided_slice(tensor,
-                         begin_pack,
-                         end_pack,
-                         strides_pack,
+                         pack(begin),
+                         pack(end),
+                         pack(strides),
                          begin_mask=begin_mask,
                          end_mask=end_mask,
                          shrink_axis_mask=shrink_axis_mask,

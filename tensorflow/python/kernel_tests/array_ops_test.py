@@ -272,17 +272,40 @@ class StridedSliceChecker(object):
   REF_TENSOR = np.arange(1, 19, dtype=np.float32).reshape(3, 2, 3)
   REF_TENSOR_ALIGNED = np.arange(1, 97, dtype=np.float32).reshape(3, 4, 8)
 
-  def __init__(self, test, x, tensor_type=tf.int32):
+  def __init__(self, test, x, tensor_type=tf.int32, check_type_infer=True):
     self.test = test
     self.x = tf.cast(tf.constant(x, dtype=tf.float32), dtype=tensor_type)
     self.x_np = np.array(x)
+    self.check_type_infer = check_type_infer
 
   def __getitem__(self, spec):
     op = self.x.__getitem__(spec)
+    if not isinstance(spec, (list, tuple)):
+      spec = [spec]
 
     tensor = op.eval()
-    self.test.assertAllEqual(self.x_np.__getitem__(spec), tensor)
-    self.test.assertAllEqual(tensor.shape, op.get_shape())
+
+    # Make a numpy spec that pre-evals the tensors
+    np_specs = []
+
+    def eval_if_tensor(x):
+      try:
+        return x.eval()
+      except AttributeError:
+        return x
+
+    for s in spec:
+      if isinstance(s, slice):
+        start = eval_if_tensor(s.start)
+        stop = eval_if_tensor(s.stop)
+        step = eval_if_tensor(s.step)
+        np_specs.append(slice(start, stop, step))
+      else:
+        np_specs.append(eval_if_tensor(s))
+
+    self.test.assertAllEqual(self.x_np.__getitem__(np_specs), tensor)
+    if self.check_type_infer:
+      self.test.assertAllEqual(tensor.shape, op.get_shape())
     return tensor
 
 
@@ -355,6 +378,21 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker[..., 3]
         _ = checker[:, 0]
         _ = checker[:, :, 0]
+
+  def testTensorIndexing(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
+                [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]]
+        checker = StridedSliceChecker(self, raw, check_type_infer=False)
+        bar = tf.constant(2)
+        bar2 = tf.constant(3)
+        _ = checker[..., bar:bar2]
+        _ = checker[..., bar]
+        with self.assertRaisesRegexp(TypeError,
+                                     "DataType float32 for attr 'Index'"):
+          _ = checker[..., 3.0]
+        _ = checker[..., 3]
 
   def testExpand(self):
     for use_gpu in [False, True]:
