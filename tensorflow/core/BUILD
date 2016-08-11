@@ -1559,6 +1559,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:concat_op",
         "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",
     ],

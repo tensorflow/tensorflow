@@ -81,36 +81,35 @@ void FindConstantFoldableNodes(const Graph* graph,
   std::vector<Node*>& nodes = *nodes_result;
   bool internal_node_inserted = false;
   // Walk the nodes in data flow order
-  ReverseDFS(*graph, nullptr,
-             [&nodes, &node_set, &internal_node_inserted, opts,
-              flib_def](Node* n) {
-               if (n->IsConstant()) {
-                 // Constants with no control inputs (except from _SOURCE node)
-                 // are definitely constant foldable.
-                 if (n->in_edges().size() == 0 ||
-                     (n->in_edges().size() == 1 &&
-                      (*n->in_edges().begin())->src()->IsSource())) {
-                   node_set.insert(n);
-                   nodes.push_back(n);
-                 }
-               } else if (IsConstantFoldable(flib_def, n, opts.consider)) {
-                 // Check whether the set of this node's in_nodes is completely
-                 // included in the set of constant foldable nodes. If true,
-                 // then this node is also constant foldable.
-                 bool all_parents_constant = true;
-                 for (const Node* parent : n->in_nodes()) {
-                   if (node_set.count(parent) == 0 && !parent->IsSource()) {
-                     all_parents_constant = false;
-                     break;
-                   }
-                 }
-                 if (all_parents_constant) {
-                   node_set.insert(n);
-                   nodes.push_back(n);
-                   internal_node_inserted = true;
-                 }
-               }
-             });
+  ReverseDFS(*graph, nullptr, [&nodes, &node_set, &internal_node_inserted, opts,
+                               flib_def](Node* n) {
+    if (n->IsConstant()) {
+      // Constants with no control inputs (except from _SOURCE node)
+      // are definitely constant foldable.
+      if (n->in_edges().size() == 0 ||
+          (n->in_edges().size() == 1 &&
+           (*n->in_edges().begin())->src()->IsSource())) {
+        node_set.insert(n);
+        nodes.push_back(n);
+      }
+    } else if (IsConstantFoldable(flib_def, n, opts.consider)) {
+      // Check whether the set of this node's in_nodes is completely
+      // included in the set of constant foldable nodes. If true,
+      // then this node is also constant foldable.
+      bool all_parents_constant = true;
+      for (const Node* parent : n->in_nodes()) {
+        if (node_set.count(parent) == 0 && !parent->IsSource()) {
+          all_parents_constant = false;
+          break;
+        }
+      }
+      if (all_parents_constant) {
+        node_set.insert(n);
+        nodes.push_back(n);
+        internal_node_inserted = true;
+      }
+    }
+  });
   // If we have inserted just leaf level nodes, then there is nothing to fold.
   if (!internal_node_inserted) {
     nodes.clear();
@@ -167,24 +166,21 @@ int64 UniqueConstantId() {
   return id.fetch_add(1);
 }
 
-Device* GetCPUDevice() {
-  static mutex mu;
-  static Device* device GUARDED_BY(mu) = nullptr;
-  mutex_lock l(mu);
-  if (!device) {
-    std::vector<Device*> devices;
-    Status s = DeviceFactory::GetFactory(DEVICE_CPU)
-                   ->CreateDevices(SessionOptions{}, "", &devices);
-    if (s.ok() && devices.size() > 0) {
-      device = devices[0];
-    }
+std::unique_ptr<Device> GetCPUDevice(Env* env) {
+  std::vector<Device*> devices;
+  SessionOptions session_options;
+  session_options.env = env;
+  Status s = DeviceFactory::GetFactory(DEVICE_CPU)
+                 ->CreateDevices(session_options, "", &devices);
+  if (s.ok() && devices.size() > 0) {
+    return std::unique_ptr<Device>(devices[0]);
   }
-  return device;
+  return nullptr;
 }
 
-thread::ThreadPool* GetThreadPool() {
+thread::ThreadPool* GetThreadPool(Env* env) {
   static thread::ThreadPool* thread_pool =
-      new thread::ThreadPool(Env::Default(), "Compute", 1);
+      new thread::ThreadPool(env, "Compute", 1);
   return thread_pool;
 }
 
@@ -314,11 +310,11 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
 }
 
 bool DoConstantFolding(const ConstantFoldingOptions& opts,
-                       FunctionLibraryRuntime* function_library,
+                       FunctionLibraryRuntime* function_library, Env* env,
                        Device* partition_device, Graph* graph) {
   DumpGraph("Before", graph);
-  Device* device = GetCPUDevice();
-  thread::ThreadPool* thread_pool = GetThreadPool();
+  std::unique_ptr<Device> device = GetCPUDevice(env);
+  thread::ThreadPool* thread_pool = GetThreadPool(env);
   if (!device || !thread_pool) {
     VLOG(1) << "Cannot find a device and/or a thread pool to do constant "
                "folding on";
@@ -382,11 +378,11 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts,
     thread_pool->Schedule(c);
   };
   LocalExecutorParams params;
-  params.device = device;
+  params.device = device.get();
   params.function_library = function_library;
-  params.create_kernel = [device, constant_graph](const NodeDef& ndef,
-                                                  OpKernel** kernel) {
-    return CreateNonCachedKernel(device, nullptr, ndef,
+  params.create_kernel = [&device, constant_graph](const NodeDef& ndef,
+                                                   OpKernel** kernel) {
+    return CreateNonCachedKernel(device.get(), nullptr, ndef,
                                  constant_graph->versions().producer(), kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
