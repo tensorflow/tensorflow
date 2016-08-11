@@ -31,6 +31,7 @@ import six
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
+from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
@@ -807,7 +808,8 @@ class Estimator(BaseEstimator):
       ValueError: if `metrics` don't match `targets`.
     """
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
-    result = {'loss': loss}
+    result = {'loss': metrics_lib.streaming_mean(loss)}
+
     metrics = metrics or {}
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.
