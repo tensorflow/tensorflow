@@ -69,10 +69,9 @@ for path in all_paths:
 
 if len(paths) == 1:
   print(paths[0])
-ret_paths = ""
-for path in paths:
-  ret_paths += path + " "
-print(ret_paths)
+else:
+  ret_paths = " ".join(paths)
+  print(ret_paths)
 END
 }
 
