@@ -331,3 +331,38 @@ tensorflow/contrib/makefile/gen
 
 Those directories can safely be removed, but you will have to start over with
 `download_dependencies.sh` once you delete them.
+
+### Fixing Makefile Issues
+
+Because the main development of TensorFlow is done using Bazel, changes to the
+codebase can sometimes break the makefile build process. If you find that tests
+relying on this makefile are failing with a change you're involved in, here are
+some trouble-shooting steps:
+
+ - Try to reproduce the issue on your platform. If you're on Linux, running 
+ `make -f tensorflow/contrib/makefile/Makefile` should be enough to recreate
+  most issues. For other platforms, see the sections earlier in this document.
+  
+ - The most common cause of breakages are files that have been added to the
+  Bazel build scripts, but that the makefile isn't aware of. Typical symptoms
+  of this include linker errors mentioning missing symbols or protobuf headers
+  that aren't found. To address these problems, take a look at the *.txt files
+  in `tensorflow/contrib/makefile`. If you have a new operator, you may need to
+  add it to `tf_op_files.txt`, or for a new proto to `tf_proto_files.txt`.
+
+ - There's also a wildcard system in `Makefile` that defines what core C++ files
+  are included in the library. This is designed to match the equivalent rule in
+  `tensorflow/core/BUILD`, so if you change the wildcards there to include new
+  files you'll need to also update `CORE_CC_ALL_SRCS` and `CORE_CC_EXCLUDE_SRCS`
+  in the makefile.
+  
+ - Some of the supported platforms use clang instead of gcc as their compiler,
+  so if you're hitting compile errors you may need to tweak your code to be more
+  friendly to different compilers by avoiding gcc extensions or idioms.
+  
+These are the most common reasons for makefile breakages, but it's also
+possible you may hit something unusual, like a platform incompatibility. For
+those, you'll need to see if you can reproduce the issue on that particular
+platform and debug it there. You can also reach out to the broader TensorFlow
+team by [filing a Github issue](https://github.com/tensorflow/tensorflow/issues)
+to ask for help.
