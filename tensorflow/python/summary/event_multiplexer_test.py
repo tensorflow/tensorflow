@@ -282,7 +282,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
 
 class EventMultiplexerWithRealAccumulatorTest(test_util.TensorFlowTestCase):
 
-  def testDeletingDirectoryDoesntThrowException(self):
+  def testDeletingDirectoryRemovesRun(self):
     x = event_multiplexer.EventMultiplexer()
     tmpdir = self.get_temp_dir()
     join = os.path.join
@@ -301,8 +301,8 @@ class EventMultiplexerWithRealAccumulatorTest(test_util.TensorFlowTestCase):
 
     # Delete the directory, then reload.
     shutil.rmtree(run2_dir)
-
     x.Reload()
+    self.assertNotIn('run2', x.Runs().keys())
 
 
 if __name__ == '__main__':

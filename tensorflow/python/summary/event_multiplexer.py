@@ -25,6 +25,7 @@ import six
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import io_wrapper
 
 
@@ -186,11 +187,19 @@ class EventMultiplexer(object):
     with self._accumulators_mutex:
       items = list(self._accumulators.items())
 
+    names_to_delete = set()
     for name, accumulator in items:
       try:
         accumulator.Reload()
       except (OSError, IOError) as e:
         logging.error("Unable to reload accumulator '%s': %s", name, e)
+      except directory_watcher.DirectoryDeletedError:
+        names_to_delete.add(name)
+
+    with self._accumulators_mutex:
+      for name in names_to_delete:
+        logging.warning("Deleting accumulator '%s'", name)
+        del self._accumulators[name]
     return self
 
   def FirstEventTimestamp(self, run):

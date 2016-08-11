@@ -78,6 +78,28 @@ class DirectoryWatcher(object):
 
     Yields:
       All values that have not been yielded yet.
+
+    Raises:
+      DirectoryDeletedError: If the directory has been permanently deleted
+        (as opposed to being temporarily unavailable).
+    """
+    try:
+      for event in self._LoadInternal():
+        yield event
+    except (IOError, OSError):
+      if not io_wrapper.Exists(self._directory):
+        raise DirectoryDeletedError(
+            'Directory %s has been permanently deleted' % self._directory)
+
+  def _LoadInternal(self):
+    """Internal implementation of Load().
+
+    The only difference between this and Load() is that the latter will throw
+    DirectoryDeletedError on I/O errors if it thinks that the directory has been
+    permanently deleted.
+
+    Yields:
+      All values that have not been yielded yet.
     """
 
     # If the loader exists, check it for a value.
@@ -219,3 +241,13 @@ class DirectoryWatcher(object):
       return True
     else:
       return False
+
+
+class DirectoryDeletedError(Exception):
+  """Thrown by Load() when the directory is *permanently* gone.
+
+  We distinguish this from temporary errors so that other code can decide to
+  drop all of our data only when a directory has been intentionally deleted,
+  as opposed to due to transient filesystem errors.
+  """
+  pass
