@@ -380,7 +380,7 @@ The format of the port mapping is `hostPort:containerPort`. You can specify any 
 To start a command-line interface:
 
 ```bash
-$ docker run -it -p 8888:8888 --name="tensor" --entrypoint=/bin/bash gcr.io/tensorflow/tensorflow
+$ docker run --rm -it -p 8888:8888 --name="tensor" --entrypoint=/bin/bash gcr.io/tensorflow/tensorflow
 ```
 
 
