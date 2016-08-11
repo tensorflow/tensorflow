@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -86,7 +87,8 @@ class Laplace(distribution.Distribution):
         self._name = name
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        self._batch_shape = self._ones().get_shape()
+        self._batch_shape = common_shapes.broadcast_shape(
+            self._loc.get_shape(), self._scale.get_shape())
         self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((loc, scale))
@@ -123,7 +125,7 @@ class Laplace(distribution.Distribution):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name):
-        return array_ops.shape(self._ones())
+        return array_ops.shape(self._loc + self._scale)
 
   def get_batch_shape(self):
     """`TensorShape` available at graph construction time.
@@ -315,12 +317,6 @@ class Laplace(distribution.Distribution):
   @property
   def is_reparameterized(self):
     return True
-
-  def _ones(self):
-    return array_ops.ones_like(self._loc + self._scale)
-
-  def _zeros(self):
-    return array_ops.zeros_like(self._loc + self._scale)
 
   @property
   def is_continuous(self):

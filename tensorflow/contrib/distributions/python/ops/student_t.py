@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -129,7 +130,9 @@ class StudentT(distribution.Distribution):
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._mu, self._sigma))
       self._name = scope
-      self._get_batch_shape = self._ones().get_shape()
+      self._get_batch_shape = common_shapes.broadcast_shape(
+          self._sigma.get_shape(), common_shapes.broadcast_shape(
+              self._df.get_shape(), self._mu.get_shape()))
       self._get_event_shape = tensor_shape.TensorShape([])
 
   @property

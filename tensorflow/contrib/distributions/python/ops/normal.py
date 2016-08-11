@@ -23,6 +23,7 @@ import math
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.distributions.python.ops import kullback_leibler  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -116,7 +117,8 @@ class Normal(distribution.Distribution):
         self._name = name
         self._mu = array_ops.identity(mu, name="mu")
         self._sigma = array_ops.identity(sigma, name="sigma")
-        self._batch_shape = self._ones().get_shape()
+        self._batch_shape = common_shapes.broadcast_shape(
+            self._mu.get_shape(), self._sigma.get_shape())
         self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((mu, sigma))
@@ -152,8 +154,8 @@ class Normal(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return array_ops.shape(self._ones())
+      with ops.name_scope(name, values=[self._mu, self._sigma]):
+        return array_ops.shape(self._mu + self._sigma)
 
   def get_batch_shape(self):
     """`TensorShape` available at graph construction time.
@@ -319,7 +321,8 @@ class Normal(distribution.Distribution):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[self._mu, self._sigma, n]):
-        broadcast_shape = (self._mu + self._sigma).get_shape()
+        broadcast_shape = common_shapes.broadcast_shape(
+            self._mu.get_shape(), self._sigma.get_shape())
         n = ops.convert_to_tensor(n)
         shape = array_ops.concat(0, ([n], array_ops.shape(self.mean())))
         sampled = random_ops.random_normal(
@@ -335,12 +338,6 @@ class Normal(distribution.Distribution):
   @property
   def is_reparameterized(self):
     return True
-
-  def _ones(self):
-    return array_ops.ones_like(self._mu + self._sigma)
-
-  def _zeros(self):
-    return array_ops.zeros_like(self._mu + self._sigma)
 
   @property
   def is_continuous(self):
