@@ -127,8 +127,8 @@ struct Point {
   // made.
   //
   // start_timestamp must not be younger than end_timestamp.
-  int64 start_timestamp_millis;
-  int64 end_timestamp_millis;
+  uint64 start_timestamp_millis;
+  uint64 end_timestamp_millis;
 };
 
 // A set of points belonging to a metric.

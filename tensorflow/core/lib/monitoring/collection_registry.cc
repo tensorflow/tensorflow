@@ -21,10 +21,10 @@ namespace tensorflow {
 namespace monitoring {
 namespace internal {
 
-void Collector::CollectMetric(
-    const AbstractMetricDef* const metric_def,
-    const CollectionRegistry::CollectionFunction& collection_function) {
-  collection_function(MetricCollectorGetter(this, metric_def));
+void Collector::CollectMetricValues(
+    const CollectionRegistry::CollectionInfo& info) {
+  info.collection_function(MetricCollectorGetter(
+      this, info.metric_def, info.registration_time_millis));
 }
 
 std::unique_ptr<CollectedMetrics> Collector::ConsumeCollectedMetrics() {
@@ -56,10 +56,14 @@ void Collector::CollectMetricDescriptor(
 
 }  // namespace internal
 
+// static
 CollectionRegistry* CollectionRegistry::Default() {
-  static CollectionRegistry* default_registry = new CollectionRegistry();
+  static CollectionRegistry* default_registry =
+      new CollectionRegistry(Env::Default());
   return default_registry;
 }
+
+CollectionRegistry::CollectionRegistry(Env* const env) : env_(env) {}
 
 std::unique_ptr<CollectionRegistry::RegistrationHandle>
 CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
@@ -74,7 +78,9 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
     LOG(FATAL) << "Cannot register 2 metrics with the same name: "
                << metric_def->name();
   }
-  registry_.insert({metric_def->name(), {metric_def, collection_function}});
+  registry_.insert(
+      {metric_def->name(),
+       {metric_def, collection_function, env_->NowMicros() / 1000}});
 
   return std::unique_ptr<RegistrationHandle>(
       new RegistrationHandle(this, metric_def));
@@ -85,12 +91,17 @@ void CollectionRegistry::Unregister(const AbstractMetricDef* const metric_def) {
   registry_.erase(metric_def->name());
 }
 
-std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics() {
-  internal::Collector collector;
+std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics(
+    const CollectMetricsOptions& options) const {
+  internal::Collector collector(env_->NowMicros() / 1000);
+
   mutex_lock l(mu_);
   for (const auto& registration : registry_) {
-    collector.CollectMetric(registration.second.metric_def,
-                            registration.second.collection_function);
+    if (options.collect_metric_descriptors) {
+      collector.CollectMetricDescriptor(registration.second.metric_def);
+    }
+
+    collector.CollectMetricValues(registration.second /* collection_info */);
   }
   return collector.ConsumeCollectedMetrics();
 }

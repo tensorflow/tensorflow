@@ -16,11 +16,24 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace monitoring {
+
+namespace test_util {
+
+class CollectionRegistryTestAccess {
+ public:
+  static std::unique_ptr<CollectionRegistry> CreateRegistry(Env* const env) {
+    return std::unique_ptr<CollectionRegistry>(new CollectionRegistry(env));
+  }
+};
+
+}  // namespace test_util
+
 namespace {
 
 void EmptyCollectionFunction(MetricCollectorGetter getter) {}
@@ -74,58 +87,138 @@ TEST(CollectMetricsTest, Counter) {
   counter_with_labels->GetCell("Label01", "Label11")->IncrementBy(58);
   counter_without_labels->GetCell()->IncrementBy(7);
 
-  auto* collection_registry = CollectionRegistry::Default();
-  const std::unique_ptr<CollectedMetrics> collected_metrics =
-      collection_registry->CollectMetrics();
+  for (const bool collect_metric_descriptors : {true, false}) {
+    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
+                                 collect_metric_descriptors));
 
-  ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+    auto* collection_registry = CollectionRegistry::Default();
+    CollectionRegistry::CollectMetricsOptions options;
+    options.collect_metric_descriptors = collect_metric_descriptors;
+    const std::unique_ptr<CollectedMetrics> collected_metrics =
+        collection_registry->CollectMetrics(options);
 
-  const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
-      "/tensorflow/test/counter_with_labels");
-  EXPECT_EQ("/tensorflow/test/counter_with_labels", ld.name);
-  EXPECT_EQ("Counter with one label.", ld.description);
-  ASSERT_EQ(2, ld.label_names.size());
-  EXPECT_EQ("MyLabel0", ld.label_names[0]);
-  EXPECT_EQ("MyLabel1", ld.label_names[1]);
-  EXPECT_EQ(MetricKind::kCumulative, ld.metric_kind);
-  EXPECT_EQ(ValueType::kInt64, ld.value_type);
+    if (collect_metric_descriptors) {
+      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
 
-  const MetricDescriptor& ud = *collected_metrics->metric_descriptor_map.at(
-      "/tensorflow/test/counter_without_labels");
-  EXPECT_EQ("/tensorflow/test/counter_without_labels", ud.name);
-  EXPECT_EQ("Counter without any labels.", ud.description);
-  ASSERT_EQ(0, ud.label_names.size());
-  EXPECT_EQ(MetricKind::kCumulative, ud.metric_kind);
-  EXPECT_EQ(ValueType::kInt64, ud.value_type);
+      const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
+          "/tensorflow/test/counter_with_labels");
+      EXPECT_EQ("/tensorflow/test/counter_with_labels", ld.name);
+      EXPECT_EQ("Counter with one label.", ld.description);
+      ASSERT_EQ(2, ld.label_names.size());
+      EXPECT_EQ("MyLabel0", ld.label_names[0]);
+      EXPECT_EQ("MyLabel1", ld.label_names[1]);
+      EXPECT_EQ(MetricKind::kCumulative, ld.metric_kind);
+      EXPECT_EQ(ValueType::kInt64, ld.value_type);
 
-  ASSERT_EQ(2, collected_metrics->point_set_map.size());
+      const MetricDescriptor& ud = *collected_metrics->metric_descriptor_map.at(
+          "/tensorflow/test/counter_without_labels");
+      EXPECT_EQ("/tensorflow/test/counter_without_labels", ud.name);
+      EXPECT_EQ("Counter without any labels.", ud.description);
+      ASSERT_EQ(0, ud.label_names.size());
+      EXPECT_EQ(MetricKind::kCumulative, ud.metric_kind);
+      EXPECT_EQ(ValueType::kInt64, ud.value_type);
+    } else {
+      EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
+    }
 
-  const PointSet& lps = *collected_metrics->point_set_map.at(
-      "/tensorflow/test/counter_with_labels");
-  EXPECT_EQ("/tensorflow/test/counter_with_labels", lps.metric_name);
-  ASSERT_EQ(2, lps.points.size());
-  ASSERT_EQ(2, lps.points[0]->labels.size());
-  EXPECT_EQ("MyLabel0", lps.points[0]->labels[0].name);
-  EXPECT_EQ("Label00", lps.points[0]->labels[0].value);
-  EXPECT_EQ("MyLabel1", lps.points[0]->labels[1].name);
-  EXPECT_EQ("Label10", lps.points[0]->labels[1].value);
-  EXPECT_EQ(ValueType::kInt64, lps.points[0]->value_type);
-  EXPECT_EQ(42, lps.points[0]->int64_value);
-  ASSERT_EQ(2, lps.points[1]->labels.size());
-  EXPECT_EQ("MyLabel0", lps.points[1]->labels[0].name);
-  EXPECT_EQ("Label01", lps.points[1]->labels[0].value);
-  EXPECT_EQ("MyLabel1", lps.points[1]->labels[1].name);
-  EXPECT_EQ("Label11", lps.points[1]->labels[1].value);
-  EXPECT_EQ(ValueType::kInt64, lps.points[1]->value_type);
-  EXPECT_EQ(58, lps.points[1]->int64_value);
+    ASSERT_EQ(2, collected_metrics->point_set_map.size());
 
-  const PointSet& ups = *collected_metrics->point_set_map.at(
-      "/tensorflow/test/counter_without_labels");
-  EXPECT_EQ("/tensorflow/test/counter_without_labels", ups.metric_name);
-  ASSERT_EQ(1, ups.points.size());
-  EXPECT_EQ(0, ups.points[0]->labels.size());
-  EXPECT_EQ(ValueType::kInt64, ups.points[0]->value_type);
-  EXPECT_EQ(7, ups.points[0]->int64_value);
+    const PointSet& lps = *collected_metrics->point_set_map.at(
+        "/tensorflow/test/counter_with_labels");
+    EXPECT_EQ("/tensorflow/test/counter_with_labels", lps.metric_name);
+    ASSERT_EQ(2, lps.points.size());
+    ASSERT_EQ(2, lps.points[0]->labels.size());
+    EXPECT_EQ("MyLabel0", lps.points[0]->labels[0].name);
+    EXPECT_EQ("Label00", lps.points[0]->labels[0].value);
+    EXPECT_EQ("MyLabel1", lps.points[0]->labels[1].name);
+    EXPECT_EQ("Label10", lps.points[0]->labels[1].value);
+    EXPECT_EQ(ValueType::kInt64, lps.points[0]->value_type);
+    EXPECT_EQ(42, lps.points[0]->int64_value);
+    EXPECT_LT(0, lps.points[0]->start_timestamp_millis);
+    EXPECT_LT(0, lps.points[0]->end_timestamp_millis);
+    EXPECT_GE(lps.points[0]->end_timestamp_millis,
+              lps.points[0]->start_timestamp_millis);
+    ASSERT_EQ(2, lps.points[1]->labels.size());
+    EXPECT_EQ("MyLabel0", lps.points[1]->labels[0].name);
+    EXPECT_EQ("Label01", lps.points[1]->labels[0].value);
+    EXPECT_EQ("MyLabel1", lps.points[1]->labels[1].name);
+    EXPECT_EQ("Label11", lps.points[1]->labels[1].value);
+    EXPECT_EQ(ValueType::kInt64, lps.points[1]->value_type);
+    EXPECT_EQ(58, lps.points[1]->int64_value);
+    EXPECT_LT(0, lps.points[1]->start_timestamp_millis);
+    EXPECT_LT(0, lps.points[1]->end_timestamp_millis);
+    EXPECT_GE(lps.points[1]->end_timestamp_millis,
+              lps.points[1]->start_timestamp_millis);
+
+    const PointSet& ups = *collected_metrics->point_set_map.at(
+        "/tensorflow/test/counter_without_labels");
+    EXPECT_EQ("/tensorflow/test/counter_without_labels", ups.metric_name);
+    ASSERT_EQ(1, ups.points.size());
+    EXPECT_EQ(0, ups.points[0]->labels.size());
+    EXPECT_EQ(ValueType::kInt64, ups.points[0]->value_type);
+    EXPECT_EQ(7, ups.points[0]->int64_value);
+    EXPECT_LT(0, ups.points[0]->start_timestamp_millis);
+    EXPECT_LT(0, ups.points[0]->end_timestamp_millis);
+    EXPECT_GE(ups.points[0]->end_timestamp_millis,
+              ups.points[0]->start_timestamp_millis);
+  }
+}
+
+// A FakeClockEnv to manually advance time.
+class FakeClockEnv : public EnvWrapper {
+ public:
+  FakeClockEnv() : EnvWrapper(Env::Default()), current_millis_(0) {}
+
+  // Manually advance the current time by 'millis' milliseconds.
+  void AdvanceByMillis(const uint64 millis) { current_millis_ += millis; }
+
+  // Method that this environment specifically overrides.
+  uint64 NowMicros() override { return current_millis_ * 1000; }
+
+ private:
+  uint64 current_millis_;
+};
+
+TEST(CollectionRegistryTest, WriteTimestamps) {
+  FakeClockEnv fake_clock_env;
+  auto collection_registry =
+      test_util::CollectionRegistryTestAccess::CreateRegistry(&fake_clock_env);
+
+  fake_clock_env.AdvanceByMillis(25);
+  {
+    const MetricDef<MetricKind::kCumulative, int64, 0> cumulative_metric(
+        "/tensorflow/cumulative/metric", "An example metric with no labels.");
+    auto handle = collection_registry->Register(
+        &cumulative_metric, [&](MetricCollectorGetter getter) {
+          auto metric_collector = getter.Get(&cumulative_metric);
+          metric_collector.CollectValue({}, 42);
+        });
+    fake_clock_env.AdvanceByMillis(75);
+    const std::unique_ptr<CollectedMetrics> collected_metrics =
+        collection_registry->CollectMetrics({});
+    const PointSet& point_set =
+        *collected_metrics->point_set_map.at("/tensorflow/cumulative/metric");
+    ASSERT_EQ(1, point_set.points.size());
+    EXPECT_EQ(25, point_set.points[0]->start_timestamp_millis);
+    EXPECT_EQ(100, point_set.points[0]->end_timestamp_millis);
+  }
+  {
+    const MetricDef<MetricKind::kGauge, int64, 0> gauge_metric(
+        "/tensorflow/gauge/metric", "An example metric with no labels.");
+    auto handle = collection_registry->Register(
+        &gauge_metric, [&](MetricCollectorGetter getter) {
+          auto metric_collector = getter.Get(&gauge_metric);
+          metric_collector.CollectValue({}, 42);
+        });
+    fake_clock_env.AdvanceByMillis(75);
+    const std::unique_ptr<CollectedMetrics> collected_metrics =
+        collection_registry->CollectMetrics({});
+    const PointSet& point_set =
+        *collected_metrics->point_set_map.at("/tensorflow/gauge/metric");
+    ASSERT_EQ(1, point_set.points.size());
+    EXPECT_EQ(175, point_set.points[0]->start_timestamp_millis);
+    EXPECT_EQ(175, point_set.points[0]->end_timestamp_millis);
+  }
 }
 
 }  // namespace
