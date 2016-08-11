@@ -763,7 +763,9 @@ def _PackShape(op):
     input_shape = input_shape.merge_with(inp.get_shape())
 
   input_shape = input_shape.as_list()
-  input_shape.insert(op.get_attr("axis"), len(op.inputs))
+  axis = op.get_attr("axis")
+  if axis < 0: axis += len(input_shape) + 1
+  input_shape.insert(axis, len(op.inputs))
   return [tensor_shape.TensorShape(input_shape)]
 
 

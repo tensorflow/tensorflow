@@ -419,10 +419,11 @@ class Examples {
       // num_examples here, as empirically Shard() creates the right amount of
       // threads based on the problem size.
       // TODO(sibyl-Aix6ihai): Tune this as a function of dataset size.
+      const int64 kCostPerUnit = num_examples;
       const DeviceBase::CpuWorkerThreads& worker_threads =
           *context->device()->tensorflow_cpu_worker_threads();
       Shard(worker_threads.num_threads, worker_threads.workers,
-            num_sparse_features, num_examples, parse_partition);
+            num_sparse_features, kCostPerUnit, parse_partition);
     }
 
     {  // Parse dense.
@@ -438,6 +439,7 @@ class Examples {
           }
         }
       };
+      // TODO(sibyl-Aix6ihai): Tune this as a function of dataset size.
       const int64 kCostPerUnit = num_examples;
       const DeviceBase::CpuWorkerThreads& worker_threads =
           *context->device()->tensorflow_cpu_worker_threads();
@@ -472,11 +474,12 @@ class Examples {
         }
       };
       // TODO(sibyl-Aix6ihai): Compute the cost optimally.
+      const int64 kCostPerUnit =
+          num_examples * (num_dense_features + num_sparse_features);
       const DeviceBase::CpuWorkerThreads& worker_threads =
           *context->device()->tensorflow_cpu_worker_threads();
       Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
-            num_examples * (num_dense_features + num_sparse_features),
-            compute_example_norm);
+            kCostPerUnit, compute_example_norm);
     }
     return result;
   }
@@ -631,26 +634,30 @@ class SdcaShrinkL1 : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    OpMutableInputList sparse_weights_inputs;
-    OP_REQUIRES_OK(context, context->mutable_input_list(
-                                "sparse_weights", &sparse_weights_inputs));
+    OpMutableInputList weights_inputs;
+    OP_REQUIRES_OK(context,
+                   context->mutable_input_list("weights", &weights_inputs));
 
-    OpMutableInputList dense_weights_inputs;
-    OP_REQUIRES_OK(context, context->mutable_input_list("dense_weights",
-                                                        &dense_weights_inputs));
-
-    auto shrink_l1 = [&](OpMutableInputList* const inputs) {
-      // TODO(sibyl-Mooth6ku): Maybe parallelize this.
-      for (int i = 0; i < inputs->size(); ++i) {
-        auto prox_w = inputs->at(i, /*lock_held=*/true).flat<float>();
+    auto do_work = [&](const int64 begin, const int64 end) {
+      for (int i = begin; i < end; ++i) {
+        auto prox_w = weights_inputs.at(i, /*lock_held=*/true).flat<float>();
         prox_w.device(context->eigen_cpu_device()) =
             regularizations_.EigenShrink(prox_w);
       }
     };
 
-    // Shrink both sparse, and dense weights.
-    shrink_l1(&sparse_weights_inputs);
-    shrink_l1(&dense_weights_inputs);
+    if (weights_inputs.size() > 0) {
+      int64 num_weights = 0;
+      for (int i = 0; i < weights_inputs.size(); ++i) {
+        num_weights += weights_inputs.at(i, /*lock_held=*/true).NumElements();
+      }
+      // TODO(sibyl-Aix6ihai): Tune this value.
+      const int64 kCostPerUnit = (num_weights * 50) / weights_inputs.size();
+      const DeviceBase::CpuWorkerThreads& worker_threads =
+          *context->device()->tensorflow_cpu_worker_threads();
+      Shard(worker_threads.num_threads, worker_threads.workers,
+            weights_inputs.size(), kCostPerUnit, do_work);
+    }
   }
 
  private:

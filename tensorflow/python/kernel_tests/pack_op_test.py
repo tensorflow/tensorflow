@@ -124,7 +124,9 @@ class PackOpTest(tf.test.TestCase):
         test_arrays = np_split_sqeeze(expected, j)
 
         with self.test_session():
-          actual = tf.pack(test_arrays, axis=j).eval()
+          actual = tf.pack(test_arrays, axis=j)
+          self.assertEqual(expected.shape, actual.get_shape())
+          actual = actual.eval()
 
         self.assertNDArrayNear(expected, actual, 1e-6)
 

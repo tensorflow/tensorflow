@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -96,10 +97,8 @@ class Gamma(distribution.Distribution):
         alpha = array_ops.identity(alpha, name="alpha")
         beta = array_ops.identity(beta, name="beta")
 
-        contrib_tensor_util.assert_same_float_dtype((alpha, beta))
-        self._broadcast_tensor = alpha + beta
-
-    self._get_batch_shape = self._broadcast_tensor.get_shape()
+    self._get_batch_shape = common_shapes.broadcast_shape(
+        alpha.get_shape(), beta.get_shape())
     self._get_event_shape = tensor_shape.TensorShape([])
 
     self._alpha = alpha
@@ -148,8 +147,8 @@ class Gamma(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._broadcast_tensor]):
-        return array_ops.shape(self._broadcast_tensor)
+      with ops.name_scope(name, values=[self._alpha, self._beta]):
+        return array_ops.shape(self._alpha + self._beta)
 
   def get_batch_shape(self):
     """`TensorShape` available at graph construction time.

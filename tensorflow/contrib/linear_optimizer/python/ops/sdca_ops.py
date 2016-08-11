@@ -373,6 +373,9 @@ class SdcaModel(object):
         num_shards=num_table_shards,
         default_value=[0.0, 0.0, 0.0, 0.0])
 
+  def _symmetric_l1_regularization(self):
+    return self._options['symmetric_l1_regularization']
+
   def _symmetric_l2_regularization(self):
     # Algorithmic requirement (for now) is to have minimal l2 of 1.0.
     return max(self._options['symmetric_l2_regularization'], 1.0)
@@ -546,15 +549,17 @@ class SdcaModel(object):
 
           # Apply proximal step.
           with ops.control_dependencies([update_group]):
-            shrink_l1 = _sdca_ops.sdca_shrink_l1(
-                self._convert_n_to_tensor(
-                    self._variables['sparse_features_weights'],
-                    as_ref=True),
-                self._convert_n_to_tensor(
-                    self._variables['dense_features_weights'],
-                    as_ref=True),
-                l1=self._options['symmetric_l1_regularization'],
-                l2=self._symmetric_l2_regularization())
+            shrink_ops = []
+            for name in ['sparse_features_weights', 'dense_features_weights']:
+              for var in self._variables[name]:
+                with ops.device(var.device):
+                  shrink_ops.append(
+                      _sdca_ops.sdca_shrink_l1(
+                          self._convert_n_to_tensor(
+                              [var], as_ref=True),
+                          l1=self._symmetric_l1_regularization(),
+                          l2=self._symmetric_l2_regularization()))
+            shrink_l1 = control_flow_ops.group(*shrink_ops)
       if not global_step:
         return shrink_l1
       with ops.control_dependencies([shrink_l1]):

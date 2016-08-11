@@ -80,11 +80,8 @@ def ParseEventFilesSpec(logdir):
     else:
       run_name = None
       path = specification
-
-    if not os.path.isabs(path) and not gcs.IsGCSPath(path):
-      # Create absolute path out of relative one.
-      path = os.path.join(os.path.realpath('.'), path)
-
+    if not gcs.IsGCSPath(path):
+      path = os.path.realpath(os.path.expanduser(path))
     files[path] = run_name
   return files
 
