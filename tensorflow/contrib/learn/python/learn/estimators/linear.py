@@ -27,20 +27,6 @@ from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixi
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.platform import tf_logging as logging
-
-
-# TODO(b/29580537): Replace with @changing decorator.
-def _changing(feature_columns):
-  if feature_columns is not None:
-    return
-  logging.warn(
-      "Change warning: `feature_columns` will be required after 2016-08-01.\n"
-      "Instructions for updating:\n"
-      "Pass `tf.contrib.learn.infer_real_valued_columns_from_input(x)` or"
-      " `tf.contrib.learn.infer_real_valued_columns_from_input_fn(input_fn)`"
-      " as `feature_columns`, where `x` or `input_fn` is your argument to"
-      " `fit`, `evaluate`, or `predict`.")
 
 
 class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
@@ -108,7 +94,7 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   """
 
   def __init__(self,
-               feature_columns=None,
+               feature_columns,
                model_dir=None,
                n_classes=2,
                weight_column_name=None,
@@ -143,7 +129,6 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     Returns:
       A `LinearClassifier` estimator.
     """
-    _changing(feature_columns)
     super(LinearClassifier, self).__init__(
         model_dir=model_dir,
         n_classes=n_classes,
@@ -155,23 +140,8 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         config=config)
     self._feature_columns_inferred = False
 
-  # TODO(b/29580537): Remove feature_columns inference.
-  def _validate_linear_feature_columns(self, features):
-    if self._linear_feature_columns is None:
-      self._linear_feature_columns = layers.infer_real_valued_columns(features)
-      self._feature_columns_inferred = True
-    elif self._feature_columns_inferred:
-      this_dict = {c.name: c for c in self._linear_feature_columns}
-      that_dict = {
-          c.name: c for c in layers.infer_real_valued_columns(features)
-      }
-      if this_dict != that_dict:
-        raise ValueError(
-            "Feature columns, expected %s, got %s.", (this_dict, that_dict))
-
   def _get_train_ops(self, features, targets):
     """See base class."""
-    self._validate_linear_feature_columns(features)
     if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
       return super(LinearClassifier, self)._get_train_ops(features, targets)
 
@@ -197,16 +167,6 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
         self._loss_type(), features, targets, columns_to_variables, global_step)
 
     return train_ops, loss
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    self._validate_linear_feature_columns(features)
-    return super(LinearClassifier, self)._get_eval_ops(features, targets,
-                                                       metrics)
-
-  def _get_predict_ops(self, features):
-    """See base class."""
-    self._validate_linear_feature_columns(features)
-    return super(LinearClassifier, self)._get_predict_ops(features)
 
   def _loss_type(self):
     return "logistic_loss"
@@ -268,7 +228,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """
 
   def __init__(self,
-               feature_columns=None,
+               feature_columns,
                model_dir=None,
                weight_column_name=None,
                optimizer=None,
@@ -302,7 +262,6 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `LinearRegressor` estimator.
     """
-    _changing(feature_columns)
     super(LinearRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
@@ -314,36 +273,11 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         config=config)
     self._feature_columns_inferred = False
 
-  # TODO(b/29580537): Remove feature_columns inference.
-  def _validate_linear_feature_columns(self, features):
-    if self._linear_feature_columns is None:
-      self._linear_feature_columns = layers.infer_real_valued_columns(features)
-      self._feature_columns_inferred = True
-    elif self._feature_columns_inferred:
-      this_dict = {c.name: c for c in self._linear_feature_columns}
-      that_dict = {
-          c.name: c for c in layers.infer_real_valued_columns(features)
-      }
-      if this_dict != that_dict:
-        raise ValueError(
-            "Feature columns, expected %s, got %s.", (this_dict, that_dict))
-
   def _get_train_ops(self, features, targets):
     """See base class."""
     if isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
       raise ValueError("SDCAOptimizer does not currently support regression.")
-    self._validate_linear_feature_columns(features)
     return super(LinearRegressor, self)._get_train_ops(features, targets)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    self._validate_linear_feature_columns(features)
-    return super(LinearRegressor, self)._get_eval_ops(features, targets,
-                                                      metrics)
-
-  def _get_predict_ops(self, features):
-    """See base class."""
-    self._validate_linear_feature_columns(features)
-    return super(LinearRegressor, self)._get_predict_ops(features)
 
   @property
   def weights_(self):
