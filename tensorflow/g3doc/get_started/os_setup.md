@@ -371,13 +371,18 @@ image as follows.
 
 ```bash
 $ docker run -d -p 8888:8888 --name="tensor" gcr.io/tensorflow/tensorflow
-
-$ docker exec -it tensor bash
 ```
 
 The option `-p 8888:8888` is used to publish the Docker container᾿s internal port to the host machine, in this case to ensure Jupyter notebook connection.
 
 The format of the port mapping is `hostPort:containerPort`. You can specify any valid port number for the host port but have to use `8888` for the container port portion.
+
+To start a command-line interface:
+
+```bash
+$ docker run -it -p 8888:8888 --name="tensor" --entrypoint=/bin/bash gcr.io/tensorflow/tensorflow
+```
+
 
 For NVidia GPU support install latest NVidia drivers and
 [nvidia-docker](https://github.com/NVIDIA/nvidia-docker).
