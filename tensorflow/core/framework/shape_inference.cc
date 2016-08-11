@@ -81,7 +81,7 @@ InferenceContext::InferenceContext(
   }
   if (inputs_.size() != num_inputs_from_node_def) {
     construction_status_ = errors::InvalidArgument(
-        "Wrong number of arguments passed: ", inputs_.size(), " while ",
+        "Wrong number of inputs passed: ", inputs_.size(), " while ",
         num_inputs_from_node_def, " expected based on NodeDef");
     return;
   }

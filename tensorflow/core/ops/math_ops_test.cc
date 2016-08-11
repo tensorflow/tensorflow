@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -27,10 +28,10 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
-    TF_CHECK_OK(NodeDefBuilder("test", "AddN")
-                    .Input(src_list)
-                    .Attr("N", n)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "AddN")
+                     .Input(src_list)
+                     .Attr("N", n)
+                     .Finalize(&op.node_def));
   };
 
   set_n(2);
@@ -350,12 +351,12 @@ TEST(MathOpsTest, SparseSegmentGrad_ShapeFn) {
 TEST(MathOpsTest, BatchMatMul_ShapeFn) {
   ShapeInferenceTestOp op("BatchMatMul");
   auto set_adj = [&op](bool adj_x, bool adj_y) {
-    TF_CHECK_OK(NodeDefBuilder("test", "BatchMatMul")
-                    .Input({"a", 0, DT_FLOAT})
-                    .Input({"b", 0, DT_FLOAT})
-                    .Attr("adj_x", adj_x)
-                    .Attr("adj_y", adj_y)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "BatchMatMul")
+                     .Input({"a", 0, DT_FLOAT})
+                     .Input({"b", 0, DT_FLOAT})
+                     .Attr("adj_x", adj_x)
+                     .Attr("adj_y", adj_y)
+                     .Finalize(&op.node_def));
   };
 
   set_adj(false, false);

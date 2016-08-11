@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -30,46 +31,6 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
-
-// Parses the attributes passed to ParseSingleExample.
-// REQUIRES: Init must be called after construction.
-class ParseSingleExampleAttrs {
- public:
-  template <typename ContextType>
-  Status Init(ContextType* ctx) {
-    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_types", &sparse_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Ndense", &num_dense));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Nsparse", &num_sparse));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Tdense", &dense_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_shapes", &dense_shapes));
-
-    if (static_cast<size_t>(num_sparse) != sparse_types.size()) {
-      return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
-    }
-    if (static_cast<size_t>(num_dense) != dense_types.size()) {
-      return errors::InvalidArgument("len(dense_keys) != len(dense_types)");
-    }
-    if (static_cast<size_t>(num_dense) != dense_shapes.size()) {
-      return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
-    }
-    if (num_dense > std::numeric_limits<int32>::max()) {
-      return errors::InvalidArgument("num_dense_ too large");
-    }
-    for (const DataType& type : dense_types) {
-      TF_RETURN_IF_ERROR(CheckValidType(type));
-    }
-    for (const DataType& type : sparse_types) {
-      TF_RETURN_IF_ERROR(CheckValidType(type));
-    }
-    return Status::OK();
-  }
-
-  int64 num_sparse;
-  int64 num_dense;
-  std::vector<DataType> sparse_types;
-  std::vector<DataType> dense_types;
-  std::vector<TensorShape> dense_shapes;
-};
 
 class ExampleParserOp : public OpKernel {
  public:
@@ -284,81 +245,6 @@ class ExampleParserOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ParseExample").Device(DEVICE_CPU),
                         ExampleParserOp);
-
-// Parses the attributes passed to ParseSingleSequenceExample.
-// REQUIRES: Init must be called after construction.
-class ParseSingleSequenceExampleAttrs {
- public:
-  template <typename ContextType>
-  Status Init(ContextType* ctx) {
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("context_sparse_types", &context_sparse_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_dense", &num_context_dense));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("Nfeature_list_dense", &num_feature_list_dense));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_sparse", &num_context_sparse));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Tcontext_dense", &context_dense_types));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_sparse_types", &feature_list_sparse_types));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_dense_types", &feature_list_dense_types));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("Nfeature_list_sparse", &num_feature_list_sparse));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("context_dense_shapes", &context_dense_shapes));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_dense_shapes", &feature_list_dense_shapes));
-
-    if (static_cast<size_t>(num_context_sparse) !=
-        context_sparse_types.size()) {
-      return errors::InvalidArgument(
-          "len(context_sparse_keys) != len(context_sparse_types)");
-    }
-    if (static_cast<size_t>(num_context_dense) != context_dense_types.size()) {
-      return errors::InvalidArgument(
-          "len(context_dense_keys) != len(context_dense_types)");
-    }
-    if (static_cast<size_t>(num_context_dense) != context_dense_shapes.size()) {
-      return errors::InvalidArgument(
-          "len(context_dense_keys) != len(context_dense_shapes)");
-    }
-    if (static_cast<size_t>(num_feature_list_sparse) !=
-        feature_list_sparse_types.size()) {
-      return errors::InvalidArgument(
-          "len(feature_list_sparse_keys) != len(feature_list_sparse_types)");
-    }
-    if (static_cast<size_t>(num_feature_list_dense) !=
-        feature_list_dense_types.size()) {
-      return errors::InvalidArgument(
-          "len(feature_list_dense_keys) != "
-          "len(feature_list_dense_types)");
-    }
-    for (const DataType& type : context_dense_types) {
-      TF_RETURN_IF_ERROR(CheckValidType(type));
-    }
-    for (const DataType& type : context_sparse_types) {
-      TF_RETURN_IF_ERROR(CheckValidType(type));
-    }
-    for (const DataType& type : feature_list_dense_types) {
-      TF_RETURN_IF_ERROR(CheckValidType(type));
-    }
-    for (const DataType& type : feature_list_sparse_types) {
-      TF_RETURN_IF_ERROR(CheckValidType(type));
-    }
-    return Status::OK();
-  }
-
-  int64 num_context_sparse;
-  int64 num_context_dense;
-  int64 num_feature_list_sparse;
-  int64 num_feature_list_dense;
-  std::vector<DataType> context_sparse_types;
-  std::vector<DataType> context_dense_types;
-  std::vector<TensorShape> context_dense_shapes;
-  std::vector<DataType> feature_list_sparse_types;
-  std::vector<DataType> feature_list_dense_types;
-  std::vector<TensorShape> feature_list_dense_shapes;
-};
 
 class SingleSequenceExampleParserOp : public OpKernel {
  public:
