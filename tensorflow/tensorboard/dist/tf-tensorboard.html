@@ -99,7 +99,7 @@ var TF;
     var Globals;
     (function (Globals) {
         // The names of TensorBoard tabs.
-        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'distributions'];
+        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'distributions', 'histograms'];
         // If true, TensorBoard stores its hash in the URI state.
         // If false, tab switching in TensorBoard will not update location hash,
         // because hash updates interfere with wct_tests.
@@ -1681,19 +1681,23 @@ var Categorizer;
         position: relative;
       }
 
-      .card .card-title {
+      .card .card-title, .card .card-subtitle {
         flex-grow: 0;
         flex-shrink: 0;
-        margin-bottom: 10px;
         font-size: 14px;
         text-overflow: ellipsis;
         overflow: hidden;
+      }
+
+      .card .card-subtitle {
+        font-size: 12px;
       }
 
       .card .card-content {
         flex-grow: 1;
         flex-shrink: 1;
         display: flex;
+        margin-top: 10px;
       }
       .card .card-bottom-row {
         position: absolute;
@@ -2361,11 +2365,15 @@ var TF;
                 var url = this.router.histograms(tag, run);
                 p = this.requestManager.request(url);
                 return p.then(map(detupler(createHistogram))).then(function (histos) {
+                    // Get the minimum and maximum values across all histograms so that the
+                    // visualization is aligned for all timesteps.
+                    var min = d3.min(histos, function (d) { return d.min; });
+                    var max = d3.max(histos, function (d) { return d.max; });
                     return histos.map(function (histo, i) {
                         return {
                             wall_time: histo.wall_time,
                             step: histo.step,
-                            bins: convertBins(histo)
+                            bins: convertBins(histo, min, max)
                         };
                     });
                 });
@@ -2427,13 +2435,73 @@ var TF;
         }());
         Backend_1.Backend = Backend;
         /** Given a RunToTag, return sorted array of all runs */
-        function getRuns(r) { return _.keys(r).sort(); }
+        function getRuns(r) {
+            return _.keys(r).sort(compareTagNames);
+        }
         Backend_1.getRuns = getRuns;
         /** Given a RunToTag, return array of all tags (sorted + dedup'd) */
         function getTags(r) {
-            return _.union.apply(null, _.values(r)).sort();
+            return _.union.apply(null, _.values(r)).sort(compareTagNames);
         }
         Backend_1.getTags = getTags;
+        /** Compares tag names asciinumerically broken into components. */
+        function compareTagNames(a, b) {
+            var ai = 0;
+            var bi = 0;
+            while (true) {
+                if (ai === a.length)
+                    return bi === b.length ? 0 : -1;
+                if (bi === b.length)
+                    return 1;
+                if (isDigit(a[ai]) && isDigit(b[bi])) {
+                    var ais = ai;
+                    var bis = bi;
+                    ai = consumeNumber(a, ai + 1);
+                    bi = consumeNumber(b, bi + 1);
+                    var an = parseFloat(a.slice(ais, ai));
+                    var bn = parseFloat(b.slice(bis, bi));
+                    if (an < bn)
+                        return -1;
+                    if (an > bn)
+                        return 1;
+                    continue;
+                }
+                if (isBreak(a[ai])) {
+                    if (!isBreak(b[bi]))
+                        return -1;
+                }
+                else if (isBreak(b[bi])) {
+                    return 1;
+                }
+                else if (a[ai] < b[bi]) {
+                    return -1;
+                }
+                else if (a[ai] > b[bi]) {
+                    return 1;
+                }
+                ai++;
+                bi++;
+            }
+        }
+        Backend_1.compareTagNames = compareTagNames;
+        function consumeNumber(s, i) {
+            var decimal = false;
+            for (; i < s.length; i++) {
+                if (isDigit(s[i]))
+                    continue;
+                if (!decimal && s[i] === '.') {
+                    decimal = true;
+                    continue;
+                }
+                break;
+            }
+            return i;
+        }
+        function isDigit(c) { return '0' <= c && c <= '9'; }
+        function isBreak(c) {
+            // TODO(jart): Remove underscore when people stop using it like a slash.
+            return c === '/' || c === '_' || isDigit(c);
+        }
         /**
          * Given a RunToTag and an array of runs, return every tag that appears for
          * at least one run.
@@ -2486,28 +2554,53 @@ var TF;
          * Takes histogram data as stored by tensorboard backend and converts it to
          * the standard d3 histogram data format to make it more compatible and easier
          * to visualize. When visualizing histograms, having the left edge and width
-         * makes things quite a bit easier.
+         * makes things quite a bit easier. The bins are also converted to have an
+         * uniform width, what makes the visualization easier to understand.
          *
          * @param histogram A histogram from tensorboard backend.
+         * @param min The leftmost edge. The binning will start on it.
+         * @param max The rightmost edge. The binning will end on it.
+         * @param numBins The number of bins of the converted data. The default of 30
+         * is a sensible default, using more starts to get artifacts because the event
+         * data is stored in buckets, and you start being able to see the aliased
+         * borders between each bucket.
          * @return A histogram bin. Each bin has an x (left edge), a dx (width),
          *     and a y (count).
          *
          * If given rightedges are inclusive, then these left edges (x) are exclusive.
          */
-        function convertBins(histogram) {
+        function convertBins(histogram, min, max, numBins) {
+            if (numBins === void 0) { numBins = 30; }
             if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
                 throw (new Error('Edges and counts are of different lengths.'));
             }
-            var previousRightEdge = histogram.min;
-            return histogram.bucketRightEdges.map(function (rightEdge, i) {
-                // Use the previous bin's rightEdge as the new leftEdge
-                var left = previousRightEdge;
-                // We need to clip the rightEdge because right-most edge can be
-                // infinite-sized
-                var right = Math.min(histogram.max, rightEdge);
-                // Store rightEdgeValue for next iteration
-                previousRightEdge = rightEdge;
-                return { x: left, dx: right - left, y: histogram.bucketCounts[i] };
+            var binWidth = (max - min) / numBins;
+            var bucketLeft = min; // Use the min as the starting point for the bins.
+            var bucketPos = 0;
+            return d3.range(min, max, binWidth).map(function (binLeft) {
+                var binRight = binLeft + binWidth;
+                // Take the count of each existing bucket, multiply it by the proportion
+                // of overlap with the new bin, then sum and store as the count for the
+                // new bin. If no overlap, will add to zero, if 100% overlap, will include
+                // the full count into new bin.
+                var binY = 0;
+                while (bucketPos < histogram.bucketRightEdges.length) {
+                    // Clip the right edge because right-most edge can be infinite-sized.
+                    var bucketRight = Math.min(max, histogram.bucketRightEdges[bucketPos]);
+                    var intersect = Math.min(bucketRight, binRight) - Math.max(bucketLeft, binLeft);
+                    var count = (intersect / (bucketRight - bucketLeft)) *
+                        histogram.bucketCounts[bucketPos];
+                    binY += intersect > 0 ? count : 0;
+                    // If bucketRight is bigger than binRight, than this bin is finished and
+                    // there is data for the next bin, so don't increment bucketPos.
+                    if (bucketRight > binRight) {
+                        break;
+                    }
+                    bucketLeft = Math.max(min, bucketRight);
+                    bucketPos++;
+                }
+                ;
+                return { x: binLeft, dx: binWidth, y: binY };
             });
         }
         Backend_1.convertBins = convertBins;
@@ -2917,10 +3010,11 @@ var TF;
         selectedRuns: Array,
         xType: String,
         dataProvider: Function,
-        _initialized: Boolean,
+        _attached: Boolean,
+        _makeChartAsyncCallbackId: { type: Number, value: null }
       },
       observers: [
-        "_makeChart(tag, dataProvider, xType, colorScale, _initialized)",
+        "_makeChart(tag, dataProvider, xType, colorScale, _attached)",
         "_changeRuns(_chart, selectedRuns.*)"
       ],
       _changeRuns: function(chart) {
@@ -2936,23 +3030,26 @@ var TF;
       reload: function() {
         this._chart.reload();
       },
-      _makeChart: function(tag, dataProvider, xType, colorScale, _initialized) {
-        if (!_initialized) {
-          return;
+      _makeChart: function(tag, dataProvider, xType, colorScale, _attached) {
+        if (this._makeChartAsyncCallbackId === null) {
+          this.cancelAsync(this._makeChartAsyncCallbackId);
         }
-        if (this._chart) this._chart.destroy();
-        var chart = new TF.DistributionChart(tag, dataProvider, xType, colorScale);
-        var svg = d3.select(this.$.chartsvg);
-        this.async(function() {
+
+        this._makeChartAsyncCallbackId = this.async(function() {
+          this._makeChartAsyncCallbackId = null;
+          if (!_attached) return;
+          if (this._chart) this._chart.destroy();
+          var chart = new TF.DistributionChart(tag, dataProvider, xType, colorScale);
+          var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
           this._chart = chart;
         }, 350);
       },
       attached: function() {
-        this._initialized = true;
+        this._attached = true;
       },
       detached: function() {
-        this._initialized = false;
+        this._attached = false;
       }
     });
   </script>
@@ -3065,6 +3162,140 @@ var TF;
         var chart = currentTarget.previousElementSibling;
         if (chart) {
           chart.redraw();
+        }
+      },
+    });
+  </script>
+</dom-module>
+
+<dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
+  <template>
+    <div id="plumbing">
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
+    </div>
+
+    <tf-dashboard-layout>
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
+        </div>
+        <div class="sidebar-section">
+          <tf-option-selector id="histogramModeSelector" name="Histogram Mode" selected-id="{{_histogramMode}}">
+            <paper-button id="overlay">overlay</paper-button>
+            <paper-button id="offset">offset</paper-button>
+          </tf-option-selector>
+        </div>
+        <div class="sidebar-section">
+          <tf-option-selector id="timePropertySelector" name="Offset Time Axis" selected-id="{{_timeProperty}}">
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
+        </div>
+        <div class="sidebar-section">
+          <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
+          </div>
+      </div>
+
+      <div class="center">
+        <tf-no-data-warning data-type="histogram" show-warning="[[dataNotFound]]"></tf-no-data-warning>
+        <template is="dom-repeat" items="[[categories]]">
+          <tf-collapsable-pane name="[[item.name]]" count="[[_count(item.tags, selectedRuns.*, runToCompressedHistograms.*)]]">
+            <div class="layout horizontal wrap">
+              <template is="dom-repeat" items="[[item.tags]]" as="tag">
+                <template is="dom-repeat" items="[[selectedRuns]]" as="run">
+                  <template is="dom-if" if="[[_exists(run, tag, run2tag.*)]]">
+                    <div class="card">
+                      <span class="card-title">[[tag]]</span>
+                      <span class="card-subtitle">[[run]]</span>
+                      <div class="card-content">
+                        <tf-chart-scaffold tag="[[tag]]" visible-series="[[_array(run)]]" data-provider="[[dataProvider]]">
+                          <vz-histogram-timeseries id="chart" time-property="[[_timeProperty]]" mode="[[_histogramMode]]" color-scale="[[_colorScaleFunction]]" on-keyup="toggleSelected" tabindex="2"></vz-histogram-timeseries>
+                        </tf-chart-scaffold>
+                        <paper-icon-button class="expand-button" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
+                      </div>
+                    </div>
+                  </template>
+                </template>
+              </template>
+            </div>
+          </tf-collapsable-pane>
+        </template>
+      </div>
+    </tf-dashboard-layout>
+
+    <style include="dashboard-style"></style>
+  </template>
+
+  <script>
+    Polymer({
+      is: "tf-histogram-dashboard",
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
+        TF.Backend.Behavior,
+      ],
+      properties: {
+        _histogramMode: {
+          type: String,
+          value: "offset"
+        },
+        _timeProperty: {
+          type: String,
+          value: "step"
+        },
+        _visibleTags: {
+          type: Array,
+          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
+        },
+        _colorScaleFunction: {
+          type: Function,
+          computed: "_getColorScaleFunction(colorScale)"
+        },
+        colorScale: Object,
+        dataType: {value: "histogram"},
+      },
+      _exists: function(run, tag) {
+        return this.run2tag[run].indexOf(tag) !== -1;
+      },
+      attached: function() {
+        this.async(function() {
+          this.fire("rendered");
+        });
+      },
+      _array: function(x) {
+        return [x];
+      },
+      _count: function(tags) {
+        var targetTags = {};
+        tags.forEach(function(t) {
+          targetTags[t] = true;
+        });
+        var count = 0;
+        var _this = this;
+        this.selectedRuns.forEach(function(r) {
+          _this.run2tag[r].forEach(function(t) {
+            if (targetTags[t]) {
+              count++;
+            }
+          });
+        });
+        return count;
+      },
+      _getVisibleTags: function() {
+        var keys = this.selectedRuns;
+        var dict = this.run2tag;
+        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
+      },
+      _getColorScaleFunction: function() {
+        return this.colorScale.scale.bind(this.colorScale);
+      },
+      toggleSelected: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+        var parentDiv = currentTarget.parentNode.parentNode;
+        parentDiv.classList.toggle("selected");
+        var chartScaffold = currentTarget.previousElementSibling;
+        if (chartScaffold) {
+          chartScaffold.chart().redraw();
         }
       },
     });
@@ -13562,6 +13793,10 @@ Polymer({
         <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
           <tf-distribution-dashboard id="distributions" backend="[[_backend]]"></tf-distribution-dashboard>
         </template>
+
+        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
+          <tf-histogram-dashboard id="histograms" backend="[[_backend]]"></tf-histogram-dashboard>
+        </template>
       </div>
     </paper-header-panel>
 
@@ -13695,6 +13930,9 @@ Polymer({
       },
       _modeIsDistributions: function(mode) {
         return mode === "distributions";
+      },
+      _modeIsHistograms: function(mode) {
+        return mode === "histograms";
       },
       selectedDashboard: function() {
         var dashboard = this.$$("#" + this.mode);

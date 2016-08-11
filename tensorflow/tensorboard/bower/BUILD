@@ -22,7 +22,6 @@ filegroup(
         "@iron_flex_layout//:iron_flex_layout",
         "@iron_form_element_behavior//:iron_form_element_behavior",
         "@iron_icon//:iron_icon",
-        "@iron_icons//:iron_icons",
         "@iron_iconset_svg//:iron_iconset_svg",
         "@iron_input//:iron_input",
         "@iron_list//:iron_list",
