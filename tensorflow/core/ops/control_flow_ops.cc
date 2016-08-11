@@ -156,8 +156,6 @@ It is usually combined with `Switch` to implement branching.
 `Merge` forwards the first tensor for become available to `output`, and sets
 `value_index` to its index in `inputs`.
 
-It is an error if more than one tensor in `inputs` is available.
-
 inputs: The input tensors, exactly one of which will become available.
 output: Will be set to the available input tensor.
 value_index: The index of the chosen input tensor in `inputs`.
@@ -178,8 +176,6 @@ It is usually combined with `Switch` to implement branching.
 
 `Merge` forwards the first tensor for become available to `output`, and sets
 `value_index` to its index in `inputs`.
-
-It is an error if more than one tensor in `inputs` is available.
 
 inputs: The input tensors, exactly one of which will become available.
 output: Will be set to the available input tensor.

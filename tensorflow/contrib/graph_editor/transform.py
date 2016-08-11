@@ -30,6 +30,17 @@ from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.platform import tf_logging as logging
 
+__all__ = [
+    "replace_t_with_placeholder_handler",
+    "keep_t_if_possible_handler",
+    "assign_renamed_collections_handler",
+    "transform_op_if_inside_handler",
+    "copy_op_handler",
+    "transform_op_in_place",
+    "Transformer",
+    "copy",
+]
+
 
 def replace_t_with_placeholder_handler(info, t):
   """Transform a tensor into a placeholder tensor.
@@ -95,9 +106,10 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
     keep_if_possible: re-attach to the original op if possible, that is,
       if the source graph and the destination graph are the same.
   Returns:
-    the transformed op or None.
+    The transformed op or None.
   """
-  if op is None: return None
+  if op is None:
+    return None
   if op in info.sgv.ops:
     return info.transformer._transform_op(op)  # pylint: disable=protected-access
   else:
@@ -107,12 +119,13 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
       return None
 
 
-def copy_op_handler(info, op):
+def copy_op_handler(info, op, copy_shape=True):
   """Copy a tf.Operation.
 
   Args:
     info: Transform._Info instance.
     op: the tf.Operation to be copied.
+    copy_shape: also copy the shape of the tensor
   Returns:
     A copy of op.
   """
@@ -149,6 +162,13 @@ def copy_op_handler(info, op):
   # Initialize a new Operation instance
   op_ = tf_ops.Operation(node_def_, info.graph_, inputs_, output_types_,
                          control_inputs_, input_types_, original_op_, op_def_)
+
+  # copy the shape over
+  if copy_shape:
+    for t, t_ in zip(op.outputs, op_.outputs):
+      t_.set_shape(t.get_shape())
+
+  # Add op to the graph
   info.graph_._add_op(op_)
 
   # pylint: enable=protected-access
@@ -167,7 +187,7 @@ def transform_op_in_place(info, op, detach_outputs=False):
     detach_outputs: if True, the outputs of op are detached, ready for the user
       to add more operation.
   Returns:
-    the transformed op.
+    The transformed op.
   """
   # recursive call to the inputs:
   inputs = [info.transformer._transform_t(t) for t in op.inputs]  # pylint: disable=protected-access
@@ -246,7 +266,11 @@ class Transformer(object):
     # temporary per-call variable
     self._info = None
 
-  def __call__(self, sgv, dst_graph, dst_scope, src_scope="",
+  def __call__(self,
+               sgv,
+               dst_graph,
+               dst_scope,
+               src_scope="",
                reuse_dst_scope=False):
     """Execute the transformation.
 
@@ -262,9 +286,10 @@ class Transformer(object):
         Otherwise, the scope is given a unique name based on the one given
         by postfixing an underscore followed by a digit (default).
     Returns:
-      The transformed subgraph view.
-      A dictionary mapping the name of the original ops to the name of the
-        transformed ops.
+      A tuple `(sgv, ops_mapping)` where:
+        `sgv` is the transformed subgraph view;
+        `ops_mapping` is a dictionary mapping the name of the original ops
+        to the name of the transformed ops.
     Raises:
       ValueError: if the argumens are invalid.
     """
@@ -403,7 +428,7 @@ class Transformer(object):
     Args:
       name: the name to be "transformed".
     Returns:
-      the transformed name.
+      The transformed name.
     Raises:
       ValueError: if the source scope is used (that is, not an empty string)
         and the source name does not belong to the source scope.
@@ -431,7 +456,7 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
       Otherwise, the scope is given a unique name based on the one given
       by postfixing an underscore followed by a digit (default).
   Returns:
-    the subgraph view of the copied subgraph.
+    The subgraph view of the copied subgraph.
   Raises:
     TypeError: if dst_graph is not a tf.Graph.
     StandardError: if sgv cannot be converted to a SubGraphView using
@@ -444,5 +469,5 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
     raise TypeError("Expected a tf.Graph, got: {}".format(type(dst_graph)))
 
   copier = Transformer()
-  return copier(sgv, dst_graph, dst_scope, src_scope,
-                reuse_dst_scope=reuse_dst_scope)
+  return copier(
+      sgv, dst_graph, dst_scope, src_scope, reuse_dst_scope=reuse_dst_scope)

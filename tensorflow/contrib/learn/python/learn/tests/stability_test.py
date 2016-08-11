@@ -72,6 +72,7 @@ class StabilityTest(tf.test.TestCase):
     my_seed = 42
     config = tf.contrib.learn.RunConfig(tf_random_seed=my_seed)
     boston = tf.contrib.learn.datasets.load_boston()
+    columns = [tf.contrib.layers.real_valued_column('', dimension=13)]
 
     # We train with
 
@@ -79,16 +80,18 @@ class StabilityTest(tf.test.TestCase):
       random.seed(my_seed)
       g1.seed = my_seed
       tf.contrib.framework.create_global_step()
-      regressor1 = tf.contrib.learn.LinearRegressor(
-          optimizer=_NULL_OPTIMIZER, config=config)
+      regressor1 = tf.contrib.learn.LinearRegressor(optimizer=_NULL_OPTIMIZER,
+                                                    feature_columns=columns,
+                                                    config=config)
       regressor1.fit(x=boston.data, y=boston.target, steps=1)
 
     with tf.Graph().as_default() as g2:
       random.seed(my_seed)
       g2.seed = my_seed
       tf.contrib.framework.create_global_step()
-      regressor2 = tf.contrib.learn.LinearRegressor(
-          optimizer=_NULL_OPTIMIZER, config=config)
+      regressor2 = tf.contrib.learn.LinearRegressor(optimizer=_NULL_OPTIMIZER,
+                                                    feature_columns=columns,
+                                                    config=config)
       regressor2.fit(x=boston.data, y=boston.target, steps=1)
 
     self.assertAllClose(regressor1.weights_, regressor2.weights_)
@@ -101,13 +104,15 @@ class StabilityTest(tf.test.TestCase):
     my_seed = 42
     config = tf.contrib.learn.RunConfig(tf_random_seed=my_seed)
     boston = tf.contrib.learn.datasets.load_boston()
+    columns = [tf.contrib.layers.real_valued_column('', dimension=13)]
 
     with tf.Graph().as_default() as g1:
       random.seed(my_seed)
       g1.seed = my_seed
       tf.contrib.framework.create_global_step()
       regressor1 = tf.contrib.learn.DNNRegressor(
-          hidden_units=[10], optimizer=_NULL_OPTIMIZER, config=config)
+          hidden_units=[10], feature_columns=columns,
+          optimizer=_NULL_OPTIMIZER, config=config)
       regressor1.fit(x=boston.data, y=boston.target, steps=1)
 
     with tf.Graph().as_default() as g2:
@@ -115,7 +120,8 @@ class StabilityTest(tf.test.TestCase):
       g2.seed = my_seed
       tf.contrib.framework.create_global_step()
       regressor2 = tf.contrib.learn.DNNRegressor(
-          hidden_units=[10], optimizer=_NULL_OPTIMIZER, config=config)
+          hidden_units=[10], feature_columns=columns,
+          optimizer=_NULL_OPTIMIZER, config=config)
       regressor2.fit(x=boston.data, y=boston.target, steps=1)
 
     for w1, w2 in zip(regressor1.weights_, regressor2.weights_):

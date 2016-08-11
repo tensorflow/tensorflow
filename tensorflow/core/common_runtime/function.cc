@@ -252,7 +252,7 @@ static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
-  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Device* device,
+  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options);
@@ -278,12 +278,14 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   }
 
   Device* device() override { return device_; }
+  Env* env() override { return env_; }
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
   const DeviceMgr* const device_mgr_;
   Device* const device_;
+  Env* const env_;
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
@@ -321,11 +323,12 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    const DeviceMgr* dmgr, Device* device, int graph_def_version,
+    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options)
     : device_mgr_(dmgr),
       device_(device),
+      env_(env),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
       optimizer_(optimizer_options) {
@@ -603,7 +606,7 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, lib->device(), g);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g);
 }
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
@@ -612,7 +615,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   Graph* g = new Graph(lib_def_);
   CopyGraph(*fbody->graph, g);
 
-  optimizer_.Optimize(this, device(), &g);
+  optimizer_.Optimize(this, env(), device(), &g);
   auto s = EnsureMemoryTypes(DeviceType(device()->device_type()),
                              device()->name(), g);
   if (!s.ok()) {
@@ -721,10 +724,10 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Device* device, int graph_def_version,
+    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(dmgr, device, graph_def_version,
+  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
                                         lib_def, optimizer_options);
 }
 

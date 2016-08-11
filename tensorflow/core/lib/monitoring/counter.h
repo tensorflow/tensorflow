@@ -20,7 +20,7 @@ limitations under the License.
 #include <atomic>
 #include <map>
 
-#include "tensorflow/core/lib/monitoring/export_registry.h"
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -81,7 +81,7 @@ class Counter {
 
   // Creates the metric based on the metric-definition.
   static Counter* New(
-      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def);
+      const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -90,18 +90,25 @@ class Counter {
 
  private:
   explicit Counter(
-      const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def)
+      const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def)
       : metric_def_(metric_def),
-        registration_handle_(
-            ExportRegistry::Default()->Register(&metric_def_)) {}
+        registration_handle_(CollectionRegistry::Default()->Register(
+            &metric_def_, [&](MetricCollectorGetter getter) {
+              auto metric_collector = getter.Get(&metric_def_);
+
+              mutex_lock l(mu_);
+              for (const auto& cell : cells_) {
+                metric_collector.CollectValue(cell.first, cell.second.value());
+              }
+            })) {}
 
   mutable mutex mu_;
 
   // The metric definition. This will be used to identify the metric when we
-  // register it for exporting.
-  const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels> metric_def_;
+  // register it for collection.
+  const MetricDef<MetricKind::kCumulative, int64, NumLabels> metric_def_;
 
-  std::unique_ptr<ExportRegistry::RegistrationHandle> registration_handle_;
+  std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
   using LabelArray = std::array<string, NumLabels>;
   std::map<LabelArray, CounterCell> cells_ GUARDED_BY(mu_);
@@ -115,7 +122,7 @@ class Counter {
 
 template <int NumLabels>
 Counter<NumLabels>* Counter<NumLabels>::New(
-    const MetricDef<MetricKind::CUMULATIVE, int64, NumLabels>& metric_def) {
+    const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def) {
   return new Counter<NumLabels>(metric_def);
 }
 

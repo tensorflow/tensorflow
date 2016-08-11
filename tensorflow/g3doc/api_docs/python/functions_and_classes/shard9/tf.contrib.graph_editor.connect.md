@@ -8,15 +8,16 @@ Connect the outputs of sgv0 to the inputs of sgv1.
 *  <b>`sgv0`</b>: the first subgraph to have its outputs swapped. This argument is
     converted to a subgraph using the same rules as the function
     subgraph.make_view.
+    Note that sgv0 is modified in place.
 *  <b>`sgv1`</b>: the second subgraph to have its outputs swapped. This argument is
     converted to a subgraph using the same rules as the function
     subgraph.make_view.
+    Note that sgv1 is modified in place.
 *  <b>`disconnect_first`</b>: if True the current outputs of sgv0 are disconnected.
 
 ##### Returns:
 
-  The modified sgv0 (now connected to sgv1).
-  The modified sgv1 (now connected to sgv0).
+  A tuple `(sgv0, sgv1)` of the now connected subgraphs.
 
 ##### Raises:
 

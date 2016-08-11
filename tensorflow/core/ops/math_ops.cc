@@ -973,6 +973,7 @@ REGISTER_OP("Sum")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the sum of elements across dimensions of a tensor.
 
@@ -993,6 +994,7 @@ REGISTER_OP("Mean")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the mean of elements across dimensions of a tensor.
 
@@ -1013,6 +1015,7 @@ REGISTER_OP("Prod")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the product of elements across dimensions of a tensor.
 
@@ -1033,6 +1036,7 @@ REGISTER_OP("Min")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the minimum of elements across dimensions of a tensor.
 
@@ -1053,6 +1057,7 @@ REGISTER_OP("Max")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the maximum of elements across dimensions of a tensor.
 
@@ -1067,11 +1072,64 @@ keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
 
+namespace {
+
+Status ArgOpShape(shape_inference::InferenceContext* c) {
+  const Shape* dimension_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &dimension_shape));
+
+  const Shape* input_shape = c->input(0);
+  if (!c->RankKnown(input_shape)) {
+    return shape_inference::UnknownShape(c);
+  }
+
+  const int32 input_rank = c->Rank(input_shape);
+  if (input_rank <= 1) {
+    // Reducing a scalar/vector must return a scalar.
+    return shape_inference::ScalarShape(c);
+  }
+
+  const Tensor* dim_t = c->input_tensor(1);
+  if (dim_t == nullptr) {
+    // We don't know the value of the dimension, but we
+    // know the rank of the input, so return the correct
+    // rank with unknown dimensions.
+    std::vector<const Dimension*> dims(input_rank - 1);
+    for (int i = 0; i < dims.size(); ++i) {
+      dims[i] = c->UnknownDim();
+    }
+
+    c->set_output(0, c->MakeShape(dims));
+    return Status::OK();
+  }
+
+  const int32 dimension_val = dim_t->scalar<int32>()();
+  if (dimension_val < 0 || dimension_val >= input_rank) {
+    return errors::InvalidArgument("Dimension (", dimension_val,
+                                   ") must be in the range [0, ", input_rank,
+                                   "), where ", input_rank, " is the ",
+                                   "number of dimensions in the input.");
+  }
+
+  // Return the input shape without the dimension being reduced.
+  std::vector<const Dimension*> dims;
+  for (int i = 0; i < input_rank; ++i) {
+    if (dimension_val != i) {
+      dims.emplace_back(c->Dim(input_shape, i));
+    }
+  }
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: int32")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
@@ -1084,6 +1142,7 @@ REGISTER_OP("ArgMin")
     .Input("dimension: int32")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
 
@@ -1105,6 +1164,68 @@ Status SegmentReductionShapeFn(InferenceContext* c) {
   const Shape* out;
   TF_RETURN_IF_ERROR(
       c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+Status SparseSegmentReductionShapeFn(InferenceContext* c) {
+  const Shape* data_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+
+  const Shape* indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices_shape));
+
+  const Shape* segment_ids_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &segment_ids_shape));
+
+  // indices and segment_ids should merge cleanly.
+  const Shape* unused;
+  TF_RETURN_IF_ERROR(c->Merge(indices_shape, segment_ids_shape, &unused));
+
+  const Shape* subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
+
+  const Shape* out;
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+  const Shape* data_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+
+  const Shape* indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices_shape));
+
+  // indices and segment_ids should merge cleanly.
+  const Shape* unused;
+  TF_RETURN_IF_ERROR(c->Merge(c->input(2), indices_shape, &unused));
+
+  // output_dim0 should be a scalar
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+
+  const Shape* subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
+
+  const Tensor* dim0 = c->input_tensor(3);
+  const Shape* dim0_shape;
+  if (dim0 == nullptr) {
+    // We don't have the value at inference time, so the output
+    // shape is unknown.
+    dim0_shape = c->Vector(InferenceContext::kUnknownDim);
+  } else {
+    auto dim0_value = dim0->scalar<int32>()();
+    if (dim0_value < 0) {
+      return errors::InvalidArgument(
+          "Cannot specify a negative value for output_dim0");
+    }
+    dim0_shape = c->Vector(dim0_value);
+  }
+
+  const Shape* out;
+  TF_RETURN_IF_ERROR(c->Concatenate(dim0_shape, subshape, &out));
   c->set_output(0, out);
   return Status::OK();
 }
@@ -1327,6 +1448,7 @@ REGISTER_OP("SparseSegmentSum")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor.
 
@@ -1374,6 +1496,7 @@ REGISTER_OP("SparseSegmentMean")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the mean along sparse segments of a tensor.
 
@@ -1400,6 +1523,7 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentMean.
 
@@ -1418,6 +1542,7 @@ REGISTER_OP("SparseSegmentSqrtN")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor divided by the sqrt of N.
 
@@ -1443,6 +1568,7 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentSqrtN.
 
@@ -1460,6 +1586,7 @@ REGISTER_OP("All")
     .Input("reduction_indices: int32")
     .Output("output: bool")
     .Attr("keep_dims: bool = false")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical and" of elements across dimensions of a tensor.
 
@@ -1479,6 +1606,7 @@ REGISTER_OP("Any")
     .Input("reduction_indices: int32")
     .Attr("keep_dims: bool = false")
     .Output("output: bool")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical or" of elements across dimensions of a tensor.
 

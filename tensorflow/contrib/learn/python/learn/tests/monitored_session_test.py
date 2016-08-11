@@ -83,20 +83,22 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_uses_passed_values(self):
     with tf.Graph().as_default():
+      tf.Variable([1])
+      saver = tf.train.Saver()
       scaffold = monitored_session.Scaffold(
           init_op=2,
           init_feed_dict=3,
           init_fn=lambda scaffold, sess: 4,
           ready_op=5,
           local_init_op=6,
-          saver=7)
+          saver=saver)
       scaffold.finalize()
       self.assertEqual(2, scaffold.init_op)
       self.assertEqual(3, scaffold.init_feed_dict)
       self.assertTrue(callable(scaffold.init_fn))
       self.assertEqual(5, scaffold.ready_op)
       self.assertEqual(6, scaffold.local_init_op)
-      self.assertEqual(7, scaffold.saver)
+      self.assertEqual(saver, scaffold.saver)
 
   def test_graph_is_finalized(self):
     with tf.Graph().as_default():

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,12 +35,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 
+class Dataset(object):
+  """Represents a Dataset specification."""
 
-Dataset = collections.namedtuple('Dataset',
-                                 ['data_sources',
-                                  'reader',
-                                  'decoder',
-                                  'num_samples',
-                                  'items_to_descriptions'])
+  def __init__(self, data_sources, reader, decoder, num_samples,
+               items_to_descriptions, **kwargs):
+    """Initializes the dataset.
+
+    Args:
+      data_sources: A list of files that make up the dataset.
+      reader: The reader class, a subclass of BaseReader such as TextLineReader
+        or TFRecordReader.
+      decoder: An instance of a data_decoder.
+      num_samples: The number of samples in the dataset.
+      items_to_descriptions: A map from the items that the dataset provides to
+        the descriptions of those items.
+      **kwargs: Any remaining dataset-specific fields.
+    """
+    kwargs['data_sources'] = data_sources
+    kwargs['reader'] = reader
+    kwargs['decoder'] = decoder
+    kwargs['num_samples'] = num_samples
+    kwargs['items_to_descriptions'] = items_to_descriptions
+    self.__dict__.update(kwargs)

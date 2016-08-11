@@ -56,7 +56,7 @@ class StringLiteral {
 //
 // Cumulative indicates that the metric's values represent non-negative changes
 // over specified time periods. Example: the number of rpc calls to a service.
-enum MetricKind { GAUGE, CUMULATIVE };
+enum class MetricKind : int { kGauge = 0, kCumulative };
 
 // Abstract base class for a metric definition.
 //

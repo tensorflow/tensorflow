@@ -343,8 +343,7 @@ class TrainTest(tf.test.TestCase):
     self.assertLess(loss, .015)
 
   def testTrainWithNoneAsLogdir(self):
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
       tf_labels = tf.constant(self._labels, dtype=tf.float32)
@@ -363,8 +362,7 @@ class TrainTest(tf.test.TestCase):
     self.assertLess(loss, .015)
 
   def testTrainWithSessionConfig(self):
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
       tf_labels = tf.constant(self._labels, dtype=tf.float32)
@@ -377,14 +375,13 @@ class TrainTest(tf.test.TestCase):
 
       train_op = slim.learning.create_train_op(total_loss, optimizer)
 
-    session_config = tf.ConfigProto(allow_soft_placement=True)
-    loss = slim.learning.train(
-        train_op,
-        None,
-        number_of_steps=300,
-        log_every_n_steps=10,
-        graph=g,
-        session_config=session_config)
+      session_config = tf.ConfigProto(allow_soft_placement=True)
+      loss = slim.learning.train(
+          train_op,
+          None,
+          number_of_steps=300,
+          log_every_n_steps=10,
+          session_config=session_config)
     self.assertIsNotNone(loss)
     self.assertLess(loss, .015)
 
@@ -449,13 +446,33 @@ class TrainTest(tf.test.TestCase):
             train_op, self._logdir, init_op=None, number_of_steps=300)
 
   def testTrainWithNoInitAssignCanAchieveZeroLoss(self):
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
       tf_labels = tf.constant(self._labels, dtype=tf.float32)
 
       tf_predictions = LogisticClassifier(tf_inputs)
+      slim.losses.log_loss(tf_predictions, tf_labels)
+      total_loss = slim.losses.get_total_loss()
+
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+
+      train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+      loss = slim.learning.train(
+          train_op, self._logdir, number_of_steps=300, log_every_n_steps=10)
+      self.assertIsNotNone(loss)
+      self.assertLess(loss, .015)
+
+  def testTrainWithLocalVariable(self):
+    with tf.Graph().as_default():
+      tf.set_random_seed(0)
+      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
+      tf_labels = tf.constant(self._labels, dtype=tf.float32)
+
+      local_multiplier = slim.local_variable(1.0)
+
+      tf_predictions = LogisticClassifier(tf_inputs) * local_multiplier
       slim.losses.log_loss(tf_predictions, tf_labels)
       total_loss = slim.losses.get_total_loss()
 
@@ -473,8 +490,7 @@ class TrainTest(tf.test.TestCase):
     number_of_steps = [300, 301, 305]
 
     for i in range(len(number_of_steps)):
-      g = tf.Graph()
-      with g.as_default():
+      with tf.Graph().as_default():
         tf.set_random_seed(i)
         tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
         tf_labels = tf.constant(self._labels, dtype=tf.float32)
@@ -524,8 +540,7 @@ class TrainTest(tf.test.TestCase):
       tf.gfile.DeleteRecursively(logdir2)
 
     # First, train the model one step (make sure the error is high).
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       train_op = self.create_train_op()
       loss = slim.learning.train(
@@ -533,8 +548,7 @@ class TrainTest(tf.test.TestCase):
       self.assertGreater(loss, .5)
 
     # Next, train the model to convergence.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(1)
       train_op = self.create_train_op()
       loss = slim.learning.train(
@@ -544,8 +558,7 @@ class TrainTest(tf.test.TestCase):
 
     # Finally, advance the model a single step and validate that the loss is
     # still low.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(2)
       train_op = self.create_train_op()
 
@@ -578,8 +591,7 @@ class TrainTest(tf.test.TestCase):
       tf.gfile.DeleteRecursively(logdir2)
 
     # First, train the model one step (make sure the error is high).
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       train_op = self.create_train_op()
       loss = slim.learning.train(
@@ -587,8 +599,7 @@ class TrainTest(tf.test.TestCase):
       self.assertGreater(loss, .5)
 
     # Next, train the model to convergence.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(1)
       train_op = self.create_train_op()
       loss = slim.learning.train(
@@ -598,8 +609,7 @@ class TrainTest(tf.test.TestCase):
 
     # Finally, advance the model a single step and validate that the loss is
     # still low.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(2)
       train_op = self.create_train_op()
 
@@ -631,8 +641,7 @@ class TrainTest(tf.test.TestCase):
       tf.gfile.DeleteRecursively(logdir1)
 
     # First, train only the weights of the model.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       total_loss = self.ModelLoss()
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
@@ -649,8 +658,7 @@ class TrainTest(tf.test.TestCase):
       self.assertLess(loss, .05)
 
     # Next, train the biases of the model.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(1)
       total_loss = self.ModelLoss()
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
@@ -667,8 +675,7 @@ class TrainTest(tf.test.TestCase):
       self.assertLess(loss, .05)
 
     # Finally, train both weights and bias to get lower loss.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(2)
       total_loss = self.ModelLoss()
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
@@ -682,8 +689,7 @@ class TrainTest(tf.test.TestCase):
 
   def testTrainingSubsetsOfVariablesOnlyUpdatesThoseVariables(self):
     # First, train only the weights of the model.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       total_loss = self.ModelLoss()
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
@@ -752,8 +758,7 @@ class TrainTest(tf.test.TestCase):
     learning_rate = 0.001
 
     # First, train the model with equivalently smaller learning rate.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       train_op = self.create_train_op(
           learning_rate=learning_rate,
@@ -764,8 +769,7 @@ class TrainTest(tf.test.TestCase):
       self.assertGreater(loss, .5)
 
     # Second, train the model with equivalently larger learning rate.
-    g = tf.Graph()
-    with g.as_default():
+    with tf.Graph().as_default():
       tf.set_random_seed(0)
       train_op = self.create_train_op(
           learning_rate=learning_rate,

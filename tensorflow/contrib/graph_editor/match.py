@@ -23,6 +23,11 @@ from six import string_types
 from tensorflow.contrib.graph_editor import select
 from tensorflow.python.framework import ops as tf_ops
 
+__all__ = [
+    "op_type",
+    "OpMatcher",
+]
+
 
 def _make_graph_match(graph_match):
   """Convert to a OpMatcher instance."""
@@ -151,6 +156,3 @@ class OpMatcher(object):
                              for consumer_op_match in consumer_op_matches]
       self.output_op_matches.append(consumer_op_matches)
     return self
-
-
-

@@ -364,6 +364,19 @@ cc_library(
 )
 
 py_test(
+    name = "framework_common_shapes_test",
+    size = "small",
+    srcs = ["framework/common_shapes_test.py"],
+    main = "framework/common_shapes_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
     name = "framework_ops_test",
     size = "small",
     srcs = ["framework/ops_test.py"],
@@ -566,6 +579,7 @@ tf_gen_op_wrapper_py(
         "InitializeTableFromTextFile",
         "LookupTableExport",
         "LookupTableFind",
+        "LookupTableImport",
         "LookupTableInsert",
         "LookupTableSize",
         "MutableHashTable",
@@ -781,6 +795,9 @@ tf_gen_op_wrapper_py(
 
 tf_gen_op_wrapper_py(
     name = "string_ops",
+    hidden = [
+        "StringSplit",
+    ],
     require_shape_functions = True,
 )
 
@@ -1332,6 +1349,7 @@ py_test(
     size = "medium",
     srcs = ["training/saver_large_partitioned_variable_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/30782289
     deps = [
         "//tensorflow:tensorflow_py",
     ],

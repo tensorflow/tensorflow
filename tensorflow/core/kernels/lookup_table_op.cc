@@ -154,7 +154,7 @@ class HashTable : public InitializableLookupTable {
 // table.Find(in_t, &out_t, default_t)
 //
 template <class K, class V>
-class MutableHashTableOfScalars : public LookupInterface {
+class MutableHashTableOfScalars final : public LookupInterface {
  public:
   MutableHashTableOfScalars(OpKernelContext* ctx, OpKernel* kernel) {}
 
@@ -179,17 +179,28 @@ class MutableHashTableOfScalars : public LookupInterface {
     return Status::OK();
   }
 
-  Status Insert(const Tensor& keys, const Tensor& values) override {
+  Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
 
     mutex_lock l(mu_);
+    if (clear) {
+      table_.clear();
+    }
     for (int64 i = 0; i < key_values.size(); ++i) {
       const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
       const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
       gtl::InsertOrUpdate(&table_, key, value);
     }
     return Status::OK();
+  }
+
+  Status Insert(const Tensor& keys, const Tensor& values) override {
+    return DoInsert(false, keys, values);
+  }
+
+  Status ImportValues(const Tensor& keys, const Tensor& values) override {
+    return DoInsert(true, keys, values);
   }
 
   Status ExportValues(OpKernelContext* ctx) override {
@@ -228,7 +239,7 @@ class MutableHashTableOfScalars : public LookupInterface {
 // Lookup table that wraps an unordered_map. Behaves identical to
 // MutableHashTableOfScalars except that each value must be a vector.
 template <class K, class V>
-class MutableHashTableOfTensors : public LookupInterface {
+class MutableHashTableOfTensors final : public LookupInterface {
  public:
   MutableHashTableOfTensors(OpKernelContext* ctx, OpKernel* kernel) {
     OP_REQUIRES_OK(ctx,
@@ -269,12 +280,15 @@ class MutableHashTableOfTensors : public LookupInterface {
     return Status::OK();
   }
 
-  Status Insert(const Tensor& keys, const Tensor& values) override {
+  Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat_inner_dims<V, 2>();
     int64 value_dim = value_shape_.dim_size(0);
 
     mutex_lock l(mu_);
+    if (clear) {
+      table_.clear();
+    }
     for (int64 i = 0; i < key_values.size(); ++i) {
       const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
       ValueArray value_vec;
@@ -285,6 +299,14 @@ class MutableHashTableOfTensors : public LookupInterface {
       gtl::InsertOrUpdate(&table_, key, value_vec);
     }
     return Status::OK();
+  }
+
+  Status Insert(const Tensor& keys, const Tensor& values) override {
+    return DoInsert(false, keys, values);
+  }
+
+  Status ImportValues(const Tensor& keys, const Tensor& values) override {
+    return DoInsert(true, keys, values);
   }
 
   Status ExportValues(OpKernelContext* ctx) override {
@@ -419,6 +441,30 @@ class LookupTableExportOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableExport").Device(DEVICE_CPU),
                         LookupTableExportOp);
+
+// Clear the table and insert data.
+class LookupTableImportOp : public OpKernel {
+ public:
+  explicit LookupTableImportOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
+    core::ScopedUnref unref_me(table);
+
+    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+                                      table->value_dtype()};
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
+
+    const Tensor& keys = ctx->input(1);
+    const Tensor& values = ctx->input(2);
+    OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensors(keys, values));
+    OP_REQUIRES_OK(ctx, table->ImportValues(keys, values));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("LookupTableImport").Device(DEVICE_CPU),
+                        LookupTableImportOp);
 
 // Register the HashTable op with the currently supported key and value types.
 #define REGISTER_KERNEL(key_dtype, value_dtype)                           \

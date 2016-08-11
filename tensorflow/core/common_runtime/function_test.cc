@@ -149,8 +149,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     lib_def_ = new FunctionLibraryDefinition(OpRegistry::Global(), proto);
     delete lib_;
     OptimizerOptions opts;
-    lib_ = NewFunctionLibraryRuntime(nullptr, device_, TF_GRAPH_DEF_VERSION,
-                                     lib_def_, opts);
+    lib_ = NewFunctionLibraryRuntime(nullptr, Env::Default(), device_,
+                                     TF_GRAPH_DEF_VERSION, lib_def_, opts);
   }
 
   Status Run(const string& name, InstantiateAttrValueSlice attrs,

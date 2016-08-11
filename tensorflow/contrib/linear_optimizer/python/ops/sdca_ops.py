@@ -67,18 +67,18 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
                value_dtype,
                default_value,
                num_shards=1,
-               name=None):
+               name='ShardedMutableHashTable'):
     with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
       super(_ShardedMutableHashTable, self).__init__(key_dtype, value_dtype,
                                                      scope)
       table_shards = []
-      for _ in range(num_shards):
+      for i in range(num_shards):
         # TODO(andreasst): add placement hints once bug 30002625 is fixed.
         table_shards.append(lookup_ops.MutableHashTable(
             key_dtype=key_dtype,
             value_dtype=value_dtype,
             default_value=default_value,
-            name=name))
+            name='%s-%d' % (name, i)))
       self._table_shards = table_shards
       # TODO(andreasst): add a value_shape() method to LookupInterface
       # pylint: disable=protected-access

@@ -16,7 +16,7 @@ Helper to select operations.
 
 ##### Returns:
 
-  list of tf.Operation
+  A list of tf.Operation.
 
 ##### Raises:
 

@@ -1513,8 +1513,7 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
     bool dst_need_input = !e->IsControlEdge();
     if (IsMerge(dst_node)) {
       // A merge node is ready if all control inputs have arrived and either
-      // a) a live data input becomes available or b) all data inputs are
-      // dead.
+      // a) a live data input becomes available or b) all data inputs are dead.
       // For Merge, pending's LSB is set iff a live data input has arrived.
       if (e->IsControlEdge()) {
         output_iter_state->decrement_pending(dst_id, 2);
@@ -1536,10 +1535,13 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
           dst_ready = (count == 1);
           dst_need_input = ((count & 0x1) == 1);
         } else {
-          // This is a dead data input.
+          // This is a dead data input. Note that dst_node is dead if node is
+          // a dead enter. We need this to handle properly a while loop on
+          // the untaken branch of a conditional.
+          // TODO(yuanbyu): This is a bit hacky, but a good solution for now.
           output_iter_state->increment_dead_count(dst_id);
-          dst_dead =
-              (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
+          const int dead_cnt = output_iter_state->dead_count(dst_id);
+          dst_dead = (dead_cnt == dst_node->num_inputs()) || IsEnter(node);
           dst_ready = (output_iter_state->pending(dst_id) == 1) && dst_dead;
           dst_need_input = false;
         }

@@ -40,6 +40,12 @@ class ReduceTest(test_util.TensorFlowTestCase):
       y_tf = math_ops.reduce_sum(x).eval()
       self.assertEqual(y_tf, 21)
 
+  def testReduceExplicitDims(self):
+    x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    axis = np.array([[0], [1]])
+    with self.assertRaisesRegexp(ValueError, "must have rank at most 1"):
+      math_ops.reduce_sum(x, axis)
+
 
 class RoundTest(test_util.TensorFlowTestCase):
 

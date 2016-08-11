@@ -22,6 +22,23 @@ from tensorflow.contrib.graph_editor import subgraph
 from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
 
+__all__ = [
+    "swap_ts",
+    "reroute_a2b_ts",
+    "reroute_b2a_ts",
+    "swap_inputs",
+    "reroute_a2b_inputs",
+    "reroute_b2a_inputs",
+    "swap_outputs",
+    "reroute_a2b_outputs",
+    "reroute_b2a_outputs",
+    "swap",
+    "reroute_a2b",
+    "reroute_b2a",
+    "remove_control_inputs",
+    "add_control_inputs",
+]
+
 
 def _check_ts_compatibility(ts0, ts1):
   """Make sure the shape and dtype of the two tensor's lists are compatible.
@@ -69,8 +86,7 @@ class _RerouteMode(object):
     Args:
       mode: an integer representing one of the modes.
     Returns:
-      True if a is rerouted to b (mode is swap or a2b).
-      True if b is rerouted to a (mode is swap or b2a).
+      A tuple `(a2b, b2a)` boolean indicating what rerouting needs doing.
     Raises:
       ValueError: if mode is outside the enum range.
     """
@@ -177,11 +193,11 @@ def _reroute_ts(ts0, ts1, mode, can_modify=None, cannot_modify=None):
     consumers0 = set(t0.consumers())
     consumers1 = set(t1.consumers())
     if a2b:
-      nb_update_inputs += _reroute_t(t0, t1, consumers1,
-                                     can_modify, cannot_modify)
+      nb_update_inputs += _reroute_t(t0, t1, consumers1, can_modify,
+                                     cannot_modify)
     if b2a:
-      nb_update_inputs += _reroute_t(t1, t0, consumers0,
-                                     can_modify, cannot_modify)
+      nb_update_inputs += _reroute_t(t1, t0, consumers0, can_modify,
+                                     cannot_modify)
   return nb_update_inputs
 
 
@@ -201,7 +217,7 @@ def swap_ts(ts0, ts1, can_modify=None, cannot_modify=None):
       Any operation within cannot_modify will be left untouched by this
       function.
   Returns:
-    the number of individual modifications made by the function.
+    The number of individual modifications made by the function.
   Raises:
     TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
     TypeError: if can_modify or cannot_modify is not None and cannot be
@@ -227,7 +243,7 @@ def reroute_a2b_ts(ts0, ts1, can_modify=None, cannot_modify=None):
     cannot_modify: iterable of operations which cannot be modified. Any
       operation within cannot_modify will be left untouched by this function.
   Returns:
-    the number of individual modifications made by the function.
+    The number of individual modifications made by the function.
   Raises:
     TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
     TypeError: if can_modify or cannot_modify is not None and cannot be
@@ -254,7 +270,7 @@ def reroute_b2a_ts(ts0, ts1, can_modify=None, cannot_modify=None):
       Any operation within cannot_modify will be left untouched by this
       function.
   Returns:
-    the number of individual modifications made by the function.
+    The number of individual modifications made by the function.
   Raises:
     TypeError: if ts0 or ts1 cannot be converted to a list of tf.Tensor.
     TypeError: if can_modify or cannot_modify is not None and cannot be
@@ -286,10 +302,9 @@ def _reroute_sgv_remap(sgv0, sgv1, mode):
   sgv1_ = sgv1.copy()
   # pylint: disable=protected-access
   if a2b and b2a:
-    (sgv0_._input_ts, sgv1_._input_ts) = (
-        sgv1_._input_ts, sgv0_._input_ts)
-    (sgv0_._passthrough_ts, sgv1_._passthrough_ts) = (
-        sgv1_._passthrough_ts, sgv0_._passthrough_ts)
+    (sgv0_._input_ts, sgv1_._input_ts) = (sgv1_._input_ts, sgv0_._input_ts)
+    (sgv0_._passthrough_ts, sgv1_._passthrough_ts) = (sgv1_._passthrough_ts,
+                                                      sgv0_._passthrough_ts)
   elif a2b:
     sgv1_._input_ts = sgv0_._input_ts[:]
     sgv1_._passthrough_ts = sgv0_._passthrough_ts[:]
@@ -306,8 +321,11 @@ def _reroute_sgv_remap(sgv0, sgv1, mode):
         ii = a._input_ts.index(t)
         b._output_ts[i] = b._input_ts[ii]
     # pylint: enable=protected-access
-  if a2b: update_passthrough_outputs(sgv0_, sgv1_)
-  if b2a: update_passthrough_outputs(sgv1_, sgv0_)
+
+  if a2b:
+    update_passthrough_outputs(sgv0_, sgv1_)
+  if b2a:
+    update_passthrough_outputs(sgv1_, sgv0_)
 
   # in-place
   # pylint: disable=protected-access
@@ -328,8 +346,8 @@ def _reroute_sgv_inputs(sgv0, sgv1, mode):
       subgraph.make_view.
     mode: reroute mode, see _reroute_ts(...).
   Returns:
-    Two new subgraph views with their inputs swapped.
-      Note that sgv0 and sgv1 are also modified in place.
+    A tuple `(sgv0, sgv1)` of subgraph views with their inputs swapped.
+      Note that the function argument sgv0 and sgv1 are also modified in place.
   Raises:
     StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -358,8 +376,8 @@ def _reroute_sgv_outputs(sgv0, sgv1, mode):
       subgraph.make_view.
     mode: reroute mode, see _reroute_ts(...).
   Returns:
-    Two new subgraph views with their outputs swapped.
-      Note that sgv0 and sgv1 are also modified in place.
+    A tuple `(sgv0, sgv1)` of subgraph views with their outputs swapped.
+      Note that the function argument sgv0 and sgv1 are also modified in place.
   Raises:
     StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
@@ -384,8 +402,9 @@ def _reroute_sgv(sgv0, sgv1, mode):
       subgraph using the same rules than the function subgraph.make_view.
     mode: reroute mode, see _reroute_ts(...).
   Returns:
-    Two new subgraph views with their outputs and inputs swapped.
-      Note that sgv0 and sgv1 are also modified in place.
+    A tuple `(sgv0, sgv1)` of subgraph views with their outputs and inputs
+      swapped.
+      Note that the function argument sgv0 and sgv1 are also modified in place.
   Raises:
     StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.

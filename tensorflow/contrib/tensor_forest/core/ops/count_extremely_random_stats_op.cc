@@ -25,6 +25,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -47,6 +48,10 @@ using tensorforest::DataColumnTypes;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
 using tensorforest::FeatureSpec;
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 // A data structure to store the results of parallel tree traversal.
 struct InputDataResult {
@@ -162,6 +167,37 @@ REGISTER_OP("CountExtremelyRandomStats")
     .Output("pcw_totals_sums_delta: float")
     .Output("pcw_totals_squares_delta: float")
     .Output("leaves: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      int64 num_classes;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_classes", &num_classes));
+      bool regression;
+      TF_RETURN_IF_ERROR(c->GetAttr("regression", &regression));
+
+      const Dimension* num_points = c->Dim(c->input(0), 0);
+      if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
+        num_points = c->UnknownDim();
+      }
+      const Dimension* num_nodes = c->Dim(c->input(6), 0);
+
+      // Node sums
+      c->set_output(0, c->Matrix(num_nodes, num_classes));
+      // Node squares
+      c->set_output(1, c->Matrix(num_nodes, num_classes));
+
+      c->set_output(2, c->Matrix(c->UnknownDim(), regression ? 2 : 3));
+
+      c->set_output(3, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(c->UnknownDim()));
+      c->set_output(4, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(0LL));
+      c->set_output(5, c->Matrix(c->UnknownDim(), regression ? 1 : 2));
+      c->set_output(6, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(c->UnknownDim()));
+      c->set_output(7, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(0LL));
+      c->set_output(8, c->Vector(num_points));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Calculates incremental statistics for a batch of training data.
 

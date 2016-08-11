@@ -3886,6 +3886,8 @@ class GraphKeys(object):
   UPDATE_OPS = "update_ops"
   # Key to collect losses
   LOSSES = "losses"
+  # Key to collect BaseSaverBuilder.SaveableObject instances for checkpointing.
+  SAVEABLE_OBJECTS = "saveable_objects"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"

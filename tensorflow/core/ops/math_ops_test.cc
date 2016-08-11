@@ -315,6 +315,38 @@ TEST(MathOpsTest, UnsortedSegmentSum_ShapeFn) {
               op, "[3];[3];?");
 }
 
+TEST(MathOpsTest, SparseSegment_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSegmentSum");
+  op.input_tensors.resize(3);
+  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "[2,4,3];[3];[3]", "[?,d0_1,d0_2]");
+
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[2,4,3];[];[3]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[2,4,3];[3];[3,4]");
+
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 3 and 4", op,
+              "[2,4,3];[3];[4]");
+}
+
+TEST(MathOpsTest, SparseSegmentGrad_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSegmentMeanGrad");
+  op.input_tensors.resize(4);
+  INFER_OK(op, "?;?;?;?", "?");
+  INFER_OK(op, "[2,4,3];[3];[3];[]", "[?,d0_1,d0_2]");
+
+  Tensor num_segments_t = test::AsScalar(100);
+  op.input_tensors[3] = &num_segments_t;
+  INFER_OK(op, "[2,4,3];[3];[3];[]", "[100,d0_1,d0_2]");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 2", op,
+              "[2,4,3];[3];[3];[1,1]");
+
+  // Negative value is not allowed
+  num_segments_t = test::AsScalar(-100);
+  op.input_tensors[3] = &num_segments_t;
+  INFER_ERROR("Cannot specify a negative value", op, "[2,4,3];[3];[3];[]");
+}
+
 TEST(MathOpsTest, BatchMatMul_ShapeFn) {
   ShapeInferenceTestOp op("BatchMatMul");
   auto set_adj = [&op](bool adj_x, bool adj_y) {
@@ -352,6 +384,47 @@ TEST(MathOpsTest, BatchMatMul_ShapeFn) {
   set_adj(true, true);
   INFER_OK(op, "[1,2,?,?];[1,2,3,4]", "[d0_0,d0_1,d0_3,d1_2]");
   INFER_ERROR("are 2 and 3", op, "[?,2,1];[?,1,3]");  // inner dim mismatch
+}
+
+TEST(MathOpsTest, ArgOps_ShapeFn) {
+  ShapeInferenceTestOp op("ArgMax");
+  op.input_tensors.resize(2);
+
+  INFER_OK(op, "?;?", "?");
+
+  // input rank <= 1 produces scalar
+  INFER_OK(op, "[2];?", "[]");
+  INFER_OK(op, "[];?", "[]");
+
+  // Incorrect rank for dimension
+  INFER_ERROR("must be rank 0", op, "[2];[1]");
+
+  // dimension not available, but input rank is.  Output is unknown
+  // shape with rank one less than input rank.
+  INFER_OK(op, "[2,3,4];?", "[?,?]");
+  INFER_OK(op, "[2,3,4,5,6];?", "[?,?,?,?]");
+
+  // Dimension values known
+  Tensor dimension = test::AsScalar(0);
+  op.input_tensors[1] = &dimension;
+  INFER_OK(op, "[2,3,4];[]", "[d0_1,d0_2]");
+
+  dimension = test::AsScalar(1);
+  op.input_tensors[1] = &dimension;
+  INFER_OK(op, "[2,3,4];[]", "[d0_0,d0_2]");
+
+  dimension = test::AsScalar(2);
+  op.input_tensors[1] = &dimension;
+  INFER_OK(op, "[2,3,4];[]", "[d0_0,d0_1]");
+
+  // Dimension value out of bounds
+  dimension = test::AsScalar(10);
+  op.input_tensors[1] = &dimension;
+  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
+
+  dimension = test::AsScalar(-10);
+  op.input_tensors[1] = &dimension;
+  INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
 }
 
 }  // end namespace tensorflow
