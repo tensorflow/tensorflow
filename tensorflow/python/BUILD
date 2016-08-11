@@ -1349,6 +1349,7 @@ py_test(
     size = "medium",
     srcs = ["training/saver_large_partitioned_variable_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/30782289
     deps = [
         "//tensorflow:tensorflow_py",
     ],
