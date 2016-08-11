@@ -119,12 +119,13 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
       return None
 
 
-def copy_op_handler(info, op):
+def copy_op_handler(info, op, copy_shape=True):
   """Copy a tf.Operation.
 
   Args:
     info: Transform._Info instance.
     op: the tf.Operation to be copied.
+    copy_shape: also copy the shape of the tensor
   Returns:
     A copy of op.
   """
@@ -161,6 +162,13 @@ def copy_op_handler(info, op):
   # Initialize a new Operation instance
   op_ = tf_ops.Operation(node_def_, info.graph_, inputs_, output_types_,
                          control_inputs_, input_types_, original_op_, op_def_)
+
+  # copy the shape over
+  if copy_shape:
+    for t, t_ in zip(op.outputs, op_.outputs):
+      t_.set_shape(t.get_shape())
+
+  # Add op to the graph
   info.graph_._add_op(op_)
 
   # pylint: enable=protected-access
