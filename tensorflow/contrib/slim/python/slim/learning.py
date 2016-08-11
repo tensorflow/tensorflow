@@ -257,6 +257,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
@@ -523,29 +524,28 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
 _USE_DEFAULT = 0
 
 
-def train(
-    train_op,
-    logdir,
-    train_step_fn=train_step,
-    train_step_kwargs=_USE_DEFAULT,
-    log_every_n_steps=1,
-    graph=None,
-    master='',
-    is_chief=True,
-    global_step=None,
-    number_of_steps=None,
-    init_op=_USE_DEFAULT,
-    init_feed_dict=None,
-    local_init_op=None,
-    init_fn=None,
-    ready_op=_USE_DEFAULT,
-    summary_op=_USE_DEFAULT,
-    save_summaries_secs=600,
-    startup_delay_steps=0,
-    saver=None,
-    save_interval_secs=600,
-    sync_optimizer=None,
-    session_config=None):
+def train(train_op,
+          logdir,
+          train_step_fn=train_step,
+          train_step_kwargs=_USE_DEFAULT,
+          log_every_n_steps=1,
+          graph=None,
+          master='',
+          is_chief=True,
+          global_step=None,
+          number_of_steps=None,
+          init_op=_USE_DEFAULT,
+          init_feed_dict=None,
+          local_init_op=_USE_DEFAULT,
+          init_fn=None,
+          ready_op=_USE_DEFAULT,
+          summary_op=_USE_DEFAULT,
+          save_summaries_secs=600,
+          startup_delay_steps=0,
+          saver=None,
+          save_interval_secs=600,
+          sync_optimizer=None,
+          session_config=None):
   """Runs a training loop using a TensorFlow supervisor.
 
   When the sync_optimizer is supplied, gradient updates are applied
@@ -576,8 +576,8 @@ def train(
     init_op: The initialization operation. If left to its default value, then
       the session is initialized by calling `tf.initialize_all_variables()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
-    local_init_op: The local initialization operation. If None,
-      then the session is initialized by calling
+    local_init_op: The local initialization operation. If left to its default
+      value, then the session is initialized by calling
       `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
@@ -636,6 +636,11 @@ def train(
 
     if summary_op == _USE_DEFAULT:
       summary_op = logging_ops.merge_all_summaries()
+
+    if local_init_op == _USE_DEFAULT:
+      local_init_op = control_flow_ops.group(
+          tf_variables.initialize_local_variables(),
+          data_flow_ops.initialize_all_tables())
 
     cleanup_op = None
 
