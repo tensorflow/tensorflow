@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from tf_beam_decoder import BeamDecoder
+from beam_decoder import BeamDecoder
 
 sess = tf.InteractiveSession()
 
