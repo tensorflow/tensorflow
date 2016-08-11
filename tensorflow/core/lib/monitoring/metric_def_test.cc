@@ -22,16 +22,16 @@ namespace monitoring {
 namespace {
 
 TEST(MetricDefTest, Simple) {
-  const MetricDef<MetricKind::CUMULATIVE, int64, 0> metric_def0(
+  const MetricDef<MetricKind::kCumulative, int64, 0> metric_def0(
       "/tensorflow/metric0", "An example metric with no labels.");
-  const MetricDef<MetricKind::GAUGE, double, 1> metric_def1(
+  const MetricDef<MetricKind::kGauge, double, 1> metric_def1(
       "/tensorflow/metric1", "An example metric with one label.", "LabelName");
 
   EXPECT_EQ("/tensorflow/metric0", metric_def0.name());
   EXPECT_EQ("/tensorflow/metric1", metric_def1.name());
 
-  EXPECT_EQ(MetricKind::CUMULATIVE, metric_def0.kind());
-  EXPECT_EQ(MetricKind::GAUGE, metric_def1.kind());
+  EXPECT_EQ(MetricKind::kCumulative, metric_def0.kind());
+  EXPECT_EQ(MetricKind::kGauge, metric_def1.kind());
 
   EXPECT_EQ("An example metric with no labels.", metric_def0.description());
   EXPECT_EQ("An example metric with one label.", metric_def1.description());

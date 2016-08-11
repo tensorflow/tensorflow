@@ -47,10 +47,11 @@ class Scaffold(object):
   collections in the graph.  The `Scaffold` class helps pick these pieces from
   the graph collections, creating and adding them to the collections if needed.
 
-  If you call the scaffold constructor without any arguments it will pick
-  pieces from the collections, creating default ones if needed.  You can pass
-  arguments to the constructor to provide your own pieces.  Pieces that you
-  pass to the constructor are not added to the graph collections.
+  If you call the scaffold constructor without any arguments, it will pick
+  pieces from the collections, creating default ones if needed when
+  `scaffold.finalize()` is called.  You can pass arguments to the constructor to
+  provide your own pieces.  Pieces that you pass to the constructor are not
+  added to the graph collections.
 
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
@@ -79,9 +80,6 @@ class Scaffold(object):
   """
 
   # TODO(touts): consider adding the output dir and summary writer (cached)?
-  # TODO(touts): I do not think we should pass keep_checkpoint_max here.
-  # TODO(touts): Add individual static functions for init_op(), etc. that
-  # implement the caching logic.
 
   def __init__(self,
                init_op=None,
@@ -90,8 +88,7 @@ class Scaffold(object):
                ready_op=None,
                local_init_op=None,
                summary_op=None,
-               saver=None,
-               keep_checkpoint_max=5):
+               saver=None):
     """Create a scaffold.
 
     Args:
@@ -108,8 +105,6 @@ class Scaffold(object):
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.Saver` object to use to save and restore variables.
-      keep_checkpoint_max: Optional parameter to use to construct a saver if
-        none is already there in the graph.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -124,7 +119,6 @@ class Scaffold(object):
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
-    self._keep_checkpoint_max = keep_checkpoint_max
     self._init_feed_dict = init_feed_dict
 
   def finalize(self):
@@ -149,9 +143,9 @@ class Scaffold(object):
       self._saver = Scaffold._get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True,
-                                       max_to_keep=self._keep_checkpoint_max))
+          lambda: training_saver.Saver(sharded=True))
     # pylint: enable=g-long-lambda
+    self._saver.build()
 
     ops.get_default_graph().finalize()
 
@@ -206,10 +200,43 @@ class Scaffold(object):
                                   data_flow_ops.initialize_all_tables())
 
 
-# TODO(ispir): Document this class after interface is finalized.
-# mention StopIteration and OutOfRangeError
 class MonitoredSession(object):
-  """Session-like object that supports recovery and SessionRunHooks.
+  """Session-like object that handles initialization, recovery and hooks.
+
+  Example usage:
+  ```python
+  saver_hook = CheckpointSaverHook(...)
+  summary_hook = SummaryHook(...)
+  with MonitoredSession(master=..., hooks=[saver_hook, summary_hook]) as sess:
+    while not sess.should_stop():
+      sess.run(train_op)
+  ```
+
+  Initialization: At creation time the monitored session does following things
+  in given order:
+
+  * calls `hook.begin()`
+  * finalizes the graph via `scaffold.finalize()`
+  * create session
+  * initializes the model via initialization ops provided by `Scaffold`
+  * restores variables if a checkpoint exists
+  * launches queue runners
+
+  Run: When `run()` is called, the monitored session does following things:
+
+  * calls `hook.before_run()`
+  * calls TensorFlow `session.run()` with merged fetches and feed_dict
+  * calls `hook.after_run()`
+  * returns result of `session.run()` asked by user
+  * if `AbortedError` occurs, it recovers or reinitializes the session before
+    executing the run() call agai
+
+
+  Exit: At the `close()`, the monitored session does following things in order:
+  * calls `hook.end()`
+  * closes the queue runners and the session
+  * surpresses `OutOfRange` error which indicates that all inputs have been
+    processed if the monitored_session is used as a context.
   """
 
   def __init__(self,
@@ -219,6 +246,20 @@ class MonitoredSession(object):
                hooks=None,
                scaffold=None,
                config=None):
+    """Creates a MonitoredSession.
+
+    Args:
+      master: `String` representation of the TensorFlow master to use.
+      is_chief: If True, it will take care of initialization and recovery the
+        underlying TensorFlow session. If False, it will wait on a chief to
+        initialize or recover the TensorFlow session.
+      checkpoint_dir: A string.  Optional path to a directory where to restore
+        variables.
+      hooks: An iterable of `SessionRunHook' objects.
+      scaffold: A `Scaffold` used for gathering or building supportive ops. If
+        not specified a default one is created. It's used to finalize the graph.
+      config: `ConfigProto` proto used to configure the session.
+    """
     self._graph = ops.get_default_graph()
     self._master = master
     self._checkpoint_dir = checkpoint_dir
@@ -515,7 +556,7 @@ class _HookedSession(_WrappedSession):
 
     Args:
       sess: A `tf.Session` or a `_WrappedSession` object.
-      hooks: An iterable of `tf.contrib.learn.SessionRunHook' objects.
+      hooks: An iterable of `SessionRunHook' objects.
     """
 
     _WrappedSession.__init__(self, sess)

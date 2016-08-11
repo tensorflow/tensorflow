@@ -166,6 +166,16 @@ REGISTER_OP("QuantizedConcat")
     .Output("output_max: float")
     .Attr("N: int >= 2")
     .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c));
+      const Shape* unused;
+      for (int i = 2; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
+      }
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Concatenates quantized tensors along one dimension.
 

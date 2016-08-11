@@ -76,7 +76,7 @@ class SvdOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
-    Eigen::JacobiSVD<Matrix, Eigen::HouseholderQRPreconditioner> svd;
+    Eigen::BDCSVD<Matrix> svd;
     if (compute_uv_) {
       svd.compute(inputs[0],
                   (full_matrices_ ? Eigen::ComputeFullU | Eigen::ComputeFullV

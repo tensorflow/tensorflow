@@ -41,7 +41,7 @@ Compute a destination name from a source name.
 
 ##### Returns:
 
-  the transformed name.
+  The transformed name.
 
 ##### Raises:
 

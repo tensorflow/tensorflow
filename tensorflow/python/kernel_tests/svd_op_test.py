@@ -46,12 +46,50 @@ class SvdOpTest(tf.test.TestCase):
 
 def _GetSvdOpTest(dtype_, shape_):
 
-  def _CompareSingularVectors(self, x, y, atol):
+  def CompareSingularVectors(self, x, y, rank, atol):
+    # We only compare the first 'rank' singular vectors since the
+    # remainder form an arbitrary orthonormal basis for the
+    # (row- or column-) null space, whose exact value depends on
+    # implementation details. Notice that since we check that the
+    # matrices of singular vectors are unitary elsewhere, we do
+    # implicitly test that the trailing vectors of x and y span the
+    # same space.
+    x = x[..., 0:rank]
+    y = y[..., 0:rank]
     # Singular vectors are only unique up to sign (complex phase factor for
     # complex matrices), so we normalize the signs first.
     signs = np.sign(np.sum(np.divide(x, y), -2, keepdims=True))
     x *= signs
     self.assertAllClose(x, y, atol=atol)
+
+  def CheckApproximation(self, a, u, s, v, full_matrices, atol):
+    # Tests that a ~= u*diag(s)*transpose(v).
+    batch_shape = a.shape[:-2]
+    m = a.shape[-2]
+    n = a.shape[-1]
+    diag_s = tf.batch_matrix_diag(s)
+    if full_matrices:
+      if m > n:
+        zeros = tf.zeros(batch_shape + (m - n, n), dtype=dtype_)
+        diag_s = tf.concat(a.ndim - 2, [diag_s, zeros])
+      elif n > m:
+        zeros = tf.zeros(batch_shape + (m, n - m), dtype=dtype_)
+        diag_s = tf.concat(a.ndim - 1, [diag_s, zeros])
+    a_recon = tf.batch_matmul(u, diag_s)
+    a_recon = tf.batch_matmul(a_recon, v, adj_y=True)
+    self.assertAllClose(a_recon.eval(), a, atol=atol)
+
+  def CheckUnitary(self, x):
+    # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
+    xx = tf.batch_matmul(x, x, adj_x=True)
+    identity = tf.batch_matrix_band_part(tf.ones_like(xx), 0, 0)
+    # Any decent SVD code should produce singular vectors that are
+    # orthonormal to (almost) full machine precision.
+    if dtype_ == np.float32:
+      atol = 5e-6
+    else:
+      atol = 1e-14
+    self.assertAllClose(identity.eval(), xx.eval(), atol=atol)
 
   def Test(self):
     np.random.seed(1)
@@ -94,19 +132,23 @@ def _GetSvdOpTest(dtype_, shape_):
                                  full_matrices=full_matrices)
           self.assertAllClose(np_s, tf_s.eval(), atol=atol)
           if compute_uv:
-            _CompareSingularVectors(self, np_u, tf_u.eval(), atol)
-            _CompareSingularVectors(self, np.swapaxes(np_v, -2, -1),
-                                    tf_v.eval(), atol)
+            CompareSingularVectors(self, np_u, tf_u.eval(), min(shape_[-2:]),
+                                   atol)
+            CompareSingularVectors(self, np.swapaxes(np_v, -2, -1), tf_v.eval(),
+                                   min(shape_[-2:]), atol)
+            CheckApproximation(self, x, tf_u, tf_s, tf_v, full_matrices, atol)
+            CheckUnitary(self, tf_u)
+            CheckUnitary(self, tf_v)
 
   return Test
 
 
 if __name__ == '__main__':
   for dtype in np.float32, np.float64:
-    for m in 1, 2, 5, 10:
-      for n in 1, 2, 5, 10:
-        for batch_dims in [(), (3,)] + [(3, 2)] * (max(m, n) < 10):
-          shape = batch_dims + (m, n)
+    for rows in 1, 2, 5, 10:
+      for cols in 1, 2, 5, 10:
+        for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
+          shape = batch_dims + (rows, cols)
           name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
           setattr(SvdOpTest, 'testSvd_' + name, _GetSvdOpTest(dtype, shape))
   tf.test.main()

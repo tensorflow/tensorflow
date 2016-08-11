@@ -414,7 +414,7 @@ class ConcatOpTest(tf.test.TestCase):
       before = len(g.get_operations())
       _ = tf.gradients([y], [x], [y])
       after = len(g.get_operations())
-      self.assertEqual(n + 3, after - before)
+      self.assertEqual(2 * n + 2, after - before)
       print("graph = ", [x.name for x in g.get_operations()])
 
   def testConcatLargeTensors(self):

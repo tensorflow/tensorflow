@@ -1,15 +1,45 @@
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-imports/d3.html">
 
+<!--
+vz-histogram-timeseries creates an element that draws beautiful histograms for
+displaying how data is distributed over time.
+
+This histogram supports changing the time axis type and different modes of
+visualization.
+
+@demo
+-->
 <dom-module id="vz-histogram-timeseries">
-
     <template>
+      <svg id="svg">
+        <g>
+          <g class="axis x"></g>
+          <g class="axis y"></g>
+          <g class="axis y slice"></g>
+          <g class="stage">
+            <rect class="background"></rect>
+          </g>
+          <g class="x-axis-hover"></g>
+        </g>
+      </svg>
+
       <style>
         :host {
-          display: block;
+          display: flex;
+          flex-direction: column;
+          flex-grow: 1;
+          flex-shrink: 1;
+          position: relative;
         }
 
         svg {
           font-family: roboto, sans-serif;
+          overflow: visible;
+          display: block;
+          width: 100%;
+          flex-grow: 1;
+          flex-shrink: 1;
         }
 
         .background {
@@ -100,52 +130,144 @@
         .large .axis .tick:nth-child(2n + 1) text { display: block; }
 
       </style>
-      <svg id="svg">
-        <g>
-          <g class="axis x"></g>
-          <g class="axis y"></g>
-          <g class="axis y slice"></g>
-          <g class="stage">
-            <rect class="background"></rect>
-          </g>
-          <g class="x-axis-hover"></g>
-        </g>
-      </svg>
-
     </template>
 
     <script>
-    "use strict";
     Polymer({
       is: "vz-histogram-timeseries",
       properties: {
-        mode: { type: String, value: "offset" }, //offset | overlay
-        width: { type: Number, value: 500 },
-        height: { type: Number, value: 500 },
-        timeProperty: { type: String, value: "step" },
-        bins: { type: String, value: "bins" },
-        x: { type: String, value: "x" },
-        dx: { type: String, value: "dx" },
-        y: { type: String, value: "y" },
-        data: { type: Array, value: function(){ return [{ step: 0, bins: [{ x: 0, dx: 1, y: 0 }] }, { step: 1, bins: [{ x: 0, dx: 1, y: 0 }] }];}}
-        // type: HistogramSeriesDatum[] as described in vz-histogram-timeseries.d.ts
+        /**
+         * Defines which view mode is being used by the chart. Supported values
+         * are:
+         * - "offset" - Offset view of the data showing all timesteps.
+         * - "overlay" - Overlays all timesteps into one 2D view, with the
+         * brighter lines representing the newer timesteps.
+         */
+        mode: {
+          type: String,
+          value: "offset"
+        },
+
+        /*
+         * The name of the datum's property that contains the time values.
+         * Allows:
+         * - "step" - Linear scale using the "step" property of the datum.
+         * - "wall_time" - Temporal scale using the "wall_time" property of the
+         * datum.
+         * - "relative" - Temporal scale starting at 0 created by using
+         * the "wall_time" property of the datum.
+         */
+        timeProperty: {
+          type: String,
+          value: "step"
+        },
+
+        /**
+         * The name of the data's property that contains the bins.
+         */
+        bins: {
+          type: String,
+          value: "bins"
+        },
+
+        /**
+         * The name of the datum's property that contains the x values.
+         */
+        x: {
+          type: String,
+          value: "x"
+        },
+
+        /**
+         * The name of the datum's property that contains the bin width values.
+         */
+        dx: {
+          type: String,
+          value: "dx"
+        },
+
+        /**
+         * The name of the datum's property that contains the bin height.
+         */
+        y: {
+          type: String,
+          value: "y"
+        },
+
+        /**
+         * Scale that maps series names to colors. The default colors are from
+         * d3.scale.category10() scale. Use this property to replace the default
+         * line colors with colors of your own choice.
+         */
+        colorScale: {
+          type: Object,
+          value: function() {
+            return d3.scale.category10();
+          }
+        },
+
+        /**
+         * Duration of the transition between histogram modes.
+         */
+        modeTransitionDuration: {
+          type: Number,
+          value: 500
+        },
+
+        _attached: Boolean,
+        _name: { type: String, value: null },
+        _data: { type: Array, value: null },
       },
+      observers: [
+        'redraw(timeProperty, _attached)',
+        '_modeRedraw(mode)'
+      ],
       ready: function() {
         // Polymer's way of scoping styles on nodes that d3 created
-        this.scopeSubtree(this.$["svg"], true);
+        this.scopeSubtree(this.$.svg, true);
       },
-      draw: function(duration) {
+      attached: function() {
+        this._attached = true;
+      },
+      detached: function() {
+        this._attached = false;
+      },
+      setVisibleSeries: function(names) {
+        // Do nothing.
+      },
+      setSeriesData: function(name, data) {
+        this._name = name;
+        this._data = data;
+        this.redraw();
+      },
+
+      /**
+       * Redraws the chart. This is only called if the chart is attached to the
+       * screen and if the chart has data.
+       */
+      redraw: function() {
+        this._draw(0);
+      },
+
+      _modeRedraw: function() {
+        this._draw(this.modeTransitionDuration);
+      },
+
+      _draw: function(duration) {
+        if (!this._attached || !this._data) {
+          return;
+        }
 
         //
         // Data verification
         //
-        if (!(this.data.length > 0)) throw(new Error("Not enough steps in the data"));
-        if (!this.data[0].hasOwnProperty(this.timeProperty)) throw(new Error("No time property of '" + this.timeProperty + "' in data"));
-        if (!this.data[0].hasOwnProperty(this.bins)) throw(new Error("No bins property of '" + this.bins + "' in data"));
-        if (!(this.data[0][this.bins].length > 0)) throw(new Error("Must have at least one bin in bins in data"));
-        if (!this.data[0][this.bins][0].hasOwnProperty(this.x)) throw(new Error("No x property '" + this.x + "' on bins data"));
-        if (!this.data[0][this.bins][0].hasOwnProperty(this.dx)) throw(new Error("No dx property '" + this.dx + "' on bins data"));
-        if (!this.data[0][this.bins][0].hasOwnProperty(this.y)) throw(new Error("No y property '" + this.y + "' on bins data"));
+        if (duration === undefined) throw(new Error("vz-histogram-timeseries _draw needs duration"));
+        if (this._data.length <= 0) throw(new Error("Not enough steps in the data"));
+        if (!this._data[0].hasOwnProperty(this.bins)) throw(new Error("No bins property of '" + this.bins + "' in data"));
+        if (this._data[0][this.bins].length <= 0) throw(new Error("Must have at least one bin in bins in data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.x)) throw(new Error("No x property '" + this.x + "' on bins data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.dx)) throw(new Error("No dx property '" + this.dx + "' on bins data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.y)) throw(new Error("No y property '" + this.y + "' on bins data"));
 
         //
         // Initialization
@@ -156,18 +278,24 @@
         var dxProp = this.dx;
         var yProp = this.y;
 
-        var xAccessor = (d) => d[xProp];
-        var yAccessor = (d) => d[yProp];
-        var dxAccessor = (d) => d[dxProp];
-        var xRightAccessor = (d) => d[xProp] + d[dxProp];
-        var timeAccessor = (d) => d[timeProp];
-
-        var duration = duration | 0;
-        var data = this.data;
+        var data = this._data;
+        var name = this._name;
         var mode = this.mode;
+        var color = d3.hcl(this.colorScale(name));
 
-        var outerWidth = this.width,
-            outerHeight = this.height;
+        var xAccessor = function(d) { return d[xProp] };
+        var yAccessor = function(d) { return d[yProp] };
+        var dxAccessor = function(d) { return d[dxProp] };
+        var xRightAccessor = function(d) { return d[xProp] + d[dxProp] };
+        var timeAccessor = function(d) { return d[timeProp] };
+
+        if (timeProp === "relative") {
+          timeAccessor = function(d) { return d.wall_time - data[0].wall_time };
+        }
+
+        var brect = this.$.svg.getBoundingClientRect();
+        var outerWidth = brect.width,
+            outerHeight = brect.height;
 
         var sliceHeight,
             margin = {top: 5, right: 60, bottom: 20, left: 24};
@@ -188,8 +316,16 @@
         //
         // Text formatters
         //
-        var formatTime = d3.time.format("%x"),
-            format = d3.format(".3n");
+        var format = d3.format(".3n");
+        var yAxisFormat = d3.format(".0f");
+
+        if (timeProp === "wall_time") {
+          yAxisFormat = d3.time.format("%X");
+        } else if (timeProp === "relative") {
+          yAxisFormat = function(d) {
+            return d3.format(".1r")(d / 3.6e6); // Convert to hours.
+          };
+        }
 
         //
         // Calculate the extents
@@ -209,8 +345,10 @@
         //
         var outlineCanvasSize = 500;
 
-        var yScale = (timeProp === "step" ? d3.scale.linear() : d3.time.scale())
-            .domain(d3.extent(data, timeAccessor))
+        var extent = d3.extent(data, timeAccessor);
+
+        var yScale = (timeProp === "wall_time" ? d3.time.scale() : d3.scale.linear())
+            .domain(extent)
             .range([0, (mode === "offset" ? height : 0)]);
 
         var ySliceScale = d3.scale.linear()
@@ -235,7 +373,7 @@
 
         var outlineColor = d3.scale.linear()
             .domain(d3.extent(data, timeAccessor))
-            .range(["#FFA726", "#BF360C"])
+            .range([color.darker(), color.brighter()])
             .interpolate(d3.interpolateHcl);
 
         var xAxis = d3.svg.axis()
@@ -245,20 +383,31 @@
 
         var yAxis = d3.svg.axis()
             .scale(yScale)
-            .ticks(Math.max(2, width / 20))
+            .ticks(Math.max(2, height / 15))
+            .tickFormat(yAxisFormat)
             .orient("right");
 
         var ySliceAxis = d3.svg.axis()
             .scale(ySliceScale)
-            .ticks(Math.max(2, width / 20))
+            .ticks(Math.max(2, height / 15))
             .tickSize(width + 5)
             .orient("right");
 
-        var path = d3.svg.area()
+        var xBinCentroid = function(d) {
+          return d[xProp] + d[dxProp] / 2;
+        };
+
+        var linePath = d3.svg.line()
             .interpolate("linear")
-            .x(function(d) { return xLineScale(d[xProp] + d[dxProp] / 2); })
-            .y0(function(d) { return yLineScale(0); })
-            .y1(function(d) { return yLineScale(d[yProp]); });
+            .x(function(d) { return xLineScale(xBinCentroid(d)); })
+            .y(function(d) { return yLineScale(d[yProp]); });
+
+        var path = function(d) {
+          // Draw a line from 0 to the first point and from the last point to 0.
+          return 'M' + xLineScale(xBinCentroid(d[0])) + ',' + yLineScale(0) +
+              'L' + linePath(d).slice(1) +
+              "L" + xLineScale(xBinCentroid(d[d.length - 1])) + "," + yLineScale(0);
+        };
 
         //
         // Render
@@ -318,14 +467,14 @@
             .attr("width", outerWidth)
             .attr("height", outerHeight);
 
-        var histogram = stage.selectAll(".histogram").data(data, function(d) { return d[timeProp]; }),
+        var histogram = stage.selectAll(".histogram").data(data),
             histogramExit = histogram.exit().remove(),
             histogramEnter = histogram.enter().append("g").attr("class", "histogram"),
             histogramUpdate = histogram
-                .sort(function(a, b) { return a[timeProp] - b[timeProp]; }),
+                .sort(function(a, b) { return timeAccessor(a) - timeAccessor(b); }),
             histogramTransition = gTransition.selectAll(".histogram")
                 .attr("transform", function(d) {
-                  return "translate(0, " + (mode === "offset" ? (yScale(d[timeProp]) - sliceHeight) : 0) + ")";
+                  return "translate(0, " + (mode === "offset" ? (yScale(timeAccessor(d)) - sliceHeight) : 0) + ")";
                 });
 
         var baselineEnter = histogramEnter.append("line").attr("class", "baseline"),
@@ -342,14 +491,14 @@
                 .style("stroke-width", 1),
             outlineTransition = histogramTransition.select(".outline")
                 .attr("transform", "scale(" + width / outlineCanvasSize + ", " + sliceHeight / outlineCanvasSize + ")")
-                .style("stroke", function(d) { return (mode === "offset" ? "white" : outlineColor(d[timeProp])); })
+                .style("stroke", function(d) { return (mode === "offset" ? "white" : outlineColor(timeAccessor(d))); })
                 .style("fill-opacity", function(d) { return (mode === "offset" ? 1 : 0); })
-                .style("fill", function(d) { return outlineColor(d[timeProp]); });
+                .style("fill", function(d) { return outlineColor(timeAccessor(d)); });
 
 
         var hoverEnter = histogramEnter.append("g")
                 .attr("class", "hover")
-                .style("fill", function(d) { return outlineColor(d[timeProp]); }),
+                .style("fill", function(d) { return outlineColor(timeAccessor(d)); }),
             hoverUpdate = histogramUpdate.select(".hover");
 
         hoverEnter.append("circle")
@@ -397,7 +546,6 @@
             .style("opacity", mode === "offset" ? 1 : 0)
             .attr("transform", "translate(" + width + ", " + (mode === "offset" ? 0 : height) + ")")
             .call(yAxis);
-
       }
     });
     </script>

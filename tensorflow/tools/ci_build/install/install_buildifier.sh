@@ -20,7 +20,7 @@ rm -rf ${BUILDIFIER_DIR}
 git clone https://github.com/bazelbuild/buildifier.git ${BUILDIFIER_DIR}
 pushd ${BUILDIFIER_DIR}
 
-bazel build buildifier:buildifier
+bazel build buildifier:buildifier --spawn_strategy=standalone --genrule_strategy=standalone
 sudo cp bazel-bin/buildifier/buildifier /usr/local/bin/
 
 popd

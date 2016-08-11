@@ -16,19 +16,23 @@
         position: relative;
       }
 
-      .card .card-title {
+      .card .card-title, .card .card-subtitle {
         flex-grow: 0;
         flex-shrink: 0;
-        margin-bottom: 10px;
         font-size: 14px;
         text-overflow: ellipsis;
         overflow: hidden;
+      }
+
+      .card .card-subtitle {
+        font-size: 12px;
       }
 
       .card .card-content {
         flex-grow: 1;
         flex-shrink: 1;
         display: flex;
+        margin-top: 10px;
       }
       .card .card-bottom-row {
         position: absolute;

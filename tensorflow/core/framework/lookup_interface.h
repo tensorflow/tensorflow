@@ -68,6 +68,8 @@ class LookupInterface : public ResourceBase {
 
   virtual Status ExportValues(OpKernelContext* context) = 0;
 
+  virtual Status ImportValues(const Tensor& keys, const Tensor& values) = 0;
+
   // Returns the data type of the key.
   virtual DataType key_dtype() const = 0;
 

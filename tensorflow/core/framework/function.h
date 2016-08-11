@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -364,6 +365,9 @@ class FunctionLibraryRuntime {
   // Returns the function library definition that backs this runtime.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
+
+  // Return the environment on which the function executes.
+  virtual Env* env() = 0;
 };
 
 // To register a gradient function for a builtin op, one should use

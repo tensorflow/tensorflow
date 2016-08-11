@@ -640,11 +640,14 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
                                      Factory factory) {
-  const string key =
-      Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-          kernel_def->label());
-  GlobalKernelRegistryTyped()->insert(std::make_pair(
-      key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+  // See comments in register_kernel::Name in header for info on _no_register.
+  if (kernel_def->op() != "_no_register") {
+    const string key =
+        Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
+            kernel_def->label());
+    GlobalKernelRegistryTyped()->insert(std::make_pair(
+        key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+  }
   delete kernel_def;
 }
 

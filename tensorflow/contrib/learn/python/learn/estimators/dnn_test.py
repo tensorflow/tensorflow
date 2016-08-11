@@ -71,10 +71,14 @@ class DNNClassifierTest(tf.test.TestCase):
     if not HAS_SKLEARN:
       return
     iris = tf.contrib.learn.datasets.load_iris()
+
+    cont_features = [
+        tf.contrib.layers.real_valued_column('', dimension=4)]
     kwargs = {
-            "n_classes": 3,
-            "optimizer" : "Adam",
-            "hidden_units" : [3, 4]
+        'n_classes': 3,
+        'feature_columns': cont_features,
+        'optimizer' : 'Adam',
+        'hidden_units' : [3, 4]
     }
 
     classifier = tf.contrib.learn.DNNClassifier(**kwargs)
@@ -83,8 +87,8 @@ class DNNClassifierTest(tf.test.TestCase):
       classifier,
       iris.data[1:5],
       iris.target[1:5],
-      scoring="accuracy",
-      fit_params={"steps": 2}
+      scoring='accuracy',
+      fit_params={'steps': 100}
     )
     self.assertAllClose(scores, [1, 1, 1])
 
@@ -111,12 +115,6 @@ def boston_input_fn():
 
 
 class FeatureColumnTest(tf.test.TestCase):
-
-  # TODO(b/29580537): Remove when we deprecate feature column inference.
-  def testTrainWithInferredFeatureColumns(self):
-    est = tf.contrib.learn.DNNRegressor(hidden_units=[3, 3])
-    est.fit(input_fn=boston_input_fn, steps=1)
-    _ = est.evaluate(input_fn=boston_input_fn, steps=1)
 
   def testTrain(self):
     feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(

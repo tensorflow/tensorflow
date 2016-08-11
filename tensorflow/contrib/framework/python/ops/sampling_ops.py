@@ -144,8 +144,9 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
 
     # Set up second queue containing batches that have the desired class
     # proportions.
-    batched = _get_stratified_batch_from_tensors(
-        val_list, label, accept_probs, batch_size, threads_per_queue)
+    cur_prob = array_ops.gather(accept_probs, label)
+    batched = _conditional_batch(
+        val_list + [label], cur_prob, batch_size, threads_per_queue)
     return batched[:-1], batched[-1]
 
 
@@ -373,33 +374,56 @@ def _calculate_acceptance_probabilities(init_probs, target_probs):
   return ratio_l / max_ratio
 
 
-def _get_stratified_batch_from_tensors(val_list, label, accept_probs,
-                                       batch_size, queue_threads=3):
-  """Accepts examples one-at-a-time based on class."""
-  # Make queue that will have proper class proportions. Contains exactly one
-  # batch at a time.
-  vals_shapes = [val.get_shape() for val in val_list]
-  vals_dtypes = [val.dtype for val in val_list]
-  label_shape = label.get_shape()
+def _conditional_batch(tensors, accept_prob, batch_size, queue_threads=10):
+  """Conditionally enqueue tensors based on accept_prob.
+
+  Specifically, enqueue the element if accept_prob > rand_unif([0, 1]).
+
+  Args:
+      tensors: List of tensors to enqueue.
+      accept_prob: Acceptance probability per example.
+      batch_size: Size of batch.
+      queue_threads: Number of threads enqueuing in the final queue.
+
+  Returns:
+      List of batched tensors.
+
+  Raises:
+      ValueError: `accept_prob` isn't 0D.
+  """
+  accept_prob.get_shape().assert_has_rank(0)
+  # Determine shapes and types of to-be-enqueued-tensors.
+  shapes_list = []
+  dtypes_list = []
+  for tensor in tensors:
+    cur_shape = tensor.get_shape()
+    cur_shape.assert_is_fully_defined()
+    shapes_list.append(cur_shape)
+    dtypes_list.append(tensor.dtype)
+
   final_q = data_flow_ops.FIFOQueue(capacity=batch_size,
-                                    shapes=vals_shapes + [label_shape],
-                                    dtypes=vals_dtypes + [label.dtype],
+                                    shapes=shapes_list,
+                                    dtypes=dtypes_list,
                                     name='batched_queue')
+  logging_ops.scalar_summary('queue/%s/size' % final_q.name, final_q.size())
 
   # Conditionally enqueue.
-  tensors_to_enqueue = val_list + [label]
-  eq_tf = array_ops.reshape(math_ops.less(
-      random_ops.random_uniform([1]),
-      array_ops.slice(accept_probs, [label], [1])),
-                            [])
+  # Reshape enqueue op to match no_op's shape.
+  eq_tf = math_ops.less(random_ops.random_uniform([]), accept_prob)
   conditional_enqueue = control_flow_ops.cond(
       eq_tf,
-      lambda: final_q.enqueue(tensors_to_enqueue),
+      lambda: final_q.enqueue(tensors),
       control_flow_ops.no_op)
   queue_runner.add_queue_runner(queue_runner.QueueRunner(
       final_q, [conditional_enqueue] * queue_threads))
 
-  return final_q.dequeue_many(batch_size)
+  out_tensor = final_q.dequeue_many(batch_size)
+  # Queues return a single tensor if the list of enqued tensors is one. Since we
+  # want the type to be the same in all cases, always return a list.
+  if isinstance(out_tensor, ops.Tensor):
+    out_tensor = [out_tensor]
+
+  return out_tensor
 
 
 def _make_per_class_queues(tensor_list, labels, num_classes, queue_capacity,

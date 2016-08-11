@@ -7553,6 +7553,35 @@ op {
   description: "The tensor `keys` must of the same type as the keys of the table.\nThe output `values` is of the type of the table values.\n\nThe scalar `default_value` is the value output for keys not present in the\ntable. It must also be of the same type as the table values."
 }
 op {
+  name: "LookupTableImport"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    description: "Any shape.  Keys to look up."
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    description: "Same shape as `keys`.  Values to associate with keys."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  summary: "Replaces the contents of the table with the specified keys and values."
+  description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
+}
+op {
   name: "LookupTableInsert"
   input_arg {
     name: "table_handle"
@@ -8429,7 +8458,7 @@ op {
     minimum: 1
   }
   summary: "Forwards the value of an available tensor from `inputs` to `output`."
-  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`."
 }
 op {
   name: "MergeSummary"
@@ -10742,7 +10771,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce over.  Dimensions are reduced in the\norder specified.  If `reduction_indices` has higher rank than `1`, it is\nflattened.  Omitting `reduction_indices` is equivalent to passing\n`[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported."
+    description: "The dimensions to reduce over.  Dimensions are reduced in the\norder specified.  Omitting `reduction_indices` is equivalent to passing\n`[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported."
     type: DT_INT32
   }
   output_arg {
@@ -10882,7 +10911,7 @@ op {
     minimum: 1
   }
   summary: "Forwards the value of an available tensor from `inputs` to `output`."
-  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`."
 }
 op {
   name: "RefNextIteration"
@@ -15115,6 +15144,36 @@ op {
   }
   summary: "Joins the strings in the given list of string tensors into one tensor;"
   description: "with the given separator (default is an empty separator)."
+}
+op {
+  name: "StringSplit"
+  input_arg {
+    name: "input"
+    description: "1-D. Strings to split."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "delimiter"
+    description: "0-D. Delimiter character, or empty string."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "indices"
+    description: "A dense matrix of int64 representing the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    description: "A vector of strings corresponding to the splited values."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "shape"
+    description: "a length-2 vector of int64 representing the shape of the sparse\ntensor, where the first value is N and the second value is the maximum number\nof tokens in a single input entry."
+    type: DT_INT64
+  }
+  summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single character. If `delimiter` is an empty\n string, each element of `input` is split into individual 1 character strings.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
 }
 op {
   name: "StringToHashBucket"

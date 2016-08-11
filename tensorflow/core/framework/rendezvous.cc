@@ -240,10 +240,10 @@ class LocalRendezvousImpl : public Rendezvous {
         DeviceContext* send_dev_context = item->send_dev_context;
         if (send_dev_context) send_dev_context->Ref();
         bool is_dead = item->is_dead;
-        mu_.unlock();
         Args send_args;
         send_args.device_context = item->send_dev_context;
         send_args.alloc_attrs = item->send_alloc_attrs;
+        mu_.unlock();
         done(Status::OK(), send_args, recv_args, v, is_dead);
         if (send_dev_context) send_dev_context->Unref();
       } else {

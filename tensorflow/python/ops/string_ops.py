@@ -30,6 +30,10 @@ string tensor.
 @@reduce_join
 @@string_join
 
+## Splitting
+
+@@string_split
+
 ## Conversion
 
 @@as_string
@@ -40,11 +44,14 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+
 # pylint: disable=unused-import
 from tensorflow.python.ops import gen_string_ops
 # pylint: enable=unused-import
@@ -53,11 +60,63 @@ from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops.gen_string_ops import *
 # pylint: enable=wildcard-import
 
+
+def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
+  """Split elements of `source` based on `delimiter` into a `SparseTensor`.
+
+  Let N be the size of source (typically N will be the batch size). Split each
+  element of `source` based on `delimiter` and return a `SparseTensor`
+  containing the splitted tokens. Empty tokens are ignored.
+
+  If `delimiter` is an empty string, each element of the `source` is split
+  into individual 1 character strings.
+
+  For example:
+  N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
+  will be
+
+  st.indices = [0, 0;
+                0, 1;
+                1, 0;
+                1, 1;
+                1, 2]
+  st.shape = [2, 3]
+  st.values = ['hello', 'world', 'a', 'b', 'c']
+
+  Args:
+    source: `1-D` string `Tensor`, the strings to split.
+    delimiter: `0-D` string `Tensor`, the delimiter character, the string should
+      be length 0 or 1.
+
+  Returns:
+    A `SparseTensor` of rank `2`, the strings split according to the delimiter.
+    The first column of the indices corresponds to the row in `source` and the
+    second column corresponds to the index of the split component in this row.
+
+  Raises:
+    ValueError: If delimiter is not a character.
+  """
+  if isinstance(delimiter, six.string_types) and len(delimiter) > 1:
+    raise ValueError("delimiter must be a character, got %s" % delimiter)
+  delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
+  source = ops.convert_to_tensor(source, dtype=dtypes.string)
+
+  # pylint: disable=protected-access
+  indices, values, shape = gen_string_ops._string_split(
+      source, delimiter=delimiter)
+  # pylint: enable=protected-access
+  indices.set_shape([None, 2])
+  values.set_shape([None])
+  shape.set_shape([2])
+  return ops.SparseTensor(indices, values, shape)
+
+
 ops.NoGradient("StringToHashBucket")
 ops.NoGradient("StringToHashBucketFast")
 ops.NoGradient("StringToHashBucketStrong")
 ops.NoGradient("ReduceJoin")
 ops.NoGradient("StringJoin")
+ops.NoGradient("StringSplit")
 ops.NoGradient("AsString")
 
 ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
@@ -126,3 +185,15 @@ def _StringJoinShape(op):
     if shape.ndims != 0:
       base_shape = base_shape.merge_with(shape)
   return [base_shape]
+
+
+@ops.RegisterShape("StringSplit")
+def _StringSplitShape(op):
+  """Shape function for string_ops.string_split."""
+  unused_sfs_shape = op.inputs[0].get_shape().with_rank(1)
+  unused_sfs_shape = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
+
+  indices_shape = tensor_shape.TensorShape([None, 2])
+  values_shape = tensor_shape.TensorShape([None])
+  shape_shape = tensor_shape.TensorShape([2])
+  return [indices_shape, values_shape, shape_shape]

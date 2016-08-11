@@ -44,7 +44,10 @@ class InferredfeatureColumnTest(tf.test.TestCase):
     def custom_optimizer(learning_rate):
       return tf.train.MomentumOptimizer(learning_rate, 0.9)
 
+    cont_features = [
+        tf.contrib.layers.real_valued_column("", dimension=4)]
     classifier = learn.TensorFlowDNNClassifier(
+        feature_columns=cont_features,
         hidden_units=[10, 20, 10],
         n_classes=3,
         steps=400,

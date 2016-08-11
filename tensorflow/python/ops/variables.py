@@ -858,6 +858,17 @@ def all_variables():
   return ops.get_collection(ops.GraphKeys.VARIABLES)
 
 
+def _all_saveable_objects():
+  """Returns all variables and `SaveableObject`s that must be checkpointed.
+
+  Returns:
+    A list of `Variable` and `SaveableObject` to be checkpointed
+  """
+  # TODO(andreasst): make this function public once things are settled.
+  return ops.get_collection(ops.GraphKeys.VARIABLES) + ops.get_collection(
+      ops.GraphKeys.SAVEABLE_OBJECTS)
+
+
 def trainable_variables():
   """Returns all variables created with `trainable=True`.
 

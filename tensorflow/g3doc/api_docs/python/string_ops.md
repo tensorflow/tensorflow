@@ -140,8 +140,7 @@ tf.reduce_join(a, []) ==> ["abcd"]
     The input to be joined.  All reduced indices must have non-zero size.
 *  <b>`reduction_indices`</b>: A `Tensor` of type `int32`.
     The dimensions to reduce over.  Dimensions are reduced in the
-    order specified.  If `reduction_indices` has higher rank than `1`, it is
-    flattened.  Omitting `reduction_indices` is equivalent to passing
+    order specified.  Omitting `reduction_indices` is equivalent to passing
     `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
 *  <b>`keep_dims`</b>: An optional `bool`. Defaults to `False`.
     If `True`, retain reduced dimensions with length `1`.
@@ -178,6 +177,53 @@ with the given separator (default is an empty separator).
 ##### Returns:
 
   A `Tensor` of type `string`.
+
+
+
+## Splitting
+
+- - -
+
+### `tf.string_split(source, delimiter=' ')` {#string_split}
+
+Split elements of `source` based on `delimiter` into a `SparseTensor`.
+
+Let N be the size of source (typically N will be the batch size). Split each
+element of `source` based on `delimiter` and return a `SparseTensor`
+containing the splitted tokens. Empty tokens are ignored.
+
+If `delimiter` is an empty string, each element of the `source` is split
+into individual 1 character strings.
+
+For example:
+N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
+will be
+
+st.indices = [0, 0;
+              0, 1;
+              1, 0;
+              1, 1;
+              1, 2]
+st.shape = [2, 3]
+st.values = ['hello', 'world', 'a', 'b', 'c']
+
+##### Args:
+
+
+*  <b>`source`</b>: `1-D` string `Tensor`, the strings to split.
+*  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
+    be length 0 or 1.
+
+##### Returns:
+
+  A `SparseTensor` of rank `2`, the strings split according to the delimiter.
+  The first column of the indices corresponds to the row in `source` and the
+  second column corresponds to the index of the split component in this row.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If delimiter is not a character.
 
 
 

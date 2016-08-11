@@ -718,7 +718,7 @@ class GradLoopState(object):
       The current value (the top of the stack).
     """
     history_ctxt = history_value.op._get_control_flow_context()
-    # Find the cond context that controls history_value.
+    # Find the cond context that controls history_value if any.
     cond_ctxt = None
     value_ctxt = value.op._get_control_flow_context()
     while value_ctxt and value_ctxt != history_ctxt:
@@ -729,12 +729,14 @@ class GradLoopState(object):
     with ops.control_dependencies(None):
       self.grad_context.Enter()
       if cond_ctxt:
-        # Guard stack pop with a switch if it is controlled by a cond
+        # Guard stack pop with a switch if it is controlled by a cond.
         grad_state = self
         pred = None
         while pred is None and grad_state:
           pred = grad_state.history_map.get(cond_ctxt.pred.name)
           grad_state = grad_state.outer_grad_state
+        if pred is None:
+          pred = cond_ctxt.pred
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
       pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
@@ -787,7 +789,10 @@ class GradLoopState(object):
 
       if real_value is None:
         # Add the stack pop op in the grad context.
-        real_value = self.AddBackPropAccumulatedValue(history_value, value)
+        real_value = cur_grad_state.AddBackPropAccumulatedValue(history_value,
+                                                                cur_value)
+        if cur_grad_state != self:
+          real_value = self._grad_context.AddValue(real_value)
       self._history_map[value.name] = real_value
     return real_value
 

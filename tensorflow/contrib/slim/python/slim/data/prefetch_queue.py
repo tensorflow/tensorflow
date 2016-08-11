@@ -58,8 +58,9 @@ def prefetch_queue(tensors,
   """
   if isinstance(tensors, dict):
     # Need to wrap the keys and values in list() since Python3 returns views.
-    names = list(tensors.keys())
-    tensor_list = list(tensors.values())
+    # We sort the keys so the order is consistent across runs.
+    names = list(sorted(tensors.keys()))
+    tensor_list = list([tensors[n] for n in names])
   else:
     names = None
     tensor_list = tensors
@@ -73,7 +74,8 @@ def prefetch_queue(tensors,
                                     names=names,
                                     shared_name=shared_name)
     enqueue_op = queue.enqueue(tensors, name=name)
-    queue_runner.add_queue_runner(queue_runner.QueueRunner(queue, [enqueue_op]))
+    queue_runner.add_queue_runner(
+        queue_runner.QueueRunner(queue, [enqueue_op]))
     logging_ops.scalar_summary(
         "queue/%s/fraction_of_%d_full" % (queue.name, capacity),
         math_ops.to_float(queue.size()) * (1. / capacity))

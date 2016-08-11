@@ -175,6 +175,12 @@ Status Pool3DShape(shape_inference::InferenceContext* c);
 // Shape function for use with ops whose output shapes are unknown.
 Status UnknownShape(shape_inference::InferenceContext* c);
 
+// Shape function for reduction operations.
+Status ReductionShape(shape_inference::InferenceContext* c);
+
+// Shape function for concat operations.
+Status ConcatShape(shape_inference::InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow

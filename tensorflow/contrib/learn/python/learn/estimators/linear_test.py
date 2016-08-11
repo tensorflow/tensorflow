@@ -427,12 +427,6 @@ def boston_input_fn():
 
 class FeatureColumnTest(tf.test.TestCase):
 
-  # TODO(b/29580537): Remove when we deprecate feature column inference.
-  def testTrainWithInferredFeatureColumns(self):
-    est = tf.contrib.learn.LinearRegressor()
-    est.fit(input_fn=boston_input_fn, steps=1)
-    _ = est.evaluate(input_fn=boston_input_fn, steps=1)
-
   def testTrain(self):
     feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(
         boston_input_fn)

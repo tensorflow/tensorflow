@@ -16,7 +16,7 @@ Copy a subgraph.
 
 ##### Returns:
 
-  the subgraph view of the copied subgraph.
+  The subgraph view of the copied subgraph.
 
 ##### Raises:
 

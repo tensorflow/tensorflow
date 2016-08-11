@@ -60,6 +60,7 @@ py_tests(
         "sparse_to_dense_op_py_test.py",
         "sparsemask_op_test.py",
         "string_join_op_test.py",
+        "string_split_op_test.py",
         "summary_ops_test.py",
         "summary_tensor_op_test.py",
         "template_test.py",
