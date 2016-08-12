@@ -445,6 +445,7 @@
   * [`bias_add`](../../api_docs/python/nn.md#bias_add)
   * [`bidirectional_rnn`](../../api_docs/python/nn.md#bidirectional_rnn)
   * [`compute_accidental_hits`](../../api_docs/python/nn.md#compute_accidental_hits)
+  * [`conv1d`](../../api_docs/python/nn.md#conv1d)
   * [`conv2d`](../../api_docs/python/nn.md#conv2d)
   * [`conv2d_transpose`](../../api_docs/python/nn.md#conv2d_transpose)
   * [`conv3d`](../../api_docs/python/nn.md#conv3d)
