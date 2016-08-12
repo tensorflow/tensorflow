@@ -755,7 +755,7 @@ def fully_connected(inputs,
   Args:
     inputs: A tensor of with at least rank 2 and value for the last dimension,
       i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
-    num_outputs: Integer, the number of output units in the layer.
+    num_outputs: Integer or long, the number of output units in the layer.
     activation_fn: activation function.
     normalizer_fn: normalization function to use instead of `biases`. If
       `normalize_fn` is provided then `biases_initializer` and
@@ -780,8 +780,8 @@ def fully_connected(inputs,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not isinstance(num_outputs, int):
-    raise ValueError('num_outputs should be integer, got %s.', num_outputs)
+  if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
+    raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
   with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
                                      reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
