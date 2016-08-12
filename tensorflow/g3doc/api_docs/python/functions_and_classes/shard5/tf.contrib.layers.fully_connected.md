@@ -18,7 +18,7 @@ prior to the initial matrix multiply by `weights`.
 
 *  <b>`inputs`</b>: A tensor of with at least rank 2 and value for the last dimension,
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
-*  <b>`num_outputs`</b>: Integer, the number of output units in the layer.
+*  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
 *  <b>`activation_fn`</b>: activation function.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
     `normalize_fn` is provided then `biases_initializer` and
