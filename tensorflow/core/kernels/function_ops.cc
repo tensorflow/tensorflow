@@ -109,12 +109,20 @@ REGISTER_KERNEL_BUILDER(Name("_Retval")
 
 class PassOn : public OpKernel {
  public:
-  explicit PassOn(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
+  explicit PassOn(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES(ctx, ctx->num_inputs() == ctx->num_outputs(),
                 errors::Internal("#inputs != #outputs : ", ctx->num_inputs(),
                                  " vs. ", ctx->num_outputs()));
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      OP_REQUIRES(
+          ctx, input_type(i) == output_type(i),
+          errors::Internal("Input and output types for position ", i,
+                           " do not match: ", DataTypeString(input_type(i)),
+                           " vs. ", DataTypeString(output_type(i))));
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) override {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       ctx->set_output(i, ctx->input(i));
     }
@@ -140,12 +148,14 @@ REGISTER_GPU_KERNELS(double);
 
 REGISTER_KERNEL_BUILDER(Name("_ListToArray")
                             .Device(DEVICE_GPU)
+                            .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         PassOn);
 REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
+                            .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         PassOn);
 

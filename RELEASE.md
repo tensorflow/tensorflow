@@ -7,6 +7,9 @@
   default, simply pass the argument `state_is_tuple=False`.
 * DeviceFactory's AddDevices and CreateDevices functions now return
   a Status instead of void.
+* Int32 elements of list(type) arguments are no longer placed in host memory by
+  default. If necessary, a list(type) argument to a kernel can be placed in host
+  memory using a HostMemory annotation.
 
 # Release 0.10.0
 
