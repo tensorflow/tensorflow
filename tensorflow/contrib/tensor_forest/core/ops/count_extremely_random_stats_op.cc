@@ -446,17 +446,15 @@ class CountExtremelyRandomStats : public OpKernel {
     params.candidate_split_features = candidate_split_features;
     params.candidate_split_thresholds = candidate_split_thresholds;
     params.results = results.get();
-    if (num_threads <= 1) {
-      Evaluate(params, 0, num_data);
-    } else {
-      auto work = [&params, num_data](int64 start, int64 end) {
-        CHECK(start <= end);
-        CHECK(end <= num_data);
-        Evaluate(params,
-                 static_cast<int32>(start), static_cast<int32>(end));
-      };
-      Shard(num_threads, worker_threads->workers, num_data, 100, work);
-    }
+    // Require at least 100 inputs per thread.  I guess that's about 800 cost
+    // per unit.  This isn't well defined.
+    const int64 costPerUnit = 800;
+    auto work = [&params, num_data](int64 start, int64 end) {
+      CHECK(start <= end);
+      CHECK(end <= num_data);
+      Evaluate(params, static_cast<int32>(start), static_cast<int32>(end));
+    };
+    Shard(num_threads, worker_threads->workers, num_data, costPerUnit, work);
 
     const int32 num_nodes = static_cast<int32>(tree_tensor.shape().dim_size(0));
     if (regression_) {
