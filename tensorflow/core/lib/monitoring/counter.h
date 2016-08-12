@@ -86,9 +86,13 @@ class Counter {
     registration_handle_.reset();
   }
 
-  // Creates the metric based on the metric-definition.
-  static Counter* New(
-      const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def);
+  // Creates the metric based on the metric-definition arguments.
+  //
+  // Example;
+  // auto* counter_with_label = Counter<1>::New("/tensorflow/counter",
+  //   "Tensorflow counter", "MyLabelName");
+  template <typename... MetricDefArgs>
+  static Counter* New(MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -127,18 +131,21 @@ class Counter {
 //  Implementation details follow. API readers may skip.
 ////
 
-template <int NumLabels>
-Counter<NumLabels>* Counter<NumLabels>::New(
-    const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def) {
-  return new Counter<NumLabels>(metric_def);
-}
-
 inline void CounterCell::IncrementBy(const int64 step) {
   DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
   value_ += step;
 }
 
 inline int64 CounterCell::value() const { return value_; }
+
+template <int NumLabels>
+template <typename... MetricDefArgs>
+Counter<NumLabels>* Counter<NumLabels>::New(
+    MetricDefArgs&&... metric_def_args) {
+  return new Counter<NumLabels>(
+      MetricDef<MetricKind::kCumulative, int64, NumLabels>(
+          std::forward<MetricDefArgs>(metric_def_args)...));
+}
 
 template <int NumLabels>
 template <typename... Labels>
