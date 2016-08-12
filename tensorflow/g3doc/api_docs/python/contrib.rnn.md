@@ -10,7 +10,7 @@ Additional RNN operations and cells.
 ### Fused RNNCells
 - - -
 
-### `class tf.contrib.rnn.LSTMFusedCell` {#LSTMFusedCell}
+### `class tf.contrib.rnn.LSTMBlockCell` {#LSTMBlockCell}
 
 Basic LSTM recurrent network cell.
 
@@ -24,7 +24,7 @@ weight and bias matrixes should be compatible as long as the variabel scope
 matches.
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMFusedCell.__init__}
+#### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMBlockCell.__init__}
 
 Initialize the basic LSTM cell.
 
@@ -38,21 +38,21 @@ Initialize the basic LSTM cell.
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.output_size` {#LSTMFusedCell.output_size}
+#### `tf.contrib.rnn.LSTMBlockCell.output_size` {#LSTMBlockCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.state_size` {#LSTMFusedCell.state_size}
+#### `tf.contrib.rnn.LSTMBlockCell.state_size` {#LSTMBlockCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.zero_state(batch_size, dtype)` {#LSTMFusedCell.zero_state}
+#### `tf.contrib.rnn.LSTMBlockCell.zero_state(batch_size, dtype)` {#LSTMBlockCell.zero_state}
 
 Return zero-filled state tensor(s).
 
