@@ -441,7 +441,7 @@ static void TF_Run_Helper(
     const std::vector<tensorflow::string>& output_tensor_names,
     TF_Tensor** c_outputs,
     // Target nodes
-    const std::vector<tensorflow::string>& target_oper_names,
+    const std::vector<tensorflow::string>& target_node_names,
     TF_Buffer* run_metadata, TF_Status* status) {
   const int noutputs = output_tensor_names.size();
   std::vector<Tensor> outputs(noutputs);
@@ -464,7 +464,7 @@ static void TF_Run_Helper(
 
     RunMetadata run_metadata_proto;
     result = session->Run(run_options_proto, input_pairs, output_tensor_names,
-                          target_oper_names, &outputs, &run_metadata_proto);
+                          target_node_names, &outputs, &run_metadata_proto);
 
     // Serialize back to upstream client, who now owns the new buffer
     if (run_metadata != nullptr) {
@@ -512,9 +512,10 @@ void TF_Run(TF_Session* s, const TF_Buffer* run_options,
             // Input tensors
             const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
             // Output tensors
-            const char** c_output_names, TF_Tensor** c_outputs, int noutputs,
+            const char** c_output_tensor_names, TF_Tensor** c_outputs,
+            int noutputs,
             // Target nodes
-            const char** c_target_oper_names, int ntargets,
+            const char** c_target_node_names, int ntargets,
             TF_Buffer* run_metadata, TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
@@ -522,44 +523,45 @@ void TF_Run(TF_Session* s, const TF_Buffer* run_options,
   for (int i = 0; i < ninputs; ++i) {
     input_pairs[i].first = c_input_names[i];
   }
-  std::vector<tensorflow::string> output_names(noutputs);
+  std::vector<tensorflow::string> output_tensor_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    output_names[i] = c_output_names[i];
+    output_tensor_names[i] = c_output_tensor_names[i];
   }
-  std::vector<tensorflow::string> target_oper_names(ntargets);
+  std::vector<tensorflow::string> target_node_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
-    target_oper_names[i] = c_target_oper_names[i];
+    target_node_names[i] = c_target_node_names[i];
   }
-  TF_Run_Helper(s->session, nullptr, run_options, input_pairs, output_names,
-                c_outputs, target_oper_names, run_metadata, status);
+  TF_Run_Helper(s->session, nullptr, run_options, input_pairs,
+                output_tensor_names, c_outputs, target_node_names, run_metadata,
+                status);
 }
 
 void TF_PRunSetup(TF_Session* s,
                   // Input names
                   const char** c_input_names, int ninputs,
                   // Output names
-                  const char** c_output_names, int noutputs,
+                  const char** c_output_tensor_names, int noutputs,
                   // Target nodes
-                  const char** c_target_oper_names, int ntargets,
+                  const char** c_target_node_names, int ntargets,
                   const char** handle, TF_Status* status) {
   status->status = Status::OK();
 
   std::vector<tensorflow::string> input_names(ninputs);
-  std::vector<tensorflow::string> output_names(noutputs);
-  std::vector<tensorflow::string> target_oper_names(ntargets);
+  std::vector<tensorflow::string> output_tensor_names(noutputs);
+  std::vector<tensorflow::string> target_node_names(ntargets);
   for (int i = 0; i < ninputs; ++i) {
     input_names[i] = c_input_names[i];
   }
   for (int i = 0; i < noutputs; ++i) {
-    output_names[i] = c_output_names[i];
+    output_tensor_names[i] = c_output_tensor_names[i];
   }
   for (int i = 0; i < ntargets; ++i) {
-    target_oper_names[i] = c_target_oper_names[i];
+    target_node_names[i] = c_target_node_names[i];
   }
   tensorflow::string new_handle;
   Status result;
-  result = s->session->PRunSetup(input_names, output_names, target_oper_names,
-                                 &new_handle);
+  result = s->session->PRunSetup(input_names, output_tensor_names,
+                                 target_node_names, &new_handle);
   if (result.ok()) {
     char* buf = new char[new_handle.size() + 1];
     memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
@@ -573,9 +575,10 @@ void TF_PRun(TF_Session* s, const char* handle,
              // Input tensors
              const char** c_input_names, TF_Tensor** c_inputs, int ninputs,
              // Output tensors
-             const char** c_output_names, TF_Tensor** c_outputs, int noutputs,
+             const char** c_output_tensor_names, TF_Tensor** c_outputs,
+             int noutputs,
              // Target nodes
-             const char** c_target_oper_names, int ntargets,
+             const char** c_target_node_names, int ntargets,
              TF_Status* status) {
   TF_Run_Setup(noutputs, c_outputs, status);
   std::vector<std::pair<tensorflow::string, Tensor>> input_pairs(ninputs);
@@ -584,16 +587,16 @@ void TF_PRun(TF_Session* s, const char* handle,
     input_pairs[i].first = c_input_names[i];
   }
 
-  std::vector<tensorflow::string> output_names(noutputs);
+  std::vector<tensorflow::string> output_tensor_names(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    output_names[i] = c_output_names[i];
+    output_tensor_names[i] = c_output_tensor_names[i];
   }
-  std::vector<tensorflow::string> target_oper_names(ntargets);
+  std::vector<tensorflow::string> target_node_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
-    target_oper_names[i] = c_target_oper_names[i];
+    target_node_names[i] = c_target_node_names[i];
   }
-  TF_Run_Helper(s->session, handle, nullptr, input_pairs, output_names,
-                c_outputs, target_oper_names, nullptr, status);
+  TF_Run_Helper(s->session, handle, nullptr, input_pairs, output_tensor_names,
+                c_outputs, target_node_names, nullptr, status);
 }
 
 struct TF_Library {
@@ -640,16 +643,15 @@ struct TF_Graph {
   bool delete_requested;  // set true by TF_DeleteGraph
 };
 
-struct TF_OperationDescription {
-  TF_OperationDescription(TF_Graph* g, const char* op_type,
-                          const char* node_name)
+struct TF_NodeDescription {
+  TF_NodeDescription(TF_Graph* g, const char* op_type, const char* node_name)
       : node_builder(node_name, op_type, g->graph.op_registry()), graph(g) {}
 
   NodeBuilder node_builder;
   TF_Graph* graph;
 };
 
-struct TF_Operation {
+struct TF_Node {
   Node node;
 };
 
@@ -668,56 +670,55 @@ struct TF_SessionWithGraph {
 
 namespace {
 
-TF_Operation* ToOperation(Node* node) {
-  return static_cast<TF_Operation*>(static_cast<void*>(node));
+TF_Node* ToNode(Node* node) {
+  return static_cast<TF_Node*>(static_cast<void*>(node));
 }
 
 tensorflow::string PortName(const TF_Port& port) {
-  return tensorflow::strings::StrCat(port.oper->node.name(), ":", port.index);
+  return tensorflow::strings::StrCat(port.node->node.name(), ":", port.index);
 }
 
 }  // namespace
 
-// TF_OperationDescription functions
-// -----------------------------------------------
+// TF_NodeDescription functions -----------------------------------------------
 
 extern "C" {
 
-TF_OperationDescription* TF_NewOperation(TF_Graph* graph, const char* op_type,
-                                         const char* oper_name) {
+TF_NodeDescription* TF_NewNode(TF_Graph* graph, const char* op_type,
+                               const char* node_name) {
   mutex_lock l(graph->mu);
-  return new TF_OperationDescription(graph, op_type, oper_name);
+  return new TF_NodeDescription(graph, op_type, node_name);
 }
 
-void TF_SetDevice(TF_OperationDescription* desc, const char* device) {
+void TF_SetDevice(TF_NodeDescription* desc, const char* device) {
   desc->node_builder.Device(device);
 }
 
-void TF_AddInput(TF_OperationDescription* desc, TF_Port input) {
-  desc->node_builder.Input(&input.oper->node, input.index);
+void TF_AddInput(TF_NodeDescription* desc, TF_Port input) {
+  desc->node_builder.Input(&input.node->node, input.index);
 }
 
-void TF_AddInputList(TF_OperationDescription* desc, const TF_Port* inputs,
+void TF_AddInputList(TF_NodeDescription* desc, const TF_Port* inputs,
                      int num_inputs) {
   std::vector<NodeBuilder::NodeOut> input_list;
   input_list.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
-    input_list.emplace_back(&inputs[i].oper->node, inputs[i].index);
+    input_list.emplace_back(&inputs[i].node->node, inputs[i].index);
   }
   desc->node_builder.Input(input_list);
 }
 
-void TF_AddControlInput(TF_OperationDescription* desc, TF_Operation* input) {
+void TF_AddControlInput(TF_NodeDescription* desc, TF_Node* input) {
   desc->node_builder.ControlInput(&input->node);
 }
 
-void TF_SetAttrString(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrString(TF_NodeDescription* desc, const char* attr_name,
                       const void* value, int length) {
   tensorflow::StringPiece s(static_cast<const char*>(value), length);
   desc->node_builder.Attr(attr_name, s);
 }
 
-void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrStringList(TF_NodeDescription* desc, const char* attr_name,
                           const void* const* values, const int* lengths,
                           int num_values) {
   std::vector<tensorflow::StringPiece> v;
@@ -728,14 +729,14 @@ void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(attr_name, v);
 }
 
-void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrInt(TF_NodeDescription* desc, const char* attr_name,
                    int64_t value) {
   static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
   desc->node_builder.Attr(attr_name, static_cast<tensorflow::int64>(value));
 }
 
-void TF_SetAttrIntList(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrIntList(TF_NodeDescription* desc, const char* attr_name,
                        const int64_t* values, int num_values) {
   static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
@@ -745,23 +746,23 @@ void TF_SetAttrIntList(TF_OperationDescription* desc, const char* attr_name,
           reinterpret_cast<const tensorflow::int64*>(values), num_values));
 }
 
-void TF_SetAttrFloat(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrFloat(TF_NodeDescription* desc, const char* attr_name,
                      float value) {
   desc->node_builder.Attr(attr_name, value);
 }
 
-void TF_SetAttrFloatList(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrFloatList(TF_NodeDescription* desc, const char* attr_name,
                          const float* values, int num_values) {
   desc->node_builder.Attr(attr_name,
                           ArraySlice<const float>(values, num_values));
 }
 
-void TF_SetAttrBool(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrBool(TF_NodeDescription* desc, const char* attr_name,
                     unsigned char value) {
   desc->node_builder.Attr(attr_name, static_cast<bool>(value));
 }
 
-void TF_SetAttrBoolList(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrBoolList(TF_NodeDescription* desc, const char* attr_name,
                         const unsigned char* values, int num_values) {
   bool* b = new bool[num_values];
   for (int i = 0; i < num_values; ++i) {
@@ -770,19 +771,19 @@ void TF_SetAttrBoolList(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(attr_name, ArraySlice<const bool>(b, num_values));
 }
 
-void TF_SetAttrType(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrType(TF_NodeDescription* desc, const char* attr_name,
                     TF_DataType value) {
   desc->node_builder.Attr(attr_name, static_cast<DataType>(value));
 }
 
-void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrTypeList(TF_NodeDescription* desc, const char* attr_name,
                         const TF_DataType* values, int num_values) {
   desc->node_builder.Attr(
       attr_name, ArraySlice<const DataType>(
                      reinterpret_cast<const DataType*>(values), num_values));
 }
 
-void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrShape(TF_NodeDescription* desc, const char* attr_name,
                      const int64_t* dims, int num_dims) {
   PartialTensorShape shape;
   if (num_dims >= 0) {
@@ -794,7 +795,7 @@ void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(attr_name, shape);
 }
 
-void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrShapeList(TF_NodeDescription* desc, const char* attr_name,
                          const int64_t* const* dims, const int* num_dims,
                          int num_shapes) {
   std::vector<PartialTensorShape> shapes;
@@ -812,9 +813,8 @@ void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(attr_name, shapes);
 }
 
-void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
-                                const char* attr_name, void* proto,
-                                int proto_len, TF_Status* status) {
+void TF_SetAttrTensorShapeProto(TF_NodeDescription* desc, const char* attr_name,
+                                void* proto, int proto_len, TF_Status* status) {
   TensorShapeProto shape;
   if (shape.ParseFromArray(proto, proto_len)) {
     desc->node_builder.Attr(attr_name, shape);
@@ -825,7 +825,7 @@ void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
   }
 }
 
-void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
+void TF_SetAttrTensorShapeProtoList(TF_NodeDescription* desc,
                                     const char* attr_name,
                                     const void* const* protos,
                                     const int* proto_lens, int num_shapes,
@@ -843,7 +843,7 @@ void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
   status->status = Status::OK();
 }
 
-void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrTensor(TF_NodeDescription* desc, const char* attr_name,
                       TF_Tensor* value, TF_Status* status) {
   status->status = Status::OK();
   Tensor t;
@@ -862,7 +862,7 @@ void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
   if (ok) desc->node_builder.Attr(attr_name, t);
 }
 
-void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
+void TF_SetAttrTensorList(TF_NodeDescription* desc, const char* attr_name,
                           TF_Tensor* const* values, int num_values,
                           TF_Status* status) {
   status->status = Status::OK();
@@ -890,9 +890,9 @@ void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
   if (ok) desc->node_builder.Attr(attr_name, t);
 }
 
-void TF_SetAttrToAttrValueProto(TF_OperationDescription* desc,
-                                const char* attr_name, const void* proto,
-                                size_t proto_len, TF_Status* status) {
+void TF_SetAttrToAttrValueProto(TF_NodeDescription* desc, const char* attr_name,
+                                const void* proto, size_t proto_len,
+                                TF_Status* status) {
   tensorflow::AttrValue attr_value;
   if (attr_value.ParseFromArray(proto, proto_len)) {
     desc->node_builder.Attr(attr_name, attr_value);
@@ -903,8 +903,7 @@ void TF_SetAttrToAttrValueProto(TF_OperationDescription* desc,
   }
 }
 
-TF_Operation* TF_FinishOperation(TF_OperationDescription* desc,
-                                 TF_Status* status) {
+TF_Node* TF_FinishNode(TF_NodeDescription* desc, TF_Status* status) {
   Node* ret = nullptr;
   mutex_lock l(desc->graph->mu);
 
@@ -920,37 +919,32 @@ TF_Operation* TF_FinishOperation(TF_OperationDescription* desc,
 
   delete desc;
 
-  return ToOperation(ret);
+  return ToNode(ret);
 }
 
-// TF_Operation functions
-// ----------------------------------------------------------
+// TF_Node functions ----------------------------------------------------------
 
-const char* TF_OperationName(TF_Operation* oper) {
-  return oper->node.name().c_str();
+const char* TF_NodeName(TF_Node* node) { return node->node.name().c_str(); }
+
+const char* TF_NodeOpType(TF_Node* node) {
+  return node->node.type_string().c_str();
 }
 
-const char* TF_OperationOpType(TF_Operation* oper) {
-  return oper->node.type_string().c_str();
+const char* TF_NodeDevice(TF_Node* node) {
+  return node->node.def().device().c_str();
 }
 
-const char* TF_OperationDevice(TF_Operation* oper) {
-  return oper->node.def().device().c_str();
-}
+int TF_NodeNumOutputs(TF_Node* node) { return node->node.num_outputs(); }
 
-int TF_OperationNumOutputs(TF_Operation* oper) {
-  return oper->node.num_outputs();
-}
-
-TF_DataType TF_OperationOutputType(TF_Port oper_out) {
+TF_DataType TF_NodeOutputType(TF_Port node_out) {
   return static_cast<TF_DataType>(
-      oper_out.oper->node.output_type(oper_out.index));
+      node_out.node->node.output_type(node_out.index));
 }
 
-int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
-                                 TF_Status* status) {
+int TF_NodeOutputListLength(TF_Node* node, const char* arg_name,
+                            TF_Status* status) {
   NameRangeMap name_ranges;
-  status->status = NameRangesForNode(oper->node.def(), oper->node.op_def(),
+  status->status = NameRangesForNode(node->node.def(), node->node.op_def(),
                                      nullptr, &name_ranges);
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
@@ -962,18 +956,16 @@ int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
   return iter->second.second - iter->second.first;
 }
 
-int TF_OperationNumInputs(TF_Operation* oper) {
-  return oper->node.num_inputs();
+int TF_NodeNumInputs(TF_Node* node) { return node->node.num_inputs(); }
+
+TF_DataType TF_NodeInputType(TF_Port node_in) {
+  return static_cast<TF_DataType>(node_in.node->node.input_type(node_in.index));
 }
 
-TF_DataType TF_OperationInputType(TF_Port oper_in) {
-  return static_cast<TF_DataType>(oper_in.oper->node.input_type(oper_in.index));
-}
-
-int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
-                                TF_Status* status) {
+int TF_NodeInputListLength(TF_Node* node, const char* arg_name,
+                           TF_Status* status) {
   NameRangeMap name_ranges;
-  status->status = NameRangesForNode(oper->node.def(), oper->node.op_def(),
+  status->status = NameRangesForNode(node->node.def(), node->node.op_def(),
                                      &name_ranges, nullptr);
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
@@ -985,32 +977,32 @@ int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
   return iter->second.second - iter->second.first;
 }
 
-TF_Port TF_OperationInput(TF_Port oper_in) {
-  for (const auto* edge : oper_in.oper->node.in_edges()) {
-    if (edge->dst_input() == oper_in.index) {
-      return {ToOperation(edge->src()), edge->src_output()};
+TF_Port TF_NodeInput(TF_Port node_in) {
+  for (const auto* edge : node_in.node->node.in_edges()) {
+    if (edge->dst_input() == node_in.index) {
+      return {ToNode(edge->src()), edge->src_output()};
     }
   }
   return {nullptr, -1};
 }
 
-int TF_OperationOutputNumConsumers(TF_Port oper_out) {
+int TF_NodeOutputNumConsumers(TF_Port node_out) {
   int count = 0;
-  for (const auto* edge : oper_out.oper->node.out_edges()) {
-    if (edge->src_output() == oper_out.index) {
+  for (const auto* edge : node_out.node->node.out_edges()) {
+    if (edge->src_output() == node_out.index) {
       ++count;
     }
   }
   return count;
 }
 
-int TF_OperationOutputConsumers(TF_Port oper_out, TF_Port* consumers,
-                                int max_consumers) {
+int TF_NodeOutputConsumers(TF_Port node_out, TF_Port* consumers,
+                           int max_consumers) {
   int count = 0;
-  for (const auto* edge : oper_out.oper->node.out_edges()) {
-    if (edge->src_output() == oper_out.index) {
+  for (const auto* edge : node_out.node->node.out_edges()) {
+    if (edge->src_output() == node_out.index) {
       if (count < max_consumers) {
-        consumers[count] = {ToOperation(edge->dst()), edge->dst_input()};
+        consumers[count] = {ToNode(edge->dst()), edge->dst_input()};
       }
       ++count;
     }
@@ -1018,9 +1010,9 @@ int TF_OperationOutputConsumers(TF_Port oper_out, TF_Port* consumers,
   return count;
 }
 
-int TF_OperationNumControlInputs(TF_Operation* oper) {
+int TF_NodeNumControlInputs(TF_Node* node) {
   int count = 0;
-  for (const auto* edge : oper->node.in_edges()) {
+  for (const auto* edge : node->node.in_edges()) {
     if (edge->IsControlEdge()) {
       ++count;
     }
@@ -1028,14 +1020,13 @@ int TF_OperationNumControlInputs(TF_Operation* oper) {
   return count;
 }
 
-int TF_OperationGetControlInputs(TF_Operation* oper,
-                                 TF_Operation** control_inputs,
-                                 int max_control_inputs) {
+int TF_NodeGetControlInputs(TF_Node* node, TF_Node** control_inputs,
+                            int max_control_inputs) {
   int count = 0;
-  for (const auto* edge : oper->node.in_edges()) {
+  for (const auto* edge : node->node.in_edges()) {
     if (edge->IsControlEdge()) {
       if (count < max_control_inputs) {
-        control_inputs[count] = ToOperation(edge->src());
+        control_inputs[count] = ToNode(edge->src());
       }
       ++count;
     }
@@ -1043,9 +1034,9 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
   return count;
 }
 
-int TF_OperationNumControlOutputs(TF_Operation* oper) {
+int TF_NodeNumControlOutputs(TF_Node* node) {
   int count = 0;
-  for (const auto* edge : oper->node.out_edges()) {
+  for (const auto* edge : node->node.out_edges()) {
     if (edge->IsControlEdge()) {
       ++count;
     }
@@ -1053,14 +1044,13 @@ int TF_OperationNumControlOutputs(TF_Operation* oper) {
   return count;
 }
 
-int TF_OperationGetControlOutputs(TF_Operation* oper,
-                                  TF_Operation** control_outputs,
-                                  int max_control_outputs) {
+int TF_NodeGetControlOutputs(TF_Node* node, TF_Node** control_outputs,
+                             int max_control_outputs) {
   int count = 0;
-  for (const auto* edge : oper->node.out_edges()) {
+  for (const auto* edge : node->node.out_edges()) {
     if (edge->IsControlEdge()) {
       if (count < max_control_outputs) {
-        control_outputs[count] = ToOperation(edge->dst());
+        control_outputs[count] = ToNode(edge->dst());
       }
       ++count;
     }
@@ -1068,20 +1058,19 @@ int TF_OperationGetControlOutputs(TF_Operation* oper,
   return count;
 }
 
-void TF_OperationGetAttrValueProto(TF_Operation* oper, const char* attr_name,
-                                   TF_Buffer* output_attr_value,
-                                   TF_Status* status) {
+void TF_NodeGetAttrValueProto(TF_Node* node, const char* attr_name,
+                              TF_Buffer* output_attr_value, TF_Status* status) {
   if (output_attr_value->data != nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "Passing non-empty output_attr_value is invalid.");
     return;
   }
 
-  const auto& attr_map = oper->node.def().attr();
+  const auto& attr_map = node->node.def().attr();
   auto iter = attr_map.find(attr_name);
   if (iter == attr_map.end()) {
     status->status = tensorflow::errors::InvalidArgument(
-        "Operation has no attr named '", attr_name, "'.");
+        "Node has no attr named '", attr_name, "'.");
     return;
   }
 
@@ -1097,15 +1086,15 @@ void TF_OperationGetAttrValueProto(TF_Operation* oper, const char* attr_name,
   status->status = Status::OK();
 }
 
-void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
-                           TF_Status* status) {
+void TF_NodeToNodeDef(TF_Node* node, TF_Buffer* output_node_def,
+                      TF_Status* status) {
   if (output_node_def->data != nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
         "Passing non-empty output_node_def is invalid.");
     return;
   }
 
-  const NodeDef& def = oper->node.def();
+  const NodeDef& def = node->node.def();
   const auto proto_size = def.ByteSize();
   void* str_buf = malloc(proto_size);
   def.SerializeToArray(str_buf, proto_size);
@@ -1129,17 +1118,17 @@ void TF_DeleteGraph(TF_Graph* g) {
   if (del) delete g;
 }
 
-TF_Operation* TF_GraphOperationByName(TF_Graph* graph, const char* oper_name) {
+TF_Node* TF_GraphNodeByName(TF_Graph* graph, const char* node_name) {
   mutex_lock l(graph->mu);
-  auto iter = graph->name_map.find(oper_name);
+  auto iter = graph->name_map.find(node_name);
   if (iter == graph->name_map.end()) {
     return nullptr;
   } else {
-    return ToOperation(iter->second);
+    return ToNode(iter->second);
   }
 }
 
-TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos) {
+TF_Node* TF_GraphNextNode(TF_Graph* graph, size_t* pos) {
   if (*pos == 0) {
     // Advance past the first sentinal nodes in every graph (the source & sink).
     *pos += 2;
@@ -1154,7 +1143,7 @@ TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos) {
     // FindNodeId() returns nullptr for nodes that have been deleted.
     // We aren't currently allowing nodes to be deleted, but it is safer
     // to still check.
-    if (node != nullptr) return ToOperation(node);
+    if (node != nullptr) return reinterpret_cast<TF_Node*>(node);
     *pos += 1;
   }
 
@@ -1268,7 +1257,7 @@ void TF_SessionRun(TF_SessionWithGraph* session, const TF_Buffer* run_options,
                    const TF_Port* inputs, TF_Tensor* const* input_values,
                    int ninputs, const TF_Port* outputs,
                    TF_Tensor** output_values, int noutputs,
-                   const TF_Operation* const* target_opers, int ntargets,
+                   const TF_Node* const* target_nodes, int ntargets,
                    TF_Buffer* run_metadata, TF_Status* status) {
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
@@ -1295,10 +1284,10 @@ void TF_SessionRun(TF_SessionWithGraph* session, const TF_Buffer* run_options,
     output_names[i] = PortName(outputs[i]);
   }
 
-  // Convert from TF_Operation* to string names.
+  // Convert from TF_Node* to string names.
   std::vector<tensorflow::string> target_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
-    target_names[i] = target_opers[i]->node.name();
+    target_names[i] = target_nodes[i]->node.name();
   }
 
   // Actually run.
@@ -1309,7 +1298,7 @@ void TF_SessionRun(TF_SessionWithGraph* session, const TF_Buffer* run_options,
 
 void TF_SessionPRunSetup(TF_SessionWithGraph* session, const TF_Port* inputs,
                          int ninputs, const TF_Port* outputs, int noutputs,
-                         const TF_Operation* const* target_opers, int ntargets,
+                         const TF_Node* const* target_nodes, int ntargets,
                          const char** handle, TF_Status* status) {
   if (!ExtendSessionGraphHelper(session, status)) {
     return;
@@ -1327,7 +1316,7 @@ void TF_SessionPRunSetup(TF_SessionWithGraph* session, const TF_Port* inputs,
 
   std::vector<tensorflow::string> target_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
-    target_names[i] = target_opers[i]->node.name();
+    target_names[i] = target_nodes[i]->node.name();
   }
 
   tensorflow::string new_handle;
@@ -1344,7 +1333,7 @@ void TF_SessionPRun(TF_SessionWithGraph* session, const char* handle,
                     const TF_Port* inputs, TF_Tensor* const* input_values,
                     int ninputs, const TF_Port* outputs,
                     TF_Tensor** output_values, int noutputs,
-                    const TF_Operation* const* target_opers, int ntargets,
+                    const TF_Node* const* target_nodes, int ntargets,
                     TF_Status* status) {
   // TODO(josh11b,mrry): Change Session to be able to use a Graph*
   // directly, instead of requiring us to serialize to a GraphDef and
@@ -1371,10 +1360,10 @@ void TF_SessionPRun(TF_SessionWithGraph* session, const char* handle,
     output_names[i] = PortName(outputs[i]);
   }
 
-  // Convert from TF_Operation* to string names.
+  // Convert from TF_Node* to string names.
   std::vector<tensorflow::string> target_names(ntargets);
   for (int i = 0; i < ntargets; ++i) {
-    target_names[i] = target_opers[i]->node.name();
+    target_names[i] = target_nodes[i]->node.name();
   }
 
   TF_Run_Helper(session->session, handle, nullptr, input_pairs, output_names,

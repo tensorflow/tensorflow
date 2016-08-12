@@ -202,33 +202,32 @@ static TF_Tensor* Int32Tensor(int32 v) {
                       &Int32Deallocator, nullptr);
 }
 
-TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", "feed");
+TF_Node* Placeholder(TF_Graph* graph, TF_Status* s) {
+  TF_NodeDescription* desc = TF_NewNode(graph, "Placeholder", "feed");
   TF_SetAttrType(desc, "dtype", TF_INT32);
-  return TF_FinishOperation(desc, s);
+  return TF_FinishNode(desc, s);
 }
 
-TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Const", "scalar");
+TF_Node* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s) {
+  TF_NodeDescription* desc = TF_NewNode(graph, "Const", "scalar");
   TF_SetAttrTensor(desc, "value", Int32Tensor(v), s);
   if (TF_GetCode(s) != TF_OK) return nullptr;
   TF_SetAttrType(desc, "dtype", TF_INT32);
-  return TF_FinishOperation(desc, s);
+  return TF_FinishNode(desc, s);
 }
 
-TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
-                  TF_Status* s) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
+TF_Node* Add(TF_Node* l, TF_Node* r, TF_Graph* graph, TF_Status* s) {
+  TF_NodeDescription* desc = TF_NewNode(graph, "AddN", "add");
   TF_Port add_inputs[2] = {{l, 0}, {r, 0}};
   TF_AddInputList(desc, add_inputs, 2);
-  return TF_FinishOperation(desc, s);
+  return TF_FinishNode(desc, s);
 }
 
-TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", "neg");
+TF_Node* Neg(TF_Node* n, TF_Graph* graph, TF_Status* s) {
+  TF_NodeDescription* desc = TF_NewNode(graph, "Neg", "neg");
   TF_Port neg_input = {n, 0};
   TF_AddInput(desc, neg_input);
-  return TF_FinishOperation(desc, s);
+  return TF_FinishNode(desc, s);
 }
 
 bool IsPlaceholder(const NodeDef& node_def) {
@@ -319,10 +318,10 @@ bool GetGraphDef(TF_Graph* graph, GraphDef* graph_def) {
   return ret;
 }
 
-bool GetNodeDef(TF_Operation* oper, NodeDef* node_def) {
+bool GetNodeDef(TF_Node* node, NodeDef* node_def) {
   TF_Status* s = TF_NewStatus();
   TF_Buffer* buffer = TF_NewBuffer();
-  TF_OperationToNodeDef(oper, buffer, s);
+  TF_NodeToNodeDef(node, buffer, s);
   bool ret = TF_GetCode(s) == TF_OK;
   EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   if (ret) ret = node_def->ParseFromArray(buffer->data, buffer->length);
@@ -331,10 +330,10 @@ bool GetNodeDef(TF_Operation* oper, NodeDef* node_def) {
   return ret;
 }
 
-bool GetAttrValue(TF_Operation* oper, const char* attr_name,
+bool GetAttrValue(TF_Node* node, const char* attr_name,
                   tensorflow::AttrValue* attr_value, TF_Status* s) {
   TF_Buffer* buffer = TF_NewBuffer();
-  TF_OperationGetAttrValueProto(oper, attr_name, buffer, s);
+  TF_NodeGetAttrValueProto(node, attr_name, buffer, s);
   bool ret = TF_GetCode(s) == TF_OK;
   if (ret) ret = attr_value->ParseFromArray(buffer->data, buffer->length);
   TF_DeleteBuffer(buffer);
@@ -345,83 +344,82 @@ TEST(CAPI, Graph) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
-  // Make a placeholder oper.
-  TF_Operation* feed = Placeholder(graph, s);
+  // Make a placeholder node.
+  TF_Node* feed = Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  // Test TF_Operation*() query functions.
-  EXPECT_EQ(string("feed"), string(TF_OperationName(feed)));
-  EXPECT_EQ(string("Placeholder"), string(TF_OperationOpType(feed)));
-  EXPECT_EQ(string(""), string(TF_OperationDevice(feed)));
-  EXPECT_EQ(1, TF_OperationNumOutputs(feed));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{feed, 0}));
-  EXPECT_EQ(1, TF_OperationOutputListLength(feed, "output", s));
+  // Test TF_Node*() query functions.
+  EXPECT_EQ(string("feed"), string(TF_NodeName(feed)));
+  EXPECT_EQ(string("Placeholder"), string(TF_NodeOpType(feed)));
+  EXPECT_EQ(string(""), string(TF_NodeDevice(feed)));
+  EXPECT_EQ(1, TF_NodeNumOutputs(feed));
+  EXPECT_EQ(TF_INT32, TF_NodeOutputType(TF_Port{feed, 0}));
+  EXPECT_EQ(1, TF_NodeOutputListLength(feed, "output", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(0, TF_OperationNumInputs(feed));
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
-  EXPECT_EQ(0, TF_OperationNumControlInputs(feed));
-  EXPECT_EQ(0, TF_OperationNumControlOutputs(feed));
+  EXPECT_EQ(0, TF_NodeNumInputs(feed));
+  EXPECT_EQ(0, TF_NodeOutputNumConsumers(TF_Port{feed, 0}));
+  EXPECT_EQ(0, TF_NodeNumControlInputs(feed));
+  EXPECT_EQ(0, TF_NodeNumControlOutputs(feed));
 
   tensorflow::AttrValue attr_value;
   ASSERT_TRUE(GetAttrValue(feed, "dtype", &attr_value, s)) << TF_Message(s);
   EXPECT_EQ(attr_value.type(), tensorflow::DT_INT32);
 
-  // Test not found errors in TF_Operation*() query functions.
-  EXPECT_EQ(-1, TF_OperationOutputListLength(feed, "bogus", s));
+  // Test not found errors in TF_Node*() query functions.
+  EXPECT_EQ(-1, TF_NodeOutputListLength(feed, "bogus", s));
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
 
   ASSERT_FALSE(GetAttrValue(feed, "missing", &attr_value, s));
-  EXPECT_EQ(string("Operation has no attr named 'missing'."),
-            string(TF_Message(s)));
+  EXPECT_EQ(string("Node has no attr named 'missing'."), string(TF_Message(s)));
 
-  // Make a constant oper with the scalar "3".
-  TF_Operation* three = ScalarConst(3, graph, s);
-  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-
-  // Add oper.
-  TF_Operation* add = Add(feed, three, graph, s);
+  // Make a constant node with the scalar "3".
+  TF_Node* three = ScalarConst(3, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  // Test TF_Operation*() query functions.
-  EXPECT_EQ(string("add"), string(TF_OperationName(add)));
-  EXPECT_EQ(string("AddN"), string(TF_OperationOpType(add)));
-  EXPECT_EQ(string(""), string(TF_OperationDevice(add)));
-  EXPECT_EQ(1, TF_OperationNumOutputs(add));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{add, 0}));
-  EXPECT_EQ(1, TF_OperationOutputListLength(add, "sum", s));
+  // Add node.
+  TF_Node* add = Add(feed, three, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(2, TF_OperationNumInputs(add));
-  EXPECT_EQ(2, TF_OperationInputListLength(add, "inputs", s));
+
+  // Test TF_Node*() query functions.
+  EXPECT_EQ(string("add"), string(TF_NodeName(add)));
+  EXPECT_EQ(string("AddN"), string(TF_NodeOpType(add)));
+  EXPECT_EQ(string(""), string(TF_NodeDevice(add)));
+  EXPECT_EQ(1, TF_NodeNumOutputs(add));
+  EXPECT_EQ(TF_INT32, TF_NodeOutputType(TF_Port{add, 0}));
+  EXPECT_EQ(1, TF_NodeOutputListLength(add, "sum", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 0}));
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 1}));
-  TF_Port add_in_0 = TF_OperationInput(TF_Port{add, 0});
-  EXPECT_EQ(feed, add_in_0.oper);
+  EXPECT_EQ(2, TF_NodeNumInputs(add));
+  EXPECT_EQ(2, TF_NodeInputListLength(add, "inputs", s));
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(TF_INT32, TF_NodeInputType(TF_Port{add, 0}));
+  EXPECT_EQ(TF_INT32, TF_NodeInputType(TF_Port{add, 1}));
+  TF_Port add_in_0 = TF_NodeInput(TF_Port{add, 0});
+  EXPECT_EQ(feed, add_in_0.node);
   EXPECT_EQ(0, add_in_0.index);
-  TF_Port add_in_1 = TF_OperationInput(TF_Port{add, 1});
-  EXPECT_EQ(three, add_in_1.oper);
+  TF_Port add_in_1 = TF_NodeInput(TF_Port{add, 1});
+  EXPECT_EQ(three, add_in_1.node);
   EXPECT_EQ(0, add_in_1.index);
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{add, 0}));
-  EXPECT_EQ(0, TF_OperationNumControlInputs(add));
-  EXPECT_EQ(0, TF_OperationNumControlOutputs(add));
+  EXPECT_EQ(0, TF_NodeOutputNumConsumers(TF_Port{add, 0}));
+  EXPECT_EQ(0, TF_NodeNumControlInputs(add));
+  EXPECT_EQ(0, TF_NodeNumControlOutputs(add));
 
   ASSERT_TRUE(GetAttrValue(add, "T", &attr_value, s)) << TF_Message(s);
   EXPECT_EQ(attr_value.type(), tensorflow::DT_INT32);
   ASSERT_TRUE(GetAttrValue(add, "N", &attr_value, s)) << TF_Message(s);
   EXPECT_EQ(attr_value.i(), 2);
 
-  // Placeholder oper now has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
+  // Placeholder node now has a consumer.
+  ASSERT_EQ(1, TF_NodeOutputNumConsumers(TF_Port{feed, 0}));
   TF_Port feed_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{feed, 0}, &feed_port, 1));
-  EXPECT_EQ(add, feed_port.oper);
+  EXPECT_EQ(1, TF_NodeOutputConsumers(TF_Port{feed, 0}, &feed_port, 1));
+  EXPECT_EQ(add, feed_port.node);
   EXPECT_EQ(0, feed_port.index);
 
-  // The scalar const oper also has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{three, 0}));
+  // The scalar const node also has a consumer.
+  ASSERT_EQ(1, TF_NodeOutputNumConsumers(TF_Port{three, 0}));
   TF_Port three_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{three, 0}, &three_port, 1));
-  EXPECT_EQ(add, three_port.oper);
+  EXPECT_EQ(1, TF_NodeOutputConsumers(TF_Port{three, 0}, &three_port, 1));
+  EXPECT_EQ(add, three_port.node);
   EXPECT_EQ(1, three_port.index);
 
   // Serialize to GraphDef.
@@ -450,8 +448,8 @@ TEST(CAPI, Graph) {
   EXPECT_TRUE(found_scalar_const);
   EXPECT_TRUE(found_add);
 
-  // Add another oper to the graph.
-  TF_Operation* neg = Neg(add, graph, s);
+  // Add another node to the graph.
+  TF_Node* neg = Neg(add, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Serialize to NodeDef.
@@ -471,13 +469,13 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(ProtoDebugString(graph_def), ProtoDebugString(graph_def2));
 
   // Look up some nodes by name.
-  TF_Operation* neg2 = TF_GraphOperationByName(graph, "neg");
+  TF_Node* neg2 = TF_GraphNodeByName(graph, "neg");
   EXPECT_TRUE(neg == neg2);
   NodeDef node_def2;
   ASSERT_TRUE(GetNodeDef(neg2, &node_def2));
   EXPECT_EQ(ProtoDebugString(node_def), ProtoDebugString(node_def2));
 
-  TF_Operation* feed2 = TF_GraphOperationByName(graph, "feed");
+  TF_Node* feed2 = TF_GraphNodeByName(graph, "feed");
   EXPECT_TRUE(feed == feed2);
   ASSERT_TRUE(GetNodeDef(feed, &node_def));
   ASSERT_TRUE(GetNodeDef(feed2, &node_def2));
@@ -489,22 +487,22 @@ TEST(CAPI, Graph) {
   found_add = false;
   bool found_neg = false;
   size_t pos = 0;
-  TF_Operation* oper;
-  while ((oper = TF_GraphNextOperation(graph, &pos)) != nullptr) {
-    if (oper == feed) {
+  TF_Node* node;
+  while ((node = TF_GraphNextNode(graph, &pos)) != nullptr) {
+    if (node == feed) {
       EXPECT_FALSE(found_placeholder);
       found_placeholder = true;
-    } else if (oper == three) {
+    } else if (node == three) {
       EXPECT_FALSE(found_scalar_const);
       found_scalar_const = true;
-    } else if (oper == add) {
+    } else if (node == add) {
       EXPECT_FALSE(found_add);
       found_add = true;
-    } else if (oper == neg) {
+    } else if (node == neg) {
       EXPECT_FALSE(found_neg);
       found_neg = true;
     } else {
-      ASSERT_TRUE(GetNodeDef(oper, &node_def));
+      ASSERT_TRUE(GetNodeDef(node, &node_def));
       ADD_FAILURE() << "Unexpected Node: " << ProtoDebugString(node_def);
     }
   }
@@ -534,7 +532,7 @@ class CSessionWithGraph {
   }
 
   void SetInputs(
-      std::initializer_list<std::pair<TF_Operation*, TF_Tensor*>> inputs) {
+      std::initializer_list<std::pair<TF_Node*, TF_Tensor*>> inputs) {
     DeleteInputValues();
     inputs_.clear();
     for (const auto& p : inputs) {
@@ -543,17 +541,17 @@ class CSessionWithGraph {
     }
   }
 
-  void SetOutputs(std::initializer_list<TF_Operation*> outputs) {
+  void SetOutputs(std::initializer_list<TF_Node*> outputs) {
     ResetOutputValues();
     outputs_.clear();
-    for (TF_Operation* o : outputs) {
+    for (TF_Node* o : outputs) {
       outputs_.emplace_back(TF_Port{o, 0});
     }
   }
 
-  void SetTargets(std::initializer_list<TF_Operation*> targets) {
+  void SetTargets(std::initializer_list<TF_Node*> targets) {
     targets_.clear();
-    for (TF_Operation* t : targets) {
+    for (TF_Node* t : targets) {
       targets_.emplace_back(t);
     }
   }
@@ -574,8 +572,7 @@ class CSessionWithGraph {
     TF_Tensor** output_values_ptr =
         output_values_.empty() ? nullptr : &output_values_[0];
 
-    TF_Operation* const* targets_ptr =
-        targets_.empty() ? nullptr : &targets_[0];
+    TF_Node* const* targets_ptr = targets_.empty() ? nullptr : &targets_[0];
 
     TF_SessionRun(session_, nullptr, inputs_ptr, input_values_ptr,
                   inputs_.size(), outputs_ptr, output_values_ptr,
@@ -618,23 +615,23 @@ class CSessionWithGraph {
   std::vector<TF_Tensor*> input_values_;
   std::vector<TF_Port> outputs_;
   std::vector<TF_Tensor*> output_values_;
-  std::vector<TF_Operation*> targets_;
+  std::vector<TF_Node*> targets_;
 };
 
 TEST(CAPI, SessionWithGraph) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
-  // Make a placeholder operation.
-  TF_Operation* feed = Placeholder(graph, s);
+  // Make a placeholder node.
+  TF_Node* feed = Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  // Make a constant operation with the scalar "2".
-  TF_Operation* two = ScalarConst(2, graph, s);
+  // Make a constant node with the scalar "2".
+  TF_Node* two = ScalarConst(2, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  // Add operation.
-  TF_Operation* add = Add(feed, two, graph, s);
+  // Add node.
+  TF_Node* add = Add(feed, two, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a session for this graph.
@@ -655,11 +652,11 @@ TEST(CAPI, SessionWithGraph) {
       static_cast<tensorflow::int32*>(TF_TensorData(out));
   EXPECT_EQ(3 + 2, *output_contents);
 
-  // Add another operation to the graph.
-  TF_Operation* neg = Neg(add, graph, s);
+  // Add another node to the graph.
+  TF_Node* neg = Neg(add, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  // Run up to the new operation.
+  // Run up to the new node.
   csession.SetInputs({{feed, Int32Tensor(7)}});
   csession.SetOutputs({neg});
   csession.Run(s);
