@@ -1579,7 +1579,6 @@ class LayerNormTest(tf.test.TestCase):
       output_op = tf.contrib.layers.layer_norm(inputs,
                                                center=True,
                                                scale=True,
-                                               epsilon=1E-10,
                                                scope='LN')
       # Initialize all variables
       sess.run(tf.initialize_all_variables())

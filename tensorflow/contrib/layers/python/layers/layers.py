@@ -843,8 +843,7 @@ def fully_connected(inputs,
 @add_arg_scope
 def layer_norm(inputs,
                center=True,
-               scale=False,
-               epsilon=0.001,
+               scale=True,
                activation_fn=None,
                reuse=None,
                variables_collections=None,
@@ -866,7 +865,6 @@ def layer_norm(inputs,
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
-    epsilon: small float added to variance to avoid dividing by zero.
     activation_fn: Optional activation function.
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
@@ -918,8 +916,9 @@ def layer_norm(inputs,
     # Calculate the moments on the last axis (layer activations).
     mean, variance = nn.moments(inputs, axis, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.
+    variance_epsilon = 1E-12
     outputs = nn.batch_normalization(
-        inputs, mean, variance, beta, gamma, epsilon)
+        inputs, mean, variance, beta, gamma, variance_epsilon)
     outputs.set_shape(inputs_shape)
     if activation_fn:
       outputs = activation_fn(outputs)
