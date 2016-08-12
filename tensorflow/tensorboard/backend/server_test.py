@@ -303,11 +303,6 @@ class ParseEventFilesSpecTest(tf.test.TestCase):
     expected = {'/lol/cat': None}
     self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
 
-  def testExpandsHome(self):
-    logdir_string = '~/lol/cat'
-    expected = {os.path.expanduser('~/lol/cat'): None}
-    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
-
   def testAbsolutifies(self):
     logdir_string = 'lol/cat'
     expected = {os.path.realpath('lol/cat'): None}
