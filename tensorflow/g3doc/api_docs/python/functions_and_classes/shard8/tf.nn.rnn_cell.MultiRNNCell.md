@@ -1,7 +1,7 @@
 RNN cell composed sequentially of multiple simple cells.
 - - -
 
-#### `tf.nn.rnn_cell.MultiRNNCell.__init__(cells, state_is_tuple=False)` {#MultiRNNCell.__init__}
+#### `tf.nn.rnn_cell.MultiRNNCell.__init__(cells, state_is_tuple=True)` {#MultiRNNCell.__init__}
 
 Create a RNN cell composed sequentially of a number of RNNCells.
 
@@ -10,8 +10,9 @@ Create a RNN cell composed sequentially of a number of RNNCells.
 
 *  <b>`cells`</b>: list of RNNCells that will be composed in this order.
 *  <b>`state_is_tuple`</b>: If True, accepted and returned states are n-tuples, where
-    `n = len(cells)`.  By default (False), the states are all
-    concatenated along the column axis.
+    `n = len(cells)`.  If False, the states are all
+    concatenated along the column axis.  This latter behavior will soon be
+    deprecated.
 
 ##### Raises:
 

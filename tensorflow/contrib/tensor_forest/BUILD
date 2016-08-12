@@ -125,15 +125,24 @@ tf_custom_op_library(
     deps = [":tree_utils"],
 )
 
+tf_custom_op_library(
+    name = "python/ops/_topn_ops.so",
+    srcs = [
+        "core/ops/topn_ops.cc",
+    ],
+)
+
 py_library(
     name = "ops_lib",
     srcs = [
         "__init__.py",
         "python/ops/inference_ops.py",
+        "python/ops/topn_ops.py",
         "python/ops/training_ops.py",
     ],
     data = [
         "python/ops/_inference_ops.so",
+        "python/ops/_topn_ops.so",
         "python/ops/_training_ops.so",
     ],
     srcs_version = "PY2AND3",
@@ -284,5 +293,28 @@ cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//third_party/eigen3",
+    ],
+)
+
+py_library(
+    name = "topn_py",
+    srcs = ["python/topn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        ":ops_lib",
+    ],
+)
+
+py_test(
+    name = "topn_test",
+    size = "small",
+    srcs = ["python/topn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":topn_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
     ],
 )

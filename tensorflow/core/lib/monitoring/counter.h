@@ -13,8 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_ACCUMULATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_ACCUMULATOR_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+
+// We replace this implementation with a null implementation for mobile
+// platforms.
+#include "tensorflow/core/platform/platform.h"
+#ifdef IS_MOBILE_PLATFORM
+#include "tensorflow/core/lib/monitoring/mobile/counter.h"
+#else
 
 #include <array>
 #include <atomic>
@@ -59,7 +66,7 @@ class CounterCell {
   TF_DISALLOW_COPY_AND_ASSIGN(CounterCell);
 };
 
-// A stateful class for updating a cumulative metric.
+// A stateful class for updating a cumulative integer metric.
 //
 // This class encapsulates a set of values (or a single value for a label-less
 // metric). Each value is identified by a tuple of labels. The class allows the
@@ -159,4 +166,5 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_ACCUMULATOR_H_
+#endif  // IS_MOBILE_PLATFORM
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_

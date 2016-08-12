@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -61,17 +62,17 @@ TEST(ImageOpsTest, DecodeImage_ShapeFn) {
     INFER_OK(op, "[]", "[?,?,?]");
 
     // Set the channel and so that part of output shape is known.
-    TF_CHECK_OK(NodeDefBuilder("test", op_name)
-                    .Input({"a", 0, DT_STRING})
-                    .Attr("channels", 4)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                     .Input({"a", 0, DT_STRING})
+                     .Attr("channels", 4)
+                     .Finalize(&op.node_def));
     INFER_OK(op, "[]", "[?,?,4]");
 
     // Negative channel value is rejected.
-    TF_CHECK_OK(NodeDefBuilder("test", op_name)
-                    .Input({"a", 0, DT_STRING})
-                    .Attr("channels", -1)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                     .Input({"a", 0, DT_STRING})
+                     .Attr("channels", -1)
+                     .Finalize(&op.node_def));
     INFER_ERROR("channels must be non-negative, got -1", op, "[]");
   }
 }

@@ -70,7 +70,7 @@ def vgg_a(inputs,
   Returns:
     the last op containing the log predictions and end_points dict.
   """
-  with tf.variable_op_scope([inputs], scope, 'vgg_a') as sc:
+  with tf.variable_scope(scope, 'vgg_a', [inputs]) as sc:
     end_points_collection = sc.name + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
     with slim.arg_scope([slim.conv2d, slim.max_pool2d],
@@ -128,7 +128,7 @@ def vgg_16(inputs,
   Returns:
     the last op containing the log predictions and end_points dict.
   """
-  with tf.variable_op_scope([inputs], scope, 'vgg_16') as sc:
+  with tf.variable_scope(scope, 'vgg_16', [inputs]) as sc:
     end_points_collection = sc.name + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
     with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],

@@ -852,6 +852,17 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "function_ops",
+    prefix = "function_ops",
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_libraries(
     name = "image",
     prefixes = [
@@ -1833,6 +1844,7 @@ filegroup(
         "example_parsing_ops.cc",
         "fill_functor.cc",
         "fill_functor.h",
+        "function_ops.cc",
         "gather_op.cc",
         "gather_op.h",
         "identity_op.cc",

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -24,12 +25,12 @@ namespace tensorflow {
 TEST(IoOpsTest, Save_ShapeFn) {
   ShapeInferenceTestOp op("Save");
 
-  TF_CHECK_OK(NodeDefBuilder("test", op.name)
-                  .Input({"a", 0, DT_STRING})
-                  .Input({"b", 0, DT_STRING})
-                  .Input({{"c", 0, DT_FLOAT}, {"d", 0, DT_INT64}})
-                  .Attr("T", {DT_FLOAT, DT_INT64})
-                  .Finalize(&op.node_def));
+  TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                   .Input({"a", 0, DT_STRING})
+                   .Input({"b", 0, DT_STRING})
+                   .Input({{"c", 0, DT_FLOAT}, {"d", 0, DT_INT64}})
+                   .Attr("T", {DT_FLOAT, DT_INT64})
+                   .Finalize(&op.node_def));
   INFER_OK(op, "?;?;?;?", "");
   INFER_OK(op, "[];[2];?;?", "");
 
@@ -44,13 +45,13 @@ TEST(IoOpsTest, Save_ShapeFn) {
 TEST(IoOpsTest, SaveSlices_ShapeFn) {
   ShapeInferenceTestOp op("SaveSlices");
 
-  TF_CHECK_OK(NodeDefBuilder("test", op.name)
-                  .Input({"a", 0, DT_STRING})
-                  .Input({"b", 0, DT_STRING})
-                  .Input({"c", 0, DT_STRING})
-                  .Input({{"d", 0, DT_FLOAT}, {"e", 0, DT_INT64}})
-                  .Attr("T", {DT_FLOAT, DT_INT64})
-                  .Finalize(&op.node_def));
+  TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                   .Input({"a", 0, DT_STRING})
+                   .Input({"b", 0, DT_STRING})
+                   .Input({"c", 0, DT_STRING})
+                   .Input({{"d", 0, DT_FLOAT}, {"e", 0, DT_INT64}})
+                   .Attr("T", {DT_FLOAT, DT_INT64})
+                   .Finalize(&op.node_def));
   INFER_OK(op, "?;?;?;?;?", "");
   INFER_OK(op, "[];[2];[2];?;?", "");
   INFER_OK(op, "[];[2];[2];[100,200,300];[4,5]", "");

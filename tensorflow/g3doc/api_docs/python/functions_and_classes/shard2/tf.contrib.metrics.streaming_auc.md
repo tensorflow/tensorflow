@@ -42,7 +42,7 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 *  <b>`curve`</b>: Specifies the name of the curve to be computed, 'ROC' [default] or
   'PR' for the Precision-Recall-curve.
 
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 

@@ -152,7 +152,7 @@ def batch_norm(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -160,8 +160,8 @@ def batch_norm(inputs,
   Raises:
     ValueError: if rank or last dimension of `inputs` is undefined.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'BatchNorm', reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'BatchNorm', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
@@ -291,13 +291,13 @@ def bias_add(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     a tensor representing the result of adding biases to the inputs.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'BiasAdd', reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'BiasAdd', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     num_features = utils.last_dimension(inputs.get_shape(), min_rank=2)
@@ -376,7 +376,7 @@ def convolution2d(inputs,
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     a tensor representing the output of the operation.
@@ -384,8 +384,8 @@ def convolution2d(inputs,
   Raises:
     ValueError: if both 'rate' and `stride` are larger than one.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'Conv', reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'Conv', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
@@ -484,13 +484,13 @@ def convolution2d_in_plane(
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     A `Tensor` representing the output of the operation.
   """
-  with variable_scope.variable_op_scope(
-      [inputs], scope, 'ConvInPlane', reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'ConvInPlane', [inputs], reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -578,7 +578,7 @@ def convolution2d_transpose(
       a dictionay containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: whether or not the variables should be trainable or not.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     a tensor representing the output of the operation.
@@ -586,8 +586,8 @@ def convolution2d_transpose(
   Raises:
     ValueError: if 'kernel_size' is not a list of length 2.
   """
-  with variable_scope.variable_op_scope(
-      [inputs], scope, 'Conv2d_transpose', reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'Conv2d_transpose', [inputs], reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -772,7 +772,7 @@ def fully_connected(inputs,
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
      the tensor variable representing the result of the series of operations.
@@ -782,10 +782,8 @@ def fully_connected(inputs,
   """
   if not isinstance(num_outputs, int):
     raise ValueError('num_outputs should be integer, got %s.', num_outputs)
-  with variable_scope.variable_op_scope([inputs],
-                                        scope,
-                                        'fully_connected',
-                                        reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     inputs_shape = inputs.get_shape()
@@ -944,7 +942,7 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
     ValueError: if the op is unknown or wrong.
   """
   scope = kwargs.pop('scope', None)
-  with variable_scope.variable_op_scope([inputs], scope, 'Repeat'):
+  with variable_scope.variable_scope(scope, 'Repeat', [inputs]):
     inputs = ops.convert_to_tensor(inputs)
     if scope is None:
       if hasattr(layer, '__name__'):
@@ -1017,13 +1015,13 @@ def separable_convolution2d(
       a dictionay containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: whether or not the variables should be trainable or not.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     A `Tensor` representing the output of the operation.
   """
-  with variable_scope.variable_op_scope(
-      [inputs], scope, 'SeparableConv2d', reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'SeparableConv2d', [inputs], reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -1093,13 +1091,13 @@ def softmax(logits, scope=None):
 
   Args:
     logits: N-dimensional `Tensor` with logits, where N > 1.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     a `Tensor` with same shape and type as logits.
   """
   # TODO(jrru): Add axis argument which defaults to last dimension.
-  with variable_scope.variable_op_scope([logits], scope, 'softmax'):
+  with variable_scope.variable_scope(scope, 'softmax', [logits]):
     num_logits = utils.last_dimension(logits.get_shape(), min_rank=2)
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
@@ -1144,7 +1142,7 @@ def stack(inputs, layer, stack_args, **kwargs):
   scope = kwargs.pop('scope', None)
   if not isinstance(stack_args, (list, tuple)):
     raise ValueError('stack_args need to be a list or tuple')
-  with variable_scope.variable_op_scope([inputs], scope, 'Stack'):
+  with variable_scope.variable_scope(scope, 'Stack', [inputs]):
     inputs = ops.convert_to_tensor(inputs)
     if scope is None:
       if hasattr(layer, '__name__'):
@@ -1173,7 +1171,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
     inputs: A `Tensor` of arbitrary size.
     dim: The dimension along which the input is normalized.
     epsilon: A small value to add to the inputs to avoid dividing by zero.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     The normalized `Tensor`.
@@ -1181,7 +1179,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
   Raises:
     ValueError: If dim is smaller than the number of dimensions in 'inputs'.
   """
-  with variable_scope.variable_op_scope([inputs], scope, 'UnitNorm'):
+  with variable_scope.variable_scope(scope, 'UnitNorm', [inputs]):
     if not inputs.get_shape():
       raise ValueError('The input rank must be known.')
     input_rank = len(inputs.get_shape().as_list())
@@ -1263,7 +1261,7 @@ def legacy_fully_connected(x,
     name: The name for this operation is used to name operations and to find
       variables. If specified it must be unique for this scope, otherwise a
       unique name starting with "fully_connected" will be created.  See
-      `tf.variable_op_scope` for details.
+      `tf.variable_scope` for details.
     weight_collections: List of graph collections to which weights are added.
     bias_collections: List of graph collections to which biases are added.
     output_collections: List of graph collections to which outputs are added.
@@ -1280,7 +1278,7 @@ def legacy_fully_connected(x,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  with variable_scope.variable_op_scope([x], name, 'fully_connected'):
+  with variable_scope.variable_scope(name, 'fully_connected', [x]):
     x = ops.convert_to_tensor(x)
     dims = x.get_shape().dims
     if dims is None:

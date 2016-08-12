@@ -79,7 +79,7 @@ def input_from_feature_columns(columns_to_tensors,
     weight_collections: List of graph collections to which weights are added.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     A Tensor which can be consumed by hidden layers in the neural network.
@@ -88,8 +88,9 @@ def input_from_feature_columns(columns_to_tensors,
     ValueError: if FeatureColumn cannot be consumed by a neural network.
   """
   check_feature_columns(feature_columns)
-  with variable_scope.variable_op_scope(columns_to_tensors.values(), scope,
-                                        'input_from_feature_columns'):
+  with variable_scope.variable_scope(scope,
+                                     default_name='input_from_feature_columns',
+                                     values=columns_to_tensors.values()):
     output_tensors = []
     transformer = _Transformer(columns_to_tensors)
     if weight_collections:
@@ -97,8 +98,9 @@ def input_from_feature_columns(columns_to_tensors,
                                     [ops.GraphKeys.VARIABLES]))
 
     for column in sorted(set(feature_columns), key=lambda x: x.key):
-      with variable_scope.variable_op_scope(
-          columns_to_tensors.values(), None, column.name):
+      with variable_scope.variable_scope(None,
+                                         default_name=column.name,
+                                         values=columns_to_tensors.values()):
         try:
           transformed_tensor = transformer.transform(column)
           output_tensors.append(column.to_dnn_input_layer(
@@ -158,7 +160,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     weight_collections: List of graph collections to which weights are added.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope fpor variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     A tuple of followings:
@@ -170,14 +172,18 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     ValueError: if FeatureColumn cannot be used for linear predictions.
   """
   check_feature_columns(feature_columns)
-  with variable_scope.variable_op_scope(columns_to_tensors.values(), scope,
-                                        'weighted_sum_from_feature_columns'):
+  with variable_scope.variable_scope(
+      scope,
+      default_name='weighted_sum_from_feature_columns',
+      values=columns_to_tensors.values()):
     output_tensors = []
     column_to_variable = dict()
     transformer = _Transformer(columns_to_tensors)
     for column in sorted(set(feature_columns), key=lambda x: x.key):
-      with variable_scope.variable_op_scope(
-          columns_to_tensors.values(), None, column.name):
+      with variable_scope.variable_scope(
+          None,
+          default_name=column.name,
+          values=columns_to_tensors.values()):
         try:
           transformed_tensor = transformer.transform(column)
           predictions, variable = column.to_weighted_sum(transformed_tensor,

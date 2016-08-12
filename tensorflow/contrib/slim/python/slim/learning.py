@@ -130,7 +130,7 @@ TF-Slim provides a convenient mechanism for doing so:
   train_op = slim.learning.create_train_op(total_loss, optimizer)
 
   # Create the initial assignment op
-  checkpoint_path = '/cns/.../old_model_checkpoint'
+  checkpoint_path = '/path/to/old_model_checkpoint'
   variables_to_restore = slim.get_model_variables()
   init_assign_op, init_feed_dict = slim.assign_from_checkpoint(
       checkpoint_path, variables_to_restore)
@@ -159,7 +159,7 @@ above:
   # Create the train_op
   train_op = slim.learning.create_train_op(total_loss, optimizer)
 
-  checkpoint_path = '/cns/.../old_model_checkpoint'
+  checkpoint_path = '/path/to/old_model_checkpoint'
 
   # Create the mapping:
   variables_to_restore = {
@@ -190,7 +190,7 @@ need only filter those variables to initialize as follows:
   # Create the train_op
   train_op = slim.learning.create_train_op(total_loss, optimizer)
 
-  checkpoint_path = '/cns/.../old_model_checkpoint'
+  checkpoint_path = '/path/to/old_model_checkpoint'
 
   # Specify the variables to restore via a list of inclusion or exclusion
   # patterns:

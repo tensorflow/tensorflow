@@ -118,7 +118,7 @@ function setup_python {
   done
   set -- $python_lib_path
   echo "Please input the desired Python library path to use.  Default is ["$1"]"
-  read b
+  read b || true
   if [ "$b" == "" ]; then
    python_lib="$(default_python_path $python_lib_path)"
    echo $python_lib

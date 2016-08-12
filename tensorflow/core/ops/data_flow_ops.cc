@@ -570,7 +570,7 @@ tensor_array_name: Overrides the name used for the temporary tensor_array
 )doc");
 
 REGISTER_OP("TensorArrayGrad")
-    .Input("handle: Ref(string)")
+    .Input("handle: string")
     .Input("flow_in: float")
     .Output("grad_handle: Ref(string)")
     .Attr("source: string")
