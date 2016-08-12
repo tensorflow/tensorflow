@@ -885,9 +885,9 @@ class WeightedSumTest(tf.test.TestCase):
                                      indices=[[0, 0], [0, 1]],
                                      shape=[1, 2])
       }
-      with tf.variable_op_scope(
-          features.values(),
+      with tf.variable_scope(
           "weighted_sum_from_feature_columns",
+          features.values(),
           partitioner=tf.min_max_variable_partitioner(
               max_partitions=10, min_slice_size=((64 << 20) - 1))) as scope:
         output, column_to_variable, _ = (

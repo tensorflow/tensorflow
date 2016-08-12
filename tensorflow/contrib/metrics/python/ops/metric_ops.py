@@ -139,7 +139,7 @@ def _streaming_true_positives(predictions, labels, ignore_mask=None,
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
       ops should be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     value_tensor: A tensor representing the current value of the metric.
@@ -149,8 +149,8 @@ def _streaming_true_positives(predictions, labels, ignore_mask=None,
     ValueError: If either `metrics_collections` or `updates_collections` are not
       a list or tuple.
   """
-  with variable_scope.variable_op_scope(
-      [predictions, labels], name, 'true_positives'):
+  with variable_scope.variable_scope(
+      name, 'true_positives', [predictions, labels]):
 
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     is_true_positive = math_ops.logical_and(math_ops.equal(labels, 1),
@@ -175,7 +175,7 @@ def _streaming_false_positives(predictions, labels, ignore_mask=None,
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
       ops should be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     value_tensor: A tensor representing the current value of the metric.
@@ -185,8 +185,8 @@ def _streaming_false_positives(predictions, labels, ignore_mask=None,
     ValueError: If either `metrics_collections` or `updates_collections` are not
       a list or tuple.
   """
-  with variable_scope.variable_op_scope(
-      [predictions, labels], name, 'false_positives'):
+  with variable_scope.variable_scope(
+      name, 'false_positives', [predictions, labels]):
 
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     is_false_positive = math_ops.logical_and(math_ops.equal(labels, 0),
@@ -211,7 +211,7 @@ def _streaming_false_negatives(predictions, labels, ignore_mask=None,
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
       ops should be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     value_tensor: A tensor representing the current value of the metric.
@@ -221,8 +221,8 @@ def _streaming_false_negatives(predictions, labels, ignore_mask=None,
     ValueError: If either `metrics_collections` or `updates_collections` are not
       a list or tuple.
   """
-  with variable_scope.variable_op_scope(
-      [predictions, labels], name, 'false_negatives'):
+  with variable_scope.variable_scope(
+      name, 'false_negatives', [predictions, labels]):
 
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     is_false_negative = math_ops.logical_and(math_ops.equal(labels, 1),
@@ -256,7 +256,7 @@ def streaming_mean(values, weights=None, metrics_collections=None,
       should be added to.
     updates_collections: An optional list of collections that `update_op`
       should be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     mean: A tensor representing the current mean, the value of `total` divided
@@ -269,7 +269,7 @@ def streaming_mean(values, weights=None, metrics_collections=None,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  with variable_scope.variable_op_scope([values, weights], name, 'mean'):
+  with variable_scope.variable_scope(name, 'mean', [values, weights]):
     values = math_ops.to_float(values)
 
     total = _create_local('total', shape=[])
@@ -333,7 +333,7 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
       should be added to.
     updates_collections: An optional list of collections that `update_op`
       should be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     mean: A float tensor representing the current mean, the value of `total`
@@ -346,7 +346,7 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  with variable_scope.variable_op_scope([values, weights], name, 'mean'):
+  with variable_scope.variable_scope(name, 'mean', [values, weights]):
     total = _create_local('total_tensor', shape=values.get_shape())
     count = _create_local('count_tensor', shape=values.get_shape())
 
@@ -412,7 +412,7 @@ def streaming_accuracy(predictions, labels, weights=None,
       be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     accuracy: A tensor representing the accuracy, the value of `total` divided
@@ -464,7 +464,7 @@ def streaming_precision(predictions, labels, ignore_mask=None,
       be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     precision: Scalar float `Tensor` with the value of `true_positives`
@@ -479,8 +479,8 @@ def streaming_precision(predictions, labels, ignore_mask=None,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  with variable_scope.variable_op_scope(
-      [predictions, labels], name, 'precision'):
+  with variable_scope.variable_scope(
+      name, 'precision', [predictions, labels]):
 
     predictions, labels = metric_ops_util.remove_squeezable_dimensions(
         predictions, labels)
@@ -544,7 +544,7 @@ def streaming_recall(predictions, labels, ignore_mask=None,
       be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     recall: Scalar float `Tensor` with the value of `true_positives` divided
@@ -559,7 +559,7 @@ def streaming_recall(predictions, labels, ignore_mask=None,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  with variable_scope.variable_op_scope([predictions, labels], name, 'recall'):
+  with variable_scope.variable_scope(name, 'recall', [predictions, labels]):
     predictions, labels = metric_ops_util.remove_squeezable_dimensions(
         predictions, labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -768,7 +768,7 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
       be added to.
     curve: Specifies the name of the curve to be computed, 'ROC' [default] or
     'PR' for the Precision-Recall-curve.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     auc: A scalar tensor representing the current area-under-curve.
@@ -782,7 +782,7 @@ def streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200,
       if either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  with variable_scope.variable_op_scope([predictions, labels], name, 'auc'):
+  with variable_scope.variable_scope(name, 'auc', [predictions, labels]):
     if curve != 'ROC' and  curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' %
                        (curve))
@@ -857,7 +857,7 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
       added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     precision: A float tensor of shape [len(thresholds)].
@@ -871,8 +871,8 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  with variable_scope.variable_op_scope([predictions, labels], name,
-                                        'precision_at_thresholds'):
+  with variable_scope.variable_scope(name, 'precision_at_thresholds',
+                                     [predictions, labels]):
     (true_positives, _, _, false_positives, true_positives_compute_op, _, _,
      false_positives_compute_op,) = _tp_fn_tn_fp(
          predictions, labels, thresholds, ignore_mask)
@@ -928,7 +928,7 @@ def streaming_recall_at_thresholds(predictions, labels, thresholds,
       added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     recall: A float tensor of shape [len(thresholds)].
@@ -942,8 +942,8 @@ def streaming_recall_at_thresholds(predictions, labels, thresholds,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  with variable_scope.variable_op_scope([predictions, labels], name,
-                                        'recall_at_thresholds'):
+  with variable_scope.variable_scope(name, 'recall_at_thresholds',
+                                     [predictions, labels]):
     (true_positives, false_negatives, _, _, true_positives_compute_op,
      false_negatives_compute_op, _, _,) = _tp_fn_tn_fp(
          predictions, labels, thresholds, ignore_mask)
@@ -1003,7 +1003,7 @@ def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
       should be added to.
     updates_collections: An optional list of collections `update_op` should be
       added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     recall_at_k: A tensor representing the recall@k, the fraction of labels
@@ -1432,7 +1432,7 @@ def streaming_mean_absolute_error(predictions, labels, weights=None,
       `mean_absolute_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     mean_absolute_error: A tensor representing the current mean, the value of
@@ -1485,7 +1485,7 @@ def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
       `mean_relative_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     mean_relative_error: A tensor representing the current mean, the value of
@@ -1544,7 +1544,7 @@ def streaming_mean_squared_error(predictions, labels, weights=None,
       `mean_squared_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     mean_squared_error: A tensor representing the current mean, the value of
@@ -1596,7 +1596,7 @@ def streaming_root_mean_squared_error(predictions, labels, weights=None,
       `root_mean_squared_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     root_mean_squared_error: A tensor representing the current mean, the value
@@ -1662,7 +1662,7 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
       ops should be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     mean_distance: A tensor representing the current mean, the value of `total`
@@ -1728,7 +1728,7 @@ def streaming_percentage_less(values, threshold, ignore_mask=None,
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
       ops should be added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     percentage: A tensor representing the current mean, the value of `total`
@@ -1780,7 +1780,7 @@ def streaming_mean_iou(predictions,
       should be added to.
     updates_collections: An optional list of collections `update_op` should be
       added to.
-    name: An optional variable_op_scope name.
+    name: An optional variable_scope name.
 
   Returns:
     mean_iou: A tensor representing the mean intersection-over-union.
@@ -1792,8 +1792,7 @@ def streaming_mean_iou(predictions,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
   """
-  with variable_scope.variable_op_scope(
-      [predictions, labels], name, 'mean_iou'):
+  with variable_scope.variable_scope(name, 'mean_iou', [predictions, labels]):
     # Check if shape is compatible.
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     if ignore_mask is not None:

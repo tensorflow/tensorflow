@@ -258,7 +258,7 @@ number. More concretely, the scopes in the example above would be named
 
 Furthermore, TF-Slim's `slim.stack` operator allows a caller to repeatedly apply
 the same operation with different arguments to create a *stack* or tower of
-layers. `slim.stack` also creates a new `tf.variable_op_scope` for each
+layers. `slim.stack` also creates a new `tf.variable_scope` for each
 operation created. For example, a simple way to create a Multi-Layer Perceptron
 (MLP):
 
@@ -292,9 +292,7 @@ slim.stack(x, slim.conv2d, [(32, [3, 3]), (32, [1, 1]), (64, [3, 3]), (64, [1, 1
 
 In addition to the types of scope mechanisms in TensorFlow
 ([name_scope](https://www.tensorflow.org/api_docs/python/framework.html#name_scope),
-[op_scope](https://www.tensorflow.org/api_docs/python/framework.html#op_scope),
 [variable_scope](https://www.tensorflow.org/api_docs/python/state_layers.html#variable_scope),
-[variable_op_scope](https://www.tensorflow.org/api_docs/python/state_layers.html#variable_op_scope)),
 TF-Slim adds a new scoping mechanism called
 [arg_scope](https://www.tensorflow.org/code/tensorflow/contrib/framework/python/ops/arg_scope.py).
 This new scope allows a user to specify one or more operations and a set of

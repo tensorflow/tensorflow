@@ -374,7 +374,7 @@ def basic_rnn_cell(inputs, state, num_units, scope=None):
     init_state.set_shape([batch_size, num_units])
     return init_output, init_state
   else:
-    with tf.variable_op_scope([inputs, state], scope, "BasicRNNCell"):
+    with tf.variable_scope(scope, "BasicRNNCell", [inputs, state]):
       output = tf.tanh(linear([inputs, state],
                               num_units, True))
     return output, output
