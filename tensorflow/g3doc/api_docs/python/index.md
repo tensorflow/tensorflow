@@ -414,6 +414,7 @@
   * [`PaddingFIFOQueue`](../../api_docs/python/io_ops.md#PaddingFIFOQueue)
   * [`parse_example`](../../api_docs/python/io_ops.md#parse_example)
   * [`parse_single_example`](../../api_docs/python/io_ops.md#parse_single_example)
+  * [`parse_tensor`](../../api_docs/python/io_ops.md#parse_tensor)
   * [`placeholder`](../../api_docs/python/io_ops.md#placeholder)
   * [`placeholder_with_default`](../../api_docs/python/io_ops.md#placeholder_with_default)
   * [`QueueBase`](../../api_docs/python/io_ops.md#QueueBase)
