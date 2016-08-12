@@ -13,6 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This file contains a set of different implementations of the two-dimensional
+// convolution operation. The standard TensorFlow Conv2d kernel uses EigenTensor
+// to implement the computation, but here there are a variety of different ways
+// of producing the same result. These methods are designed to be easier to
+// understand and connect to other libraries, so that we can take advantage of
+// platforms that have specialized implementations of GEMM for example.
+//
+// The basic interface is a Conv functor object that's templated by the types
+// of the data it will be operating on, and is passed in the arguments needed to
+// calculate the convolution. The simplest implementation of this functor is
+// ReferenceConvFunctor, which is a readable but slow reference version.
+//
+// A faster version uses the approach of packing image patches into a matrix
+// before calling a matrix multiply, the Im2ColConvFunctor. In turn, this can
+// use a variety of different methods to calculate the matrix multiplication,
+// or GEMM. The simplest but slowest is the ReferenceGemmFunctor, but the
+// FastGemmFunctor will use whatever optimized libraries are available. By
+// default it uses Eigen, but on Apple platforms it will take advantage of the
+// system's Accelerate BLAS library to get better performance than the standard
+// TensorFlow convolution kernel.
+//
+// The version actually used is defined at the bottom of this file using the
+// REGISTER_KERNEL_BUILDER() macro. To try out different implementations (for
+// example to switch to a reference one for easier debugging) you can swap out
+// the default functors in that call.
+//
+// The registration itself is guarded with the USE_GEMM_FOR_CONV macro. The iOS
+// makefile build defines this, but if you want to enable this implementation
+// and disable the standard EigenTensor one in other build setups, you'll need
+// to define it there too.
+
 #include <string.h>
 #include <map>
 #include <vector>
@@ -20,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -50,166 +82,149 @@ namespace {
 // filter_data = [filter_height, filter_width, input_depth, filter_count]
 // output_data = [input_batches, output_height, output_width, filter_count]
 template <class T1, class T2, class T3>
-void ReferenceConv(OpKernelContext* op_context, const T1* input_data,
-                   int input_batches, int input_height, int input_width,
-                   int input_depth, const T2* filter_data, int filter_height,
-                   int filter_width, int filter_count, int stride_rows,
-                   int stride_cols, Padding padding, T3* output_data,
-                   int output_height, int output_width) {
-  // The two different padding modes we support can be a bit confusing. SAME
-  // means we're trying to produce an output image that's the same size as the
-  // input. It's complicated by stride, which shrinks the output image by a
-  // a factor, but it means we end up sampling from outside the borders of the
-  // input. These out-of-bounds values are read as zeroes. VALID means only
-  // produce output values where the filters can read all their values from
-  // within the input image. It effectively removes the margins of the output
-  // image compared to the one produced by SAME. Stride complicates this
-  // definition though, because it can result in the right and bottom filter
-  // patches sampling from outside the borders if it's greater than 1.
-  // Most of the logic for sorting this all out is done before this function,
-  // when we calculate the output size, but the positioning of the origin of
-  // the filters is different between the two modes, since SAME positions the
-  // first filter off the edge of the input.
-  int filter_left_offset;
-  int filter_top_offset;
-  if (padding == VALID) {
-    filter_left_offset =
-        ((output_width - 1) * stride_cols + filter_width - input_width + 1) / 2;
-    filter_top_offset =
-        ((output_height - 1) * stride_rows + filter_height - input_height + 1) /
-        2;
-  } else {
-    filter_left_offset =
-        ((output_width - 1) * stride_cols + filter_width - input_width) / 2;
-    filter_top_offset =
-        ((output_height - 1) * stride_rows + filter_height - input_height) / 2;
-  }
+class ReferenceConvFunctor {
+ public:
+  void operator()(OpKernelContext* context, const T1* input_data,
+                  int input_batches, int input_height, int input_width,
+                  int input_depth, const T2* filter_data, int filter_height,
+                  int filter_width, int filter_count, int stride_rows,
+                  int stride_cols, Padding padding, T3* output_data,
+                  int output_height, int output_width) {
+    // The two different padding modes we support can be a bit confusing. SAME
+    // means we're trying to produce an output image that's the same size as the
+    // input. It's complicated by stride, which shrinks the output image by a
+    // a factor, but it means we end up sampling from outside the borders of the
+    // input. These out-of-bounds values are read as zeroes. VALID means only
+    // produce output values where the filters can read all their values from
+    // within the input image. It effectively removes the margins of the output
+    // image compared to the one produced by SAME. Stride complicates this
+    // definition though, because it can result in the right and bottom filter
+    // patches sampling from outside the borders if it's greater than 1.
+    // Most of the logic for sorting this all out is done before this function,
+    // when we calculate the output size, but the positioning of the origin of
+    // the filters is different between the two modes, since SAME positions the
+    // first filter off the edge of the input.
+    int filter_left_offset;
+    int filter_top_offset;
+    if (padding == VALID) {
+      filter_left_offset =
+          ((output_width - 1) * stride_cols + filter_width - input_width + 1) /
+          2;
+      filter_top_offset = ((output_height - 1) * stride_rows + filter_height -
+                           input_height + 1) /
+                          2;
+    } else {
+      filter_left_offset =
+          ((output_width - 1) * stride_cols + filter_width - input_width) / 2;
+      filter_top_offset =
+          ((output_height - 1) * stride_rows + filter_height - input_height) /
+          2;
+    }
 
-  // If we've got multiple images in our input, work through each of them.
-  for (int batch = 0; batch < input_batches; ++batch) {
-    // Walk through all the output image values, sliding the filter to
-    // different
-    // positions in the input.
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        // Each filter kernel produces one output channel.
-        for (int out_channel = 0; out_channel < filter_count; ++out_channel) {
-          // We're going to calculate a single output value, which means we
-          // need to multiply a three dimensional kernel of weights against
-          // the current location within the input image.
-          /*
-           *-------------------------------...
-           |\ ^
-           | \in_depth
-           |  \ v
-           |   *-------------------------------...
-           |   |            ^
-           |   |       in_y_origin
-           |   |            v   \
-           |   |<in_x_origin>*---*^
-           |   |            \|   |filter_height
-           .   |             *---*v
-           .   |             <--->
-           .         filter_width
-           .
-          */
-          const int in_x_origin = (out_x * stride_cols) - filter_left_offset;
-          const int in_y_origin = (out_y * stride_rows) - filter_top_offset;
-          T3 total(0);
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + filter_x;
-                const int in_y = in_y_origin + filter_y;
-                T1 input_value;
-                // If the location is outside the bounds of the input image,
-                // use zero as a default value.
-                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height)) {
-                  input_value = input_data[(batch * input_height * input_width *
-                                            input_depth) +
-                                           (in_y * input_width * input_depth) +
-                                           (in_x * input_depth) + in_channel];
-                } else {
-                  input_value = T1(0);
+    // If we've got multiple images in our input, work through each of them.
+    for (int batch = 0; batch < input_batches; ++batch) {
+      // Walk through all the output image values, sliding the filter to
+      // different
+      // positions in the input.
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          // Each filter kernel produces one output channel.
+          for (int out_channel = 0; out_channel < filter_count; ++out_channel) {
+            // We're going to calculate a single output value, which means we
+            // need to multiply a three dimensional kernel of weights against
+            // the current location within the input image.
+            /*
+             *-------------------------------...
+             |\ ^
+             | \in_depth
+             |  \ v
+             |   *-------------------------------...
+             |   |            ^
+             |   |       in_y_origin
+             |   |            v   \
+             |   |<in_x_origin>*---*^
+             |   |            \|   |filter_height
+             .   |             *---*v
+             .   |             <--->
+             .         filter_width
+             .
+            */
+            const int in_x_origin = (out_x * stride_cols) - filter_left_offset;
+            const int in_y_origin = (out_y * stride_rows) - filter_top_offset;
+            T3 total(0);
+            for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+              for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+                for (int in_channel = 0; in_channel < input_depth;
+                     ++in_channel) {
+                  const int in_x = in_x_origin + filter_x;
+                  const int in_y = in_y_origin + filter_y;
+                  T1 input_value;
+                  // If the location is outside the bounds of the input image,
+                  // use zero as a default value.
+                  if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                      (in_y < input_height)) {
+                    input_value =
+                        input_data[(batch * input_height * input_width *
+                                    input_depth) +
+                                   (in_y * input_width * input_depth) +
+                                   (in_x * input_depth) + in_channel];
+                  } else {
+                    input_value = T1(0);
+                  }
+                  const T2 filter_value =
+                      filter_data[(filter_y * filter_width * input_depth *
+                                   filter_count) +
+                                  (filter_x * input_depth * filter_count) +
+                                  (in_channel * filter_count) + out_channel];
+                  total += (input_value * filter_value);
                 }
-                const T2 filter_value =
-                    filter_data[(filter_y * filter_width * input_depth *
-                                 filter_count) +
-                                (filter_x * input_depth * filter_count) +
-                                (in_channel * filter_count) + out_channel];
-                total += (input_value * filter_value);
               }
             }
+            output_data[(batch * output_height * output_width * filter_count) +
+                        (out_y * output_width * filter_count) +
+                        (out_x * filter_count) + out_channel] = total;
           }
-          output_data[(batch * output_height * output_width * filter_count) +
-                      (out_y * output_width * filter_count) +
-                      (out_x * filter_count) + out_channel] = total;
         }
       }
     }
   }
-}
+};
 
-template <class T1, class T2, class T3>
-void ReferenceGemm(bool transpose_a, bool transpose_b, bool transpose_c,
-                   size_t m, size_t n, size_t k, const T1* a, size_t lda,
-                   const T2* b, size_t ldb, T3* c, size_t ldc) {
-  int a_i_stride;
-  int a_l_stride;
-  if (transpose_a) {
-    a_i_stride = 1;
-    a_l_stride = lda;
-  } else {
-    a_i_stride = lda;
-    a_l_stride = 1;
-  }
-  int b_j_stride;
-  int b_l_stride;
-  if (transpose_b) {
-    b_j_stride = ldb;
-    b_l_stride = 1;
-  } else {
-    b_j_stride = 1;
-    b_l_stride = ldb;
-  }
-  int c_i_stride;
-  int c_j_stride;
-  if (transpose_c) {
-    c_i_stride = 1;
-    c_j_stride = ldc;
-  } else {
-    c_i_stride = ldc;
-    c_j_stride = 1;
-  }
-
-  int i, j, l;
-  for (j = 0; j < n; j++) {
-    for (i = 0; i < m; i++) {
-      T3 total(0);
-      for (l = 0; l < k; l++) {
-        const size_t a_index = ((i * a_i_stride) + (l * a_l_stride));
-        const T1 a_value = a[a_index];
-        const size_t b_index = ((j * b_j_stride) + (l * b_l_stride));
-        const T2 b_value = b[b_index];
-        total += (a_value * b_value);
-      }
-      const size_t c_index = ((i * c_i_stride) + (j * c_j_stride));
-      c[c_index] = total;
-    }
-  }
-}
-
+// A readable but slow implementation of matrix multiplication, useful for
+// debugging and understanding the algorithm. Use instead of FastGemmFunctor in
+// the Im2ColConvFunctor template definition inside the op registration to
+// enable. Assumes row-major ordering of the values in memory.
 template <class T1, class T2, class T3>
 class ReferenceGemmFunctor {
  public:
   void operator()(size_t m, size_t n, size_t k, const T1* a, size_t lda,
                   const T2* b, size_t ldb, T3* c, size_t ldc) {
-    ReferenceGemm<T1, T2, T3>(false, false, false, m, n, k, a, lda, b, ldb, c,
-                              ldc);
+    const size_t a_i_stride = lda;
+    const size_t a_l_stride = 1;
+    const size_t b_j_stride = 1;
+    const size_t b_l_stride = ldb;
+    const size_t c_i_stride = ldc;
+    const size_t c_j_stride = 1;
+    size_t i, j, l;
+    for (j = 0; j < n; j++) {
+      for (i = 0; i < m; i++) {
+        T3 total(0);
+        for (l = 0; l < k; l++) {
+          const size_t a_index = ((i * a_i_stride) + (l * a_l_stride));
+          const T1 a_value = a[a_index];
+          const size_t b_index = ((j * b_j_stride) + (l * b_l_stride));
+          const T2 b_value = b[b_index];
+          total += (a_value * b_value);
+        }
+        const size_t c_index = ((i * c_i_stride) + (j * c_j_stride));
+        c[c_index] = total;
+      }
+    }
   }
 };
 
+// Uses the optimized Eigen library to implement the matrix multiplication
+// required by the Im2ColConvFunctor class.
 template <class T1, class T2, class T3>
 class FastGemmFunctor {
  public:
@@ -228,6 +243,8 @@ class FastGemmFunctor {
   }
 };
 
+// If we have Apple's Accelerate framework, use their implementation of GEMM to
+// get a performance boost for float.
 #if defined(USE_ACCELERATE_GEMM)
 template <>
 class FastGemmFunctor<float, float, float> {
@@ -240,18 +257,29 @@ class FastGemmFunctor<float, float, float> {
 };
 #endif  // USE_ACCELERATE_GEMM
 
+// Used to keep track of persistent memory buffers used within the op.
+template <class T, size_t size>
+struct Im2ColBufferResource : public ResourceBase {
+  mutex mu;
+  T data[size];
+  string DebugString() { return "Im2ColBufferResource"; }
+};
+
 // Implements convolution as a two stage process, first packing the patches of
 // the input image into columns (im2col) and then running GEMM to produce the
 // final result.
 template <class T1, class T2, class T3, class TGemmFunctor>
 class Im2ColConvFunctor {
  public:
-  void operator()(OpKernelContext* op_context, const T1* input_data,
+  void operator()(OpKernelContext* context, const T1* input_data,
                   int input_batches, int input_height, int input_width,
                   int input_depth, const T2* filter_data, int filter_height,
                   int filter_width, int filter_count, int stride_rows,
                   int stride_cols, Padding padding, T3* output_data,
                   int output_height, int output_width) {
+    // These calculations define how the patches will be positioned within the
+    // input image. The actual definitions are quite complex, and rely on the
+    // previously-calculated output size.
     CHECK_GT(output_width, 0);
     CHECK_GT(output_height, 0);
     int filter_left_offset;
@@ -292,16 +320,31 @@ class Im2ColConvFunctor {
     // We don't want to allocate a buffer to hold all the patches if the size is
     // going to be extremely large, so break it into chunks if it's bigger than
     // a limit. Each chunk will be processed serially, so we can refill the
-    // buffer
-    // for the next chunk and reuse it, keeping maximum memory size down.
+    // buffer for the next chunk and reuse it, keeping maximum memory size down.
     // In this case, we've picked 16 megabytes as a reasonable limit.
     const size_t max_chunk_size = (16 * 1024 * 1024);
     const size_t patches_per_chunk =
         max_chunk_size / (filter_value_count * sizeof(T1));
     const size_t im2col_size = patches_per_chunk * filter_value_count;
-    // TODO(petewarden) - Memory allocation can be very slow on Android. Can we
-    // optimize this by keeping the scratch buffer around?
-    std::unique_ptr<T1[]> im2col_buffer(new T1[im2col_size]);
+    // Because memory allocation is very expensive on mobile platforms, try to
+    // allocate a persistent buffer that will be kept around between calls. We
+    // use TensorFlow's resource management to ensure that the memory will be
+    // released when the session is over.
+    Im2ColBufferResource<T1, max_chunk_size>* im2col_buffer_resource;
+    std::function<Status(Im2ColBufferResource<T1, max_chunk_size>**)> creator =
+        [](Im2ColBufferResource<T1, max_chunk_size>** resource) {
+          *resource = new Im2ColBufferResource<T1, max_chunk_size>();
+          return Status::OK();
+        };
+    TF_CHECK_OK(context->resource_manager()->LookupOrCreate(
+        "Conv2d", "im2col_buffer", &im2col_buffer_resource, creator));
+    // This means that multiple ops can't be run simultaneously on different
+    // threads, because we have a single shared resource. The platforms this is
+    // aimed at have intra-op parallelism as their focus though, so it shouldn't
+    // be an issue.
+    mutex_lock lock_buffer(im2col_buffer_resource->mu);
+    core::ScopedUnref unref_buffer(im2col_buffer_resource);
+    T1* im2col_buffer = im2col_buffer_resource->data;
 
     for (int batch = 0; batch < input_batches; ++batch) {
       const T1* input_batch_start =
@@ -314,7 +357,7 @@ class Im2ColConvFunctor {
                                   (out_y * output_width) + out_x;
           const int chunk_index = patch_index % patches_per_chunk;
           T1* im2col_patch_start =
-              im2col_buffer.get() + (chunk_index * filter_value_count);
+              im2col_buffer /*.get()*/ + (chunk_index * filter_value_count);
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + filter_y;
             T1* im2col_row_start =
@@ -324,9 +367,6 @@ class Im2ColConvFunctor {
             if ((in_y < 0) || (in_y >= input_height)) {
               T1* im2col_row_end =
                   im2col_row_start + (filter_width * input_depth);
-              // We'll be subtracting this offset during the calculations
-              // so to get an actual zero after that bias we need to set
-              // it to input_offset here.
               std::fill(im2col_row_start, im2col_row_end, T1(0));
             } else {
               // What we're doing here is trying to copy and fill the im2col
@@ -377,6 +417,8 @@ class Im2ColConvFunctor {
               }
             }
           }
+          // Now we've assembled a set of image patches into a matrix, apply a
+          // GEMM to them to get partial results in the output matrix.
           if (chunk_index == (patches_per_chunk - 1)) {
             const int how_many_patches = patches_per_chunk;
             const int m = how_many_patches;
@@ -390,13 +432,14 @@ class Im2ColConvFunctor {
             T3* chunk_output_data =
                 output_data + (start_patch_index * filter_count);
             TGemmFunctor gemm_functor;
-            gemm_functor(m, n, k, im2col_buffer.get(), lda, filter_data, ldb,
-                         chunk_output_data, ldc);
+            gemm_functor(m, n, k, im2col_buffer /*.get()*/, lda, filter_data,
+                         ldb, chunk_output_data, ldc);
           }
         }
       }
     }
 
+    // Finish up any remaining work left over from the loop.
     const int how_many_patches = patch_count % patches_per_chunk;
     if (how_many_patches > 0) {
       const int m = how_many_patches;
@@ -408,7 +451,7 @@ class Im2ColConvFunctor {
       const int start_patch_index = patch_count - how_many_patches;
       T3* chunk_output_data = output_data + (start_patch_index * filter_count);
       TGemmFunctor gemm_functor;
-      gemm_functor(m, n, k, im2col_buffer.get(), lda, filter_data, ldb,
+      gemm_functor(m, n, k, im2col_buffer /*.get()*/, lda, filter_data, ldb,
                    chunk_output_data, ldc);
     }
   }
@@ -416,6 +459,10 @@ class Im2ColConvFunctor {
 
 }  // namespace
 
+// This TensorFlow kernel class handles all of the IO and housekeeping for the
+// functors that actually implement the underlying algorithm. To swap in
+// different implementations of the main calculations, use a different
+// TConvFunctor parameter when instantiating the template.
 template <class T, class TConvFunctor>
 class Conv2DUsingGemmOp : public BinaryOp<T> {
  public:
@@ -426,6 +473,9 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(
+        context, data_format_ == FORMAT_NHWC,
+        errors::InvalidArgument("Data format not supported by this kernel"));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
