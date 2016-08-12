@@ -151,6 +151,7 @@ REGISTER_OP("CountExtremelyRandomStats")
     .Input("sparse_input_shape: int64")
     .Input("input_spec: int32")
     .Input("input_labels: float")
+    .Input("input_weights: float")
     .Input("tree: int32")
     .Input("tree_thresholds: float")
     .Input("node_to_accumulator: int32")
@@ -177,7 +178,7 @@ REGISTER_OP("CountExtremelyRandomStats")
       if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
         num_points = c->UnknownDim();
       }
-      const Dimension* num_nodes = c->Dim(c->input(6), 0);
+      const Dimension* num_nodes = c->Dim(c->input(7), 0);
 
       // Node sums
       c->set_output(0, c->Matrix(num_nodes, num_classes));
@@ -233,6 +234,8 @@ input_spec: A 1-D tensor containing the type of each column in input_data,
   type, individual feature types start at index 1.
 input_labels: The training batch's labels; `input_labels[i]` is the class
   of the i-th input.
+input_weights:= A 1-D float tensor.  If non-empty, `input_weights[i]` gives
+  the weight of the i-th input.
 tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
   of the i-th node, `tree[i][0] + 1` gives the index of the right child of
   the i-th node, and `tree[i][1]` gives the index of the feature used to
@@ -305,15 +308,17 @@ class CountExtremelyRandomStats : public OpKernel {
     const Tensor& sparse_input_shape = context->input(3);
     const Tensor& input_spec = context->input(4);
     const Tensor& input_labels = context->input(5);
-    const Tensor& tree_tensor = context->input(6);
-    const Tensor& tree_thresholds = context->input(7);
-    const Tensor& node_to_accumulator = context->input(8);
-    const Tensor& candidate_split_features = context->input(9);
-    const Tensor& candidate_split_thresholds = context->input(10);
-    const Tensor& birth_epochs = context->input(11);
-    const Tensor& current_epoch = context->input(12);
+    const Tensor& input_weights = context->input(6);
+    const Tensor& tree_tensor = context->input(7);
+    const Tensor& tree_thresholds = context->input(8);
+    const Tensor& node_to_accumulator = context->input(9);
+    const Tensor& candidate_split_features = context->input(10);
+    const Tensor& candidate_split_thresholds = context->input(11);
+    const Tensor& birth_epochs = context->input(12);
+    const Tensor& current_epoch = context->input(13);
 
     bool sparse_input = (sparse_input_indices.shape().dims() == 2);
+    bool have_weights = (input_weights.shape().dim_size(0) > 0);
 
     // Check inputs.
     if (sparse_input) {
@@ -346,6 +351,15 @@ class CountExtremelyRandomStats : public OpKernel {
           errors::InvalidArgument(
               "Number of inputs should be the same in "
               "input_data and input_labels."));
+    }
+
+    if (have_weights) {
+      OP_REQUIRES(
+          context,
+          input_weights.shape().dim_size(0) == input_labels.shape().dim_size(0),
+          errors::InvalidArgument(
+              "Number of inputs should be the same in input_weights and "
+              "input_labels."));
     }
 
     OP_REQUIRES(context, input_labels.shape().dims() >= 1,
@@ -402,6 +416,7 @@ class CountExtremelyRandomStats : public OpKernel {
     if (!CheckTensorBounds(context, sparse_input_values)) return;
     if (!CheckTensorBounds(context, sparse_input_shape)) return;
     if (!CheckTensorBounds(context, input_labels)) return;
+    if (!CheckTensorBounds(context, input_weights)) return;
     if (!CheckTensorBounds(context, tree_tensor)) return;
     if (!CheckTensorBounds(context, tree_thresholds)) return;
     if (!CheckTensorBounds(context, node_to_accumulator)) return;
@@ -458,27 +473,27 @@ class CountExtremelyRandomStats : public OpKernel {
 
     const int32 num_nodes = static_cast<int32>(tree_tensor.shape().dim_size(0));
     if (regression_) {
-      ProcessResultsRegression(
-          context, input_labels, birth_epochs, epoch, std::move(results),
-          num_nodes);
+      ProcessResultsRegression(context, input_labels, input_weights,
+                               birth_epochs, epoch, std::move(results),
+                               num_nodes);
     } else {
-      ProcessResultsClassification(
-          context, input_labels, birth_epochs, epoch, std::move(results),
-          num_nodes);
+      ProcessResultsClassification(context, input_labels, input_weights,
+                                   birth_epochs, epoch, std::move(results),
+                                   num_nodes);
     }
   }
 
  protected:
-  void ProcessResultsClassification(
-      OpKernelContext* context,
-      const Tensor &input_labels,
-      const Tensor &birth_epochs,
-      int32 epoch,
-      std::unique_ptr<InputDataResult[]> results,
-      int32 num_nodes) {
+  void ProcessResultsClassification(OpKernelContext* context,
+                                    const Tensor& input_labels,
+                                    const Tensor& input_weights,
+                                    const Tensor& birth_epochs, int32 epoch,
+                                    std::unique_ptr<InputDataResult[]> results,
+                                    int32 num_nodes) {
     const int32 num_data = static_cast<int32>(input_labels.shape().dim_size(0));
     const auto labels = input_labels.unaligned_flat<float>();
     const auto start_epochs = birth_epochs.unaligned_flat<int32>();
+    const auto weights = input_weights.unaligned_flat<float>();
 
     // Unused outputs for classification.  Still have to specify them or
     // tensorflow complains.
@@ -518,6 +533,10 @@ class CountExtremelyRandomStats : public OpKernel {
 
     for (int32 i = 0; i < num_data; ++i) {
       out_leaves(i) = results[i].node_indices.back();
+      float w = 1.0;
+      if (weights.size() > 0) {
+        w = weights(i);
+      }
 
       const int32 label = internal::SubtleMustCopy(
           static_cast<int32>(labels(i)));
@@ -532,19 +551,19 @@ class CountExtremelyRandomStats : public OpKernel {
         if (epoch > start_epochs(node) + 1) {
           continue;
         }
-        ++out_node_sums(node, column);
-        ++out_node_sums(node, 0);
+        out_node_sums(node, column) += w;
+        out_node_sums(node, 0) += w;
       }
 
       if (epoch > start_epochs(out_leaves(i)) + 1) {
         continue;
       }
       if (accumulator >= 0 && results[i].splits_initialized) {
-        ++total_delta[make_pair(accumulator, column)];
-        ++total_delta[make_pair(accumulator, 0)];
+        total_delta[make_pair(accumulator, column)] += w;
+        total_delta[make_pair(accumulator, 0)] += w;
         for (const int32 split : results[i].split_adds) {
-          ++split_delta[make_tuple(accumulator, split, column)];
-          ++split_delta[make_tuple(accumulator, split, 0)];
+          split_delta[make_tuple(accumulator, split, column)] += w;
+          split_delta[make_tuple(accumulator, split, 0)] += w;
         }
       }
     }
@@ -608,13 +627,12 @@ class CountExtremelyRandomStats : public OpKernel {
     }
   }
 
-  void ProcessResultsRegression(
-      OpKernelContext* context,
-      const Tensor &input_labels,
-      const Tensor &birth_epochs,
-      const int32 epoch,
-      std::unique_ptr<InputDataResult[]> results,
-      int32 num_nodes) {
+  void ProcessResultsRegression(OpKernelContext* context,
+                                const Tensor& input_labels,
+                                const Tensor& input_weights,
+                                const Tensor& birth_epochs, const int32 epoch,
+                                std::unique_ptr<InputDataResult[]> results,
+                                int32 num_nodes) {
     const int32 num_data = static_cast<int32>(input_labels.shape().dim_size(0));
     int32 num_outputs = 1;
     if (input_labels.shape().dims() > 1) {
@@ -622,6 +640,7 @@ class CountExtremelyRandomStats : public OpKernel {
     }
     const auto labels = input_labels.unaligned_flat<float>();
     const auto start_epochs = birth_epochs.unaligned_flat<int32>();
+    const auto weights = input_weights.unaligned_flat<float>();
 
     // node pcw delta
     Tensor* output_node_pcw_sums_delta = nullptr;
@@ -659,16 +678,21 @@ class CountExtremelyRandomStats : public OpKernel {
 
     for (int32 i = 0; i < num_data; ++i) {
       const int32 accumulator = results[i].leaf_accumulator;
+      float w = 1.0;
+      if (weights.size() > 0) {
+        w = weights(i);
+      }
+
       for (const int32 node : results[i].node_indices) {
         if (epoch > start_epochs(node) + 1) {
           continue;
         }
         for (int32 j = 0; j < num_outputs; ++j) {
           const float output = labels(i * num_outputs + j);
-          out_node_sums(node, j + 1) += output;
-          out_node_squares(node, j + 1) += output * output;
-          ++out_node_sums(node, 0);
-          ++out_node_squares(node, 0);
+          out_node_sums(node, j + 1) += w * output;
+          out_node_squares(node, j + 1) += w * output * output;
+          out_node_sums(node, 0) += w;
+          out_node_squares(node, 0) += w;
         }
       }
       out_leaves(i) = results[i].node_indices.back();

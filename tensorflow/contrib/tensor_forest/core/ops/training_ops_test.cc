@@ -66,42 +66,44 @@ TEST(TrainingOpsTest, SampleInputs_ShapeFn) {
 TEST(TrainingOpsTest, CountExtremelyRandomStats_ShapeFn) {
   ShapeInferenceTestOp op("CountExtremelyRandomStats");
   TF_ASSERT_OK(NodeDefBuilder("test", "CountExtremelyRandomStats")
-                   .Input("a", 0, DT_FLOAT)
-                   .Input("b", 1, DT_INT64)
-                   .Input("c", 2, DT_FLOAT)
-                   .Input("d", 3, DT_INT64)
-                   .Input("e", 4, DT_INT32)
-                   .Input("f", 5, DT_FLOAT)
-                   .Input("g", 6, DT_INT32)
-                   .Input("h", 7, DT_FLOAT)
-                   .Input("i", 8, DT_INT32)
-                   .Input("j", 9, DT_INT32)
-                   .Input("k", 10, DT_FLOAT)
-                   .Input("l", 11, DT_INT32)
-                   .Input("m", 12, DT_INT32)
+                   .Input("input_data", 0, DT_FLOAT)
+                   .Input("sparse_input_indices", 1, DT_INT64)
+                   .Input("sparse_input_values", 2, DT_FLOAT)
+                   .Input("sparse_input_shape", 3, DT_INT64)
+                   .Input("input_spec", 4, DT_INT32)
+                   .Input("input_labels", 5, DT_FLOAT)
+                   .Input("input_weights", 6, DT_FLOAT)
+                   .Input("tree", 7, DT_INT32)
+                   .Input("tree_thresholds", 8, DT_FLOAT)
+                   .Input("node_to_accumulator", 9, DT_INT32)
+                   .Input("candidate_split_features", 10, DT_INT32)
+                   .Input("candidate_split_thresholds", 11, DT_FLOAT)
+                   .Input("birth_epochs", 12, DT_INT32)
+                   .Input("current_epoch", 13, DT_INT32)
                    .Attr("num_classes", 10)
                    .Attr("regression", false)
                    .Finalize(&op.node_def));
 
   // num_points = 2, num_nodes = 4, regression = false, num_classes = 10
   // num_nodes = 4
-  INFER_OK(op, "[2,3];?;?;?;?;?;[4];?;?;?;?;?;?",
-           "[d6_0,10];[d6_0,10];[?,3];[?];[0];[?,2];[?];[0];[d0_0]");
+  INFER_OK(op, "[2,3];?;?;?;?;?;?;[4];?;?;?;?;?;?",
+           "[d7_0,10];[d7_0,10];[?,3];[?];[0];[?,2];[?];[0];[d0_0]");
 
   TF_ASSERT_OK(NodeDefBuilder("test", "CountExtremelyRandomStats")
-                   .Input("a", 0, DT_FLOAT)
-                   .Input("b", 1, DT_INT64)
-                   .Input("c", 2, DT_FLOAT)
-                   .Input("d", 3, DT_INT64)
-                   .Input("e", 4, DT_INT32)
-                   .Input("f", 5, DT_FLOAT)
-                   .Input("g", 6, DT_INT32)
-                   .Input("h", 7, DT_FLOAT)
-                   .Input("i", 8, DT_INT32)
-                   .Input("j", 9, DT_INT32)
-                   .Input("k", 10, DT_FLOAT)
-                   .Input("l", 11, DT_INT32)
-                   .Input("m", 12, DT_INT32)
+                   .Input("input_data", 0, DT_FLOAT)
+                   .Input("sparse_input_indices", 1, DT_INT64)
+                   .Input("sparse_input_values", 2, DT_FLOAT)
+                   .Input("sparse_input_shape", 3, DT_INT64)
+                   .Input("input_spec", 4, DT_INT32)
+                   .Input("input_labels", 5, DT_FLOAT)
+                   .Input("input_weights", 6, DT_FLOAT)
+                   .Input("tree", 7, DT_INT32)
+                   .Input("tree_thresholds", 8, DT_FLOAT)
+                   .Input("node_to_accumulator", 9, DT_INT32)
+                   .Input("candidate_split_features", 10, DT_INT32)
+                   .Input("candidate_split_thresholds", 11, DT_FLOAT)
+                   .Input("birth_epochs", 12, DT_INT32)
+                   .Input("current_epoch", 13, DT_INT32)
                    .Attr("num_classes", 10)
                    .Attr("regression", true)
                    .Finalize(&op.node_def));
@@ -109,12 +111,12 @@ TEST(TrainingOpsTest, CountExtremelyRandomStats_ShapeFn) {
   // num_points = 2, num_nodes = 4, regression = false, num_classes = 10
   // num_nodes = 4
   INFER_OK(
-      op, "[2,3];?;?;?;?;?;[4];?;?;?;?;?;?",
-      "[d6_0,10];[d6_0,10];[?,2];[?,10];[?,10];[?,1];[?,10];[?,10];[d0_0]");
+      op, "[2,3];?;?;?;?;?;?;[4];?;?;?;?;?;?",
+      "[d7_0,10];[d7_0,10];[?,2];[?,10];[?,10];[?,1];[?,10];[?,10];[d0_0]");
 
   // Sparse shape known and > 1, so num_points is unknown
-  INFER_OK(op, "[2,3];?;?;[10,11];?;?;[4];?;?;?;?;?;?",
-           "[d6_0,10];[d6_0,10];[?,2];[?,10];[?,10];[?,1];[?,10];[?,10];[?]");
+  INFER_OK(op, "[2,3];?;?;[10,11];?;?;?;[4];?;?;?;?;?;?",
+           "[d7_0,10];[d7_0,10];[?,2];[?,10];[?,10];[?,1];[?,10];[?,10];[?]");
 }
 
 TEST(TrainingOpsTest, TreePredictions_ShapeFn) {
