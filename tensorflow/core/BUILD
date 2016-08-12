@@ -159,6 +159,7 @@ cc_library(
         "lib/monitoring/collected_metrics.h",
         "lib/monitoring/collection_registry.h",
         "lib/monitoring/counter.h",
+        "lib/monitoring/mobile_counter.h",
         "lib/monitoring/metric_def.h",
         "lib/random/distribution_sampler.h",
         "lib/random/philox_random.h",
