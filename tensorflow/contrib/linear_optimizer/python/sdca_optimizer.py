@@ -57,6 +57,9 @@ class SDCAOptimizer(object):
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
 
+  def get_name(self):
+    return 'SDCAOptimizer'
+
   def get_train_step(self, linear_feature_columns, weight_column_name,
                      loss_type, features, targets, columns_to_variables,
                      global_step):
@@ -133,7 +136,7 @@ class SDCAOptimizer(object):
           sparse_feature_with_values_weights.append(columns_to_variables[
               column][0])
         else:
-          raise ValueError("SDCAOptimizer does not support column type %s." %
+          raise ValueError('SDCAOptimizer does not support column type %s.' %
                            type(column).__name__)
       # pylint: enable=protected-access
 
