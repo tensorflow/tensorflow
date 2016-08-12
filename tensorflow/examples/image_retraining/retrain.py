@@ -79,6 +79,8 @@ import tensorflow as tf
 
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import gfile
+
 
 import struct
 
@@ -180,7 +182,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     A dictionary containing an entry for each label subfolder, with images split
     into training, testing, and validation sets within each label.
   """
-  if not tf.gfile.Exists(image_dir):
+  if not gfile.Exists(image_dir):
     print("Image directory '" + image_dir + "' not found.")
     return None
   result = {}
@@ -303,7 +305,7 @@ def create_inception_graph():
   with tf.Session() as sess:
     model_filename = os.path.join(
         FLAGS.model_dir, 'classify_image_graph_def.pb')
-    with tf.gfile.FastGFile(model_filename, 'rb') as f:
+    with gfile.FastGFile(model_filename, 'rb') as f:
       graph_def = tf.GraphDef()
       graph_def.ParseFromString(f.read())
       bottleneck_tensor, jpeg_data_tensor, resized_input_tensor = (
@@ -434,32 +436,24 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
   ensure_dir_exists(sub_dir_path)
   bottleneck_path = get_bottleneck_path(image_lists, label_name, index,
                                         bottleneck_dir, category)
+  if not os.path.exists(bottleneck_path):
+    print('Creating bottleneck at ' + bottleneck_path)
+    image_path = get_image_path(image_lists, label_name, index, image_dir,
+                                category)
+    if not gfile.Exists(image_path):
+      tf.logging.fatal('File does not exist %s', image_path)
+    image_data = gfile.FastGFile(image_path, 'rb').read()
+    bottleneck_values = run_bottleneck_on_image(sess, image_data,
+                                                jpeg_data_tensor,
+                                                bottleneck_tensor)
+    bottleneck_string = ','.join(str(x) for x in bottleneck_values)
+    with open(bottleneck_path, 'w') as bottleneck_file:
+      bottleneck_file.write(bottleneck_string)
 
-  # if key in map, take it form there and  return
-  # else
-  #   if file does not exist
-  #     create bottleneck file
-  #   read file from disk
-  #   put bottleneck values to map
-  #   return
-
-  if bottleneck_path in bottleneck_path_2_bottleneck_values:
-    assert (bottleneck_path in bottleneck_path_2_bottleneck_values), "Attempt to use unassigned key value."
-    return bottleneck_path_2_bottleneck_values[bottleneck_path]
-  else:
-    if not os.path.exists(bottleneck_path):
-      print('Creating bottleneck at ' + bottleneck_path)
-      image_path = get_image_path(image_lists, label_name, index, image_dir, category)
-      if not tf.gfile.Exists(image_path):
-        tf.logging.fatal('File does not exist %s', image_path)
-      image_data = tf.gfile.FastGFile(image_path, 'rb').read()
-      bottleneck_values = run_bottleneck_on_image(sess, image_data, jpeg_data_tensor, bottleneck_tensor)
-      write_list_of_floats_to_file(bottleneck_values, bottleneck_path)
-
-    bottleneck_values = read_list_of_floats_from_file(bottleneck_path)
-    assert(not (bottleneck_path in bottleneck_path_2_bottleneck_values)), "Attempt to overwrite map value."
-    bottleneck_path_2_bottleneck_values[bottleneck_path] = bottleneck_values
-    return bottleneck_values
+  with open(bottleneck_path, 'r') as bottleneck_file:
+    bottleneck_string = bottleneck_file.read()
+  bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
+  return bottleneck_values
 
 
 def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
@@ -577,9 +571,9 @@ def get_random_distorted_bottlenecks(
     image_index = random.randrange(65536)
     image_path = get_image_path(image_lists, label_name, image_index, image_dir,
                                 category)
-    if not tf.gfile.Exists(image_path):
+    if not gfile.Exists(image_path):
       tf.logging.fatal('File does not exist %s', image_path)
-    jpeg_data = tf.gfile.FastGFile(image_path, 'rb').read()
+    jpeg_data = gfile.FastGFile(image_path, 'rb').read()
     # Note that we materialize the distorted_image_data as a numpy array before
     # sending running inference on the image. This involves 2 memory copies and
     # might be optimized in other implementations.
@@ -918,9 +912,9 @@ def main(_):
   # Write out the trained graph and labels with the weights stored as constants.
   output_graph_def = graph_util.convert_variables_to_constants(
       sess, graph.as_graph_def(), [FLAGS.final_tensor_name])
-  with tf.gfile.FastGFile(FLAGS.output_graph, 'wb') as f:
+  with gfile.FastGFile(FLAGS.output_graph, 'wb') as f:
     f.write(output_graph_def.SerializeToString())
-  with tf.gfile.FastGFile(FLAGS.output_labels, 'w') as f:
+  with gfile.FastGFile(FLAGS.output_labels, 'w') as f:
     f.write('\n'.join(image_lists.keys()) + '\n')
 
 

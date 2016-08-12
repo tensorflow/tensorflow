@@ -20,8 +20,11 @@
 # The script obeys the following required environment variables:
 #   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
-#   TF_BUILD_IS_OPT:           (NO_OPT | OPT)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
+#
+# The below environment variable is required, but will be deprecated together
+# with TF_BUILD_MAVX and both will be replaced by TF_BUILD_OPTIONS.
+#   TF_BUILD_IS_OPT:           (NO_OPT | OPT)
 #
 # Note:
 #   1) Certain combinations of parameter values are regarded
@@ -44,7 +47,7 @@
 #   TF_BUILD_APPEND_ARGUMENTS:
 #                      Additional command line arguments for the bazel,
 #                      pip.sh or android.sh command
-#   TF_BUILD_MAVX:
+#   TF_BUILD_MAVX:     (Soon to be deprecated, use TF_BUILD_OPTIONS instead)
 #                      (unset | MAVX | MAVX2)
 #                      If set to MAVX or MAVX2, will cause bazel to use the
 #                      additional flag --copt=-mavx or --copt=-mavx2, to
@@ -77,6 +80,11 @@
 #                      If set to any non-empty and non-0 value, will disable
 #                      support for Google Cloud Platform (GCP), which is
 #                      enabled by default.
+#   TF_BUILD_OPTIONS:
+#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2)
+#                     Use the specified configurations when building.
+#                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
+#                     options, as this will replace the two.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -163,6 +171,7 @@ echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
 echo "  TF_BUILD_DISABLE_GCP=${TF_BUILD_DISABLE_GCP}"
+echo "  TF_BUILD_OPTIONS=${TF_BUILD_OPTIONS}"
 
 # Function that tries to determine CUDA capability, if deviceQuery binary
 # is available on path
@@ -244,29 +253,49 @@ if [[ ! -z "${TF_BUILD_RUN_BENCHMARKS}" ]] &&
 fi
 
 # Process Bazel "-c opt" flag
-if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
-  # PIP builds are done only with the -c opt flag
-  if [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
-    echo "Skipping parameter combination: ${TF_BUILD_IS_OPT} & "\
+if [[ -z "${TF_BUILD_OPTIONS}" ]]; then
+  if [[ ${TF_BUILD_IS_OPT} == "no_opt" ]]; then
+    # PIP builds are done only with the -c opt flag
+    if [[ ${TF_BUILD_IS_PIP} == "pip" ]]; then
+      echo "Skipping parameter combination: ${TF_BUILD_IS_OPT} & "\
 "${TF_BUILD_IS_PIP}"
-    exit 0
-  fi
+      exit 0
+    fi
 
-elif [[ ${TF_BUILD_IS_OPT} == "opt" ]]; then
-  OPT_FLAG="${OPT_FLAG} -c opt"
-else
-  die "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
-fi
-
-# Process MAVX option
-if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
-  if [[ "${TF_BUILD_MAVX}" == "mavx" ]]; then
-    OPT_FLAG="${OPT_FLAG} --copt=-mavx"
-  elif [[ "${TF_BUILD_MAVX}" == "mavx2" ]]; then
-    OPT_FLAG="${OPT_FLAG} --copt=-mavx2"
+  elif [[ ${TF_BUILD_IS_OPT} == "opt" ]]; then
+    OPT_FLAG="${OPT_FLAG} -c opt"
   else
-    die "Unsupported value in TF_BUILD_MAVX: ${TF_BUILD_MAVX}"
+    die "Unrecognized value in TF_BUILD_IS_OPT: \"${TF_BUILD_IS_OPT}\""
   fi
+
+  # Process MAVX option
+  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
+    if [[ "${TF_BUILD_MAVX}" == "mavx" ]]; then
+      OPT_FLAG="${OPT_FLAG} --copt=-mavx"
+    elif [[ "${TF_BUILD_MAVX}" == "mavx2" ]]; then
+      OPT_FLAG="${OPT_FLAG} --copt=-mavx2"
+    else
+      die "Unsupported value in TF_BUILD_MAVX: ${TF_BUILD_MAVX}"
+    fi
+  fi
+else
+  case $TF_BUILD_OPTIONS in
+    FASTBUILD)
+      echo "Running FASTBUILD mode (noopt, nodbg)."
+      ;;
+    OPT)
+      OPT_FLAG="${OPT_FLAG} -c opt"
+      ;;
+    OPTDBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g"
+      ;;
+    MAVX)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
+      ;;
+    MAVX2)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
+      ;;
+  esac
 fi
 
 # Strip whitespaces from OPT_FLAG

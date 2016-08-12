@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -92,7 +93,8 @@ class Uniform(distribution.Distribution):
     self._a = a
     self._b = b
     self._name = name
-    self._batch_shape = self._ones().get_shape()
+    self._batch_shape = common_shapes.broadcast_shape(
+        self._a.get_shape(), self._b.get_shape())
     self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((a, b))
@@ -117,8 +119,8 @@ class Uniform(distribution.Distribution):
 
   def batch_shape(self, name="batch_shape"):
     with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return array_ops.shape(self._ones())
+      with ops.name_scope(name, values=[self._a, self._b]):
+        return array_ops.shape(self._a + self._b)
 
   def get_batch_shape(self):
     return self._batch_shape
@@ -267,13 +269,8 @@ class Uniform(distribution.Distribution):
   def is_reparameterized(self):
     return True
 
-  # TODO(rsepassi): Find a more efficient way of doing the broadcasting in_ones
-  # and _zeros.
   def _ones(self):
     return array_ops.ones_like(self.a + self.b)
-
-  def _zeros(self):
-    return array_ops.zeros_like(self.a + self.b)
 
   @property
   def is_continuous(self):

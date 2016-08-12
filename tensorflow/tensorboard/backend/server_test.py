@@ -283,9 +283,49 @@ class TensorboardServerTest(tf.test.TestCase):
 
 class ParseEventFilesSpecTest(tf.test.TestCase):
 
+  def testRunName(self):
+    logdir_string = 'lol:/cat'
+    expected = {'/cat': 'lol'}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testPathWithColonThatComesAfterASlash_isNotConsideredARunName(self):
+    logdir_string = '/lol:/cat'
+    expected = {'/lol:/cat': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testMultipleDirectories(self):
+    logdir_string = '/a,/b'
+    expected = {'/a': None, '/b': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testNormalizesPaths(self):
+    logdir_string = '/lol/.//cat/../cat'
+    expected = {'/lol/cat': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testExpandsHome(self):
+    logdir_string = '~/lol/cat'
+    expected = {os.path.expanduser('~/lol/cat'): None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testAbsolutifies(self):
+    logdir_string = 'lol/cat'
+    expected = {os.path.realpath('lol/cat'): None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
   def testRespectsGCSPath(self):
     logdir_string = 'gs://foo/path'
     expected = {'gs://foo/path': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testDoesNotExpandUserInGCSPath(self):
+    logdir_string = 'gs://~/foo/path'
+    expected = {'gs://~/foo/path': None}
+    self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+  def testDoesNotNormalizeGCSPath(self):
+    logdir_string = 'gs://foo/./path//..'
+    expected = {'gs://foo/./path//..': None}
     self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
 
 

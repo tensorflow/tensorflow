@@ -91,7 +91,7 @@ new_git_repository(
   name = "iron_behaviors",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-behaviors.git",
-  tag = "v1.0.16",
+  tag = "v1.0.17",
 )
 
 new_git_repository(
@@ -141,13 +141,6 @@ new_git_repository(
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-icon.git",
   tag = "v1.0.8",
-)
-
-new_git_repository(
-  name = "iron_icons",
-  build_file = "bower.BUILD",
-  remote = "https://github.com/polymerelements/iron-icons.git",
-  tag = "v1.1.3",
 )
 
 new_git_repository(
