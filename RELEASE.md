@@ -2,6 +2,9 @@
 
 ## Breaking Changes to the API
 
+* LSTMCell, BasicLSTMCell, and MultiRNNCell constructors now default to
+  `state_is_tuple=True`.  For a quick fix while transitioning to the new
+  default, simply pass the argument `state_is_tuple=False`.
 * DeviceFactory's AddDevices and CreateDevices functions now return
   a Status instead of void.
 
