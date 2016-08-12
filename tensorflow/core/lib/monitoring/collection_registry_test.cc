@@ -78,10 +78,10 @@ TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
 }
 
 auto* counter_with_labels =
-    Counter<2>::New({"/tensorflow/test/counter_with_labels",
-                     "Counter with one label.", "MyLabel0", "MyLabel1"});
+    Counter<2>::New("/tensorflow/test/counter_with_labels",
+                    "Counter with one label.", "MyLabel0", "MyLabel1");
 auto* counter_without_labels = Counter<0>::New(
-    {"/tensorflow/test/counter_without_labels", "Counter without any labels."});
+    "/tensorflow/test/counter_without_labels", "Counter without any labels.");
 TEST(CollectMetricsTest, Counter) {
   counter_with_labels->GetCell("Label00", "Label10")->IncrementBy(42);
   counter_with_labels->GetCell("Label01", "Label11")->IncrementBy(58);

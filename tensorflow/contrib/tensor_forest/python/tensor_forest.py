@@ -525,8 +525,13 @@ class RandomTreeGraphs(object):
 
     return math_ops.reduce_sum(e_x2 - math_ops.square(e_x), 1)
 
-  def training_graph(self, input_data, input_labels, random_seed,
-                     data_spec, epoch=None):
+  def training_graph(self,
+                     input_data,
+                     input_labels,
+                     random_seed,
+                     data_spec,
+                     epoch=None,
+                     input_weights=None):
 
     """Constructs a TF graph for training a random tree.
 
@@ -539,11 +544,16 @@ class RandomTreeGraphs(object):
       data_spec: A list of tf.dtype values specifying the original types of
         each column.
       epoch: A tensor or placeholder for the epoch the training data comes from.
+      input_weights: A float tensor or placeholder holding per-input weights,
+        or None if all inputs are to be weighted equally.
 
     Returns:
       The last op in the random tree training graph.
     """
     epoch = [0] if epoch is None else epoch
+
+    if input_weights is None:
+      input_weights = []
 
     sparse_indices = []
     sparse_values = []
@@ -555,19 +565,25 @@ class RandomTreeGraphs(object):
       input_data = []
 
     # Count extremely random stats.
-    (node_sums, node_squares, splits_indices, splits_sums,
-     splits_squares, totals_indices, totals_sums,
-     totals_squares, input_leaves) = (
-         self.training_ops.count_extremely_random_stats(
-             input_data, sparse_indices, sparse_values, sparse_shape,
-             data_spec, input_labels, self.variables.tree,
-             self.variables.tree_thresholds,
-             self.variables.node_to_accumulator_map,
-             self.variables.candidate_split_features,
-             self.variables.candidate_split_thresholds,
-             self.variables.start_epoch, epoch,
-             num_classes=self.params.num_output_columns,
-             regression=self.params.regression))
+    (node_sums, node_squares, splits_indices, splits_sums, splits_squares,
+     totals_indices, totals_sums, totals_squares,
+     input_leaves) = (self.training_ops.count_extremely_random_stats(
+         input_data,
+         sparse_indices,
+         sparse_values,
+         sparse_shape,
+         data_spec,
+         input_labels,
+         input_weights,
+         self.variables.tree,
+         self.variables.tree_thresholds,
+         self.variables.node_to_accumulator_map,
+         self.variables.candidate_split_features,
+         self.variables.candidate_split_thresholds,
+         self.variables.start_epoch,
+         epoch,
+         num_classes=self.params.num_output_columns,
+         regression=self.params.regression))
     node_update_ops = []
     node_update_ops.append(
         state_ops.assign_add(self.variables.node_sums, node_sums))

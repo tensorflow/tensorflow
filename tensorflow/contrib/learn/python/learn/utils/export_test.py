@@ -49,7 +49,8 @@ class ExportTest(tf.test.TestCase):
     random.seed(42)
     x = np.random.rand(1000)
     y = 2 * x + 3
-    regressor = learn.LinearRegressor()
+    cont_features = [tf.contrib.layers.real_valued_column('', dimension=1)]
+    regressor = learn.LinearRegressor(feature_columns=cont_features)
     export_dir = tempfile.mkdtemp() + 'export/'
     export_monitor = learn.monitors.ExportMonitor(every_n_steps=1,
                                                   export_dir=export_dir,
@@ -76,7 +77,8 @@ class ExportTest(tf.test.TestCase):
     random.seed(42)
     x = np.random.rand(1000)
     y = 2 * x + 3
-    regressor = learn.LinearRegressor()
+    cont_features = [tf.contrib.layers.real_valued_column('', dimension=1)]
+    regressor = learn.LinearRegressor(feature_columns=cont_features)
     export_dir = tempfile.mkdtemp() + 'export/'
     export_monitor = learn.monitors.ExportMonitor(
         every_n_steps=1,
