@@ -407,6 +407,15 @@ const Shape* InferenceContext::UnknownShape() {
   all_shapes_.push_back(new Shape());
   return all_shapes_.back();
 }
+
+const Shape* InferenceContext::UnknownShapeOfRank(int32 rank) {
+  std::vector<const Dimension*> dims(rank);
+  for (int32 i = 0; i < rank; ++i) {
+    dims[i] = UnknownDim();
+  }
+  return MakeShape(dims);
+}
+
 const Shape* InferenceContext::Scalar() { return MakeShape({}); }
 
 const Shape* InferenceContext::Vector(DimensionOrConstant dim) {

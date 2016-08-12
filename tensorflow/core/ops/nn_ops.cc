@@ -36,9 +36,7 @@ Status InputTensorShapeOrUnknown(InferenceContext* c, int input_idx,
   const Shape* out;
   const Tensor* input = c->input_tensor(input_idx);
   if (input == nullptr) {
-    std::vector<const Dimension*> dims;
-    for (int i = 0; i < ndims; ++i) dims.push_back(c->UnknownDim());
-    out = c->MakeShape(dims);
+    out = c->UnknownShapeOfRank(ndims);
   } else {
     TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(input_idx, &out));
   }
