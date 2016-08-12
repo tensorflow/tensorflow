@@ -1462,6 +1462,21 @@ class ControlFlowTest(tf.test.TestCase):
       output_grad = tf.while_loop(c, b, [i0, tf.constant(0.0)])
       self.assertAllClose(600.0, sess.run(output_grad)[1])
 
+  def testWhileAndTensorArray(self):
+    with self.test_session() as sess:
+      param = tf.constant(2.0)
+      n0 = tf.constant(0)
+      y0 = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+
+      def c(i, _):
+        return i < 10
+      def b(i, y):
+        return [i + 1, tf.map_fn(lambda x: tf.mul(x, param), y)]
+
+      r = tf.while_loop(c, b, [n0, y0], parallel_iterations=1)
+      r = tf.gradients(r, param)[0]
+      self.assertAllClose(107520.0, sess.run(r))
+
   def testWhileGrad_StopGrad(self):
     with self.test_session():
       x = tf.constant(3.0, name="x")
