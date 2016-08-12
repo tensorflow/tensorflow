@@ -45,8 +45,10 @@ validation_monitor = tf.contrib.learn.monitors.ValidationMonitor(
     early_stopping_metric_minimize=True,
     early_stopping_rounds=200)
 
+feature_columns = [tf.contrib.layers.real_valued_column("", dimension=5)]
 # Build 3 layer DNN with 10, 20, 10 units respectively.
-classifier = tf.contrib.learn.DNNClassifier(hidden_units=[10, 20, 10],
+classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
+                                            hidden_units=[10, 20, 10],
                                             n_classes=3,
                                             model_dir="/tmp/iris_model",
                                             config=tf.contrib.learn.RunConfig(
