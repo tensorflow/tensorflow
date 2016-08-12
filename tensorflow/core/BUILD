@@ -950,6 +950,7 @@ tf_cuda_library(
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
         "util/command_line_flags.h",
+        "util/presized_cuckoo_map.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
     ],
@@ -1452,6 +1453,7 @@ tf_cc_tests(
         "util/events_writer_test.cc",
         "util/example_proto_helper_test.cc",
         "util/memmapped_file_system_test.cc",
+        "util/presized_cuckoo_map_test.cc",
         "util/reporter_test.cc",
         "util/saved_tensor_slice_util_test.cc",
         "util/sparse/sparse_tensor_test.cc",
