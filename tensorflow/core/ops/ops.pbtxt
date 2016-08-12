@@ -15682,7 +15682,6 @@ op {
     name: "handle"
     description: "The handle to the forward TensorArray."
     type: DT_STRING
-    is_ref: true
   }
   input_arg {
     name: "flow_in"
