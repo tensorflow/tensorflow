@@ -16,6 +16,7 @@
 
 set -e
 
+# Install protobuf3 from source.
 
 # Determine the number of cores, for parallel make.
 N_JOBS=$(grep -c ^processor /proc/cpuinfo)
@@ -35,15 +36,20 @@ echo "make will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 
-# Run TensorFlow cmake build.
-# Clean up, because certain modules, e.g., highwayhash, seem to be sensitive
-# to state.
-rm -rf build
+# Build and install protobuf.
+PROTOBUF_VERSION="3.0.0-beta-2"
+PROTOBUF_DOWNLOAD_DIR="/tmp/protobuf"
 
-mkdir -p build
-pushd build
-
-cmake -DCMAKE_BUILD_TYPE=Release ../tensorflow/contrib/cmake
-make --jobs=${N_JOBS} all
-
+mkdir "${PROTOBUF_DOWNLOAD_DIR}"
+pushd "${PROTOBUF_DOWNLOAD_DIR}"
+curl -fSsL -O https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-cpp-$PROTOBUF_VERSION.tar.gz
+tar zxf protobuf-cpp-$PROTOBUF_VERSION.tar.gz
+cd protobuf-$PROTOBUF_VERSION
+./autogen.sh
+./configure
+make --jobs=${N_JOBS}
+sudo make install
+make clean
+sudo ldconfig
 popd
+rm -rf "${PROTOBUF_DOWNLOAD_DIR}"

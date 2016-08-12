@@ -444,7 +444,7 @@ variables.  Consider adding the commands below to your `~/.bash_profile`.  These
 assume your CUDA installation is in `/usr/local/cuda`:
 
 ```bash
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda/lib64"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 export CUDA_HOME=/usr/local/cuda
 ```
 

@@ -130,8 +130,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
     for (int i = 0; i < 100; ++i) {
       ENQUEUE_REQUEST(RunGraph, true);
     }
+    for (int i = 0; i < 100; ++i) {
+      ENQUEUE_REQUEST(CleanupGraph, false);
+    }
 
-    ENQUEUE_REQUEST(CleanupGraph, false);
     ENQUEUE_REQUEST(Logging, false);
     ENQUEUE_REQUEST(Tracing, false);
 

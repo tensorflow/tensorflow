@@ -82,6 +82,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
 
 
+import struct
+
 FLAGS = tf.app.flags.FLAGS
 
 # Input and output file flags.
@@ -369,6 +371,38 @@ def ensure_dir_exists(dir_name):
   """
   if not os.path.exists(dir_name):
     os.makedirs(dir_name)
+
+
+def write_list_of_floats_to_file(list_of_floats , file_path):
+  """Writes a given list of floats to a binary file.
+
+  Args:
+    list_of_floats: List of floats we want to write to a file.
+    file_path: Path to a file where list of floats will be stored.
+
+  """
+
+  s = struct.pack('d' * BOTTLENECK_TENSOR_SIZE, *list_of_floats)
+  with open(file_path, 'wb') as f:
+    f.write(s)
+
+
+def read_list_of_floats_from_file(file_path):
+  """Reads list of floats from a given file.
+
+  Args:
+    file_path: Path to a file where list of floats was stored.
+  Returns:
+    Array of bottleneck values (list of floats).
+
+  """
+
+  with open(file_path, 'rb') as f:
+    s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
+    return list(s)
+
+
+bottleneck_path_2_bottleneck_values = {}
 
 
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,

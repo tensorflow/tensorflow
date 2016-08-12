@@ -45,29 +45,33 @@ struct CastFunctor<CPUDevice, O, I> {
 
 }  // namespace functor
 
-#define CURRY_TYPES2(FN, arg0) \
-  FN(arg0, bool);              \
-  FN(arg0, uint8);             \
-  FN(arg0, int8);              \
-  FN(arg0, uint16);            \
-  FN(arg0, int16);             \
-  FN(arg0, int32);             \
-  FN(arg0, int64);             \
-  FN(arg0, Eigen::half);       \
-  FN(arg0, float);             \
-  FN(arg0, double)
+#define CURRY_TYPES2(FN, arg0)   \
+  FN(arg0, bool);                \
+  FN(arg0, uint8);               \
+  FN(arg0, int8);                \
+  FN(arg0, uint16);              \
+  FN(arg0, int16);               \
+  FN(arg0, int32);               \
+  FN(arg0, int64);               \
+  FN(arg0, Eigen::half);         \
+  FN(arg0, float);               \
+  FN(arg0, double);              \
+  FN(arg0, std::complex<float>); \
+  FN(arg0, std::complex<double>)
 
-#define CURRY_TYPES3(FN, arg0, arg1) \
-  FN(arg0, arg1, bool);              \
-  FN(arg0, arg1, uint8);             \
-  FN(arg0, arg1, int8);              \
-  FN(arg0, arg1, uint16);            \
-  FN(arg0, arg1, int16);             \
-  FN(arg0, arg1, int32);             \
-  FN(arg0, arg1, int64);             \
-  FN(arg0, arg1, Eigen::half);       \
-  FN(arg0, arg1, float);             \
-  FN(arg0, arg1, double)
+#define CURRY_TYPES3(FN, arg0, arg1)   \
+  FN(arg0, arg1, bool);                \
+  FN(arg0, arg1, uint8);               \
+  FN(arg0, arg1, int8);                \
+  FN(arg0, arg1, uint16);              \
+  FN(arg0, arg1, int16);               \
+  FN(arg0, arg1, int32);               \
+  FN(arg0, arg1, int64);               \
+  FN(arg0, arg1, Eigen::half);         \
+  FN(arg0, arg1, float);               \
+  FN(arg0, arg1, double);              \
+  FN(arg0, arg1, std::complex<float>); \
+  FN(arg0, arg1, std::complex<double>)
 
 #define CAST_CASE(DEVICE, IN, OUT)                                         \
   if (DataTypeToEnum<IN>::value == src_dtype_ &&                           \
@@ -134,6 +138,8 @@ class CpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, CPUDevice, Eigen::half);
     CURRY_TYPES3(CAST_CASE, CPUDevice, float);
     CURRY_TYPES3(CAST_CASE, CPUDevice, double);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, std::complex<float>);
+    CURRY_TYPES3(CAST_CASE, CPUDevice, std::complex<double>);
 
     if (src_dtype_ == DT_BFLOAT16 && dst_dtype_ == DT_FLOAT) {
       work_ = [](OpKernelContext* ctx, const Tensor& inp, Tensor* out) {
@@ -191,6 +197,8 @@ class GpuCastOp : public CastOpBase {
     CURRY_TYPES3(CAST_CASE, GPUDevice, Eigen::half);
     CURRY_TYPES3(CAST_CASE, GPUDevice, float);
     CURRY_TYPES3(CAST_CASE, GPUDevice, double);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, std::complex<float>);
+    CURRY_TYPES3(CAST_CASE, GPUDevice, std::complex<double>);
     CAST_CASE(GPUDevice, float, bfloat16);
     CAST_CASE(GPUDevice, bfloat16, float);
     return Unimplemented();
@@ -219,6 +227,8 @@ CURRY_TYPES2(REGISTER_CAST_GPU, int64);
 CURRY_TYPES2(REGISTER_CAST_GPU, Eigen::half);
 CURRY_TYPES2(REGISTER_CAST_GPU, float);
 CURRY_TYPES2(REGISTER_CAST_GPU, double);
+CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<float>);
+CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<double>);
 REGISTER_CAST_GPU(float, bfloat16);
 REGISTER_CAST_GPU(bfloat16, float);
 
