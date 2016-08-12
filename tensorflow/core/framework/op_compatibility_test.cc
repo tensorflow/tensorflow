@@ -16,10 +16,11 @@ limitations under the License.
 // Test that verifies that various changes to an OpDef are
 // backwards-compatible.
 
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -60,7 +61,23 @@ class OpCompatibilityTest : public OpsTestBase {
     DataTypeVector new_in_types, new_out_types;
     TF_ASSERT_OK(InOutTypesForNode(*node_def(), *new_op_def, &new_in_types,
                                    &new_out_types));
+    if (new_in_types.size() == old_in_types.size()) {
+      // Ref inputs are allowed to become non-ref inputs.
+      for (int i = 0; i < new_in_types.size(); ++i) {
+        if (IsRefType(old_in_types[i]) && !IsRefType(new_in_types[i])) {
+          old_in_types[i] = RemoveRefType(old_in_types[i]);
+        }
+      }
+    }
     ASSERT_EQ(new_in_types, old_in_types);
+    if (new_out_types.size() == old_out_types.size()) {
+      // Non-ref outputs are allowed to become ref outputs.
+      for (int i = 0; i < new_out_types.size(); ++i) {
+        if (!IsRefType(old_out_types[i]) && IsRefType(new_out_types[i])) {
+          old_out_types[i] = MakeRefType(old_out_types[i]);
+        }
+      }
+    }
     ASSERT_EQ(new_out_types, old_out_types);
     TF_ASSERT_OK(OpDefCompatible(old_op_def, *new_op_def));
 
@@ -641,6 +658,39 @@ TEST_F(OpCompatibilityTest, AttrLowerMin) {
   EXPECT_EQ("lower_min = AttrLowerMin[n=4]()", Result());
 }
 
+// Can make a ref input into a non-ref input.
+
+REGISTER_OP("InputRemoveRef").Input("i: int32").Output("ndef: string");
+REGISTER_KERNEL_BUILDER(Name("InputRemoveRef").Device(DEVICE_CPU), TestKernel);
+
+TEST_F(OpCompatibilityTest, InputRemoveRef) {
+  OpRegistrationData old_op;
+  TF_ASSERT_OK(OpDefBuilder("InputRemoveRef")
+                   .Input("i: Ref(int32)")
+                   .Output("ndef: string")
+                   .Finalize(&old_op));
+  TF_ASSERT_OK(NodeDefBuilder("remove_input_ref", &old_op.op_def)
+                   .Input(FakeInput())
+                   .Finalize(node_def()));
+  ExpectSuccess(old_op.op_def);
+}
+
+// Can make a non-ref output into a ref output.
+
+REGISTER_OP("OutputAddRef").Output("o: Ref(int32)").Output("ndef: string");
+REGISTER_KERNEL_BUILDER(Name("OutputAddRef").Device(DEVICE_CPU), TestKernel);
+
+TEST_F(OpCompatibilityTest, OutputAddRef) {
+  OpRegistrationData old_op;
+  TF_ASSERT_OK(OpDefBuilder("OutputAddRef")
+                   .Output("o: int32")
+                   .Output("ndef: string")
+                   .Finalize(&old_op));
+  TF_ASSERT_OK(
+      NodeDefBuilder("add_output_ref", &old_op.op_def).Finalize(node_def()));
+  ExpectSuccess(old_op.op_def);
+}
+
 // Negative tests -------------------------------------------------------------
 
 // Can't remove an attr.
@@ -917,6 +967,33 @@ TEST_F(OpCompatibilityTest, AttrRaiseMinFails) {
   ExpectInvalid(old_op.op_def,
                 "Value for attr 'n' of 2 must be at least minimum 3",
                 "Attr 'n' has a higher minimum; from 1 to 3");
+}
+
+// Can't make a non-ref input into a ref input.
+
+REGISTER_OP("InputAddRef").Input("i: Ref(int32)");
+
+TEST_F(OpCompatibilityTest, InputAddRefFails) {
+  OpRegistrationData old_op;
+  TF_ASSERT_OK(OpDefBuilder("InputAddRef").Input("i: int32").Finalize(&old_op));
+  TF_ASSERT_OK(NodeDefBuilder("add_input_ref", &old_op.op_def)
+                   .Input(FakeInput())
+                   .Finalize(node_def()));
+  ExpectTypeMismatch(old_op.op_def, "Input 0 changed from non-ref to ref");
+}
+
+// Can't make a ref output into a non-ref output.
+
+REGISTER_OP("OutputRemoveRef").Output("o: int32");
+
+TEST_F(OpCompatibilityTest, OutputRemoveRef) {
+  OpRegistrationData old_op;
+  TF_ASSERT_OK(OpDefBuilder("OutputRemoveRef")
+                   .Output("o: Ref(int32)")
+                   .Finalize(&old_op));
+  TF_ASSERT_OK(
+      NodeDefBuilder("remove_output_ref", &old_op.op_def).Finalize(node_def()));
+  ExpectTypeMismatch(old_op.op_def, "Output 0 changed from ref to non-ref");
 }
 
 // Changing an attr's default is not technically illegal, but should
