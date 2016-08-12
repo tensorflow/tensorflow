@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""LSTM Fused Cell ops."""
+"""LSTM Block Cell ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,10 +25,10 @@ import tensorflow as tf
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 
 
-fused_lstm = lstm_ops._fused_lstm  # pylint: disable=protected-access
+block_lstm = lstm_ops._block_lstm  # pylint: disable=protected-access
 
 
-class LSTMFusedCellTest(tf.test.TestCase):
+class LSTMBlockCellTest(tf.test.TestCase):
   _use_gpu = False
 
   def testNoneDimsWithDynamicRNN(self):
@@ -38,7 +38,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
       input_dim = 6
       cell_size = 7
 
-      cell = tf.contrib.rnn.LSTMFusedCell(cell_size)
+      cell = tf.contrib.rnn.LSTMBlockCell(cell_size)
       x = tf.placeholder(tf.float32, shape=(None, None, input_dim))
 
       output, _ = tf.nn.dynamic_rnn(cell, x, time_major=True, dtype=tf.float32)
@@ -47,7 +47,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
       feed[x] = np.random.randn(num_steps, batch_size, input_dim)
       sess.run(output, feed)
 
-  def testLSTMFusedCell(self):
+  def testLSTMBlockCell(self):
     with self.test_session(use_gpu=self._use_gpu, graph=tf.Graph()) as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         x = tf.zeros([1, 2])
@@ -56,7 +56,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
         m2 = tf.zeros([1, 2])
         m3 = tf.zeros([1, 2])
         g, ((out_m0, out_m1), (out_m2, out_m3)) = tf.nn.rnn_cell.MultiRNNCell(
-            [tf.contrib.rnn.LSTMFusedCell(2)] * 2,
+            [tf.contrib.rnn.LSTMBlockCell(2)] * 2,
             state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([tf.initialize_all_variables()])
         res = sess.run([g, out_m0, out_m1, out_m2, out_m3],
@@ -106,7 +106,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
         m2 = tf.zeros([1, 2])
         m3 = tf.zeros([1, 2])
         g, ((out_m0, out_m1), (out_m2, out_m3)) = tf.nn.rnn_cell.MultiRNNCell(
-            [tf.contrib.rnn.LSTMFusedCell(2)] * 2,
+            [tf.contrib.rnn.LSTMBlockCell(2)] * 2,
             state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([tf.initialize_all_variables()])
         block_res = sess.run([g, out_m0, out_m1, out_m2, out_m3],
@@ -155,7 +155,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
         m2 = tf.zeros([1, 2])
         m3 = tf.zeros([1, 2])
         g, ((out_m0, out_m1), (out_m2, out_m3)) = tf.nn.rnn_cell.MultiRNNCell(
-            [tf.contrib.rnn.LSTMFusedCell(2, use_peephole=True)] * 2,
+            [tf.contrib.rnn.LSTMBlockCell(2, use_peephole=True)] * 2,
             state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([tf.initialize_all_variables()])
         block_res = sess.run([g, out_m0, out_m1, out_m2, out_m3],
@@ -202,7 +202,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
                             dtype=tf.float32,
                             initializer=tf.zeros_initializer)
 
-        _, _, _, _, _, _, outputs = fused_lstm(
+        _, _, _, _, _, _, outputs = block_lstm(
             tf.convert_to_tensor(sequence_length,
                                  dtype=tf.int64),
             inputs,
@@ -259,7 +259,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
         wcf = tf.get_variable("wcf", shape=[cell_size], dtype=tf.float32)
         wco = tf.get_variable("wco", shape=[cell_size], dtype=tf.float32)
 
-        _, _, _, _, _, _, outputs = fused_lstm(
+        _, _, _, _, _, _, outputs = block_lstm(
             tf.convert_to_tensor(sequence_length,
                                  dtype=tf.int64),
             inputs,
@@ -282,7 +282,7 @@ class LSTMFusedCellTest(tf.test.TestCase):
         self.assertAllClose(basic, block, rtol=1e-2, atol=1e-2)
 
 
-class LSTMFusedCellGpuTest(LSTMFusedCellTest):
+class LSTMBlockCellGpuTest(LSTMBlockCellTest):
   _use_gpu = True
 
 

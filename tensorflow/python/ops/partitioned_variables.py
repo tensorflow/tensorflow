@@ -276,8 +276,8 @@ def create_partitioned_variables(
   # the partitioner.
   partitioner = lambda **unused_kwargs: slicing
 
-  with variable_scope.variable_op_scope(
-      [], name, "PartitionedVariable", reuse=reuse):
+  with variable_scope.variable_scope(
+      name, "PartitionedVariable", reuse=reuse):
     # pylint: disable=protected-access
     partitioned_var = variable_scope._get_partitioned_variable(
         name=None,

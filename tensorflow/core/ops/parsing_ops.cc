@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/util/example_proto_helper.h"
 
 namespace tensorflow {
 
@@ -62,6 +63,38 @@ REGISTER_OP("ParseExample")
     .Attr("sparse_types: list({float,int64,string}) >= 0")
     .Attr("Tdense: list({float,int64,string}) >= 0")
     .Attr("dense_shapes: list(shape) >= 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ParseSingleExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c));
+
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input));
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // names
+
+      // Output sparse_indices, sparse_values, and sparse_shapes.
+      int output_idx = 0;
+      for (int i = 0; i < attrs.num_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
+      }
+      for (int i = 0; i < attrs.num_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(2));
+      }
+
+      // Output dense_shapes.
+      TensorShapeProto shape_proto;
+      for (int i = 0; i < attrs.num_dense; ++i) {
+        attrs.dense_shapes[i].AsProto(&shape_proto);
+        const Shape* dense;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &dense));
+        TF_RETURN_IF_ERROR(c->Concatenate(input, dense, &dense));
+        c->set_output(output_idx++, dense);
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Transforms a vector of brain.Example protos (as strings) into typed tensors.
 
@@ -126,6 +159,63 @@ REGISTER_OP("ParseSingleSequenceExample")
     .Attr("context_dense_shapes: list(shape) >= 0 = []")
     .Attr("feature_list_sparse_types: list({float,int64,string}) >= 0 = []")
     .Attr("feature_list_dense_shapes: list(shape) >= 0 = []")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      ParseSingleSequenceExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c));
+
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
+
+      // feature_list_dense_missing_assumed_empty
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+
+      int output_idx = 0;
+
+      // Output context_sparse_indices, context_sparse_values, and
+      // context_sparse_shapes.
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 1));
+      }
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(1));
+      }
+
+      // Output context_dense_shapes.
+      TensorShapeProto shape_proto;
+      for (int i = 0; i < attrs.num_context_dense; ++i) {
+        attrs.context_dense_shapes[i].AsProto(&shape_proto);
+        const Shape* s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        c->set_output(output_idx++, s);
+      }
+
+      // Output feature_list_sparse_indices, feature_list_sparse_values,
+      // feature_list_sparse_shapes.
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
+      }
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(2));
+      }
+
+      // Output feature_list_dense_shapes.
+      for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
+        attrs.feature_list_dense_shapes[i].AsProto(&shape_proto);
+        const Shape* s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(
+            c->Concatenate(c->Vector(InferenceContext::kUnknownDim), s, &s));
+        c->set_output(output_idx++, s);
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Transforms a scalar brain.SequenceExample proto (as strings) into typed tensors.
 

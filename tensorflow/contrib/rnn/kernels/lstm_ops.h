@@ -123,8 +123,8 @@ struct TensorBlasGemm<Device, T, false /* USE_CUBLAS */> {
   }
 };
 
-struct LSTMFusedCell {
-  LSTMFusedCell(const int batch_size, const int input_size, const int cell_size)
+struct LSTMBlockCell {
+  LSTMBlockCell(const int batch_size, const int input_size, const int cell_size)
       : batch_size_(batch_size),
         input_size_(input_size),
         cell_size_(cell_size) {}
@@ -172,10 +172,10 @@ struct LSTMFusedCell {
 };
 
 template <typename Device, typename T, bool USE_CUBLAS>
-struct LSTMFusedCellFprop : public LSTMFusedCell {
-  LSTMFusedCellFprop(const int batch_size, const int input_size,
+struct LSTMBlockCellFprop : public LSTMBlockCell {
+  LSTMBlockCellFprop(const int batch_size, const int input_size,
                      const int cell_size)
-      : LSTMFusedCell(batch_size, input_size, cell_size) {}
+      : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
   void operator()(OpKernelContext* ctx, perftools::gputools::Stream* stream,
                   const Device& d, const T forget_bias, const T cell_clip,
@@ -257,10 +257,10 @@ struct LSTMFusedCellFprop : public LSTMFusedCell {
 };
 
 template <typename Device, typename T, bool USE_CUBLAS>
-struct LSTMFusedCellBprop : public LSTMFusedCell {
-  LSTMFusedCellBprop(const int batch_size, const int input_size,
+struct LSTMBlockCellBprop : public LSTMBlockCell {
+  LSTMBlockCellBprop(const int batch_size, const int input_size,
                      const int cell_size)
-      : LSTMFusedCell(batch_size, input_size, cell_size) {}
+      : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
   void operator()(
       OpKernelContext* ctx, perftools::gputools::Stream* stream,
@@ -323,10 +323,10 @@ struct LSTMFusedCellBprop : public LSTMFusedCell {
 };
 
 template <typename Device, typename T, bool USE_CUBLAS>
-struct FusedLSTMBprop : public LSTMFusedCell {
-  FusedLSTMBprop(const int batch_size, const int input_size,
+struct BlockLSTMBprop : public LSTMBlockCell {
+  BlockLSTMBprop(const int batch_size, const int input_size,
                  const int cell_size)
-      : LSTMFusedCell(batch_size, input_size, cell_size) {}
+      : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
   void operator()(
       OpKernelContext* ctx, perftools::gputools::Stream* stream,

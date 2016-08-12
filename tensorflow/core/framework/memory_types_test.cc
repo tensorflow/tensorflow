@@ -63,11 +63,11 @@ TEST(MemoryTypesForNode, Simple) {
   TF_EXPECT_OK(MemoryTypesForNode(OpRegistry::Global(), DEVICE_CPU, node_def,
                                   &input, &output));
   EXPECT_EQ(MemoryTypeVector({DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
-                              DEVICE_MEMORY, DEVICE_MEMORY, HOST_MEMORY,
-                              DEVICE_MEMORY, HOST_MEMORY}),
+                              DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
+                              DEVICE_MEMORY, DEVICE_MEMORY}),
             input);
   EXPECT_EQ(MemoryTypeVector({DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
-                              HOST_MEMORY, DEVICE_MEMORY, HOST_MEMORY}),
+                              DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY}),
             output);
 
   TF_EXPECT_OK(MemoryTypesForNode(OpRegistry::Global(), DEVICE_GPU, node_def,
@@ -77,7 +77,7 @@ TEST(MemoryTypesForNode, Simple) {
                         HOST_MEMORY, HOST_MEMORY, HOST_MEMORY, HOST_MEMORY}),
       input);
   EXPECT_EQ(MemoryTypeVector({HOST_MEMORY, HOST_MEMORY, HOST_MEMORY,
-                              HOST_MEMORY, DEVICE_MEMORY, HOST_MEMORY}),
+                              DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY}),
             output);
 }
 

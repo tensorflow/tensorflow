@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
 
+// See core/kernels/function_ops.cc for related kernels.
+
 namespace tensorflow {
 
 // A few string constant used throughout this module.
@@ -130,123 +132,6 @@ static Node* AddRet(Graph* g, Endpoint input, int index) {
   g->AddEdge(input.node, input.index, ret, 0);
   return ret;
 }
-
-class ArgOp : public OpKernel {
- public:
-  explicit ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto frame = ctx->call_frame();
-    OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
-    Tensor val;
-    OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-    OP_REQUIRES(ctx, val.dtype() == dtype_,
-                errors::InvalidArgument(
-                    "Type mismatch: actual ", DataTypeString(val.dtype()),
-                    " vs. expect ", DataTypeString(dtype_)));
-    ctx->set_output(0, val);
-  }
-
- private:
-  int index_;
-  DataType dtype_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
-};
-
-class RetvalOp : public OpKernel {
- public:
-  explicit RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& val = ctx->input(0);
-    OP_REQUIRES(ctx, val.dtype() == dtype_,
-                errors::InvalidArgument(
-                    "Type mismatch: actual ", DataTypeString(val.dtype()),
-                    " vs. expect ", DataTypeString(dtype_)));
-    auto frame = ctx->call_frame();
-    OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
-    OP_REQUIRES_OK(ctx, frame->SetRetval(index_, val));
-  }
-
- private:
-  int index_;
-  DataType dtype_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
-};
-
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
-
-#define REGISTER_GPU_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_Arg").Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp); \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
-REGISTER_GPU_KERNELS(Eigen::half);
-REGISTER_GPU_KERNELS(float);
-REGISTER_GPU_KERNELS(double);
-#undef REGISTER_GPU_KERNELS
-
-REGISTER_KERNEL_BUILDER(Name("_Arg")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("input")
-                            .TypeConstraint<int32>("T"),
-                        RetvalOp);
-
-class PassOn : public OpKernel {
- public:
-  explicit PassOn(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, ctx->num_inputs() == ctx->num_outputs(),
-                errors::Internal("#inputs != #outputs : ", ctx->num_inputs(),
-                                 " vs. ", ctx->num_outputs()));
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      ctx->set_output(i, ctx->input(i));
-    }
-  }
-};
-
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
-
-#define REGISTER_GPU_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_ListToArray").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      PassOn);                                                           \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_ArrayToList").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      PassOn);
-
-REGISTER_GPU_KERNELS(Eigen::half);
-REGISTER_GPU_KERNELS(float);
-REGISTER_GPU_KERNELS(double);
-
-#undef REGISTER_GPU_KERNELS
-
-REGISTER_KERNEL_BUILDER(Name("_ListToArray")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("input")
-                            .TypeConstraint<int32>("T"),
-                        PassOn);
 
 static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 
@@ -389,60 +274,6 @@ class CallOp : public AsyncOpKernel {
 
   TF_DISALLOW_COPY_AND_ASSIGN(CallOp);
 };
-
-class SymbolicGradientOp : public AsyncOpKernel {
- public:
-  SymbolicGradientOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx), handle_(kInvalidHandle) {}
-
-  ~SymbolicGradientOp() override {}
-
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    FunctionLibraryRuntime* lib = ctx->function_library();
-    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library is provided."),
-                      done);
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
-
-    FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
-    opts.runner = ctx->runner();
-    std::vector<Tensor> args;
-    args.reserve(ctx->num_inputs());
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      args.push_back(ctx->input(i));
-    }
-    std::vector<Tensor>* rets = new std::vector<Tensor>;
-    lib->Run(
-        opts, handle_, args, rets, [ctx, done, rets](const Status& status) {
-          if (!status.ok()) {
-            ctx->SetStatus(status);
-          } else if (rets->size() != ctx->num_outputs()) {
-            ctx->SetStatus(errors::InvalidArgument(
-                "SymGrad expects to return ", ctx->num_outputs(),
-                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
-          } else {
-            for (size_t i = 0; i < rets->size(); ++i) {
-              ctx->set_output(i, (*rets)[i]);
-            }
-          }
-          delete rets;
-          done();
-        });
-  }
-
- private:
-  FunctionLibraryRuntime::Handle handle_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
-};
-
-REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
-                        SymbolicGradientOp);
-REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
-                        SymbolicGradientOp);
 
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   mutex_lock l(mu_);

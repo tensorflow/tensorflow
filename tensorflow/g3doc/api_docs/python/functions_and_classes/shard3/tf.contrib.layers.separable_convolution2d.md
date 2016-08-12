@@ -39,7 +39,7 @@ to produce the end result.
     a dictionay containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 

@@ -43,13 +43,15 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace tensorflow {
 
-Status GetHandle(const string& input_name, OpKernelContext* ctx,
-                 string* container, string* ta_handle) {
+Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
   {
     Tensor tensor;
-    // Assuming that input_name is at position 0 for purposes of
-    // has_input.
-    TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, false));
+    // Assuming that handle is the input at index 0.
+    if (IsRefType(ctx->input_dtype(0))) {
+      tensor = ctx->mutable_input(0, false);
+    } else {
+      tensor = ctx->input(0);
+    }
     if (tensor.NumElements() != 2) {
       return errors::InvalidArgument(
           "Tensor array handle must be 2-element vector, but had shape: ",
@@ -62,11 +64,10 @@ Status GetHandle(const string& input_name, OpKernelContext* ctx,
   return Status::OK();
 }
 
-Status GetTensorArray(const string& input_name, OpKernelContext* ctx,
-                      TensorArray** tensor_array) {
+Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
   string container;
   string ta_handle;
-  TF_RETURN_IF_ERROR(GetHandle(input_name, ctx, &container, &ta_handle));
+  TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
   ResourceMgr* rm = ctx->step_resource_manager();
   if (rm == nullptr) return errors::Internal("No per-step resource manager.");
   TF_RETURN_IF_ERROR(rm->Lookup(container, ta_handle, tensor_array));
@@ -207,8 +208,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
                            TensorArray** output_tensor_array) override {
     string container;
     string tensor_array_name;
-    TF_RETURN_IF_ERROR(
-        GetHandle("handle", ctx, &container, &tensor_array_name));
+    TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &tensor_array_name));
 
     if (container != "_tensor_arrays") {
       return errors::InvalidArgument(
@@ -299,7 +299,7 @@ class TensorArrayWriteOp : public OpKernel {
                     tensor_index->shape().DebugString()));
 
     TensorArray* tensor_array = nullptr;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
     const int32 index = tensor_index->scalar<int32>()();
     OP_REQUIRES(
@@ -362,7 +362,7 @@ class TensorArrayReadOp : public OpKernel {
                     tensor_index->shape().DebugString()));
 
     TensorArray* tensor_array = nullptr;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
     const int32 index = tensor_index->scalar<int32>()();
@@ -427,7 +427,7 @@ class TensorArrayPackOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, false));
 
     TensorArray* tensor_array = nullptr;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
 
     core::ScopedUnref unref(tensor_array);
     int32 array_size;
@@ -578,7 +578,7 @@ class TensorArrayConcatOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, false));
 
     TensorArray* tensor_array = nullptr;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
@@ -755,7 +755,7 @@ class TensorArrayUnpackOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
 
     TensorArray* tensor_array = nullptr;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
@@ -864,7 +864,7 @@ class TensorArraySplitOp : public OpKernel {
     OP_REQUIRES_OK(ctx, SetupFlowControlInputs(ctx, true));
 
     TensorArray* tensor_array = nullptr;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
     const Tensor* tensor_value;
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
@@ -1006,7 +1006,7 @@ class TensorArraySizeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorArray* tensor_array;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
@@ -1037,7 +1037,7 @@ class TensorArrayCloseOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorArray* tensor_array;
-    OP_REQUIRES_OK(ctx, GetTensorArray("handle", ctx, &tensor_array));
+    OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
     // Instead of deleting this TA from the ResourceManager, we just
     // clear it away and mark it as closed.  The remaining memory

@@ -399,4 +399,65 @@ Status BatchExampleProtoToTensors(
   return Status::OK();
 }
 
+Status ParseSingleExampleAttrs::FinishInit() {
+  if (static_cast<size_t>(num_sparse) != sparse_types.size()) {
+    return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
+  }
+  if (static_cast<size_t>(num_dense) != dense_types.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_types)");
+  }
+  if (static_cast<size_t>(num_dense) != dense_shapes.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
+  }
+  if (num_dense > std::numeric_limits<int32>::max()) {
+    return errors::InvalidArgument("num_dense_ too large");
+  }
+  for (const DataType& type : dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  return Status::OK();
+}
+
+Status ParseSingleSequenceExampleAttrs::FinishInit() {
+  if (static_cast<size_t>(num_context_sparse) != context_sparse_types.size()) {
+    return errors::InvalidArgument(
+        "len(context_sparse_keys) != len(context_sparse_types)");
+  }
+  if (static_cast<size_t>(num_context_dense) != context_dense_types.size()) {
+    return errors::InvalidArgument(
+        "len(context_dense_keys) != len(context_dense_types)");
+  }
+  if (static_cast<size_t>(num_context_dense) != context_dense_shapes.size()) {
+    return errors::InvalidArgument(
+        "len(context_dense_keys) != len(context_dense_shapes)");
+  }
+  if (static_cast<size_t>(num_feature_list_sparse) !=
+      feature_list_sparse_types.size()) {
+    return errors::InvalidArgument(
+        "len(feature_list_sparse_keys) != len(feature_list_sparse_types)");
+  }
+  if (static_cast<size_t>(num_feature_list_dense) !=
+      feature_list_dense_types.size()) {
+    return errors::InvalidArgument(
+        "len(feature_list_dense_keys) != "
+        "len(feature_list_dense_types)");
+  }
+  for (const DataType& type : context_dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : context_sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : feature_list_dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : feature_list_sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

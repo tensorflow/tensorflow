@@ -61,10 +61,7 @@ Status PadShapeFn(InferenceContext* c) {
   if (paddings_t == nullptr) {
     if (c->ValueKnown(n_dim)) {
       // Make output with n_dim unknown dims.
-      std::vector<const Dimension*> dims;
-      const auto value = c->Value(n_dim);
-      for (int i = 0; i < value; ++i) dims.push_back(c->UnknownDim());
-      c->set_output(0, c->MakeShape(dims));
+      c->set_output(0, c->UnknownShapeOfRank(c->Value(n_dim)));
     } else {
       c->set_output(0, c->UnknownShape());
     }
@@ -282,10 +279,7 @@ REGISTER_OP("Split")
       const Shape* out;
       if (!c->ValueKnown(split_dimension)) {
         if (c->RankKnown(input)) {
-          std::vector<const Dimension*> dims;
-          dims.resize(c->Rank(input));
-          for (int i = 0; i < dims.size(); ++i) dims[i] = c->UnknownDim();
-          out = c->MakeShape(dims);
+          out = c->UnknownShapeOfRank(c->Rank(input));
         } else {
           out = c->UnknownShape();
         }
@@ -1629,6 +1623,58 @@ size(t) ==> 12
 
 )doc");
 
+namespace {
+
+template <typename T>
+Status SliceHelper(InferenceContext* c, const Tensor* begin_t,
+                   const Tensor* sizes_t, std::vector<const Dimension*>* dims) {
+  auto begin_vec = begin_t->vec<T>();
+  auto sizes_vec = sizes_t->vec<T>();
+  for (int i = 0; i < sizes_t->NumElements(); ++i) {
+    const Dimension* dim = c->Dim(c->input(0), i);
+    if (sizes_vec(i) != -1) {
+      if (c->ValueKnown(dim)) {
+        auto dim_val = c->Value(dim);
+        // We validate the contract that:
+        //
+        // 0 <= begin <= begin + size <= dim_val.
+
+        if (begin_vec(i) > dim_val) {
+          return errors::InvalidArgument(
+              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
+              ": begin vector cannot start after end of dimension, but was ",
+              begin_vec(i));
+        }
+
+        if (sizes_vec(i) < 0) {
+          return errors::InvalidArgument(
+              "Out of bounds slicing on dimension ", i, " of length ", dim_val,
+              ": sizes vector cannot be < -1, but was ", sizes_vec(i));
+        }
+
+        auto end = begin_vec(i) + sizes_vec(i);
+        // TODO(vrv): use FastBoundsCheck, once it's moved into a more
+        // universal location.
+        if (end < 0 || end > dim_val) {
+          return errors::InvalidArgument(
+              "Out of bounds slicing on dimension ", i, ": Dimension: ",
+              dim_val, ", begin: ", begin_vec(i), ", size: ", sizes_vec(i));
+        }
+      }
+
+      dims->emplace_back(c->MakeDim(sizes_vec(i)));
+    } else {
+      const Dimension* result;
+      TF_RETURN_IF_ERROR(c->Subtract(dim, begin_vec(i), &result));
+      dims->emplace_back(result);
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
 // --------------------------------------------------------------------------
 REGISTER_OP("Slice")
     .Input("input: T")
@@ -1637,6 +1683,48 @@ REGISTER_OP("Slice")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Index: {int32,int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input = c->input(0);
+      const Shape* begin_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &begin_shape));
+      const Shape* sizes_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &sizes_shape));
+
+      // Merge to check compatibility of begin and sizes tensors.
+      TF_RETURN_IF_ERROR(c->Merge(begin_shape, sizes_shape, &begin_shape));
+
+      const Dimension* ndims = c->Dim(begin_shape, 0);
+      if (c->ValueKnown(ndims)) {
+        TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(ndims), &input));
+      }
+
+      const Tensor* begin_t = c->input_tensor(1);
+      const Tensor* sizes_t = c->input_tensor(2);
+
+      if (sizes_t != nullptr && begin_t != nullptr) {
+        std::vector<const Dimension*> dims;
+        // If the begin and sizes tensors are available, then
+        // we can be precise about the shape of the output.
+        if (begin_t->dtype() == DT_INT64) {
+          TF_RETURN_IF_ERROR(SliceHelper<int64>(c, begin_t, sizes_t, &dims));
+        } else {
+          TF_RETURN_IF_ERROR(SliceHelper<int32>(c, begin_t, sizes_t, &dims));
+        }
+
+        c->set_output(0, c->MakeShape(dims));
+        return Status::OK();
+      } else {
+        // We might know the rank of the input.
+        if (c->RankKnown(input)) {
+          c->set_output(0, c->UnknownShapeOfRank(c->Rank(input)));
+          return Status::OK();
+        } else {
+          return shape_inference::UnknownShape(c);
+        }
+      }
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Return a slice from 'input'.
 
@@ -1761,11 +1849,7 @@ REGISTER_OP("Tile")
       if (multiples_t == nullptr) {
         // If multiples vector isn't available, we only know the
         // output rank, not the sizes.
-        std::vector<const Dimension*> dims;
-        for (int64 i = 0; i < rank; ++i) {
-          dims.push_back(c->UnknownDim());
-        }
-        c->set_output(0, c->MakeShape(dims));
+        c->set_output(0, c->UnknownShapeOfRank(rank));
         return Status::OK();
       }
 
@@ -1986,9 +2070,7 @@ REGISTER_OP("MirrorPadGrad")
         // Values of 'paddings' is not available, but we know the
         // input rank, so return the rank of the output with unknown
         // dimensions.
-        std::vector<const Dimension*> dims;
-        for (int64 i = 0; i < input_rank; ++i) dims.push_back(c->UnknownDim());
-        c->set_output(0, c->MakeShape(dims));
+        c->set_output(0, c->UnknownShapeOfRank(input_rank));
         return Status::OK();
       }
 

@@ -1087,14 +1087,24 @@ def _get_unique_variable_scope(prefix):
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
 def variable_scope(name_or_scope,
-                   reuse=None,
+                   default_name=None,
+                   values=None,
                    initializer=None,
                    regularizer=None,
                    caching_device=None,
                    partitioner=None,
                    custom_getter=None,
+                   reuse=None,
                    dtype=None):
-  """Returns a context for variable scope.
+  """Returns a context manager for defining ops that creates variables (layers).
+
+  This context manager validates that the (optional) `values` are from
+  the same graph, ensures that graph is the default graph, and pushes a
+  name scope and a variable scope.
+
+  If `name_or_scope` is not None, it is used as is. If `scope` is None, then
+  `default_name` is used.  In that case, if the same name has been previously
+  used in the same scope, it will made unique be appending `_N` to it.
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
@@ -1154,13 +1164,17 @@ def variable_scope(name_or_scope,
 
   Args:
     name_or_scope: `string` or `VariableScope`: the scope to open.
-    reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
-      well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
+    default_name: The default name to use if the `name_or_scope` argument is
+      `None`, this name will be uniquified. If name_or_scope is provided it
+      won't be used and therefore it is not required and can be None.
+    values: The list of `Tensor` arguments that are passed to the op function.
     initializer: default initializer for variables within this scope.
     regularizer: default regularizer for variables within this scope.
     caching_device: default caching device for variables within this scope.
     partitioner: default partitioner for variables within this scope.
     custom_getter: default custom getter for variables within this scope.
+    reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
+      well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
     dtype: type of variables created in this scope (defaults to the type
       in the passed scope, or inherited from parent scope).
 
@@ -1172,123 +1186,50 @@ def variable_scope(name_or_scope,
       a reuse scope, or if reuse is not `None` or `True`.
     TypeError: when the types of some arguments are not appropriate.
   """
-  if not isinstance(name_or_scope, (VariableScope,) + six.string_types):
-    raise TypeError("VariableScope: name_or_scope must be a string or "
-                    "VariableScope.")
-  if isinstance(name_or_scope, six.string_types):
-    name_scope = name_or_scope
-  else:
-    name_scope = name_or_scope.name.split("/")[-1]
-  if name_scope:
-    with ops.name_scope(name_scope) as cur_name_scope:
-      if isinstance(name_or_scope, six.string_types):
-        old_name_scope = cur_name_scope
-      else:
-        old_name_scope = name_or_scope.original_name_scope
-      with _pure_variable_scope(
-          name_or_scope,
-          reuse=reuse,
-          initializer=initializer,
-          regularizer=regularizer,
-          caching_device=caching_device,
-          partitioner=partitioner,
-          custom_getter=custom_getter,
-          old_name_scope=old_name_scope,
-          dtype=dtype) as vs:
-        yield vs
-  else:
-    # This can only happen if someone is entering the root variable scope.
-    with _pure_variable_scope(
-        name_or_scope,
-        reuse=reuse,
-        initializer=initializer,
-        regularizer=regularizer,
-        caching_device=caching_device,
-        partitioner=partitioner,
-        custom_getter=custom_getter,
-        dtype=dtype) as vs:
-      yield vs
-
-
-# pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
-def variable_op_scope(values,
-                      name_or_scope,
-                      default_name=None,
-                      initializer=None,
-                      regularizer=None,
-                      caching_device=None,
-                      partitioner=None,
-                      custom_getter=None,
-                      reuse=None,
-                      dtype=None):
-  """Returns a context manager for defining an op that creates variables.
-
-  This context manager validates that the given `values` are from the
-  same graph, ensures that graph is the default graph, and pushes a
-  name scope and a variable scope.
-
-  If `name_or_scope` is not None, it is used as is in the variable scope. If
-  `scope` is None, then `default_name` is used.  In that case, if the same name
-  has been previously used in the same scope, it will made unique be appending
-  `_N` to it.
-
-  This is intended to be used when defining generic ops and so reuse is always
-  inherited.
-
-  For example, to define a new Python op called `my_op_with_vars`:
-
-  ```python
-  def my_op_with_vars(a, b, scope=None):
-    with tf.variable_op_scope([a, b], scope, "MyOp") as scope:
-      a = tf.convert_to_tensor(a, name="a")
-      b = tf.convert_to_tensor(b, name="b")
-      c = tf.get_variable('c')
-      # Define some computation that uses `a`, `b`, and `c`.
-      return foo_op(..., name=scope)
-  ```
-
-  Args:
-    values: The list of `Tensor` arguments that are passed to the op function.
-    name_or_scope: The name argument that is passed to the op function,
-      this name_or_scope is not uniquified in the variable scope.
-    default_name: The default name to use if the `name_or_scope` argument is
-      `None`, this name will be uniquified. If name_or_scope is provided it
-      won't be used and therefore it is not required and can be None.
-    initializer: The default initializer to pass to variable scope.
-    regularizer: The default regularizer for variables within this scope.
-    caching_device: The default caching device for variables within this scope.
-    partitioner: The default partitioner for variables within this scope.
-    custom_getter: The default custom getter for variables within this scope.
-    reuse: `True` or `None`; if `True`, we go into reuse mode for this scope as
-      well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
-    dtype: The default type of variables created in this scope, defaults to the
-      type of the parent scope.
-
-  Returns:
-    A context manager for use in defining a Python op.
-
-  Raises:
-    ValueError: when trying to reuse within a create scope, or create within
-      a reuse scope, or if reuse is not `None` or `True`.
-    TypeError: when the types of some arguments are not appropriate.
-  """
   if default_name is None and not name_or_scope:
     raise TypeError("If default_name is None then name_or_scope is required")
+  if values is None:
+    values = []
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
   with g.as_default():
-    if name_or_scope:
-      with variable_scope(
-          name_or_scope,
-          reuse=reuse,
-          initializer=initializer,
-          regularizer=regularizer,
-          caching_device=caching_device,
-          partitioner=partitioner,
-          custom_getter=custom_getter,
-          dtype=dtype) as vs:
-        yield vs
-    else:
+    if name_or_scope is not None:
+      if not isinstance(name_or_scope, (VariableScope,) + six.string_types):
+        raise TypeError("VariableScope: name_or_scope must be a string or "
+                        "VariableScope.")
+      if isinstance(name_or_scope, six.string_types):
+        name_scope = name_or_scope
+      else:
+        name_scope = name_or_scope.name.split("/")[-1]
+      if name_scope:
+        with ops.name_scope(name_scope) as cur_name_scope:
+          if isinstance(name_or_scope, six.string_types):
+            old_name_scope = cur_name_scope
+          else:
+            old_name_scope = name_or_scope.original_name_scope
+          with _pure_variable_scope(
+              name_or_scope,
+              reuse=reuse,
+              initializer=initializer,
+              regularizer=regularizer,
+              caching_device=caching_device,
+              partitioner=partitioner,
+              custom_getter=custom_getter,
+              old_name_scope=old_name_scope,
+              dtype=dtype) as vs:
+            yield vs
+      else:
+        # This can only happen if someone is entering the root variable scope.
+        with _pure_variable_scope(
+            name_or_scope,
+            reuse=reuse,
+            initializer=initializer,
+            regularizer=regularizer,
+            caching_device=caching_device,
+            partitioner=partitioner,
+            custom_getter=custom_getter,
+            dtype=dtype) as vs:
+          yield vs
+    else:  # Here name_or_scope is None. Using default name, but made unique.
       if reuse:
         raise ValueError("reuse=True cannot be used without a name_or_scope")
       with ops.name_scope(default_name) as scope:
@@ -1303,6 +1244,34 @@ def variable_op_scope(values,
             old_name_scope=scope,
             dtype=dtype) as vs:
           yield vs
+
+
+# pylint: disable=g-doc-return-or-yield
+@contextlib.contextmanager
+def variable_op_scope(values,
+                      name_or_scope,
+                      default_name=None,
+                      initializer=None,
+                      regularizer=None,
+                      caching_device=None,
+                      partitioner=None,
+                      custom_getter=None,
+                      reuse=None,
+                      dtype=None):
+  """Deprecated: context manager for defining an op that creates variables."""
+  logging.warn("tf.variable_op_scope(values, name, default_name) is deprecated,"
+               " use tf.variable_scope(name, default_name, values)")
+  with variable_scope(name_or_scope,
+                      default_name=default_name,
+                      values=values,
+                      initializer=initializer,
+                      regularizer=regularizer,
+                      caching_device=caching_device,
+                      partitioner=partitioner,
+                      custom_getter=custom_getter,
+                      reuse=reuse,
+                      dtype=dtype) as scope:
+    yield scope
 
 
 def _compute_slice_dim_and_shape(full_shape, slicing):

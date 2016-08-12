@@ -77,8 +77,8 @@ def auc_using_histogram(boolean_labels,
   """
   if collections is None:
     collections = [ops.GraphKeys.LOCAL_VARIABLES]
-  with variable_scope.variable_op_scope(
-      [boolean_labels, scores, score_range], name, 'auc_using_histogram'):
+  with variable_scope.variable_scope(
+      name, 'auc_using_histogram', [boolean_labels, scores, score_range]):
     scores, boolean_labels = metric_ops_util.remove_squeezable_dimensions(
         scores, boolean_labels)
     score_range = ops.convert_to_tensor(score_range, name='score_range')
@@ -127,8 +127,8 @@ def _check_labels_and_scores(boolean_labels, scores, check_shape):
 def _make_auc_histograms(boolean_labels, scores, score_range, nbins):
   """Create histogram tensors from one batch of labels/scores."""
 
-  with variable_scope.variable_op_scope(
-      [boolean_labels, scores, nbins], None, 'make_auc_histograms'):
+  with variable_scope.variable_scope(
+      None, 'make_auc_histograms', [boolean_labels, scores, nbins]):
     # Histogram of scores for records in this batch with True label.
     hist_true = histogram_ops.histogram_fixed_width(
         array_ops.boolean_mask(scores, boolean_labels),
@@ -148,8 +148,8 @@ def _make_auc_histograms(boolean_labels, scores, score_range, nbins):
 
 def _auc_hist_accumulate(hist_true, hist_false, nbins, collections):
   """Accumulate histograms in new variables."""
-  with variable_scope.variable_op_scope(
-      [hist_true, hist_false], None, 'hist_accumulate'):
+  with variable_scope.variable_scope(
+      None, 'hist_accumulate', [hist_true, hist_false]):
     # Holds running total histogram of scores for records labeled True.
     hist_true_acc = variable_scope.get_variable(
         'hist_true_acc',

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -30,11 +31,11 @@ TEST(FunctionalOpsTest, SymbolicGradient_ShapeFn) {
     type_list.emplace_back(DT_FLOAT);
     src_list.emplace_back("a", 0, DT_FLOAT);
   }
-  TF_CHECK_OK(NodeDefBuilder("test", "SymbolicGradient")
-                  .Input(src_list)
-                  .Attr("Tin", type_list)
-                  .Attr("Tout", type_list)
-                  .Finalize(&op.node_def));
+  TF_ASSERT_OK(NodeDefBuilder("test", "SymbolicGradient")
+                   .Input(src_list)
+                   .Attr("Tin", type_list)
+                   .Attr("Tout", type_list)
+                   .Finalize(&op.node_def));
 
   // Inputs transferred to outputs.
   INFER_OK(op, "?;?;?;?", "in0;in1;in2;in3");

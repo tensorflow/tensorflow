@@ -24,7 +24,7 @@ namespace tensorflow {
 TEST(SetOpsTest, DenseToDenseShape_InvalidNumberOfInputs) {
   ShapeInferenceTestOp op("DenseToDenseSetOperation");
   op.input_tensors.resize(3);
-  INFER_ERROR("Wrong number of arguments passed", op, "?;?;?");
+  INFER_ERROR("Wrong number of inputs passed", op, "?;?;?");
 }
 
 TEST(SetOpsTest, DenseToDenseShape) {
@@ -80,7 +80,7 @@ TEST(SetOpsTest, DenseToDenseShape) {
 TEST(SetOpsTest, DenseToSparseShape_InvalidNumberOfInputs) {
   ShapeInferenceTestOp op("DenseToSparseSetOperation");
   op.input_tensors.resize(5);
-  INFER_ERROR("Wrong number of arguments passed", op, "?;?;?;?;?");
+  INFER_ERROR("Wrong number of inputs passed", op, "?;?;?;?;?");
 }
 
 TEST(SetOpsTest, DenseToSparseShape) {
@@ -123,7 +123,7 @@ TEST(SetOpsTest, DenseToSparseShape) {
 TEST(SetOpsTest, SparseToSparseShape_InvalidNumberOfInputs) {
   ShapeInferenceTestOp op("SparseToSparseSetOperation");
   op.input_tensors.resize(7);
-  INFER_ERROR("Wrong number of arguments passed", op, "?;?;?;?;?;?;?");
+  INFER_ERROR("Wrong number of inputs passed", op, "?;?;?;?;?;?;?");
 }
 
 TEST(SetOpsTest, SparseToSparseShape) {
