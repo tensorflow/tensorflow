@@ -1556,6 +1556,7 @@ tf_kernel_libraries(
         "decode_csv_op",
         "decode_raw_op",
         "example_parsing_ops",
+        "parse_tensor_op",
         "string_to_number_op",
     ],
     deps = [
