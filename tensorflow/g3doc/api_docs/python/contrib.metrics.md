@@ -128,7 +128,7 @@ the reduced sum of `weights`. In addition to performing the updates,
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -176,7 +176,7 @@ In addition to performing the updates, `update_op` also returns the
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op`
     should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -227,7 +227,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -280,7 +280,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -346,7 +346,7 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 *  <b>`curve`</b>: Specifies the name of the curve to be computed, 'ROC' [default] or
   'PR' for the Precision-Recall-curve.
 
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -401,7 +401,7 @@ recall value.
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
     added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -453,7 +453,7 @@ value.
     `mean_absolute_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -505,7 +505,7 @@ calculated from it.
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
     added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -556,7 +556,7 @@ addition to performing the updates, `update_op` also returns the
     `mean_relative_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -607,7 +607,7 @@ addition to performing the updates, `update_op` also returns the
     `mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -658,7 +658,7 @@ also returns the `root_mean_squared_error` value.
     `root_mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -709,7 +709,7 @@ and `weights` and increments `count` with the reduced sum of weights.
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
     ops should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -759,7 +759,7 @@ with the number of elements of `ignore_mask` that are False.
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
     ops should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 

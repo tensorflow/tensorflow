@@ -77,7 +77,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -136,7 +136,7 @@ greater than one.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -191,7 +191,7 @@ operations such as image gradients:
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -234,7 +234,7 @@ second variable called 'biases' is added to the result of the operation.
     a dictionay containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
@@ -310,7 +310,7 @@ prior to the initial matrix multiply by `weights`.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
@@ -457,7 +457,7 @@ to produce the end result.
     a dictionay containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
@@ -520,7 +520,7 @@ Note that the rank of `input` must be known.
 *  <b>`inputs`</b>: A `Tensor` of arbitrary size.
 *  <b>`dim`</b>: The dimension along which the input is normalized.
 *  <b>`epsilon`</b>: A small value to add to the inputs to avoid dividing by zero.
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
