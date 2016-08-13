@@ -226,4 +226,49 @@ TEST(CCOpTest, ColocateWith) {
   EXPECT_TRUE(attrs.find("_class") == attrs.end());
 }
 
+TEST(CCOpTest, TemplatedConst) {
+  Scope root = Scope::NewRootScope();
+  auto c1 = ops::Const<float>(root, {{3, 2}, {-1, 0}});
+  TF_EXPECT_OK(root.status());
+
+  Tensor out;
+  GetTensor(root, c1, &out);
+  test::ExpectTensorEqual<float>(
+      out, test::AsTensor<float>({3.f, 2.f, -1.f, 0.f}, {2, 2}));
+
+  auto c2 = ops::Const<string>(root, {{"this"}, {"is"}, {"a"}, {"constant"}});
+  GetTensor(root, c2, &out);
+  test::ExpectTensorEqual<string>(
+      out, test::AsTensor<string>({"this", "is", "a", "constant"}, {4, 1}));
+}
+
+TEST(CCOpTest, EmptyConst) {
+  Scope root = Scope::NewRootScope();
+
+  auto c1 = ops::Const(root, {});
+  TF_CHECK_OK(root.status());
+
+  Tensor out;
+  GetTensor(root, c1, &out);
+  test::ExpectTensorEqual<float>(out, Tensor(DT_FLOAT, {0}));
+
+  auto c2 = ops::Const(root, {{}});
+  TF_CHECK_OK(root.status());
+  GetTensor(root, c2, &out);
+  test::ExpectTensorEqual<float>(out, Tensor(DT_FLOAT, {1, 0}));
+
+  auto c3 = ops::Const(root, {{{}, {}}});
+  TF_CHECK_OK(root.status());
+  GetTensor(root, c3, &out);
+  test::ExpectTensorEqual<float>(out, Tensor(DT_FLOAT, {1, 2, 0}));
+
+  auto c4 = ops::Const<int>(root, {{{}}});
+  TF_CHECK_OK(root.status());
+  GetTensor(root, c4, &out);
+  test::ExpectTensorEqual<int>(out, Tensor(DT_INT32, {1, 1, 0}));
+
+  ops::Const(root, {{}, {{}}});
+  EXPECT_FALSE(root.status().ok());
+}
+
 }  // namespace tensorflow

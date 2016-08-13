@@ -22,8 +22,8 @@ namespace monitoring {
 namespace {
 
 auto* counter_with_labels =
-    Counter<1>::New({"/tensorflow/test/counter_with_labels",
-                     "Counter with one label.", "One label"});
+    Counter<1>::New("/tensorflow/test/counter_with_labels",
+                    "Counter with one label.", "MyLabel");
 
 TEST(LabeledCounterTest, InitializedWithZero) {
   EXPECT_EQ(0, counter_with_labels->GetCell("Empty")->value());
@@ -51,15 +51,15 @@ TEST(LabeledCounterDeathTest, DiesOnDecrement) {
 }
 
 auto* init_counter_without_labels = Counter<0>::New(
-    {"/tensorflow/test/init_counter_without_labels",
-     "Counter without any labels to check if it is initialized as 0."});
+    "/tensorflow/test/init_counter_without_labels",
+    "Counter without any labels to check if it is initialized as 0.");
 
 TEST(UnlabeledCounterTest, InitializedWithZero) {
   EXPECT_EQ(0, init_counter_without_labels->GetCell()->value());
 }
 
 auto* counter_without_labels = Counter<0>::New(
-    {"/tensorflow/test/counter_without_labels", "Counter without any labels."});
+    "/tensorflow/test/counter_without_labels", "Counter without any labels.");
 
 TEST(UnlabeledCounterTest, GetCell) {
   auto* cell = counter_without_labels->GetCell();
@@ -77,8 +77,8 @@ TEST(UnlabeledCounterTest, GetCell) {
 }
 
 auto* dead_counter_without_labels = Counter<0>::New(
-    {"/tensorflow/test/dead_counter_without_labels",
-     "Counter without any labels which goes on to die on decrement."});
+    "/tensorflow/test/dead_counter_without_labels",
+    "Counter without any labels which goes on to die on decrement.");
 
 TEST(UnlabeledCounterDeathTest, DiesOnDecrement) {
   EXPECT_DEBUG_DEATH(

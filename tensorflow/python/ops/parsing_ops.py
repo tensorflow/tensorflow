@@ -37,6 +37,7 @@ from tensorflow.python.ops.gen_parsing_ops import *
 
 
 ops.NoGradient("DecodeRaw")
+ops.NoGradient("ParseTensor")
 ops.NoGradient("StringToNumber")
 
 
@@ -920,6 +921,7 @@ def _ParseSingleSequenceExampleShape(op):  # pylint: disable=invalid-name
 
 
 ops.RegisterShape("DecodeJSONExample")(common_shapes.unchanged_shape)
+ops.RegisterShape("ParseTensor")(common_shapes.unknown_shape)
 ops.RegisterShape("StringToNumber")(common_shapes.unchanged_shape)
 
 

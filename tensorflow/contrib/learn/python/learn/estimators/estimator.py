@@ -151,6 +151,17 @@ def _get_arguments(func):
     return _get_arguments(func.func)
 
 
+def _get_replica_device_setter(num_ps_replicas):
+  """Creates a replica device setter if required."""
+  ps_ops = ['Variable', 'AutoReloadVariable',
+            'MutableHashTable', 'MutableHashTableOfTensors']
+  if num_ps_replicas > 0:
+    return device_setter.replica_device_setter(
+        ps_tasks=num_ps_replicas, merge_devices=False, ps_ops=ps_ops)
+  else:
+    return None
+
+
 class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
@@ -195,13 +206,7 @@ class BaseEstimator(
     logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
-    if self._config.num_ps_replicas > 0:
-      ps_ops = ['Variable', 'AutoReloadVariable']
-      self._device_fn = device_setter.replica_device_setter(
-          ps_tasks=self._config.num_ps_replicas,
-          merge_devices=False, ps_ops=ps_ops)
-    else:
-      self._device_fn = None
+    self._device_fn = _get_replica_device_setter(self._config.num_ps_replicas)
 
     # Features and targets TensorSignature objects.
     # TODO(wicke): Rename these to something more descriptive

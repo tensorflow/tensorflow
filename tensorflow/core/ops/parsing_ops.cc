@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/example_proto_helper.h"
@@ -267,6 +268,20 @@ feature_list_sparse_types: A list of Nfeature_list_sparse types; the data types
   of data in each FeatureList given in feature_list_sparse_keys.
   Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
   DT_INT64 (Int64List), and DT_STRING (BytesList).
+)doc");
+
+REGISTER_OP("ParseTensor")
+    .Input("serialized: string")
+    .Output("output: out_type")
+    .Attr("out_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Transforms a serialized tensorflow.TensorProto proto into a Tensor.
+
+serialized: A scalar string containing a serialized TensorProto proto.
+out_type: The type of the serialized tensor.  The provided type must match the
+  type of the serialized tensor and no implicit conversion will take place.
+output: A Tensor of type `out_type`.
 )doc");
 
 REGISTER_OP("DecodeJSONExample")

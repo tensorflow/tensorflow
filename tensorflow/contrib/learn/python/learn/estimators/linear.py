@@ -29,6 +29,35 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
 
 
+# TODO(sibyl-vie3Poto): This is an interim workaround to avoid code duplication between
+# LinearClassifier and LinearRegressor. Eventually, the logic of this method
+# should be moved either to the body of get_train_step in SDCAOptimizer or to
+# _DNNLinearCombinedBaseEstimator which is the lowest common ancestor of
+# LinearClassifier, LinearRegressor.
+def _get_linear_train_and_loss_ops(features, target, linear_feature_columns,
+                                   target_column, linear_optimizer, loss_type,
+                                   centered_bias, scope_name):
+  """Returns train and loss ops for SDCAOptimizer."""
+  global_step = contrib_variables.get_global_step()
+  assert global_step
+
+  logits, columns_to_variables, _ = layers.weighted_sum_from_feature_columns(
+      columns_to_tensors=features,
+      feature_columns=linear_feature_columns,
+      num_outputs=target_column.num_label_columns,
+      weight_collections=[scope_name],
+      scope=scope_name)
+  with ops.control_dependencies([centered_bias]):
+    loss = target_column.loss(logits, target, features)
+  logging_ops.scalar_summary("loss", loss)
+
+  train_op = linear_optimizer.get_train_step(linear_feature_columns,
+                                             target_column.weight_column_name,
+                                             loss_type, features, target,
+                                             columns_to_variables, global_step)
+  return train_op, loss
+
+
 class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
   """Linear classifier model.
 
@@ -149,24 +178,14 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     if self._target_column.num_label_columns > 2:
       raise ValueError(
           "SDCA does not currently support multi-class classification.")
-    global_step = contrib_variables.get_global_step()
-    assert global_step
 
-    logits, columns_to_variables, _ = layers.weighted_sum_from_feature_columns(
-        columns_to_tensors=features,
-        feature_columns=self._linear_feature_columns,
-        num_outputs=self._target_column.num_label_columns,
-        weight_collections=[self._linear_model.get_scope_name()],
-        scope=self._linear_model.get_scope_name())
-    with ops.control_dependencies([self._centered_bias()]):
-      loss = self._target_column.loss(logits, targets, features)
-    logging_ops.scalar_summary("loss", loss)
-
-    train_ops = self._linear_optimizer.get_train_step(
-        self._linear_feature_columns, self._target_column.weight_column_name,
-        self._loss_type(), features, targets, columns_to_variables, global_step)
-
-    return train_ops, loss
+    return _get_linear_train_and_loss_ops(features, targets,
+                                          self._linear_feature_columns,
+                                          self._target_column,
+                                          self._linear_optimizer,
+                                          self._loss_type(),
+                                          self._centered_bias(),
+                                          self._linear_model.get_scope_name())
 
   def _loss_type(self):
     return "logistic_loss"
@@ -275,9 +294,19 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
 
   def _get_train_ops(self, features, targets):
     """See base class."""
-    if isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
-      raise ValueError("SDCAOptimizer does not currently support regression.")
-    return super(LinearRegressor, self)._get_train_ops(features, targets)
+    if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
+      return super(LinearRegressor, self)._get_train_ops(features, targets)
+
+    return _get_linear_train_and_loss_ops(features, targets,
+                                          self._linear_feature_columns,
+                                          self._target_column,
+                                          self._linear_optimizer,
+                                          self._loss_type(),
+                                          self._centered_bias(),
+                                          self._linear_model.get_scope_name())
+
+  def _loss_type(self):
+    return "squared_loss"
 
   @property
   def weights_(self):
