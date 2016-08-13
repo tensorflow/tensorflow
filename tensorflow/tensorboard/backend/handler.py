@@ -31,7 +31,7 @@ import mimetypes
 import os
 import re
 
-from six import BytesIO
+from six import BytesIO, StringIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -276,7 +276,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       values = self._multiplexer.Scalars(run, tag)
 
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
       writer.writerow(['Wall time', 'Step', 'Value'])
       writer.writerows(values)
@@ -353,7 +353,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     run = query_params.get('run')
     compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
 
       # Build the headers; we have two columns for timing and two columns for
