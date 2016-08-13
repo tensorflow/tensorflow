@@ -73,12 +73,11 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
                                                      scope)
       table_shards = []
       for i in range(num_shards):
-        # TODO(andreasst): add placement hints once bug 30002625 is fixed.
         table_shards.append(lookup_ops.MutableHashTable(
             key_dtype=key_dtype,
             value_dtype=value_dtype,
             default_value=default_value,
-            name='%s-%d' % (name, i)))
+            name='%s-%d-of-%d' % (name, i, num_shards)))
       self._table_shards = table_shards
       # TODO(andreasst): add a value_shape() method to LookupInterface
       # pylint: disable=protected-access
@@ -387,8 +386,12 @@ class SdcaModel(object):
     self._slots = collections.defaultdict(list)
     for name in ['sparse_features_weights', 'dense_features_weights']:
       for var in self._variables[name]:
-        self._slots['unshrinked_' + name].append(var_ops.Variable(
-            array_ops.zeros_like(var.initialized_value(), dtypes.float32)))
+        with ops.device(var.device):
+          # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
+          # fixed
+          self._slots['unshrinked_' + name].append(var_ops.Variable(
+              array_ops.zeros_like(var.initialized_value(), dtypes.float32),
+              name=var.op.name + '_unshrinked/SDCAOptimizer'))
 
   def _assertSpecified(self, items, check_in):
     for x in items:
