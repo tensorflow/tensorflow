@@ -3893,6 +3893,7 @@ class GraphKeys(object):
   INIT_OP = "init_op"
   LOCAL_INIT_OP = "local_init_op"
   READY_OP = "ready_op"
+  READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
 
