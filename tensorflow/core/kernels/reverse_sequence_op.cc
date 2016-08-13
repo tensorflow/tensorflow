@@ -76,7 +76,6 @@ void CheckErrors(OpKernelContext* context, int batch_dim, int seq_dim) {
   }
 }
 
-template <typename Tlen>
 void CheckErrorsGPU(OpKernelContext* context, int batch_dim,
                             int seq_dim) {
   const Tensor& input = context->input(0);
@@ -100,13 +99,13 @@ void CheckErrorsGPU(OpKernelContext* context, int batch_dim,
 template <>
 void CheckErrors<GPUDevice, int32>(OpKernelContext* context, int batch_dim,
                             int seq_dim) {
-  CheckErrorsGPU<int32>(context, batch_dim, seq_dim);
+  CheckErrorsGPU(context, batch_dim, seq_dim);
 }
 
 template <>
 void CheckErrors<GPUDevice, int64>(OpKernelContext* context, int batch_dim,
                             int seq_dim) {
-  CheckErrorsGPU<int32>(context, batch_dim, seq_dim);
+  CheckErrorsGPU(context, batch_dim, seq_dim);
 }
 
 template <typename Device, typename T, typename Tlen>
