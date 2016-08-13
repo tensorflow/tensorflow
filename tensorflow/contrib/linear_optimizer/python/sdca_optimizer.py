@@ -16,8 +16,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import uuid
-
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
 from tensorflow.python.ops import array_ops
@@ -36,6 +34,7 @@ class SDCAOptimizer(object):
     real_feature_column = real_valued_column(...)
     sparse_feature_column = sparse_column_with_hash_bucket(...)
     sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
+                                          num_partitions=1,
                                           symmetric_l2_regularization=2.0)
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[real_feature_column, sparse_feature_column],
@@ -47,13 +46,17 @@ class SDCAOptimizer(object):
   Here the expectation is that the input_fn_* functions passed to train and
   evaluate return a pair (dict, label_tensor) where dict has `example_id_column`
   as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
+  num_paritions defines the number of partitions of the loss function, which
+  is equivalent to the number of concurrent workers running the train steps.
   """
 
   def __init__(self,
                example_id_column,
+               num_partitions=1,
                symmetric_l1_regularization=0.0,
                symmetric_l2_regularization=1.0):
     self._example_id_column = example_id_column
+    self._num_partitions = num_partitions
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
 
@@ -157,13 +160,13 @@ class SDCAOptimizer(object):
           dense_features_weights=dense_feature_weights)
       return examples, sdca_variables
 
-    options = dict(
-        symmetric_l1_regularization=self._symmetric_l1_regularization,
-        symmetric_l2_regularization=self._symmetric_l2_regularization,
-        loss_type=loss_type)
     training_examples, training_variables = _training_examples_and_variables()
-    sdca_model = sdca_ops.SdcaModel(container=uuid.uuid4().hex,
-                                    examples=training_examples,
-                                    variables=training_variables,
-                                    options=options)
+    sdca_model = sdca_ops.SdcaModel(
+        examples=training_examples,
+        variables=training_variables,
+        options=dict(
+            symmetric_l1_regularization=self._symmetric_l1_regularization,
+            symmetric_l2_regularization=self._symmetric_l2_regularization,
+            num_partitions=self._num_partitions,
+            loss_type=loss_type))
     return sdca_model.minimize(global_step=global_step)
