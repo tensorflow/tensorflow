@@ -362,7 +362,6 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  @abc.abstractproperty
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
 
@@ -410,7 +409,7 @@ class BaseEstimator(
     Returns:
       metrics: `dict` of `Tensor` objects.
     """
-    raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
+    pass
 
   def _get_feature_ops_from_example(self, examples_batch):
     """Returns feature parser for given example batch using features info.
