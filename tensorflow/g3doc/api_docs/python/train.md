@@ -1900,7 +1900,7 @@ session and check if it could be initialized automatically.
 
 - - -
 
-#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0, init_fn=None)` {#Supervisor.__init__}
+#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, ready_for_local_init_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0, init_fn=None)` {#Supervisor.__init__}
 
 Create a `Supervisor`.
 
@@ -1916,6 +1916,13 @@ Create a `Supervisor`.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from `tf.report_uninitialized_variables()`  If
     `None`, the model is not checked for readiness.
+*  <b>`ready_for_local_init_op`</b>: 1-D string `Tensor`.  This tensor is evaluated by
+    supervisors in `prepare_or_wait_for_session()` to check if the model is
+    ready to run the local_init_op.
+    The model is considered ready if it returns an empty array.  Defaults to
+    the tensor returned from
+    `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+    model is not checked for readiness before running local_init_op.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.
@@ -2504,6 +2511,13 @@ so it does not need to be passed to the `stop()` method.
 
 - - -
 
+#### `tf.train.Supervisor.ready_for_local_init_op` {#Supervisor.ready_for_local_init_op}
+
+
+
+
+- - -
+
 #### `tf.train.Supervisor.ready_op` {#Supervisor.ready_op}
 
 Return the Ready Op used by the supervisor.
@@ -2637,7 +2651,7 @@ with tf.Graph().as_default():
 `wait_for_session()` waits for a model to be initialized by other processes.
 - - -
 
-#### `tf.train.SessionManager.__init__(local_init_op=None, ready_op=None, graph=None, recovery_wait_secs=30)` {#SessionManager.__init__}
+#### `tf.train.SessionManager.__init__(local_init_op=None, ready_op=None, ready_for_local_init_op=None, graph=None, recovery_wait_secs=30)` {#SessionManager.__init__}
 
 Creates a SessionManager.
 
@@ -2648,6 +2662,12 @@ The `ready_op` is an `Operation` used to check if the model is ready.  The
 model is considered ready if that operation returns an empty string tensor.
 If the operation returns non empty string tensor, the elements are
 concatenated and used to indicate to the user why the model is not ready.
+
+The `ready_for_local_init_op` is an `Operation` used to check if the model
+is ready to run local_init_op.  The model is considered ready if that
+operation returns an empty string tensor. If the operation returns non empty
+string tensor, the elements are concatenated and used to indicate to the
+user why the model is not ready.
 
 If `ready_op` is `None`, the model is not checked for readiness.
 
@@ -2661,8 +2681,16 @@ be initialized or restored.  Defaults to 30 seconds.
 *  <b>`local_init_op`</b>: An `Operation` run immediately after session creation.
      Usually used to initialize tables and local variables.
 *  <b>`ready_op`</b>: An `Operation` to check if the model is initialized.
+*  <b>`ready_for_local_init_op`</b>: An `Operation` to check if the model is ready
+     to run local_init_op.
 *  <b>`graph`</b>: The `Graph` that the model will use.
 *  <b>`recovery_wait_secs`</b>: Seconds between checks for the model to be ready.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If ready_for_local_init_op is not None but local_init_op is
+    None
 
 
 - - -
@@ -2680,21 +2708,12 @@ up to `max_wait_secs`, for recovery to succeed.
 
 If the model cannot be recovered successfully then it is initialized by
 either running the provided `init_op`, or calling the provided `init_fn`.
-It is an error if the model cannot be recovered and neither an `init_op`
-or an `init_fn` are passed.
+The local_init_op is also run after init_op and init_fn, regardless of
+whether the model was recovered successfully, but only if
+ready_for_local_init_op passes.
 
-This is a convenient function for the following, with a few error checks
-added:
-
-```python
-sess, initialized = self.recover_session(master)
-if not initialized:
-  if init_op:
-    sess.run(init_op, feed_dict=init_feed_dict)
-  if init_fn;
-    init_fn(sess)
-return sess
-```
+It is an error if the model cannot be recovered and no `init_op`
+or `init_fn` or `local_init_op` are passed.
 
 ##### Args:
 
@@ -2745,7 +2764,7 @@ and can be recovered from a checkpoint, recover it.
 ##### Returns:
 
   A pair (sess, initialized) where 'initialized' is `True` if
-  the session could be recovered, `False` otherwise.
+  the session could be recovered and initialized, `False` otherwise.
 
 
 - - -
