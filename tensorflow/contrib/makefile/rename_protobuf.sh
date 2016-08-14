@@ -23,7 +23,10 @@
 # symbols that clash. It also renames all the include paths to google/protobuf3
 # throughout the protobuf and TensorFlow code.
 # This is a massive hack, and if possible it's recommended that you switch your
-# whole application to protobuf v3 so there's no mismatch with TensorFlow.
+# whole application to protobuf v3 so there's no mismatch with TensorFlow. There
+# are also no guarantees that this will continue to work with future versions of
+# protobuf or TensorFlow, or that it's a bulletproof solution for every
+# application.
 #
 # To use this script, run the following sequence:
 # tensorflow/contrib/makefile/download_dependencies.sh
