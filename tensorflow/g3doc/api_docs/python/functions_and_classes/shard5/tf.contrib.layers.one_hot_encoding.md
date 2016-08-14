@@ -10,7 +10,7 @@ Transform numeric labels into onehot_labels using tf.one_hot.
 *  <b>`on_value`</b>: A scalar defining the on-value.
 *  <b>`off_value`</b>: A scalar defining the off-value.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 

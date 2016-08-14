@@ -31,7 +31,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
     both strides must have the same value.
 *  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
 *  <b>`outputs_collections`</b>: The collections to which the outputs are added.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
@@ -259,7 +259,7 @@ Flattens the input while maintaining the batch_size.
 
 *  <b>`inputs`</b>: a tensor of size [batch_size, ...].
 *  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
@@ -342,7 +342,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
     both strides must have the same value.
 *  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
 *  <b>`outputs_collections`</b>: The collections to which the outputs are added.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
@@ -368,7 +368,7 @@ Transform numeric labels into onehot_labels using tf.one_hot.
 *  <b>`on_value`</b>: A scalar defining the on-value.
 *  <b>`off_value`</b>: A scalar defining the off-value.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
