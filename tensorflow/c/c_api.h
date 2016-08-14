@@ -291,7 +291,7 @@ extern void TF_SetDevice(TF_OperationDescription* desc, const char* device);
 //   TF_Port concat_dim_input = {...};
 //   TF_AddInput(desc, concat_dim_input);
 //   TF_Port values_inputs[5] = {{...}, ..., {...}};
-//   TF_AddInputList(desc, 5, values_inputs);
+//   TF_AddInputList(desc, values_inputs, 5);
 
 // For inputs that take a single tensor.
 extern void TF_AddInput(TF_OperationDescription* desc, TF_Port input);
