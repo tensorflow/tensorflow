@@ -318,8 +318,9 @@ def embedding_rnn_seq2seq(encoder_inputs,
   Returns:
     A tuple of the form (outputs, state), where:
       outputs: A list of the same length as decoder_inputs of 2D Tensors with
-        shape [batch_size x num_decoder_symbols] containing the generated
-        outputs.
+        shape [batch_size x output_size] containing the generated
+        outputs. Each row of the 2D tensors is a dense representation of the
+        predicted token.
       state: The state of each decoder cell in each time-step. This is a list
         with length len(decoder_inputs) -- one item for each time-step.
         It is a 2D Tensor of shape [batch_size x cell.state_size].
@@ -1083,7 +1084,8 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
   Returns:
     A tuple of the form (outputs, losses), where:
       outputs: The outputs for each bucket. Its j'th element consists of a list
-        of 2D Tensors of shape [batch_size x num_decoder_symbols] (jth outputs).
+        of 2D Tensors of shape [batch_size x output_size] (jth outputs). Each
+        row of the 2D tensors is a dense representation of the predicted token.
       losses: List of scalar Tensors, representing losses for each bucket, or,
         if per_example_loss is set, a list of 1D batch-sized float Tensors.
 
