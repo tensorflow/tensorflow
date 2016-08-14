@@ -259,12 +259,13 @@ For other variations of valid optimization flags, see [clang optimization levels
 
 ## Raspberry Pi
 
-Building on the Raspberry Pi is similar to a normal Linux system, though we
-recommend starting by compiling and installing protobuf:
+Building on the Raspberry Pi is similar to a normal Linux system. First
+download the dependencies and build protobuf:
 
 ```bash
+tensorflow/contrib/makefile/download_dependencies.sh
 cd tensorflow/contrib/makefile/downloads/protobuf/
-./autogen.sh 
+./autogen.sh
 ./configure
 make
 sudo make install
@@ -295,6 +296,8 @@ OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize" \
 CXX=g++-4.8
 ```
 
+For more examples, look at the tensorflow/contrib/pi_examples folder in the
+source tree, which contains code samples aimed at the Raspberry Pi.
 
 # Other notes
 

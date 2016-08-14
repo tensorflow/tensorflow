@@ -52,7 +52,8 @@ LIBS := \
 -ldl \
 -lpthread \
 -lm \
--ljpeg
+-ljpeg \
+-lz
 LIBFLAGS :=
 
 EXECUTABLE_SRCS := tensorflow/contrib/pi_examples/label_image/label_image.cc
