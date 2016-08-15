@@ -468,14 +468,12 @@ class SupervisorTest(tf.test.TestCase):
     server = tf.train.Server.create_local_server()
     logdir = _test_dir("default_ready_for_local_init_op")
 
-    step_count = [0]
-
-    def svthread(is_chief):
+    def get_session(is_chief):
       g = tf.Graph()
       with g.as_default():
         with tf.device("/job:local"):
           v = tf.Variable(1, name="var_v")
-          v1 = v.assign_add(1)
+          vadd = v.assign_add(1)
           w = tf.Variable(
               v, trainable=False, collections=[tf.GraphKeys.LOCAL_VARIABLES])
           ready_for_local_init_op = tf.report_uninitialized_variables(
@@ -488,26 +486,19 @@ class SupervisorTest(tf.test.TestCase):
           init_op=v.initializer,
           ready_for_local_init_op=ready_for_local_init_op)
       sess = sv.prepare_or_wait_for_session(server.target)
-      if is_chief:
-        self.assertEqual(1, sess.run(w))
-        step_count[0] = 1
-        while step_count[0] == 1:
-          time.sleep(0.1)
-        self.assertEqual(2, sess.run(v))
-      else:
-        while step_count[0] == 0:
-          pass
-        self.assertEqual(2, sess.run(v1))
-        step_count[0] = 0
-        self.assertEqual(1, sess.run(w))
-      sv.stop()
 
-    thread0 = self.checkedThread(target=svthread, args=(True,))
-    thread1 = self.checkedThread(target=svthread, args=(False,))
-    thread0.start()
-    thread1.start()
-    thread0.join()
-    thread1.join()
+      return sv, sess, v, vadd, w
+
+    sv0, sess0, v0, _, w0 = get_session(True)
+    sv1, sess1, _, vadd1, w1 = get_session(False)
+
+    self.assertEqual(1, sess0.run(w0))
+    self.assertEqual(2, sess1.run(vadd1))
+    self.assertEqual(1, sess1.run(w1))
+    self.assertEqual(2, sess0.run(v0))
+
+    sv0.stop()
+    sv1.stop()
 
   def testReadyForLocalInitOpRestoreFromCheckpoint(self):
     server = tf.train.Server.create_local_server()
@@ -526,14 +517,12 @@ class SupervisorTest(tf.test.TestCase):
       time.sleep(1)
       sv.stop()
 
-    step_count = [0]
-
-    def svthread(is_chief):
+    def get_session(is_chief):
       g = tf.Graph()
       with g.as_default():
         with tf.device("/job:local"):
           v = tf.Variable(1.0, name="v")
-          v1 = v.assign_add(1)
+          vadd = v.assign_add(1)
           w = tf.Variable(
               v, trainable=False, collections=[tf.GraphKeys.LOCAL_VARIABLES])
           ready_for_local_init_op = tf.report_uninitialized_variables(
@@ -545,26 +534,19 @@ class SupervisorTest(tf.test.TestCase):
           recovery_wait_secs=1,
           ready_for_local_init_op=ready_for_local_init_op)
       sess = sv.prepare_or_wait_for_session(server.target)
-      if is_chief:
-        self.assertEqual(10, sess.run(w))
-        step_count[0] = 1
-        while step_count[0] == 1:
-          time.sleep(0.1)
-        self.assertEqual(11, sess.run(v))
-      else:
-        while step_count[0] == 0:
-          pass
-        self.assertEqual(11, sess.run(v1))
-        step_count[0] = 0
-        self.assertEqual(10, sess.run(w))
-      sv.stop()
 
-    thread0 = self.checkedThread(target=svthread, args=(True,))
-    thread1 = self.checkedThread(target=svthread, args=(False,))
-    thread0.start()
-    thread1.start()
-    thread0.join()
-    thread1.join()
+      return sv, sess, v, vadd, w
+
+    sv0, sess0, v0, _, w0 = get_session(True)
+    sv1, sess1, _, vadd1, w1 = get_session(False)
+
+    self.assertEqual(10, sess0.run(w0))
+    self.assertEqual(11, sess1.run(vadd1))
+    self.assertEqual(10, sess1.run(w1))
+    self.assertEqual(11, sess0.run(v0))
+
+    sv0.stop()
+    sv1.stop()
 
   def testLocalInitOp(self):
     logdir = _test_dir("default_local_init_op")
