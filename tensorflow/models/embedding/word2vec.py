@@ -248,7 +248,7 @@ class Word2Vec(object):
     true_logits = tf.reduce_sum(tf.mul(example_emb, true_w), 1) + true_b
 
     # Sampled logits: [batch_size, num_sampled]
-    # We replicate sampled noise lables for all examples in the batch
+    # We replicate sampled noise labels for all examples in the batch
     # using the matmul.
     sampled_b_vec = tf.reshape(sampled_b, [opts.num_samples])
     sampled_logits = tf.matmul(example_emb,
