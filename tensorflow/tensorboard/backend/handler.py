@@ -97,6 +97,10 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   # How many samples to include in sampling API calls by default.
   DEFAULT_SAMPLE_COUNT = 10
 
+  # NOTE TO MAINTAINERS: An accurate Content-Length MUST be specified on all
+  #                      responses using send_header.
+  protocol_version = 'HTTP/1.1'
+
   def __init__(self, multiplexer, *args):
     self._multiplexer = multiplexer
     BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
