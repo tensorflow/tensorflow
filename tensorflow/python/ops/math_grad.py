@@ -30,11 +30,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
-# Gradient ops that do not have gradients themselves.
-ops.NoGradient("SigmoidGrad")
-ops.NoGradient("TanhGrad")
-
-
 def _safe_shape_div(x, y):
   """Divides `x / y` assuming `x, y >= 0`, treating `0 / 0 = 0`."""
   return x // math_ops.maximum(y, 1)
@@ -309,13 +304,24 @@ def _TanhGrad(op, grad):
     return gen_math_ops._tanh_grad(y, grad)
 
 
+@ops.RegisterGradient("TanhGrad")
+def _TanhGradGrad(op, grad):
+  """Returns grad * (-2 * tanh(x) * (1 - tanh(x) * tanh(x))) """
+  y = op.outputs[0]
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    t = math_ops.tanh(y)
+    return grad * (-2 * t * (1 - t * t))
+
+
 @ops.RegisterGradient("Erf")
 def _ErfGrad(op, grad):
   """Returns grad * 2/sqrt(pi) * exp(-x**2)."""
   x = op.inputs[0]
   two_over_root_pi = constant_op.constant(2 / np.sqrt(np.pi), dtype=grad.dtype)
   with ops.control_dependencies([grad.op]):
-    return  grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
+    return grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
 
 
 @ops.RegisterGradient("Erfc")
@@ -325,7 +331,7 @@ def _ErfcGrad(op, grad):
   minus_two_over_root_pi = constant_op.constant(-2 / np.sqrt(np.pi),
                                                 dtype=grad.dtype)
   with ops.control_dependencies([grad.op]):
-    return  grad * minus_two_over_root_pi * math_ops.exp(-math_ops.square(x))
+    return grad * minus_two_over_root_pi * math_ops.exp(-math_ops.square(x))
 
 
 @ops.RegisterGradient("Lgamma")
@@ -409,6 +415,16 @@ def _SigmoidGrad(op, grad):
     if y.dtype.is_complex:
       y = math_ops.conj(y)
     return gen_math_ops._sigmoid_grad(y, grad)
+
+
+@ops.RegisterGradient("SigmoidGrad")
+def _SigmoidGradGrad(op, grad):
+  y = op.outputs[0]
+  with ops.control_dependencies([grad.op]):
+    if y.dtype.is_complex:
+      y = math_ops.conj(y)
+    s = math_ops.sigmoid(x)
+    return grad * s * (1 - s) * (1 - 2 * s)
 
 
 @ops.RegisterGradient("Sign")

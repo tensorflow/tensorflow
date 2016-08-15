@@ -1577,6 +1577,25 @@ def sigmoid(x, name=None):
     return gen_math_ops._sigmoid(x, name=name)
 
 
+def sigmoid_grad(x, name=None):
+  """Computes the gradient of the sigmoid of `x` element-wise.
+
+  Specifically, `y = sigmoid(x) * (1 - sigmoid(x))`.
+
+  Args:
+    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
+      or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x` if `x.dtype != qint32`
+      otherwise the return type is `quint8`.
+  """
+  with ops.name_scope(name, "SigmoidGrad", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._sigmoid_grad(x, name=name)
+
+
 def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
@@ -1595,6 +1614,30 @@ def tanh(x, name=None):
       return ops.SparseTensor(indices=x.indices, values=x_tanh, shape=x.shape)
     else:
       return gen_math_ops._tanh(x, name=name)
+
+
+def tanh_grad(x, name=None):
+  """Computes the gradient of the hyperbolic tangent of `x` element-wise.
+
+  Specifically, `y = sech(x) * sech(x)`.
+
+  Args:
+    x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
+      `complex64`, `int64`, or `qint32`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor or SparseTensor respectively with the same type as `x` if
+    `x.dtype != qint32` otherwise the return type is `quint8`.
+  """
+  with ops.name_scope(name, "TanhGrad", [x]) as name:
+    if isinstance(x, ops.SparseTensor):
+      x_tanh_grad = gen_math_ops._tanh_grad(x.values, name=name)
+      return ops.SparseTensor(indices=x.indices,
+                              values=x_tanh_grad,
+                              shape=x.shape)
+    else:
+      return gen_math_ops._tanh_grad(x, name=name)
 
 
 def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
