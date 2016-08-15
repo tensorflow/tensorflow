@@ -76,12 +76,6 @@ def get_summary_writer(logdir):
   return summary_writer_cache.SummaryWriterCache.get(logdir)
 
 
-class NanLossDuringTrainingError(RuntimeError):
-
-  def __str__(self):
-    return 'NaN loss during training.'
-
-
 def _make_saver(graph, keep_checkpoint_max=5):
   vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
   if vars_to_save:
@@ -496,7 +490,7 @@ def _train_internal(graph,
           failure_message = 'Model diverged with loss = NaN.'
           if fail_on_nan_loss:
             logging.error(failure_message)
-            raise NanLossDuringTrainingError()
+            raise monitors_lib.NanLossDuringTrainingError()
           else:
             logging.warning(failure_message)
 
