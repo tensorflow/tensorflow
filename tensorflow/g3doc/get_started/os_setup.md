@@ -1037,3 +1037,23 @@ installed, such as:
 ```bash
 $ pip install --upgrade protobuf
 ```
+
+### Mac OS X: Segmentation Fault when import tensorflow 
+
+On Mac OS X, you might get the following error when importing tensorflow in python:
+
+```
+>>> import tensorflow
+I tensorflow/stream_executor/dso_loader.cc:108] successfully opened CUDA library libcublas.dylib locally 
+I tensorflow/stream_executor/dso_loader.cc:108] successfully opened CUDA library libcudnn.dylib locally 
+I tensorflow/stream_executor/dso_loader.cc:108] successfully opened CUDA library libcufft.dylib locally 
+"import tensorflow" terminated by signal SIGSEGV (Address boundary error)
+```
+
+This is due to the fact that by default, cuda creates libcuda.dylib, but tensorflow tries to load libcuda.1.dylib.
+This can be resolved by create a symbolic link:
+
+```bash
+ln -sf /usr/local/cuda/lib/libcuda.dylib /usr/local/cuda/lib/libcuda.1.dylib
+```
+
