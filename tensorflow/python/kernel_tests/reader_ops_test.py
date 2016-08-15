@@ -178,7 +178,8 @@ class WholeFileReaderTest(tf.test.TestCase):
                        for i in range(3)]
     self._content = [b"One\na\nb\n", b"Two\nC\nD", b"Three x, y, z"]
     for fn, c in zip(self._filenames, self._content):
-      open(fn, "wb").write(c)
+      with open(fn, "wb") as h:
+        h.write(c)
 
   def tearDown(self):
     super(WholeFileReaderTest, self).tearDown()
@@ -240,13 +241,13 @@ class TextLineReaderTest(tf.test.TestCase):
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
       filenames.append(fn)
-      f = open(fn, "wb")
-      for j in range(self._num_lines):
-        f.write(self._LineText(i, j))
-        # Always include a newline after the record unless it is
-        # at the end of the file, in which case we include it sometimes.
-        if j + 1 != self._num_lines or i == 0:
-          f.write(b"\r\n" if crlf else b"\n")
+      with open(fn, "wb") as f:
+        for j in range(self._num_lines):
+          f.write(self._LineText(i, j))
+          # Always include a newline after the record unless it is
+          # at the end of the file, in which case we include it sometimes.
+          if j + 1 != self._num_lines or i == 0:
+            f.write(b"\r\n" if crlf else b"\n")
     return filenames
 
   def _testOneEpoch(self, files):
@@ -311,11 +312,11 @@ class FixedLengthRecordReaderTest(tf.test.TestCase):
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
       filenames.append(fn)
-      f = open(fn, "wb")
-      f.write(b"H" * self._header_bytes)
-      for j in range(self._num_records):
-        f.write(self._Record(i, j))
-      f.write(b"F" * self._footer_bytes)
+      with open(fn, "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        for j in range(self._num_records):
+          f.write(self._Record(i, j))
+        f.write(b"F" * self._footer_bytes)
     return filenames
 
   def testOneEpoch(self):
