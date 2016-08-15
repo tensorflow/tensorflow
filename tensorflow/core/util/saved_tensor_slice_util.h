@@ -50,6 +50,12 @@ string EncodeTensorNameSlice(const string& name,
 Status DecodeTensorNameSlice(const string& code, string* name,
                              tensorflow::TensorSlice* slice);
 
+// Extracts the full shape, slice spec, and shape of the slice from
+// "shape_and_slice".  On non-OK return, caller must clear the out-arguments
+// before reusing.
+Status ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
+                          TensorSlice* slice, TensorShape* shape_slice);
+
 template <typename T>
 struct SaveTypeTraits;
 

@@ -204,9 +204,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     // timelines, the pruned graph, statistics, etc.).
   }
 
-  ~ReffedClientGraph() override {
-    DeregisterPartitions();
-  }
+  ~ReffedClientGraph() override { DeregisterPartitions(); }
 
   const SimpleClientGraph* client_graph() { return client_graph_.get(); }
 
@@ -617,17 +615,13 @@ class CleanupBroadcastHelper {
   }
 
   // Returns a non-owned pointer to a request buffer for all calls.
-  CleanupGraphRequest* request() {
-    return &req_;
-  }
+  CleanupGraphRequest* request() { return &req_; }
 
   // Returns a non-owned pointer to a response buffer for the ith call.
-  CleanupGraphResponse* response(int i) {
-    return &resps_[i];
-  }
+  CleanupGraphResponse* response(int i) { return &resps_[i]; }
 
   // Called when the ith response is received.
-  void call_done(int i, const Status &s) {
+  void call_done(int i, const Status& s) {
     bool run_callback = false;
     Status status_copy;
     {
@@ -669,14 +663,13 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
     int64 step_id, StatusCallback done) {
   const int num = partitions_.size();
   // Helper object will be deleted when the final call completes.
-  CleanupBroadcastHelper* helper = new CleanupBroadcastHelper(
-      step_id, num, std::move(done));
+  CleanupBroadcastHelper* helper =
+      new CleanupBroadcastHelper(step_id, num, std::move(done));
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
-    part.worker->CleanupGraphAsync(helper->request(), helper->response(i),
-                                   [helper, i](const Status& s) {
-                                     helper->call_done(i, s);
-                                   });
+    part.worker->CleanupGraphAsync(
+        helper->request(), helper->response(i),
+        [helper, i](const Status& s) { helper->call_done(i, s); });
   }
 }
 
@@ -968,10 +961,10 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 
   // Schedule post-processing and cleanup to be done asynchronously.
   rcg->CleanupPartitionsAsync(step_id, [](const Status& s) {
-      if (!s.ok()) {
-        LOG(ERROR) << "Cleanup partition error: " << s;
-      }
-    });
+    if (!s.ok()) {
+      LOG(ERROR) << "Cleanup partition error: " << s;
+    }
+  });
   return Status::OK();
 }
 

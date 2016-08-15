@@ -89,7 +89,7 @@ def avg_pool2d(inputs,
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
     outputs_collections: The collections to which the outputs are added.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     A `Tensor` representing the results of the pooling operation.
@@ -679,7 +679,7 @@ def dropout(inputs,
       is in training mode. If so, dropout is applied and values scaled.
       Otherwise, inputs is returned.
     outputs_collections: collection to add the outputs.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     a tensor representing the output of the operation.
@@ -703,7 +703,7 @@ def flatten(inputs,
   Args:
     inputs: a tensor of size [batch_size, ...].
     outputs_collections: collection to add the outputs.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     a flattened tensor with shape [batch_size, k].
@@ -854,7 +854,7 @@ def max_pool2d(inputs,
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
     outputs_collections: The collections to which the outputs are added.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     A `Tensor` representing the results of the pooling operation.
@@ -888,7 +888,7 @@ def one_hot_encoding(labels,
     on_value: A scalar defining the on-value.
     off_value: A scalar defining the off-value.
     outputs_collections: collection to add the outputs.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     one hot encoding of the labels.

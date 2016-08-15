@@ -16,7 +16,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
     both strides must have the same value.
 *  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
 *  <b>`outputs_collections`</b>: The collections to which the outputs are added.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 

@@ -541,6 +541,7 @@ def train(train_op,
           ready_op=_USE_DEFAULT,
           summary_op=_USE_DEFAULT,
           save_summaries_secs=600,
+          summary_writer=_USE_DEFAULT,
           startup_delay_steps=0,
           saver=None,
           save_interval_secs=600,
@@ -586,6 +587,9 @@ def train(train_op,
       `tf.report_uninitialized_variables()`.
     summary_op: The summary operation.
     save_summaries_secs: How often, in seconds, to save summaries.
+    summary_writer: `SummaryWriter` to use.  Can be `None`
+      to indicate that no summaries should be written. If unset, we
+      create a SummaryWriter.
     startup_delay_steps: The number of steps to wait for before beginning. Note
       that this must be 0 if a sync_optimizer is supplied.
     saver: Saver to save checkpoints. If None, a default one will be created
@@ -637,6 +641,9 @@ def train(train_op,
     if summary_op == _USE_DEFAULT:
       summary_op = logging_ops.merge_all_summaries()
 
+    if summary_writer == _USE_DEFAULT:
+      summary_writer = supervisor.Supervisor.USE_DEFAULT
+
     if local_init_op == _USE_DEFAULT:
       local_init_op = control_flow_ops.group(
           tf_variables.initialize_local_variables(),
@@ -677,6 +684,7 @@ def train(train_op,
       local_init_op=local_init_op,
       ready_op=ready_op,
       summary_op=summary_op,
+      summary_writer=summary_writer,
       global_step=global_step,
       saver=saver,
       save_summaries_secs=save_summaries_secs,

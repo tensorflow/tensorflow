@@ -26,7 +26,12 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import gfile
+
 slim = tf.contrib.slim
+
+FLAGS = flags.FLAGS
 
 
 def GenerateTestData(num_classes, batch_size):
@@ -77,6 +82,37 @@ class EvaluationTest(tf.test.TestCase):
       slim.evaluation.evaluation(
           sess, init_op=init_op, eval_op=update_op)
       self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
+
+  def testFinalOpsIsEvaluated(self):
+    _, update_op = slim.metrics.streaming_accuracy(
+        self._predictions, self._labels)
+    init_op = tf.group(tf.initialize_all_variables(),
+                       tf.initialize_local_variables())
+
+    with self.test_session() as sess:
+      accuracy_value = slim.evaluation.evaluation(
+          sess, init_op=init_op, final_op=update_op)
+      self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
+
+  def testFinalOpsOnEvaluationLoop(self):
+    _, update_op = slim.metrics.streaming_accuracy(
+        self._predictions, self._labels)
+    init_op = tf.group(tf.initialize_all_variables(),
+                       tf.initialize_local_variables())
+    # Create Checkpoint and log directories
+    chkpt_dir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
+    gfile.MakeDirs(chkpt_dir)
+    logdir = os.path.join(self.get_temp_dir(), 'tmp_logs2/')
+    gfile.MakeDirs(logdir)
+    saver = tf.train.Saver(tf.all_variables())
+    with self.test_session() as sess:
+      init_op.run()
+      # Save initialized variables to checkpoint directory
+      saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
+      accuracy_value = slim.evaluation.evaluation_loop(
+          '', chkpt_dir, logdir, final_op=update_op,
+          max_number_of_evaluations=1)
+      self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
 
   def _create_names_to_metrics(self, predictions, labels):
     accuracy0, update_op0 = tf.contrib.metrics.streaming_accuracy(

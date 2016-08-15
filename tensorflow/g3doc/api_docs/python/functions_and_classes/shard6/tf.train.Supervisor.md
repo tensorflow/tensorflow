@@ -153,7 +153,7 @@ session and check if it could be initialized automatically.
 
 - - -
 
-#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0, init_fn=None)` {#Supervisor.__init__}
+#### `tf.train.Supervisor.__init__(graph=None, ready_op=0, ready_for_local_init_op=0, is_chief=True, init_op=0, init_feed_dict=None, local_init_op=0, logdir=None, summary_op=0, saver=0, global_step=0, save_summaries_secs=120, save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120, checkpoint_basename='model.ckpt', session_manager=None, summary_writer=0, init_fn=None)` {#Supervisor.__init__}
 
 Create a `Supervisor`.
 
@@ -169,6 +169,13 @@ Create a `Supervisor`.
     The model is considered ready if it returns an empty array.  Defaults to
     the tensor returned from `tf.report_uninitialized_variables()`  If
     `None`, the model is not checked for readiness.
+*  <b>`ready_for_local_init_op`</b>: 1-D string `Tensor`.  This tensor is evaluated by
+    supervisors in `prepare_or_wait_for_session()` to check if the model is
+    ready to run the local_init_op.
+    The model is considered ready if it returns an empty array.  Defaults to
+    the tensor returned from
+    `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+    model is not checked for readiness before running local_init_op.
 *  <b>`is_chief`</b>: If True, create a chief supervisor in charge of initializing
     and restoring the model.  If False, create a supervisor that relies
     on a chief supervisor for inits and restore.
@@ -753,6 +760,13 @@ so it does not need to be passed to the `stop()` method.
 ##### Returns:
 
   The started thread.
+
+
+- - -
+
+#### `tf.train.Supervisor.ready_for_local_init_op` {#Supervisor.ready_for_local_init_op}
+
+
 
 
 - - -
