@@ -231,4 +231,4 @@ class _ReservoirBucket(object):
   def Items(self):
     """Get all the items in the bucket."""
     with self._mutex:
-      return self.items
+      return list(self.items)
