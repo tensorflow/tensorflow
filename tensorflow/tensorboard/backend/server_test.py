@@ -64,9 +64,9 @@ class TensorboardServerTest(tf.test.TestCase):
     self._server.shutdown()
     self._server.server_close()
 
-  def _get(self, path):
+  def _get(self, path, headers={}):
     """Perform a GET request for the given path."""
-    self._connection.request('GET', path)
+    self._connection.request('GET', path, None, headers)
     return self._connection.getresponse()
 
   def _getJson(self, path):
@@ -75,18 +75,6 @@ class TensorboardServerTest(tf.test.TestCase):
     response = self._connection.getresponse()
     self.assertEqual(response.status, 200)
     return json.loads(response.read().decode('utf-8'))
-
-  def _decodeResponse(self, response):
-    """Decompresses (if necessary) the response from the server."""
-    encoding = response.getheader('Content-Encoding')
-    content = response.read()
-    if encoding in ('gzip', 'x-gzip', 'deflate'):
-      if encoding == 'deflate':
-        data = BytesIO(zlib.decompress(content))
-      else:
-        data = gzip.GzipFile('', 'rb', 9, BytesIO(content))
-      content = data.read()
-    return content
 
   def testBasicStartup(self):
     """Start the server up and then shut it down immediately."""
@@ -180,8 +168,7 @@ class TensorboardServerTest(tf.test.TestCase):
     response = self._get('/data/graph?run=run1&limit_attr_size=1024'
                          '&large_attrs_key=_very_large_attrs')
     self.assertEqual(response.status, 200)
-    # Decompress (unzip) the response, since graphs come gzipped.
-    graph_pbtxt = self._decodeResponse(response)
+    graph_pbtxt = response.read()
     # Parse the graph from pbtxt into a graph message.
     graph = tf.GraphDef()
     graph = text_format.Parse(graph_pbtxt, graph)
@@ -194,12 +181,40 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
                      [b'very_large_attr'])
 
+  def testAcceptGzip_compressesResponse(self):
+    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
+                         '&large_attrs_key=_very_large_attrs',
+                         {'Accept-Encoding': 'gzip'})
+    self.assertEqual(response.status, 200)
+    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
+    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
+    graph = text_format.Parse(pbtxt, tf.GraphDef())
+    self.assertEqual(len(graph.node), 2)
+
+  def testAcceptAnyEncoding_compressesResponse(self):
+    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
+                         '&large_attrs_key=_very_large_attrs',
+                         {'Accept-Encoding': '*'})
+    self.assertEqual(response.status, 200)
+    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
+    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
+    graph = text_format.Parse(pbtxt, tf.GraphDef())
+    self.assertEqual(len(graph.node), 2)
+
+  def testAcceptDoodleEncoding_doesNotCompressResponse(self):
+    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
+                         '&large_attrs_key=_very_large_attrs',
+                         {'Accept-Encoding': 'doodle'})
+    self.assertEqual(response.status, 200)
+    self.assertIsNone(response.getheader('Content-Encoding'))
+    graph = text_format.Parse(response.read(), tf.GraphDef())
+    self.assertEqual(len(graph.node), 2)
+
   def testRunMetadata(self):
     """Test retrieving the run metadata information."""
     response = self._get('/data/run_metadata?run=run1&tag=test%20run')
     self.assertEqual(response.status, 200)
-    # Decompress (unzip) the response, since run outputs come gzipped.
-    run_metadata_pbtxt = self._decodeResponse(response)
+    run_metadata_pbtxt = response.read()
     # Parse from pbtxt into a message.
     run_metadata = tf.RunMetadata()
     text_format.Parse(run_metadata_pbtxt, run_metadata)
