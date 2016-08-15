@@ -456,7 +456,8 @@ class InferRealValuedColumnsTest(tf.test.TestCase):
 class ReplicaDeviceSetterTest(tf.test.TestCase):
 
   def testVariablesAreOnPs(self):
-    with tf.device(estimator._get_replica_device_setter(num_ps_replicas=1)):
+    with tf.device(estimator._get_replica_device_setter(
+        tf.contrib.learn.RunConfig(num_ps_replicas=1))):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w
@@ -467,7 +468,8 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('/job:worker', a.device)
 
   def testVariablesAreLocal(self):
-    with tf.device(estimator._get_replica_device_setter(num_ps_replicas=0)):
+    with tf.device(estimator._get_replica_device_setter(
+        tf.contrib.learn.RunConfig(num_ps_replicas=0))):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
       a = v + w
@@ -478,7 +480,8 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('', a.device)
 
   def testMutableHashTableIsOnPs(self):
-    with tf.device(estimator._get_replica_device_setter(num_ps_replicas=1)):
+    with tf.device(estimator._get_replica_device_setter(
+        tf.contrib.learn.RunConfig(num_ps_replicas=1))):
       default_val = tf.constant([-1, -1], tf.int64)
       table = tf.contrib.lookup.MutableHashTable(tf.string,
                                                  tf.int64,
@@ -489,7 +492,8 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('/job:ps/task:0', output.device)
 
   def testMutableHashTableIsLocal(self):
-    with tf.device(estimator._get_replica_device_setter(num_ps_replicas=0)):
+    with tf.device(estimator._get_replica_device_setter(
+        tf.contrib.learn.RunConfig(num_ps_replicas=0))):
       default_val = tf.constant([-1, -1], tf.int64)
       table = tf.contrib.lookup.MutableHashTable(tf.string,
                                                  tf.int64,

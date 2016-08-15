@@ -39,6 +39,7 @@ class RunConfig(object):
                num_cores=4,
                log_device_placement=False,
                gpu_memory_fraction=1,
+               cluster_spec=None,
                tf_random_seed=None,
                save_summary_steps=100,
                save_checkpoints_secs=60,
@@ -54,6 +55,9 @@ class RunConfig(object):
       log_device_placement: Log the op placement to devices (default: False).
       gpu_memory_fraction: Fraction of GPU memory used by the process on
         each GPU uniformly on the same machine.
+      cluster_spec: a tf.train.ClusterSpec object that describes the cluster in
+        the case of distributed computation. If missing, reasonable assumptions
+        are made for the addresses of jobs.
       tf_random_seed: Random seed for TensorFlow initializers.
         Setting this value allows consistency between reruns.
       save_summary_steps: Save summaries every this many steps.
@@ -75,6 +79,7 @@ class RunConfig(object):
                                  inter_op_parallelism_threads=num_cores,
                                  intra_op_parallelism_threads=num_cores,
                                  gpu_options=gpu_options)
+    self.cluster_spec = cluster_spec
     self.tf_random_seed = tf_random_seed
     self.save_summary_steps = save_summary_steps
     self.save_checkpoints_secs = save_checkpoints_secs
