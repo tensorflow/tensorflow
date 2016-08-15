@@ -19,8 +19,8 @@ filegroup(
 )
 
 py_binary(
-    name = "tensorboard",
-    srcs = ["tensorboard.py"],
+    name = "__main__",
+    srcs = ["__main__.py"],
     data = [":frontend"],
     srcs_version = "PY2AND3",
     deps = [

@@ -259,7 +259,7 @@ Add summary ops to your TensorFlow graph, and use a
 [`SummaryWriter`](../api_docs/python/train.md#SummaryWriter) to write
 these summaries to a log directory.  Then, start TensorBoard using
 
-    python tensorflow/tensorboard/tensorboard.py --logdir=path/to/log-directory
+    python -m tensorflow.tensorboard --logdir=path/to/log-directory
 
 For more details, see the [Summaries and TensorBoard tutorial]
 (../how_tos/summaries_and_tensorboard/index.md).
