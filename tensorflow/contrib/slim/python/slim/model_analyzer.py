@@ -88,17 +88,24 @@ def analyze_vars(variables, print_info=False):
     print_info: Optional, if true print variables and their shape.
 
   Returns:
-    total size of the variables.
+    (total size of the variables, total bytes of the variables)
   """
   if print_info:
     print('---------')
     print('Variables: name (type shape) [size]')
     print('---------')
   total_size = 0
+  total_bytes = 0
   for var in variables:
     # if var.num_elements() is None or [] assume size 0.
     var_size = var.get_shape().num_elements() or 0
+    var_bytes = var_size * var.dtype.size
     total_size += var_size
+    total_bytes += var_bytes
     if print_info:
-      print(var.name, tensor_description(var), '[' + str(var_size) + ']')
-  return total_size
+      print(var.name, tensor_description(var), '[%d, bytes: %d]' %
+            (var_size, var_bytes))
+  if print_info:
+    print('Total size of variables: %d' % total_size)
+    print('Total bytes of variables: %d' % total_bytes)
+  return total_size, total_bytes
