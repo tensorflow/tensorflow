@@ -171,7 +171,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       code: The numeric HTTP status code to use.
     """
     out = BytesIO()
-    f = gzip.GzipFile(fileobj=out, mode='wb')
+    f = gzip.GzipFile(fileobj=out, mode='wb', compresslevel=3)
     f.write(compat.as_bytes(content))
     f.close()
     gzip_content = out.getvalue()
