@@ -386,6 +386,18 @@ Status DirectSession::Run(const RunOptions& run_options,
           cost_model_manager_.AddToCostGraphDef(item.graph, cost_graph));
     }
   }
+
+  // If requested via RunOptions, output the partition graphs.
+  if (run_options.output_partition_graphs()) {
+    protobuf::RepeatedPtrField<GraphDef>* parition_graph_defs =
+        run_metadata->mutable_partition_graphs();
+    for (const PerPartitionExecutorsAndLib& exec_and_lib :
+         executors_and_keys->items) {
+      GraphDef* partition_graph_def = parition_graph_defs->Add();
+      exec_and_lib.graph->ToGraphDef(partition_graph_def);
+    }
+  }
+
   return Status::OK();
 }
 
