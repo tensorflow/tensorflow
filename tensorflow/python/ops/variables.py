@@ -1035,12 +1035,12 @@ def report_uninitialized_variables(var_list=None,
   """
   if var_list is None:
     var_list = all_variables() + local_variables()
-  # Backwards compatibility for old-style variables. TODO(touts): remove.
-  if not var_list:
-    var_list = []
-    for op in ops.get_default_graph().get_operations():
-      if op.type in ["Variable", "AutoReloadVariable"]:
-        var_list.append(op.outputs[0])
+    # Backwards compatibility for old-style variables. TODO(touts): remove.
+    if not var_list:
+      var_list = []
+      for op in ops.get_default_graph().get_operations():
+        if op.type in ["Variable", "AutoReloadVariable"]:
+          var_list.append(op.outputs[0])
   if not var_list:
     # Return an empty tensor so we only need to check for returned tensor
     # size being 0 as an indication of model ready.

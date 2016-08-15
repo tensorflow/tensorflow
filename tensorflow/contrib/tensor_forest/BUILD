@@ -311,6 +311,7 @@ py_test(
     size = "small",
     srcs = ["python/topn_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":topn_py",
         "//tensorflow:tensorflow_py",

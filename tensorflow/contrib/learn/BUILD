@@ -459,6 +459,10 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/rnn_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",  # http://b/30843204
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",

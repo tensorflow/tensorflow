@@ -73,12 +73,11 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
                                                      scope)
       table_shards = []
       for i in range(num_shards):
-        # TODO(andreasst): add placement hints once bug 30002625 is fixed.
         table_shards.append(lookup_ops.MutableHashTable(
             key_dtype=key_dtype,
             value_dtype=value_dtype,
             default_value=default_value,
-            name='%s-%d' % (name, i)))
+            name='%s-%d-of-%d' % (name, i, num_shards)))
       self._table_shards = table_shards
       # TODO(andreasst): add a value_shape() method to LookupInterface
       # pylint: disable=protected-access
@@ -281,8 +280,7 @@ class SdcaModel(object):
 
     ```python
     # Create a solver with the desired parameters.
-    lr = tf.contrib.linear_optimizer.SdcaModel(
-        container, examples, variables, options)
+    lr = tf.contrib.linear_optimizer.SdcaModel(examples, variables, options)
     opt_op = lr.minimize()
 
     predictions = lr.predictions(examples)
@@ -291,9 +289,6 @@ class SdcaModel(object):
     # Primal loss only
     unregularized_loss = lr.unregularized_loss(examples)
 
-    container: Name of the container (eg a hex-encoded UUID) where internal
-      state of the optimizer can be stored. The container can be safely shared
-      across many models.
     examples: {
       sparse_features: list of SparseFeatureColumn.
       dense_features: list of dense tensors of type float32.
@@ -309,6 +304,9 @@ class SdcaModel(object):
       symmetric_l1_regularization: 0.0
       symmetric_l2_regularization: 1.0
       loss_type: "logistic_loss"
+      num_partitions: 1 (Optional, with default value of 1. Number of
+      partitions of the global loss function, 1 means single machine solver,
+      and >=1 when we have more than one optimizer working concurrently.)
     }
     ```
 
@@ -326,13 +324,11 @@ class SdcaModel(object):
   """
 
   def __init__(self,
-               container,
                examples,
                variables,
                options,
                num_table_shards=None):  # pylint: disable=unused-argument
     """Create a new sdca optimizer."""
-    # TODO(andreasst): get rid of obsolete container parameter
 
     if not examples or not variables or not options:
       raise ValueError('examples, variables and options must all be specified.')
@@ -380,6 +376,10 @@ class SdcaModel(object):
     # Algorithmic requirement (for now) is to have minimal l2 of 1.0.
     return max(self._options['symmetric_l2_regularization'], 1.0)
 
+  def _num_partitions(self):
+    # Number of partitions of the global objective.
+    return self._options.get('num_partitions', 1)
+
   # TODO(sibyl-Aix6ihai): Use optimizer interface to make use of slot creation logic.
   def _create_slots(self):
     # Make internal variables which have the updates before applying L1
@@ -387,8 +387,12 @@ class SdcaModel(object):
     self._slots = collections.defaultdict(list)
     for name in ['sparse_features_weights', 'dense_features_weights']:
       for var in self._variables[name]:
-        self._slots['unshrinked_' + name].append(var_ops.Variable(
-            array_ops.zeros_like(var.initialized_value(), dtypes.float32)))
+        with ops.device(var.device):
+          # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
+          # fixed
+          self._slots['unshrinked_' + name].append(var_ops.Variable(
+              array_ops.zeros_like(var.initialized_value(), dtypes.float32),
+              name=var.op.name + '_unshrinked/SDCAOptimizer'))
 
   def _assertSpecified(self, items, check_in):
     for x in items:
@@ -517,7 +521,7 @@ class SdcaModel(object):
           loss_type=self._options['loss_type'],
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
-          num_partitions=1,
+          num_partitions=self._num_partitions(),
           # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
           # to run more than one iteration on single mini-batch as we want to
           # spend more time in compute. SDCA works better with larger

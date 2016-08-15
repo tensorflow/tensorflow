@@ -628,6 +628,8 @@
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`TransformedDistribution`](../../api_docs/python/contrib.distributions.md#TransformedDistribution)
   * [`Uniform`](../../api_docs/python/contrib.distributions.md#Uniform)
+  * [`WishartCholesky`](../../api_docs/python/contrib.distributions.md#WishartCholesky)
+  * [`WishartFull`](../../api_docs/python/contrib.distributions.md#WishartFull)
 
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
   * [`decode_audio`](../../api_docs/python/contrib.ffmpeg.md#decode_audio)

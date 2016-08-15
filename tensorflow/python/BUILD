@@ -1359,9 +1359,7 @@ cuda_py_test(
     name = "session_manager_test",
     size = "medium",  # TODO(irving): Can this be made small?
     srcs = ["training/session_manager_test.py"],
-    additional_deps = [
-        ":training",
-    ],
+    additional_deps = [":training"],
     main = "training/session_manager_test.py",
 )
 
