@@ -175,6 +175,15 @@ cc_binary(
 )
 
 cc_binary(
+    name = "libtensorflow_c.so",
+    linkshared = 1,
+    deps = [
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/c:c_api",
+    ],
+)
+
+cc_binary(
     name = "libtensorflow_cc.so",
     linkshared = 1,
     deps = [
