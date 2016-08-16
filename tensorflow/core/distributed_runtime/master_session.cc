@@ -658,6 +658,7 @@ class CleanupBroadcastHelper {
 
 }  // namespace
 
+
 void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
     int64 step_id, StatusCallback done) {
   const int num = partitions_.size();

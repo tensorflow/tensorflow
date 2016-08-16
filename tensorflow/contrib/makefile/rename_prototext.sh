@@ -1,3 +1,5 @@
+#!/bin/bash -e -x
+
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,15 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import os
-from IPython.lib import passwd
 
-c.NotebookApp.ip = '*'
-c.NotebookApp.port = int(os.getenv('PORT', 8888))
-c.NotebookApp.open_browser = False
-c.MultiKernelManager.default_kernel_name = 'python2'
+PROTO_TEXT_COMMAND=$1
+shift
+${PROTO_TEXT_COMMAND} $*
 
-# sets a password if PASSWORD is set in the environment
-if 'PASSWORD' in os.environ:
-    c.NotebookApp.password = passwd(os.environ['PASSWORD'])
-    del os.environ['PASSWORD']
+# Assumes a fixed order for the arguments.
+PROTO_LAST_FOUR_ARGS=(${@: -4})
+PROTO_FILE=${PROTO_LAST_FOUR_ARGS[3]}
+CC_FILE=${PROTO_FILE%.proto}.pb_text.cc
+H_FILE=${PROTO_FILE%.proto}.pb_text.h
+GEN_DIR=${PROTO_LAST_FOUR_ARGS[0]}
+GEN_CC=${GEN_DIR}/${CC_FILE#tensorflow/core}
+GEN_H=${GEN_DIR}/${H_FILE#tensorflow/core}
+
+sed -i '' 's%protobuf::%protobuf3::%g' ${GEN_CC}
+sed -i '' 's%protobuf::%protobuf3::%g' ${GEN_H}
+sed -i '' 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_CC}
+sed -i '' 's%google_2fprotobuf3_2f%google_2fprotobuf_2f%g' ${GEN_H}

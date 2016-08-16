@@ -36,14 +36,26 @@ curl "https://bitbucket.org/eigen/eigen/get/${EIGEN_HASH}.tar.gz" \
 -o /tmp/eigen-${EIGEN_HASH}.tar.gz
 tar xzf /tmp/eigen-${EIGEN_HASH}.tar.gz -C ${DOWNLOADS_DIR}
 
-git clone https://github.com/google/re2.git ${DOWNLOADS_DIR}/re2
-git clone https://github.com/google/gemmlowp.git ${DOWNLOADS_DIR}/gemmlowp
-git clone https://github.com/google/protobuf.git ${DOWNLOADS_DIR}/protobuf
-
 # Link to the downloaded Eigen library from a permanent directory name, since
 # the downloaded name changes with every version.
 cd ${DOWNLOADS_DIR}
 rm -rf eigen-latest
 ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
+
+# TODO(petewarden) - Some new code in Eigen triggers a clang bug with iOS arm64,
+# so work around it by patching the source.
+sed -e 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
+-i '' \
+eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+sed -e 's#static uint32x2_t p2ui_CONJ_XOR = vld1_u32( conj_XOR_DATA );#static uint32x2_t p2ui_CONJ_XOR;// = vld1_u32( conj_XOR_DATA ); - Removed by scripts#' \
+-i '' \
+eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+sed -e 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DATA );#static uint64x2_t p2ul_CONJ_XOR;// = vld1q_u64( p2ul_conj_XOR_DATA ); - Removed by script#' \
+-i '' \
+eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+
+git clone https://github.com/google/re2.git re2
+git clone https://github.com/google/gemmlowp.git gemmlowp
+git clone https://github.com/google/protobuf.git protobuf
 
 echo "download_dependencies.sh completed successfully."
