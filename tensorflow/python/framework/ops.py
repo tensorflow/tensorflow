@@ -2040,6 +2040,9 @@ class Graph(object):
     Note that this is unrelated to the
     [GraphDef version](#Graph.graph_def_version).
     """
+    if self._finalized:
+      return self._version
+
     with self._lock:
       return self._version
 
@@ -2388,6 +2391,9 @@ class Graph(object):
         example, an invalid string.
       KeyError: If `obj` is not an object in the graph.
     """
+    if self._finalized:
+      return self._as_graph_element_locked(obj, allow_tensor, allow_operation)
+
     with self._lock:
       return self._as_graph_element_locked(obj, allow_tensor, allow_operation)
 
@@ -2492,6 +2498,9 @@ class Graph(object):
     Returns:
       A list of Operations.
     """
+    if self._finalized:
+      return list(self._nodes_by_id.values())
+
     with self._lock:
       return list(self._nodes_by_id.values())
 
