@@ -503,6 +503,53 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                             rtol=1e-2,
                             atol=1e-2)
 
+  def testOutOfRangeSparseFeatures(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({'age': [0],
+                            'gender': [0]}, 0),
+        make_example_proto({'age': [1],
+                            'gender': [1]}, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(0, 0)
+      options = dict(
+          symmetric_l2_regularization=1,
+          symmetric_l1_regularization=0,
+          loss_type='logistic_loss')
+
+      lr = SdcaModel(examples, variables, options)
+      tf.initialize_all_variables().run()
+      train_op = lr.minimize()
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   'Found sparse feature indices out.*'):
+        train_op.run()
+
+  def testOutOfRangeDenseFeatures(self):
+    with self._single_threaded_test_session():
+      examples, variables = make_dense_examples_and_variables_dicts(
+          dense_features_values=[[[1.0, 0.0], [0.0, 1.0]]],
+          weights=[20.0, 10.0],
+          labels=[1.0, 0.0])
+      # Replace with a variable of size 1 instead of 2.
+      variables['dense_features_weights'] = [
+          tf.Variable(tf.zeros(
+              [1], dtype=tf.float32))
+      ]
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='logistic_loss')
+      lr = SdcaModel(examples, variables, options)
+      tf.initialize_all_variables().run()
+      train_op = lr.minimize()
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          'More dense features than we have parameters for.*'):
+        train_op.run()
+
   # TODO(katsiaspis): add a test for the case when examples at the end of an
   # epoch are repeated, since example id may be duplicated.
 
