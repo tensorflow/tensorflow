@@ -254,6 +254,9 @@ class SumReductionTest(tf.test.TestCase):
   def testGradient4(self):
     self._compareGradient([2, 3, 4, 2], [], None)
 
+  def testGradient5(self):
+    self._compareGradient([2, 3, 4, 2], [3, 4, 2], 0)
+
   def testHighRank(self):
     # Do a bunch of random high dimensional reductions
     np.random.seed(42)
@@ -379,6 +382,15 @@ class MeanReductionTest(tf.test.TestCase):
                                                   delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
 
+      su = tf.reduce_mean(t, 0)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  s,
+                                                  su,
+                                                  [3, 4, 2],
+                                                  x_init_value=x,
+                                                  delta=1)
+      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+
   def testEmptyGradients(self):
     with self.test_session():
       x = tf.zeros([0, 3])
@@ -459,6 +471,15 @@ class ProdReductionTest(tf.test.TestCase):
                                                   x.shape,
                                                   su,
                                                   [1],
+                                                  x_init_value=x,
+                                                  delta=1)
+      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+
+      su = tf.reduce_prod(t, 0)
+      jacob_t, jacob_n = tf.test.compute_gradient(t,
+                                                  x.shape,
+                                                  su,
+                                                  [3, 4, 2],
                                                   x_init_value=x,
                                                   delta=1)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
