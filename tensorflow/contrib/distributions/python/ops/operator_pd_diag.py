@@ -28,6 +28,11 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
+__all__ = [
+    'OperatorPDDiag',
+    'OperatorPDSqrtDiag',
+]
+
 
 @six.add_metaclass(abc.ABCMeta)
 class OperatorPDDiagBase(operator_pd.OperatorPDBase):
