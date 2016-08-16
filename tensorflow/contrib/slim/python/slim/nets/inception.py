@@ -12,28 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TF-Slim Nets.
-
-## Standard Networks.
-@@alexnet_v2
-@@overfeat
-@@vgg_a
-@@vgg_16
-"""
+"""Brings inception_v1, inception_v2 and inception_v3 under one namespace."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,
-# pylint: disable=wildcard-import
-
-# Collapse nets into a single namespace.
-from tensorflow.contrib.slim.python.slim.nets import alexnet
-from tensorflow.contrib.slim.python.slim.nets import inception
-from tensorflow.contrib.slim.python.slim.nets import overfeat
-from tensorflow.contrib.slim.python.slim.nets import vgg
-from tensorflow.python.util.all_util import make_all
-# pylint: enable=unused-import,wildcard-import
-
-__all__ = make_all(__name__)
+# pylint: disable=unused-import
+from tensorflow.contrib.slim.python.slim.nets.inception_v1 import inception_v1
+from tensorflow.contrib.slim.python.slim.nets.inception_v1 import inception_v1_base
+from tensorflow.contrib.slim.python.slim.nets.inception_v2 import inception_v2
+from tensorflow.contrib.slim.python.slim.nets.inception_v2 import inception_v2_base
+from tensorflow.contrib.slim.python.slim.nets.inception_v3 import inception_v3
+from tensorflow.contrib.slim.python.slim.nets.inception_v3 import inception_v3_arg_scope
+from tensorflow.contrib.slim.python.slim.nets.inception_v3 import inception_v3_base
+# pylint: enable=unused-import
