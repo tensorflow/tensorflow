@@ -1523,5 +1523,51 @@ class QueueContainerTest(tf.test.TestCase):
                      q.queue_ref.op.get_attr("container"))
 
 
+class FIFOQueueBenchmark(tf.test.Benchmark):
+  """Benchmark FIFOQueue operations."""
+
+  def _build_graph(self):
+    """Builds a graph that enqueues and dequeues a single float.
+
+    Returns:
+      A tuple with the graph init tensor and graph output tensor.
+    """
+    q = tf.FIFOQueue(1, "float")
+    init = q.enqueue(1.0)
+    x = q.dequeue()
+    q_inc = q.enqueue(x + 1)
+    return init, q_inc
+
+  # TODO(suharshs): Add benchmarks for:
+  #   - different capacities of the queue
+  #   - various sizes of tensors
+  #   - enqueue_many, dequeue_many
+  def _run(self, num_iters):
+    """Benchmarks enqueueing and dequeueing from a FIFOQueue.
+
+    Args:
+      num_iters: The number of iterations to run.
+
+    Returns:
+      The duration of the run in seconds.
+    """
+    graph = tf.Graph()
+    with graph.as_default():
+      init, output = self._build_graph()
+    with tf.Session(graph=graph) as session:
+      init.run()
+      _ = session.run(output)  # warm up.
+      start_time = time.time()
+      for _ in range(num_iters):
+        _ = session.run(output)
+      duration = time.time() - start_time
+    print("%f secs per enqueue-dequeue" % (duration / num_iters))
+
+    self.report_benchmark(
+        name="fifo_queue", iters=num_iters, wall_time=duration / num_iters)
+
+    return duration
+
+
 if __name__ == "__main__":
   tf.test.main()
