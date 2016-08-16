@@ -24,6 +24,9 @@ namespace tensorflow {
 class Tensor;
 class RecvTensorResponse;
 
+// TODO(jeff,sanjay): this should not be grpc specific.  Instead of
+// grpc::ByteBuffer*, it should accept an object of an interface type
+// to which owned byte-arrays can be added.
 namespace grpc {
 
 // Encode a RecvTensorResponse protocol buffer into a byte buffer in a

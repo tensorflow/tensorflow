@@ -5237,7 +5237,7 @@ op {
     name: "N"
     type: "int"
     has_minimum: true
-    minimum: 2
+    minimum: 1
   }
   attr {
     name: "T"

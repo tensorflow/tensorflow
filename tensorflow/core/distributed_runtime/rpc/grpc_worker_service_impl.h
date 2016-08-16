@@ -27,6 +27,7 @@ limitations under the License.
 #include "grpc++/support/byte_buffer.h"
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
+#include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
 // Contains potentially large GraphDef.
@@ -35,8 +36,33 @@ TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RegisterGraphRequest);
 TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphRequest);
 // Contains potentially large StepStats, TensorProto.
 TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphResponse);
-// Contains potentially large TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RecvTensorResponse);
+
+namespace tensorflow {
+class GrpcByteSource : public TensorResponse::Source {
+ public:
+  explicit GrpcByteSource(grpc_byte_buffer* buffer) : buffer_(buffer) {}
+  ~GrpcByteSource() override { DeleteStream(); }
+
+  typedef ::grpc::tensorflow_helper::GrpcBufferReader Reader;
+
+  protobuf::io::ZeroCopyInputStream* contents() override {
+    DeleteStream();
+    stream_ = new (&space_) Reader(buffer_);
+    return stream_;
+  }
+
+ private:
+  void DeleteStream() {
+    if (stream_) {
+      stream_->~Reader();
+    }
+  }
+
+  grpc_byte_buffer* buffer_;  // Not owned
+  Reader* stream_ = nullptr;  // Points into space_ if non-nullptr
+  char space_[sizeof(Reader)];
+};
+}  // namespace tensorflow
 
 namespace grpc {
 class CompletionQueue;
@@ -44,6 +70,38 @@ class Channel;
 class RpcService;
 class ServerCompletionQueue;
 class ServerContext;
+
+// Support parsing/unparsing of tensorflow::TensorResponse.
+// Wire-format is identical to RecvTensorResponse.
+template <>
+class SerializationTraits<tensorflow::TensorResponse>
+    : public UnlimitedSizeProtoSerializationTraits<tensorflow::TensorResponse> {
+ public:
+  static Status Serialize(const tensorflow::TensorResponse& msg,
+                          grpc_byte_buffer** bp, bool* own_buffer) {
+    LOG(FATAL) << "TODO(sanjay,jeff): Implement";
+    return Status();
+  }
+  static Status Deserialize(grpc_byte_buffer* buffer,
+                            tensorflow::TensorResponse* msg,
+                            int max_message_size) {
+    if (buffer == nullptr) {
+      return Status(StatusCode::INTERNAL, "No payload");
+    }
+    Status result = g_core_codegen_interface->ok();
+    if (result.ok()) {
+      ::tensorflow::GrpcByteSource source(buffer);
+      auto s = msg->ParseFrom(&source);
+      if (!s.ok()) {
+        result = Status(StatusCode::INTERNAL,
+                        ::tensorflow::strings::StrCat(
+                            "TensorResponse parse error", s.ToString()));
+      }
+    }
+    g_core_codegen_interface->grpc_byte_buffer_destroy(buffer);
+    return result;
+  }
+};
 }  // namespace grpc
 
 namespace tensorflow {
@@ -114,12 +172,12 @@ class WorkerService GRPC_FINAL {
           AsyncCleanupAllRaw(context, request, cq));
     }
     std::unique_ptr<::grpc::ClientAsyncResponseReaderInterface<
-        ::tensorflow::RecvTensorResponse>>
+        ::tensorflow::TensorResponse>>
     AsyncRecvTensor(::grpc::ClientContext* context,
                     const ::tensorflow::RecvTensorRequest& request,
                     ::grpc::CompletionQueue* cq) {
       return std::unique_ptr<::grpc::ClientAsyncResponseReaderInterface<
-          ::tensorflow::RecvTensorResponse>>(
+          ::tensorflow::TensorResponse>>(
           AsyncRecvTensorRaw(context, request, cq));
     }
     std::unique_ptr<::grpc::ClientAsyncResponseReaderInterface<
@@ -173,7 +231,7 @@ class WorkerService GRPC_FINAL {
                        const ::tensorflow::CleanupAllRequest& request,
                        ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface<
-        ::tensorflow::RecvTensorResponse>*
+        ::tensorflow::TensorResponse>*
     AsyncRecvTensorRaw(::grpc::ClientContext* context,
                        const ::tensorflow::RecvTensorRequest& request,
                        ::grpc::CompletionQueue* cq) = 0;
@@ -246,12 +304,12 @@ class WorkerService GRPC_FINAL {
           AsyncCleanupAllRaw(context, request, cq));
     }
     std::unique_ptr<
-        ::grpc::ClientAsyncResponseReader<::tensorflow::RecvTensorResponse>>
+        ::grpc::ClientAsyncResponseReader<::tensorflow::TensorResponse>>
     AsyncRecvTensor(::grpc::ClientContext* context,
                     const ::tensorflow::RecvTensorRequest& request,
                     ::grpc::CompletionQueue* cq) {
       return std::unique_ptr<
-          ::grpc::ClientAsyncResponseReader<::tensorflow::RecvTensorResponse>>(
+          ::grpc::ClientAsyncResponseReader<::tensorflow::TensorResponse>>(
           AsyncRecvTensorRaw(context, request, cq));
     }
     std::unique_ptr<
@@ -299,7 +357,7 @@ class WorkerService GRPC_FINAL {
     AsyncCleanupAllRaw(::grpc::ClientContext* context,
                        const ::tensorflow::CleanupAllRequest& request,
                        ::grpc::CompletionQueue* cq) GRPC_OVERRIDE;
-    ::grpc::ClientAsyncResponseReader<::tensorflow::RecvTensorResponse>*
+    ::grpc::ClientAsyncResponseReader<::tensorflow::TensorResponse>*
     AsyncRecvTensorRaw(::grpc::ClientContext* context,
                        const ::tensorflow::RecvTensorRequest& request,
                        ::grpc::CompletionQueue* cq) GRPC_OVERRIDE;

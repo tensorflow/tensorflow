@@ -109,7 +109,7 @@ REGISTER_OP("DynamicStitch")
     .Input("indices: N * int32")
     .Input("data: N * T")
     .Output("merged: T")
-    .Attr("N : int >= 2")
+    .Attr("N : int >= 1")
     .Attr("T : type")
     .SetShapeFn([](InferenceContext* c) {
       int64 num_partitions;
