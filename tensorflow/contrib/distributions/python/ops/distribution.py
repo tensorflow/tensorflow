@@ -23,6 +23,7 @@ import six
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -207,6 +208,145 @@ class Distribution(BaseDistribution):
   ```
 
   """
+
+  @classmethod
+  def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
+    """Shapes of parameters given the desired shape of a call to `sample()`.
+
+    Subclasses should override static method `_param_shapes`.
+
+    Args:
+      sample_shape: `Tensor` or python list/tuple. Desired shape of a call to
+        `sample()`.
+      name: name to prepend ops with.
+
+    Returns:
+      `dict` of parameter name to `Tensor` shapes.
+    """
+    with ops.name_scope(name, values=[sample_shape]):
+      return cls._param_shapes(sample_shape)
+
+  @classmethod
+  def param_static_shapes(cls, sample_shape):
+    """param_shapes with static (i.e. TensorShape) shapes.
+
+    Args:
+      sample_shape: `TensorShape` or python list/tuple. Desired shape of a call
+        to `sample()`.
+
+    Returns:
+      `dict` of parameter name to `TensorShape`.
+
+    Raises:
+      ValueError: if `sample_shape` is a `TensorShape` and is not fully defined.
+    """
+    if isinstance(sample_shape, tensor_shape.TensorShape):
+      if not sample_shape.is_fully_defined():
+        raise ValueError("TensorShape sample_shape must be fully defined")
+      sample_shape = sample_shape.as_list()
+
+    params = cls.param_shapes(sample_shape)
+
+    static_params = {}
+    for name, shape in params.items():
+      static_shape = tensor_util.constant_value(shape)
+      if static_shape is None:
+        raise ValueError(
+            "sample_shape must be a fully-defined TensorShape or list/tuple")
+      static_params[name] = tensor_shape.TensorShape(static_shape)
+
+    return static_params
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    raise NotImplementedError("_param_shapes not implemented")
+
+  @classmethod
+  def from_params(cls, make_safe=True, **kwargs):
+    """Given (unconstrained) parameters, return an instantiated distribution.
+
+    Subclasses should implement a static method `_safe_transforms` that returns
+    a dict of parameter transforms, which will be used if `make_safe = True`.
+
+    Example usage:
+
+    ```
+    # Let's say we want a sample of size (batch_size, 10)
+    shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
+
+    # shapes has a Tensor shape for mu and sigma
+    # shapes == {
+    #   'mu': tf.constant([batch_size, 10]),
+    #   'sigma': tf.constant([batch_size, 10]),
+    # }
+
+    # Here we parameterize mu and sigma with the output of a linear
+    # layer. Note that sigma is unconstrained.
+    params = {}
+    for name, shape in shapes.items():
+      params[name] = linear(x, shape[1])
+
+    # Note that you can forward other kwargs to the `Distribution`, like
+    # `allow_nan_stats` or `name`.
+    mvn = MultiVariateNormalDiag.from_params(**params, allow_nan_stats=True)
+    ```
+
+    Distribution parameters may have constraints (e.g. `sigma` must be positive
+    for a `Normal` distribution) and the `from_params` method will apply default
+    parameter transforms. If a user wants to use their own transform, they can
+    apply it externally and set `make_safe=False`.
+
+    Args:
+      make_safe: Whether the `params` should be constrained. If True,
+        `from_params` will apply default parameter transforms. If False, no
+        parameter transforms will be applied.
+      **kwargs: dict of parameters for the distribution.
+
+    Returns:
+      A distribution parameterized by possibly transformed parameters in
+      `kwargs`.
+
+    Raises:
+      TypeError: if `make_safe` is `True` but `_safe_transforms` is not
+        implemented directly for `cls`.
+    """
+    params = kwargs
+    if make_safe:
+      with ops.name_scope("DistributionFromParams", values=params.values()):
+        # Check to ensure the _safe_transforms function used is defined directly
+        # on cls and not on a parent.
+        if super(cls, cls)._safe_transforms == cls._safe_transforms:
+          raise TypeError("_safe_transforms not implemented for %s" %
+                          cls.__name__)
+
+        transforms = cls._safe_transforms()
+        for param_name, param in params.items():
+          if param_name in transforms:
+            params[param_name] = transforms[param_name](param)
+
+    return cls(**params)
+
+  @staticmethod
+  def _safe_transforms():
+    """Default parameter transforms.
+
+    Subclasses should document the transforms applied to the parameters.
+
+    Using the normal distribution as an example (docstring omitted):
+
+    ```
+    @staticmethod
+    def _safe_transforms():
+      return {"sigma": nn.softplus}
+    ```
+
+    Note that `mu` is not the returned dict because no constraining transform
+    is necessary.
+
+    Returns:
+      `dict` of parameter names to callable that will constrain the parameter.
+    """
+    raise NotImplementedError("_safe_transforms is not implemented")
 
   @abc.abstractproperty
   def allow_nan_stats(self):

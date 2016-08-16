@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
@@ -122,6 +123,23 @@ class Normal(distribution.Distribution):
         self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((mu, sigma))
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("mu", "sigma"), ([ops.convert_to_tensor(sample_shape)] * 2)))
+
+  @staticmethod
+  def _safe_transforms():
+    """Default parameter transforms.
+
+    Transforms applied:
+      sigma: softplus
+
+    Returns:
+      `dict` of parameter name to callable parameter transform.
+    """
+    return {"sigma": nn.softplus}
 
   @property
   def allow_nan_stats(self):
