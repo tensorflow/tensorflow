@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -685,11 +686,18 @@ class SdcaFprint : public OpKernel {
     auto out_values = out->flat<string>();
 
     for (int64 i = 0; i < in_values.size(); ++i) {
-      const Fprint128 fprint = Fingerprint128(in_values(i));
-      // Hex encode the fprint as a string (33 characters).
-      out_values(i) = strings::StrCat(strings::FpToString(fprint.high64), "-",
-                                      strings::FpToString(fprint.low64));
+      out_values(i) = Fp128ToBinaryString(Fingerprint128(in_values(i)));
     }
+  }
+
+ private:
+  // Returns a 16 character binary string of the fprint.
+  // The string object typically occupies 32 bytes of memory on 64-bit systems.
+  static string Fp128ToBinaryString(const Fprint128& fprint) {
+    string result;
+    core::PutFixed64(&result, fprint.low64);
+    core::PutFixed64(&result, fprint.high64);
+    return result;
   }
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaFprint").Device(DEVICE_CPU), SdcaFprint);

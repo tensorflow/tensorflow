@@ -151,13 +151,21 @@ def _get_arguments(func):
     return _get_arguments(func.func)
 
 
-def _get_replica_device_setter(num_ps_replicas):
-  """Creates a replica device setter if required."""
+def _get_replica_device_setter(config):
+  """Creates a replica device setter if required.
+
+  Args:
+    config: A RunConfig instance.
+
+  Returns:
+    A replica device setter, or None.
+  """
   ps_ops = ['Variable', 'AutoReloadVariable',
             'MutableHashTable', 'MutableHashTableOfTensors']
-  if num_ps_replicas > 0:
+  if config.num_ps_replicas > 0:
     return device_setter.replica_device_setter(
-        ps_tasks=num_ps_replicas, merge_devices=False, ps_ops=ps_ops)
+        ps_tasks=config.num_ps_replicas, merge_devices=False, ps_ops=ps_ops,
+        cluster=config.cluster_spec)
   else:
     return None
 
@@ -206,7 +214,7 @@ class BaseEstimator(
     logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
-    self._device_fn = _get_replica_device_setter(self._config.num_ps_replicas)
+    self._device_fn = _get_replica_device_setter(self._config)
 
     # Features and targets TensorSignature objects.
     # TODO(wicke): Rename these to something more descriptive
