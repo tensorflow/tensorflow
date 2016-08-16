@@ -1523,6 +1523,966 @@ var Categorizer;
   </script>
 </dom-module>
 
+<dom-module id="vz-line-chart" assetpath="../vz-line-chart/">
+  <template>
+    <div id="tooltip">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Name</th>
+            <template is="dom-if" if="{{smoothingEnabled}}">
+              <th>Smoothed</th>
+            </template>
+            <th>Value</th>
+            <th>Step</th>
+            <th>Time</th>
+            <th>Relative</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+    <svg id="chartsvg"></svg>
+    <style>
+      :host {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        flex-shrink: 1;
+        position: relative;
+      }
+      svg {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        flex-grow: 1;
+        flex-shrink: 1;
+      }
+      td {
+        padding-left: 5px;
+        padding-right: 5px;
+        font-size: 13px;
+        opacity: 1;
+      }
+      #tooltip {
+        pointer-events: none;
+        position: absolute;
+        opacity: 0;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        font-size: 14px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        border-radius: 4px;
+        line-height: 1.4em;
+        padding: 8px;
+        z-index: 5;
+        cursor: none;
+      }
+      .swatch {
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        display: block;
+        border: 2px solid rgba(0,0,0,0);
+      }
+      .closest .swatch {
+        border: 2px solid white;
+      }
+      th {
+        padding-left: 5px;
+        padding-right: 5px;
+        text-align: left;
+      }
+      .distant td {
+        opacity: 0.8;
+      }
+
+      .distant td.swatch {
+        opacity: 1;
+      }
+
+      .ghost {
+        opacity: 0.2;
+        stroke-width: 1px;
+      }
+
+    </style>
+  </template>
+  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the 'License');
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an 'AS IS' BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+};
+var Plottable;
+(function (Plottable) {
+    var DragZoomLayer = (function (_super) {
+        __extends(DragZoomLayer, _super);
+        /**
+         * Constructs a SelectionBoxLayer with an attached DragInteraction and
+         * ClickInteraction. On drag, it triggers an animated zoom into the box
+         * that was dragged. On double click, it zooms back out to the original
+         * view, before any zooming.
+         * The zoom animation uses an easing function (default
+         * d3.ease('cubic-in-out')) and is customizable.
+         * Usage: Construct the selection box layer and attach x and y scales,
+         * and then add the layer over the plot you are zooming on using a
+         * Component Group.
+         * TODO(danmane) - merge this into Plottable
+         */
+        function DragZoomLayer(xScale, yScale) {
+            _super.call(this);
+            this.isZoomed = false;
+            this.easeFn = d3.ease('cubic-in-out');
+            this._animationTime = 750;
+            this.xScale(xScale);
+            this.yScale(yScale);
+            this._dragInteraction = new Plottable.Interactions.Drag();
+            this._dragInteraction.attachTo(this);
+            this._doubleClickInteraction = new Plottable.Interactions.DoubleClick();
+            this._doubleClickInteraction.attachTo(this);
+            this.setupCallbacks();
+        }
+        /**
+         * Register a method that calls when the DragZoom interaction starts.
+         */
+        DragZoomLayer.prototype.interactionStart = function (cb) { this.onStart = cb; };
+        /**
+         * Register a method that calls when the DragZoom interaction ends.
+         */
+        DragZoomLayer.prototype.interactionEnd = function (cb) { this.onEnd = cb; };
+        DragZoomLayer.prototype.setupCallbacks = function () {
+            var _this = this;
+            var dragging = false;
+            this._dragInteraction.onDragStart(function (startPoint) {
+                _this.bounds({
+                    topLeft: startPoint,
+                    bottomRight: startPoint,
+                });
+                _this.onStart();
+            });
+            this._dragInteraction.onDrag(function (startPoint, endPoint) {
+                _this.bounds({ topLeft: startPoint, bottomRight: endPoint });
+                _this.boxVisible(true);
+                dragging = true;
+            });
+            this._dragInteraction.onDragEnd(function (startPoint, endPoint) {
+                _this.boxVisible(false);
+                _this.bounds({ topLeft: startPoint, bottomRight: endPoint });
+                if (dragging) {
+                    _this.zoom();
+                }
+                else {
+                    _this.onEnd();
+                }
+                dragging = false;
+            });
+            this._doubleClickInteraction.onDoubleClick(this.unzoom.bind(this));
+        };
+        DragZoomLayer.prototype.animationTime = function (animationTime) {
+            if (animationTime == null) {
+                return this._animationTime;
+            }
+            if (animationTime < 0) {
+                throw new Error('animationTime cannot be negative');
+            }
+            this._animationTime = animationTime;
+            return this;
+        };
+        /**
+         * Set the easing function, which determines how the zoom interpolates
+         * over time.
+         */
+        DragZoomLayer.prototype.ease = function (fn) {
+            if (typeof (fn) !== 'function') {
+                throw new Error('ease function must be a function');
+            }
+            if (fn(0) !== 0 || fn(1) !== 1) {
+                Plottable.Utils.Window.warn('Easing function does not maintain invariant ' +
+                    'f(0)==0 && f(1)==1. Bad behavior may result.');
+            }
+            this.easeFn = fn;
+            return this;
+        };
+        // Zoom into extent of the selection box bounds
+        DragZoomLayer.prototype.zoom = function () {
+            var x0 = this.xExtent()[0].valueOf();
+            var x1 = this.xExtent()[1].valueOf();
+            var y0 = this.yExtent()[1].valueOf();
+            var y1 = this.yExtent()[0].valueOf();
+            if (x0 === x1 || y0 === y1) {
+                return;
+            }
+            if (!this.isZoomed) {
+                this.isZoomed = true;
+            }
+            this.interpolateZoom(x0, x1, y0, y1);
+        };
+        // Restore the scales to their state before any zoom
+        DragZoomLayer.prototype.unzoom = function () {
+            if (!this.isZoomed) {
+                return;
+            }
+            this.isZoomed = false;
+            // Some Plottable magic follows which ensures that when we un-zoom, we
+            // un-zoom to the current extent of the data; i.e. if new data was loaded
+            // since we zoomed, we should un-zoom to the extent of the new data.
+            // this basically replicates the autoDomain logic in Plottable.
+            // it uses the internal methods to get the same boundaries that autoDomain
+            // would, but allows us to interpolate the zoom with a nice animation.
+            var xScale = this.xScale();
+            var yScale = this.yScale();
+            xScale._domainMin = null;
+            xScale._domainMax = null;
+            yScale._domainMin = null;
+            yScale._domainMax = null;
+            var xDomain = xScale._getExtent();
+            var yDomain = yScale._getExtent();
+            this.interpolateZoom(xDomain[0], xDomain[1], yDomain[0], yDomain[1]);
+        };
+        // If we are zooming, disable interactions, to avoid contention
+        DragZoomLayer.prototype.isZooming = function (isZooming) {
+            this._dragInteraction.enabled(!isZooming);
+            this._doubleClickInteraction.enabled(!isZooming);
+        };
+        DragZoomLayer.prototype.interpolateZoom = function (x0f, x1f, y0f, y1f) {
+            var _this = this;
+            var x0s = this.xScale().domain()[0].valueOf();
+            var x1s = this.xScale().domain()[1].valueOf();
+            var y0s = this.yScale().domain()[0].valueOf();
+            var y1s = this.yScale().domain()[1].valueOf();
+            // Copy a ref to the ease fn, so that changing ease wont affect zooms in
+            // progress.
+            var ease = this.easeFn;
+            var interpolator = function (a, b, p) {
+                return d3.interpolateNumber(a, b)(ease(p));
+            };
+            this.isZooming(true);
+            var start = Date.now();
+            var draw = function () {
+                var now = Date.now();
+                var passed = now - start;
+                var p = _this._animationTime === 0 ?
+                    1 :
+                    Math.min(1, passed / _this._animationTime);
+                var x0 = interpolator(x0s, x0f, p);
+                var x1 = interpolator(x1s, x1f, p);
+                var y0 = interpolator(y0s, y0f, p);
+                var y1 = interpolator(y1s, y1f, p);
+                _this.xScale().domain([x0, x1]);
+                _this.yScale().domain([y0, y1]);
+                if (p < 1) {
+                    Plottable.Utils.DOM.requestAnimationFramePolyfill(draw);
+                }
+                else {
+                    _this.onEnd();
+                    _this.isZooming(false);
+                }
+            };
+            draw();
+        };
+        return DragZoomLayer;
+    }(Plottable.Components.SelectionBoxLayer));
+    Plottable.DragZoomLayer = DragZoomLayer;
+})(Plottable || (Plottable = {}));
+</script>
+  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+/* tslint:disable:no-namespace variable-name */
+var VZ;
+(function (VZ) {
+    var LineChart = (function () {
+        function LineChart(xType, colorScale, tooltip) {
+            this.seriesNames = [];
+            this.name2datasets = {};
+            this.colorScale = colorScale;
+            this.tooltip = tooltip;
+            this.datasets = [];
+            // lastPointDataset is a dataset that contains just the last point of
+            // every dataset we're currently drawing.
+            this.lastPointsDataset = new Plottable.Dataset();
+            this.nanDataset = new Plottable.Dataset();
+            // need to do a single bind, so we can deregister the callback from
+            // old Plottable.Datasets. (Deregistration is done by identity checks.)
+            this.onDatasetChanged = this._onDatasetChanged.bind(this);
+            this.buildChart(xType);
+        }
+        LineChart.prototype.buildChart = function (xType) {
+            if (this.outer) {
+                this.outer.destroy();
+            }
+            var xComponents = VZ.ChartHelpers.getXComponents(xType);
+            this.xAccessor = xComponents.accessor;
+            this.xScale = xComponents.scale;
+            this.xAxis = xComponents.axis;
+            this.xAxis.margin(0).tickLabelPadding(3);
+            this.yScale = new Plottable.Scales.Linear();
+            this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
+            var yFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
+            this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
+            this.yAxis.usesTextWidthApproximation(true);
+            this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
+            var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
+            this.gridlines =
+                new Plottable.Components.Gridlines(this.xScale, this.yScale);
+            this.center =
+                new Plottable.Components.Group([this.gridlines, center, this.dzl]);
+            this.outer = new Plottable.Components.Table([
+                [this.yAxis, this.center],
+                [null, this.xAxis]
+            ]);
+        };
+        LineChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
+            var _this = this;
+            this.scalarAccessor = function (d) { return d.scalar; };
+            this.smoothedAccessor = function (d) { return d.smoothed; };
+            var linePlot = new Plottable.Plots.Line();
+            linePlot.x(xAccessor, xScale);
+            linePlot.y(this.scalarAccessor, yScale);
+            linePlot.attr('stroke', function (d, i, dataset) {
+                return _this.colorScale.scale(dataset.metadata().name);
+            });
+            this.linePlot = linePlot;
+            var group = this.setupTooltips(linePlot);
+            var smoothLinePlot = new Plottable.Plots.Line();
+            smoothLinePlot.x(xAccessor, xScale);
+            smoothLinePlot.y(this.smoothedAccessor, yScale);
+            smoothLinePlot.attr('stroke', function (d, i, dataset) {
+                return _this.colorScale.scale(dataset.metadata().name);
+            });
+            this.smoothLinePlot = smoothLinePlot;
+            // The scatterPlot will display the last point for each dataset.
+            // This way, if there is only one datum for the series, it is still
+            // visible. We hide it when tooltips are active to keep things clean.
+            var scatterPlot = new Plottable.Plots.Scatter();
+            scatterPlot.x(xAccessor, xScale);
+            scatterPlot.y(this.scalarAccessor, yScale);
+            scatterPlot.attr('fill', function (d) { return _this.colorScale.scale(d.name); });
+            scatterPlot.attr('opacity', 1);
+            scatterPlot.size(VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
+            scatterPlot.datasets([this.lastPointsDataset]);
+            this.scatterPlot = scatterPlot;
+            var nanDisplay = new Plottable.Plots.Scatter();
+            nanDisplay.x(xAccessor, xScale);
+            nanDisplay.y(function (x) { return x.displayY; }, yScale);
+            nanDisplay.attr('fill', function (d) { return _this.colorScale.scale(d.name); });
+            nanDisplay.attr('opacity', 1);
+            nanDisplay.size(VZ.ChartHelpers.NAN_SYMBOL_SIZE * 2);
+            nanDisplay.datasets([this.nanDataset]);
+            nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
+            this.nanDisplay = nanDisplay;
+            return new Plottable.Components.Group([nanDisplay, scatterPlot, smoothLinePlot, group]);
+        };
+        /** Updates the chart when a dataset changes. Called every time the data of
+         * a dataset changes to update the charts.
+         */
+        LineChart.prototype._onDatasetChanged = function (dataset) {
+            if (this.smoothingEnabled) {
+                this.resmoothDataset(dataset);
+                this.updateSpecialDatasets(this.smoothedAccessor);
+            }
+            else {
+                this.updateSpecialDatasets(this.scalarAccessor);
+            }
+        };
+        /** Constructs special datasets. Each special dataset contains exceptional
+         * values from all of the regular datasets, e.g. last points in series, or
+         * NaN values. Those points will have a `name` and `relative` property added
+         * (since usually those are context in the surrounding dataset).
+         * The accessor will point to the correct data to access.
+         */
+        LineChart.prototype.updateSpecialDatasets = function (accessor) {
+            var lastPointsData = this.datasets
+                .map(function (d) {
+                var datum = null;
+                // filter out NaNs to ensure last point is a clean one
+                var nonNanData = d.data().filter(function (x) { return !isNaN(accessor(x, -1, d)); });
+                if (nonNanData.length > 0) {
+                    var idx = nonNanData.length - 1;
+                    datum = nonNanData[idx];
+                    datum.name = d.metadata().name;
+                    datum.relative =
+                        VZ.ChartHelpers.relativeAccessor(datum, -1, d);
+                }
+                return datum;
+            })
+                .filter(function (x) { return x != null; });
+            this.lastPointsDataset.data(lastPointsData);
+            // Take a dataset, return an array of NaN data points
+            // the NaN points will have a "displayY" property which is the
+            // y-value of a nearby point that was not NaN (0 if all points are NaN)
+            var datasetToNaNData = function (d) {
+                var displayY = null;
+                var data = d.data();
+                var i = 0;
+                while (i < data.length && displayY == null) {
+                    if (!isNaN(accessor(data[i], -1, d))) {
+                        displayY = accessor(data[i], -1, d);
+                    }
+                    i++;
+                }
+                if (displayY == null) {
+                    displayY = 0;
+                }
+                var nanData = [];
+                for (i = 0; i < data.length; i++) {
+                    if (!isNaN(accessor(data[i], -1, d))) {
+                        displayY = accessor(data[i], -1, d);
+                    }
+                    else {
+                        data[i].name = d.metadata().name;
+                        data[i].displayY = displayY;
+                        data[i].relative = VZ.ChartHelpers.relativeAccessor(data[i], -1, d);
+                        nanData.push(data[i]);
+                    }
+                }
+                return nanData;
+            };
+            var nanData = _.flatten(this.datasets.map(datasetToNaNData));
+            this.nanDataset.data(nanData);
+        };
+        LineChart.prototype.setupTooltips = function (plot) {
+            var _this = this;
+            var pi = new Plottable.Interactions.Pointer();
+            pi.attachTo(plot);
+            // PointsComponent is a Plottable Component that will hold the little
+            // circles we draw over the closest data points
+            var pointsComponent = new Plottable.Component();
+            var group = new Plottable.Components.Group([plot, pointsComponent]);
+            var hideTooltips = function () {
+                _this.tooltip.style('opacity', 0);
+                _this.scatterPlot.attr('opacity', 1);
+                pointsComponent.content().selectAll('.point').remove();
+            };
+            var enabled = true;
+            var disableTooltips = function () {
+                enabled = false;
+                hideTooltips();
+            };
+            var enableTooltips = function () { enabled = true; };
+            this.dzl.interactionStart(disableTooltips);
+            this.dzl.interactionEnd(enableTooltips);
+            pi.onPointerMove(function (p) {
+                if (!enabled) {
+                    return;
+                }
+                var target = {
+                    x: p.x,
+                    y: p.y,
+                    datum: null,
+                    dataset: null,
+                };
+                var centerBBox = _this.gridlines.content().node().getBBox();
+                var points = plot.datasets().map(function (dataset) { return _this.findClosestPoint(target, dataset); });
+                var pointsToCircle = points.filter(function (p) { return p != null &&
+                    Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox); });
+                var pts = pointsComponent.content().selectAll('.point').data(pointsToCircle, function (p) { return p.dataset.metadata().name; });
+                if (points.length !== 0) {
+                    pts.enter().append('circle').classed('point', true);
+                    pts.attr('r', VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
+                        .attr('cx', function (p) { return p.x; })
+                        .attr('cy', function (p) { return p.y; })
+                        .style('stroke', 'none')
+                        .attr('fill', function (p) { return _this.colorScale.scale(p.dataset.metadata().name); });
+                    pts.exit().remove();
+                    _this.drawTooltips(points, target);
+                }
+                else {
+                    hideTooltips();
+                }
+            });
+            pi.onPointerExit(hideTooltips);
+            return group;
+        };
+        LineChart.prototype.drawTooltips = function (points, target) {
+            var _this = this;
+            // Formatters for value, step, and wall_time
+            this.scatterPlot.attr('opacity', 0);
+            var valueFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION);
+            var dist = function (p) {
+                return Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
+            };
+            var closestDist = _.min(points.map(dist));
+            points = _.sortBy(points, function (d) { return d.dataset.metadata().name; });
+            var rows = this.tooltip.select('tbody')
+                .html('')
+                .selectAll('tr')
+                .data(points)
+                .enter()
+                .append('tr');
+            // Grey out the point if any of the following are true:
+            // - The cursor is outside of the x-extent of the dataset
+            // - The point is rendered above or below the screen
+            // - The point's y value is NaN
+            rows.classed('distant', function (d) {
+                var firstPoint = d.dataset.data()[0];
+                var lastPoint = _.last(d.dataset.data());
+                var firstX = _this.xScale.scale(_this.xAccessor(firstPoint, 0, d.dataset));
+                var lastX = _this.xScale.scale(_this.xAccessor(lastPoint, 0, d.dataset));
+                var s = _this.smoothingEnabled ? d.datum.smoothed : d.datum.scalar;
+                var yD = _this.yScale.domain();
+                return target.x < firstX || target.x > lastX || s < yD[0] ||
+                    s > yD[1] || isNaN(s);
+            });
+            rows.classed('closest', function (p) { return dist(p) === closestDist; });
+            // It is a bit hacky that we are manually applying the width to the swatch
+            // and the nowrap property to the text here. The reason is as follows:
+            // the style gets updated asynchronously by Polymer scopeSubtree observer.
+            // Which means we would get incorrect sizing information since the text
+            // would wrap by default. However, we need correct measurements so that
+            // we can stop the text from falling off the edge of the screen.
+            // therefore, we apply the size-critical styles directly.
+            rows.style('white-space', 'nowrap');
+            rows.append('td')
+                .append('span')
+                .classed('swatch', true)
+                .style('background-color', function (d) { return _this.colorScale.scale(d.dataset.metadata().name); });
+            rows.append('td').text(function (d) { return d.dataset.metadata().name; });
+            if (this.smoothingEnabled) {
+                rows.append('td').text(function (d) { return isNaN(d.datum.smoothed) ? 'NaN' :
+                    valueFormatter(d.datum.smoothed); });
+            }
+            rows.append('td').text(function (d) {
+                return isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar);
+            });
+            rows.append('td').text(function (d) { return VZ.ChartHelpers.stepFormatter(d.datum.step); });
+            rows.append('td').text(function (d) { return VZ.ChartHelpers.timeFormatter(d.datum.wall_time); });
+            rows.append('td').text(function (d) { return VZ.ChartHelpers.relativeFormatter(VZ.ChartHelpers.relativeAccessor(d.datum, -1, d.dataset)); });
+            // compute left position
+            var documentWidth = document.body.clientWidth;
+            var node = this.tooltip.node();
+            var parentRect = node.parentElement.getBoundingClientRect();
+            var nodeRect = node.getBoundingClientRect();
+            // prevent it from falling off the right side of the screen
+            var left = Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
+            var top = parentRect.height + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET;
+            this.tooltip.style('transform', 'translate(' + left + 'px,' + top + 'px)');
+            this.tooltip.style('opacity', 1);
+        };
+        LineChart.prototype.findClosestPoint = function (target, dataset) {
+            var _this = this;
+            var points = dataset.data().map(function (d, i) {
+                var x = _this.xAccessor(d, i, dataset);
+                var y = _this.smoothingEnabled ? _this.smoothedAccessor(d, i, dataset) :
+                    _this.scalarAccessor(d, i, dataset);
+                return {
+                    x: _this.xScale.scale(x),
+                    y: _this.yScale.scale(y),
+                    datum: d,
+                    dataset: dataset,
+                };
+            });
+            var idx = _.sortedIndex(points, target, function (p) { return p.x; });
+            if (idx === points.length) {
+                return points[points.length - 1];
+            }
+            else if (idx === 0) {
+                return points[0];
+            }
+            else {
+                var prev = points[idx - 1];
+                var next = points[idx];
+                var prevDist = Math.abs(prev.x - target.x);
+                var nextDist = Math.abs(next.x - target.x);
+                return prevDist < nextDist ? prev : next;
+            }
+        };
+        LineChart.prototype.resmoothDataset = function (dataset) {
+            var _this = this;
+            var data = dataset.data();
+            // EMA with first step initialized to first element.
+            data.forEach(function (d, i) {
+                if (i === 0) {
+                    d.smoothed = d.scalar;
+                }
+                else {
+                    d.smoothed = (1.0 - _this.smoothingDecay) * d.scalar +
+                        _this.smoothingDecay * data[i - 1].smoothed;
+                }
+            });
+        };
+        LineChart.prototype.getDataset = function (name) {
+            if (this.name2datasets[name] === undefined) {
+                this.name2datasets[name] = new Plottable.Dataset([], { name: name });
+            }
+            return this.name2datasets[name];
+        };
+        /**
+         * Update the selected series on the chart.
+         */
+        LineChart.prototype.setVisibleSeries = function (names) {
+            var _this = this;
+            this.seriesNames = names;
+            names.reverse(); // draw first series on top
+            this.datasets.forEach(function (d) { return d.offUpdate(_this.onDatasetChanged); });
+            this.datasets = names.map(function (r) { return _this.getDataset(r); });
+            this.datasets.forEach(function (d) { return d.onUpdate(_this.onDatasetChanged); });
+            this.linePlot.datasets(this.datasets);
+        };
+        /**
+         * Set the data of a series on the chart.
+         */
+        LineChart.prototype.setSeriesData = function (name, data) {
+            this.getDataset(name).data(data);
+        };
+        LineChart.prototype.smoothingUpdate = function (decay) {
+            var _this = this;
+            this.smoothingDecay = decay;
+            this.datasets.forEach(function (d) { return _this.resmoothDataset(d); });
+            if (!this.smoothingEnabled) {
+                this.linePlot.addClass('ghost');
+                this.scatterPlot.y(this.smoothedAccessor, this.yScale);
+                this.smoothingEnabled = true;
+                this.smoothLinePlot.datasets(this.datasets);
+            }
+            this.updateSpecialDatasets(this.smoothedAccessor);
+        };
+        LineChart.prototype.smoothingDisable = function () {
+            if (this.smoothingEnabled) {
+                this.linePlot.removeClass('ghost');
+                this.scatterPlot.y(this.scalarAccessor, this.yScale);
+                this.smoothLinePlot.datasets([]);
+                this.smoothingEnabled = false;
+                this.updateSpecialDatasets(this.scalarAccessor);
+            }
+        };
+        LineChart.prototype.renderTo = function (target) { this.outer.renderTo(target); };
+        LineChart.prototype.redraw = function () { this.outer.redraw(); };
+        LineChart.prototype.destroy = function () { this.outer.destroy(); };
+        return LineChart;
+    }());
+    VZ.LineChart = LineChart;
+})(VZ || (VZ = {}));
+</script>
+  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+/* tslint:disable:no-namespace variable-name */
+var VZ;
+(function (VZ) {
+    var ChartHelpers;
+    (function (ChartHelpers) {
+        ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION = 4;
+        ChartHelpers.STEP_FORMATTER_PRECISION = 4;
+        ChartHelpers.Y_AXIS_FORMATTER_PRECISION = 3;
+        ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET = 20;
+        ChartHelpers.TOOLTIP_CIRCLE_SIZE = 4;
+        ChartHelpers.NAN_SYMBOL_SIZE = 6;
+        /* Create a formatter function that will switch between exponential and
+         * regular display depending on the scale of the number being formatted,
+         * and show `digits` significant digits.
+         */
+        function multiscaleFormatter(digits) {
+            return function (v) {
+                var absv = Math.abs(v);
+                if (absv < 1E-15) {
+                    // Sometimes zero-like values get an annoying representation
+                    absv = 0;
+                }
+                var f;
+                if (absv >= 1E4) {
+                    f = d3.format('.' + digits + 'e');
+                }
+                else if (absv > 0 && absv < 0.01) {
+                    f = d3.format('.' + digits + 'e');
+                }
+                else {
+                    f = d3.format('.' + digits + 'g');
+                }
+                return f(v);
+            };
+        }
+        ChartHelpers.multiscaleFormatter = multiscaleFormatter;
+        function accessorize(key) {
+            return function (d, index, dataset) { return d[key]; };
+        }
+        ChartHelpers.accessorize = accessorize;
+        ChartHelpers.stepFormatter = Plottable.Formatters.siSuffix(ChartHelpers.STEP_FORMATTER_PRECISION);
+        function stepX() {
+            var scale = new Plottable.Scales.Linear();
+            var axis = new Plottable.Axes.Numeric(scale, 'bottom');
+            axis.formatter(ChartHelpers.stepFormatter);
+            return {
+                scale: scale,
+                axis: axis,
+                accessor: function (d) { return d.step; },
+            };
+        }
+        ChartHelpers.stepX = stepX;
+        ChartHelpers.timeFormatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
+        function wallX() {
+            var scale = new Plottable.Scales.Time();
+            return {
+                scale: scale,
+                axis: new Plottable.Axes.Time(scale, 'bottom'),
+                accessor: function (d) { return d.wall_time; },
+            };
+        }
+        ChartHelpers.wallX = wallX;
+        ChartHelpers.relativeAccessor = function (d, index, dataset) {
+            // We may be rendering the final-point datum for scatterplot.
+            // If so, we will have already provided the 'relative' property
+            if (d.relative != null) {
+                return d.relative;
+            }
+            var data = dataset.data();
+            // I can't imagine how this function would be called when the data is
+            // empty (after all, it iterates over the data), but lets guard just
+            // to be safe.
+            var first = data.length > 0 ? +data[0].wall_time : 0;
+            return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
+        };
+        ChartHelpers.relativeFormatter = function (n) {
+            // we will always show 2 units of precision, e.g days and hours, or
+            // minutes and seconds, but not hours and minutes and seconds
+            var ret = '';
+            var days = Math.floor(n / 24);
+            n -= (days * 24);
+            if (days) {
+                ret += days + 'd ';
+            }
+            var hours = Math.floor(n);
+            n -= hours;
+            n *= 60;
+            if (hours || days) {
+                ret += hours + 'h ';
+            }
+            var minutes = Math.floor(n);
+            n -= minutes;
+            n *= 60;
+            if (minutes || hours || days) {
+                ret += minutes + 'm ';
+            }
+            var seconds = Math.floor(n);
+            return ret + seconds + 's';
+        };
+        function relativeX() {
+            var scale = new Plottable.Scales.Linear();
+            return {
+                scale: scale,
+                axis: new Plottable.Axes.Numeric(scale, 'bottom'),
+                accessor: ChartHelpers.relativeAccessor,
+            };
+        }
+        ChartHelpers.relativeX = relativeX;
+        // a very literal definition of NaN: true for NaN for a non-number type
+        // or null, etc. False for Infinity or -Infinity
+        ChartHelpers.isNaN = function (x) { return +x !== x; };
+        function getXComponents(xType) {
+            switch (xType) {
+                case 'step':
+                    return stepX();
+                case 'wall_time':
+                    return wallX();
+                case 'relative':
+                    return relativeX();
+                default:
+                    throw new Error('invalid xType: ' + xType);
+            }
+        }
+        ChartHelpers.getXComponents = getXComponents;
+    })(ChartHelpers = VZ.ChartHelpers || (VZ.ChartHelpers = {}));
+})(VZ || (VZ = {}));
+</script>
+  <script>
+    Polymer({
+      is: "vz-line-chart",
+      properties: {
+        /**
+         * Scale that maps series names to colors. The default colors are from
+         * d3.scale.category10() scale. Use this property to replace the default
+         * line colors with colors of your own choice.
+         * @type {Plottable.Scales.Color}
+         * @required
+         */
+        colorScale: {
+          type: Object,
+          value: function() {
+            return new Plottable.Scales.Color()
+                .range(d3.scale.category10().range());
+          }
+        },
+
+        /**
+         * Decay (between 0.0 and 1.0) of the exponential smoothing. A higher
+         * decay results in more smoothing.
+         */
+        smoothingDecay: {
+          type: Number,
+          value: 0.9
+        },
+
+        /**
+         * Whether exponential smoothing is enabled or not. If true, smoothed
+         * lines will be plotted in the chart while the unsmoothed lines will be
+         * ghosted in the background.
+         */
+        smoothingEnabled: {
+          type: Boolean,
+          value: false
+        },
+
+        /**
+         * The way to display the X values. Allows:
+         * - "step" - Linear scale using the  "step" property of the datum.
+         * - "wall_time" - Temporal scale using the "wall_time" property of the
+         * datum.
+         * - "relative" - Temporal scale using the "relative" property of the
+         * datum if it is present or calculating from "wall_time" if it isn't.
+         */
+        xType: {
+          type: String,
+          value: 'step'
+        },
+
+        _attached: Boolean,
+        _chart: Object,
+        _visibleSeriesCache: {
+          type: Array,
+          value: function() { return [] }
+        },
+        _seriesDataCache: {
+          type: Object,
+          value: function() { return {} }
+        },
+        _makeChartAsyncCallbackId: {
+          type: Number,
+          value: null
+        }
+      },
+      observers: [
+        "_makeChart(xType, colorScale, _attached)",
+        "_reloadFromCache(_chart)",
+        "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)"
+      ],
+
+      /**
+       * Sets the series that the chart displays. Series with other names will
+       * not be displayed.
+       *
+       * @param {String[]} names Array with the names of the series to
+       * display.
+       */
+      setVisibleSeries: function(names) {
+        this._visibleSeriesCache = names;
+        if (this._chart) {
+          this._chart.setVisibleSeries(names);
+          this.redraw();
+        }
+      },
+
+      /**
+       * Sets the data of one of the series. Note that to display this series
+       * its name must be in the setVisibleSeries() array.
+       *
+       * @param {String} name Name of the series.
+       * @param {VZ.ChartHelpers.ScalarDatum[]} data Data of the series. This is
+       * an array of objects with at least the following properties:
+       * - step: (Number) - index of the datum.
+       * - wall_time: (Date) - Date object with the datum's time.
+       * - scalar: (Number) - Value of the datum.
+       */
+      setSeriesData: function(name, data) {
+        this._seriesDataCache[name] = data;
+        if (this._chart) {
+          this._chart.setSeriesData(name, data);
+        }
+      },
+
+      /**
+       * Re-renders the chart. Useful if e.g. the container size changed.
+       */
+      redraw: function() {
+        this._chart.redraw();
+      },
+      attached: function() {
+        this._attached = true;
+      },
+      detached: function() {
+        this._attached = false;
+      },
+      ready: function() {
+        this.scopeSubtree(this.$.tooltip, true);
+        this.scopeSubtree(this.$.chartsvg, true);
+      },
+      _makeChart: function(xType, colorScale, _attached) {
+        if (this._makeChartAsyncCallbackId === null) {
+          this.cancelAsync(this._makeChartAsyncCallbackId);
+        }
+
+        this._makeChartAsyncCallbackId = this.async(function() {
+          this._makeChartAsyncCallbackId = null;
+          if (!this._attached) return;
+          if (this._chart) this._chart.destroy();
+          var tooltip = d3.select(this.$.tooltip);
+          var chart = new VZ.LineChart(xType, colorScale, tooltip);
+          var svg = d3.select(this.$.chartsvg);
+          chart.renderTo(svg);
+          this._chart = chart;
+        }, 350);
+      },
+      _reloadFromCache: function() {
+        if(this._chart) {
+          this._chart.setVisibleSeries(this._visibleSeriesCache);
+          this._visibleSeriesCache.forEach(function(name) {
+            this._chart.setSeriesData(name, this._seriesDataCache[name] || []);
+          }.bind(this));
+        }
+      },
+      _smoothingChanged: function() {
+        if(!this._chart) {
+          return;
+        }
+        if(this.smoothingEnabled) {
+          this._chart.smoothingUpdate(this.smoothingDecay);
+        }
+        else {
+          this._chart.smoothingDisable();
+        }
+      }
+    });
+  </script>
+</dom-module>
+
 <dom-module id="tf-collapsable-pane" assetpath="../tf-collapsable-pane/">
   <template>
     <button class="heading" on-tap="togglePane" open-button$="[[opened]]">
@@ -3000,7 +3960,148 @@ var TF;
     TF.DistributionChart = DistributionChart;
 })(TF || (TF = {}));
 </script>
-    <script>
+  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+/* tslint:disable:no-namespace variable-name */
+var VZ;
+(function (VZ) {
+    var ChartHelpers;
+    (function (ChartHelpers) {
+        ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION = 4;
+        ChartHelpers.STEP_FORMATTER_PRECISION = 4;
+        ChartHelpers.Y_AXIS_FORMATTER_PRECISION = 3;
+        ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET = 20;
+        ChartHelpers.TOOLTIP_CIRCLE_SIZE = 4;
+        ChartHelpers.NAN_SYMBOL_SIZE = 6;
+        /* Create a formatter function that will switch between exponential and
+         * regular display depending on the scale of the number being formatted,
+         * and show `digits` significant digits.
+         */
+        function multiscaleFormatter(digits) {
+            return function (v) {
+                var absv = Math.abs(v);
+                if (absv < 1E-15) {
+                    // Sometimes zero-like values get an annoying representation
+                    absv = 0;
+                }
+                var f;
+                if (absv >= 1E4) {
+                    f = d3.format('.' + digits + 'e');
+                }
+                else if (absv > 0 && absv < 0.01) {
+                    f = d3.format('.' + digits + 'e');
+                }
+                else {
+                    f = d3.format('.' + digits + 'g');
+                }
+                return f(v);
+            };
+        }
+        ChartHelpers.multiscaleFormatter = multiscaleFormatter;
+        function accessorize(key) {
+            return function (d, index, dataset) { return d[key]; };
+        }
+        ChartHelpers.accessorize = accessorize;
+        ChartHelpers.stepFormatter = Plottable.Formatters.siSuffix(ChartHelpers.STEP_FORMATTER_PRECISION);
+        function stepX() {
+            var scale = new Plottable.Scales.Linear();
+            var axis = new Plottable.Axes.Numeric(scale, 'bottom');
+            axis.formatter(ChartHelpers.stepFormatter);
+            return {
+                scale: scale,
+                axis: axis,
+                accessor: function (d) { return d.step; },
+            };
+        }
+        ChartHelpers.stepX = stepX;
+        ChartHelpers.timeFormatter = Plottable.Formatters.time('%a %b %e, %H:%M:%S');
+        function wallX() {
+            var scale = new Plottable.Scales.Time();
+            return {
+                scale: scale,
+                axis: new Plottable.Axes.Time(scale, 'bottom'),
+                accessor: function (d) { return d.wall_time; },
+            };
+        }
+        ChartHelpers.wallX = wallX;
+        ChartHelpers.relativeAccessor = function (d, index, dataset) {
+            // We may be rendering the final-point datum for scatterplot.
+            // If so, we will have already provided the 'relative' property
+            if (d.relative != null) {
+                return d.relative;
+            }
+            var data = dataset.data();
+            // I can't imagine how this function would be called when the data is
+            // empty (after all, it iterates over the data), but lets guard just
+            // to be safe.
+            var first = data.length > 0 ? +data[0].wall_time : 0;
+            return (+d.wall_time - first) / (60 * 60 * 1000); // ms to hours
+        };
+        ChartHelpers.relativeFormatter = function (n) {
+            // we will always show 2 units of precision, e.g days and hours, or
+            // minutes and seconds, but not hours and minutes and seconds
+            var ret = '';
+            var days = Math.floor(n / 24);
+            n -= (days * 24);
+            if (days) {
+                ret += days + 'd ';
+            }
+            var hours = Math.floor(n);
+            n -= hours;
+            n *= 60;
+            if (hours || days) {
+                ret += hours + 'h ';
+            }
+            var minutes = Math.floor(n);
+            n -= minutes;
+            n *= 60;
+            if (minutes || hours || days) {
+                ret += minutes + 'm ';
+            }
+            var seconds = Math.floor(n);
+            return ret + seconds + 's';
+        };
+        function relativeX() {
+            var scale = new Plottable.Scales.Linear();
+            return {
+                scale: scale,
+                axis: new Plottable.Axes.Numeric(scale, 'bottom'),
+                accessor: ChartHelpers.relativeAccessor,
+            };
+        }
+        ChartHelpers.relativeX = relativeX;
+        // a very literal definition of NaN: true for NaN for a non-number type
+        // or null, etc. False for Infinity or -Infinity
+        ChartHelpers.isNaN = function (x) { return +x !== x; };
+        function getXComponents(xType) {
+            switch (xType) {
+                case 'step':
+                    return stepX();
+                case 'wall_time':
+                    return wallX();
+                case 'relative':
+                    return relativeX();
+                default:
+                    throw new Error('invalid xType: ' + xType);
+            }
+        }
+        ChartHelpers.getXComponents = getXComponents;
+    })(ChartHelpers = VZ.ChartHelpers || (VZ.ChartHelpers = {}));
+})(VZ || (VZ = {}));
+</script>
+  <script>
     Polymer({
       is: "tf-distribution-chart",
       properties: {
@@ -3167,6 +4268,548 @@ var TF;
     });
   </script>
 </dom-module>
+
+<dom-module id="vz-histogram-timeseries" assetpath="../vz-histogram-timeseries/">
+    <template>
+      <svg id="svg">
+        <g>
+          <g class="axis x"></g>
+          <g class="axis y"></g>
+          <g class="axis y slice"></g>
+          <g class="stage">
+            <rect class="background"></rect>
+          </g>
+          <g class="x-axis-hover"></g>
+        </g>
+      </svg>
+
+      <style>
+        :host {
+          display: flex;
+          flex-direction: column;
+          flex-grow: 1;
+          flex-shrink: 1;
+          position: relative;
+        }
+
+        svg {
+          font-family: roboto, sans-serif;
+          overflow: visible;
+          display: block;
+          width: 100%;
+          flex-grow: 1;
+          flex-shrink: 1;
+        }
+
+        .background {
+          fill-opacity: 0;
+          fill: red;
+        }
+
+        .histogram {
+          pointer-events: none;
+        }
+
+        .hover {
+          font-size: 9px;
+          dominant-baseline: middle;
+          opacity: 0;
+        }
+
+        .hover circle {
+          stroke: white;
+          stroke-opacity: 0.5;
+          stroke-width: 1px;
+        }
+
+        .baseline {
+          stroke: black;
+          stroke-opacity: 0.1;
+        }
+
+        .outline {
+          fill: none;
+          stroke: white;
+          stroke-opacity: 0.5;
+        }
+
+        .x-axis-hover {
+          pointer-events: none;
+        }
+
+        .x-axis-hover .label {
+          opacity: 0;
+          font-weight: bold;
+          font-size: 11px;
+          text-anchor: end;
+        }
+
+        .x-axis-hover text {
+          text-anchor: middle;
+        }
+
+        .x-axis-hover line {
+          stroke: black;
+        }
+
+        .x-axis-hover rect {
+          fill: white;
+        }
+
+        .gradient {
+        }
+
+        .axis {
+          font-size: 10px;
+          fill: #aaa;
+        }
+
+        .axis path.domain {
+          fill: none;
+        }
+
+        .axis .tick line {
+          stroke: #ddd;
+        }
+
+        .axis.slice {
+          opacity: 0;
+        }
+
+        .axis.slice .tick line {
+          stroke-dasharray: 2;
+        }
+
+        .small .axis text { display: none; }
+        .small .axis .tick:first-of-type text { display: block; }
+        .small .axis .tick:last-of-type text { display: block; }
+        .medium .axis text { display: none; }
+        .medium .axis .tick:nth-child(2n + 1) text { display: block; }
+        .large .axis text { display: none; }
+        .large .axis .tick:nth-child(2n + 1) text { display: block; }
+
+      </style>
+    </template>
+
+    <script>
+    Polymer({
+      is: "vz-histogram-timeseries",
+      properties: {
+        /**
+         * Defines which view mode is being used by the chart. Supported values
+         * are:
+         * - "offset" - Offset view of the data showing all timesteps.
+         * - "overlay" - Overlays all timesteps into one 2D view, with the
+         * brighter lines representing the newer timesteps.
+         */
+        mode: {
+          type: String,
+          value: "offset"
+        },
+
+        /*
+         * The name of the datum's property that contains the time values.
+         * Allows:
+         * - "step" - Linear scale using the "step" property of the datum.
+         * - "wall_time" - Temporal scale using the "wall_time" property of the
+         * datum.
+         * - "relative" - Temporal scale starting at 0 created by using
+         * the "wall_time" property of the datum.
+         */
+        timeProperty: {
+          type: String,
+          value: "step"
+        },
+
+        /**
+         * The name of the data's property that contains the bins.
+         */
+        bins: {
+          type: String,
+          value: "bins"
+        },
+
+        /**
+         * The name of the datum's property that contains the x values.
+         */
+        x: {
+          type: String,
+          value: "x"
+        },
+
+        /**
+         * The name of the datum's property that contains the bin width values.
+         */
+        dx: {
+          type: String,
+          value: "dx"
+        },
+
+        /**
+         * The name of the datum's property that contains the bin height.
+         */
+        y: {
+          type: String,
+          value: "y"
+        },
+
+        /**
+         * Scale that maps series names to colors. The default colors are from
+         * d3.scale.category10() scale. Use this property to replace the default
+         * line colors with colors of your own choice.
+         */
+        colorScale: {
+          type: Object,
+          value: function() {
+            return d3.scale.category10();
+          }
+        },
+
+        /**
+         * Duration of the transition between histogram modes.
+         */
+        modeTransitionDuration: {
+          type: Number,
+          value: 500
+        },
+
+        _attached: Boolean,
+        _name: { type: String, value: null },
+        _data: { type: Array, value: null },
+      },
+      observers: [
+        'redraw(timeProperty, _attached)',
+        '_modeRedraw(mode)'
+      ],
+      ready: function() {
+        // Polymer's way of scoping styles on nodes that d3 created
+        this.scopeSubtree(this.$.svg, true);
+      },
+      attached: function() {
+        this._attached = true;
+      },
+      detached: function() {
+        this._attached = false;
+      },
+      setVisibleSeries: function(names) {
+        // Do nothing.
+      },
+      setSeriesData: function(name, data) {
+        this._name = name;
+        this._data = data;
+        this.redraw();
+      },
+
+      /**
+       * Redraws the chart. This is only called if the chart is attached to the
+       * screen and if the chart has data.
+       */
+      redraw: function() {
+        this._draw(0);
+      },
+
+      _modeRedraw: function() {
+        this._draw(this.modeTransitionDuration);
+      },
+
+      _draw: function(duration) {
+        if (!this._attached || !this._data) {
+          return;
+        }
+
+        //
+        // Data verification
+        //
+        if (duration === undefined) throw(new Error("vz-histogram-timeseries _draw needs duration"));
+        if (this._data.length <= 0) throw(new Error("Not enough steps in the data"));
+        if (!this._data[0].hasOwnProperty(this.bins)) throw(new Error("No bins property of '" + this.bins + "' in data"));
+        if (this._data[0][this.bins].length <= 0) throw(new Error("Must have at least one bin in bins in data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.x)) throw(new Error("No x property '" + this.x + "' on bins data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.dx)) throw(new Error("No dx property '" + this.dx + "' on bins data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.y)) throw(new Error("No y property '" + this.y + "' on bins data"));
+
+        //
+        // Initialization
+        //
+        var timeProp = this.timeProperty;
+        var xProp = this.x;
+        var binsProp = this.bins;
+        var dxProp = this.dx;
+        var yProp = this.y;
+
+        var data = this._data;
+        var name = this._name;
+        var mode = this.mode;
+        var color = d3.hcl(this.colorScale(name));
+
+        var xAccessor = function(d) { return d[xProp] };
+        var yAccessor = function(d) { return d[yProp] };
+        var dxAccessor = function(d) { return d[dxProp] };
+        var xRightAccessor = function(d) { return d[xProp] + d[dxProp] };
+        var timeAccessor = function(d) { return d[timeProp] };
+
+        if (timeProp === "relative") {
+          timeAccessor = function(d) { return d.wall_time - data[0].wall_time };
+        }
+
+        var brect = this.$.svg.getBoundingClientRect();
+        var outerWidth = brect.width,
+            outerHeight = brect.height;
+
+        var sliceHeight,
+            margin = {top: 5, right: 60, bottom: 20, left: 24};
+
+        if (mode === "offset") {
+          sliceHeight = outerHeight / 2.5;
+          margin.top = sliceHeight + 5;
+        } else {
+          sliceHeight = outerHeight - margin.top - margin.bottom;
+        }
+
+        var width = outerWidth - margin.left - margin.right,
+            height = outerHeight - margin.top - margin.bottom;
+
+        var leftMin = d3.min(data, xAccessor),
+            rightMax = d3.max(data, xRightAccessor);
+
+        //
+        // Text formatters
+        //
+        var format = d3.format(".3n");
+        var yAxisFormat = d3.format(".0f");
+
+        if (timeProp === "wall_time") {
+          yAxisFormat = d3.time.format("%X");
+        } else if (timeProp === "relative") {
+          yAxisFormat = function(d) {
+            return d3.format(".1r")(d / 3.6e6); // Convert to hours.
+          };
+        }
+
+        //
+        // Calculate the extents
+        //
+        var xExtents = data.map(function(d, i) {
+          return [
+            d3.min(d[binsProp], xAccessor),
+            d3.max(d[binsProp], xRightAccessor)
+          ];
+        });
+        var yExtents = data.map(function(d) {
+          return d3.extent(d[binsProp], yAccessor);
+        });
+
+        //
+        // Scales and axis
+        //
+        var outlineCanvasSize = 500;
+
+        var extent = d3.extent(data, timeAccessor);
+
+        var yScale = (timeProp === "wall_time" ? d3.time.scale() : d3.scale.linear())
+            .domain(extent)
+            .range([0, (mode === "offset" ? height : 0)]);
+
+        var ySliceScale = d3.scale.linear()
+            .domain([0, d3.max(data, function(d, i) { return yExtents[i][1]; })])
+            .range([sliceHeight, 0]);
+
+        var yLineScale = d3.scale.linear()
+            .domain(ySliceScale.domain())
+            .range([outlineCanvasSize, 0]);
+
+        var xScale = d3.scale.linear()
+            .domain([
+              d3.min(data, function(d, i) { return xExtents[i][0]; }),
+              d3.max(data, function(d, i) { return xExtents[i][1]; })
+            ])
+            .nice()
+            .range([0, width]);
+
+        var xLineScale = d3.scale.linear()
+            .domain(xScale.domain())
+            .range([0, outlineCanvasSize]);
+
+        var outlineColor = d3.scale.linear()
+            .domain(d3.extent(data, timeAccessor))
+            .range([color.darker(), color.brighter()])
+            .interpolate(d3.interpolateHcl);
+
+        var xAxis = d3.svg.axis()
+            .scale(xScale)
+            .ticks(Math.max(2, width / 20))
+            .orient("bottom");
+
+        var yAxis = d3.svg.axis()
+            .scale(yScale)
+            .ticks(Math.max(2, height / 15))
+            .tickFormat(yAxisFormat)
+            .orient("right");
+
+        var ySliceAxis = d3.svg.axis()
+            .scale(ySliceScale)
+            .ticks(Math.max(2, height / 15))
+            .tickSize(width + 5)
+            .orient("right");
+
+        var xBinCentroid = function(d) {
+          return d[xProp] + d[dxProp] / 2;
+        };
+
+        var linePath = d3.svg.line()
+            .interpolate("linear")
+            .x(function(d) { return xLineScale(xBinCentroid(d)); })
+            .y(function(d) { return yLineScale(d[yProp]); });
+
+        var path = function(d) {
+          // Draw a line from 0 to the first point and from the last point to 0.
+          return 'M' + xLineScale(xBinCentroid(d[0])) + ',' + yLineScale(0) +
+              'L' + linePath(d).slice(1) +
+              "L" + xLineScale(xBinCentroid(d[d.length - 1])) + "," + yLineScale(0);
+        };
+
+        //
+        // Render
+        //
+        var svgNode = this.$.svg;
+
+        var svg = d3.select(svgNode)
+
+        var svgTransition = svg.transition().duration(duration)
+            .attr("width", outerWidth)
+            .attr("height", outerHeight);
+
+        var g = svg.select("g")
+            .classed("small", function() { return (width > 0 && width <= 150); })
+            .classed("medium", function() { return (width > 150 && width <= 300); })
+            .classed("large", function() { return (width > 300); })
+
+        var gTransition = svgTransition.select("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        var bisect = d3.bisector(xRightAccessor).left;
+        var stage = g.select(".stage")
+            .on("mouseover", function() {
+              hoverUpdate.transition().style("opacity", 1);
+              edgeLabelUpdate.transition().style("opacity", 1)
+            })
+            .on("mouseout", function() {
+              hoverUpdate.transition().style("opacity", 0);
+              edgeLabelUpdate.transition().style("opacity", 0)
+            })
+            .on("mousemove", function() {
+              var m = d3.mouse(this),
+                  v = xScale.invert(m[0]);
+
+              function hoverXIndex(d) {
+                return Math.min(d[binsProp].length - 1, bisect(d[binsProp], v));
+              }
+
+              var lastSliceData;
+              hoverUpdate
+                .attr("transform", function(d) {
+                  var index = hoverXIndex(d);
+                  lastSliceData = d;
+                  return "translate(" + xScale(d[binsProp][index][xProp] + d[binsProp][index][dxProp] / 2) + "," + ySliceScale(d[binsProp][index][yProp]) + ")";
+                });
+
+              var index = hoverXIndex(lastSliceData);
+
+              edgeLabelUpdate
+                  .attr("transform", function(d) { return"translate(" + xScale(lastSliceData[binsProp][index][xProp] + lastSliceData[binsProp][index][dxProp] / 2) + ", " + height + ")"; })
+                .select("text")
+                  .text(function(d) { return format(lastSliceData[binsProp][index][xProp] + lastSliceData[binsProp][index][dxProp] / 2); });
+            });
+
+        var background = stage.select(".background")
+            .attr("transform", "translate(" + -margin.left + "," + -margin.top + ")")
+            .attr("width", outerWidth)
+            .attr("height", outerHeight);
+
+        var histogram = stage.selectAll(".histogram").data(data),
+            histogramExit = histogram.exit().remove(),
+            histogramEnter = histogram.enter().append("g").attr("class", "histogram"),
+            histogramUpdate = histogram
+                .sort(function(a, b) { return timeAccessor(a) - timeAccessor(b); }),
+            histogramTransition = gTransition.selectAll(".histogram")
+                .attr("transform", function(d) {
+                  return "translate(0, " + (mode === "offset" ? (yScale(timeAccessor(d)) - sliceHeight) : 0) + ")";
+                });
+
+        var baselineEnter = histogramEnter.append("line").attr("class", "baseline"),
+            baselineUpdate = histogramTransition.select(".baseline")
+                .style("stroke-opacity", function(d) { return (mode === "offset" ? 0.1 : 0); })
+                .attr("y1", sliceHeight)
+                .attr("y2", sliceHeight)
+                .attr("x2", width);
+
+        var outlineEnter = histogramEnter.append("path").attr("class", "outline"),
+            outlineUpdate = histogramUpdate.select(".outline")
+                .attr("vector-effect", "non-scaling-stroke")
+                .attr("d", function(d) { return path(d[binsProp]); })
+                .style("stroke-width", 1),
+            outlineTransition = histogramTransition.select(".outline")
+                .attr("transform", "scale(" + width / outlineCanvasSize + ", " + sliceHeight / outlineCanvasSize + ")")
+                .style("stroke", function(d) { return (mode === "offset" ? "white" : outlineColor(timeAccessor(d))); })
+                .style("fill-opacity", function(d) { return (mode === "offset" ? 1 : 0); })
+                .style("fill", function(d) { return outlineColor(timeAccessor(d)); });
+
+
+        var hoverEnter = histogramEnter.append("g")
+                .attr("class", "hover")
+                .style("fill", function(d) { return outlineColor(timeAccessor(d)); }),
+            hoverUpdate = histogramUpdate.select(".hover");
+
+        hoverEnter.append("circle")
+            .attr("r", 2);
+
+        hoverEnter.append("text")
+            .style("display", "none")
+            .style("stroke", "white")
+            .style("stroke-width", 2)
+            .attr("dx", 4);
+
+        hoverEnter.append("text")
+            .style("display", "none")
+            .attr("dx", 4);
+
+        var edgeLabel = g.select(".x-axis-hover").selectAll(".label").data(["x"]),
+            edgeLabelEnter = edgeLabel.enter().append("g").attr("class", "label"),
+            edgeLabelUpdate = edgeLabel;
+
+        edgeLabelEnter.append("rect")
+            .attr("x", -20)
+            .attr("y", 6)
+            .attr("width", 40)
+            .attr("height", 14)
+
+        edgeLabelEnter.append("line")
+            .attr("x1", 0)
+            .attr("x2", 0)
+            .attr("y1", 0)
+            .attr("y2", 6);
+
+        edgeLabelEnter.append("text")
+            .attr("dy", 18);
+
+        gTransition.select(".y.axis.slice")
+            .style("opacity", mode === "offset" ? 0 : 1)
+            .attr("transform", "translate(0, " + (mode === "offset" ? -sliceHeight : 0) + ")")
+            .call(ySliceAxis);
+
+        gTransition.select(".x.axis")
+            .attr("transform", "translate(0, " + height + ")")
+            .call(xAxis);
+
+        gTransition.select(".y.axis")
+            .style("opacity", mode === "offset" ? 1 : 0)
+            .attr("transform", "translate(" + width + ", " + (mode === "offset" ? 0 : height) + ")")
+            .call(yAxis);
+      }
+    });
+    </script>
+
+  </dom-module>
 
 <dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
   <template>

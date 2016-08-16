@@ -42,14 +42,14 @@ Instead, use `gulp regenerate` to create a new version with your changes.\n\
 
 /**
  * Returns a list of non-tensorboard components inside the components
- * directory, i.e. components that don't begin with 'tf-'.
+ * directory, i.e. components that don't begin with 'tf-' or 'vz-''.
  */
 function getNonTensorBoardComponents() {
   return fs.readdirSync('components')
       .filter(function(file) {
         var prefix = file.slice(0,3);
         return fs.statSync(path.join('components', file)).isDirectory() &&
-            prefix !== 'tf-';
+            prefix !== 'tf-'  && prefix !== 'vz-';
       })
       .map(function(dir) { return '/' + dir + '/'; });
 }

@@ -64,7 +64,7 @@ class _VariableStore(object):
 
   def close_variable_subscopes(self, scope_name):
     for k in self._variable_scopes_count:
-      if k != scope_name and scope_name in k:
+      if not scope_name or k.startswith(scope_name + "/"):
         self._variable_scopes_count[k] = 0
 
   def variable_scope_count(self, scope_name):

@@ -419,6 +419,10 @@ module VZ {
       this.datasets = names.map((r) => this.getDataset(r));
       this.datasets.forEach((d) => d.onUpdate(this.onDatasetChanged));
       this.linePlot.datasets(this.datasets);
+
+      if (this.smoothingEnabled) {
+        this.smoothLinePlot.datasets(this.datasets);
+      }
     }
 
     /**
