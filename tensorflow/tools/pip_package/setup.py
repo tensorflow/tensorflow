@@ -57,6 +57,7 @@ CONSOLE_SCRIPTS = [
 # pylint: enable=line-too-long
 
 TEST_PACKAGES = [
+    'nose >= 1.3.7',
     'scipy >= 0.15.1',
 ]
 
@@ -202,4 +203,5 @@ setup(
         ],
     license='Apache 2.0',
     keywords='tensorflow tensor machine learning',
+    test_suite='nose.collector',
     )
