@@ -412,7 +412,8 @@ class Tensor {
   /// buffer's datatype.
   ///
   /// This tensor shares other's underlying storage.
-  void UnsafeCopyFromInternal(const Tensor&, const TensorShape&);
+  void UnsafeCopyFromInternal(const Tensor&, DataType dtype,
+                              const TensorShape&);
 
  private:
   void CheckType(DataType expected_dtype) const;
