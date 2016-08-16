@@ -27,11 +27,6 @@
 @@value_type
 @@get_current_value_type
 
-## Stochastic Computation Surrogate Loss Functions
-
-@@score_function
-@@get_score_function_with_baseline
-
 ## Stochastic Computation Graph Helper Functions
 
 @@surrogate_loss
@@ -48,6 +43,7 @@ import threading
 
 import six
 
+from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators as sge
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -87,19 +83,17 @@ class StochasticTensor(object):
     pass
 
   @abc.abstractmethod
-  def loss(self, sample_losses):
+  def loss(self, sample_loss):
     """Returns the term to add to the surrogate loss.
 
-    This method is called by `surrogate_loss`.  The input `sample_losses`
-    should have already had `stop_gradient` applied to them.  This is
-    because the surrogate_loss usually provides a monte carlo sample term
-    of the form `differentiable_surrogate * sum(sample_losses)` where
-    `sample_losses` is considered constant with respect to the input
-    for purposes of the gradient.
+    This method is called by `surrogate_loss`.  The input `sample_loss` should
+    have already had `stop_gradient` applied to it.  This is because the
+    surrogate_loss usually provides a Monte Carlo sample term of the form
+    `differentiable_surrogate * sample_loss` where `sample_loss` is considered
+    constant with respect to the input for purposes of the gradient.
 
     Args:
-      sample_losses: a list of Tensors, the sample losses downstream of this
-        `StochasticTensor`.
+      sample_loss: `Tensor`, sample loss downstream of this `StochasticTensor`.
 
     Returns:
       Either `None` or a `Tensor`.
@@ -309,19 +303,6 @@ def get_current_value_type():
   return _STOCHASTIC_VALUE_STACK[thread_id][-1]
 
 
-def get_score_function_with_baseline(baseline):
-
-  def score_function_with_baseline(dist_tensor, value, losses):
-    advantage = math_ops.add_n(losses) - baseline
-    return dist_tensor.distribution.log_prob(value) * advantage
-
-  return score_function_with_baseline
-
-
-def score_function(dist_tensor, value, losses):
-  return dist_tensor.distribution.log_prob(value) * math_ops.add_n(losses)
-
-
 class DistributionTensor(StochasticTensor):
   """DistributionTensor is a StochasticTensor backed by a distribution."""
 
@@ -329,7 +310,7 @@ class DistributionTensor(StochasticTensor):
                dist_cls,
                name=None,
                dist_value_type=None,
-               loss_fn=score_function,
+               loss_fn=sge.score_function,
                **dist_args):
     """Construct a `DistributionTensor`.
 
@@ -357,8 +338,12 @@ class DistributionTensor(StochasticTensor):
       dist_value_type: a `_StochasticValueType`, which will determine what the
           `value` of this `DistributionTensor` will be. If not provided, the
           value type set with the `value_type` context manager will be used.
-      loss_fn: callable that takes `(dt, dt.value(), influenced_losses)`, where
-          `dt` is this `DistributionTensor`, and returns a `Tensor` loss.
+      loss_fn: callable that takes `(dt, dt.value(), influenced_loss)`, where
+          `dt` is this `DistributionTensor`, and returns a `Tensor` loss. By
+          default, `loss_fn` is the `score_function`, or more precisely, the
+          integral of the score function, such that when the gradient is taken,
+          the score function results. See the `stochastic_gradient_estimators`
+          module for additional loss functions and baselines.
       **dist_args: keyword arguments to be passed through to `dist_cls` on
           construction.
     """
@@ -469,8 +454,8 @@ class DistributionTensor(StochasticTensor):
   def value(self, name="value"):
     return self._value
 
-  def loss(self, final_losses, name="Loss"):
-    # Return a loss based on final_losses and the distribution. Returns
+  def loss(self, final_loss, name="Loss"):
+    # Return a loss based on final_loss and the distribution. Returns
     # None if pathwise derivatives are supported, if the loss_fn
     # was explicitly set to None, or if the value type is MeanValue.
     if self._loss_fn is None:
@@ -481,12 +466,12 @@ class DistributionTensor(StochasticTensor):
       # Can perform pathwise-derivative on this one; no additional loss needed.
       return None
 
-    with ops.name_scope(self.name, values=final_losses):
+    with ops.name_scope(self.name, values=[final_loss]):
       with ops.name_scope(name):
         if (self._value_type.stop_gradient or
             isinstance(self._value_type, SampleAndReshapeValue) or
             isinstance(self._value_type, SampleValue)):
-          return self._loss_fn(self, self._value, final_losses)
+          return self._loss_fn(self, self._value, final_loss)
         elif isinstance(self._value_type, MeanValue):
           return None  # MeanValue generally provides its own gradient
         else:
@@ -564,7 +549,6 @@ def surrogate_loss(sample_losses,
       or greater.
   """
   with ops.name_scope(name, values=sample_losses):
-    fixed_losses = []
     if not isinstance(sample_losses, (list, tuple)):
       raise TypeError("sample_losses must be a list or tuple")
     for loss in sample_losses:
@@ -574,10 +558,9 @@ def surrogate_loss(sample_losses,
       if not (ndims is not None and ndims >= 1):
         raise ValueError("loss must have dimensionality 1 or greater: %s" %
                          loss)
-      fixed_losses.append(array_ops.stop_gradient(loss))
 
     stoch_dependencies_map = _stochastic_dependencies_map(
-        fixed_losses, stochastic_tensors=stochastic_tensors)
+        sample_losses, stochastic_tensors=stochastic_tensors)
     if not stoch_dependencies_map:
       logging.warn(
           "No collection of Stochastic Tensors found for current graph.")
@@ -588,8 +571,27 @@ def surrogate_loss(sample_losses,
     sample_losses = [ops.convert_to_tensor(loss) for loss in sample_losses]
     loss_terms = sample_losses
     for (stoch_node, dependent_losses) in stoch_dependencies_map.items():
-      loss_term = stoch_node.loss(list(dependent_losses))
+      dependent_losses = list(dependent_losses)
+
+      # Sum up the downstream losses for this ST
+      influenced_loss = _add_n_or_sum(dependent_losses)
+
+      # Compute surrogate loss term
+      loss_term = stoch_node.loss(array_ops.stop_gradient(influenced_loss))
       if loss_term is not None:
         loss_terms.append(loss_term)
 
-    return math_ops.add_n(loss_terms)
+    return _add_n_or_sum(loss_terms)
+
+
+def _add_n_or_sum(terms):
+  # add_n works for Tensors of the same dtype and shape
+  shape = terms[0].get_shape()
+  dtype = terms[0].dtype
+
+  if all(term.get_shape().is_fully_defined() and
+         term.get_shape().is_compatible_with(shape) and term.dtype == dtype
+         for term in terms):
+    return math_ops.add_n(terms)
+  else:
+    return sum(terms)
