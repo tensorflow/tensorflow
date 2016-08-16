@@ -463,15 +463,16 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 }
 
-void Tensor::UnsafeCopyFromInternal(const Tensor& other,
+void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
                                     const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
-  int out_size = DataTypeSize(shape.data_type());
+  int out_size = DataTypeSize(dtype);
   CHECK_NE(in_size, 0);
   CHECK_NE(out_size, 0);
   CHECK_EQ(shape.num_elements() * out_size,
            other.shape().num_elements() * in_size);
   shape_ = shape;
+  shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
     buf_ = other.buf_;

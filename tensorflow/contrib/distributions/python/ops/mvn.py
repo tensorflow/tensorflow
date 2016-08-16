@@ -46,7 +46,7 @@ __all__ = [
 ]
 
 
-class MultivariateNormalOperatorPD(distribution.Distribution):
+class _MultivariateNormalOperatorPD(distribution.Distribution):
   """The multivariate normal distribution on `R^k`.
 
   This distribution is defined by a 1-D mean `mu` and an instance of
@@ -74,7 +74,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
   mu = [1, 2, 3]
   chol = [[1, 0, 0.], [1, 3, 0], [1, 2, 3]]
   cov = tf.contrib.distributions.OperatorPDCholesky(chol)
-  dist = tf.contrib.distributions.MultivariateNormalOperatorPD(mu, cov)
+  dist = tf.contrib.distributions._MultivariateNormalOperatorPD(mu, cov)
 
   # Evaluate this on an observation in R^3, returning a scalar.
   dist.pdf([-1, 0, 1.])
@@ -83,7 +83,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
   mu = [[1, 2, 3], [11, 22, 33.]]
   chol = ...  # shape 2 x 3 x 3, lower triangular, positive diagonal.
   cov = tf.contrib.distributions.OperatorPDCholesky(chol)
-  dist = tf.contrib.distributions.MultivariateNormalOperatorPD(mu, cov)
+  dist = tf.contrib.distributions._MultivariateNormalOperatorPD(mu, cov)
 
   # Evaluate this on a two observations, each in R^3, returning a length two
   # tensor.
@@ -403,7 +403,7 @@ class MultivariateNormalOperatorPD(distribution.Distribution):
     return True
 
 
-class MultivariateNormalDiag(MultivariateNormalOperatorPD):
+class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
   """The multivariate normal distribution on `R^k`.
 
   This distribution is defined by a 1-D mean `mu` and a 1-D diagonal
@@ -489,7 +489,7 @@ class MultivariateNormalDiag(MultivariateNormalOperatorPD):
         name=name)
 
 
-class MultivariateNormalDiagPlusVDVT(MultivariateNormalOperatorPD):
+class MultivariateNormalDiagPlusVDVT(_MultivariateNormalOperatorPD):
   """The multivariate normal distribution on `R^k`.
 
   Every batch member of this distribution is defined by a mean and a lightweight
@@ -608,7 +608,7 @@ class MultivariateNormalDiagPlusVDVT(MultivariateNormalOperatorPD):
         name=name)
 
 
-class MultivariateNormalCholesky(MultivariateNormalOperatorPD):
+class MultivariateNormalCholesky(_MultivariateNormalOperatorPD):
   """The multivariate normal distribution on `R^k`.
 
   This distribution is defined by a 1-D mean `mu` and a Cholesky factor `chol`.
@@ -696,7 +696,7 @@ class MultivariateNormalCholesky(MultivariateNormalOperatorPD):
         name=name)
 
 
-class MultivariateNormalFull(MultivariateNormalOperatorPD):
+class MultivariateNormalFull(_MultivariateNormalOperatorPD):
   """The multivariate normal distribution on `R^k`.
 
   This distribution is defined by a 1-D mean `mu` and covariance matrix `sigma`.
@@ -795,8 +795,8 @@ def _kl_mvn_mvn_brute_force(mvn_a, mvn_b, name=None):
   and `y`.
 
   Args:
-    mvn_a:  Instance of subclass of `MultivariateNormalOperatorPD`.
-    mvn_b:  Instance of subclass of `MultivariateNormalOperatorPD`.
+    mvn_a:  Instance of subclass of `_MultivariateNormalOperatorPD`.
+    mvn_b:  Instance of subclass of `_MultivariateNormalOperatorPD`.
     name:  (optional) name to use for created ops.  Default "kl_mvn_mvn".
 
   Returns:

@@ -105,7 +105,8 @@ void DebugGateway::CopyTensor(const string& node_name, const int output_slot,
       // For CPU tensors, copy the source tensor and own the copy, because the
       // value callback may outlive the life time of the tensor and the tensor
       // may shared the underlying buffer with other tensors.
-      cpu_tensor.UnsafeCopyFromInternal(*src_tensor, src_tensor->shape());
+      cpu_tensor.UnsafeCopyFromInternal(*src_tensor, src_tensor->dtype(),
+                                        src_tensor->shape());
 
       copy_done_cb(&cpu_tensor);
     }

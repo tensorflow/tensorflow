@@ -348,8 +348,7 @@ def embedding_rnn_seq2seq(encoder_inputs,
           num_decoder_symbols,
           embedding_size,
           output_projection=output_projection,
-          feed_previous=feed_previous,
-          scope=scope)
+          feed_previous=feed_previous)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
@@ -740,8 +739,7 @@ def embedding_attention_decoder(decoder_inputs,
         output_size=output_size,
         num_heads=num_heads,
         loop_function=loop_function,
-        initial_state_attention=initial_state_attention,
-        scope=scope)
+        initial_state_attention=initial_state_attention)
 
 
 def embedding_attention_seq2seq(encoder_inputs,
@@ -830,8 +828,7 @@ def embedding_attention_seq2seq(encoder_inputs,
           output_size=output_size,
           output_projection=output_projection,
           feed_previous=feed_previous,
-          initial_state_attention=initial_state_attention,
-          scope=scope)
+          initial_state_attention=initial_state_attention)
 
     # If feed_previous is a Tensor, we construct 2 graphs and use cond.
     def decoder(feed_previous_bool):
@@ -850,8 +847,7 @@ def embedding_attention_seq2seq(encoder_inputs,
             output_projection=output_projection,
             feed_previous=feed_previous_bool,
             update_embedding_for_previous=False,
-            initial_state_attention=initial_state_attention,
-            scope=scope)
+            initial_state_attention=initial_state_attention)
         state_list = [state]
         if nest.is_sequence(state):
           state_list = nest.flatten(state)
@@ -947,7 +943,7 @@ def one2many_rnn_seq2seq(encoder_inputs,
             # pylint: disable=cell-var-from-loop
             reuse = None if feed_previous else True
             vs = variable_scope.get_variable_scope()
-            with variable_scope.variable_scope(vs, reuse=reuse) as scope:
+            with variable_scope.variable_scope(vs, reuse=reuse):
               outputs, state = embedding_rnn_decoder(
                   decoder_inputs, encoder_state, decoder_cell,
                   num_decoder_symbols, embedding_size,

@@ -2085,20 +2085,4 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
 
 void DeleteNonCachedKernel(OpKernel* kernel) { delete kernel; }
 
-Status CreateCachedKernel(Device* device, const string& session,
-                          FunctionLibraryRuntime* flib, const NodeDef& ndef,
-                          int graph_def_version, OpKernel** kernel) {
-  auto op_seg = device->op_segment();
-  auto create_fn = [device, flib, &ndef, graph_def_version](OpKernel** kernel) {
-    return CreateNonCachedKernel(device, flib, ndef, graph_def_version, kernel);
-  };
-  return op_seg->FindOrCreate(session, ndef.name(), kernel, create_fn);
-}
-
-// Deletes "kernel".
-void DeleteCachedKernel(Device* device, const string& session,
-                        OpKernel* kernel) {
-  // Do nothing.
-}
-
 }  // end namespace tensorflow

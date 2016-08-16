@@ -234,8 +234,10 @@ class SessionManager(object):
         config=config)
     if not is_loaded_from_checkpoint:
       if init_op is None and not init_fn and self._local_init_op is None:
-        raise RuntimeError("Model is not initialized and no init_op or "
-                           "init_fn or local_init_op was given")
+        is_ready, msg = self._model_ready(sess)
+        if not is_ready:
+          raise RuntimeError("Model is not initialized and no init_op or "
+                             "init_fn or local_init_op was given")
       if init_op is not None:
         sess.run(init_op, feed_dict=init_feed_dict)
       if init_fn:

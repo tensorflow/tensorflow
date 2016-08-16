@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/tile_ops.h"
 #include <stdio.h>
+#include "tensorflow/core/kernels/tile_ops_impl.h"
 
 namespace tensorflow {
 namespace functor {

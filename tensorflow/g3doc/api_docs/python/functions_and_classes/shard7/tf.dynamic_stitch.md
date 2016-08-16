@@ -43,7 +43,7 @@ For example:
 ##### Args:
 
 
-*  <b>`indices`</b>: A list of at least 2 `Tensor` objects of type `int32`.
+*  <b>`indices`</b>: A list of at least 1 `Tensor` objects of type `int32`.
 *  <b>`data`</b>: A list with the same number of `Tensor` objects as `indices` of `Tensor` objects of the same type.
 *  <b>`name`</b>: A name for the operation (optional).
 

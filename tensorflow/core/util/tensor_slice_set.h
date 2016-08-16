@@ -92,6 +92,15 @@ class TensorSliceSet {
   TensorSlice slices_hull_;
 };
 
+// Registers "slice" in the TensorSliceSet stored in "tensor_slices", under key
+// "name".  Other arguments are used for validations.  Does not modify the map
+// or its values on non-OK.
+// REQUIRES: tensor_slices != nullptr
+Status RegisterTensorSlice(
+    const string& name, const TensorShape& shape, DataType type,
+    const string& tag, const TensorSlice& slice,
+    std::unordered_map<string, TensorSliceSet*>* tensor_slices);
+
 }  // namespace checkpoint
 
 }  // namespace tensorflow

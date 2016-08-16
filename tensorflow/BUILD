@@ -113,6 +113,7 @@ filegroup(
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/testing:all_files",
+        "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/debug:all_files",

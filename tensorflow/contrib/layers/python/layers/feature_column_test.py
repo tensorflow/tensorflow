@@ -142,6 +142,11 @@ class FeatureColumnTest(tf.test.TestCase):
                                            dimension=3,
                                            default_value=[2.])
 
+    # Test that the normalizer_fn gets stored for a real_valued_column
+    normalizer = lambda x: x - 1
+    h1 = tf.contrib.layers.real_valued_column("h1", normalizer=normalizer)
+    self.assertEqual(normalizer(10), h1.normalizer_fn(10))
+
   def testBucketizedColumnNameEndsWithUnderscoreBucketized(self):
     a = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column("aaa"), [0, 4])

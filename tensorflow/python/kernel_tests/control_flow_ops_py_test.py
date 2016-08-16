@@ -684,6 +684,32 @@ class ControlFlowTest(tf.test.TestCase):
     self._testNestedWhile_1(use_gpu=False)
     self._testNestedWhile_1(use_gpu=True)
 
+  def _testNestedWhile_2(self, use_gpu):
+    """ Test the cases that A -> Enter and Exit -> A are partitioned."""
+    with self.test_session(use_gpu=use_gpu):
+      s0 = tf.constant(2.0)
+      def inner_loop(s):
+        c = lambda s: tf.less(s, 20.0)
+        def b(s):
+          s1 = tf.add(s, s)
+          return s1
+        r_s = tf.while_loop(c, b, [s], parallel_iterations=1)
+        return r_s
+
+      outer_c = lambda x: tf.less(x, 3000.0)
+      def outer_b(x):
+        x = tf.Print(x, [x])  # Edge "Print -> Enter" is partitioned
+        x = inner_loop(x)
+        with tf.device("/cpu:0"):
+          x = tf.square(x)    # Edge "Exit -> Square" is partitioned
+        return x
+      r = tf.while_loop(outer_c, outer_b, [s0], parallel_iterations=1)
+      self.assertEqual(1048576.0, r.eval())
+
+  def testNestedWhile_2(self):
+    self._testNestedWhile_2(use_gpu=False)
+    self._testNestedWhile_2(use_gpu=True)
+
   def testWhileWithControl_1(self):
     with self.test_session():
       n = tf.constant(0)

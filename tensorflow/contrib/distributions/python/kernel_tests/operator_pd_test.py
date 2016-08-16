@@ -243,7 +243,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 2, 3, 4), vec_v.shape)
@@ -255,7 +255,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 3, 2, 4), vec_v.shape)
@@ -266,7 +266,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((2, 3, 2, 3, 4), vec_v.shape)
@@ -277,7 +277,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(1, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 3, 4), vec_v.shape)
@@ -295,7 +295,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         expected_mat_v = x.reshape(x.shape + (1,))
@@ -307,7 +307,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((4, 5, 6, 3), mat_v.shape)
@@ -319,7 +319,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((5, 4, 6, 3), mat_v.shape)
@@ -330,7 +330,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((4, 5, 6, 2*3), mat_v.shape)
@@ -345,14 +345,14 @@ class ExtractBatchShapeTest(tf.test.TestCase):
     with self.test_session():
       x = self._rng.rand(2, 3)
       num_event_dims = 2
-      batch_shape = operator_pd._extract_batch_shape(x, num_event_dims)
+      batch_shape = operator_pd.extract_batch_shape(x, num_event_dims)
       self.assertAllEqual([], batch_shape.eval())
 
   def test_x_has_non_empty_batch_shape(self):
     with self.test_session():
       x = self._rng.rand(2, 3, 4, 5)
       num_event_dims = 2
-      batch_shape = operator_pd._extract_batch_shape(x, num_event_dims)
+      batch_shape = operator_pd.extract_batch_shape(x, num_event_dims)
       self.assertAllEqual([2, 3], batch_shape.eval())
 
 
