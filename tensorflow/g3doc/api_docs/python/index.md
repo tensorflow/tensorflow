@@ -622,6 +622,7 @@
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
   * [`normal_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_congugates_known_sigma_predictive)
   * [`normal_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_sigma_posterior)
+  * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`RegisterKL`](../../api_docs/python/contrib.distributions.md#RegisterKL)
   * [`StudentT`](../../api_docs/python/contrib.distributions.md#StudentT)
   * [`TransformedDistribution`](../../api_docs/python/contrib.distributions.md#TransformedDistribution)
@@ -864,6 +865,11 @@
   * [`streaming_sparse_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_k)
   * [`streaming_sparse_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_recall_at_k)
   * [`streaming_specificity_at_sensitivity`](../../api_docs/python/contrib.metrics.md#streaming_specificity_at_sensitivity)
+
+* **[Training (contrib)](../../api_docs/python/contrib.training.md)**:
+  * [`batch_sequences_with_states`](../../api_docs/python/contrib.training.md#batch_sequences_with_states)
+  * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
+  * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
