@@ -262,6 +262,7 @@ Status TensorSliceReader::GetTensor(
     default:
       return errors::Unimplemented("Data type not supported");
   }
+#undef READER_COPY
 
   if (!success) {
     return errors::NotFound(name, " not found in checkpoint file");
