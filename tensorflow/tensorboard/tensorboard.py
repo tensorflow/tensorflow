@@ -94,7 +94,7 @@ def main(unused_argv=None):
   if FLAGS.inspect:
     logging.info('Not bringing up TensorBoard, but inspecting event files.')
     efi.inspect(logdir=FLAGS.logdir,
-                event_file=FLAGS.event_file,
+                event_file=os.path.expanduser(FLAGS.event_file),
                 tag=FLAGS.tag)
     return 0
 

@@ -99,7 +99,7 @@ var TF;
     var Globals;
     (function (Globals) {
         // The names of TensorBoard tabs.
-        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'histograms'];
+        Globals.TABS = ['events', 'images', 'audio', 'graphs', 'distributions', 'histograms'];
         // If true, TensorBoard stores its hash in the URI state.
         // If false, tab switching in TensorBoard will not update location hash,
         // because hash updates interfere with wct_tests.
@@ -526,8 +526,8 @@ var TF;
   <style include="run-color-style"></style>
 
   <template>
-    <div id="outer-container" class="scrollbar">
       <paper-input id="runs-regex" no-label-float="" label="Write a regex to filter runs" value="{{regexInput}}"></paper-input>
+    <div id="outer-container" class="scrollbar">
       <template is="dom-repeat" items="[[namesMatchingRegex]]">
         <div class="run-row">
           <div class="checkbox-container vertical-align-container">
@@ -555,9 +555,10 @@ var TF;
       height: 100%;
     }
     #outer-container {
-      overflow-y: scroll;
+      overflow-y: auto;
       overflow-x: hidden;
       width: 100%;
+      height: 0; /* Quirk to make firefox add scrolling instead of expand div */
       flex-grow: 1;
       flex-shrink: 1;
       word-wrap: break-word;
@@ -692,8 +693,9 @@ var TF;
       window.requestAnimationFrame(function() {_this.updateStyles();});
     },
     _checkboxChange: function(e) {
-      var name = e.srcElement.name;
-      var checked = e.srcElement.checked;
+      var target = e.srcElement || e.target; // Firefox doesn't have srcElement.
+      var name = target.name;
+      var checked = target.checked;
       this.runToIsCheckedMapping[name] = checked;
       // n.b. notifyPath won't work because run names may have periods.
       this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
@@ -918,22 +920,14 @@ var TF;
 
 </style>
 
-<dom-module id="tf-x-type-selector" assetpath="../tf-event-dashboard/">
+<dom-module id="tf-option-selector" assetpath="../tf-option-selector/">
   <template>
-    <div id="buttons">
-      <h3>Horizontal Axis</h3>
-      <paper-button class="x-button selected" id="step" on-tap="_select">
-      step
-      </paper-button>
-      <paper-button class="x-button" id="relative" on-tap="_select">
-      relative
-      </paper-button>
-      <paper-button class="x-button" id="wall_time" on-tap="_select">
-      wall
-      </paper-button>
+    <div id="wrap">
+      <h3>[[name]]</h3>
+      <div class="content-wrapper"><content></content></div>
     </div>
     <style>
-      .x-button {
+      .content-wrapper ::content > * {
         width: 30%;
         font-size: 13px;
         background: none;
@@ -941,38 +935,58 @@ var TF;
         color: var(--tb-ui-dark-accent);
       }
 
-      .x-button:first-of-type {
+      .content-wrapper ::content :first-of-type {
         margin-left: 0;
       }
 
-      .x-button.selected {
+      .content-wrapper ::content .selected {
         background-color: var(--tb-ui-dark-accent);
         color: white!important;
       }
 
-      #buttons h3 {
+      h3 {
         color: var(--paper-grey-800);
         margin: 0;
         font-weight: normal;
         font-size: 14px;
         margin-bottom: 5px;
+        display: block;
+        pointer-events: none;
       }
     </style>
   </template>
   <script>
     Polymer({
-      is: "tf-x-type-selector",
+      is: "tf-option-selector",
       properties: {
-        outXType: {type: String, notify: true, readOnly: true, value: "step"},
+        name: String,
+        selectedId: {
+          type: String,
+          notify: true,
+          observer: '_selectedIdChanged'
+        }
       },
-      _select: function(e) {
-        var _this = this;
-        ["step", "wall_time", "relative"].forEach(function(id) {
-          _this.$[id].classList.remove("selected");
+      attached: function() {
+        this.async(function() {
+          this.getEffectiveChildren().forEach(function(node) {
+            this.listen(node, 'tap', '_selectTarget');
+          }.bind(this));
         });
-        this._setOutXType(e.currentTarget.id);
-        e.currentTarget.classList.add("selected");
       },
+      _selectTarget: function(e) {
+        this.selectedId = e.currentTarget.id;
+      },
+      _selectedIdChanged: function() {
+        var selected = this.queryEffectiveChildren('#' + this.selectedId);
+        if (!selected) {
+          return;
+        }
+
+        this.getEffectiveChildren().forEach(function(node) {
+          node.classList.remove("selected");
+        });
+        selected.classList.add("selected");
+      }
     });
   </script>
 </dom-module>
@@ -1426,15 +1440,100 @@ var Categorizer;
   </script>
 </dom-module>
 
-<dom-module id="tf-line-chart" assetpath="../tf-event-dashboard/">
+<dom-module id="tf-chart-scaffold" assetpath="../tf-chart-scaffold/">
   <template>
-    <svg id="chartsvg"></svg>
+    <content></content>
+    <style>
+      :host {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        flex-shrink: 1;
+        position: relative;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-chart-scaffold",
+      properties: {
+        tag: String,
+        dataProvider: Function,
+        visibleSeries: Array,
+        _attached: {
+          type: Boolean,
+          value: false
+        }
+      },
+      observers: [
+        "reload(tag, dataProvider)",
+        "_changeSeries(visibleSeries.*)"
+      ],
+      attached: function() {
+        this._attached = true;
+        this._changeSeries();
+      },
+      detached: function() {
+        this._attached = false;
+      },
+      reload: function() {
+        if (!this._attached) {
+          return;
+        }
+        else if (!this.dataProvider) {
+          throw new Error('tf-chart-scaffold requires a dataProvider.');
+        }
+        else if (!this.tag) {
+          throw new Error('tf-chart-scaffold requires a tag.');
+        }
+
+        this.visibleSeries.forEach(function(name) {
+          this.dataProvider(this.tag, name).then(function(data) {
+            this.chart().setSeriesData(name, data);
+          }.bind(this));
+        }.bind(this));
+      },
+      _changeSeries: function() {
+        if (!this._attached) {
+           return;
+        }
+        else if (!this.visibleSeries) {
+          throw new Error('tf-chart-scaffold requires a visibleSeries.');
+        }
+
+        this.chart().setVisibleSeries(this.visibleSeries);
+        this.reload();
+      },
+      chart: function() {
+        var children = this.getEffectiveChildren();
+        if (!children.length) {
+          throw new Error('tf-chart-scaffold has no children');
+        }
+
+        var child = children[0];
+        if (!child.setVisibleSeries || !child.setSeriesData) {
+          throw new Error("tf-chart-scaffold's content doesn't implement the " +
+              "required interface");
+        }
+        return child;
+      }
+    });
+  </script>
+</dom-module>
+
+<dom-module id="vz-line-chart" assetpath="../vz-line-chart/">
+  <template>
     <div id="tooltip">
       <table>
         <thead>
           <tr>
             <th></th>
-            <th>Run</th>
+            <th>Name</th>
+            <template is="dom-if" if="{{smoothingEnabled}}">
+              <th>Smoothed</th>
+            </template>
             <th>Value</th>
             <th>Step</th>
             <th>Time</th>
@@ -1445,6 +1544,7 @@ var Categorizer;
         </tbody>
       </table>
     </div>
+    <svg id="chartsvg"></svg>
     <style>
       :host {
         -webkit-user-select: none;
@@ -1717,18 +1817,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
-var TF;
-(function (TF) {
+var VZ;
+(function (VZ) {
     var LineChart = (function () {
-        function LineChart(tag, dataFn, xType, colorScale, tooltip) {
-            this.dataFn = dataFn;
-            this.run2datasets = {};
-            this.tag = tag;
+        function LineChart(xType, colorScale, tooltip) {
+            this.seriesNames = [];
+            this.name2datasets = {};
             this.colorScale = colorScale;
             this.tooltip = tooltip;
             this.datasets = [];
-            this.smoothDatasets = [];
-            this.run2smoothDatasets = {};
             // lastPointDataset is a dataset that contains just the last point of
             // every dataset we're currently drawing.
             this.lastPointsDataset = new Plottable.Dataset();
@@ -1742,14 +1839,14 @@ var TF;
             if (this.outer) {
                 this.outer.destroy();
             }
-            var xComponents = TF.ChartHelpers.getXComponents(xType);
+            var xComponents = VZ.ChartHelpers.getXComponents(xType);
             this.xAccessor = xComponents.accessor;
             this.xScale = xComponents.scale;
             this.xAxis = xComponents.axis;
             this.xAxis.margin(0).tickLabelPadding(3);
             this.yScale = new Plottable.Scales.Linear();
             this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
-            var yFormatter = TF.ChartHelpers.multiscaleFormatter(TF.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
+            var yFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
             this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
             this.yAxis.usesTextWidthApproximation(true);
             this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
@@ -1765,20 +1862,21 @@ var TF;
         };
         LineChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
             var _this = this;
-            this.yAccessor = function (d) { return d.scalar; };
+            this.scalarAccessor = function (d) { return d.scalar; };
+            this.smoothedAccessor = function (d) { return d.smoothed; };
             var linePlot = new Plottable.Plots.Line();
             linePlot.x(xAccessor, xScale);
-            linePlot.y(this.yAccessor, yScale);
+            linePlot.y(this.scalarAccessor, yScale);
             linePlot.attr('stroke', function (d, i, dataset) {
-                return _this.colorScale.scale(dataset.metadata().run);
+                return _this.colorScale.scale(dataset.metadata().name);
             });
             this.linePlot = linePlot;
             var group = this.setupTooltips(linePlot);
             var smoothLinePlot = new Plottable.Plots.Line();
             smoothLinePlot.x(xAccessor, xScale);
-            smoothLinePlot.y(this.yAccessor, yScale);
+            smoothLinePlot.y(this.smoothedAccessor, yScale);
             smoothLinePlot.attr('stroke', function (d, i, dataset) {
-                return _this.colorScale.scale(dataset.metadata().run);
+                return _this.colorScale.scale(dataset.metadata().name);
             });
             this.smoothLinePlot = smoothLinePlot;
             // The scatterPlot will display the last point for each dataset.
@@ -1786,18 +1884,18 @@ var TF;
             // visible. We hide it when tooltips are active to keep things clean.
             var scatterPlot = new Plottable.Plots.Scatter();
             scatterPlot.x(xAccessor, xScale);
-            scatterPlot.y(this.yAccessor, yScale);
-            scatterPlot.attr('fill', function (d) { return _this.colorScale.scale(d.run); });
+            scatterPlot.y(this.scalarAccessor, yScale);
+            scatterPlot.attr('fill', function (d) { return _this.colorScale.scale(d.name); });
             scatterPlot.attr('opacity', 1);
-            scatterPlot.size(TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
+            scatterPlot.size(VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE * 2);
             scatterPlot.datasets([this.lastPointsDataset]);
             this.scatterPlot = scatterPlot;
             var nanDisplay = new Plottable.Plots.Scatter();
             nanDisplay.x(xAccessor, xScale);
             nanDisplay.y(function (x) { return x.displayY; }, yScale);
-            nanDisplay.attr('fill', function (d) { return _this.colorScale.scale(d.run); });
+            nanDisplay.attr('fill', function (d) { return _this.colorScale.scale(d.name); });
             nanDisplay.attr('opacity', 1);
-            nanDisplay.size(TF.ChartHelpers.NAN_SYMBOL_SIZE * 2);
+            nanDisplay.size(VZ.ChartHelpers.NAN_SYMBOL_SIZE * 2);
             nanDisplay.datasets([this.nanDataset]);
             nanDisplay.symbol(Plottable.SymbolFactories.triangleUp);
             this.nanDisplay = nanDisplay;
@@ -1808,30 +1906,31 @@ var TF;
          */
         LineChart.prototype._onDatasetChanged = function (dataset) {
             if (this.smoothingEnabled) {
-                this.smoothDataset(this.getSmoothDataset(dataset.metadata().run));
-                this.updateSpecialDatasets(this.smoothDatasets);
+                this.resmoothDataset(dataset);
+                this.updateSpecialDatasets(this.smoothedAccessor);
             }
             else {
-                this.updateSpecialDatasets(this.datasets);
+                this.updateSpecialDatasets(this.scalarAccessor);
             }
         };
         /** Constructs special datasets. Each special dataset contains exceptional
          * values from all of the regular datasets, e.g. last points in series, or
-         * NaN values. Those points will have a `run` and `relative` property added
+         * NaN values. Those points will have a `name` and `relative` property added
          * (since usually those are context in the surrounding dataset).
+         * The accessor will point to the correct data to access.
          */
-        LineChart.prototype.updateSpecialDatasets = function (datasets) {
-            var lastPointsData = datasets
+        LineChart.prototype.updateSpecialDatasets = function (accessor) {
+            var lastPointsData = this.datasets
                 .map(function (d) {
                 var datum = null;
                 // filter out NaNs to ensure last point is a clean one
-                var nonNanData = d.data().filter(function (x) { return !isNaN(x.scalar); });
+                var nonNanData = d.data().filter(function (x) { return !isNaN(accessor(x, -1, d)); });
                 if (nonNanData.length > 0) {
                     var idx = nonNanData.length - 1;
                     datum = nonNanData[idx];
-                    datum.run = d.metadata().run;
+                    datum.name = d.metadata().name;
                     datum.relative =
-                        TF.ChartHelpers.relativeAccessor(datum, -1, d);
+                        VZ.ChartHelpers.relativeAccessor(datum, -1, d);
                 }
                 return datum;
             })
@@ -1845,8 +1944,8 @@ var TF;
                 var data = d.data();
                 var i = 0;
                 while (i < data.length && displayY == null) {
-                    if (!isNaN(data[i].scalar)) {
-                        displayY = data[i].scalar;
+                    if (!isNaN(accessor(data[i], -1, d))) {
+                        displayY = accessor(data[i], -1, d);
                     }
                     i++;
                 }
@@ -1855,19 +1954,19 @@ var TF;
                 }
                 var nanData = [];
                 for (i = 0; i < data.length; i++) {
-                    if (!isNaN(data[i].scalar)) {
-                        displayY = data[i].scalar;
+                    if (!isNaN(accessor(data[i], -1, d))) {
+                        displayY = accessor(data[i], -1, d);
                     }
                     else {
-                        data[i].run = d.metadata().run;
+                        data[i].name = d.metadata().name;
                         data[i].displayY = displayY;
-                        data[i].relative = TF.ChartHelpers.relativeAccessor(data[i], -1, d);
+                        data[i].relative = VZ.ChartHelpers.relativeAccessor(data[i], -1, d);
                         nanData.push(data[i]);
                     }
                 }
                 return nanData;
             };
-            var nanData = _.flatten(datasets.map(datasetToNaNData));
+            var nanData = _.flatten(this.datasets.map(datasetToNaNData));
             this.nanDataset.data(nanData);
         };
         LineChart.prototype.setupTooltips = function (plot) {
@@ -1902,18 +2001,17 @@ var TF;
                     dataset: null,
                 };
                 var centerBBox = _this.gridlines.content().node().getBBox();
-                var datasets = _this.smoothingEnabled ? _this.smoothDatasets : plot.datasets();
-                var points = datasets.map(function (dataset) { return _this.findClosestPoint(target, dataset); });
+                var points = plot.datasets().map(function (dataset) { return _this.findClosestPoint(target, dataset); });
                 var pointsToCircle = points.filter(function (p) { return p != null &&
                     Plottable.Utils.DOM.intersectsBBox(p.x, p.y, centerBBox); });
-                var pts = pointsComponent.content().selectAll('.point').data(pointsToCircle, function (p) { return p.dataset.metadata().run; });
+                var pts = pointsComponent.content().selectAll('.point').data(pointsToCircle, function (p) { return p.dataset.metadata().name; });
                 if (points.length !== 0) {
                     pts.enter().append('circle').classed('point', true);
-                    pts.attr('r', TF.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
+                    pts.attr('r', VZ.ChartHelpers.TOOLTIP_CIRCLE_SIZE)
                         .attr('cx', function (p) { return p.x; })
                         .attr('cy', function (p) { return p.y; })
                         .style('stroke', 'none')
-                        .attr('fill', function (p) { return _this.colorScale.scale(p.dataset.metadata().run); });
+                        .attr('fill', function (p) { return _this.colorScale.scale(p.dataset.metadata().name); });
                     pts.exit().remove();
                     _this.drawTooltips(points, target);
                 }
@@ -1928,12 +2026,12 @@ var TF;
             var _this = this;
             // Formatters for value, step, and wall_time
             this.scatterPlot.attr('opacity', 0);
-            var valueFormatter = TF.ChartHelpers.multiscaleFormatter(TF.ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION);
+            var valueFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION);
             var dist = function (p) {
                 return Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
             };
             var closestDist = _.min(points.map(dist));
-            points = _.sortBy(points, function (d) { return d.dataset.metadata().run; });
+            points = _.sortBy(points, function (d) { return d.dataset.metadata().name; });
             var rows = this.tooltip.select('tbody')
                 .html('')
                 .selectAll('tr')
@@ -1949,7 +2047,7 @@ var TF;
                 var lastPoint = _.last(d.dataset.data());
                 var firstX = _this.xScale.scale(_this.xAccessor(firstPoint, 0, d.dataset));
                 var lastX = _this.xScale.scale(_this.xAccessor(lastPoint, 0, d.dataset));
-                var s = d.datum.scalar;
+                var s = _this.smoothingEnabled ? d.datum.smoothed : d.datum.scalar;
                 var yD = _this.yScale.domain();
                 return target.x < firstX || target.x > lastX || s < yD[0] ||
                     s > yD[1] || isNaN(s);
@@ -1966,14 +2064,18 @@ var TF;
             rows.append('td')
                 .append('span')
                 .classed('swatch', true)
-                .style('background-color', function (d) { return _this.colorScale.scale(d.dataset.metadata().run); });
-            rows.append('td').text(function (d) { return d.dataset.metadata().run; });
+                .style('background-color', function (d) { return _this.colorScale.scale(d.dataset.metadata().name); });
+            rows.append('td').text(function (d) { return d.dataset.metadata().name; });
+            if (this.smoothingEnabled) {
+                rows.append('td').text(function (d) { return isNaN(d.datum.smoothed) ? 'NaN' :
+                    valueFormatter(d.datum.smoothed); });
+            }
             rows.append('td').text(function (d) {
                 return isNaN(d.datum.scalar) ? 'NaN' : valueFormatter(d.datum.scalar);
             });
-            rows.append('td').text(function (d) { return TF.ChartHelpers.stepFormatter(d.datum.step); });
-            rows.append('td').text(function (d) { return TF.ChartHelpers.timeFormatter(d.datum.wall_time); });
-            rows.append('td').text(function (d) { return TF.ChartHelpers.relativeFormatter(TF.ChartHelpers.relativeAccessor(d.datum, -1, d.dataset)); });
+            rows.append('td').text(function (d) { return VZ.ChartHelpers.stepFormatter(d.datum.step); });
+            rows.append('td').text(function (d) { return VZ.ChartHelpers.timeFormatter(d.datum.wall_time); });
+            rows.append('td').text(function (d) { return VZ.ChartHelpers.relativeFormatter(VZ.ChartHelpers.relativeAccessor(d.datum, -1, d.dataset)); });
             // compute left position
             var documentWidth = document.body.clientWidth;
             var node = this.tooltip.node();
@@ -1981,23 +2083,16 @@ var TF;
             var nodeRect = node.getBoundingClientRect();
             // prevent it from falling off the right side of the screen
             var left = Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
-            this.tooltip.style('left', left + 'px');
-            // compute top position
-            if (parentRect.bottom + nodeRect.height +
-                TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET <
-                document.body.clientHeight) {
-                this.tooltip.style('top', parentRect.bottom + TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
-            }
-            else {
-                this.tooltip.style('bottom', parentRect.top - TF.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET);
-            }
+            var top = parentRect.height + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET;
+            this.tooltip.style('transform', 'translate(' + left + 'px,' + top + 'px)');
             this.tooltip.style('opacity', 1);
         };
         LineChart.prototype.findClosestPoint = function (target, dataset) {
             var _this = this;
             var points = dataset.data().map(function (d, i) {
                 var x = _this.xAccessor(d, i, dataset);
-                var y = _this.yAccessor(d, i, dataset);
+                var y = _this.smoothingEnabled ? _this.smoothedAccessor(d, i, dataset) :
+                    _this.scalarAccessor(d, i, dataset);
                 return {
                     x: _this.xScale.scale(x),
                     y: _this.yScale.scale(y),
@@ -2020,93 +2115,72 @@ var TF;
                 return prevDist < nextDist ? prev : next;
             }
         };
-        LineChart.prototype.getSmoothDataset = function (run) {
-            if (this.run2smoothDatasets[run] === undefined) {
-                this.run2smoothDatasets[run] =
-                    new Plottable.Dataset([], { run: run, tag: this.tag });
-            }
-            return this.run2smoothDatasets[run];
-        };
-        LineChart.prototype.smoothDataset = function (dataset) {
+        LineChart.prototype.resmoothDataset = function (dataset) {
             var _this = this;
-            var data = this.getDataset(dataset.metadata().run).data();
+            var data = dataset.data();
             // EMA with first step initialized to first element.
-            var smoothedData = _.cloneDeep(data);
-            smoothedData.forEach(function (d, i) {
+            data.forEach(function (d, i) {
                 if (i === 0) {
-                    return;
+                    d.smoothed = d.scalar;
                 }
-                d.scalar = (1.0 - _this.smoothingDecay) * d.scalar +
-                    _this.smoothingDecay * smoothedData[i - 1].scalar;
+                else {
+                    d.smoothed = (1.0 - _this.smoothingDecay) * d.scalar +
+                        _this.smoothingDecay * data[i - 1].smoothed;
+                }
             });
-            dataset.data(smoothedData);
         };
-        LineChart.prototype.getDataset = function (run) {
-            if (this.run2datasets[run] === undefined) {
-                this.run2datasets[run] =
-                    new Plottable.Dataset([], { run: run, tag: this.tag });
+        LineChart.prototype.getDataset = function (name) {
+            if (this.name2datasets[name] === undefined) {
+                this.name2datasets[name] = new Plottable.Dataset([], { name: name });
             }
-            return this.run2datasets[run];
+            return this.name2datasets[name];
         };
         /**
-         * Change the runs on the chart.
-         * Changing runs automatically triggers a reload; this ensures that the
-         * newly selected run will have data, and that all the runs will be current
-         * (it would be weird if one run was ahead of the others, and the display
-         * depended on the order in which runs were added)
+         * Update the selected series on the chart.
          */
-        LineChart.prototype.changeRuns = function (runs) {
+        LineChart.prototype.setVisibleSeries = function (names) {
             var _this = this;
-            this.runs = runs;
-            this.reload();
-            runs.reverse(); // draw first run on top
+            this.seriesNames = names;
+            names.reverse(); // draw first series on top
             this.datasets.forEach(function (d) { return d.offUpdate(_this.onDatasetChanged); });
-            this.datasets = runs.map(function (r) { return _this.getDataset(r); });
+            this.datasets = names.map(function (r) { return _this.getDataset(r); });
             this.datasets.forEach(function (d) { return d.onUpdate(_this.onDatasetChanged); });
             this.linePlot.datasets(this.datasets);
-            if (this.smoothingEnabled) {
-                this.smoothDatasets = runs.map(function (r) { return _this.getSmoothDataset(r); });
-                this.smoothLinePlot.datasets(this.smoothDatasets);
-            }
+        };
+        /**
+         * Set the data of a series on the chart.
+         */
+        LineChart.prototype.setSeriesData = function (name, data) {
+            this.getDataset(name).data(data);
         };
         LineChart.prototype.smoothingUpdate = function (decay) {
             var _this = this;
+            this.smoothingDecay = decay;
+            this.datasets.forEach(function (d) { return _this.resmoothDataset(d); });
             if (!this.smoothingEnabled) {
                 this.linePlot.addClass('ghost');
+                this.scatterPlot.y(this.smoothedAccessor, this.yScale);
                 this.smoothingEnabled = true;
-                this.smoothDatasets = this.runs.map(function (r) { return _this.getSmoothDataset(r); });
-                this.smoothLinePlot.datasets(this.smoothDatasets);
+                this.smoothLinePlot.datasets(this.datasets);
             }
-            this.smoothingDecay = decay;
-            this.smoothDatasets.forEach(function (d) { return _this.smoothDataset(d); });
-            this.updateSpecialDatasets(this.smoothDatasets);
+            this.updateSpecialDatasets(this.smoothedAccessor);
         };
         LineChart.prototype.smoothingDisable = function () {
             if (this.smoothingEnabled) {
                 this.linePlot.removeClass('ghost');
-                this.smoothDatasets = [];
-                this.smoothLinePlot.datasets(this.smoothDatasets);
+                this.scatterPlot.y(this.scalarAccessor, this.yScale);
+                this.smoothLinePlot.datasets([]);
                 this.smoothingEnabled = false;
-                this.updateSpecialDatasets(this.datasets);
+                this.updateSpecialDatasets(this.scalarAccessor);
             }
-        };
-        /**
-         * Reload data for each run in view.
-         */
-        LineChart.prototype.reload = function () {
-            var _this = this;
-            this.runs.forEach(function (run) {
-                var dataset = _this.getDataset(run);
-                _this.dataFn(_this.tag, run).then(function (x) { return dataset.data(x); });
-            });
         };
         LineChart.prototype.renderTo = function (target) { this.outer.renderTo(target); };
         LineChart.prototype.redraw = function () { this.outer.redraw(); };
         LineChart.prototype.destroy = function () { this.outer.destroy(); };
         return LineChart;
     }());
-    TF.LineChart = LineChart;
-})(TF || (TF = {}));
+    VZ.LineChart = LineChart;
+})(VZ || (VZ = {}));
 </script>
   <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
@@ -2123,8 +2197,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
-var TF;
-(function (TF) {
+var VZ;
+(function (VZ) {
     var ChartHelpers;
     (function (ChartHelpers) {
         ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION = 4;
@@ -2246,55 +2320,153 @@ var TF;
             }
         }
         ChartHelpers.getXComponents = getXComponents;
-    })(ChartHelpers = TF.ChartHelpers || (TF.ChartHelpers = {}));
-})(TF || (TF = {}));
+    })(ChartHelpers = VZ.ChartHelpers || (VZ.ChartHelpers = {}));
+})(VZ || (VZ = {}));
 </script>
   <script>
     Polymer({
-      is: "tf-line-chart",
+      is: "vz-line-chart",
       properties: {
+        /**
+         * Scale that maps series names to colors. The default colors are from
+         * d3.scale.category10() scale. Use this property to replace the default
+         * line colors with colors of your own choice.
+         * @type {Plottable.Scales.Color}
+         * @required
+         */
+        colorScale: {
+          type: Object,
+          value: function() {
+            return new Plottable.Scales.Color()
+                .range(d3.scale.category10().range());
+          }
+        },
+
+        /**
+         * Decay (between 0.0 and 1.0) of the exponential smoothing. A higher
+         * decay results in more smoothing.
+         */
+        smoothingDecay: {
+          type: Number,
+          value: 0.9
+        },
+
+        /**
+         * Whether exponential smoothing is enabled or not. If true, smoothed
+         * lines will be plotted in the chart while the unsmoothed lines will be
+         * ghosted in the background.
+         */
+        smoothingEnabled: {
+          type: Boolean,
+          value: false
+        },
+
+        /**
+         * The way to display the X values. Allows:
+         * - "step" - Linear scale using the  "step" property of the datum.
+         * - "wall_time" - Temporal scale using the "wall_time" property of the
+         * datum.
+         * - "relative" - Temporal scale using the "relative" property of the
+         * datum if it is present or calculating from "wall_time" if it isn't.
+         */
+        xType: {
+          type: String,
+          value: 'step'
+        },
+
+        _attached: Boolean,
         _chart: Object,
-        colorScale: Object,
-        tag: String,
-        selectedRuns: Array,
-        smoothingDecay: Number,
-        smoothingEnabled: Boolean,
-        xType: String,
-        dataProvider: Function,
-        _initialized: Boolean,
+        _visibleSeriesCache: {
+          type: Array,
+          value: function() { return [] }
+        },
+        _seriesDataCache: {
+          type: Object,
+          value: function() { return {} }
+        },
+        _makeChartAsyncCallbackId: {
+          type: Number,
+          value: null
+        }
       },
       observers: [
-        "_makeChart(tag, dataProvider, xType, colorScale, _initialized)",
-        "_changeRuns(_chart, selectedRuns.*)",
+        "_makeChart(xType, colorScale, _attached)",
+        "_reloadFromCache(_chart)",
         "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)"
       ],
-      _changeRuns: function(chart) {
-        if (chart.tag !== this.tag) {
-          return; // hack around some weird polymer bug :(
+
+      /**
+       * Sets the series that the chart displays. Series with other names will
+       * not be displayed.
+       *
+       * @param {String[]} names Array with the names of the series to
+       * display.
+       */
+      setVisibleSeries: function(names) {
+        this._visibleSeriesCache = names;
+        if (this._chart) {
+          this._chart.setVisibleSeries(names);
+          this.redraw();
         }
-        this._chart.changeRuns(this.selectedRuns);
-        this.redraw();
       },
+
+      /**
+       * Sets the data of one of the series. Note that to display this series
+       * its name must be in the setVisibleSeries() array.
+       *
+       * @param {String} name Name of the series.
+       * @param {VZ.ChartHelpers.ScalarDatum[]} data Data of the series. This is
+       * an array of objects with at least the following properties:
+       * - step: (Number) - index of the datum.
+       * - wall_time: (Date) - Date object with the datum's time.
+       * - scalar: (Number) - Value of the datum.
+       */
+      setSeriesData: function(name, data) {
+        this._seriesDataCache[name] = data;
+        if (this._chart) {
+          this._chart.setSeriesData(name, data);
+        }
+      },
+
+      /**
+       * Re-renders the chart. Useful if e.g. the container size changed.
+       */
       redraw: function() {
         this._chart.redraw();
       },
-      reload: function() {
-        this._chart.reload();
+      attached: function() {
+        this._attached = true;
       },
-      _makeChart: function(tag, dataProvider, xType, colorScale, _initialized) {
-        if (!_initialized) {
-          return;
-        }
-        if (this._chart) this._chart.destroy();
-        var tooltip = d3.select(this.$.tooltip);
+      detached: function() {
+        this._attached = false;
+      },
+      ready: function() {
         this.scopeSubtree(this.$.tooltip, true);
-        var chart = new TF.LineChart(tag, dataProvider, xType, colorScale, tooltip);
-        var svg = d3.select(this.$.chartsvg);
-        this.async(function() {
+        this.scopeSubtree(this.$.chartsvg, true);
+      },
+      _makeChart: function(xType, colorScale, _attached) {
+        if (this._makeChartAsyncCallbackId === null) {
+          this.cancelAsync(this._makeChartAsyncCallbackId);
+        }
+
+        this._makeChartAsyncCallbackId = this.async(function() {
+          this._makeChartAsyncCallbackId = null;
+          if (!this._attached) return;
+          if (this._chart) this._chart.destroy();
+          var tooltip = d3.select(this.$.tooltip);
+          var chart = new VZ.LineChart(xType, colorScale, tooltip);
+          var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
-          this.scopeSubtree(this.$.chartsvg, true);
           this._chart = chart;
         }, 350);
+      },
+      _reloadFromCache: function() {
+        if(this._chart) {
+          this._chart.setVisibleSeries(this._visibleSeriesCache);
+          this._visibleSeriesCache.forEach(function(name) {
+            this._chart.setSeriesData(name, this._seriesDataCache[name] || []);
+          }.bind(this));
+        }
       },
       _smoothingChanged: function() {
         if(!this._chart) {
@@ -2306,12 +2478,6 @@ var TF;
         else {
           this._chart.smoothingDisable();
         }
-      },
-      attached: function() {
-        this._initialized = true;
-      },
-      detached: function() {
-        this._initialized = false;
       }
     });
   </script>
@@ -2438,7 +2604,7 @@ var TF;
 
       #center {
         height: 100%;
-        overflow-y: scroll;
+        overflow-y: auto;
         flex-grow: 1;
         flex-shrink: 1;
       }
@@ -2475,24 +2641,28 @@ var TF;
         position: relative;
       }
 
-      .card .card-title {
+      .card .card-title, .card .card-subtitle {
         flex-grow: 0;
         flex-shrink: 0;
-        margin-bottom: 10px;
         font-size: 14px;
         text-overflow: ellipsis;
         overflow: hidden;
+      }
+
+      .card .card-subtitle {
+        font-size: 12px;
       }
 
       .card .card-content {
         flex-grow: 1;
         flex-shrink: 1;
         display: flex;
+        margin-top: 10px;
       }
       .card .card-bottom-row {
-        flex-grow: 0;
-        flex-shrink: 0;
-        padding-left: 10px;
+        position: absolute;
+        left: 50px;
+        bottom: 0;
         padding-right: 10px;
       }
 
@@ -2501,14 +2671,10 @@ var TF;
         width: 100%;
       }
 
-      [shift] {
-        bottom: 20px !important;
-      }
-
       .expand-button {
         position: absolute;
         left: 0px;
-        bottom: 20px;
+        bottom: 0px;
         color: #2196F3;
         display: block;
       }
@@ -2578,7 +2744,7 @@ var TF;
         display: block;
       }
       paper-dropdown-menu {
-        width: 220px;
+        width: 180px;
         --paper-input-container-label: {
           font-size: 10px;
         }
@@ -3159,11 +3325,15 @@ var TF;
                 var url = this.router.histograms(tag, run);
                 p = this.requestManager.request(url);
                 return p.then(map(detupler(createHistogram))).then(function (histos) {
+                    // Get the minimum and maximum values across all histograms so that the
+                    // visualization is aligned for all timesteps.
+                    var min = d3.min(histos, function (d) { return d.min; });
+                    var max = d3.max(histos, function (d) { return d.max; });
                     return histos.map(function (histo, i) {
                         return {
                             wall_time: histo.wall_time,
                             step: histo.step,
-                            bins: convertBins(histo)
+                            bins: convertBins(histo, min, max)
                         };
                     });
                 });
@@ -3225,13 +3395,73 @@ var TF;
         }());
         Backend_1.Backend = Backend;
         /** Given a RunToTag, return sorted array of all runs */
-        function getRuns(r) { return _.keys(r).sort(); }
+        function getRuns(r) {
+            return _.keys(r).sort(compareTagNames);
+        }
         Backend_1.getRuns = getRuns;
         /** Given a RunToTag, return array of all tags (sorted + dedup'd) */
         function getTags(r) {
-            return _.union.apply(null, _.values(r)).sort();
+            return _.union.apply(null, _.values(r)).sort(compareTagNames);
         }
         Backend_1.getTags = getTags;
+        /** Compares tag names asciinumerically broken into components. */
+        function compareTagNames(a, b) {
+            var ai = 0;
+            var bi = 0;
+            while (true) {
+                if (ai === a.length)
+                    return bi === b.length ? 0 : -1;
+                if (bi === b.length)
+                    return 1;
+                if (isDigit(a[ai]) && isDigit(b[bi])) {
+                    var ais = ai;
+                    var bis = bi;
+                    ai = consumeNumber(a, ai + 1);
+                    bi = consumeNumber(b, bi + 1);
+                    var an = parseFloat(a.slice(ais, ai));
+                    var bn = parseFloat(b.slice(bis, bi));
+                    if (an < bn)
+                        return -1;
+                    if (an > bn)
+                        return 1;
+                    continue;
+                }
+                if (isBreak(a[ai])) {
+                    if (!isBreak(b[bi]))
+                        return -1;
+                }
+                else if (isBreak(b[bi])) {
+                    return 1;
+                }
+                else if (a[ai] < b[bi]) {
+                    return -1;
+                }
+                else if (a[ai] > b[bi]) {
+                    return 1;
+                }
+                ai++;
+                bi++;
+            }
+        }
+        Backend_1.compareTagNames = compareTagNames;
+        function consumeNumber(s, i) {
+            var decimal = false;
+            for (; i < s.length; i++) {
+                if (isDigit(s[i]))
+                    continue;
+                if (!decimal && s[i] === '.') {
+                    decimal = true;
+                    continue;
+                }
+                break;
+            }
+            return i;
+        }
+        function isDigit(c) { return '0' <= c && c <= '9'; }
+        function isBreak(c) {
+            // TODO(jart): Remove underscore when people stop using it like a slash.
+            return c === '/' || c === '_' || isDigit(c);
+        }
         /**
          * Given a RunToTag and an array of runs, return every tag that appears for
          * at least one run.
@@ -3284,28 +3514,53 @@ var TF;
          * Takes histogram data as stored by tensorboard backend and converts it to
          * the standard d3 histogram data format to make it more compatible and easier
          * to visualize. When visualizing histograms, having the left edge and width
-         * makes things quite a bit easier.
+         * makes things quite a bit easier. The bins are also converted to have an
+         * uniform width, what makes the visualization easier to understand.
          *
          * @param histogram A histogram from tensorboard backend.
+         * @param min The leftmost edge. The binning will start on it.
+         * @param max The rightmost edge. The binning will end on it.
+         * @param numBins The number of bins of the converted data. The default of 30
+         * is a sensible default, using more starts to get artifacts because the event
+         * data is stored in buckets, and you start being able to see the aliased
+         * borders between each bucket.
          * @return A histogram bin. Each bin has an x (left edge), a dx (width),
          *     and a y (count).
          *
          * If given rightedges are inclusive, then these left edges (x) are exclusive.
          */
-        function convertBins(histogram) {
+        function convertBins(histogram, min, max, numBins) {
+            if (numBins === void 0) { numBins = 30; }
             if (histogram.bucketRightEdges.length !== histogram.bucketCounts.length) {
                 throw (new Error('Edges and counts are of different lengths.'));
             }
-            var previousRightEdge = histogram.min;
-            return histogram.bucketRightEdges.map(function (rightEdge, i) {
-                // Use the previous bin's rightEdge as the new leftEdge
-                var left = previousRightEdge;
-                // We need to clip the rightEdge because right-most edge can be
-                // infinite-sized
-                var right = Math.min(histogram.max, rightEdge);
-                // Store rightEdgeValue for next iteration
-                previousRightEdge = rightEdge;
-                return { x: left, dx: right - left, y: histogram.bucketCounts[i] };
+            var binWidth = (max - min) / numBins;
+            var bucketLeft = min; // Use the min as the starting point for the bins.
+            var bucketPos = 0;
+            return d3.range(min, max, binWidth).map(function (binLeft) {
+                var binRight = binLeft + binWidth;
+                // Take the count of each existing bucket, multiply it by the proportion
+                // of overlap with the new bin, then sum and store as the count for the
+                // new bin. If no overlap, will add to zero, if 100% overlap, will include
+                // the full count into new bin.
+                var binY = 0;
+                while (bucketPos < histogram.bucketRightEdges.length) {
+                    // Clip the right edge because right-most edge can be infinite-sized.
+                    var bucketRight = Math.min(max, histogram.bucketRightEdges[bucketPos]);
+                    var intersect = Math.min(bucketRight, binRight) - Math.max(bucketLeft, binLeft);
+                    var count = (intersect / (bucketRight - bucketLeft)) *
+                        histogram.bucketCounts[bucketPos];
+                    binY += intersect > 0 ? count : 0;
+                    // If bucketRight is bigger than binRight, than this bin is finished and
+                    // there is data for the next bin, so don't increment bucketPos.
+                    if (bucketRight > binRight) {
+                        break;
+                    }
+                    bucketLeft = Math.max(min, bucketRight);
+                    bucketPos++;
+                }
+                ;
+                return { x: binLeft, dx: binWidth, y: binY };
             });
         }
         Backend_1.convertBins = convertBins;
@@ -3452,7 +3707,11 @@ var TF;
         <tf-smoothing-input enabled="{{_smoothingEnabled}}" decay="{{_smoothingDecay}}" step="0.001" min="0" max="1"></tf-smoothing-input>
         </div>
         <div class="sidebar-section">
-          <tf-x-type-selector id="xTypeSelector" out-x-type="{{xType}}"></tf-x-type-selector>
+          <tf-option-selector id="xTypeSelector" name="Horizontal Axis" selected-id="{{_xType}}">
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
         </div>
         <div class="sidebar-section">
           <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
@@ -3467,8 +3726,10 @@ var TF;
                 <div class="card">
                   <span class="card-title">[[tag]]</span>
                   <div class="card-content">
-                    <tf-line-chart tag="[[tag]]" data-provider="[[dataProvider]]" id="chart" selected-runs="[[validRuns(tag, selectedRuns.*, run2tag.*)]]" x-type="[[xType]]" color-scale="[[colorScale]]" smoothing-decay="[[_smoothingDecay]]" smoothing-enabled="[[_smoothingEnabled]]" on-keyup="toggleSelected" tabindex="2"></tf-line-chart>
-                    <paper-icon-button class="expand-button" shift$="[[_showDownloadLinks]]" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
+                    <tf-chart-scaffold tag="[[tag]]" data-provider="[[dataProvider]]" visible-series="[[validRuns(tag, selectedRuns.*, run2tag.*)]]">
+                      <vz-line-chart id="chart" x-type="[[_xType]]" color-scale="[[colorScale]]" smoothing-decay="[[_smoothingDecay]]" smoothing-enabled="[[_smoothingEnabled]]" on-keyup="toggleSelected" tabindex="2"></vz-line-chart>
+                    </tf-chart-scaffold>
+                    <paper-icon-button class="expand-button" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
                   </div>
                   <template is="dom-if" if="[[_showDownloadLinks]]">
                     <div class="card-bottom-row">
@@ -3492,7 +3753,7 @@ var TF;
     Polymer({
       is: "tf-event-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-line-chart"),
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],
       properties: {
@@ -3519,18 +3780,15 @@ var TF;
           type: Object,
           notify: true,
         },
+        _xType: {
+          type: String,
+          value: "step"
+        }
       },
       attached: function() {
         this.async(function() {
           this.fire("rendered");
         });
-      },
-      observers: ['redraw(_showDownloadLinks)'],
-      redraw: function(_showDownloadLinks) {
-        var els = this.getElementsByTagName("tf-line-chart");
-        for (var i=0; i<els.length; i++) {
-          els[i].redraw();
-        }
       },
       _getVisibleTags: function() {
         var keys = this.selectedRuns;
@@ -3546,9 +3804,9 @@ var TF;
         var currentTarget = Polymer.dom(e.currentTarget);
         var parentDiv = currentTarget.parentNode.parentNode;
         parentDiv.classList.toggle("selected");
-        var chart = currentTarget.previousElementSibling;
-        if (chart) {
-          chart.redraw();
+        var chartScaffold = currentTarget.previousElementSibling;
+        if (chartScaffold) {
+          chartScaffold.chart().redraw();
         }
       },
       validRuns: function(tag, runsChange, run2tagChange) {
@@ -3561,7 +3819,7 @@ var TF;
     });
   </script>
 </dom-module>
-<dom-module id="tf-obsolete-histogram-chart" assetpath="../tf-histogram-dashboard/">
+<dom-module id="tf-distribution-chart" assetpath="../tf-distribution-dashboard/">
   <template>
     <svg id="chartsvg"></svg>
     <style>
@@ -3600,8 +3858,8 @@ limitations under the License.
 /* tslint:disable:no-namespace variable-name */
 var TF;
 (function (TF) {
-    var HistogramChart = (function () {
-        function HistogramChart(tag, dataFn, xType, colorScale, tooltip) {
+    var DistributionChart = (function () {
+        function DistributionChart(tag, dataFn, xType, colorScale, tooltip) {
             this.dataFn = dataFn;
             this.run2datasets = {};
             this.tag = tag;
@@ -3617,7 +3875,7 @@ var TF;
          * (it would be weird if one run was ahead of the others, and the display
          * depended on the order in which runs were added)
          */
-        HistogramChart.prototype.changeRuns = function (runs) {
+        DistributionChart.prototype.changeRuns = function (runs) {
             var _this = this;
             this.runs = runs;
             this.reload();
@@ -3627,32 +3885,32 @@ var TF;
         /**
          * Reload data for each run in view.
          */
-        HistogramChart.prototype.reload = function () {
+        DistributionChart.prototype.reload = function () {
             var _this = this;
             this.runs.forEach(function (run) {
                 var dataset = _this.getDataset(run);
                 _this.dataFn(_this.tag, run).then(function (x) { return dataset.data(x); });
             });
         };
-        HistogramChart.prototype.getDataset = function (run) {
+        DistributionChart.prototype.getDataset = function (run) {
             if (this.run2datasets[run] === undefined) {
                 this.run2datasets[run] =
                     new Plottable.Dataset([], { run: run, tag: this.tag });
             }
             return this.run2datasets[run];
         };
-        HistogramChart.prototype.buildChart = function (xType) {
+        DistributionChart.prototype.buildChart = function (xType) {
             if (this.outer) {
                 this.outer.destroy();
             }
-            var xComponents = TF.ChartHelpers.getXComponents(xType);
+            var xComponents = VZ.ChartHelpers.getXComponents(xType);
             this.xAccessor = xComponents.accessor;
             this.xScale = xComponents.scale;
             this.xAxis = xComponents.axis;
             this.xAxis.margin(0).tickLabelPadding(3);
             this.yScale = new Plottable.Scales.Linear();
             this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
-            var yFormatter = TF.ChartHelpers.multiscaleFormatter(TF.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
+            var yFormatter = VZ.ChartHelpers.multiscaleFormatter(VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
             this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
             this.yAxis.usesTextWidthApproximation(true);
             var center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
@@ -3661,7 +3919,7 @@ var TF;
             this.center = new Plottable.Components.Group([this.gridlines, center]);
             this.outer = new Plottable.Components.Table([[this.yAxis, this.center], [null, this.xAxis]]);
         };
-        HistogramChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
+        DistributionChart.prototype.buildPlot = function (xAccessor, xScale, yScale) {
             var _this = this;
             var percents = [0, 228, 1587, 3085, 5000, 6915, 8413, 9772, 10000];
             var opacities = _.range(percents.length - 1)
@@ -3694,12 +3952,12 @@ var TF;
             this.plots = plots;
             return new Plottable.Components.Group(plots);
         };
-        HistogramChart.prototype.renderTo = function (target) { this.outer.renderTo(target); };
-        HistogramChart.prototype.redraw = function () { this.outer.redraw(); };
-        HistogramChart.prototype.destroy = function () { this.outer.destroy(); };
-        return HistogramChart;
+        DistributionChart.prototype.renderTo = function (target) { this.outer.renderTo(target); };
+        DistributionChart.prototype.redraw = function () { this.outer.redraw(); };
+        DistributionChart.prototype.destroy = function () { this.outer.destroy(); };
+        return DistributionChart;
     }());
-    TF.HistogramChart = HistogramChart;
+    TF.DistributionChart = DistributionChart;
 })(TF || (TF = {}));
 </script>
   <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
@@ -3717,8 +3975,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
-var TF;
-(function (TF) {
+var VZ;
+(function (VZ) {
     var ChartHelpers;
     (function (ChartHelpers) {
         ChartHelpers.Y_TOOLTIP_FORMATTER_PRECISION = 4;
@@ -3840,12 +4098,12 @@ var TF;
             }
         }
         ChartHelpers.getXComponents = getXComponents;
-    })(ChartHelpers = TF.ChartHelpers || (TF.ChartHelpers = {}));
-})(TF || (TF = {}));
+    })(ChartHelpers = VZ.ChartHelpers || (VZ.ChartHelpers = {}));
+})(VZ || (VZ = {}));
 </script>
   <script>
     Polymer({
-      is: "tf-obsolete-histogram-chart",
+      is: "tf-distribution-chart",
       properties: {
         _chart: Object,
         colorScale: Object,
@@ -3853,10 +4111,11 @@ var TF;
         selectedRuns: Array,
         xType: String,
         dataProvider: Function,
-        _initialized: Boolean,
+        _attached: Boolean,
+        _makeChartAsyncCallbackId: { type: Number, value: null }
       },
       observers: [
-        "_makeChart(tag, dataProvider, xType, colorScale, _initialized)",
+        "_makeChart(tag, dataProvider, xType, colorScale, _attached)",
         "_changeRuns(_chart, selectedRuns.*)"
       ],
       _changeRuns: function(chart) {
@@ -3872,29 +4131,32 @@ var TF;
       reload: function() {
         this._chart.reload();
       },
-      _makeChart: function(tag, dataProvider, xType, colorScale, _initialized) {
-        if (!_initialized) {
-          return;
+      _makeChart: function(tag, dataProvider, xType, colorScale, _attached) {
+        if (this._makeChartAsyncCallbackId === null) {
+          this.cancelAsync(this._makeChartAsyncCallbackId);
         }
-        if (this._chart) this._chart.destroy();
-        var chart = new TF.HistogramChart(tag, dataProvider, xType, colorScale);
-        var svg = d3.select(this.$.chartsvg);
-        this.async(function() {
+
+        this._makeChartAsyncCallbackId = this.async(function() {
+          this._makeChartAsyncCallbackId = null;
+          if (!_attached) return;
+          if (this._chart) this._chart.destroy();
+          var chart = new TF.DistributionChart(tag, dataProvider, xType, colorScale);
+          var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
           this._chart = chart;
         }, 350);
       },
       attached: function() {
-        this._initialized = true;
+        this._attached = true;
       },
       detached: function() {
-        this._initialized = false;
+        this._attached = false;
       }
     });
   </script>
 </dom-module>
 
-<dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
+<dom-module id="tf-distribution-dashboard" assetpath="../tf-distribution-dashboard/">
   <template>
     <div id="plumbing">
       <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
@@ -3906,7 +4168,11 @@ var TF;
           <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
         </div>
         <div class="sidebar-section">
-          <tf-x-type-selector id="xTypeSelector" out-x-type="{{xType}}"></tf-x-type-selector>
+          <tf-option-selector id="xTypeSelector" name="Horizontal Axis" selected-id="{{_xType}}">
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
         </div>
         <div class="sidebar-section">
           <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
@@ -3914,7 +4180,7 @@ var TF;
       </div>
 
       <div class="center">
-        <tf-no-data-warning data-type="histogram" show-warning="[[dataNotFound]]"></tf-no-data-warning>
+        <tf-no-data-warning data-type="distribution" show-warning="[[dataNotFound]]"></tf-no-data-warning>
         <template is="dom-repeat" items="[[categories]]">
           <tf-collapsable-pane name="[[item.name]]" count="[[_count(item.tags, selectedRuns.*, runToCompressedHistograms.*)]]">
             <div class="layout horizontal wrap">
@@ -3924,7 +4190,7 @@ var TF;
                     <div class="card">
                       <span class="card-title">[[tag]]</span>
                       <div class="card-content">
-                        <tf-obsolete-histogram-chart tag="[[tag]]" id="chart" selected-runs="[[_array(run)]]" x-type="[[xType]]" data-provider="[[dataProvider]]" color-scale="[[colorScale]]" on-keyup="toggleSelected" tabindex="2"></tf-obsolete-histogram-chart>
+                        <tf-distribution-chart tag="[[tag]]" id="chart" selected-runs="[[_array(run)]]" x-type="[[_xType]]" data-provider="[[dataProvider]]" color-scale="[[colorScale]]" on-keyup="toggleSelected" tabindex="2"></tf-distribution-chart>
                         <paper-icon-button class="expand-button" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
                       </div>
                     </div>
@@ -3942,15 +4208,19 @@ var TF;
 
   <script>
     Polymer({
-      is: "tf-histogram-dashboard",
+      is: "tf-distribution-dashboard",
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-obsolete-histogram-chart"),
+        TF.Dashboard.ReloadBehavior("tf-distribution-chart"),
         TF.Backend.Behavior,
       ],
       properties: {
         _visibleTags: {
           type: Array,
           computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
+        },
+        _xType: {
+          type: String,
+          value: "step"
         },
         dataType: {value: "compressedHistogram"},
       },
@@ -3993,6 +4263,682 @@ var TF;
         var chart = currentTarget.previousElementSibling;
         if (chart) {
           chart.redraw();
+        }
+      },
+    });
+  </script>
+</dom-module>
+
+<dom-module id="vz-histogram-timeseries" assetpath="../vz-histogram-timeseries/">
+    <template>
+      <svg id="svg">
+        <g>
+          <g class="axis x"></g>
+          <g class="axis y"></g>
+          <g class="axis y slice"></g>
+          <g class="stage">
+            <rect class="background"></rect>
+          </g>
+          <g class="x-axis-hover"></g>
+        </g>
+      </svg>
+
+      <style>
+        :host {
+          display: flex;
+          flex-direction: column;
+          flex-grow: 1;
+          flex-shrink: 1;
+          position: relative;
+        }
+
+        svg {
+          font-family: roboto, sans-serif;
+          overflow: visible;
+          display: block;
+          width: 100%;
+          flex-grow: 1;
+          flex-shrink: 1;
+        }
+
+        .background {
+          fill-opacity: 0;
+          fill: red;
+        }
+
+        .histogram {
+          pointer-events: none;
+        }
+
+        .hover {
+          font-size: 9px;
+          dominant-baseline: middle;
+          opacity: 0;
+        }
+
+        .hover circle {
+          stroke: white;
+          stroke-opacity: 0.5;
+          stroke-width: 1px;
+        }
+
+        .baseline {
+          stroke: black;
+          stroke-opacity: 0.1;
+        }
+
+        .outline {
+          fill: none;
+          stroke: white;
+          stroke-opacity: 0.5;
+        }
+
+        .x-axis-hover {
+          pointer-events: none;
+        }
+
+        .x-axis-hover .label {
+          opacity: 0;
+          font-weight: bold;
+          font-size: 11px;
+          text-anchor: end;
+        }
+
+        .x-axis-hover text {
+          text-anchor: middle;
+        }
+
+        .x-axis-hover line {
+          stroke: black;
+        }
+
+        .x-axis-hover rect {
+          fill: white;
+        }
+
+        .gradient {
+        }
+
+        .axis {
+          font-size: 10px;
+          fill: #aaa;
+        }
+
+        .axis path.domain {
+          fill: none;
+        }
+
+        .axis .tick line {
+          stroke: #ddd;
+        }
+
+        .axis.slice {
+          opacity: 0;
+        }
+
+        .axis.slice .tick line {
+          stroke-dasharray: 2;
+        }
+
+        .small .axis text { display: none; }
+        .small .axis .tick:first-of-type text { display: block; }
+        .small .axis .tick:last-of-type text { display: block; }
+        .medium .axis text { display: none; }
+        .medium .axis .tick:nth-child(2n + 1) text { display: block; }
+        .large .axis text { display: none; }
+        .large .axis .tick:nth-child(2n + 1) text { display: block; }
+
+      </style>
+    </template>
+
+    <script>
+    Polymer({
+      is: "vz-histogram-timeseries",
+      properties: {
+        /**
+         * Defines which view mode is being used by the chart. Supported values
+         * are:
+         * - "offset" - Offset view of the data showing all timesteps.
+         * - "overlay" - Overlays all timesteps into one 2D view, with the
+         * brighter lines representing the newer timesteps.
+         */
+        mode: {
+          type: String,
+          value: "offset"
+        },
+
+        /*
+         * The name of the datum's property that contains the time values.
+         * Allows:
+         * - "step" - Linear scale using the "step" property of the datum.
+         * - "wall_time" - Temporal scale using the "wall_time" property of the
+         * datum.
+         * - "relative" - Temporal scale starting at 0 created by using
+         * the "wall_time" property of the datum.
+         */
+        timeProperty: {
+          type: String,
+          value: "step"
+        },
+
+        /**
+         * The name of the data's property that contains the bins.
+         */
+        bins: {
+          type: String,
+          value: "bins"
+        },
+
+        /**
+         * The name of the datum's property that contains the x values.
+         */
+        x: {
+          type: String,
+          value: "x"
+        },
+
+        /**
+         * The name of the datum's property that contains the bin width values.
+         */
+        dx: {
+          type: String,
+          value: "dx"
+        },
+
+        /**
+         * The name of the datum's property that contains the bin height.
+         */
+        y: {
+          type: String,
+          value: "y"
+        },
+
+        /**
+         * Scale that maps series names to colors. The default colors are from
+         * d3.scale.category10() scale. Use this property to replace the default
+         * line colors with colors of your own choice.
+         */
+        colorScale: {
+          type: Object,
+          value: function() {
+            return d3.scale.category10();
+          }
+        },
+
+        /**
+         * Duration of the transition between histogram modes.
+         */
+        modeTransitionDuration: {
+          type: Number,
+          value: 500
+        },
+
+        _attached: Boolean,
+        _name: { type: String, value: null },
+        _data: { type: Array, value: null },
+      },
+      observers: [
+        'redraw(timeProperty, _attached)',
+        '_modeRedraw(mode)'
+      ],
+      ready: function() {
+        // Polymer's way of scoping styles on nodes that d3 created
+        this.scopeSubtree(this.$.svg, true);
+      },
+      attached: function() {
+        this._attached = true;
+      },
+      detached: function() {
+        this._attached = false;
+      },
+      setVisibleSeries: function(names) {
+        // Do nothing.
+      },
+      setSeriesData: function(name, data) {
+        this._name = name;
+        this._data = data;
+        this.redraw();
+      },
+
+      /**
+       * Redraws the chart. This is only called if the chart is attached to the
+       * screen and if the chart has data.
+       */
+      redraw: function() {
+        this._draw(0);
+      },
+
+      _modeRedraw: function() {
+        this._draw(this.modeTransitionDuration);
+      },
+
+      _draw: function(duration) {
+        if (!this._attached || !this._data) {
+          return;
+        }
+
+        //
+        // Data verification
+        //
+        if (duration === undefined) throw(new Error("vz-histogram-timeseries _draw needs duration"));
+        if (this._data.length <= 0) throw(new Error("Not enough steps in the data"));
+        if (!this._data[0].hasOwnProperty(this.bins)) throw(new Error("No bins property of '" + this.bins + "' in data"));
+        if (this._data[0][this.bins].length <= 0) throw(new Error("Must have at least one bin in bins in data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.x)) throw(new Error("No x property '" + this.x + "' on bins data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.dx)) throw(new Error("No dx property '" + this.dx + "' on bins data"));
+        if (!this._data[0][this.bins][0].hasOwnProperty(this.y)) throw(new Error("No y property '" + this.y + "' on bins data"));
+
+        //
+        // Initialization
+        //
+        var timeProp = this.timeProperty;
+        var xProp = this.x;
+        var binsProp = this.bins;
+        var dxProp = this.dx;
+        var yProp = this.y;
+
+        var data = this._data;
+        var name = this._name;
+        var mode = this.mode;
+        var color = d3.hcl(this.colorScale(name));
+
+        var xAccessor = function(d) { return d[xProp] };
+        var yAccessor = function(d) { return d[yProp] };
+        var dxAccessor = function(d) { return d[dxProp] };
+        var xRightAccessor = function(d) { return d[xProp] + d[dxProp] };
+        var timeAccessor = function(d) { return d[timeProp] };
+
+        if (timeProp === "relative") {
+          timeAccessor = function(d) { return d.wall_time - data[0].wall_time };
+        }
+
+        var brect = this.$.svg.getBoundingClientRect();
+        var outerWidth = brect.width,
+            outerHeight = brect.height;
+
+        var sliceHeight,
+            margin = {top: 5, right: 60, bottom: 20, left: 24};
+
+        if (mode === "offset") {
+          sliceHeight = outerHeight / 2.5;
+          margin.top = sliceHeight + 5;
+        } else {
+          sliceHeight = outerHeight - margin.top - margin.bottom;
+        }
+
+        var width = outerWidth - margin.left - margin.right,
+            height = outerHeight - margin.top - margin.bottom;
+
+        var leftMin = d3.min(data, xAccessor),
+            rightMax = d3.max(data, xRightAccessor);
+
+        //
+        // Text formatters
+        //
+        var format = d3.format(".3n");
+        var yAxisFormat = d3.format(".0f");
+
+        if (timeProp === "wall_time") {
+          yAxisFormat = d3.time.format("%X");
+        } else if (timeProp === "relative") {
+          yAxisFormat = function(d) {
+            return d3.format(".1r")(d / 3.6e6); // Convert to hours.
+          };
+        }
+
+        //
+        // Calculate the extents
+        //
+        var xExtents = data.map(function(d, i) {
+          return [
+            d3.min(d[binsProp], xAccessor),
+            d3.max(d[binsProp], xRightAccessor)
+          ];
+        });
+        var yExtents = data.map(function(d) {
+          return d3.extent(d[binsProp], yAccessor);
+        });
+
+        //
+        // Scales and axis
+        //
+        var outlineCanvasSize = 500;
+
+        var extent = d3.extent(data, timeAccessor);
+
+        var yScale = (timeProp === "wall_time" ? d3.time.scale() : d3.scale.linear())
+            .domain(extent)
+            .range([0, (mode === "offset" ? height : 0)]);
+
+        var ySliceScale = d3.scale.linear()
+            .domain([0, d3.max(data, function(d, i) { return yExtents[i][1]; })])
+            .range([sliceHeight, 0]);
+
+        var yLineScale = d3.scale.linear()
+            .domain(ySliceScale.domain())
+            .range([outlineCanvasSize, 0]);
+
+        var xScale = d3.scale.linear()
+            .domain([
+              d3.min(data, function(d, i) { return xExtents[i][0]; }),
+              d3.max(data, function(d, i) { return xExtents[i][1]; })
+            ])
+            .nice()
+            .range([0, width]);
+
+        var xLineScale = d3.scale.linear()
+            .domain(xScale.domain())
+            .range([0, outlineCanvasSize]);
+
+        var outlineColor = d3.scale.linear()
+            .domain(d3.extent(data, timeAccessor))
+            .range([color.darker(), color.brighter()])
+            .interpolate(d3.interpolateHcl);
+
+        var xAxis = d3.svg.axis()
+            .scale(xScale)
+            .ticks(Math.max(2, width / 20))
+            .orient("bottom");
+
+        var yAxis = d3.svg.axis()
+            .scale(yScale)
+            .ticks(Math.max(2, height / 15))
+            .tickFormat(yAxisFormat)
+            .orient("right");
+
+        var ySliceAxis = d3.svg.axis()
+            .scale(ySliceScale)
+            .ticks(Math.max(2, height / 15))
+            .tickSize(width + 5)
+            .orient("right");
+
+        var xBinCentroid = function(d) {
+          return d[xProp] + d[dxProp] / 2;
+        };
+
+        var linePath = d3.svg.line()
+            .interpolate("linear")
+            .x(function(d) { return xLineScale(xBinCentroid(d)); })
+            .y(function(d) { return yLineScale(d[yProp]); });
+
+        var path = function(d) {
+          // Draw a line from 0 to the first point and from the last point to 0.
+          return 'M' + xLineScale(xBinCentroid(d[0])) + ',' + yLineScale(0) +
+              'L' + linePath(d).slice(1) +
+              "L" + xLineScale(xBinCentroid(d[d.length - 1])) + "," + yLineScale(0);
+        };
+
+        //
+        // Render
+        //
+        var svgNode = this.$.svg;
+
+        var svg = d3.select(svgNode)
+
+        var svgTransition = svg.transition().duration(duration)
+            .attr("width", outerWidth)
+            .attr("height", outerHeight);
+
+        var g = svg.select("g")
+            .classed("small", function() { return (width > 0 && width <= 150); })
+            .classed("medium", function() { return (width > 150 && width <= 300); })
+            .classed("large", function() { return (width > 300); })
+
+        var gTransition = svgTransition.select("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        var bisect = d3.bisector(xRightAccessor).left;
+        var stage = g.select(".stage")
+            .on("mouseover", function() {
+              hoverUpdate.transition().style("opacity", 1);
+              edgeLabelUpdate.transition().style("opacity", 1)
+            })
+            .on("mouseout", function() {
+              hoverUpdate.transition().style("opacity", 0);
+              edgeLabelUpdate.transition().style("opacity", 0)
+            })
+            .on("mousemove", function() {
+              var m = d3.mouse(this),
+                  v = xScale.invert(m[0]);
+
+              function hoverXIndex(d) {
+                return Math.min(d[binsProp].length - 1, bisect(d[binsProp], v));
+              }
+
+              var lastSliceData;
+              hoverUpdate
+                .attr("transform", function(d) {
+                  var index = hoverXIndex(d);
+                  lastSliceData = d;
+                  return "translate(" + xScale(d[binsProp][index][xProp] + d[binsProp][index][dxProp] / 2) + "," + ySliceScale(d[binsProp][index][yProp]) + ")";
+                });
+
+              var index = hoverXIndex(lastSliceData);
+
+              edgeLabelUpdate
+                  .attr("transform", function(d) { return"translate(" + xScale(lastSliceData[binsProp][index][xProp] + lastSliceData[binsProp][index][dxProp] / 2) + ", " + height + ")"; })
+                .select("text")
+                  .text(function(d) { return format(lastSliceData[binsProp][index][xProp] + lastSliceData[binsProp][index][dxProp] / 2); });
+            });
+
+        var background = stage.select(".background")
+            .attr("transform", "translate(" + -margin.left + "," + -margin.top + ")")
+            .attr("width", outerWidth)
+            .attr("height", outerHeight);
+
+        var histogram = stage.selectAll(".histogram").data(data),
+            histogramExit = histogram.exit().remove(),
+            histogramEnter = histogram.enter().append("g").attr("class", "histogram"),
+            histogramUpdate = histogram
+                .sort(function(a, b) { return timeAccessor(a) - timeAccessor(b); }),
+            histogramTransition = gTransition.selectAll(".histogram")
+                .attr("transform", function(d) {
+                  return "translate(0, " + (mode === "offset" ? (yScale(timeAccessor(d)) - sliceHeight) : 0) + ")";
+                });
+
+        var baselineEnter = histogramEnter.append("line").attr("class", "baseline"),
+            baselineUpdate = histogramTransition.select(".baseline")
+                .style("stroke-opacity", function(d) { return (mode === "offset" ? 0.1 : 0); })
+                .attr("y1", sliceHeight)
+                .attr("y2", sliceHeight)
+                .attr("x2", width);
+
+        var outlineEnter = histogramEnter.append("path").attr("class", "outline"),
+            outlineUpdate = histogramUpdate.select(".outline")
+                .attr("vector-effect", "non-scaling-stroke")
+                .attr("d", function(d) { return path(d[binsProp]); })
+                .style("stroke-width", 1),
+            outlineTransition = histogramTransition.select(".outline")
+                .attr("transform", "scale(" + width / outlineCanvasSize + ", " + sliceHeight / outlineCanvasSize + ")")
+                .style("stroke", function(d) { return (mode === "offset" ? "white" : outlineColor(timeAccessor(d))); })
+                .style("fill-opacity", function(d) { return (mode === "offset" ? 1 : 0); })
+                .style("fill", function(d) { return outlineColor(timeAccessor(d)); });
+
+
+        var hoverEnter = histogramEnter.append("g")
+                .attr("class", "hover")
+                .style("fill", function(d) { return outlineColor(timeAccessor(d)); }),
+            hoverUpdate = histogramUpdate.select(".hover");
+
+        hoverEnter.append("circle")
+            .attr("r", 2);
+
+        hoverEnter.append("text")
+            .style("display", "none")
+            .style("stroke", "white")
+            .style("stroke-width", 2)
+            .attr("dx", 4);
+
+        hoverEnter.append("text")
+            .style("display", "none")
+            .attr("dx", 4);
+
+        var edgeLabel = g.select(".x-axis-hover").selectAll(".label").data(["x"]),
+            edgeLabelEnter = edgeLabel.enter().append("g").attr("class", "label"),
+            edgeLabelUpdate = edgeLabel;
+
+        edgeLabelEnter.append("rect")
+            .attr("x", -20)
+            .attr("y", 6)
+            .attr("width", 40)
+            .attr("height", 14)
+
+        edgeLabelEnter.append("line")
+            .attr("x1", 0)
+            .attr("x2", 0)
+            .attr("y1", 0)
+            .attr("y2", 6);
+
+        edgeLabelEnter.append("text")
+            .attr("dy", 18);
+
+        gTransition.select(".y.axis.slice")
+            .style("opacity", mode === "offset" ? 0 : 1)
+            .attr("transform", "translate(0, " + (mode === "offset" ? -sliceHeight : 0) + ")")
+            .call(ySliceAxis);
+
+        gTransition.select(".x.axis")
+            .attr("transform", "translate(0, " + height + ")")
+            .call(xAxis);
+
+        gTransition.select(".y.axis")
+            .style("opacity", mode === "offset" ? 1 : 0)
+            .attr("transform", "translate(" + width + ", " + (mode === "offset" ? 0 : height) + ")")
+            .call(yAxis);
+      }
+    });
+    </script>
+
+  </dom-module>
+
+<dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
+  <template>
+    <div id="plumbing">
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
+    </div>
+
+    <tf-dashboard-layout>
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
+        </div>
+        <div class="sidebar-section">
+          <tf-option-selector id="histogramModeSelector" name="Histogram Mode" selected-id="{{_histogramMode}}">
+            <paper-button id="overlay">overlay</paper-button>
+            <paper-button id="offset">offset</paper-button>
+          </tf-option-selector>
+        </div>
+        <div class="sidebar-section">
+          <tf-option-selector id="timePropertySelector" name="Offset Time Axis" selected-id="{{_timeProperty}}">
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
+        </div>
+        <div class="sidebar-section">
+          <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
+          </div>
+      </div>
+
+      <div class="center">
+        <tf-no-data-warning data-type="histogram" show-warning="[[dataNotFound]]"></tf-no-data-warning>
+        <template is="dom-repeat" items="[[categories]]">
+          <tf-collapsable-pane name="[[item.name]]" count="[[_count(item.tags, selectedRuns.*, runToCompressedHistograms.*)]]">
+            <div class="layout horizontal wrap">
+              <template is="dom-repeat" items="[[item.tags]]" as="tag">
+                <template is="dom-repeat" items="[[selectedRuns]]" as="run">
+                  <template is="dom-if" if="[[_exists(run, tag, run2tag.*)]]">
+                    <div class="card">
+                      <span class="card-title">[[tag]]</span>
+                      <span class="card-subtitle">[[run]]</span>
+                      <div class="card-content">
+                        <tf-chart-scaffold tag="[[tag]]" visible-series="[[_array(run)]]" data-provider="[[dataProvider]]">
+                          <vz-histogram-timeseries id="chart" time-property="[[_timeProperty]]" mode="[[_histogramMode]]" color-scale="[[_colorScaleFunction]]" on-keyup="toggleSelected" tabindex="2"></vz-histogram-timeseries>
+                        </tf-chart-scaffold>
+                        <paper-icon-button class="expand-button" icon="fullscreen" on-tap="toggleSelected"></paper-icon-button>
+                      </div>
+                    </div>
+                  </template>
+                </template>
+              </template>
+            </div>
+          </tf-collapsable-pane>
+        </template>
+      </div>
+    </tf-dashboard-layout>
+
+    <style include="dashboard-style"></style>
+  </template>
+
+  <script>
+    Polymer({
+      is: "tf-histogram-dashboard",
+      behaviors: [
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
+        TF.Backend.Behavior,
+      ],
+      properties: {
+        _histogramMode: {
+          type: String,
+          value: "offset"
+        },
+        _timeProperty: {
+          type: String,
+          value: "step"
+        },
+        _visibleTags: {
+          type: Array,
+          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
+        },
+        _colorScaleFunction: {
+          type: Function,
+          computed: "_getColorScaleFunction(colorScale)"
+        },
+        colorScale: Object,
+        dataType: {value: "histogram"},
+      },
+      _exists: function(run, tag) {
+        return this.run2tag[run].indexOf(tag) !== -1;
+      },
+      attached: function() {
+        this.async(function() {
+          this.fire("rendered");
+        });
+      },
+      _array: function(x) {
+        return [x];
+      },
+      _count: function(tags) {
+        var targetTags = {};
+        tags.forEach(function(t) {
+          targetTags[t] = true;
+        });
+        var count = 0;
+        var _this = this;
+        this.selectedRuns.forEach(function(r) {
+          _this.run2tag[r].forEach(function(t) {
+            if (targetTags[t]) {
+              count++;
+            }
+          });
+        });
+        return count;
+      },
+      _getVisibleTags: function() {
+        var keys = this.selectedRuns;
+        var dict = this.run2tag;
+        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
+      },
+      _getColorScaleFunction: function() {
+        return this.colorScale.scale.bind(this.colorScale);
+      },
+      toggleSelected: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+        var parentDiv = currentTarget.parentNode.parentNode;
+        parentDiv.classList.toggle("selected");
+        var chartScaffold = currentTarget.previousElementSibling;
+        if (chartScaffold) {
+          chartScaffold.chart().redraw();
         }
       },
     });
@@ -4088,7 +5034,7 @@ var TF;
         height: 100%;
         flex-direction: column;
         padding-top: 20px;
-        overflow: scroll;
+        overflow: auto;
         -webkit-box-sizing: border-box;
         -moz-box-sizing: border-box;
         box-sizing: border-box;
@@ -4126,7 +5072,7 @@ var TF;
       }
       .run-name-cell {
         width: 300px;
-        height: 30px;
+        word-break:break-all;
         text-align: center;
       }
       .noshrink {
@@ -4163,8 +5109,6 @@ var TF;
 
     <style>
       .center {
-        padding-left: 10px;
-        padding-right: 10px;
         height: 100%;
         width: 100%;
         -webkit-box-sizing: border-box;
@@ -4295,7 +5239,7 @@ var TF;
         height: 100%;
         flex-direction: column;
         padding-top: 20px;
-        overflow: scroll;
+        overflow: auto;
         -webkit-box-sizing: border-box;
         -moz-box-sizing: border-box;
         box-sizing: border-box;
@@ -4368,8 +5312,6 @@ var TF;
 
     <style>
       .center {
-        padding-left: 10px;
-        padding-right: 10px;
         height: 100%;
         width: 100%;
         -webkit-box-sizing: border-box;
@@ -13268,7 +14210,7 @@ Polymer({
         _getHasDisplayableNodeStats: function(stats) {
           return tf.graph.util.hasDisplayableNodeStats(stats);
         },
-        _getNodeStatsFormattedBytes(stats) {
+        _getNodeStatsFormattedBytes: function(stats) {
           if (!stats || !stats.totalBytes) {
             return;
           }
@@ -13276,7 +14218,7 @@ Polymer({
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalBytes, tf.graph.util.MEMORY_UNITS);
         },
-        _getNodeStatsFormattedComputeTime(stats) {
+        _getNodeStatsFormattedComputeTime: function(stats) {
           if (!stats || !stats.totalMicros) {
             return;
           }
@@ -13284,7 +14226,7 @@ Polymer({
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalMicros, tf.graph.util.TIME_UNITS);
         },
-        _getNodeStatsFormattedOutputSizes(stats) {
+        _getNodeStatsFormattedOutputSizes: function(stats) {
           if (!stats || !stats.outputSize || !stats.outputSize.length) {
             return;
           }
@@ -14491,6 +15433,10 @@ Polymer({
           <tf-graph-dashboard id="graphs" backend="[[_backend]]"></tf-graph-dashboard>
         </template>
 
+        <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
+          <tf-distribution-dashboard id="distributions" backend="[[_backend]]"></tf-distribution-dashboard>
+        </template>
+
         <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
           <tf-histogram-dashboard id="histograms" backend="[[_backend]]"></tf-histogram-dashboard>
         </template>
@@ -14624,6 +15570,9 @@ Polymer({
       },
       _modeIsGraphs: function(mode) {
         return mode === "graphs";
+      },
+      _modeIsDistributions: function(mode) {
+        return mode === "distributions";
       },
       _modeIsHistograms: function(mode) {
         return mode === "histograms";

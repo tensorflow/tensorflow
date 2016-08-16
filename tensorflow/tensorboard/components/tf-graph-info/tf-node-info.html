@@ -442,7 +442,7 @@
         _getHasDisplayableNodeStats: function(stats) {
           return tf.graph.util.hasDisplayableNodeStats(stats);
         },
-        _getNodeStatsFormattedBytes(stats) {
+        _getNodeStatsFormattedBytes: function(stats) {
           if (!stats || !stats.totalBytes) {
             return;
           }
@@ -450,7 +450,7 @@
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalBytes, tf.graph.util.MEMORY_UNITS);
         },
-        _getNodeStatsFormattedComputeTime(stats) {
+        _getNodeStatsFormattedComputeTime: function(stats) {
           if (!stats || !stats.totalMicros) {
             return;
           }
@@ -458,7 +458,7 @@
           return tf.graph.util.convertUnitsToHumanReadable(
               stats.totalMicros, tf.graph.util.TIME_UNITS);
         },
-        _getNodeStatsFormattedOutputSizes(stats) {
+        _getNodeStatsFormattedOutputSizes: function(stats) {
           if (!stats || !stats.outputSize || !stats.outputSize.length) {
             return;
           }

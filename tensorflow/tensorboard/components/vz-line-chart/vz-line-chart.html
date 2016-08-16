@@ -225,11 +225,11 @@ smoothing.
         this.scopeSubtree(this.$.chartsvg, true);
       },
       _makeChart: function(xType, colorScale, _attached) {
-        if (this._makeChartAsyncHandle === null) {
+        if (this._makeChartAsyncCallbackId === null) {
           this.cancelAsync(this._makeChartAsyncCallbackId);
         }
 
-        this._makeChartAsyncHandle = this.async(function() {
+        this._makeChartAsyncCallbackId = this.async(function() {
           this._makeChartAsyncCallbackId = null;
           if (!this._attached) return;
           if (this._chart) this._chart.destroy();
@@ -238,7 +238,7 @@ smoothing.
           var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
           this._chart = chart;
-        }.bind(this), 350);
+        }, 350);
       },
       _reloadFromCache: function() {
         if(this._chart) {

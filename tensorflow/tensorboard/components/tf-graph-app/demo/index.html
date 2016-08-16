@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="import" href="../tf-graph-app.html">
+    <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+  <style>
+  body {
+    margin: 0;
+  }
+  </style>
+</head>
+<body>
+  <h3>Answer to the Ultimate Question of Life, the Universe, and Everything</h3>
+  <demo-snippet>
+    <template>
+      <tf-graph-app id="tfgraph"></tf-graph-app>
+      <script>
+        let g = document.querySelector("#tfgraph");
+        fetch("graph.pbtxt").then(r => r.text()).then(pbtxt => {
+          g.pbtxt = pbtxt;
+        });
+      </script>
+    </template>
+  </demo-snippet>
+</body>
+</html>
