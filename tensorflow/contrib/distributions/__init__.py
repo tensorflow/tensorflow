@@ -35,6 +35,7 @@ initialized with parameters that define the distributions.
 @@InverseGamma
 @@Laplace
 @@Normal
+@@Poisson
 @@StudentT
 @@Uniform
 
@@ -99,6 +100,7 @@ from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.operator_pd_cholesky import batch_matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.poisson import *
 from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *
