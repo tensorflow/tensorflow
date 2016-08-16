@@ -77,7 +77,7 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
             key_dtype=key_dtype,
             value_dtype=value_dtype,
             default_value=default_value,
-            name='%s-%d-of-%d' % (name, i, num_shards)))
+            name='%s-%d-of-%d' % (name, i + 1, num_shards)))
       self._table_shards = table_shards
       # TODO(andreasst): add a value_shape() method to LookupInterface
       # pylint: disable=protected-access
@@ -307,6 +307,9 @@ class SdcaModel(object):
       num_partitions: 1 (Optional, with default value of 1. Number of
       partitions of the global loss function, 1 means single machine solver,
       and >=1 when we have more than one optimizer working concurrently.)
+      num_table_shards: 1 (Optional, with default value of 1. Number of shards
+      of the internal state table, typically set to match the number of
+      parameter servers for large data sets.
     }
     ```
 
@@ -326,8 +329,7 @@ class SdcaModel(object):
   def __init__(self,
                examples,
                variables,
-               options,
-               num_table_shards=None):  # pylint: disable=unused-argument
+               options):
     """Create a new sdca optimizer."""
 
     if not examples or not variables or not options:
@@ -355,10 +357,6 @@ class SdcaModel(object):
         raise ValueError('%s should be non-negative. Found (%f)' %
                          (name, value))
 
-    # TODO(andreasst): set num_table_shards automatically based on the number of
-    # parameter servers
-    if num_table_shards is None:
-      num_table_shards = 1
     self._examples = examples
     self._variables = variables
     self._options = options
@@ -366,7 +364,7 @@ class SdcaModel(object):
     self._hashtable = _ShardedMutableHashTable(
         key_dtype=dtypes.string,
         value_dtype=dtypes.float32,
-        num_shards=num_table_shards,
+        num_shards=self._num_table_shards(),
         default_value=[0.0, 0.0, 0.0, 0.0])
 
   def _symmetric_l1_regularization(self):
@@ -378,7 +376,17 @@ class SdcaModel(object):
 
   def _num_partitions(self):
     # Number of partitions of the global objective.
+    # TODO(andreasst): set num_partitions automatically based on the number
+    # of workers
     return self._options.get('num_partitions', 1)
+
+  def _num_table_shards(self):
+    # Number of hash table shards.
+    # Return 1 if not specified or if the value is 'None'
+    # TODO(andreasst): set num_table_shards automatically based on the number
+    # of parameter servers
+    num_shards = self._options.get('num_table_shards')
+    return 1 if num_shards is None else num_shards
 
   # TODO(sibyl-Aix6ihai): Use optimizer interface to make use of slot creation logic.
   def _create_slots(self):

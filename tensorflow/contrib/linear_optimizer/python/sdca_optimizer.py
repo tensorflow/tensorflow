@@ -35,6 +35,7 @@ class SDCAOptimizer(object):
     sparse_feature_column = sparse_column_with_hash_bucket(...)
     sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
                                           num_partitions=1,
+                                          num_table_shards=1,
                                           symmetric_l2_regularization=2.0)
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[real_feature_column, sparse_feature_column],
@@ -46,17 +47,21 @@ class SDCAOptimizer(object):
   Here the expectation is that the input_fn_* functions passed to train and
   evaluate return a pair (dict, label_tensor) where dict has `example_id_column`
   as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
-  num_paritions defines the number of partitions of the loss function, which
+  num_partitions defines the number of partitions of the loss function, which
   is equivalent to the number of concurrent workers running the train steps.
+  num_table_shards defines the number of shards for the internal state table,
+  typically set to match the number of parameter servers for large data sets.
   """
 
   def __init__(self,
                example_id_column,
                num_partitions=1,
+               num_table_shards=None,
                symmetric_l1_regularization=0.0,
                symmetric_l2_regularization=1.0):
     self._example_id_column = example_id_column
     self._num_partitions = num_partitions
+    self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
 
@@ -168,5 +173,6 @@ class SDCAOptimizer(object):
             symmetric_l1_regularization=self._symmetric_l1_regularization,
             symmetric_l2_regularization=self._symmetric_l2_regularization,
             num_partitions=self._num_partitions,
+            num_table_shards=self._num_table_shards,
             loss_type=loss_type))
     return sdca_model.minimize(global_step=global_step)

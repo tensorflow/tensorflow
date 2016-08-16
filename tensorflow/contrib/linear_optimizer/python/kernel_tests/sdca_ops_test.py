@@ -176,10 +176,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(
-            examples, variables, options, num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -223,10 +223,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
               symmetric_l2_regularization=1,
               symmetric_l1_regularization=0,
               loss_type='logistic_loss',
+              num_table_shards=num_shards,
               num_partitions=num_partitions)
 
-          lr = SdcaModel(
-              examples, variables, options, num_table_shards=num_shards)
+          lr = SdcaModel(examples, variables, options)
           tf.initialize_all_variables().run()
           unregularized_loss = lr.unregularized_loss(examples)
           loss = lr.regularized_loss(examples)
@@ -281,10 +281,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=0,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(
-            examples, variables, options, num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -335,10 +335,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(
-            examples, variables, options, num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -373,10 +373,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(
-            examples, variables, options, num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         with self.assertRaisesOpError(
             'Only labels of 0.0 or 1.0 are supported right now.'):
@@ -405,10 +405,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(3, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(
-            examples, variables, options, num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -445,10 +445,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(
-            examples, variables, options, num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -483,10 +483,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(
-            examples, variables, options, num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
