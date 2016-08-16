@@ -52,6 +52,11 @@ tensorflow/core/kernels/pack_op.cc
 tensorflow/core/kernels/ops_util.cc
 tensorflow/core/kernels/no_op.cc
 tensorflow/core/kernels/mirror_pad_op.cc
+tensorflow/core/kernels/mirror_pad_op_cpu_impl_1.cc
+tensorflow/core/kernels/mirror_pad_op_cpu_impl_2.cc
+tensorflow/core/kernels/mirror_pad_op_cpu_impl_3.cc
+tensorflow/core/kernels/mirror_pad_op_cpu_impl_4.cc
+tensorflow/core/kernels/mirror_pad_op_cpu_impl_5.cc
 tensorflow/core/kernels/maxpooling_op.cc
 tensorflow/core/kernels/matmul_op.cc
 tensorflow/core/kernels/lrn_op.cc
