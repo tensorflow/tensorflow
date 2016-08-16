@@ -181,7 +181,7 @@ class Server(object):
     """Returns the `tf.train.ServerDef` for this server.
 
     Returns:
-      A `tf.train.ServerDef` prototocol buffer that describes the configuration
+      A `tf.train.ServerDef` protocol buffer that describes the configuration
       of this server.
     """
     return self._server_def

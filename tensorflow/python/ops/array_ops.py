@@ -413,7 +413,7 @@ def strided_slice(input_,
 
   For the ith spec,
   `begin_mask`, `end_mask`, `ellipsis_mask`, `new_axis_mask`,
-  and `shrink_axis_mask` will have the ith bit corrsponding to
+  and `shrink_axis_mask` will have the ith bit corresponding to
   the ith spec.
 
   If the ith bit of `begin_mask` is non-zero, `begin[i]` is ignored and

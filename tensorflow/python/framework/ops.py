@@ -49,7 +49,7 @@ def _override_helper(clazz_object, operator, func):
   Args:
     clazz_object: the class to override for; either Tensor or SparseTensor.
     operator: the string name of the operator to override.
-    func: the function that replaces the overriden operator.
+    func: the function that replaces the overridden operator.
 
   Raises:
     ValueError: If operator has already been overwritten,
@@ -3051,7 +3051,7 @@ class Graph(object):
         q3 = tf.FIFOQueue(30, tf.float32)
 
     # Resets container "experiment0", after which the state of v1, v2, v4, q1
-    # will become undefined (such as unitialized).
+    # will become undefined (such as uninitialized).
     tf.Session.reset(target, ["experiment0"])
     ```
 
@@ -3170,7 +3170,7 @@ class Graph(object):
     for controller in self._control_dependencies_stack:
       # If any of the input_ops already depends on the inputs from controller,
       # we say that the new op is dominated (by that input), and we therefore
-      # do not need to add control dependences for this controller's inputs.
+      # do not need to add control dependencies for this controller's inputs.
       dominated = False
       for op in input_ops:
         if controller.op_in_group(op):

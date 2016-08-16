@@ -87,7 +87,7 @@ struct PyCall {
   // with this "token".
   string token;
 
-  // Inputs and outputs of this function invokation.
+  // Inputs and outputs of this function invocation.
   std::vector<Tensor> ins;
   std::vector<Tensor> out;
 };

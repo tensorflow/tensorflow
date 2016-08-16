@@ -1589,7 +1589,7 @@ def export_meta_graph(filename=None, meta_info_def=None, graph_def=None,
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
   This function exports the graph, saver, and collection objects into
-  `MetaGraphDef` protocol buffer with the intension of it being imported
+  `MetaGraphDef` protocol buffer with the intention of it being imported
   at a later time or location to restart training, run inference, or be
   a subgraph.
 
