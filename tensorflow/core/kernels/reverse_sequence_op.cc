@@ -184,7 +184,7 @@ namespace functor {
   template <>                                                               \
   void ReverseSequence<GPUDevice, T, Tlen, Dims>::Compute(                  \
       const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,      \
-      int32 batch_dim, int32 seq_dim,
+      int32 batch_dim, int32 seq_dim,                                       \
       typename TTypes<Tlen>::ConstVec seq_lens,                             \
       typename TTypes<T, Dims>::Tensor output);                             \
   extern template struct ReverseSequence<GPUDevice, T, Tlen, Dims>;
