@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.framework import random_seed
@@ -128,6 +129,68 @@ class ConstantInitializersTest(tf.test.TestCase):
       x.initializer.run()
       self.assertEqual(x.dtype.base_dtype, tf.int32)
       self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
+
+  def _testNDimConstantInitializer(self, name, value, shape, expected):
+    with self.test_session():
+      init = tf.constant_initializer(value, dtype=tf.int32)
+      x = tf.get_variable(name, shape=shape, initializer=init)
+      x.initializer.run()
+
+      actual = tf.reshape(x, [-1]).eval()
+      self.assertEqual(len(actual), len(expected))
+      for a, e in zip(actual, expected):
+        self.assertEqual(a, e)
+
+  def testNDimConstantInitializer(self):
+    value = [0, 1, 2, 3, 4, 5]
+    shape = [2, 3]
+    expected = list(value)
+
+    self._testNDimConstantInitializer("list", value, shape, expected)
+    self._testNDimConstantInitializer(
+        "ndarray", np.asarray(value), shape, expected)
+    self._testNDimConstantInitializer(
+        "2D-ndarray", np.asarray(value).reshape(tuple(shape)), shape, expected)
+
+  def _testNDimConstantInitializerLessValues(
+      self, name, value, shape, expected):
+    with self.test_session():
+      init = tf.constant_initializer(value, dtype=tf.int32)
+      x = tf.get_variable(name, shape=shape, initializer=init)
+      x.initializer.run()
+
+      actual = tf.reshape(x, [-1]).eval()
+      self.assertGreater(len(actual), len(expected))
+      for i in xrange(len(actual)):
+        a = actual[i]
+        e = expected[i] if i < len(expected) else expected[-1]
+        self.assertEqual(a, e)
+
+  def testNDimConstantInitializerLessValues(self):
+    value = [0, 1, 2, 3, 4, 5]
+    shape = [2, 4]
+    expected = list(value)
+
+    self._testNDimConstantInitializerLessValues("list", value, shape, expected)
+    self._testNDimConstantInitializerLessValues(
+        "ndarray", np.asarray(value), shape, expected)
+    self._testNDimConstantInitializerLessValues(
+        "2D-ndarray", np.asarray(value).reshape(tuple([2, 3])), shape, expected)
+
+  def _testNDimConstantInitializerMoreValues(self, value, shape):
+    tf.reset_default_graph()
+    with self.test_session():
+      init = tf.constant_initializer(value, dtype=tf.int32)
+      self.assertRaises(ValueError, tf.get_variable,
+                        "x", shape=shape, initializer=init)
+
+  def testNDimConstantInitializerMoreValues(self):
+    value = [0, 1, 2, 3, 4, 5, 6, 7]
+    shape = [2, 3]
+    self._testNDimConstantInitializerMoreValues(value, shape)
+    self._testNDimConstantInitializerMoreValues(np.asarray(value), shape)
+    self._testNDimConstantInitializerMoreValues(
+        np.asarray(value).reshape(tuple([2, 4])), shape)
 
 
 class RandomNormalInitializationTest(tf.test.TestCase):
