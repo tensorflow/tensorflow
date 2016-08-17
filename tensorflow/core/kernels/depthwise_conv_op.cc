@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -25,12 +26,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
@@ -225,6 +228,9 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
   }
 };
 
+// Extern template instantiated in conv_ops.cc.
+extern template class LaunchConv2DOp<CPUDevice, float>;
+
 #if GOOGLE_CUDA
 
 template <typename T>
@@ -247,6 +253,9 @@ struct LaunchDepthwiseConvOp<GPUDevice, T> {
   }
 };
 
+// Extern template instantiated in conv_ops.cc.
+extern template class LaunchConv2DOp<GPUDevice, float>;
+
 #endif
 
 template <typename Device, typename T>
@@ -267,18 +276,20 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+
+    // For special case when in_depth == 1.
+    use_cudnn_ = CanUseCudnn();
+    cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
   void Compute(OpKernelContext* context) override {
     // Input tensor is of the following dimensions:
     // [ batch, in_rows, in_cols, in_depth ]
     const Tensor& input = context->input(0);
-    auto input_ptr = input.template flat<T>().data();
 
     // Input filter is of the following dimensions:
     // [ filter_rows, filter_cols, in_depth, depth_multiplier]
     const Tensor& filter = context->input(1);
-    auto filter_ptr = filter.template flat<T>().data();
 
     // For 2D convolution, there should be 4 dimensions.
     OP_REQUIRES(context, input.dims() == 4,
@@ -338,7 +349,26 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // [ in_batch, out_rows, out_cols, out_depth ]
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
-    auto output_ptr = output->template flat<T>().data();
+
+    VLOG(2) << "DepthwiseConv2dNative: "
+            << " Input: [" << batch << ", " << input_rows << ", " << input_cols
+            << ", " << in_depth << "]; Filter: [" << filter_rows << ", "
+            << filter_cols << ", " << in_depth << ", " << depth_multiplier
+            << "]; stride = " << stride << ", pad_rows = " << pad_rows
+            << ", pad_cols = " << pad_cols << ", output: [" << batch << ", "
+            << out_rows << ", " << out_cols << ", " << out_depth << "]";
+
+    // If there is nothing to compute, return.
+    if (out_shape.num_elements() == 0) {
+      return;
+    }
+
+    if (std::is_same<T, float>::value && in_depth == 1) {
+      launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+                       stride, stride, BrainPadding2EigenPadding(padding_),
+                       output, FORMAT_NHWC);
+      return;
+    }
 
     DepthwiseArgs args;
     args.batch = batch;
@@ -355,18 +385,9 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     args.out_cols = out_cols;
     args.out_depth = out_depth;
 
-    VLOG(2) << "DepthwiseConv2dNative: "
-            << " Input: [" << batch << ", " << input_rows << ", " << input_cols
-            << ", " << in_depth << "]; Filter: [" << filter_rows << ", "
-            << filter_cols << ", " << in_depth << ", " << depth_multiplier
-            << "]; stride = " << stride << ", pad_rows = " << pad_rows
-            << ", pad_cols = " << pad_cols << ", output: [" << batch << ", "
-            << out_rows << ", " << out_cols << ", " << out_depth << "]";
-
-    // If there is nothing to compute, return.
-    if (out_shape.num_elements() == 0) {
-      return;
-    }
+    auto input_ptr = input.template flat<T>().data();
+    auto filter_ptr = filter.template flat<T>().data();
+    auto output_ptr = output->template flat<T>().data();
     LaunchDepthwiseConvOp<Device, T>::launch(context, args, input_ptr,
                                              filter_ptr, output_ptr);
   }
@@ -374,6 +395,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+
+  // For the case in_depth == 1.
+  LaunchConv2DOp<Device, T> launcher_;
+  bool use_cudnn_;
+  bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
 };

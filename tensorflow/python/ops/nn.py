@@ -586,7 +586,7 @@ def zero_fraction(value, name=None):
         math_ops.cast(math_ops.equal(value, zero), dtypes.float32))
 
 
-# pylint: disable=redefined-builtin,line-too-long
+# pylint: disable=redefined-builtin
 def depthwise_conv2d(input, filter, strides, padding, name=None):
   """Depthwise 2-D convolution.
 
@@ -625,28 +625,10 @@ def depthwise_conv2d(input, filter, strides, padding, name=None):
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     filter = ops.convert_to_tensor(filter, name="filter_in")
-    # A shape is required to statically compute the number of separable filters.
-    if filter.get_shape().ndims is not None:
-      assert len(filter.get_shape()) == 4
-      in_channels = filter.get_shape()[2]
-      # Sanity checks, if shape information is available for the inputs.
-      if input.get_shape().ndims is not None:
-        assert len(input.get_shape()) == 4
-        assert input.get_shape()[3] == in_channels, (
-            "Mismatched input depth %d and number of depthwise filters %d." %
-            (input.get_shape()[3].value, in_channels))
-    else:
-      assert input.get_shape().ndims is not None, (
-          "Either tensor must provide static shape information.")
-      assert input.get_shape().ndims == 4
-      in_channels = input.get_shape()[3]
 
-    if in_channels == 1:
-      return nn_ops.conv2d(input, filter, strides, padding, name=name)
-    else:
-      return nn_ops.depthwise_conv2d_native(
-          input, filter, strides, padding, name=name)
-# pylint: enable=redefined-builtin,line-too-long
+    return nn_ops.depthwise_conv2d_native(
+        input, filter, strides, padding, name=name)
+# pylint: enable=redefined-builtin
 
 
 # pylint: disable=redefined-builtin,line-too-long
@@ -702,21 +684,24 @@ def separable_conv2d(input, depthwise_filter, pointwise_filter, strides,
     pointwise_filter = ops.convert_to_tensor(
         pointwise_filter, name="pointwise_filter")
 
-    if pointwise_filter.get_shape().ndims is not None:
-      assert len(pointwise_filter.get_shape()) == 4
-      assert pointwise_filter.get_shape()[0] == 1
-      assert pointwise_filter.get_shape()[1] == 1
-      if depthwise_filter.get_shape().ndims and input.get_shape().ndims:
-        channel_multiplier = depthwise_filter.get_shape()[3]
-        in_channels = input.get_shape()[3]
-        out_channels = pointwise_filter.get_shape()[3]
-        if channel_multiplier * in_channels > out_channels:
-          raise ValueError(
-              ("Refusing to perform an overparameterized separable "
-               "convolution: channel_multiplier * in_channels = "
-               "%d * %d = %d > %d = out_channels" %
-               (channel_multiplier, in_channels,
-                channel_multiplier * in_channels, out_channels)))
+    pointwise_filter_shape = pointwise_filter.get_shape().with_rank(4)
+    pointwise_filter_shape[0].assert_is_compatible_with(1)
+    pointwise_filter_shape[1].assert_is_compatible_with(1)
+
+    channel_multiplier = depthwise_filter.get_shape().with_rank(4)[3]
+    in_channels = input.get_shape().with_rank(4)[3]
+    out_channels = pointwise_filter_shape[3]
+
+    # If any of channel numbers is unknown, then the comparison below returns
+    # None. See TensorShape.__gt__().
+    if channel_multiplier * in_channels > out_channels:
+      raise ValueError(
+          "Refusing to perform an overparameterized separable "
+          "convolution: channel_multiplier * in_channels = "
+          "%d * %d = %d > %d = out_channels" %
+          (channel_multiplier, in_channels,
+           channel_multiplier * in_channels, out_channels))
+
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
