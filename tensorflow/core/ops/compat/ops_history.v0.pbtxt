@@ -8101,6 +8101,17 @@ op {
   }
 }
 op {
+  name: "DecodeBase64"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+}
+op {
   name: "DecodeCSV"
   input_arg {
     name: "records"
@@ -9143,6 +9154,24 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
       }
+    }
+  }
+}
+op {
+  name: "EncodeBase64"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "pad"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

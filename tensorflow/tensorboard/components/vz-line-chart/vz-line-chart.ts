@@ -43,6 +43,7 @@ module VZ {
     private nanDataset: Plottable.Dataset;
     private smoothingDecay: number;
     private smoothingEnabled: Boolean;
+    private tooltipSortingMethod: string;
 
     constructor(
         xType: string, colorScale: Plottable.Scales.Color,
@@ -289,7 +290,22 @@ module VZ {
       let dist = (p: VZ.ChartHelpers.Point) =>
           Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
       let closestDist = _.min(points.map(dist));
-      points = _.sortBy(points, (d) => d.dataset.metadata().name);
+
+      let valueSortMethod = this.scalarAccessor;
+      if (this.smoothingEnabled) {
+        valueSortMethod = this.smoothedAccessor;
+      }
+
+      if (this.tooltipSortingMethod === 'ascending') {
+        points =
+            _.sortBy(points, (d) => valueSortMethod(d.datum, -1, d.dataset));
+      } else if (this.tooltipSortingMethod === 'descending') {
+        points =
+            _.sortBy(points, (d) => valueSortMethod(d.datum, -1, d.dataset))
+                .reverse();
+      } else {  // Sort by 'name'
+        points = _.sortBy(points, (d) => d.dataset.metadata().name);
+      }
 
       let rows = this.tooltip.select('tbody')
                      .html('')
@@ -454,6 +470,10 @@ module VZ {
         this.smoothingEnabled = false;
         this.updateSpecialDatasets(this.scalarAccessor);
       }
+    }
+
+    public setTooltipSortingMethod(method: string) {
+      this.tooltipSortingMethod = method;
     }
 
     public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }

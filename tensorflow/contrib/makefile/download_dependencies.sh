@@ -44,15 +44,19 @@ ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
 
 # TODO(petewarden) - Some new code in Eigen triggers a clang bug with iOS arm64,
 # so work around it by patching the source.
-sed -e 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
--i '' \
-eigen-latest/eigen/src/Core/arch/NEON/Complex.h
-sed -e 's#static uint32x2_t p2ui_CONJ_XOR = vld1_u32( conj_XOR_DATA );#static uint32x2_t p2ui_CONJ_XOR;// = vld1_u32( conj_XOR_DATA ); - Removed by scripts#' \
--i '' \
-eigen-latest/eigen/src/Core/arch/NEON/Complex.h
-sed -e 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DATA );#static uint64x2_t p2ul_CONJ_XOR;// = vld1q_u64( p2ul_conj_XOR_DATA ); - Removed by script#' \
--i '' \
-eigen-latest/eigen/src/Core/arch/NEON/Complex.h
+function replace_by_sed() {
+  if echo "${OSTYPE}" | grep -q darwin; then
+    sed -e $1 -i '' $2
+  else
+    sed -e $1 -i $2
+  fi
+}
+replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
+eigen-latest/Eigen/src/Core/arch/NEON/Complex.h
+replace_by_sed 's#static uint32x2_t p2ui_CONJ_XOR = vld1_u32( conj_XOR_DATA );#static uint32x2_t p2ui_CONJ_XOR;// = vld1_u32( conj_XOR_DATA ); - Removed by scripts#' \
+eigen-latest/Eigen/src/Core/arch/NEON/Complex.h
+replace_by_sed 's#static uint64x2_t p2ul_CONJ_XOR = vld1q_u64( p2ul_conj_XOR_DATA );#static uint64x2_t p2ul_CONJ_XOR;// = vld1q_u64( p2ul_conj_XOR_DATA ); - Removed by script#' \
+eigen-latest/Eigen/src/Core/arch/NEON/Complex.h
 
 git clone https://github.com/google/re2.git re2
 git clone https://github.com/google/gemmlowp.git gemmlowp

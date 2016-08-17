@@ -22,6 +22,7 @@ py_tests(
         "as_string_op_test.py",
         "attention_ops_test.py",
         "barrier_ops_test.py",
+        "base64_ops_test.py",
         "bcast_ops_test.py",
         "benchmark_test.py",
         "candidate_sampler_ops_test.py",

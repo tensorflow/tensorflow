@@ -1706,6 +1706,7 @@ tf_kernel_libraries(
         "string_join_op",
         "string_split_op",
         "as_string_op",
+        "base64_ops",
     ],
     deps = [
         "//tensorflow/core:framework",

@@ -247,4 +247,38 @@ shape: a length-2 vector of int64 representing the shape of the sparse
   of tokens in a single input entry.
 )doc");
 
+REGISTER_OP("EncodeBase64")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("pad: bool = false")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Encode strings into web-safe base64 format.
+
+Refer to the following article for more information on base64 format:
+en.wikipedia.org/wiki/Base64. Base64 strings may have padding with '=' at the
+end so that the encoded has length multiple of 4. See Padding section of the
+link above.
+
+Web-safe means that the encoder uses - and _ instead of + and /.
+
+input: Strings to be encoded.
+output: Input strings encoded in base64.
+pad: Bool whether padding is applied at the ends.
+)doc");
+
+REGISTER_OP("DecodeBase64")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Decode web-safe base64-encoded strings.
+
+Input may or may not have padding at the end. See EncodeBase64 for padding.
+Web-safe means that input must use - and _ instead of + and /.
+
+input: Base64 strings to decode.
+output: Decoded strings.
+)doc");
+
 }  // namespace tensorflow
