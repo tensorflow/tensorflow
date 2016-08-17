@@ -214,7 +214,7 @@ optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 We then generate a single variable to contain a counter for the global
 training step and the [`minimize()`](../../../api_docs/python/train.md#Optimizer.minimize)
 op is used to both update the trainable weights in the system and increment the
-global step.  This is, by convention, known as the `train_op` and is what must
+global step.  This op is, by convention, known as the `train_op` and is what must
 be run by a TensorFlow session in order to induce one full step of training
 (see below).
 
@@ -222,8 +222,6 @@ be run by a TensorFlow session in order to induce one full step of training
 global_step = tf.Variable(0, name='global_step', trainable=False)
 train_op = optimizer.minimize(loss, global_step=global_step)
 ```
-
-The tensor containing the outputs of the training op is returned.
 
 ## Train the Model
 
