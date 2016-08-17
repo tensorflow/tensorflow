@@ -460,6 +460,30 @@ class SaverTest(tf.test.TestCase):
         expected_save_path = "%s-%d" % (save_path, global_step_int)
         self.assertEqual(expected_save_path, val)
 
+  def testSaveToNonexistingPath(self):
+
+    save_path = os.path.join(self.get_temp_dir(), "nonexisting_dir/path")
+
+    # Build a graph with 2 parameter nodes, and Save and
+    # Restore nodes for them.
+    v0 = tf.Variable(10.0, name="v0")
+    v1 = tf.Variable(20.0, name="v1")
+    save = tf.train.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
+    init_all_op = tf.initialize_all_variables()
+
+    with self.test_session() as sess:
+      # Initialize all variables
+      sess.run(init_all_op)
+
+      # Check that the parameter nodes have been initialized.
+      self.assertEqual(10.0, v0.eval())
+      self.assertEqual(20.0, v1.eval())
+
+      # Assert saving fails when parent dir of save path doesn't exist
+      with self.assertRaisesWithPredicateMatch(
+        ValueError, lambda e:  "Parent directory of {} doesn't exist, can't save.".format(save_path) in str(e)):
+          save.save(sess, save_path)
+
 
 class SaveRestoreShardedTest(tf.test.TestCase):
 
