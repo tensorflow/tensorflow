@@ -177,8 +177,10 @@ class KMeansClustering(estimator.Estimator,
     Returns:
       Array with same number of rows as x, containing cluster ids.
     """
-    return super(KMeansClustering, self).predict(
-        x=x, batch_size=batch_size)[KMeansClustering.CLUSTER_IDX]
+    return np.array([
+        prediction[KMeansClustering.CLUSTER_IDX] for prediction in
+        super(KMeansClustering, self).predict(
+            x=x, batch_size=batch_size, as_iterable=True)])
 
   def score(self, x, batch_size=None):
     """Predict total sum of distances to nearest clusters.
@@ -212,8 +214,10 @@ class KMeansClustering(estimator.Estimator,
       Array with same number of rows as x, and num_clusters columns, containing
       distances to the cluster centers.
     """
-    return super(KMeansClustering, self).predict(
-        x=x, batch_size=batch_size)[KMeansClustering.ALL_SCORES]
+    return np.array([
+        prediction[KMeansClustering.ALL_SCORES] for prediction in
+        super(KMeansClustering, self).predict(
+            x=x, batch_size=batch_size, as_iterable=True)])
 
   def clusters(self):
     """Returns cluster centers."""
