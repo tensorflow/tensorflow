@@ -45,7 +45,7 @@ class GradOpRegistry {
   // Note that 'func' can be null for ops that have registered no-gradient with
   // the registry.
   // Returns error status otherwise.
-  Status Lookup(const string& op, GradFunc* func);
+  Status Lookup(const string& op, GradFunc* func) const;
 
   // Returns a pointer to the global gradient function registry.
   static GradOpRegistry* Global();
