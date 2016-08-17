@@ -54,7 +54,8 @@ class MathGradTest : public ::testing::Test {
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
     GradFunc grad_fn;
-    TF_EXPECT_OK(GradOpRegistry::Global()->Lookup(op.node()->name(), &grad_fn));
+    TF_EXPECT_OK(
+        GradOpRegistry::Global()->Lookup(op.node()->type_string(), &grad_fn));
     TF_EXPECT_OK(grad_fn(root_, op, grad_inputs, grad_outputs));
     TF_EXPECT_OK(root_.status());
   }
