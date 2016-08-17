@@ -4420,6 +4420,21 @@ op {
   description: "Counts number of NaNs in the input tensor, for debugging."
 }
 op {
+  name: "DecodeBase64"
+  input_arg {
+    name: "input"
+    description: "Base64 strings to decode."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "Decoded strings."
+    type: DT_STRING
+  }
+  summary: "Decode web-safe base64-encoded strings."
+  description: "Input may or may not have padding at the end. See EncodeBase64 for padding.\nWeb-safe means that input must use - and _ instead of + and /."
+}
+op {
   name: "DecodeCSV"
   input_arg {
     name: "records"
@@ -5349,6 +5364,29 @@ op {
     }
   }
   summary: "Computes gradients for the exponential linear (Elu) operation."
+}
+op {
+  name: "EncodeBase64"
+  input_arg {
+    name: "input"
+    description: "Strings to be encoded."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "Input strings encoded in base64."
+    type: DT_STRING
+  }
+  attr {
+    name: "pad"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Bool whether padding is applied at the ends."
+  }
+  summary: "Encode strings into web-safe base64 format."
+  description: "Refer to the following article for more information on base64 format:\nen.wikipedia.org/wiki/Base64. Base64 strings may have padding with \'=\' at the\nend so that the encoded has length multiple of 4. See Padding section of the\nlink above.\n\nWeb-safe means that the encoder uses - and _ instead of + and /."
 }
 op {
   name: "EncodeJpeg"
