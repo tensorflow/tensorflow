@@ -77,6 +77,7 @@ filegroup(
         "//tensorflow/c:all_files",
         "//tensorflow/cc:all_files",
         "//tensorflow/contrib:all_files",
+        "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/factorization:all_files",

@@ -479,6 +479,24 @@ class DistributionTensor(StochasticTensor):
                           self._value_type)
 
 
+def _upstream_stochastic_nodes(tensors):
+  """Map tensors to the stochastic tensors upstream of them.
+
+  Args:
+    tensors: a list of Tensors.
+
+  Returns:
+    A dict that maps the tensors passed in to the `StochasticTensor` objects
+    upstream of them.
+  """
+  reverse_map = _stochastic_dependencies_map(tensors)
+  upstream = collections.defaultdict(set)
+  for st, ts in reverse_map.items():
+    for t in ts:
+      upstream[t].add(st)
+  return upstream
+
+
 def _stochastic_dependencies_map(fixed_losses, stochastic_tensors=None):
   """Map stochastic tensors to the fixed losses that depend on them.
 
@@ -505,6 +523,9 @@ def _stochastic_dependencies_map(fixed_losses, stochastic_tensors=None):
 
   # Step backwards through the graph to see which surrogate losses correspond
   # to which fixed_losses.
+  #
+  # TODO(ebrevdo): Ensure that fixed_losses and stochastic values are in the
+  # same frame.
   stoch_dependencies_map = collections.defaultdict(set)
   for loss in fixed_losses:
     boundary = set([loss])

@@ -598,6 +598,12 @@
   * [`surrogate_loss`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_loss)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#value_type)
 
+* **[BayesFlow Variational Inference (contrib)](../../api_docs/python/contrib.bayesflow.variational_inference.md)**:
+  * [`elbo`](../../api_docs/python/contrib.bayesflow.variational_inference.md#elbo)
+  * [`elbo_with_log_joint`](../../api_docs/python/contrib.bayesflow.variational_inference.md#elbo_with_log_joint)
+  * [`ELBOForms`](../../api_docs/python/contrib.bayesflow.variational_inference.md#ELBOForms)
+  * [`register_prior`](../../api_docs/python/contrib.bayesflow.variational_inference.md#register_prior)
+
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
   * [`batch_matrix_diag_transform`](../../api_docs/python/contrib.distributions.md#batch_matrix_diag_transform)
