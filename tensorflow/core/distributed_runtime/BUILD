@@ -58,6 +58,7 @@ cc_library(
     ],
     deps = [
         ":call_options",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
@@ -91,6 +92,7 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":worker_interface",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",

@@ -2146,6 +2146,9 @@ var VZ;
             this.datasets = names.map(function (r) { return _this.getDataset(r); });
             this.datasets.forEach(function (d) { return d.onUpdate(_this.onDatasetChanged); });
             this.linePlot.datasets(this.datasets);
+            if (this.smoothingEnabled) {
+                this.smoothLinePlot.datasets(this.datasets);
+            }
         };
         /**
          * Set the data of a series on the chart.

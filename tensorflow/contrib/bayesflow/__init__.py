@@ -21,4 +21,5 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long
+from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
 from tensorflow.contrib.bayesflow.python.ops import stochastic_graph

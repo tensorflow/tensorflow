@@ -268,6 +268,24 @@ class InputLayerTest(tf.test.TestCase):
     with self.test_session():
       self.assertAllClose(output.eval(), features["price"].eval())
 
+  def testRealValuedColumnWithNormalizer(self):
+    real_valued = tf.contrib.layers.real_valued_column(
+        "price", normalizer=lambda x: x - 2)
+    features = {"price": tf.constant([[20.], [110], [-3]])}
+    output = tf.contrib.layers.input_from_feature_columns(features,
+                                                          [real_valued])
+    with self.test_session():
+      self.assertAllClose(output.eval(), features["price"].eval() - 2)
+
+  def testRealValuedColumnWithMultiDimensionsAndNormalizer(self):
+    real_valued = tf.contrib.layers.real_valued_column(
+        "price", 2, normalizer=lambda x: x - 2)
+    features = {"price": tf.constant([[20., 10.], [110, 0.], [-3, 30]])}
+    output = tf.contrib.layers.input_from_feature_columns(features,
+                                                          [real_valued])
+    with self.test_session():
+      self.assertAllClose(output.eval(), features["price"].eval() - 2)
+
   def testBucketizedColumn(self):
     bucket = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column("price"),
@@ -276,6 +294,18 @@ class InputLayerTest(tf.test.TestCase):
     features = {"price": tf.constant([[20.], [110], [-3]])}
     output = tf.contrib.layers.input_from_feature_columns(features, [bucket])
     expected = [[0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]]
+    with self.test_session():
+      self.assertAllClose(output.eval(), expected)
+
+  def testBucketizedColumnWithNormalizer(self):
+    bucket = tf.contrib.layers.bucketized_column(
+        tf.contrib.layers.real_valued_column(
+            "price", normalizer=lambda x: x - 15),
+        boundaries=[0., 10., 100.])
+    # buckets 2, 3, 0
+    features = {"price": tf.constant([[20.], [110], [-3]])}
+    output = tf.contrib.layers.input_from_feature_columns(features, [bucket])
+    expected = [[0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 0]]
     with self.test_session():
       self.assertAllClose(output.eval(), expected)
 

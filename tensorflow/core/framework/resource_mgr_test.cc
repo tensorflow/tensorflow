@@ -111,6 +111,13 @@ TEST(ResourceMgrTest, Basic) {
   // Drop the whole container foo.
   TF_CHECK_OK(rm.Cleanup("foo"));
   HasError(FindErr<Resource>(rm, "foo", "bar"), "Not found: Container foo");
+
+  // Dropping it a second time is OK.
+  TF_CHECK_OK(rm.Cleanup("foo"));
+  HasError(FindErr<Resource>(rm, "foo", "bar"), "Not found: Container foo");
+
+  // Dropping a non-existent container is also ok.
+  TF_CHECK_OK(rm.Cleanup("bar"));
 }
 
 TEST(ResourceMgr, CreateOrLookup) {

@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=line-too-long
-
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
@@ -26,8 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-
-# pylint: enable=line-too-long
 
 
 class Multinomial(distribution.Distribution):
@@ -145,8 +141,8 @@ class Multinomial(distribution.Distribution):
           check_ops.assert_non_negative(
               n, message="n has negative components."),
           distribution_util.assert_integer_form(
-              n, message="n has non-integer components."
-          )] if validate_args else []):
+              n, message="n has non-integer components.")
+      ] if validate_args else []):
         self._n = array_ops.identity(n, name="convert_n")
         self._name = name
 

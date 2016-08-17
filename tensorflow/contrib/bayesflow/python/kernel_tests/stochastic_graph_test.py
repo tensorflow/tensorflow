@@ -22,6 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 sg = tf.contrib.bayesflow.stochastic_graph
+sge = tf.contrib.bayesflow.stochastic_gradient_estimators
 distributions = tf.contrib.distributions
 
 
@@ -177,7 +178,7 @@ class DistributionTensorTest(tf.test.TestCase):
           mu=mu,
           sigma=sigma,
           dist_value_type=sg.MeanValue(stop_gradient=True),
-          loss_fn=sg.get_score_function_with_baseline(
+          loss_fn=sge.get_score_function_with_constant_baseline(
               baseline=tf.constant(8.0)))
       loss = dt.loss([tf.constant(2.0)])
       self.assertTrue(loss is not None)

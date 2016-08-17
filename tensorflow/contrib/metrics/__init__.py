@@ -115,8 +115,11 @@ time.
 @@streaming_root_mean_squared_error
 @@streaming_mean_cosine_distance
 @@streaming_percentage_less
+@@streaming_sensitivity_at_specificity
 @@streaming_sparse_precision_at_k
 @@streaming_sparse_recall_at_k
+@@streaming_specificity_at_sensitivity
+
 @@auc_using_histogram
 
 @@accuracy
@@ -159,8 +162,10 @@ from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_recall_at_thresholds
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_root_mean_squared_error
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sensitivity_at_specificity
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_precision_at_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_sparse_recall_at_k
+from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_specificity_at_sensitivity
 from tensorflow.contrib.metrics.python.ops.set_ops import set_difference
 from tensorflow.contrib.metrics.python.ops.set_ops import set_intersection
 from tensorflow.contrib.metrics.python.ops.set_ops import set_size

@@ -36,8 +36,9 @@ class NonLinearTest(tf.test.TestCase):
 
   def testIrisDNN(self):
     iris = tf.contrib.learn.datasets.load_iris()
+    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3)
+        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
@@ -51,8 +52,9 @@ class NonLinearTest(tf.test.TestCase):
 
   def testBostonDNN(self):
     boston = tf.contrib.learn.datasets.load_boston()
+    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=13)]
     regressor = tf.contrib.learn.TensorFlowDNNRegressor(
-        hidden_units=[10, 20, 10], n_classes=0,
+        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=0,
         batch_size=boston.data.shape[0], steps=300, learning_rate=0.01)
     regressor.fit(boston.data, boston.target)
     score = mean_squared_error(boston.target, regressor.predict(boston.data))
@@ -68,8 +70,10 @@ class NonLinearTest(tf.test.TestCase):
   def testDNNDropout0(self):
     # Dropout prob == 0.
     iris = tf.contrib.learn.datasets.load_iris()
+    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, dropout=0.0)
+        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
+        dropout=0.0)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
@@ -77,8 +81,10 @@ class NonLinearTest(tf.test.TestCase):
   def testDNNDropout0_1(self):
     # Dropping only a little.
     iris = tf.contrib.learn.datasets.load_iris()
+    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, dropout=0.1)
+        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
+        dropout=0.1)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     # If the quality is lower - dropout is not working.
@@ -87,8 +93,10 @@ class NonLinearTest(tf.test.TestCase):
   def testDNNDropout0_9(self):
     # Dropping out most of it.
     iris = tf.contrib.learn.datasets.load_iris()
+    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
     classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, dropout=0.9)
+        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
+        dropout=0.9)
     classifier.fit(iris.data, iris.target)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.3, "Failed with score = {0}".format(score))

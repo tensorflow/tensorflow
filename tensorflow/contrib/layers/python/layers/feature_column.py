@@ -149,6 +149,28 @@ class _FeatureColumn(object):
     """Returns a Tensor as linear predictions and a list of created Variable."""
     raise ValueError("Calling an abstract method.")
 
+  def _key_without_properties(self, properties):
+    """Helper method for self.key() that omits particular properties."""
+    fields_values = []
+    # pylint: disable=protected-access
+    for i, k in enumerate(self._fields):
+      if k in properties:
+        # Excludes a property from the key.
+        # For instance, exclude `initializer` from the key of EmbeddingColumn
+        # since we don't support users specifying different initializers for
+        # the same embedding column. Ditto for `normalizer` and
+        # RealValuedColumn.
+        # Special treatment is needed since the default str form of a
+        # function contains its address, which could introduce non-determinism
+        # in sorting.
+        continue
+      fields_values.append("{}={}".format(k, self[i]))
+    # pylint: enable=protected-access
+
+    # This is effectively the same format as str(self), except with our special
+    # treatment.
+    return "{}({})".format(type(self).__name__, ", ".join(fields_values))
+
 
 # TODO(b/30410315): Support warm starting in all feature columns.
 class _SparseColumn(_FeatureColumn,
@@ -641,22 +663,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
   @property
   def key(self):
     """Returns a string which will be used as a key when we do sorting."""
-    fields_values = []
-    # pylint: disable=protected-access
-    for k, v in self._asdict().items():
-      if k == "initializer":
-        # Excludes initializer from the key since we don't support allowing
-        # users to specify different initializers for the same embedding column.
-        # Special treatment is needed since the default str form of a
-        # function contains its address, which could introduce non-determinism
-        # in sorting.
-        continue
-      fields_values.append("{}={}".format(k, v))
-    # pylint: enable=protected-access
-
-    # This is effectively the same format as str(self), except with our special
-    # treatment.
-    return "%s(%s)" % (type(self).__name__, ", ".join(fields_values))
+    return self._key_without_properties(["initializer"])
 
   def insert_transformed_feature(self, columns_to_tensors):
     self.sparse_id_column.insert_transformed_feature(columns_to_tensors)
@@ -830,7 +837,7 @@ def hashed_embedding_column(column_name,
 
 class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     "_RealValuedColumn",
-    ["column_name", "dimension", "default_value", "dtype"])):
+    ["column_name", "dimension", "default_value", "dtype", "normalizer"])):
   """Represents a real valued feature column also known as continuous features.
 
   Instances of this class are immutable. A real valued column means features are
@@ -838,11 +845,12 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
   ("column_name", Tensor) pair. Tensor shape should be (batch_size, 1).
   """
 
-  def __new__(cls, column_name, dimension, default_value, dtype):
+  def __new__(cls, column_name, dimension, default_value, dtype, normalizer):
     if default_value is not None:
       default_value = tuple(default_value)
     return super(_RealValuedColumn, cls).__new__(cls, column_name, dimension,
-                                                 default_value, dtype)
+                                                 default_value, dtype,
+                                                 normalizer)
 
   @property
   def name(self):
@@ -859,11 +867,28 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
   @property
   def key(self):
     """Returns a string which will be used as a key when we do sorting."""
-    return "{}".format(self)
+    return self._key_without_properties(["normalizer"])
+
+  @property
+  def normalizer_fn(self):
+    """Returns the function used to normalize the column."""
+    return self.normalizer
+
+  def _normalized_input_tensor(self, input_tensor):
+    """Returns the input tensor after custom normalization is applied."""
+    return (self.normalizer(input_tensor) if self.normalizer is not None else
+            input_tensor)
 
   def insert_transformed_feature(self, columns_to_tensors):
-    # No transformation is needed for _RealValuedColumn except reshaping.
-    input_tensor = columns_to_tensors[self.name]
+    """Apply transformation and inserts it into columns_to_tensors.
+
+    Args:
+      columns_to_tensors: A mapping from feature columns to tensors. 'string'
+        key means a base feature (not-transformed). It can have _FeatureColumn
+        as a key too. That means that _FeatureColumn is already transformed.
+    """
+    # Transform the input tensor according to the normalizer function + reshape.
+    input_tensor = self._normalized_input_tensor(columns_to_tensors[self.name])
     batch_size = input_tensor.get_shape().as_list()[0]
     batch_size = int(batch_size) if batch_size else -1
     flattened_shape = [batch_size, self.dimension]
@@ -874,13 +899,14 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
 
   # pylint: disable=unused-argument
   def to_dnn_input_layer(self,
-                         input_tensor,
+                         transformed_input_tensor,
                          weight_collections=None,
                          trainable=True):
-    return input_tensor
+    """Returns a Tensor as an input to the first layer of neural network."""
+    return transformed_input_tensor
 
   def to_weighted_sum(self,
-                      input_tensor,
+                      transformed_input_tensor,
                       num_outputs=1,
                       weight_collections=None,
                       trainable=True):
@@ -899,14 +925,16 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
       weight = _weight("_weight")
 
     # The _RealValuedColumn has the shape of [batch_size, column.dimension].
-    log_odds_by_dim = math_ops.matmul(input_tensor, weight, name="matmul")
+    log_odds_by_dim = math_ops.matmul(
+        transformed_input_tensor, weight, name="matmul")
     return log_odds_by_dim, [weight]
 
 
 def real_valued_column(column_name,
                        dimension=1,
                        default_value=None,
-                       dtype=dtypes.float32):
+                       dtype=dtypes.float32,
+                       normalizer=None):
   """Creates a _RealValuedColumn.
 
   Args:
@@ -915,13 +943,17 @@ def real_valued_column(column_name,
       The default is 1. The Tensor representing the _RealValuedColumn
       will have the shape of [batch_size, dimension].
     default_value: A single value compatible with dtype or a list of values
-      compatible with dtype which the column takes on if data is missing. If
-      None, then tf.parse_example will fail if an example does not contain
-      this column. If a single value is provided, the same value will be
-      applied as the default value for every dimension. If a list of values
-      is provided, the length of the list should be equal to the value of
-      `dimension`.
+      compatible with dtype which the column takes on during tf.Example parsing
+      if data is missing. If None, then tf.parse_example will fail if an example
+      does not contain this column. If a single value is provided, the same
+      value will be applied as the default value for every dimension. If a
+      list of values is provided, the length of the list should be equal to the
+      value of `dimension`.
     dtype: defines the type of values. Default value is tf.float32.
+    normalizer: If not None, a function that can be used to normalize the value
+      of the real valued column after default_value is applied for parsing.
+      Normalizer function takes the input tensor as its argument, and returns
+      the output tensor. (e.g. lambda x: (x - 3.0) / 4.2).
   Returns:
     A _RealValuedColumn.
   Raises:
@@ -948,21 +980,25 @@ def real_valued_column(column_name,
                      "dtype: {}, column_name: {}".format(dtype, column_name))
 
   if default_value is None:
-    return _RealValuedColumn(column_name, dimension, default_value, dtype)
+    return _RealValuedColumn(column_name, dimension, default_value, dtype,
+                             normalizer)
 
   if isinstance(default_value, int):
     if dtype.is_integer:
       default_value = [default_value for _ in range(dimension)]
-      return _RealValuedColumn(column_name, dimension, default_value, dtype)
+      return _RealValuedColumn(column_name, dimension, default_value, dtype,
+                               normalizer)
     if dtype.is_floating:
       default_value = float(default_value)
       default_value = [default_value for _ in range(dimension)]
-      return _RealValuedColumn(column_name, dimension, default_value, dtype)
+      return _RealValuedColumn(column_name, dimension, default_value, dtype,
+                               normalizer)
 
   if isinstance(default_value, float):
     if dtype.is_floating and (not dtype.is_integer):
       default_value = [default_value for _ in range(dimension)]
-      return _RealValuedColumn(column_name, dimension, default_value, dtype)
+      return _RealValuedColumn(column_name, dimension, default_value, dtype,
+                               normalizer)
 
   if isinstance(default_value, list):
     if len(default_value) != dimension:
@@ -981,14 +1017,17 @@ def real_valued_column(column_name,
         is_list_all_float = False
     if is_list_all_int:
       if dtype.is_integer:
-        return _RealValuedColumn(column_name, dimension, default_value, dtype)
+        return _RealValuedColumn(column_name, dimension, default_value, dtype,
+                                 normalizer)
       elif dtype.is_floating:
         default_value = [float(v) for v in default_value]
-        return _RealValuedColumn(column_name, dimension, default_value, dtype)
+        return _RealValuedColumn(column_name, dimension, default_value, dtype,
+                                 normalizer)
     if is_list_all_float:
       if dtype.is_floating and (not dtype.is_integer):
         default_value = [float(v) for v in default_value]
-        return _RealValuedColumn(column_name, dimension, default_value, dtype)
+        return _RealValuedColumn(column_name, dimension, default_value, dtype,
+                                 normalizer)
 
   raise TypeError("default_value must be compatible with dtype. "
                   "default_value: {}, dtype: {}, column_name: {}".format(

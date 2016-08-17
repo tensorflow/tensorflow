@@ -597,8 +597,7 @@ class WishartCholesky(_WishartOperatorPD):
   dist.pdf(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.batch_matrix_diag_transform
-  #   (operator_pd_cholesky.py).
+  #   in tf.contrib.distributions.batch_matrix_diag_transform.
   ```
 
   """
@@ -695,8 +694,7 @@ class WishartFull(_WishartOperatorPD):
   dist.pdf(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.batch_matrix_diag_transform
-  #   (operator_pd_cholesky.py).
+  #   in tf.contrib.distributions.batch_matrix_diag_transform.
   ```
 
   """
