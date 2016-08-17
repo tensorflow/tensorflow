@@ -37,6 +37,8 @@ string tensor.
 ## Conversion
 
 @@as_string
+@@encode_base64
+@@decode_base64
 """
 
 from __future__ import absolute_import
@@ -118,11 +120,15 @@ ops.NoGradient("ReduceJoin")
 ops.NoGradient("StringJoin")
 ops.NoGradient("StringSplit")
 ops.NoGradient("AsString")
+ops.NoGradient("EncodeBase64")
+ops.NoGradient("DecodeBase64")
 
 ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
 ops.RegisterShape("StringToHashBucketFast")(common_shapes.unchanged_shape)
 ops.RegisterShape("StringToHashBucketStrong")(common_shapes.unchanged_shape)
 ops.RegisterShape("AsString")(common_shapes.unchanged_shape)
+ops.RegisterShape("EncodeBase64")(common_shapes.unchanged_shape)
+ops.RegisterShape("DecodeBase64")(common_shapes.unchanged_shape)
 
 
 @ops.RegisterShape("ReduceJoin")
