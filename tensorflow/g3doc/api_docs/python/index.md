@@ -276,6 +276,8 @@
 
 * **[Strings](../../api_docs/python/string_ops.md)**:
   * [`as_string`](../../api_docs/python/string_ops.md#as_string)
+  * [`decode_base64`](../../api_docs/python/string_ops.md#decode_base64)
+  * [`encode_base64`](../../api_docs/python/string_ops.md#encode_base64)
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
   * [`string_join`](../../api_docs/python/string_ops.md#string_join)
   * [`string_split`](../../api_docs/python/string_ops.md#string_split)
