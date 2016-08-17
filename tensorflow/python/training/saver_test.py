@@ -382,26 +382,26 @@ class SaverTest(tf.test.TestCase):
       self.assertEqual(b"k1", v2.keys().eval())
       self.assertEqual(3.0, v2.values().eval())
 
-  def testVarListShouldBeEmptyInDefferedBuild(self):
+  def testVarListShouldBeEmptyInDeferredBuild(self):
     with tf.Graph().as_default():
       v = tf.Variable(1.0)
       with self.assertRaisesRegexp(ValueError, "defer_build"):
         tf.train.Saver([v], defer_build=True)
 
   def testBuildShouldBeCalledBeforeSaveInCaseOfDeferBuild(self):
-    save_path = os.path.join(self.get_temp_dir(), "error_deffered_build")
+    save_path = os.path.join(self.get_temp_dir(), "error_deferred_build")
     with tf.Graph().as_default(), tf.Session() as sess:
       tf.Variable(1.0)
       saver = tf.train.Saver(defer_build=True)
       with self.assertRaisesRegexp(RuntimeError, "build"):
         saver.save(sess, save_path)
 
-  def testDefferedBuild(self):
-    save_path = os.path.join(self.get_temp_dir(), "deffered_build")
+  def testDeferredBuild(self):
+    save_path = os.path.join(self.get_temp_dir(), "deferred_build")
     with tf.Session("", graph=tf.Graph()) as sess:
       one = tf.Variable(1.0)
       save = tf.train.Saver(defer_build=True)
-      # if build is not defered, saver cannot save the `twos`.
+      # if build is not deferred, saver cannot save the `twos`.
       twos = tf.Variable([2.0, 2.0, 2.0])
       init = tf.initialize_all_variables()
       save.build()
@@ -1429,7 +1429,7 @@ class MetaGraphTest(tf.test.TestCase):
       new_saver.export_meta_graph()
       # Restores from checkpoint.
       new_saver.restore(sess, saver0_ckpt)
-      # Addes loss and train.
+      # Adds loss and train.
       labels = tf.constant(0, tf.int32, shape=[100], name="labels")
       batch_size = tf.size(labels)
       labels = tf.expand_dims(labels, 1)

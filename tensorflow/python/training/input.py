@@ -102,7 +102,7 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
       `OutOfRange` error. If not specified, `input_producer` can cycle through
       the rows of `input_tensor` an unlimited number of times.
     shuffle: (Optional.) A boolean. If true, the rows are randomly shuffled
-      within each eopch.
+      within each epoch.
     seed: (Optional.) An integer. The seed to use if `shuffle` is true.
     capacity: (Optional.) The capacity of the queue to be used for buffering
       the input.
@@ -609,7 +609,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   """Runs a list of tensors to fill a queue to create batches of examples.
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
-  dictionaries of tensors.  Each element in the list is treated similarily
+  dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.batch()`.
 
   Enqueues a different list of tensors in different threads.
@@ -826,7 +826,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
   """Create batches by randomly shuffling tensors.
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
-  dictionaries of tensors.  Each element in the list is treated similarily
+  dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.shuffle_batch()`.
 
   This version enqueues a different list of tensors in different threads.

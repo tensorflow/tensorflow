@@ -98,7 +98,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
 
-  # Some models have startup_delays to help stablize the model but when using
+  # Some models have startup_delays to help stabilize the model but when using
   # sync_replicas training, set it to 0.
 
   # Now you can call `minimize()` or `compute_gradients()` and

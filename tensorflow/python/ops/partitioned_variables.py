@@ -30,7 +30,7 @@ A key design goal is to allow a different graph to repartition a variable
 with the same name but different slicings, including possibly no partitions.
 
 TODO(touts): If an initializer provides a seed, the seed must be changed
-deterministicaly for each slice, maybe by adding one to it, otherwise each
+deterministically for each slice, maybe by adding one to it, otherwise each
 slice will use the same values.  Maybe this can be done by passing the
 slice offsets to the initializer functions.
 

@@ -1797,7 +1797,7 @@ class WhileContext(ControlFlowContext):
     """Core: Add the loop termination condition and body to the graph."""
     flat_loop_vars = nest.flatten(original_loop_vars)
 
-    # Let the context know the loop variabes so the loop variables
+    # Let the context know the loop variables so the loop variables
     # would be added in the outer contexts properly.
     self._InitializeValues(loop_vars)
     real_vars = loop_vars
@@ -1965,7 +1965,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
 
   Returns:
     The output tensors for the loop variables after the loop. When the length
-    of `loop_vars` is 1 this is a Tensor, TensorArry or IndexedSlice and when
+    of `loop_vars` is 1 this is a Tensor, TensorArray or IndexedSlice and when
     the length of `loop_vars` is greater than 1 it returns a list.
 
   Raises:

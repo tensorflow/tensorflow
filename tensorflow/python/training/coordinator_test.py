@@ -105,7 +105,7 @@ class CoordinatorTest(tf.test.TestCase):
         threading.Thread(target=SleepABit, args=(0.01, coord))]
     for t in threads:
       t.start()
-    # threads[1] is not registred we must pass it in.
+    # threads[1] is not registered we must pass it in.
     coord.join(threads[1:1])
     for t in threads:
       self.assertFalse(t.is_alive())

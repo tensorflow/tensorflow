@@ -93,11 +93,11 @@ class GrpcServerTest(tf.test.TestCase):
       self.assertAllEqual([[4]], sess_2.run(v2))
 
     # Connects to the same target. Device memory for the variables would have
-    # been released, so they will be unitialized.
+    # been released, so they will be uninitialized.
     sess_2 = tf.Session(server.target)
     with self.assertRaises(tf.errors.FailedPreconditionError):
       sess_2.run(v2)
-    # Reinitialzes the variables.
+    # Reinitializes the variables.
     sess_2.run(tf.initialize_all_variables())
     self.assertAllEqual([[4]], sess_2.run(v2))
     sess_2.close()
@@ -163,7 +163,7 @@ class GrpcServerTest(tf.test.TestCase):
       sess.run(v1)
 
     # Connects to the same target. Device memory for the v0 would have
-    # been released, so it will be unitialized. But v1 should still
+    # been released, so it will be uninitialized. But v1 should still
     # be valid.
     sess = tf.Session(server.target)
     with self.assertRaises(tf.errors.FailedPreconditionError):

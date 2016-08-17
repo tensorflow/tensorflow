@@ -26,7 +26,7 @@ class DeviceSetterTest(tf.test.TestCase):
       "ps": ["ps0:2222", "ps1:2222"],
       "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
 
-  def testPS2TasksWithCluserSpecClass(self):
+  def testPS2TasksWithClusterSpecClass(self):
     with tf.device(tf.train.replica_device_setter(cluster=self._cluster_spec)):
       v = tf.Variable([1, 2])
       w = tf.Variable([2, 1])
