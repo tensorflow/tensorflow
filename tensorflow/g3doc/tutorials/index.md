@@ -2,7 +2,7 @@
 
 ## Basic Neural Networks
 
-The first few Tensorflow tutorials guide you through training and testing a
+The first few TensorFlow tutorials guide you through training and testing a
 simple neural network to classify handwritten digits from the MNIST database of
 digit images.
 

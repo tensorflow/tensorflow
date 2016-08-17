@@ -16,7 +16,7 @@ a background with them, check out the
 
 The first part of this tutorial explains what is happening in the
 [mnist_softmax.py](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_softmax.py)
-code, which is a basic implementation of a Tensorflow model.  The second part
+code, which is a basic implementation of a TensorFlow model.  The second part
 shows some ways to improve the accuracy.
 
 You can copy and paste each code snippet from this tutorial into a Python
@@ -27,8 +27,8 @@ What we will accomplish in this tutorial:
 - Create a softmax regression function that is a model for recognizing MNIST
   digits, based on looking at every pixel in the image
 
-- Use Tensorflow to train the model to recognize digits by having it "look" at
-  thousands of examples (and run our first Tensorflow session to do so)
+- Use TensorFlow to train the model to recognize digits by having it "look" at
+  thousands of examples (and run our first TensorFlow session to do so)
 
 - Check the model's accuracy with our test data
 
@@ -176,7 +176,7 @@ between the target and the model's prediction:
 cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
 ```
 
-Note that `tf.reduce_sum` sums across all classes and `tf.reduce_mean` takes 
+Note that `tf.reduce_sum` sums across all classes and `tf.reduce_mean` takes
 the average over these sums.
 
 ## Train the Model
@@ -379,7 +379,7 @@ y_conv=tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
 How well does this model do? To train and evaluate it we will use code that is
 nearly identical to that for the simple one layer SoftMax network above.
 
-The differences are that: 
+The differences are that:
 
 - We will replace the steepest gradient descent optimizer with the more
   sophisticated ADAM optimizer.

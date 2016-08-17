@@ -17,7 +17,7 @@ TensorFlow operators.
 
 ### `tf.py_func(func, inp, Tout, stateful=True, name=None)` {#py_func}
 
-Wraps a python function and uses it as a tensorflow op.
+Wraps a python function and uses it as a TensorFlow op.
 
 Given a python function `func`, which takes numpy arrays as its
 inputs and returns numpy arrays as its outputs. E.g.,

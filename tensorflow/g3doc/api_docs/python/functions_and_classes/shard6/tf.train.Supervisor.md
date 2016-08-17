@@ -92,7 +92,7 @@ following values for the --master flag:
 
 * Specifying `'grpc://hostname:port'` requests a session that uses
   the RPC interface to a specific , and also allows the in-process
-  master to access remote tensorflow workers. Often, it is
+  master to access remote TensorFlow workers. Often, it is
   appropriate to pass `server.target` (for some `tf.train.Server`
   named `server).
 

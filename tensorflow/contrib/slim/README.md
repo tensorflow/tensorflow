@@ -2,7 +2,7 @@
 
 TF-Slim is a lightweight library for defining, training and evaluating complex
 models in TensorFlow. Components of tf-slim can be freely mixed with native
-Tensorflow, as well as other frameworks, such as tf.contrib.learn.
+TensorFlow, as well as other frameworks, such as tf.contrib.learn.
 
 ## Usage
 ```python
@@ -86,7 +86,7 @@ layers and scopes. Each of these elements is defined below.
 
 Creating
 [`Variables`](https://www.tensorflow.org/how_tos/variables/index.html)
-in native Tensorflow requires either a predefined value or an initialization
+in native TensorFlow requires either a predefined value or an initialization
 mechanism (e.g. randomly sampled from a Gaussian). Furthermore, if a variable
 needs to be created
 on a specific device, such as a GPU, the specification must be
@@ -413,7 +413,7 @@ def vgg16(inputs):
 
 ## Training Models
 
-Training Tensorflow models requires a model, a loss function, the gradient
+Training TensorFlow models requires a model, a loss function, the gradient
 computation and a training routine that iteratively computes the gradients
 of the model weights relative to the loss and updates the weights accordingly.
 TF-Slim provides both common loss functions and a set of helper functions

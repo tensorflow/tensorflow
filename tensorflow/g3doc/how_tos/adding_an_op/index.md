@@ -1075,7 +1075,7 @@ Details about registering gradient functions with
 
 Note that at the time the gradient function is called, only the data flow graph
 of ops is available, not the tensor data itself.  Thus, all computation must be
-performed using other tensorflow ops, to be run at graph execution time.
+performed using other TensorFlow ops, to be run at graph execution time.
 
 ## Implement a shape function in Python
 
