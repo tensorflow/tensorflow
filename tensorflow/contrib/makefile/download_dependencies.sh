@@ -46,9 +46,9 @@ ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
 # so work around it by patching the source.
 function replace_by_sed() {
   if echo "${OSTYPE}" | grep -q darwin; then
-    sed -e $1 -i '' $2
+    sed -e "$1" -i '' "$2"
   else
-    sed -e $1 -i $2
+    sed -e "$1" -i "$2"
   fi
 }
 replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
