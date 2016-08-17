@@ -785,28 +785,32 @@ class StreamingAUCTest(tf.test.TestCase):
 
       self.assertAlmostEqual(1, auc.eval(), 6)
 
-  def np_auc(self, predictions, labels):
+  def np_auc(self, predictions, labels, weights):
     """Computes the AUC explicitely using Numpy.
 
     Args:
-      predictions: an ndarray with shape [N, 1].
-      labels: an ndarray with shape [N, 1].
+      predictions: an ndarray with shape [N].
+      labels: an ndarray with shape [N].
+      weights: an ndarray with shape [N].
 
     Returns:
       the area under the ROC curve.
     """
-    num_positives = np.count_nonzero(labels)
-    num_negatives = labels.size - num_positives
+    if weights is None:
+      weights = np.ones(np.size(predictions))
+    is_positive = labels > 0
+    num_positives = np.sum(weights[is_positive])
+    num_negatives = np.sum(weights[~is_positive])
 
     # Sort descending:
-    inds = np.argsort(-predictions.transpose())
+    inds = np.argsort(-predictions)
 
-    predictions = predictions[inds].squeeze()
-    labels = labels[inds].squeeze()
+    sorted_labels = labels[inds]
+    sorted_weights = weights[inds]
+    is_positive = sorted_labels > 0
 
-    tp = np.cumsum(labels > 0) / float(num_positives)
-
-    return np.sum(tp[labels == 0] / num_negatives)
+    tp = np.cumsum(sorted_weights * is_positive) / num_positives
+    return np.sum((sorted_weights * tp)[~is_positive]) / num_negatives
 
   def testWithMultipleUpdates(self):
     num_samples = 1000
@@ -814,47 +818,47 @@ class StreamingAUCTest(tf.test.TestCase):
     num_batches = int(num_samples / batch_size)
 
     # Create the labels and data.
-    labels = np.random.randint(0, 2, size=(num_samples, 1))
-    noise = np.random.normal(0.0, scale=0.2, size=(num_samples, 1))
+    labels = np.random.randint(0, 2, size=num_samples)
+    noise = np.random.normal(0.0, scale=0.2, size=num_samples)
     predictions = 0.4 + 0.2 * labels + noise
     predictions[predictions > 1] = 1
     predictions[predictions < 0] = 0
-    expected_auc = self.np_auc(predictions, labels)
 
-    labels = labels.astype(np.float32)
-    predictions = predictions.astype(np.float32)
+    def _enqueue_as_batches(x, enqueue_ops):
+      x_batches = x.astype(np.float32).reshape((num_batches, batch_size))
+      x_queue = tf.FIFOQueue(num_batches, dtypes=tf.float32,
+                             shapes=(batch_size,))
+      for i in range(num_batches):
+        enqueue_ops[i].append(x_queue.enqueue(x_batches[i, :]))
+      return x_queue.dequeue()
 
-    with self.test_session() as sess:
-      # Reshape the data so its easy to queue up:
-      predictions_batches = predictions.reshape((batch_size, num_batches))
-      labels_batches = labels.reshape((batch_size, num_batches))
+    for weights in (None,
+                    np.ones(num_samples),
+                    np.random.exponential(scale=1.0, size=num_samples)):
+      expected_auc = self.np_auc(predictions, labels, weights)
 
-      # Enqueue the data:
-      predictions_queue = tf.FIFOQueue(num_batches, dtypes=tf.float32,
-                                       shapes=(batch_size,))
-      labels_queue = tf.FIFOQueue(num_batches, dtypes=tf.float32,
-                                  shapes=(batch_size,))
+      with self.test_session() as sess:
+        enqueue_ops = [[] for i in range(num_batches)]
+        tf_predictions = _enqueue_as_batches(predictions, enqueue_ops)
+        tf_labels = _enqueue_as_batches(labels, enqueue_ops)
+        tf_weights = (_enqueue_as_batches(weights, enqueue_ops)
+                      if weights is not None else None)
 
-      for i in range(int(num_batches)):
-        tf_prediction = tf.constant(predictions_batches[:, i])
-        tf_label = tf.constant(labels_batches[:, i])
-        sess.run([predictions_queue.enqueue(tf_prediction),
-                  labels_queue.enqueue(tf_label)])
+        for i in range(num_batches):
+          sess.run(enqueue_ops[i])
 
-      tf_predictions = predictions_queue.dequeue()
-      tf_labels = labels_queue.dequeue()
+        auc, update_op = metrics.streaming_auc(
+            tf_predictions, tf_labels, curve='ROC', num_thresholds=500,
+            weights=tf_weights)
 
-      auc, update_op = metrics.streaming_auc(
-          tf_predictions, tf_labels, curve='ROC', num_thresholds=500)
+        sess.run(tf.initialize_local_variables())
+        for i in range(num_batches):
+          sess.run(update_op)
 
-      sess.run(tf.initialize_local_variables())
-      for _ in range(int(num_samples / batch_size)):
-        sess.run(update_op)
-
-      # Since this is only approximate, we can't expect a 6 digits match.
-      # Although with higher number of samples/thresholds we should see the
-      # accuracy improving
-      self.assertAlmostEqual(expected_auc, auc.eval(), 2)
+        # Since this is only approximate, we can't expect a 6 digits match.
+        # Although with higher number of samples/thresholds we should see the
+        # accuracy improving
+        self.assertAlmostEqual(expected_auc, auc.eval(), 2)
 
 
 class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
@@ -1140,17 +1144,17 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       self.assertAlmostEqual(0, prec.eval())
       self.assertAlmostEqual(0, rec.eval())
 
-  def testIgnoreMask(self):
+  def testWeights(self):
     with self.test_session() as sess:
       predictions = tf.constant([[1, 0], [1, 0]], shape=(2, 2),
                                 dtype=tf.float32)
       labels = tf.constant([[0, 1], [1, 0]], shape=(2, 2))
-      ignore_mask = tf.constant([[True, True], [False, False]], shape=(2, 2))
+      weights = tf.constant([[0.0, 0.0], [1.0, 1.0]], shape=(2, 2))
       thresholds = [0.5, 1.1]
       prec, prec_op = metrics.streaming_precision_at_thresholds(
-          predictions, labels, thresholds, ignore_mask=ignore_mask)
+          predictions, labels, thresholds, weights=weights)
       rec, rec_op = metrics.streaming_recall_at_thresholds(
-          predictions, labels, thresholds, ignore_mask=ignore_mask)
+          predictions, labels, thresholds, weights=weights)
 
       [prec_low, prec_high] = tf.split(0, 2, prec)
       prec_low = tf.reshape(prec_low, shape=())
