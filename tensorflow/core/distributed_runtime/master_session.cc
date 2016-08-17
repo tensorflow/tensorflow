@@ -935,7 +935,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
     mutex_lock l(mu_);
     return strings::StrCat(prefix, "_S", next_node_id_++);
   };
-  popts.get_incarnation = [this](const string& name) {
+  popts.get_incarnation = [this](const string& name) -> int64 {
     Device* d = devices_.FindDeviceByName(name);
     if (d == nullptr) {
       return PartitionOptions::kIllegalIncarnation;

@@ -44,7 +44,6 @@ if (WIN32)
     )
 
 else()
-
     ExternalProject_Add(jpeg
         PREFIX jpeg
         URL ${jpeg_URL}
@@ -57,6 +56,7 @@ else()
             ${jpeg_BUILD}/configure
             --prefix=${jpeg_INSTALL}
             --enable-shared=yes
+	    CFLAGS=-fPIC
     )
   
 endif()

@@ -119,7 +119,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     mutex_lock l(mu_);
     return strings::StrCat(prefix, "_G", next_id_++);
   };
-  popts.get_incarnation = [this](const string& name) {
+  popts.get_incarnation = [this](const string& name) -> int64 {
     Device* device = nullptr;
     Status s = worker_env_->device_mgr->LookupDevice(name, &device);
     if (s.ok()) {

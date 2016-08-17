@@ -108,7 +108,7 @@ inline WireType GetTagWireType(uint32 tag) {
 }
 
 bool ReadVarintSizeAsInt(protobuf::io::CodedInputStream* input, int* result) {
-  uint64 v;
+  protobuf::uint64 v;
   if (input->ReadVarint64(&v) && v <= static_cast<uint64>(INT_MAX)) {
     *result = static_cast<int>(v);
     return true;
@@ -237,7 +237,7 @@ bool TensorResponse::ParseFast(Source* source) {
         break;
       }
       case RecvTensorResponse::kSendStartMicrosFieldNumber: {
-        uint64 v;
+        protobuf::uint64 v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint64(&v)) return false;
         meta_.set_send_start_micros(static_cast<int64>(v));
         break;

@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -416,6 +418,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
           call->ClearCancelCallback();
           Status s = status;
           if (s.ok()) {
+#if GOOGLE_CUDA
             // DMA can only be used for Tensors that do not fall into
             // the following three odd edge cases: 1) a zero-size
             // buffer, 2) a dead tensor which has an uninit value, and
@@ -460,6 +463,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
                 call->SendResponse(ToGrpcStatus(Status::OK()));
               }
             }
+#else
+            call->SendResponse(
+                ToGrpcStatus(errors::Internal("No GPU device in process.")));
+#endif  // GOOGLE_CUDA
           } else {
             //  !s.ok()
             call->SendResponse(ToGrpcStatus(s));

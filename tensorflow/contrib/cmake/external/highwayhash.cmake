@@ -19,7 +19,7 @@ set(highwayhash_HEADERS
 ExternalProject_Add(highwayhash
     PREFIX highwayhash
     GIT_REPOSITORY ${highwayhash_URL}
-    GIT_TAG ${highwayhash_HASH}
+    GIT_TAG ${highwayhash_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
     BUILD_COMMAND $(MAKE)
