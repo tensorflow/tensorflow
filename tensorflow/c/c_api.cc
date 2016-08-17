@@ -115,7 +115,18 @@ class TF_ManagedBuffer : public TensorBuffer {
   }
 };
 
-void deallocate_realigned_buffer(void* data, size_t len, void* arg) {
+void* allocate_tensor(const char* operation, size_t len) {
+  void* data =
+      tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
+  if (tensorflow::LogMemory::IsEnabled()) {
+    tensorflow::LogMemory::RecordRawAllocation(
+        operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
+        len, data, tensorflow::cpu_allocator());
+  }
+  return data;
+}
+
+void deallocate_buffer(void* data, size_t len, void* arg) {
   if (tensorflow::LogMemory::IsEnabled()) {
     tensorflow::LogMemory::RecordRawDeallocation(
         "TensorFlow C Api",
@@ -132,6 +143,13 @@ struct TF_Tensor {
   TensorBuffer* buffer;
 };
 
+TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
+                             int num_dims, size_t len) {
+  void* data = allocate_tensor("TF_AllocateTensor", len);
+  return TF_NewTensor(dtype, dims, num_dims, data, len, deallocate_buffer,
+                      nullptr);
+}
+
 TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
                         void* data, size_t len,
                         void (*deallocator)(void* data, size_t len, void* arg),
@@ -146,16 +164,9 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   if (reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
     // Copy the data into a buffer that satisfies Eigen's alignment
     // requirements.
-    buf->data_ =
-        tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-    if (tensorflow::LogMemory::IsEnabled()) {
-      tensorflow::LogMemory::RecordRawAllocation(
-          "TF_NewTensor",
-          tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, len,
-          buf->data_, tensorflow::cpu_allocator());
-    }
+    buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
-    buf->deallocator_ = deallocate_realigned_buffer;
+    buf->deallocator_ = deallocate_buffer;
     buf->deallocator_arg_ = nullptr;
     // Free the original buffer.
     deallocator(data, len, deallocator_arg);
