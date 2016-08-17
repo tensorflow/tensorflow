@@ -212,28 +212,38 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     auto item = tensorflow::make_safe(PyArray_GETITEM(
         array, static_cast<char*>(PyArray_ITER_DATA(iter.get()))));
     if (!item.get()) {
-      return errors::Internal("Unable to get element from the feed.");
+      return errors::Internal("Unable to get element from the feed - no item.");
     }
     char* ptr;
     Py_ssize_t len;
 
-#if PY_VERSION_HEX >= 0x03030000
-    // Accept unicode in Python 3, by converting to UTF-8 bytes.
     if (PyUnicode_Check(item.get())) {
+#if PY_VERSION_HEX >= 0x03030000
+      // Accept unicode by converting to UTF-8 bytes.
       ptr = PyUnicode_AsUTF8AndSize(item.get(), &len);
       if (!ptr) {
-        return errors::Internal("Unable to get element from the feed.");
+        return errors::Internal(
+            "Unable to get element from the feed as UTF-8.");
       }
-    } else {
+      f(ptr, len);
+#else
+      PyObject* utemp = PyUnicode_AsUTF8String(item.get());
+      if (!utemp || PyBytes_AsStringAndSize(utemp, &ptr, &len) == -1) {
+        Py_XDECREF(utemp);
+        return errors::Internal(
+            "Unable to convert element from the feed to UTF-8.");
+      }
+      f(ptr, len);
+      Py_DECREF(utemp);
 #endif
+    } else {
       int success = PyBytes_AsStringAndSize(item.get(), &ptr, &len);
       if (success != 0) {
-        return errors::Internal("Unable to get element from the feed.");
+        return errors::Internal(
+            "Unable to get element from the feed as bytes.");
       }
-#if PY_VERSION_HEX >= 0x03030000
+      f(ptr, len);
     }
-#endif
-    f(ptr, len);
     PyArray_ITER_NEXT(iter.get());
   }
   return Status::OK();
