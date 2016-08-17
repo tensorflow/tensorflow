@@ -276,6 +276,8 @@
 
 * **[Strings](../../api_docs/python/string_ops.md)**:
   * [`as_string`](../../api_docs/python/string_ops.md#as_string)
+  * [`decode_base64`](../../api_docs/python/string_ops.md#decode_base64)
+  * [`encode_base64`](../../api_docs/python/string_ops.md#encode_base64)
   * [`reduce_join`](../../api_docs/python/string_ops.md#reduce_join)
   * [`string_join`](../../api_docs/python/string_ops.md#string_join)
   * [`string_split`](../../api_docs/python/string_ops.md#string_split)
@@ -597,6 +599,12 @@
   * [`StochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#StochasticTensor)
   * [`surrogate_loss`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#surrogate_loss)
   * [`value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#value_type)
+
+* **[BayesFlow Variational Inference (contrib)](../../api_docs/python/contrib.bayesflow.variational_inference.md)**:
+  * [`elbo`](../../api_docs/python/contrib.bayesflow.variational_inference.md#elbo)
+  * [`elbo_with_log_joint`](../../api_docs/python/contrib.bayesflow.variational_inference.md#elbo_with_log_joint)
+  * [`ELBOForms`](../../api_docs/python/contrib.bayesflow.variational_inference.md#ELBOForms)
+  * [`register_prior`](../../api_docs/python/contrib.bayesflow.variational_inference.md#register_prior)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)

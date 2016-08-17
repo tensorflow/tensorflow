@@ -28,6 +28,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "variational_inference_test",
+    size = "small",
+    srcs = ["python/kernel_tests/variational_inference_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "reinforce_simple_example",
     size = "small",
     srcs = ["examples/reinforce_simple/reinforce_simple_example.py"],

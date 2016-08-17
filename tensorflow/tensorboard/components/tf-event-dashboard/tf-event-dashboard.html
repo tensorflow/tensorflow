@@ -8,7 +8,10 @@
 <link rel="import" href="../vz-line-chart/vz-line-chart.html">
 <link rel="import" href="../tf-collapsable-pane/tf-collapsable-pane.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
+<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-menu/paper-menu.html">
+<link rel="import" href="../paper-item/paper-item.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
@@ -50,13 +53,26 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
             id="download-option"
             checked="{{_showDownloadLinks}}"
           >Data download links</paper-checkbox>
-        <tf-smoothing-input
-          enabled="{{_smoothingEnabled}}"
-          decay="{{_smoothingDecay}}"
-          step="0.001"
-          min="0"
-          max="1"
-          ></tf-smoothing-input>
+          <tf-smoothing-input
+            enabled="{{_smoothingEnabled}}"
+            decay="{{_smoothingDecay}}"
+            step="0.001"
+            min="0"
+            max="1"
+            ></tf-smoothing-input>
+          <div id="tooltip-sorting">
+            <div id="tooltip-sorting-label">Tooltip sorting method:</div>
+            <paper-dropdown-menu
+              no-label-float
+              selected-item-label="{{_tooltipSortingMethod}}"
+            >
+              <paper-menu class="dropdown-content" selected="0">
+                <paper-item>name</paper-item>
+                <paper-item>descending</paper-item>
+                <paper-item>ascending</paper-item>
+              </paper-menu>
+            </paper-dropdown-menu>
+          </div>
         </div>
         <div class="sidebar-section">
           <tf-option-selector
@@ -101,6 +117,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                         color-scale="[[colorScale]]"
                         smoothing-decay="[[_smoothingDecay]]"
                         smoothing-enabled="[[_smoothingEnabled]]"
+                        tooltip-sorting-method="[[_tooltipSortingMethod]]"
                         on-keyup="toggleSelected"
                         tabindex="2"
                       ></vz-line-chart>

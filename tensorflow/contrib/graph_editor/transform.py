@@ -87,7 +87,8 @@ def assign_renamed_collections_handler(info, elem, elem_):
     elem_: the transformed element
   """
   # TODO(fkp): handle known special cases
-  for name, collection in iteritems(elem.graph._collections):  # pylint: disable=protected-access
+  for name, collection in iteritems(
+      elem.graph._collections):  # pylint: disable=protected-access
     if elem not in collection:
       continue
     collection_name_ = info.transformer.new_name(name)
@@ -111,7 +112,8 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
   if op is None:
     return None
   if op in info.sgv.ops:
-    return info.transformer._transform_op(op)  # pylint: disable=protected-access
+    return info.transformer._transform_op(  # pylint: disable=protected-access
+        op)
   else:
     if keep_if_possible and info.graph is info.graph_:
       return op
@@ -190,7 +192,8 @@ def transform_op_in_place(info, op, detach_outputs=False):
     The transformed op.
   """
   # recursive call to the inputs:
-  inputs = [info.transformer._transform_t(t) for t in op.inputs]  # pylint: disable=protected-access
+  inputs = [info.transformer._transform_t(t)  # pylint: disable=protected-access
+            for t in op.inputs]
   # re-connect to the inputs if they have changed:
   if inputs != list(op.inputs):
     reroute.reroute_a2b_ts(inputs, op.inputs)
@@ -310,9 +313,20 @@ class Transformer(object):
                       "experimental.")
     self._info = Transformer._Info(self, sgv, dst_graph, dst_scope, src_scope)
 
-    # This is a recursive call. In practice, the graph is transformed bottom-up.
+    # Transform the graph starting from the output tensors.
     for output_t in self._info.sgv.outputs:
       self._transform_t(output_t)
+
+    # Some ops might have been missed by the previous walk, namely, the roots
+    # without any outputs. So the walk is now finalized from those roots.
+    remaining_ops = [op for op in self._info.sgv.ops
+                     if op not in self._info.transformed_ops]
+    remaining_roots = [
+        op for op in remaining_ops
+        if not op.outputs and not self._info.control_outputs.get(op)
+    ]
+    for op in remaining_roots:
+      self._transform_op(op)
 
     sgv_ = self._transform_sgv(sgv)
 
@@ -407,11 +421,13 @@ class Transformer(object):
     op_ = self.transform_op_handler(self._info, op)
 
     # Add to all the active control dependencies
-    self._info.graph_._record_op_seen_by_control_dependencies(op_)  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    self._info.graph_._record_op_seen_by_control_dependencies(op_)
 
     # All to all the active devices
-    for device_function in reversed(self._info.graph_._device_function_stack):  # pylint: disable=protected-access
-      op_._set_device(device_function(op_))  # pylint: disable=protected-access
+    for device_function in reversed(self._info.graph_._device_function_stack):
+      op_._set_device(device_function(op_))
+    # pylint: enable=protected-access
 
     # TODO(fkp): Establish clear policy about what context managers are allowed.
 

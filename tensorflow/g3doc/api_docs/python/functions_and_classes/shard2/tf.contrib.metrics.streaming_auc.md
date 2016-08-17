@@ -1,4 +1,4 @@
-### `tf.contrib.metrics.streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200, metrics_collections=None, updates_collections=None, curve='ROC', name=None)` {#streaming_auc}
+### `tf.contrib.metrics.streaming_auc(predictions, labels, weights=None, num_thresholds=200, metrics_collections=None, updates_collections=None, curve='ROC', name=None)` {#streaming_auc}
 
 Computes the approximate AUC via a Riemann sum.
 
@@ -17,13 +17,12 @@ recall values (computed using the afformentioned variables). The
 numbers of thresholds more closely approximating the true AUC.
 
 To faciliate the estimation of the AUC over a stream of data, the function
-creates an `update_op` operation whose behavior is dependent on the value of
-`ignore_mask`. If `ignore_mask` is None, then `update_op` increments the
+creates an `update_op` operation. `update_op` increments the
 `true_positives`, `true_negatives`, `false_positives` and `false_negatives`
-counts with the number of each found in the current `predictions` and `labels`
-`Tensors`. If `ignore_mask` is not `None`, then the increment is performed
-using only the elements of `predictions` and `labels` whose corresponding
-value in `ignore_mask` is `False`. In addition to performing the updates,
+counts with the weighted number of each found in the current `predictions`
+and `labels` `Tensors`. If `weights` is `None`, it is assumed that all
+entries have weight 1. Note that a weight of 0 can be used to effectively
+mask out and ignore specific entries. In addition to performing the updates,
 `update_op` also returns the `auc`.
 
 ##### Args:
@@ -32,7 +31,8 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 *  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A binary `Tensor` whose shape matches `predictions`.
-*  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `predictions`.
+*  <b>`weights`</b>: An optional, floating point `Tensor` of same shape as
+    `predictions`.
 *  <b>`num_thresholds`</b>: The number of thresholds to use when discretizing the roc
     curve.
 *  <b>`metrics_collections`</b>: An optional list of collections that `auc` should be
@@ -56,7 +56,7 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
-    `ignore_mask` is not `None` and its shape doesn't match `predictions` or
+    `weights` is not `None` and its shape doesn't match `predictions` or
     if either `metrics_collections` or `updates_collections` are not a list or
     tuple.
 

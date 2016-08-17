@@ -154,6 +154,17 @@ smoothing.
           value: 'step'
         },
 
+        /**
+         * Change how the tooltip is sorted. Allows:
+         * - "name" - Sort the tooltip by series name.
+         * - "ascending" - Sort the tooltip by ascending value.
+         * - "descending" - Sort the tooltip by descending value.
+         */
+        tooltipSortingMethod: {
+          type: String,
+          value: 'name'
+        },
+
         _attached: Boolean,
         _chart: Object,
         _visibleSeriesCache: {
@@ -172,7 +183,8 @@ smoothing.
       observers: [
         "_makeChart(xType, colorScale, _attached)",
         "_reloadFromCache(_chart)",
-        "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)"
+        "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)",
+        "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)"
       ],
 
       /**
@@ -257,6 +269,11 @@ smoothing.
         }
         else {
           this._chart.smoothingDisable();
+        }
+      },
+      _tooltipSortingMethodChanged: function() {
+        if(this._chart) {
+          this._chart.setTooltipSortingMethod(this.tooltipSortingMethod);
         }
       }
     });
