@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for supervisor.py."""
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +21,7 @@ import glob
 import os
 import shutil
 import time
+import uuid
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -468,14 +468,20 @@ class SupervisorTest(tf.test.TestCase):
     server = tf.train.Server.create_local_server()
     logdir = _test_dir("default_ready_for_local_init_op")
 
+    uid = uuid.uuid4().hex
+
     def get_session(is_chief):
       g = tf.Graph()
       with g.as_default():
         with tf.device("/job:local"):
-          v = tf.Variable(1, name="var_v")
+          v = tf.Variable(
+              1, name="default_ready_for_local_init_op_v_" + str(uid))
           vadd = v.assign_add(1)
           w = tf.Variable(
-              v, trainable=False, collections=[tf.GraphKeys.LOCAL_VARIABLES])
+              v,
+              trainable=False,
+              collections=[tf.GraphKeys.LOCAL_VARIABLES],
+              name="default_ready_for_local_init_op_w_" + str(uid))
           ready_for_local_init_op = tf.report_uninitialized_variables(
               tf.all_variables())
       sv = tf.train.Supervisor(
@@ -504,10 +510,13 @@ class SupervisorTest(tf.test.TestCase):
     server = tf.train.Server.create_local_server()
     logdir = _test_dir("ready_for_local_init_op_restore")
 
+    uid = uuid.uuid4().hex
+
     # Create a checkpoint.
     with tf.Graph().as_default():
-      v = tf.Variable(10.0, name="v")
-      tf.scalar_summary("v", v)
+      v = tf.Variable(
+          10.0, name="ready_for_local_init_op_restore_v_" + str(uid))
+      tf.scalar_summary("ready_for_local_init_op_restore_v_" + str(uid), v)
       sv = tf.train.Supervisor(logdir=logdir)
       sv.prepare_or_wait_for_session(server.target)
       save_path = sv.save_path
@@ -521,10 +530,14 @@ class SupervisorTest(tf.test.TestCase):
       g = tf.Graph()
       with g.as_default():
         with tf.device("/job:local"):
-          v = tf.Variable(1.0, name="v")
+          v = tf.Variable(
+              1.0, name="ready_for_local_init_op_restore_v_" + str(uid))
           vadd = v.assign_add(1)
           w = tf.Variable(
-              v, trainable=False, collections=[tf.GraphKeys.LOCAL_VARIABLES])
+              v,
+              trainable=False,
+              collections=[tf.GraphKeys.LOCAL_VARIABLES],
+              name="ready_for_local_init_op_restore_w_" + str(uid))
           ready_for_local_init_op = tf.report_uninitialized_variables(
               tf.all_variables())
       sv = tf.train.Supervisor(
