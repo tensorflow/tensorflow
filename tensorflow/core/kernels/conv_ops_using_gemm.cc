@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file contains a set of different implementations of the two-dimensional
 // convolution operation. The standard TensorFlow Conv2d kernel uses EigenTensor
-// to implement the computation, but here there are a variety of different ways
+// to implement the computation, but this module has a variety of different ways
 // of producing the same result. These methods are designed to be easier to
 // understand and connect to other libraries, so that we can take advantage of
 // platforms that have specialized implementations of GEMM for example.
@@ -124,8 +124,7 @@ class ReferenceConvFunctor {
     // If we've got multiple images in our input, work through each of them.
     for (int batch = 0; batch < input_batches; ++batch) {
       // Walk through all the output image values, sliding the filter to
-      // different
-      // positions in the input.
+      // different positions in the input.
       for (int out_y = 0; out_y < output_height; ++out_y) {
         for (int out_x = 0; out_x < output_width; ++out_x) {
           // Each filter kernel produces one output channel.
@@ -224,21 +223,27 @@ class ReferenceGemmFunctor {
 };
 
 // Uses the optimized Eigen library to implement the matrix multiplication
-// required by the Im2ColConvFunctor class.
+// required by the Im2ColConvFunctor class. We supply the two input and one
+// output types so that the accumulator can potentially be higher-precision than
+// the inputs, even though we don't currently take advantage of this.
 template <class T1, class T2, class T3>
 class FastGemmFunctor {
  public:
+  // Convenience wrappers for the Eigen matrix types we'll be using.
+  typedef Eigen::Map<
+      const Eigen::Matrix<T1, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+      ConstMatrixT1;
+  typedef Eigen::Map<
+      const Eigen::Matrix<T2, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+      ConstMatrixT2;
+  typedef Eigen::Map<
+      Eigen::Matrix<T3, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+      MatrixT3;
   void operator()(size_t m, size_t n, size_t k, const T1* a, size_t lda,
                   const T2* b, size_t ldb, T3* c, size_t ldc) {
-    Eigen::Map<const Eigen::Matrix<T1, Eigen::Dynamic, Eigen::Dynamic,
-                                   Eigen::RowMajor>>
-        a_matrix(a, m, k);
-    Eigen::Map<const Eigen::Matrix<T2, Eigen::Dynamic, Eigen::Dynamic,
-                                   Eigen::RowMajor>>
-        b_matrix(b, k, n);
-    Eigen::Map<
-        Eigen::Matrix<T3, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-        c_matrix(c, m, n);
+    ConstMatrixT1 a_matrix(a, m, k);
+    ConstMatrixT2 b_matrix(b, k, n);
+    MatrixT3 c_matrix(c, m, n);
     c_matrix.noalias() = a_matrix * b_matrix;
   }
 };
@@ -277,11 +282,28 @@ class Im2ColConvFunctor {
                   int filter_width, int filter_count, int stride_rows,
                   int stride_cols, Padding padding, T3* output_data,
                   int output_height, int output_width) {
+    if ((input_batches <= 0) || (input_width <= 0) || (input_height <= 0) ||
+        (input_depth <= 0)) {
+      LOG(WARNING) << "Conv2D was called with bad input dimensions: "
+                   << input_batches << ", " << input_height << ", "
+                   << input_width << ", " << input_depth;
+      return;
+    }
+    if ((filter_width <= 0) || (filter_height <= 0) || (filter_count <= 0)) {
+      LOG(WARNING) << "Conv2D was called with bad filter dimensions: "
+                   << filter_width << ", " << filter_height << ", "
+                   << filter_count;
+      return;
+    }
+    if ((output_width <= 0) || (output_height <= 0)) {
+      LOG(WARNING) << "Conv2D was called with bad output width or height: "
+                   << output_width << ", " << output_height;
+      return;
+    }
+
     // These calculations define how the patches will be positioned within the
     // input image. The actual definitions are quite complex, and rely on the
     // previously-calculated output size.
-    CHECK_GT(output_width, 0);
-    CHECK_GT(output_height, 0);
     int filter_left_offset;
     int filter_top_offset;
     if (padding == VALID) {
@@ -313,16 +335,14 @@ class Im2ColConvFunctor {
     const int filter_value_count = filter_width * filter_height * input_depth;
     const int patch_count = input_batches * output_width * output_height;
 
-    CHECK_GT(patch_count, 0);
-    CHECK_GT(filter_count, 0);
-    CHECK_GT(filter_value_count, 0);
-
     // We don't want to allocate a buffer to hold all the patches if the size is
     // going to be extremely large, so break it into chunks if it's bigger than
     // a limit. Each chunk will be processed serially, so we can refill the
     // buffer for the next chunk and reuse it, keeping maximum memory size down.
     // In this case, we've picked 16 megabytes as a reasonable limit.
     const size_t max_chunk_size = (16 * 1024 * 1024);
+    OP_REQUIRES(context, (filter_value_count * sizeof(T1)) <= max_chunk_size,
+                errors::InvalidArgument("Im2Col patch too large for buffer"));
     const size_t patches_per_chunk =
         max_chunk_size / (filter_value_count * sizeof(T1));
     const size_t im2col_size = patches_per_chunk * filter_value_count;
@@ -336,8 +356,9 @@ class Im2ColConvFunctor {
           *resource = new Im2ColBufferResource<T1, max_chunk_size>();
           return Status::OK();
         };
-    TF_CHECK_OK(context->resource_manager()->LookupOrCreate(
-        "Conv2d", "im2col_buffer", &im2col_buffer_resource, creator));
+    OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
+                                "Conv2d", "im2col_buffer",
+                                &im2col_buffer_resource, creator));
     // This means that multiple ops can't be run simultaneously on different
     // threads, because we have a single shared resource. The platforms this is
     // aimed at have intra-op parallelism as their focus though, so it shouldn't
@@ -355,9 +376,9 @@ class Im2ColConvFunctor {
           const int in_x_origin = (out_x * stride_cols) - filter_left_offset;
           const int patch_index = (batch * output_width * output_height) +
                                   (out_y * output_width) + out_x;
-          const int chunk_index = patch_index % patches_per_chunk;
+          const int patch_index_within_chunk = patch_index % patches_per_chunk;
           T1* im2col_patch_start =
-              im2col_buffer /*.get()*/ + (chunk_index * filter_value_count);
+              im2col_buffer + (patch_index_within_chunk * filter_value_count);
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + filter_y;
             T1* im2col_row_start =
@@ -417,10 +438,16 @@ class Im2ColConvFunctor {
               }
             }
           }
-          // Now we've assembled a set of image patches into a matrix, apply a
-          // GEMM to them to get partial results in the output matrix.
-          if (chunk_index == (patches_per_chunk - 1)) {
-            const int how_many_patches = patches_per_chunk;
+          const bool is_last_in_chunk =
+              (patch_index_within_chunk == (patches_per_chunk - 1));
+          const bool is_last_overall =
+              ((batch == (input_batches - 1)) &&
+               (out_y == (output_height - 1)) && (out_x == (output_width - 1)));
+          if (is_last_in_chunk || is_last_overall) {
+            // Now we've assembled a set of image patches into a matrix, apply a
+            // GEMM matrix multiply of the patches as rows, times the filter
+            // weights in columns, to get partial results in the output matrix.
+            const int how_many_patches = patch_index_within_chunk + 1;
             const int m = how_many_patches;
             const int n = filter_count;
             const int k = filter_value_count;
@@ -432,27 +459,11 @@ class Im2ColConvFunctor {
             T3* chunk_output_data =
                 output_data + (start_patch_index * filter_count);
             TGemmFunctor gemm_functor;
-            gemm_functor(m, n, k, im2col_buffer /*.get()*/, lda, filter_data,
-                         ldb, chunk_output_data, ldc);
+            gemm_functor(m, n, k, im2col_buffer, lda, filter_data, ldb,
+                         chunk_output_data, ldc);
           }
         }
       }
-    }
-
-    // Finish up any remaining work left over from the loop.
-    const int how_many_patches = patch_count % patches_per_chunk;
-    if (how_many_patches > 0) {
-      const int m = how_many_patches;
-      const int n = filter_count;
-      const int k = filter_value_count;
-      const int lda = filter_value_count;
-      const int ldb = filter_count;
-      const int ldc = filter_count;
-      const int start_patch_index = patch_count - how_many_patches;
-      T3* chunk_output_data = output_data + (start_patch_index * filter_count);
-      TGemmFunctor gemm_functor;
-      gemm_functor(m, n, k, im2col_buffer /*.get()*/, lda, filter_data, ldb,
-                   chunk_output_data, ldc);
     }
   }
 };
@@ -473,9 +484,9 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(
-        context, data_format_ == FORMAT_NHWC,
-        errors::InvalidArgument("Data format not supported by this kernel"));
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(
+                    "Data format not supported by this kernel", data_format));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
