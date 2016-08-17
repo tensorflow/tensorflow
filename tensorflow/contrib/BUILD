@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/slim",
+        "//tensorflow/contrib/slim:nets",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/training:training_py",

@@ -20,11 +20,18 @@
 @@vgg_a
 @@vgg_16
 """
-# pylint: disable=unused-import,
-# pylint: disable=wildcard-import
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+# pylint: disable=unused-import,
 # Collapse nets into a single namespace.
 from tensorflow.contrib.slim.python.slim.nets import alexnet
+from tensorflow.contrib.slim.python.slim.nets import inception
 from tensorflow.contrib.slim.python.slim.nets import overfeat
 from tensorflow.contrib.slim.python.slim.nets import vgg
-# pylint: enable=unused-import,wildcard-import
+from tensorflow.python.util.all_util import make_all
+# pylint: enable=unused-import
+
+__all__ = make_all(__name__)
