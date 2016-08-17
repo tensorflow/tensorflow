@@ -15,12 +15,44 @@ load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
 
 cc_library(
+    name = "gradients",
+    srcs = ["framework/gradients.cc"],
+    hdrs = ["framework/gradients.h"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":math_grad",
+        ":ops",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "framework/gradients_test.cc",
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":gradients",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "ops",
     srcs = ["framework/ops.cc"],
     hdrs = ["framework/ops.h"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
 )

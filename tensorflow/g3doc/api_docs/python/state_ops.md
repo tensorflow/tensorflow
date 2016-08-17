@@ -902,21 +902,37 @@ You can pass any of the returned values to `restore()`.
 
 - - -
 
-#### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
+#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
 
-DEPRECATED: Use set_last_checkpoints_with_time.
-
-Sets the list of old checkpoint filenames.
+Sets the list of old checkpoint filenames and timestamps.
 
 ##### Args:
 
 
-*  <b>`last_checkpoints`</b>: A list of checkpoint filenames.
+*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
+    timestamps.
 
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: If last_checkpoints is not a list.
+*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+
+
+- - -
+
+#### `tf.train.Saver.recover_last_checkpoints(checkpoint_paths)` {#Saver.recover_last_checkpoints}
+
+Recovers the internal saver state after a crash.
+
+This method is useful for recovering the "self._last_checkpoints" state.
+
+Globs for the checkpoints pointed to by `checkpoint_paths`.  If the files
+exist, use their mtime as the checkpoint timestamp.
+
+##### Args:
+
+
+*  <b>`checkpoint_paths`</b>: a list of checkpoint paths.
 
 
 - - -
@@ -966,20 +982,21 @@ Returns a `Saver` object created from `saver_def`.
 
 - - -
 
-#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
+#### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
 
-Sets the list of old checkpoint filenames and timestamps.
+DEPRECATED: Use set_last_checkpoints_with_time.
+
+Sets the list of old checkpoint filenames.
 
 ##### Args:
 
 
-*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
-    timestamps.
+*  <b>`last_checkpoints`</b>: A list of checkpoint filenames.
 
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+*  <b>`AssertionError`</b>: If last_checkpoints is not a list.
 
 
 - - -

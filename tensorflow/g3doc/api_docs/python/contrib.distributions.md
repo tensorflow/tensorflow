@@ -9509,8 +9509,7 @@ x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3].
 dist.pdf(x)  # Shape is [2, 2].
 
 # (*) - To efficiently create a trainable covariance matrix, see the example
-#   in tf.contrib.distributions.batch_matrix_diag_transform
-#   (operator_pd_cholesky.py).
+#   in tf.contrib.distributions.batch_matrix_diag_transform.
 ```
 - - -
 
@@ -9995,8 +9994,7 @@ x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3]; xi is positive definite.
 dist.pdf(x)  # Shape is [2, 2].
 
 # (*) - To efficiently create a trainable covariance matrix, see the example
-#   in tf.contrib.distributions.batch_matrix_diag_transform
-#   (operator_pd_cholesky.py).
+#   in tf.contrib.distributions.batch_matrix_diag_transform.
 ```
 - - -
 

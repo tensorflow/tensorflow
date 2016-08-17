@@ -45,6 +45,8 @@ class Operation {
 
   Node* node() const { return node_; }
 
+  uint64 hash(int64 index) const;
+
  private:
   typedef std::vector<std::pair<Node*, int64>> Inputs;
   static Inputs GetInputs(Node* node);
@@ -65,6 +67,8 @@ class Output {
   Node* node() const { return op().node(); }
   int64 index() const { return index_; }
   DataType type() const { return op_.output_type(index_); }
+
+  uint64 hash() const { return op_.hash(index_); }
 
  private:
   Operation op_ = Operation(nullptr);

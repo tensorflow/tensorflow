@@ -13,30 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/cc/framework/grad_op_registry.h"
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
+
+#define EIGEN_USE_THREADS
+
+#include "tensorflow/core/framework/bfloat16.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/slice_op.h"
 
 namespace tensorflow {
-namespace ops {
 
-// static
-GradOpRegistry* GradOpRegistry::Global() {
-  static GradOpRegistry* grad_op_registry = new GradOpRegistry;
-  return grad_op_registry;
-}
+using CpuDevice = Eigen::ThreadPoolDevice;
 
-bool GradOpRegistry::Register(const string& op, GradFunc func) {
-  CHECK(registry_.insert({op, func}).second) << "Existing gradient for " << op;
-  return true;
-}
+#define DEFINE_CPU_KERNELS(T) \
+  template struct functor::Slice<CpuDevice, T, CPU_PROVIDED_IXDIM>;
 
-Status GradOpRegistry::Lookup(const string& op, GradFunc* func) const {
-  auto iter = registry_.find(op);
-  if (iter == registry_.end()) {
-    return errors::NotFound("No gradient defined for op: ", op);
-  }
-  *func = iter->second;
-  return Status::OK();
-}
+TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
+DEFINE_CPU_KERNELS(bfloat16);
 
-}  // end namespace ops
+#undef DEFINE_GPU_KERNELS
+
 }  // namespace tensorflow
+
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_

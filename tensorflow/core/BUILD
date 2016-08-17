@@ -74,6 +74,7 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
     "tf_proto_library_cc",
+    "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
     "tf_additional_proto_srcs",
     "tf_additional_lib_deps",
@@ -865,7 +866,7 @@ cc_library(
             "platform/**/stream_executor.h",
         ],
     ),
-    hdrs = [
+    hdrs = glob(tf_additional_lib_hdrs()) + [
         "lib/core/blocking_counter.h",
         "lib/core/refcount.h",
         "lib/gif/gif_io.h",

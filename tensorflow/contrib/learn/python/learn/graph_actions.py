@@ -614,6 +614,9 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
     if (isinstance(eval_results[key], np.float32) or
         isinstance(eval_results[key], float)):
       value.simple_value = float(eval_results[key])
+    else:
+      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+                   key)
   summary_writer.add_summary(summary, current_global_step)
   summary_writer.flush()
 

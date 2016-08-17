@@ -133,6 +133,8 @@ class BaseSaverBuilder(object):
   Can be extended to create different Ops.
   """
 
+  _CHECKPOINT_FORMAT_VERSION = saver_pb2.SaverDef.V1
+
   class SaveSpec(object):
     """Class used to describe tensor slices that need to be saved."""
 
@@ -293,7 +295,7 @@ class BaseSaverBuilder(object):
     """Add ops to save the params per shard.
 
     Args:
-      filename_tensor: String Tensor.
+      filename_tensor: a scalar String Tensor.
       per_device: A list of (device, BaseSaverBuilder.SaveableObject) pairs, as
         returned by _GroupByDevices().
 
@@ -615,8 +617,9 @@ class BaseSaverBuilder(object):
         save_tensor_name=save_tensor.name,
         restore_op_name=restore_op.name,
         max_to_keep=max_to_keep,
+        sharded=sharded,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-        sharded=sharded)
+        version=self._CHECKPOINT_FORMAT_VERSION)
 
 
 def _GetCheckpointFilename(save_dir, latest_filename):
@@ -859,7 +862,8 @@ class Saver(object):
   Other utility methods.
 
   @@last_checkpoints
-  @@set_last_checkpoints
+  @@set_last_checkpoints_with_time
+  @@recover_last_checkpoints
   @@as_saver_def
   """
 
@@ -1058,17 +1062,26 @@ class Saver(object):
         self._next_checkpoint_time += (
             self.saver_def.keep_checkpoint_every_n_hours * 3600)
         return
+
       # Otherwise delete the files.
-      for f in file_io.get_matching_files(
-          self._CheckpointFilename(p)):
-        try:
-          file_io.delete_file(f)
-          meta_graph_filename = self._MetaGraphFilename(
-              f, meta_graph_suffix=meta_graph_suffix)
-          if file_io.file_exists(meta_graph_filename):
-            file_io.delete_file(meta_graph_filename)
-        except Exception as e:  # pylint: disable=broad-except
-          logging.warning("Ignoring: %s", str(e))
+      try:
+        checkpoint_prefix = self._CheckpointFilename(p)
+        self._delete_file_if_exists(
+            self._MetaGraphFilename(checkpoint_prefix, meta_graph_suffix))
+        if self.saver_def.version == saver_pb2.SaverDef.V2:
+          # V2 has a metadata file and some data files.
+          self._delete_file_if_exists(checkpoint_prefix + ".metadata")
+          self._delete_file_if_exists(checkpoint_prefix +
+                                      ".data-?????-of-?????")
+        else:
+          # V1, Legacy.  Exact match on the data file.
+          self._delete_file_if_exists(checkpoint_prefix)
+      except Exception as e:  # pylint: disable=broad-except
+        logging.warning("Ignoring: %s", str(e))
+
+  def _delete_file_if_exists(self, filespec):
+    for pathname in file_io.get_matching_files(filespec):
+      file_io.delete_file(pathname)
 
   def as_saver_def(self):
     """Generates a `SaverDef` representation of this saver.
@@ -1131,6 +1144,27 @@ class Saver(object):
     """
     assert isinstance(last_checkpoints_with_time, list)
     self._last_checkpoints = last_checkpoints_with_time
+
+  def recover_last_checkpoints(self, checkpoint_paths):
+    """Recovers the internal saver state after a crash.
+
+    This method is useful for recovering the "self._last_checkpoints" state.
+
+    Globs for the checkpoints pointed to by `checkpoint_paths`.  If the files
+    exist, use their mtime as the checkpoint timestamp.
+
+    Args:
+      checkpoint_paths: a list of checkpoint paths.
+    """
+    last_checkpoints = []
+    for checkpoint_prefix in checkpoint_paths:
+      pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                            self.saver_def.version)
+      fnames = file_io.get_matching_files(pathname)
+      if fnames:
+        mtime = int(file_io.stat(fnames[0]).mtime_nsec / 1e9)
+        last_checkpoints.append((checkpoint_prefix, mtime))
+    self.set_last_checkpoints_with_time(last_checkpoints)
 
   def save(self, sess, save_path, global_step=None, latest_filename=None,
            meta_graph_suffix="meta", write_meta_graph=True):
@@ -1256,8 +1290,10 @@ class Saver(object):
     Raises:
       ValueError: If the given `save_path` does not point to a file.
     """
-    if not file_io.get_matching_files(save_path):
+    if not file_io.get_matching_files(
+        _prefix_to_checkpoint_path(save_path, self.saver_def.version)):
       raise ValueError("Restore called with invalid save path %s" % save_path)
+
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
@@ -1272,7 +1308,27 @@ class Saver(object):
     _add_collection_def(meta_graph_def, key)
 
 
-def latest_checkpoint(checkpoint_dir, latest_filename=None):
+def _prefix_to_checkpoint_path(prefix, format_version=saver_pb2.SaverDef.V1):
+  """Yields the pathname of a checkpoint file, given the checkpoint prefix.
+
+  For V1 checkpoint, simply returns the prefix itself (the data file).  For V2,
+  returns the pathname to the index file.
+
+  Args:
+    prefix: a string, the prefix of a checkpoint.
+    format_version: the checkpoint format version that corresponds to the
+      prefix.
+  Returns:
+    The pathname of a checkpoint file, taking into account the checkpoint
+      format version.
+  """
+  if format_version == saver_pb2.SaverDef.V2:
+    return prefix + ".metadata"  # The index file identifies a checkpoint.
+  return prefix  # Just the data file.
+
+
+def latest_checkpoint(checkpoint_dir,
+                      latest_filename=None):
   """Finds the filename of latest saved checkpoint file.
 
   Args:
@@ -1287,12 +1343,17 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-    if file_io.get_matching_files(ckpt.model_checkpoint_path):
+    # Look for either a V2 path or a V1 path, with priority for V2.
+    v2_path = _prefix_to_checkpoint_path(ckpt.model_checkpoint_path,
+                                         saver_pb2.SaverDef.V2)
+    v1_path = _prefix_to_checkpoint_path(ckpt.model_checkpoint_path,
+                                         saver_pb2.SaverDef.V1)
+    if file_io.get_matching_files(v2_path) or file_io.get_matching_files(
+        v1_path):
       return ckpt.model_checkpoint_path
     else:
-      logging.error("Couldn't match files for pattern %s",
+      logging.error("Couldn't match files for checkpoint %s",
                     ckpt.model_checkpoint_path)
-
   return None
 
 

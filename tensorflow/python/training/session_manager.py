@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_mod
 
@@ -172,13 +171,7 @@ class SessionManager(object):
 
     # Loads the checkpoint.
     saver.restore(sess, ckpt.model_checkpoint_path)
-    last_checkpoints = []
-    for fname in ckpt.all_model_checkpoint_paths:
-      fnames = gfile.Glob(fname)
-      if fnames:
-        mtime = gfile.Stat(fnames[0]).mtime
-        last_checkpoints.append((fname, mtime))
-    saver.set_last_checkpoints_with_time(last_checkpoints)
+    saver.recover_last_checkpoints(ckpt.all_model_checkpoint_paths)
     return sess, True
 
   def prepare_session(self, master, init_op=None, saver=None,
