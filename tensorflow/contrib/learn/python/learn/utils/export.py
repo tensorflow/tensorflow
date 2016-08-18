@@ -165,7 +165,7 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
 
 
 # pylint: disable=protected-access
-def _default_input_fn(estimator, examples):
+def default_input_fn(estimator, examples):
   """Creates default input parsing using Estimator's feature signatures."""
   return estimator._get_feature_ops_from_example(examples)
 
@@ -173,23 +173,10 @@ def _default_input_fn(estimator, examples):
 def export_estimator(estimator,
                      export_dir,
                      signature_fn=None,
-                     input_fn=_default_input_fn,
+                     input_fn=default_input_fn,
                      default_batch_size=1,
                      exports_to_keep=None):
-  """Exports inference graph into given dir.
-
-  Args:
-    estimator: Estimator to export
-    export_dir: A string containing a directory to write the exported graph
-      and checkpoints.
-    signature_fn: Function that returns a default signature and a named
-      signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-      for features and `Tensor` or `dict` of `Tensor`s for predictions.
-    input_fn: Function that given `Tensor` of `Example` strings, parses it into
-      features that are then passed to the model.
-    default_batch_size: Default batch size of the `Example` placeholder.
-    exports_to_keep: Number of exports to keep.
-  """
+  """Deprecated, please use BaseEstimator.export."""
   checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
   with ops.Graph().as_default() as g:
     contrib_variables.create_global_step(g)

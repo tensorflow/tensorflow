@@ -93,7 +93,6 @@ import six
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
-from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import ops
@@ -922,11 +921,10 @@ class ExportMonitor(EveryN):
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
-      export.export_estimator(self._estimator,
-                              self.export_dir,
-                              exports_to_keep=self.exports_to_keep,
-                              signature_fn=self.signature_fn,
-                              default_batch_size=self._default_batch_size)
+      self._estimator.export(self.export_dir,
+                             exports_to_keep=self.exports_to_keep,
+                             signature_fn=self.signature_fn,
+                             default_batch_size=self._default_batch_size)
     except (RuntimeError, TypeError):
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
@@ -941,11 +939,10 @@ class ExportMonitor(EveryN):
                    "yet.")
       return
     try:
-      export.export_estimator(self._estimator,
-                              self.export_dir,
-                              exports_to_keep=self.exports_to_keep,
-                              signature_fn=self.signature_fn,
-                              default_batch_size=self._default_batch_size)
+      self._estimator.export(self.export_dir,
+                             exports_to_keep=self.exports_to_keep,
+                             signature_fn=self.signature_fn,
+                             default_batch_size=self._default_batch_size)
     except (RuntimeError, TypeError):
       logging.info("Skipping exporting for the same step.")
 
