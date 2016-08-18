@@ -148,8 +148,8 @@ def run_training():
     # Add the Op to compare the logits to the labels during evaluation.
     eval_correct = mnist.evaluation(logits, labels_placeholder)
 
-    # Build the summary operation based on the TF collection of Summaries.
-    summary_op = tf.merge_all_summaries()
+    # Build the summary Tensor based on the TF collection of Summaries.
+    summary = tf.merge_all_summaries()
 
     # Add the variable initializer Op.
     init = tf.initialize_all_variables()
@@ -193,7 +193,7 @@ def run_training():
         # Print status to stdout.
         print('Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration))
         # Update the events file.
-        summary_str = sess.run(summary_op, feed_dict=feed_dict)
+        summary_str = sess.run(summary, feed_dict=feed_dict)
         summary_writer.add_summary(summary_str, step)
         summary_writer.flush()
 
