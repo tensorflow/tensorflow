@@ -166,7 +166,7 @@ A note about the parameter `name`:
 
 The name of the `TensorArray` (even if passed in) is uniquified: each time
 a new `TensorArray` is created at runtime it is assigned its own name for
-the duration of the run.  This avoids name collissions if a `TensorArray`
+the duration of the run.  This avoids name collisions if a `TensorArray`
 is created within a `while_loop`.
 
 ##### Args:

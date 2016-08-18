@@ -320,7 +320,7 @@ sequences and large batches.
 ##### Returns:
 
   The output tensors for the loop variables after the loop. When the length
-  of `loop_vars` is 1 this is a Tensor, TensorArry or IndexedSlice and when
+  of `loop_vars` is 1 this is a Tensor, TensorArray or IndexedSlice and when
   the length of `loop_vars` is greater than 1 it returns a list.
 
 ##### Raises:
