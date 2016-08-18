@@ -124,7 +124,9 @@ class GMM(estimator.Estimator, TransformerMixin):
     Returns:
       Array with same number of rows as x, containing cluster ids.
     """
-    return super(GMM, self).predict(x=x, batch_size=batch_size)[GMM.ASSIGNMENTS]
+    return np.array([
+        prediction[GMM.ASSIGNMENTS] for prediction in
+        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
 
   def score(self, x, batch_size=None):
     """Predict total sum of distances to nearest clusters.
@@ -149,7 +151,9 @@ class GMM(estimator.Estimator, TransformerMixin):
       Array with same number of rows as x, and num_clusters columns, containing
       distances to the cluster centers.
     """
-    return super(GMM, self).predict(x=x, batch_size=batch_size)[GMM.ALL_SCORES]
+    return np.array([
+        prediction[GMM.ALL_SCORES] for prediction in
+        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
 
   def clusters(self):
     """Returns cluster centers."""
@@ -192,7 +196,7 @@ class GMM(estimator.Estimator, TransformerMixin):
          self._params)
     return {
         GMM.ALL_SCORES: all_scores[0],
-        GMM.ASSIGNMENTS: model_predictions[0]
+        GMM.ASSIGNMENTS: model_predictions[0][0],
     }
 
   def _get_eval_ops(self, features, _, unused_metrics):

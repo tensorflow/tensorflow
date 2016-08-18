@@ -168,7 +168,8 @@ def read_data_sets(train_dir,
                    fake_data=False,
                    one_hot=False,
                    dtype=dtypes.float32,
-                   reshape=True):
+                   reshape=True,
+                   validation_size=5000):
   if fake_data:
 
     def fake():
@@ -183,7 +184,6 @@ def read_data_sets(train_dir,
   TRAIN_LABELS = 'train-labels-idx1-ubyte.gz'
   TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
   TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
-  VALIDATION_SIZE = 5000
 
   local_file = base.maybe_download(TRAIN_IMAGES, train_dir,
                                    SOURCE_URL + TRAIN_IMAGES)
@@ -201,10 +201,15 @@ def read_data_sets(train_dir,
                                    SOURCE_URL + TEST_LABELS)
   test_labels = extract_labels(local_file, one_hot=one_hot)
 
-  validation_images = train_images[:VALIDATION_SIZE]
-  validation_labels = train_labels[:VALIDATION_SIZE]
-  train_images = train_images[VALIDATION_SIZE:]
-  train_labels = train_labels[VALIDATION_SIZE:]
+  if not 0 <= validation_size <= len(train_images):
+    raise ValueError(
+        'Validation size should be between 0 and {}. Received: {}.'
+        .format(len(train_images), validation_size))
+
+  validation_images = train_images[:validation_size]
+  validation_labels = train_labels[:validation_size]
+  train_images = train_images[validation_size:]
+  train_labels = train_labels[validation_size:]
 
   train = DataSet(train_images, train_labels, dtype=dtype, reshape=reshape)
   validation = DataSet(validation_images,

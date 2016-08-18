@@ -852,7 +852,7 @@ def main(_):
 
   # Run the training for as many cycles as requested on the command line.
   for i in range(FLAGS.how_many_training_steps):
-    # Get a catch of input bottleneck values, either calculated fresh every time
+    # Get a batch of input bottleneck values, either calculated fresh every time
     # with distortions applied, or from the cache stored on disk.
     if do_distort_images:
       train_bottlenecks, train_ground_truth = get_random_distorted_bottlenecks(

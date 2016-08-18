@@ -412,6 +412,15 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         # Ellipsis in middle of two newaxis
         _ = checker[np.newaxis, ..., np.newaxis]
 
+  def testExpandVariable(self):
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        x = tf.Variable(7, dtype=tf.int32)
+        x.initializer.run()
+        y = x[None].eval()
+        self.assertEqual(y.shape, (1,))
+        self.assertAllEqual(y, (7,))
+
   def testOptimizedCases(self):
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu):

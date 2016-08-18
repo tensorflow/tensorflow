@@ -31,6 +31,9 @@ Usage:
 @@vgg_a
 @@vgg_16
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 
@@ -102,6 +105,7 @@ def vgg_a(inputs,
         net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+vgg_a.default_image_size = 224
 
 
 def vgg_16(inputs,
@@ -160,6 +164,7 @@ def vgg_16(inputs,
         net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+vgg_16.default_image_size = 224
 
 # Alias
 vgg_d = vgg_16

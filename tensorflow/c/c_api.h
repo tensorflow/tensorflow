@@ -186,6 +186,18 @@ extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
                                                    void* arg),
                                void* deallocator_arg);
 
+// Allocate and return a new Tensor.
+//
+// This function is an alternative to TF_NewTensor and should be used when
+// memory is allocated to pass the Tensor to the C API. The allocated memory
+// satisfies TensorFlow's memory alignment preferences and should be preferred
+// over calling malloc and free.
+//
+// The caller must set the Tensor values by writing them to the pointer returned
+// by TF_TensorData with length TF_TensorByteSize.
+extern TF_Tensor* TF_AllocateTensor(TF_DataType, const int64_t* dims,
+                                    int num_dims, size_t len);
+
 // Destroy a tensor.
 extern void TF_DeleteTensor(TF_Tensor*);
 
