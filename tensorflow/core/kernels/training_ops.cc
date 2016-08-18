@@ -2016,8 +2016,8 @@ class SparseApplyRMSPropOp : public OpKernel {
 
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(strings::StrCat(
-                      "var and grad must match in dimension ", d)));
+                  errors::InvalidArgument(
+                    "var and grad must match in dimension ", d));
     }
     const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
