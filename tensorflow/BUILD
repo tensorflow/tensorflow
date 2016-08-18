@@ -99,6 +99,7 @@ filegroup(
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/quantization:all_files",
         "//tensorflow/contrib/quantization/kernels:all_files",
+        "//tensorflow/contrib/quantization/kernels/hexagon:all_files",
         "//tensorflow/contrib/quantization/tools:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
