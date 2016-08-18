@@ -135,6 +135,7 @@ class DirectSession : public Session {
     std::unordered_set<string> pending_inputs;
     std::unordered_set<string> pending_outputs;
     TensorStore tensor_store;
+    ResourceMgr step_resource_manager;
 
     RunState(const std::vector<string>& input_names,
              const std::vector<string>& output_names);

@@ -325,6 +325,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   };
   args.session_state = &session_state_;
   args.tensor_store = &run_state.tensor_store;
+  args.step_resource_manager = &run_state.step_resource_manager;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
@@ -458,6 +459,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   };
   args.session_state = &session_state_;
   args.tensor_store = &run_state->tensor_store;
+  args.step_resource_manager = &run_state->step_resource_manager;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }

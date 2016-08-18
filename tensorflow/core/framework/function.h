@@ -35,6 +35,7 @@ namespace tensorflow {
 class CancellationManager;
 class Node;
 class OpKernel;
+class ResourceMgr;
 
 // FunctionDefHelper::Define is a convenient helper to construct a
 // FunctionDef proto.
@@ -342,6 +343,9 @@ class FunctionLibraryRuntime {
     CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
+
+    // Per-step resource manager. Does not take ownership.
+    ResourceMgr* step_resource_manager = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
   };
