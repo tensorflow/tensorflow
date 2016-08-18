@@ -62,11 +62,6 @@ tf_cc_test(
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-#
-# NOTE: currently '-pthread' must be removed from the LINK_OPTS variable
-# in @protobuf//:BUILD to sucessfully build for Android. This is temporary
-# pending an update of the version of the protobuf library that TensorFlow
-# uses.
 cc_binary(
     name = "benchmark_model",
     testonly = 1,
