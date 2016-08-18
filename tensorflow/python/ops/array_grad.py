@@ -298,7 +298,8 @@ def _GatherNdGrad(unused_op, unused_grad):
 @ops.RegisterGradient("CheckNumerics")
 def _CheckNumericsGrad(_, grad):
   """Gradient for check_numerics op."""
-  return grad
+  return array_ops.check_numerics(
+      grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
 
 
 @ops.RegisterGradient("Identity")

@@ -742,6 +742,8 @@ class ExecutorState {
   Rendezvous* rendezvous_;
   SessionState* session_state_;
   TensorStore* tensor_store_;
+  // Step-local resource manager.
+  ResourceMgr* step_resource_manager_;
   StepStatsCollector* stats_collector_;
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
@@ -752,9 +754,6 @@ class ExecutorState {
   Executor::Args::Runner runner_;
 
   // Owned.
-
-  // Step-local resource manager.
-  ResourceMgr step_resource_manager_;
 
   // A flag that is set on error after the frame state has been
   // dumped for diagnostic purposes.
@@ -892,6 +891,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       rendezvous_(args.rendezvous),
       session_state_(args.session_state),
       tensor_store_(args.tensor_store),
+      step_resource_manager_(args.step_resource_manager),
       stats_collector_(args.stats_collector),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -918,10 +918,6 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
 
   // Initialize the executor state.
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
-
-  if (args.step_resource_manager_init) {
-    args.step_resource_manager_init(&step_resource_manager_);
-  }
 }
 
 ExecutorState::~ExecutorState() {
@@ -1061,7 +1057,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.call_frame = call_frame_;
   params.function_library = impl_->params_.function_library;
   params.resource_manager = device->resource_manager();
-  params.step_resource_manager = &step_resource_manager_;
+  params.step_resource_manager = step_resource_manager_;
   params.slice_reader_cache = slice_reader_cache_;
   params.inputs = &inputs;
   params.input_device_contexts = &input_device_contexts;

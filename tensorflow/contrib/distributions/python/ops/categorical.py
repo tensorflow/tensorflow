@@ -64,11 +64,24 @@ class Categorical(distribution.Distribution):
     self._validate_args = validate_args
     with ops.name_scope(name, values=[logits]):
       self._logits = ops.convert_to_tensor(logits, name="logits")
-      logits_shape = array_ops.shape(self._logits)
-      self._batch_rank = array_ops.size(logits_shape) - 1
-      self._batch_shape = array_ops.slice(
-          logits_shape, [0], array_ops.pack([self._batch_rank]))
-      self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
+      logits_shape = array_ops.shape(self._logits, name="logits_shape")
+      static_logits_shape = self._logits.get_shape().with_rank_at_least(1)
+      static_logits_rank = static_logits_shape.ndims
+      if static_logits_rank is not None:
+        self._batch_rank = ops.convert_to_tensor(
+            static_logits_rank - 1, dtype=dtypes.int32,
+            name="batch_rank")
+      else:
+        self._batch_rank = array_ops.rank(self._logits) - 1
+
+      if static_logits_shape[-1].value is not None:
+        self._num_classes = ops.convert_to_tensor(
+            static_logits_shape[-1].value,
+            dtype=dtypes.int32, name="num_classes")
+      else:
+        self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
+
+      self._batch_shape = logits_shape[:-1]
 
   @property
   def allow_nan_stats(self):
@@ -108,6 +121,7 @@ class Categorical(distribution.Distribution):
 
   @property
   def num_classes(self):
+    """Scalar `int32` tensor: the number of classes."""
     return self._num_classes
 
   @property

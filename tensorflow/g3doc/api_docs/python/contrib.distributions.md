@@ -2112,7 +2112,7 @@ Mean of the distribution.
 
 #### `tf.contrib.distributions.Categorical.num_classes` {#Categorical.num_classes}
 
-
+Scalar `int32` tensor: the number of classes.
 
 
 - - -

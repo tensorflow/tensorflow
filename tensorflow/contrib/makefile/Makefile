@@ -553,3 +553,8 @@ $(DEPDIR)/%.d: ;
 .PRECIOUS: $(DEPDIR)/%.d
 
 -include $(patsubst %,$(DEPDIR)/%.d,$(basename $(TF_CC_SRCS)))
+
+ifdef SUB_MAKEFILES
+  $(warning "include sub makefiles, must not contain white spaces in the path:" $(SUB_MAKEFILES))
+  include $(SUB_MAKEFILES)
+endif

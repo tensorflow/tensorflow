@@ -127,7 +127,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language])
     classifier.fit(input_fn=input_fn, steps=100)
-    tf.contrib.learn.utils.export.export_estimator(classifier, export_dir)
+    classifier.export(export_dir)
 
   def testDisableCenteredBias(self):
     """Tests that we can disable centered bias."""

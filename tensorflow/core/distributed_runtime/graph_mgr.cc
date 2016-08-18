@@ -329,9 +329,13 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   //
   // NOTE: Transfer one ref of rendezvous and one ref of item to
   // RunAllDone.
+  ResourceMgr* step_resource_manager = new ResourceMgr;
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, std::bind(&ME::RunAllDone, this, item, rendezvous,
-                                       out, done, std::placeholders::_1));
+      num_units, rendezvous, [this, item, rendezvous, out, done,
+                              step_resource_manager](const Status& status) {
+        RunAllDone(item, rendezvous, out, done, status);
+        delete step_resource_manager;
+      });
   Executor::Args args;
   {
     mutex_lock l(mu_);
@@ -340,6 +344,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   args.rendezvous = rendezvous;
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
+  args.step_resource_manager = step_resource_manager;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

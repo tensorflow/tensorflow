@@ -26,16 +26,29 @@ collected into a `SparseTensor` class for ease of use.  If you have separate
 `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
 object before passing to the ops below.
 
-Concretely, the sparse tensor `SparseTensor(indices, values, shape)` is
+Concretely, the sparse tensor `SparseTensor(indices, values, shape)`
+comprises the following components, where `N` and `ndims` are the number
+of values and number of dimensions in the `SparseTensor`, respectively:
 
-* `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
-* `values`: A 1-D tensor of any type and shape `[N]`.
-* `shape`: A 1-D int64 tensor of shape `[ndims]`.
+* `indices`: A 2-D int64 tensor of shape `[N, ndims]`, which specifies
+  the indices of the elements in the sparse tensor that contain nonzero
+  values (elements are zero-indexed). For example, `indices=[[1,3], [2,4]]`
+  specifies that the elements with indexes of [1,3] and [2,4] have
+  nonzero values.
 
-where `N` and `ndims` are the number of values, and number of dimensions in
-the `SparseTensor` respectively.
+* `values`: A 1-D tensor of any type and shape `[N]`, which supplies the
+  values for each element in `indices`. For example, given
+  `indices=[[1,3], [2,4]]`, the parameter `values=[18, 3.6]` specifies
+  that element [1,3] of the sparse tensor has a value of 18, and element
+  [2,4] of the tensor has a value of 3.6.
 
-The corresponding dense tensor satisfies
+* `shape`: A 1-D int64 tensor of shape `[ndims]`, which specifies the shape
+  of the sparse tensor. Takes a list indicating the number of elements in
+  each dimension. For example, `shape=[3,6]` specifies a two-dimensional 3x6
+  tensor, `shape=[2,3,4]` specifies a three-dimensional 2x3x4 tensor, and
+  `shape=[9]` specifies a one-dimensional tensor with 9 elements.
+
+The corresponding dense tensor satisfies:
 
 ```python
 dense.shape = shape
@@ -43,7 +56,7 @@ dense[tuple(indices[i])] = values[i]
 ```
 
 By convention, `indices` should be sorted in row-major order (or equivalently
-lexicographic order on the tuples `indices[i]`).  This is not enforced when
+lexicographic order on the tuples `indices[i]`). This is not enforced when
 `SparseTensor` objects are constructed, but most ops assume correct ordering.
 If the ordering of sparse tensor `st` is wrong, a fixed version can be
 obtained by calling `tf.sparse_reorder(st)`.
