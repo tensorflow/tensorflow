@@ -138,8 +138,7 @@ class TileOp : public OpKernel {
   HANDLE_DIM(T, 2)     \
   HANDLE_DIM(T, 3)     \
   HANDLE_DIM(T, 4)     \
-  HANDLE_DIM(T, 5)     \
-  HANDLE_DIM(T, 6)
+  HANDLE_DIM(T, 5)
 
 #define HANDLE_TYPE_NAME(T) HANDLE_TYPE(DataTypeToEnum<T>::value)
 
@@ -216,8 +215,7 @@ inline void TileOp<Device>::HandleCase(
   HANDLE_CASE(device, T, dtype, 2);       \
   HANDLE_CASE(device, T, dtype, 3);       \
   HANDLE_CASE(device, T, dtype, 4);       \
-  HANDLE_CASE(device, T, dtype, 5);       \
-  HANDLE_CASE(device, T, dtype, 6);
+  HANDLE_CASE(device, T, dtype, 5);
 
 #define HANDLE_TYPE_NAME_CPU(T) \
   HANDLE_CASE_DIM(CPUDevice, T, DataTypeToEnum<T>::value);
@@ -309,8 +307,7 @@ class TileGradientOp : public OpKernel {
   HANDLE_DIM(T, 2)     \
   HANDLE_DIM(T, 3)     \
   HANDLE_DIM(T, 4)     \
-  HANDLE_DIM(T, 5)     \
-  HANDLE_DIM(T, 6)
+  HANDLE_DIM(T, 5)
 
 #define HANDLE_TYPE_NAME(T) HANDLE_TYPE(DataTypeToEnum<T>::value)
 
@@ -454,8 +451,7 @@ inline void TileGradientOp<Device>::HandleCase(
   HANDLE_CASE(device, T, dtype, 2);       \
   HANDLE_CASE(device, T, dtype, 3);       \
   HANDLE_CASE(device, T, dtype, 4);       \
-  HANDLE_CASE(device, T, dtype, 5);       \
-  HANDLE_CASE(device, T, dtype, 6);
+  HANDLE_CASE(device, T, dtype, 5);
 
 #define HANDLE_TYPE_NAME_CPU(T) \
   HANDLE_CASE_DIM(CPUDevice, T, DataTypeToEnum<T>::value);

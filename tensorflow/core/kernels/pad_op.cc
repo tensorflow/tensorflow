@@ -49,7 +49,7 @@ class PadOp : public OpKernel {
     const Tensor& in1 = context->input(1);
     const int dims = in0.dims();
     static const int kMinDims = 0;
-    static const int kMaxDims = 6;
+    static const int kMaxDims = 5;
     OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
                 errors::Unimplemented("inputs rank not in [", kMinDims, ",",
                                       kMaxDims, "]: ", dims));
@@ -115,12 +115,9 @@ class PadOp : public OpKernel {
       case 5:
         Operate<5>(context, in0.tensor<T, 5>(), paddings, output);
         break;
-      case 6:
-        Operate<6>(context, in0.tensor<T, 6>(), paddings, output);
-        break;
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Only ranks up to 6 supported: ",
+                    errors::InvalidArgument("Only ranks up to 5 supported: ",
                                             in0.shape().DebugString()));
     }
   }
@@ -169,8 +166,7 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 2);    \
   DECLARE_GPU_SPEC(T, 3);    \
   DECLARE_GPU_SPEC(T, 4);    \
-  DECLARE_GPU_SPEC(T, 5);    \
-  DECLARE_GPU_SPEC(T, 6);
+  DECLARE_GPU_SPEC(T, 5);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor
