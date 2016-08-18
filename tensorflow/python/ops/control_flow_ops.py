@@ -742,7 +742,7 @@ class GradLoopState(object):
       pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
       self.grad_context.Exit()
     parallel_iterations = self.grad_context.parallel_iterations
-    if parallel_iterations is not None and parallel_iterations > 1:
+    if parallel_iterations > 1:
       # All pops are ordered after pivot_for_body and before grad_sync.
       self.grad_sync._add_control_input(pop.op)
     return pop
@@ -1381,6 +1381,9 @@ class WhileContext(ControlFlowContext):
   def __init__(self, parallel_iterations, back_prop, swap_memory, name,
                grad_state=None):
     ControlFlowContext.__init__(self)
+    if not isinstance(parallel_iterations, int) or (parallel_iterations <= 0):
+      raise ValueError("`parallel_iterations` must be a positive integer: "
+                       "%s" % parallel_iterations)
     self._name = ops.get_default_graph().unique_name(name)
     self._parallel_iterations = parallel_iterations
     self._back_prop = back_prop
