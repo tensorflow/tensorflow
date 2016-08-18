@@ -92,6 +92,15 @@ class GatherTest(tf.test.TestCase):
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
         gather.eval()
 
+  def testEmptySlices(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      for dtype in np.float32, np.float64:
+        for itype in np.int32, np.int64:
+          params = np.zeros((7, 0), dtype=dtype)
+          indices = np.array([3, 4], dtype=itype)
+          gather = tf.gather(params, indices)
+          self.assertAllEqual(gather.eval(), np.zeros((2, 0)))
+
 
 class GatherGpuTest(GatherTest):
   use_gpu = True
