@@ -1571,9 +1571,8 @@ class LayerNormTest(tf.test.TestCase):
       # output_train and output_eval should be the same.
       self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
 
-  def testOutput(self):
+  def doOutputTest(self, input_shape):
     with self.test_session() as sess:
-      input_shape = (10, 100)
       input_values = np.random.rand(*input_shape)
       inputs = tf.constant(input_values, shape=input_shape, dtype=tf.float32)
       output_op = tf.contrib.layers.layer_norm(inputs,
@@ -1584,14 +1583,20 @@ class LayerNormTest(tf.test.TestCase):
       sess.run(tf.initialize_all_variables())
       # The mean and variance of the output should be close to 0 and 1
       # respectively.
+      moments_axis = tuple([i for i in range(1, len(input_shape))])
       outputs = sess.run(output_op)
       expected_mean = np.zeros(input_shape[0])
       expected_var = np.ones(input_shape[0])
-      mean = np.mean(outputs, axis=(1))
-      var = np.var(outputs, axis=(1))
-      self.assertAllClose(mean, expected_mean)
-      self.assertAllClose(var, expected_var)
+      mean = np.mean(outputs, axis=moments_axis)
+      var = np.var(outputs, axis=moments_axis)
+      self.assertAllClose(mean, expected_mean, rtol=1e-5)
+      self.assertAllClose(var, expected_var, rtol=1e-5)
 
+  def testOutput2DInput(self):
+    self.doOutputTest((10, 300))
+
+  def testOutput4DInput(self):
+    self.doOutputTest((100, 10, 10, 3))
 
 class MaxPool2DTest(tf.test.TestCase):
 
