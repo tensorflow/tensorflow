@@ -44,6 +44,7 @@ module VZ {
     private smoothingDecay: number;
     private smoothingEnabled: Boolean;
     private tooltipSortingMethod: string;
+    private tooltipPosition: string;
 
     constructor(
         xType: string, colorScale: Plottable.Scales.Color,
@@ -366,9 +367,15 @@ module VZ {
       let parentRect = node.parentElement.getBoundingClientRect();
       let nodeRect = node.getBoundingClientRect();
       // prevent it from falling off the right side of the screen
-      let left =
-          Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
-      let top = parentRect.height + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET;
+      let left = documentWidth - parentRect.left - nodeRect.width - 60, top = 0;
+
+      if (this.tooltipPosition === 'right') {
+        left = Math.min(parentRect.width, left);
+      } else {  // 'bottom'
+        left = Math.min(0, left);
+        top = parentRect.height + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET;
+      }
+
       this.tooltip.style(
           'transform', 'translate(' + left + 'px,' + top + 'px)');
       this.tooltip.style('opacity', 1);
@@ -474,6 +481,10 @@ module VZ {
 
     public setTooltipSortingMethod(method: string) {
       this.tooltipSortingMethod = method;
+    }
+
+    public setTooltipPosition(position: string) {
+      this.tooltipPosition = position;
     }
 
     public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }

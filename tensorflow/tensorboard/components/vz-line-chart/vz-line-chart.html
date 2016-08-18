@@ -165,6 +165,16 @@ smoothing.
           value: 'name'
         },
 
+        /**
+         * Change how the tooltip is positioned. Allows:
+         * - "bottom" - Position the tooltip on the bottom of the chart.
+         * - "right" - Position the tooltip to the right of the chart.
+         */
+        tooltipPosition: {
+          type: String,
+          value: 'bottom'
+        },
+
         _attached: Boolean,
         _chart: Object,
         _visibleSeriesCache: {
@@ -184,7 +194,8 @@ smoothing.
         "_makeChart(xType, colorScale, _attached)",
         "_reloadFromCache(_chart)",
         "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)",
-        "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)"
+        "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)",
+        "_tooltipPositionChanged(tooltipPosition, _chart)"
       ],
 
       /**
@@ -274,6 +285,11 @@ smoothing.
       _tooltipSortingMethodChanged: function() {
         if(this._chart) {
           this._chart.setTooltipSortingMethod(this.tooltipSortingMethod);
+        }
+      },
+      _tooltipPositionChanged: function() {
+        if (this._chart) {
+          this._chart.setTooltipPosition(this.tooltipPosition);
         }
       }
     });
