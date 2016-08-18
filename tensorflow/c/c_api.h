@@ -247,29 +247,31 @@ extern TF_Graph* TF_NewGraph();
 // TFSessionWithGraph's are referencing it.
 extern void TF_DeleteGraph(TF_Graph*);
 
-// Node being built. The underlying graph must outlive this.
-typedef struct TF_NodeDescription TF_NodeDescription;
+// Operation being built. The underlying graph must outlive this.
+typedef struct TF_OperationDescription TF_OperationDescription;
 
-// Node that has been added to the graph. Valid until the graph is
-// deleted -- in particular adding a new node to the graph does not
-// invalidate old TF_Node* pointers.
-typedef struct TF_Node TF_Node;
+// Operation that has been added to the graph. Valid until the graph is
+// deleted -- in particular adding a new operation to the graph does not
+// invalidate old TF_Operation* pointers.
+typedef struct TF_Operation TF_Operation;
 
-// Represents a specific input or output of a node, e.g. to specify the
-// specific output to pass as an input to an op.
+// Represents a specific input or output of an operation, e.g. to
+// specify the specific output to pass as an input to a new op.
 typedef struct TF_Port {
-  TF_Node* node;
-  int index;  // Specifies the index of the input or output within node.
+  TF_Operation* oper;
+  int index;  // Specifies the index of the input or output within oper.
 } TF_Port;
 
-// Node will only be added to *graph when TF_FinishNode() is called
-// (assuming TF_FinishNode() does not return an error).  *graph must
-// not be deleted until after TF_FinishNode() is called.
-extern TF_NodeDescription* TF_NewNode(TF_Graph* graph, const char* op_type,
-                                      const char* node_name);
+// Operation will only be added to *graph when TF_FinishOperation() is
+// called (assuming TF_FinishOperation() does not return an error).
+// *graph must not be deleted until after TF_FinishOperation() is
+// called.
+extern TF_OperationDescription* TF_NewOperation(TF_Graph* graph,
+                                                const char* op_type,
+                                                const char* oper_name);
 
 // Specify the device for `desc`.  Defaults to empty, meaning unconstrained.
-extern void TF_SetDevice(TF_NodeDescription* desc, const char* device);
+extern void TF_SetDevice(TF_OperationDescription* desc, const char* device);
 
 // The calls to TF_AddInput and TF_AddInputList must match (in number,
 // order, and type) the op declaration.  For example, the "Concat" op
@@ -285,74 +287,82 @@ extern void TF_SetDevice(TF_NodeDescription* desc, const char* device);
 // single tensor), and TF_AddInputList() for the second input (since
 // it takes a list, even if you were to pass a list with a single
 // tensor), as in:
-//   TF_NodeDescription* desc = TF_NewNode(graph, "Concat", "c");
+//   TF_OperationDescription* desc = TF_NewOperation(graph, "Concat", "c");
 //   TF_Port concat_dim_input = {...};
 //   TF_AddInput(desc, concat_dim_input);
 //   TF_Port values_inputs[5] = {{...}, ..., {...}};
 //   TF_AddInputList(desc, 5, values_inputs);
 
 // For inputs that take a single tensor.
-extern void TF_AddInput(TF_NodeDescription* desc, TF_Port input);
+extern void TF_AddInput(TF_OperationDescription* desc, TF_Port input);
 
 // For inputs that take a list of tensors.
 // inputs must point to TF_Port[num_inputs].
-extern void TF_AddInputList(TF_NodeDescription* desc, const TF_Port* inputs,
-                            int num_inputs);
+extern void TF_AddInputList(TF_OperationDescription* desc,
+                            const TF_Port* inputs, int num_inputs);
 
 // Call once per control input to `desc`.
-extern void TF_AddControlInput(TF_NodeDescription* desc, TF_Node* input);
+extern void TF_AddControlInput(TF_OperationDescription* desc,
+                               TF_Operation* input);
 
 // Call some TF_SetAttr*() function for every attr that is not
 // inferred from an input and doesn't have a default value you wish to
 // keep.
 
 // `value` must point to a string of length `length` bytes.
-extern void TF_SetAttrString(TF_NodeDescription* desc, const char* attr_name,
-                             const void* value, int length);
+extern void TF_SetAttrString(TF_OperationDescription* desc,
+                             const char* attr_name, const void* value,
+                             int length);
 // `values` and `lengths` both must have lengths `num_values`.
 // `values[i]` must point to a string of length `lengths[i]` bytes.
-extern void TF_SetAttrStringList(TF_NodeDescription* desc,
+extern void TF_SetAttrStringList(TF_OperationDescription* desc,
                                  const char* attr_name,
                                  const void* const* values, const int* lengths,
                                  int num_values);
-extern void TF_SetAttrInt(TF_NodeDescription* desc, const char* attr_name,
+extern void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
                           int64_t value);
-extern void TF_SetAttrIntList(TF_NodeDescription* desc, const char* attr_name,
-                              const int64_t* values, int num_values);
-extern void TF_SetAttrFloat(TF_NodeDescription* desc, const char* attr_name,
-                            float value);
-extern void TF_SetAttrFloatList(TF_NodeDescription* desc, const char* attr_name,
-                                const float* values, int num_values);
-extern void TF_SetAttrBool(TF_NodeDescription* desc, const char* attr_name,
+extern void TF_SetAttrIntList(TF_OperationDescription* desc,
+                              const char* attr_name, const int64_t* values,
+                              int num_values);
+extern void TF_SetAttrFloat(TF_OperationDescription* desc,
+                            const char* attr_name, float value);
+extern void TF_SetAttrFloatList(TF_OperationDescription* desc,
+                                const char* attr_name, const float* values,
+                                int num_values);
+extern void TF_SetAttrBool(TF_OperationDescription* desc, const char* attr_name,
                            unsigned char value);
-extern void TF_SetAttrBoolList(TF_NodeDescription* desc, const char* attr_name,
+extern void TF_SetAttrBoolList(TF_OperationDescription* desc,
+                               const char* attr_name,
                                const unsigned char* values, int num_values);
-extern void TF_SetAttrType(TF_NodeDescription* desc, const char* attr_name,
+extern void TF_SetAttrType(TF_OperationDescription* desc, const char* attr_name,
                            TF_DataType value);
-extern void TF_SetAttrTypeList(TF_NodeDescription* desc, const char* attr_name,
-                               const TF_DataType* values, int num_values);
+extern void TF_SetAttrTypeList(TF_OperationDescription* desc,
+                               const char* attr_name, const TF_DataType* values,
+                               int num_values);
 
 // Set `num_dims` to -1 to represent "unknown rank".  Otherwise,
 // `dims` points to an array of length `num_dims`.  `dims[i]` must be
 // >= -1, with -1 meaning "unknown dimension".
-extern void TF_SetAttrShape(TF_NodeDescription* desc, const char* attr_name,
-                            const int64_t* dims, int num_dims);
+extern void TF_SetAttrShape(TF_OperationDescription* desc,
+                            const char* attr_name, const int64_t* dims,
+                            int num_dims);
 // `dims` and `num_dims` must point to arrays of length `num_shapes`.
 // Set `num_dims[i]` to -1 to represent "unknown rank".  Otherwise,
 // `dims[i]` points to an array of length `num_dims[i]`.  `dims[i][j]`
 // must be >= -1, with -1 meaning "unknown dimension".
-extern void TF_SetAttrShapeList(TF_NodeDescription* desc, const char* attr_name,
+extern void TF_SetAttrShapeList(TF_OperationDescription* desc,
+                                const char* attr_name,
                                 const int64_t* const* dims, const int* num_dims,
                                 int num_shapes);
 // `proto` must point to an array of `proto_len` bytes representing a
 // binary-serialized TensorShapeProto.
-extern void TF_SetAttrTensorShapeProto(TF_NodeDescription* desc,
+extern void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
                                        const char* attr_name, void* proto,
                                        int proto_len, TF_Status* status);
 // `protos` and `proto_lens` must point to arrays of length `num_shapes`.
 // `protos[i]` must point to an array of `proto_lens[i]` bytes
 // representing a binary-serialized TensorShapeProto.
-extern void TF_SetAttrTensorShapeProtoList(TF_NodeDescription* desc,
+extern void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
                                            const char* attr_name,
                                            const void* const* protos,
                                            const int* proto_lens,
@@ -360,11 +370,12 @@ extern void TF_SetAttrTensorShapeProtoList(TF_NodeDescription* desc,
 
 // This functions takes ownership of *value (the
 // implementation will eventually call TF_DeleteTensor).
-extern void TF_SetAttrTensor(TF_NodeDescription* desc, const char* attr_name,
-                             TF_Tensor* value, TF_Status* status);
+extern void TF_SetAttrTensor(TF_OperationDescription* desc,
+                             const char* attr_name, TF_Tensor* value,
+                             TF_Status* status);
 // This functions takes ownership of values[0]..values[num_values-1] (the
 // implementation will eventually call TF_DeleteTensor on each).
-extern void TF_SetAttrTensorList(TF_NodeDescription* desc,
+extern void TF_SetAttrTensorList(TF_OperationDescription* desc,
                                  const char* attr_name,
                                  TF_Tensor* const* values, int num_values,
                                  TF_Status* status);
@@ -372,100 +383,108 @@ extern void TF_SetAttrTensorList(TF_NodeDescription* desc,
 // `proto` should point to a sequence of bytes of length `proto_len`
 // representing a binary serialization of an AttrValue protocol
 // buffer.
-extern void TF_SetAttrToAttrValueProto(TF_NodeDescription* desc,
+extern void TF_SetAttrToAttrValueProto(TF_OperationDescription* desc,
                                        const char* attr_name, const void* proto,
                                        size_t proto_len, TF_Status* status);
 
 // If this function succeeds:
 //   * *status is set to an OK value,
-//   * a TF_Node is added to the graph,
-//   * a non-null value pointing to the added node is returned --
+//   * a TF_Operation is added to the graph,
+//   * a non-null value pointing to the added operation is returned --
 //     this value is valid until the underlying graph is deleted.
 // Otherwise:
 //   * *status is set to a non-OK value,
 //   * the graph is not modified,
 //   * a null value is returned.
 // In either case, it deletes `desc`.
-extern TF_Node* TF_FinishNode(TF_NodeDescription* desc, TF_Status* status);
+extern TF_Operation* TF_FinishOperation(TF_OperationDescription* desc,
+                                        TF_Status* status);
 
-// TF_Node functions.  Nodes are immutable once created, so these are all
-// query functions.
+// TF_Operation functions.  Operations are immutable once created, so
+// these are all query functions.
 
-extern const char* TF_NodeName(TF_Node* node);
-extern const char* TF_NodeOpType(TF_Node* node);
-extern const char* TF_NodeDevice(TF_Node* node);
+extern const char* TF_OperationName(TF_Operation* oper);
+extern const char* TF_OperationOpType(TF_Operation* oper);
+extern const char* TF_OperationDevice(TF_Operation* oper);
 
-extern int TF_NodeNumOutputs(TF_Node* node);
-extern TF_DataType TF_NodeOutputType(TF_Port node_out);
-extern int TF_NodeOutputListLength(TF_Node* node, const char* arg_name,
-                                   TF_Status* status);
+extern int TF_OperationNumOutputs(TF_Operation* oper);
+extern TF_DataType TF_OperationOutputType(TF_Port oper_out);
+extern int TF_OperationOutputListLength(TF_Operation* oper,
+                                        const char* arg_name,
+                                        TF_Status* status);
 
-extern int TF_NodeNumInputs(TF_Node* node);
-extern TF_DataType TF_NodeInputType(TF_Port node_in);
-extern int TF_NodeInputListLength(TF_Node* node, const char* arg_name,
-                                  TF_Status* status);
+extern int TF_OperationNumInputs(TF_Operation* oper);
+extern TF_DataType TF_OperationInputType(TF_Port oper_in);
+extern int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
+                                       TF_Status* status);
 
 // In this code:
-//   TF_Port producer = TF_NodeInput(consumer);
-// There is an edge from producer.node's output (given by
-// producer.index) to consumer.node's input (given by consumer.index).
-extern TF_Port TF_NodeInput(TF_Port node_in);
+//   TF_Port producer = TF_OperationInput(consumer);
+// There is an edge from producer.oper's output (given by
+// producer.index) to consumer.oper's input (given by consumer.index).
+extern TF_Port TF_OperationInput(TF_Port oper_in);
 
-// Get the number of current consumers of a node's output.  Note that
-// this number can change when new nodes are added to the graph.
-extern int TF_NodeOutputNumConsumers(TF_Port node_out);
+// Get the number of current consumers of a specific output of an
+// operation.  Note that this number can change when new operations
+// are added to the graph.
+extern int TF_OperationOutputNumConsumers(TF_Port oper_out);
 
-// Get list of all current consumers of a node's output.  consumers
-// must point to an array of length at least max_consumers (ideally
-// set to TF_NodeOutputNumConsumer(node_out)).  Beware that a
-// concurrent modification of the graph can increase the number of
-// consumers of a node.  Returns the number of output consumers
-// (should match TF_NodeOutputNumConsumers(node_out)).
-extern int TF_NodeOutputConsumers(TF_Port node_out, TF_Port* consumers,
-                                  int max_consumers);
+// Get list of all current consumers of a specific output of an
+// operation.  `consumers` must point to an array of length at least
+// `max_consumers` (ideally set to
+// TF_OperationOutputNumConsumers(oper_out)).  Beware that a concurrent
+// modification of the graph can increase the number of consumers of
+// an operation.  Returns the number of output consumers (should match
+// TF_OperationOutputNumConsumers(oper_out)).
+extern int TF_OperationOutputConsumers(TF_Port oper_out, TF_Port* consumers,
+                                       int max_consumers);
 
-// Get the number of control inputs to a node.
-extern int TF_NodeNumControlInputs(TF_Node* node);
+// Get the number of control inputs to an operation.
+extern int TF_OperationNumControlInputs(TF_Operation* oper);
 
-// Get list of all control inputs to a node.  control_inputs must
-// point to an array of length max_control_inputs (ideally set to
-// TF_NodeNumControlInputs(node)).  Returns the number of control
-// inputs (should match TF_NodeNumControlInputs(node)).
-extern int TF_NodeGetControlInputs(TF_Node* node, TF_Node** control_inputs,
-                                   int max_control_inputs);
+// Get list of all control inputs to an operation.  `control_inputs` must
+// point to an array of length `max_control_inputs` (ideally set to
+// TF_OperationNumControlInputs(oper)).  Returns the number of control
+// inputs (should match TF_OperationNumControlInputs(oper)).
+extern int TF_OperationGetControlInputs(TF_Operation* oper,
+                                        TF_Operation** control_inputs,
+                                        int max_control_inputs);
 
-// Get the number of nodes that have *node as a control inputs.
-// Note that this number can change when new nodes are added to the
-// graph.
-extern int TF_NodeNumControlOutputs(TF_Node* node);
+// Get the number of operations that have `*oper` as a control input.
+// Note that this number can change when new operations are added to
+// the graph.
+extern int TF_OperationNumControlOutputs(TF_Operation* oper);
 
-// Get the list of nodes that have *node as a control input.
-// control_outputs must point to an array of length at least
-// max_control_outputs (ideally set to
-// TF_NodeNumControlOutputs(node)). Beware that a concurrent
+// Get the list of operations that have `*oper` as a control input.
+// `control_outputs` must point to an array of length at least
+// `max_control_outputs` (ideally set to
+// TF_OperationNumControlOutputs(oper)). Beware that a concurrent
 // modification of the graph can increase the number of control
 // outputs.  Returns the number of control outputs (should match
-// TF_NodeNumControlOutputs(node)).
-extern int TF_NodeGetControlOutputs(TF_Node* node, TF_Node** control_outputs,
-                                    int max_control_outputs);
+// TF_OperationNumControlOutputs(oper)).
+extern int TF_OperationGetControlOutputs(TF_Operation* oper,
+                                         TF_Operation** control_outputs,
+                                         int max_control_outputs);
 
 // Sets `output_attr_value` to the binary-serialized AttrValue proto
-// representation of the value of the `attr_name` attr of `node`.
-extern void TF_NodeGetAttrValueProto(TF_Node* node, const char* attr_name,
-                                     TF_Buffer* output_attr_value,
-                                     TF_Status* status);
+// representation of the value of the `attr_name` attr of `oper`.
+extern void TF_OperationGetAttrValueProto(TF_Operation* oper,
+                                          const char* attr_name,
+                                          TF_Buffer* output_attr_value,
+                                          TF_Status* status);
 
-// Returns the node in the graph with `node_name`. Returns nullptr if
-// no node found.
-extern TF_Node* TF_GraphNodeByName(TF_Graph* graph, const char* node_name);
+// Returns the operation in the graph with `oper_name`. Returns nullptr if
+// no operation found.
+extern TF_Operation* TF_GraphOperationByName(TF_Graph* graph,
+                                             const char* oper_name);
 
-// Iterate through the nodes of a graph.  To use:
+// Iterate through the operations of a graph.  To use:
 // size_t pos = 0;
-// TF_Node* node;
-// while ((node = TF_GraphNextNode(graph, &pos)) != nullptr) {
-//   DoSomethingWithNode(node);
+// TF_Operation* oper;
+// while ((oper = TF_GraphNextOperation(graph, &pos)) != nullptr) {
+//   DoSomethingWithOperation(oper);
 // }
-extern TF_Node* TF_GraphNextNode(TF_Graph* graph, size_t* pos);
+extern TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos);
 
 // Note: The following two functions may fail on very large protos in the
 // future.
@@ -473,18 +492,19 @@ extern TF_Node* TF_GraphNextNode(TF_Graph* graph, size_t* pos);
 extern void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
                                TF_Status* status);
 
-extern void TF_NodeToNodeDef(TF_Node* node, TF_Buffer* output_node_def,
-                             TF_Status* status);
+extern void TF_OperationToNodeDef(TF_Operation* oper,
+                                  TF_Buffer* output_node_def,
+                                  TF_Status* status);
 
-// TODO(josh11b): Query attrs for a Node.
+// TODO(josh11b): Query attrs for an operation.
 
-// TODO(cwhipkey): Query shape for node outputs.
+// TODO(cwhipkey): Query shape for operation outputs.
 
 // TODO(josh11b,mrry): Import GraphDef into TF_Graph.
 
 // TODO(andydavis): Function to add gradients to a graph.
 
-// TODO(josh11b): Register OpDef, available to all nodes added
+// TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.
 
 // The following two may both benefit from a subgraph-definition API
@@ -530,8 +550,8 @@ extern void TF_SessionRun(TF_SessionWithGraph* session,
                           // Output tensors
                           const TF_Port* outputs, TF_Tensor** output_values,
                           int noutputs,
-                          // Target nodes
-                          const TF_Node* const* target_nodes, int ntargets,
+                          // Target operations
+                          const TF_Operation* const* target_opers, int ntargets,
                           // RunMetadata
                           TF_Buffer* run_metadata,
                           // Output status
@@ -543,8 +563,8 @@ extern void TF_SessionPRunSetup(TF_SessionWithGraph*,
                                 const TF_Port* inputs, int ninputs,
                                 // Output names
                                 const TF_Port* outputs, int noutputs,
-                                // Target nodes
-                                const TF_Node* const* target_nodes,
+                                // Target operations
+                                const TF_Operation* const* target_opers,
                                 int ntargets,
                                 // Output handle
                                 const char** handle,
@@ -559,8 +579,9 @@ extern void TF_SessionPRun(TF_SessionWithGraph*, const char* handle,
                            // Output tensors
                            const TF_Port* outputs, TF_Tensor** output_values,
                            int noutputs,
-                           // Target nodes
-                           const TF_Node* const* target_nodes, int ntargets,
+                           // Target operations
+                           const TF_Operation* const* target_opers,
+                           int ntargets,
                            // Output status
                            TF_Status*);
 
@@ -622,10 +643,9 @@ extern void TF_Run(TF_Session*,
                    // Input tensors
                    const char** input_names, TF_Tensor** inputs, int ninputs,
                    // Output tensors
-                   const char** output_tensor_names, TF_Tensor** outputs,
-                   int noutputs,
-                   // Target nodes
-                   const char** target_node_names, int ntargets,
+                   const char** output_names, TF_Tensor** outputs, int noutputs,
+                   // Target operations
+                   const char** target_oper_names, int ntargets,
                    // RunMetadata
                    TF_Buffer* run_metadata,
                    // Output status
@@ -643,9 +663,9 @@ extern void TF_PRunSetup(TF_Session*,
                          // Input names
                          const char** input_names, int ninputs,
                          // Output names
-                         const char** output_tensor_names, int noutputs,
-                         // Target nodes
-                         const char** target_node_names, int ntargets,
+                         const char** output_names, int noutputs,
+                         // Target operations
+                         const char** target_oper_names, int ntargets,
                          // Output handle
                          const char** handle,
                          // Output status
@@ -658,10 +678,10 @@ extern void TF_PRun(TF_Session*, const char* handle,
                     // Input tensors
                     const char** input_names, TF_Tensor** inputs, int ninputs,
                     // Output tensors
-                    const char** output_tensor_names, TF_Tensor** outputs,
+                    const char** output_names, TF_Tensor** outputs,
                     int noutputs,
-                    // Target nodes
-                    const char** target_node_names, int ntargets,
+                    // Target operations
+                    const char** target_oper_names, int ntargets,
                     // Output status
                     TF_Status*);
 
