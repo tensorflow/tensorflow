@@ -276,17 +276,18 @@ ops.NoGradient("ZerosLike")
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
-  params = op.inputs[0]
-  indices = op.inputs[1]
-  # Colocate shape computations with params and indices
-  with ops.colocate_with(params):
-    params_shape = array_ops.shape(params)
-  with ops.colocate_with(indices):
-    size = array_ops.expand_dims(array_ops.size(indices), 0)
-  values_shape = array_ops.concat(0, [size, params_shape[1:]])
+  if op.inputs[0].get_shape().is_fully_defined():
+    dense_shape = constant_op.constant(op.inputs[0].get_shape().as_list())
+    values_shape = [-1] + op.inputs[0].get_shape()[1:].as_list()
+  else:
+    # op.inputs[0] can be large, so colocate the shape calculation with it.
+    with ops.colocate_with(op.inputs[0]):
+      dense_shape = array_ops.shape(op.inputs[0])
+      values_shape = array_ops.concat(0, [[-1], dense_shape[1:]])
+
   values = array_ops.reshape(grad, values_shape)
-  indices = array_ops.reshape(indices, size)
-  return [ops.IndexedSlices(values, indices, params_shape), None]
+  indices = array_ops.reshape(op.inputs[1], [-1])
+  return [ops.IndexedSlices(values, indices, dense_shape), None]
 
 
 @ops.RegisterGradient("GatherNd")

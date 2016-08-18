@@ -52,16 +52,9 @@ struct Gather<GPUDevice, T, Index> {
   Index operator()(const GPUDevice& d, typename TTypes<T>::ConstMatrix Tparams,
                    typename TTypes<Index>::ConstFlat Tindices,
                    typename TTypes<T>::Matrix Tout) {
-    const int64 out_size = Tout.size();
-    if (out_size == 0) {
-      // We need a check here since the CPU version does useful error checking
-      // work if there are nonempty indices but empty slices, so the kernel is
-      // executed in that case.  In the GPU case we don't know how to do error
-      // checking, so we skip the loop entirely.
-      return -1;
-    }
     const int64 first_dim_size = Tparams.dimension(0);
     const int64 indices_size = Tindices.size();
+    const int64 out_size = Tout.size();
     CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
     // clang-format off
     GatherOpKernel<T, Index>
