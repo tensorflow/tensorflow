@@ -499,6 +499,19 @@ class BarrierTest(tf.test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements"):
         sess.run(take_t[0])
 
+  def _testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(self, cancel):
+    with self.test_session() as sess:
+      b = data_flow_ops.Barrier(
+          (tf.float32, tf.float32), shapes=((), ()), name="B")
+      take_t = b.take_many(1, allow_small_batch=True)
+      sess.run(b.close(cancel))
+      with self.assertRaisesOpError("is closed and has insufficient elements"):
+        sess.run(take_t)
+
+  def testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(self):
+    self._testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(cancel=False)
+    self._testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(cancel=True)
+
   def _testParallelInsertManyTakeManyCloseHalfwayThrough(self, cancel):
     with self.test_session() as sess:
       b = data_flow_ops.Barrier(
