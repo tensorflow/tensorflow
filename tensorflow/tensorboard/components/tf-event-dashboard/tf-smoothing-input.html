@@ -11,11 +11,11 @@ tf-smoothing-input creates an input component for exponential smoothing.
     <div class="smoothing-line">
       <paper-checkbox
         checked="{{enabled}}"
-        >Exponential smoothing</paper-checkbox>
+        >Smoothing</paper-checkbox>
       <div class="smoothing-block">
         <paper-slider
-          value="{{decay}}"
-          immediate-value="{{_immediateDecayNumberForPaperSlider}}"
+          value="{{weight}}"
+          immediate-value="{{_immediateWeightNumberForPaperSlider}}"
           type="number"
           step="[[step]]"
           min="[[min]]"
@@ -24,9 +24,9 @@ tf-smoothing-input creates an input component for exponential smoothing.
           ></paper-slider>
         <paper-input
           id="input"
-          label="decay"
+          label="weight"
           no-label-float
-          value="{{_inputDecayStringForPaperInput}}"
+          value="{{_inputWeightStringForPaperInput}}"
           type="number"
           step="[[step]]"
           min="[[min]]"
@@ -85,29 +85,29 @@ tf-smoothing-input creates an input component for exponential smoothing.
         max: Number,
         min: Number,
 
-        decay: {
+        weight: {
           type: Number,
-          value: 0.9,
+          value: 0.6,
           notify: true
         },
 
-        _immediateDecayNumberForPaperSlider: {
+        _immediateWeightNumberForPaperSlider: {
           type: Number,
           notify: true,
-          observer: '_immediateDecayNumberForPaperSliderChanged'
+          observer: '_immediateWeightNumberForPaperSliderChanged'
         },
 
         // Paper input treats values as strings even if you specify them as
         // numbers.
-        _inputDecayStringForPaperInput: {
+        _inputWeightStringForPaperInput: {
           type: String,
           notify: true,
-          observer: '_inputDecayStringForPaperInputChanged'
+          observer: '_inputWeightStringForPaperInputChanged'
         }
       },
 
-      _updateDecay: _.debounce(function(val) {
-        this.decay = val;
+      _updateWeight: _.debounce(function(val) {
+        this.weight = val;
       }, 250),
 
       _enabledChanged: function() {
@@ -115,33 +115,33 @@ tf-smoothing-input creates an input component for exponential smoothing.
         // Element crashes if we change value while it is disabled.
         if (this.enabled) {
           this.$.input.label = '';
-          this._immediateDecayNumberForPaperSliderChanged();
+          this._immediateWeightNumberForPaperSliderChanged();
         }
       },
 
-      _immediateDecayNumberForPaperSliderChanged: function() {
+      _immediateWeightNumberForPaperSliderChanged: function() {
         if(!this.enabled) {
           return;
         }
-        this._inputDecayStringForPaperInput =
-            this._immediateDecayNumberForPaperSlider.toString();
-        this._updateDecay.call(this, this._immediateDecayNumberForPaperSlider);
+        this._inputWeightStringForPaperInput =
+            this._immediateWeightNumberForPaperSlider.toString();
+        this._updateWeight.call(this, this._immediateWeightNumberForPaperSlider);
       },
 
-      _inputDecayStringForPaperInputChanged: function() {
+      _inputWeightStringForPaperInputChanged: function() {
         if(!this.enabled) {
            return;
         }
-        if (+this._inputDecayStringForPaperInput < 0) {
-          this._inputDecayStringForPaperInput = '0';
+        if (+this._inputWeightStringForPaperInput < 0) {
+          this._inputWeightStringForPaperInput = '0';
         }
-        else if (+this._inputDecayStringForPaperInput > 1) {
-          this._inputDecayStringForPaperInput = '1';
+        else if (+this._inputWeightStringForPaperInput > 1) {
+          this._inputWeightStringForPaperInput = '1';
         }
 
-        var d = +this._inputDecayStringForPaperInput;
+        var d = +this._inputWeightStringForPaperInput;
         if (!isNaN(d)) {
-          this._updateDecay.call(this, d);
+          this._updateWeight.call(this, d);
         }
       }
     });

@@ -41,7 +41,7 @@ module VZ {
     private datasets: Plottable.Dataset[];
     private onDatasetChanged: (dataset: Plottable.Dataset) => void;
     private nanDataset: Plottable.Dataset;
-    private smoothingDecay: number;
+    private smoothingWeight: number;
     private smoothingEnabled: Boolean;
     private tooltipSortingMethod: string;
     private tooltipPosition: string;
@@ -411,15 +411,29 @@ module VZ {
     }
 
     private resmoothDataset(dataset: Plottable.Dataset) {
+      // When increasing the smoothing window, it smoothes a lot with the first
+      // few points and then starts to gradually smooth slower, so using an
+      // exponential function makes the slider more consistent. 1000^x has a
+      // range of [1, 1000], so subtracting 1 and dividing by 999 results in a
+      // range of [0, 1], which can be used as the percentage of the data, so
+      // that the kernel size can be specified as a percentage instead of a
+      // hardcoded number, what would be bad with multiple series.
+      let factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
       let data = dataset.data();
+      let kernelRadius = Math.floor(data.length * factor / 2);
 
-      // EMA with first step initialized to first element.
       data.forEach((d, i) => {
-        if (i === 0) {
+        let actualKernelRadius = Math.min(kernelRadius, i, data.length - i - 1);
+        let start = i - actualKernelRadius;
+        let end = i + actualKernelRadius + 1;
+
+        // Only smooth finite numbers.
+        if (!_.isFinite(d.scalar)) {
           d.smoothed = d.scalar;
         } else {
-          d.smoothed = (1.0 - this.smoothingDecay) * d.scalar +
-              this.smoothingDecay * data[i - 1].smoothed;
+          d.smoothed = d3.mean(
+              data.slice(start, end).filter((d) => _.isFinite(d.scalar)),
+              (d) => d.scalar);
         }
       });
     }
@@ -455,8 +469,8 @@ module VZ {
       this.getDataset(name).data(data);
     }
 
-    public smoothingUpdate(decay: number) {
-      this.smoothingDecay = decay;
+    public smoothingUpdate(weight: number) {
+      this.smoothingWeight = weight;
       this.datasets.forEach((d) => this.resmoothDataset(d));
 
       if (!this.smoothingEnabled) {
