@@ -173,6 +173,16 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         },
 
         /**
+         * The scale for the y-axis. Allows:
+         * - "linear" - linear scale (Plottable.Scales.Linear)
+         * - "log" - modified-log scale (Plottable.Scales.ModifiedLog)
+         */
+        yScaleType: {
+          type: String,
+          value: 'linear'
+        },
+
+        /**
          * Change how the tooltip is sorted. Allows:
          * - "name" - Sort the tooltip by series name.
          * - "ascending" - Sort the tooltip by ascending value.
