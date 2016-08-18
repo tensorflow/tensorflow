@@ -189,6 +189,7 @@ cuda_py_tests(
         "conv_ops_test.py",
         "depthwise_conv_op_test.py",  # http://b/30603882
         "division_future_test.py",
+        "extract_image_patches_grad_test.py",
         "fft_ops_test.py",
         "pooling_ops_3d_test.py",  # http://b/30600785
         "pooling_ops_test.py",

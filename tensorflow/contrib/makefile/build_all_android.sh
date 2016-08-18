@@ -17,6 +17,18 @@
 
 set -e
 
+usage() {
+    info "-x use hexagon library located at ../hexagon/<libs and include>"
+    exit 1
+}
+
+while getopts "x" opt_name; do
+    case "$opt_name" in
+        x) USE_HEXAGON=true;;
+        *) usage;;
+    esac
+done
+
 if [[ -z "${NDK_ROOT}" ]]; then
     echo "NDK_ROOT should be set as an environment variable" 1>&2
     exit 1
@@ -37,5 +49,12 @@ tensorflow/contrib/makefile/download_dependencies.sh
 CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
 tensorflow/contrib/makefile/compile_android_protobuf.sh -c
 
+if [[ "${USE_HEXAGON}" == "true" ]]; then
+    HEXAGON_PARENT_DIR=$(cd ../hexagon && pwd)
+    HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
+    HEXAGON_INCLUDE="${HEXAGON_PARENT_DIR}/include"
+fi
+
 make -f tensorflow/contrib/makefile/Makefile \
-TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}"
+TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
+HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}"

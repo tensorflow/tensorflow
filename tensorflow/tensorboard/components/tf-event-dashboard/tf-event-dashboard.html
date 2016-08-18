@@ -55,7 +55,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
           >Data download links</paper-checkbox>
           <tf-smoothing-input
             enabled="{{_smoothingEnabled}}"
-            decay="{{_smoothingDecay}}"
+            weight="{{_smoothingWeight}}"
             step="0.001"
             min="0"
             max="1"
@@ -115,7 +115,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                         id="chart"
                         x-type="[[_xType]]"
                         color-scale="[[colorScale]]"
-                        smoothing-decay="[[_smoothingDecay]]"
+                        smoothing-weight="[[_smoothingWeight]]"
                         smoothing-enabled="[[_smoothingEnabled]]"
                         tooltip-sorting-method="[[_tooltipSortingMethod]]"
                         on-keyup="toggleSelected"
@@ -176,7 +176,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
               false),
           observer: '_showDownloadLinksObserver'
         },
-        _smoothingDecay: Number,
+        _smoothingWeight: Number,
         _smoothingEnabled: Boolean,
         colorScale: {
           type: Object,

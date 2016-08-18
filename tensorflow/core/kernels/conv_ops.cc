@@ -18,6 +18,7 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/conv_ops.h"
 #include <string.h>
 #include <map>
 #include <vector>
@@ -50,6 +51,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+namespace {
 template <typename Device, typename T>
 struct LaunchGeneric {
   static void launch(OpKernelContext* ctx, const Tensor& input,
@@ -87,12 +89,10 @@ struct LaunchGeneric {
     }
   }
 };
-
-template <typename Device, typename T>
-class LaunchConvOp;
+}  // namespace
 
 template <typename T>
-class LaunchConvOp<CPUDevice, T> {
+class LaunchConv2DOp<CPUDevice, T> {
  public:
   void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
               const Tensor& input, const Tensor& filter, int row_stride,
@@ -231,7 +231,7 @@ class Conv2DOp : public BinaryOp<T> {
   bool use_cudnn_;
   Padding padding_;
   TensorFormat data_format_;
-  LaunchConvOp<Device, T> launcher_;
+  LaunchConv2DOp<Device, T> launcher_;
   bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
@@ -244,8 +244,11 @@ class Conv2DOp : public BinaryOp<T> {
 
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
-#if GOOGLE_CUDA
 
+// To be used inside depthwise_conv_op.cc.
+template class LaunchConv2DOp<CPUDevice, float>;
+
+#if GOOGLE_CUDA
 int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
                              int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
@@ -264,276 +267,265 @@ int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
 }
 
 template <typename T>
-class LaunchConvOp<GPUDevice, T> {
- public:
-  void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-              const Tensor& input_param, const Tensor& filter, int row_stride,
-              int col_stride, const Eigen::PaddingType& padding, Tensor* output,
-              TensorFormat data_format) {
-    using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmType;
-    using perftools::gputools::dnn::ProfileResult;
-    using perftools::gputools::dnn::kDefaultAlgorithm;
-    auto* stream = ctx->op_device_context()->stream();
-    OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
+void LaunchConv2DOp<GPUDevice, T>::launch(
+    OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+    const Tensor& input_param, const Tensor& filter, int row_stride,
+    int col_stride, const Eigen::PaddingType& padding, Tensor* output,
+    TensorFormat data_format) {
+  using perftools::gputools::dnn::AlgorithmConfig;
+  using perftools::gputools::dnn::AlgorithmType;
+  using perftools::gputools::dnn::ProfileResult;
+  using perftools::gputools::dnn::kDefaultAlgorithm;
+  auto* stream = ctx->op_device_context()->stream();
+  OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
-    if (!use_cudnn) {
-      ctx->SetStatus(
-          errors::Unimplemented("Conv2D for GPU is not currently supported "
-                                "without cudnn"));
-      return;
-    }
+  if (!use_cudnn) {
+    ctx->SetStatus(
+        errors::Unimplemented("Conv2D for GPU is not currently supported "
+                              "without cudnn"));
+    return;
+  }
 
-    Tensor input = input_param;
-    if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
-        col_stride == 1 && data_format == FORMAT_NHWC) {
-      // 1x1 filter, so call cublas directly.
-      const uint64 m =
-          input.dim_size(0) * input.dim_size(1) * input.dim_size(2);
-      const uint64 k = filter.dim_size(2);
-      const uint64 n = filter.dim_size(3);
+  Tensor input = input_param;
+  if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
+      col_stride == 1 && data_format == FORMAT_NHWC) {
+    // 1x1 filter, so call cublas directly.
+    const uint64 m = input.dim_size(0) * input.dim_size(1) * input.dim_size(2);
+    const uint64 k = filter.dim_size(2);
+    const uint64 n = filter.dim_size(3);
 
-      auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
-                                  input.template flat<T>().size());
-      auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
-                                  filter.template flat<T>().size());
-      auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
-                                  output->template flat<T>().size());
+    auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                input.template flat<T>().size());
+    auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
+                                filter.template flat<T>().size());
+    auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
+                                output->template flat<T>().size());
 
-      auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
-      bool blas_launch_status =
-          stream
-              ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr,
-                             n, a_ptr, k, 0.0f, &c_ptr, n)
-              .ok();
-      if (!blas_launch_status) {
-        ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                        ", n=", n, ", k=", k));
-      }
-
-      return;
-    }
-    int padding_rows = 0;
-    int padding_cols = 0;
-    const int64 in_batch = GetTensorDim(input, data_format, 'N');
-    int64 in_rows = GetTensorDim(input, data_format, 'H');
-    int64 in_cols = GetTensorDim(input, data_format, 'W');
-    const int64 in_depths = GetTensorDim(input, data_format, 'C');
-    const int64 out_batch = GetTensorDim(*output, data_format, 'N');
-    const int64 out_rows = GetTensorDim(*output, data_format, 'H');
-    const int64 out_cols = GetTensorDim(*output, data_format, 'W');
-    const int64 out_depths = GetTensorDim(*output, data_format, 'C');
-    const int64 patch_rows = filter.dim_size(0);
-    const int64 patch_cols = filter.dim_size(1);
-    if (padding == Eigen::PADDING_SAME) {
-      // Total padding on rows and cols is
-      // Pr = (R' - 1) * S + Kr - R
-      // Pc = (C' - 1) * S + Kc - C
-      // where (R', C') are output dimensions, (R, C) are input dimensions, S
-      // is stride, (Kr, Kc) are filter dimensions.
-      // We pad Pr/2 on the left and Pr - Pr/2 on the right, Pc/2 on the top
-      // and Pc - Pc/2 on the bottom.  When Pr or Pc is odd, this means
-      // we pad more on the right and bottom than on the top and left.
-      padding_rows =
-          std::max<int>(0, (out_rows - 1) * row_stride + patch_rows - in_rows);
-      padding_cols =
-          std::max<int>(0, (out_cols - 1) * col_stride + patch_cols - in_cols);
-      const bool rows_odd = (padding_rows % 2 != 0);
-      const bool cols_odd = (padding_cols % 2 != 0);
-      if (rows_odd || cols_odd) {
-        Tensor transformed_input;
-        int64 new_in_rows = in_rows + rows_odd;
-        int64 new_in_cols = in_cols + cols_odd;
-        OP_REQUIRES_OK(ctx,
-                       ctx->allocate_temp(
-                           DataTypeToEnum<T>::value,
-                           ShapeFromFormat(data_format, in_batch, new_in_rows,
-                                           new_in_cols, in_depths),
-                           &transformed_input));
-
-        functor::PadInput<GPUDevice, T, int, 4>()(
-            ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 4>()),
-            {{0, 0}}, {{rows_odd, cols_odd}},
-            To32Bit(transformed_input.tensor<T, 4>()), data_format);
-
-        input = transformed_input;
-        in_rows = new_in_rows;
-        in_cols = new_in_cols;
-      }
-    }
-
-    if (data_format == FORMAT_NHWC) {
-      // Convert the input tensor from NHWC to NCHW.
-      TensorShape nchw_shape =
-          ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
-      if (in_depths > 1) {
-        Tensor transformed_input;
-        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                               nchw_shape, &transformed_input));
-        functor::NHWCToNCHW<GPUDevice, T, 4>()(
-            ctx->eigen_device<GPUDevice>(),
-            const_cast<const Tensor&>(input).tensor<T, 4>(),
-            transformed_input.tensor<T, 4>());
-        input = transformed_input;
-      } else {
-        // If depth <= 1, then just reshape.
-        CHECK(input.CopyFrom(input, nchw_shape));
-      }
-    }
-
-    CHECK(padding_rows >= 0 && padding_cols >= 0)
-        << "Negative row or col paddings: (" << padding_rows << ", "
-        << padding_cols << ")";
-    perftools::gputools::dnn::BatchDescriptor input_desc;
-    input_desc.set_count(in_batch)
-        .set_feature_map_count(in_depths)
-        .set_height(in_rows)
-        .set_width(in_cols)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::BatchDescriptor output_desc;
-    output_desc.set_count(out_batch)
-        .set_height(out_rows)
-        .set_width(out_cols)
-        .set_feature_map_count(out_depths)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-    perftools::gputools::dnn::FilterDescriptor filter_desc;
-    filter_desc.set_input_filter_height(filter.dim_size(0))
-        .set_input_filter_width(filter.dim_size(1))
-        .set_input_feature_map_count(filter.dim_size(2))
-        .set_output_feature_map_count(filter.dim_size(3));
-    perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
-    conv_desc.set_vertical_filter_stride(row_stride)
-        .set_horizontal_filter_stride(col_stride)
-        .set_zero_padding_height(padding_rows / 2)
-        .set_zero_padding_width(padding_cols / 2);
-
-    Tensor transformed_filter;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       TensorShape({filter.dim_size(3), filter.dim_size(2),
-                                    filter.dim_size(0), filter.dim_size(1)}),
-                       &transformed_filter));
-
-    functor::TransformFilter<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 4>()),
-        To32Bit(transformed_filter.tensor<T, 4>()));
-
-    Tensor transformed_output;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, out_batch,
-                                                out_rows, out_cols, out_depths),
-                                &transformed_output));
-
-    auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
-                                    input.template flat<T>().size());
-    auto filter_ptr =
-        AsDeviceMemory(transformed_filter.template flat<T>().data(),
-                       transformed_filter.template flat<T>().size());
-    auto output_ptr =
-        AsDeviceMemory(transformed_output.template flat<T>().data(),
-                       transformed_output.template flat<T>().size());
-
-    static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
-        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
-        );
-
-    int device_id = stream->parent()->device_ordinal();
-    ConvParameters conv_parameters = {
-        in_batch,      // batch
-        in_depths,     // in_depths
-        in_rows,       // in_rows
-        in_cols,       // in_cols
-        out_depths,    // out_depths
-        patch_rows,    // filter_rows
-        patch_cols,    // filter_cols
-        row_stride,    // stride_rows
-        col_stride,    // stride_cols
-        padding_rows,  // padding_rows
-        padding_cols,  // padding_cols
-        device_id,     // device_id
-    };
-    AlgorithmConfig algorithm_config;
-    if (cudnn_use_autotune &&
-        !autotune_results_.Find(conv_parameters, &algorithm_config)) {
-      std::vector<AlgorithmType> algorithms;
-      CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
-      ProfileResult best_result;
-      ProfileResult best_result_no_scratch;
-      for (auto profile_algorithm : algorithms) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-        ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
-          }
-        }
-      }
-      OP_REQUIRES(ctx, best_result.is_valid() &&
-                           best_result.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm worked!"));
-      OP_REQUIRES(ctx,
-                  best_result_no_scratch.is_valid() &&
-                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm without scratch worked!"));
-      algorithm_config.set_algorithm(best_result.algorithm());
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
-      autotune_results_.Insert(conv_parameters, algorithm_config);
-    }
-
-    CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-    bool cudnn_launch_status =
+    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    bool blas_launch_status =
         stream
-            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                        filter_ptr, conv_desc, output_desc,
-                                        &output_ptr, &scratch_allocator,
-                                        algorithm_config, nullptr)
+            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
+                           a_ptr, k, 0.0f, &c_ptr, n)
             .ok();
-
-    if (!cudnn_launch_status) {
-      ctx->SetStatus(errors::Internal(
-          "cuDNN launch failure : input shape(", input.shape().DebugString(),
-          ") filter shape(", filter.shape().DebugString(), ")"));
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
     }
 
-    // Convert the output tensor back from NHWC to NCHW.
-    if (data_format == FORMAT_NHWC) {
-      functor::NCHWToNHWC<GPUDevice, T, 4>()(
-          ctx->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
-          output->tensor<T, 4>());
-    } else {
-      *output = transformed_output;
+    return;
+  }
+  int padding_rows = 0;
+  int padding_cols = 0;
+  const int64 in_batch = GetTensorDim(input, data_format, 'N');
+  int64 in_rows = GetTensorDim(input, data_format, 'H');
+  int64 in_cols = GetTensorDim(input, data_format, 'W');
+  const int64 in_depths = GetTensorDim(input, data_format, 'C');
+  const int64 out_batch = GetTensorDim(*output, data_format, 'N');
+  const int64 out_rows = GetTensorDim(*output, data_format, 'H');
+  const int64 out_cols = GetTensorDim(*output, data_format, 'W');
+  const int64 out_depths = GetTensorDim(*output, data_format, 'C');
+  const int64 patch_rows = filter.dim_size(0);
+  const int64 patch_cols = filter.dim_size(1);
+  if (padding == Eigen::PADDING_SAME) {
+    // Total padding on rows and cols is
+    // Pr = (R' - 1) * S + Kr - R
+    // Pc = (C' - 1) * S + Kc - C
+    // where (R', C') are output dimensions, (R, C) are input dimensions, S
+    // is stride, (Kr, Kc) are filter dimensions.
+    // We pad Pr/2 on the left and Pr - Pr/2 on the right, Pc/2 on the top
+    // and Pc - Pc/2 on the bottom.  When Pr or Pc is odd, this means
+    // we pad more on the right and bottom than on the top and left.
+    padding_rows =
+        std::max<int>(0, (out_rows - 1) * row_stride + patch_rows - in_rows);
+    padding_cols =
+        std::max<int>(0, (out_cols - 1) * col_stride + patch_cols - in_cols);
+    const bool rows_odd = (padding_rows % 2 != 0);
+    const bool cols_odd = (padding_cols % 2 != 0);
+    if (rows_odd || cols_odd) {
+      Tensor transformed_input;
+      int64 new_in_rows = in_rows + rows_odd;
+      int64 new_in_cols = in_cols + cols_odd;
+      OP_REQUIRES_OK(
+          ctx,
+          ctx->allocate_temp(DataTypeToEnum<T>::value,
+                             ShapeFromFormat(data_format, in_batch, new_in_rows,
+                                             new_in_cols, in_depths),
+                             &transformed_input));
+
+      functor::PadInput<GPUDevice, T, int, 4>()(
+          ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 4>()),
+          {{0, 0}}, {{rows_odd, cols_odd}},
+          To32Bit(transformed_input.tensor<T, 4>()), data_format);
+
+      input = transformed_input;
+      in_rows = new_in_rows;
+      in_cols = new_in_cols;
     }
   }
 
- private:
-  AutoTuneMap<ConvParameters, perftools::gputools::dnn::AlgorithmConfig>
-      autotune_results_;
-};
+  if (data_format == FORMAT_NHWC) {
+    // Convert the input tensor from NHWC to NCHW.
+    TensorShape nchw_shape =
+        ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
+    if (in_depths > 1) {
+      Tensor transformed_input;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                             nchw_shape, &transformed_input));
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(
+          ctx->eigen_device<GPUDevice>(),
+          const_cast<const Tensor&>(input).tensor<T, 4>(),
+          transformed_input.tensor<T, 4>());
+      input = transformed_input;
+    } else {
+      // If depth <= 1, then just reshape.
+      CHECK(input.CopyFrom(input, nchw_shape));
+    }
+  }
 
-#endif  // GOOGLE_CUDA
+  CHECK(padding_rows >= 0 && padding_cols >= 0)
+      << "Negative row or col paddings: (" << padding_rows << ", "
+      << padding_cols << ")";
+  perftools::gputools::dnn::BatchDescriptor input_desc;
+  input_desc.set_count(in_batch)
+      .set_feature_map_count(in_depths)
+      .set_height(in_rows)
+      .set_width(in_cols)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+  perftools::gputools::dnn::BatchDescriptor output_desc;
+  output_desc.set_count(out_batch)
+      .set_height(out_rows)
+      .set_width(out_cols)
+      .set_feature_map_count(out_depths)
+      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+  perftools::gputools::dnn::FilterDescriptor filter_desc;
+  filter_desc.set_input_filter_height(filter.dim_size(0))
+      .set_input_filter_width(filter.dim_size(1))
+      .set_input_feature_map_count(filter.dim_size(2))
+      .set_output_feature_map_count(filter.dim_size(3));
+  perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
+  conv_desc.set_vertical_filter_stride(row_stride)
+      .set_horizontal_filter_stride(col_stride)
+      .set_zero_padding_height(padding_rows / 2)
+      .set_zero_padding_width(padding_cols / 2);
 
-#if GOOGLE_CUDA
+  Tensor transformed_filter;
+  OP_REQUIRES_OK(ctx, ctx->allocate_temp(
+                          DataTypeToEnum<T>::value,
+                          TensorShape({filter.dim_size(3), filter.dim_size(2),
+                                       filter.dim_size(0), filter.dim_size(1)}),
+                          &transformed_filter));
+
+  functor::TransformFilter<GPUDevice, T, int, 4>()(
+      ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 4>()),
+      To32Bit(transformed_filter.tensor<T, 4>()));
+
+  Tensor transformed_output;
+  OP_REQUIRES_OK(
+      ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                              ShapeFromFormat(FORMAT_NCHW, out_batch, out_rows,
+                                              out_cols, out_depths),
+                              &transformed_output));
+
+  auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                  input.template flat<T>().size());
+  auto filter_ptr =
+      AsDeviceMemory(transformed_filter.template flat<T>().data(),
+                     transformed_filter.template flat<T>().size());
+  auto output_ptr =
+      AsDeviceMemory(transformed_output.template flat<T>().data(),
+                     transformed_output.template flat<T>().size());
+
+  static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
+      );
+
+  int device_id = stream->parent()->device_ordinal();
+  ConvParameters conv_parameters = {
+      in_batch,      // batch
+      in_depths,     // in_depths
+      in_rows,       // in_rows
+      in_cols,       // in_cols
+      out_depths,    // out_depths
+      patch_rows,    // filter_rows
+      patch_cols,    // filter_cols
+      row_stride,    // stride_rows
+      col_stride,    // stride_cols
+      padding_rows,  // padding_rows
+      padding_cols,  // padding_cols
+      device_id,     // device_id
+  };
+  AlgorithmConfig algorithm_config;
+  if (cudnn_use_autotune &&
+      !autotune_results_.Find(conv_parameters, &algorithm_config)) {
+    std::vector<AlgorithmType> algorithms;
+    CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
+    ProfileResult best_result;
+    ProfileResult best_result_no_scratch;
+    for (auto profile_algorithm : algorithms) {
+      // TODO(zhengxq): profile each algorithm multiple times to better
+      // accuracy.
+      CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      ProfileResult profile_result;
+      bool cudnn_launch_status =
+          stream
+              ->ThenConvolveWithAlgorithm(
+                  input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                  output_desc, &output_ptr, &scratch_allocator,
+                  AlgorithmConfig(profile_algorithm), &profile_result)
+              .ok();
+      if (cudnn_launch_status) {
+        if (profile_result.is_valid()) {
+          if (profile_result.elapsed_time_in_ms() <
+              best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+          if (scratch_allocator.TotalByteSize() == 0 &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result_no_scratch.elapsed_time_in_ms()) {
+            best_result_no_scratch = profile_result;
+          }
+        }
+      }
+    }
+    OP_REQUIRES(ctx, best_result.is_valid() &&
+                         best_result.algorithm() != kDefaultAlgorithm,
+                errors::NotFound("No algorithm worked!"));
+    OP_REQUIRES(ctx,
+                best_result_no_scratch.is_valid() &&
+                    best_result_no_scratch.algorithm() != kDefaultAlgorithm,
+                errors::NotFound("No algorithm without scratch worked!"));
+    algorithm_config.set_algorithm(best_result.algorithm());
+    algorithm_config.set_algorithm_no_scratch(
+        best_result_no_scratch.algorithm());
+    autotune_results_.Insert(conv_parameters, algorithm_config);
+  }
+
+  CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+  bool cudnn_launch_status =
+      stream
+          ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                      filter_ptr, conv_desc, output_desc,
+                                      &output_ptr, &scratch_allocator,
+                                      algorithm_config, nullptr)
+          .ok();
+
+  if (!cudnn_launch_status) {
+    ctx->SetStatus(errors::Internal(
+        "cuDNN launch failure : input shape(", input.shape().DebugString(),
+        ") filter shape(", filter.shape().DebugString(), ")"));
+  }
+
+  // Convert the output tensor back from NHWC to NCHW.
+  if (data_format == FORMAT_NHWC) {
+    functor::NCHWToNHWC<GPUDevice, T, 4>()(
+        ctx->eigen_device<GPUDevice>(),
+        const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
+        output->tensor<T, 4>());
+  } else {
+    *output = transformed_output;
+  }
+}
+
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                  \
@@ -576,6 +568,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv2DOp<GPUDevice, float>);
+
+// To be used inside depthwise_conv_op.cc.
+template class LaunchConv2DOp<GPUDevice, float>;
 
 #endif  // GOOGLE_CUDA
 

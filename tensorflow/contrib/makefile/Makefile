@@ -19,6 +19,28 @@ HAS_GEN_HOST_PROTOC := \
 $(shell test -f $(MAKEFILE_DIR)/gen/protobuf-host/bin/protoc && echo "true" ||\
 echo "false")
 
+# Hexagon integration
+ifdef HEXAGON_LIBS
+	LIBGEMM_WRAPPER := $(HEXAGON_LIBS)/libgemm_wrapper.so
+	ifeq ($(shell test -f $(LIBGEMM_WRAPPER) 2> /dev/null; echo $$?), 0)
+    $(info "Use hexagon libs at " $(LIBGEMM_WRAPPER))
+	else
+    $(error "hexagon libs not found at " $(LIBGEMM_WRAPPER))
+	endif
+	ifdef HEXAGON_INCLUDE
+		ifeq ($(shell test -d $(HEXAGON_INCLUDE) 2> /dev/null; echo $$?), 0)
+      $(info "Use hexagon libs at " $(HEXAGON_INCLUDE))
+		else
+      $(error "hexagon libs not found at " $(HEXAGON_INCLUDE))
+		endif
+	else
+    $(error "HEXAGON_INCLUDE is not set.")
+	endif
+	ifneq ($(TARGET),ANDROID)
+    $(error "hexagon is only supported on Android")
+	endif
+endif # HEXAGON_LIBS
+
 # Try to figure out the host system
 HOST_OS :=
 ifeq ($(OS),Windows_NT)
@@ -183,6 +205,7 @@ ifeq ($(TARGET),ANDROID)
 # NDK_ROOT=/path/to/your/ndk
 # You need to have an Android version of the protobuf libraries compiled to link
 # in. The compile_android_protobuf.sh script may help.
+# TODO(satok): Support all CPU architectures (Currently only armv7 is supported)
 
 	OS_PATH :=
 	ifeq ($(HOST_OS),LINUX)
@@ -192,11 +215,11 @@ ifeq ($(TARGET),ANDROID)
 		OS_PATH=darwin
 	endif
 	ifeq ($(HOST_OS),WINDOWS)
-		$(error "windows is not supported.")
+    $(error "windows is not supported.")
 	endif
 
 	ifndef NDK_ROOT
-		$(error "NDK_ROOT is not defined.")
+    $(error "NDK_ROOT is not defined.")
 	endif
 	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-g++
 	CXXFLAGS +=\
@@ -224,6 +247,7 @@ ifeq ($(TARGET),ANDROID)
 -lm
 
 	LD := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/arm-linux-androideabi/bin/ld
+
 	LDFLAGS := \
 -march=armv7-a \
 -L$(MAKEFILE_DIR)/gen/protobuf/lib \
@@ -235,6 +259,12 @@ ifeq ($(TARGET),ANDROID)
 	AR := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-ar
 	ARFLAGS := r
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
+
+	ifdef HEXAGON_LIBS
+		INCLUDES += -I$(HEXAGON_INCLUDE)
+		LIBS += -lgemm_wrapper
+		LDFLAGS += -L$(HEXAGON_LIBS)
+	endif
 
 endif  # ANDROID
 

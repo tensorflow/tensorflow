@@ -19,7 +19,8 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.contrib.slim.python.slim.nets import vgg
+from tensorflow.contrib.slim.nets import vgg
+
 slim = tf.contrib.slim
 
 

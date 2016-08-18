@@ -61,6 +61,16 @@ py_library(
 )
 
 py_library(
+    name = "nets",
+    srcs = ["nets.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":slim",
+        "//tensorflow/contrib/slim/python/slim/nets",
+    ],
+)
+
+py_library(
     name = "queues",
     srcs = ["python/slim/queues.py"],
     srcs_version = "PY2AND3",

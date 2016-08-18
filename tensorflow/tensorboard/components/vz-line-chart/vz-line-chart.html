@@ -7,8 +7,7 @@ vz-line-chart creates an element that draws a line chart for
 displaying event values.
 
 This line chart supports drawing multiple lines at the same time, with features
-such as different X scales (linear and temporal), tooltips and exponential
-smoothing.
+such as different X scales (linear and temporal), tooltips and smoothing.
 
 @demo
 -->
@@ -123,22 +122,41 @@ smoothing.
         },
 
         /**
-         * Decay (between 0.0 and 1.0) of the exponential smoothing. A higher
-         * decay results in more smoothing.
-         */
-        smoothingDecay: {
-          type: Number,
-          value: 0.9
-        },
-
-        /**
-         * Whether exponential smoothing is enabled or not. If true, smoothed
-         * lines will be plotted in the chart while the unsmoothed lines will be
-         * ghosted in the background.
+         * Whether smoothing is enabled or not. If true, smoothed lines will be
+         * plotted in the chart while the unsmoothed lines will be ghosted in
+         * the background.
+         *
+         * The smoothing algorithm is a simple moving average, which, given a
+         * point p and a window w, replaces p with a simple average of the
+         * points in the [p - floor(w/2), p + floor(w/2)] range.
+         * If there aren't enough points to cover the entire window to the left
+         * and to the right, the window is reduced to fit exactly the amount of
+         * elements available. This means that the smoothed line will be less
+         * smoothed at both extremities and gradually become more smooth until
+         * the desired window is reached.
          */
         smoothingEnabled: {
           type: Boolean,
           value: false
+        },
+
+        /**
+         * Weight (between 0.0 and 1.0) of the smoothing. This weight controls
+         * the window size, and a weight of 1.0 means using the entire length of
+         * each dataset as the window, while a weight of 0.0 means using a
+         * window of 0 (and thus replacing each point with themselves).
+         *
+         * The growth between 0.0 and 1.0 is not linear though. Because changing
+         * the window from 0% to 30% of the dataset smooths the line a lot more
+         * than changing the window from 70% to 100%, an exponential function is
+         * used instead. This function increases the size of the window slowly
+         * at the beginning and gradually speeds up the growth, but 0.0 still
+         * means a window of 0 and 1.0 still means a window of the dataset's
+         * length.
+         */
+        smoothingWeight: {
+          type: Number,
+          value: 0.6
         },
 
         /**
@@ -165,6 +183,16 @@ smoothing.
           value: 'name'
         },
 
+        /**
+         * Change how the tooltip is positioned. Allows:
+         * - "bottom" - Position the tooltip on the bottom of the chart.
+         * - "right" - Position the tooltip to the right of the chart.
+         */
+        tooltipPosition: {
+          type: String,
+          value: 'bottom'
+        },
+
         _attached: Boolean,
         _chart: Object,
         _visibleSeriesCache: {
@@ -183,8 +211,9 @@ smoothing.
       observers: [
         "_makeChart(xType, colorScale, _attached)",
         "_reloadFromCache(_chart)",
-        "_smoothingChanged(smoothingDecay, smoothingEnabled, _chart)",
-        "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)"
+        "_smoothingChanged(smoothingEnabled, smoothingWeight, _chart)",
+        "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)",
+        "_tooltipPositionChanged(tooltipPosition, _chart)"
       ],
 
       /**
@@ -265,7 +294,7 @@ smoothing.
           return;
         }
         if(this.smoothingEnabled) {
-          this._chart.smoothingUpdate(this.smoothingDecay);
+          this._chart.smoothingUpdate(this.smoothingWeight);
         }
         else {
           this._chart.smoothingDisable();
@@ -274,6 +303,11 @@ smoothing.
       _tooltipSortingMethodChanged: function() {
         if(this._chart) {
           this._chart.setTooltipSortingMethod(this.tooltipSortingMethod);
+        }
+      },
+      _tooltipPositionChanged: function() {
+        if (this._chart) {
+          this._chart.setTooltipPosition(this.tooltipPosition);
         }
       }
     });

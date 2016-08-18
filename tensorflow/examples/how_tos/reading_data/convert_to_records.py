@@ -79,7 +79,8 @@ def main(argv):
   # Get the data.
   data_sets = mnist.read_data_sets(FLAGS.directory,
                                    dtype=tf.uint8,
-                                   reshape=False)
+                                   reshape=False,
+                                   validation_size=FLAGS.validation_size)
 
   # Convert to Examples and write the result to TFRecords.
   convert_to(data_sets.train, 'train')

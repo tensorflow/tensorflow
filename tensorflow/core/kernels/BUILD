@@ -1328,6 +1328,7 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     prefix = "depthwise_conv_op",
     deps = [
+        ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1936,6 +1937,7 @@ filegroup(
         "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
+        "conv_ops.h",
         "image_resizer_state.h",
         "maxpooling_op.h",
         "pad_op.h",
