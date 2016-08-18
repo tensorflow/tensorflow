@@ -105,7 +105,7 @@ class Variable(object):
   `all_variables()` returns the contents of that collection.
 
   When building a machine learning model it is often convenient to distinguish
-  betwen variables holding the trainable model parameters and other variables
+  between variables holding the trainable model parameters and other variables
   such as a `global step` variable used to count training steps. To make this
   easier, the variable constructor supports a `trainable=<bool>` parameter. If
   `True`, the new variable is also added to the graph collection
@@ -185,9 +185,6 @@ class Variable(object):
       dtype: If set, initial_value will be converted to the given type.
         If `None`, either the datatype will be kept (if `initial_value` is
         a Tensor), or `convert_to_tensor` will decide.
-
-    Returns:
-      A Variable.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -1008,7 +1005,7 @@ def report_uninitialized_variables(var_list=None,
     name: Optional name of the `Operation`.
 
   Returns:
-    A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+    A 1-D tensor containing names of the uninitialized variables, or an empty 1-D
     tensor if there are no variables or no uninitialized variables.
   """
   if var_list is None:

@@ -382,26 +382,26 @@ class SaverTest(tf.test.TestCase):
       self.assertEqual(b"k1", v2.keys().eval())
       self.assertEqual(3.0, v2.values().eval())
 
-  def testVarListShouldBeEmptyInDefferedBuild(self):
+  def testVarListShouldBeEmptyInDeferredBuild(self):
     with tf.Graph().as_default():
       v = tf.Variable(1.0)
       with self.assertRaisesRegexp(ValueError, "defer_build"):
         tf.train.Saver([v], defer_build=True)
 
   def testBuildShouldBeCalledBeforeSaveInCaseOfDeferBuild(self):
-    save_path = os.path.join(self.get_temp_dir(), "error_deffered_build")
+    save_path = os.path.join(self.get_temp_dir(), "error_deferred_build")
     with tf.Graph().as_default(), tf.Session() as sess:
       tf.Variable(1.0)
       saver = tf.train.Saver(defer_build=True)
       with self.assertRaisesRegexp(RuntimeError, "build"):
         saver.save(sess, save_path)
 
-  def testDefferedBuild(self):
-    save_path = os.path.join(self.get_temp_dir(), "deffered_build")
+  def testDeferredBuild(self):
+    save_path = os.path.join(self.get_temp_dir(), "deferred_build")
     with tf.Session("", graph=tf.Graph()) as sess:
       one = tf.Variable(1.0)
       save = tf.train.Saver(defer_build=True)
-      # if build is not defered, saver cannot save the `twos`.
+      # if build is not deferred, saver cannot save the `twos`.
       twos = tf.Variable([2.0, 2.0, 2.0])
       init = tf.initialize_all_variables()
       save.build()
@@ -459,6 +459,30 @@ class SaverTest(tf.test.TestCase):
           val = save.save(sess, save_path, global_step=global_step_int)
         expected_save_path = "%s-%d" % (save_path, global_step_int)
         self.assertEqual(expected_save_path, val)
+
+  def testSaveToNonexistingPath(self):
+
+    save_path = os.path.join(self.get_temp_dir(), "nonexisting_dir/path")
+
+    # Build a graph with 2 parameter nodes, and Save and
+    # Restore nodes for them.
+    v0 = tf.Variable(10.0, name="v0")
+    v1 = tf.Variable(20.0, name="v1")
+    save = tf.train.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
+    init_all_op = tf.initialize_all_variables()
+
+    with self.test_session() as sess:
+      # Initialize all variables
+      sess.run(init_all_op)
+
+      # Check that the parameter nodes have been initialized.
+      self.assertEqual(10.0, v0.eval())
+      self.assertEqual(20.0, v1.eval())
+
+      # Assert saving fails when parent dir of save path doesn't exist
+      with self.assertRaisesWithPredicateMatch(
+        ValueError, lambda e:  "Parent directory of {} doesn't exist, can't save.".format(save_path) in str(e)):
+          save.save(sess, save_path)
 
 
 class SaveRestoreShardedTest(tf.test.TestCase):
@@ -1429,7 +1453,7 @@ class MetaGraphTest(tf.test.TestCase):
       new_saver.export_meta_graph()
       # Restores from checkpoint.
       new_saver.restore(sess, saver0_ckpt)
-      # Addes loss and train.
+      # Adds loss and train.
       labels = tf.constant(0, tf.int32, shape=[100], name="labels")
       batch_size = tf.size(labels)
       labels = tf.expand_dims(labels, 1)

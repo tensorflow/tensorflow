@@ -106,8 +106,8 @@ class Supervisor(object):
 
   In the *chief* task, the `Supervisor` works exactly as in the first example
   above.  In the other tasks `sv.managed_session()` waits for the Model to have
-  been intialized before returning a session to the training code.  The
-  non-chief tasks depend on the chief taks for initializing the model.
+  been initialized before returning a session to the training code.  The
+  non-chief tasks depend on the chief task for initializing the model.
 
   If one of the tasks crashes and restarts, `managed_session()`
   checks if the Model is initialized.  If yes, it just creates a session and
@@ -458,7 +458,7 @@ class Supervisor(object):
     self._saver = saver
 
   def _init_summary_op(self, summary_op=USE_DEFAULT):
-    """Initilizes summary_op.
+    """Initializes summary_op.
 
     Args:
       summary_op: An Operation that returns a Summary for the event logs.
@@ -730,7 +730,7 @@ class Supervisor(object):
     Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
     are already started automatically when you create a session with the
     supervisor, so unless you have non-collected queue runners to start
-    you do not need to call this explicitely.
+    you do not need to call this explicitly.
 
     Args:
       sess: A `Session`.

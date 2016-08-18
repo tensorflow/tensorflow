@@ -2008,15 +2008,17 @@ class SparseApplyRMSPropOp : public OpKernel {
                     "var and mom do not have the same shape",
                     var.shape().DebugString(), " ", mom.shape().DebugString()));
 
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and grad do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                grad.shape().DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(var.shape()),
+                errors::InvalidArgument("var must be at least 1 dimensional"));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    for (int d = 1; d < var.dims(); d++) {
+      OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
+                  errors::InvalidArgument(
+                    "var and grad must match in dimension ", d));
+    }
     const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
         ctx, grad.dim_size(0) == N,

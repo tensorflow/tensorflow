@@ -258,7 +258,7 @@ def natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate,
   decayed_learning_rate = learning_rate * exp(-decay_rate * global_step)
   ```
 
-  Example: decay exponetially with a base of 0.96:
+  Example: decay exponentially with a base of 0.96:
 
   ```python
   ...
