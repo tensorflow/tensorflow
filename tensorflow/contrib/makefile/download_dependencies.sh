@@ -61,5 +61,6 @@ eigen-latest/Eigen/src/Core/arch/NEON/Complex.h
 git clone https://github.com/google/re2.git re2
 git clone https://github.com/google/gemmlowp.git gemmlowp
 git clone https://github.com/google/protobuf.git protobuf
+git clone https://github.com/google/googletest.git googletest
 
 echo "download_dependencies.sh completed successfully."

@@ -402,19 +402,7 @@ bool DoConstantFolding(const ConstantFoldingOptions& opts,
   args.rendezvous = rendez;
 
   // Run the constant_graph.
-  Notification executor_done;
-  Status executor_done_status;
-  ExecutorBarrier* barrier = new ExecutorBarrier(
-      1, rendez, [&executor_done, &executor_done_status](const Status& ret) {
-        executor_done_status = ret;
-        executor_done.Notify();
-      });
-
-  executor->RunAsync(args, barrier->Get());
-
-  executor_done.WaitForNotification();
-
-  if (!executor_done_status.ok()) {
+  if (!executor->Run(args).ok()) {
     return false;
   }
 

@@ -1689,11 +1689,10 @@ class RawRNNTest(tf.test.TestCase):
             gradients_dynamic_rnn,
             feed_dict={inputs: rand_input, sequence_length: rand_seq_len})
         self.assertEqual(len(gradients_val), len(gradients_dynamic_rnn_val))
-        # TODO(ebrevdo): Re-enable when we find culprit of the flakiness.
-        # input_gradients_val = gradients_val[0]
-        # input_gradients_dynamic_rnn_val = gradients_dynamic_rnn_val[0]
-        # self.assertAllClose(
-        #     input_gradients_val, input_gradients_dynamic_rnn_val)
+        input_gradients_val = gradients_val[0]
+        input_gradients_dynamic_rnn_val = gradients_dynamic_rnn_val[0]
+        self.assertAllClose(
+            input_gradients_val, input_gradients_dynamic_rnn_val)
         for i in range(1, len(gradients_val)):
           self.assertAllClose(gradients_dynamic_rnn_val[i], gradients_val[i])
 

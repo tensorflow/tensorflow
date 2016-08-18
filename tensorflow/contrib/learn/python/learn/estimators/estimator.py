@@ -44,6 +44,7 @@ from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -374,6 +375,29 @@ class BaseEstimator(
   @property
   def model_dir(self):
     return self._model_dir
+
+  def export(self, export_dir, signature_fn=None,
+             input_fn=export.default_input_fn, default_batch_size=1,
+             exports_to_keep=None):
+    """Exports inference graph into given dir.
+
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      input_fn: Function that given `Tensor` of `Example` strings, parses it
+        into features that are then passed to the model.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
+    """
+    export.export_estimator(estimator=self,
+                            export_dir=export_dir,
+                            signature_fn=signature_fn,
+                            input_fn=input_fn,
+                            default_batch_size=default_batch_size,
+                            exports_to_keep=exports_to_keep)
 
   @abc.abstractproperty
   def _get_train_ops(self, features, targets):
