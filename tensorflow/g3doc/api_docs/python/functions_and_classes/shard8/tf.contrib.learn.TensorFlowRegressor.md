@@ -43,6 +43,26 @@ See `Evaluable`.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRegressor.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowRegressor.fit}
 
 
