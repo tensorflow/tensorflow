@@ -590,12 +590,6 @@ class Variable(object):
     else:
       return v.value()
 
-  # Operator overloading.
-  #
-  # To carry over all overloaded operators from ops.Tensor to Variable, we
-  # register the _RunOp() static method as the implementation of all operators.
-  # That function dynamically discovers the overloaded operator in ops.Tensor
-  # and invokes it after converting the Variable to a tensor.
   @staticmethod
   def _OverloadAllOperators():
     """Register overloads for all operators."""
@@ -604,15 +598,17 @@ class Variable(object):
 
   @staticmethod
   def _OverloadOperator(operator):
-    """Register _RunOp as the implementation of 'operator'.
+    """Defer an operator overload to `ops.Tensor`.
+
+    We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
 
     Args:
       operator: string. The operator name.
     """
-    if operator in ["__invert__", "__neg__", "__abs__"]:
-      setattr(Variable, operator, lambda a: Variable._RunOp(operator, a, None))
-    else:
-      setattr(Variable, operator, lambda a, b: Variable._RunOp(operator, a, b))
+    def _run_op(a, *args):
+      # pylint: disable=protected-access
+      return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
+    setattr(Variable, operator, _run_op)
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -622,24 +618,6 @@ class Variable(object):
   # mechanism, which allows more control over how Variables interact
   # with ndarrays.
   __array_priority__ = 100
-
-  @staticmethod
-  def _RunOp(operator, a, b):
-    """Run the operator 'op' for 'a'.
-
-    Args:
-      operator: string. The operator name.
-      a: A Variable.
-      b: Second argument to the operator. None if unary.
-    Returns:
-      The result of the operator.
-    """
-    # pylint: disable=protected-access
-    if b is not None:
-      return getattr(ops.Tensor, operator)(a._AsTensor(), b)
-    else:
-      return getattr(ops.Tensor, operator)(a._AsTensor())
-    # pylint: enable=protected-access
 
   @property
   def name(self):
