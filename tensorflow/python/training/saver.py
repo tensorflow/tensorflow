@@ -1070,7 +1070,7 @@ class Saver(object):
             self._MetaGraphFilename(checkpoint_prefix, meta_graph_suffix))
         if self.saver_def.version == saver_pb2.SaverDef.V2:
           # V2 has a metadata file and some data files.
-          self._delete_file_if_exists(checkpoint_prefix + ".metadata")
+          self._delete_file_if_exists(checkpoint_prefix + ".index")
           self._delete_file_if_exists(checkpoint_prefix +
                                       ".data-?????-of-?????")
         else:
@@ -1323,7 +1323,7 @@ def _prefix_to_checkpoint_path(prefix, format_version=saver_pb2.SaverDef.V1):
       format version.
   """
   if format_version == saver_pb2.SaverDef.V2:
-    return prefix + ".metadata"  # The index file identifies a checkpoint.
+    return prefix + ".index"  # The index file identifies a checkpoint.
   return prefix  # Just the data file.
 
 
