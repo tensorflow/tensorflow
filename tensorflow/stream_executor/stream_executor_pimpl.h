@@ -350,6 +350,26 @@ class StreamExecutor {
   bool GetConvolveBackwardFilterAlgorithms(
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
+  // Create an RNN descriptor based on model shapes and configurations.
+  // The caller retains the ownership of the descriptor.
+  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+      int num_layers, int hidden_size, int input_size,
+      dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+      dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout,
+      uint64 seed, ScratchAllocator *state_allocator);
+
+  // Create a RNN sequence descriptor that specifies either the input or output
+  // sequence. The caller retains the ownership of the returned descriptor.
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+                                    int data_size, dnn::DataType data_type);
+
+  // Create an RNN state descriptor that specifies the input or hidden state.
+  // The caller retains the ownership of the returned descriptor.
+  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+                                 dnn::DataType data_type);
+
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
   int device_ordinal() const { return device_ordinal_; }
