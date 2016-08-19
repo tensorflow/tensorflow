@@ -299,6 +299,17 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "distribution_util_test",
+    size = "small",
+    srcs = ["python/kernel_tests/distribution_util_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "shape_test",
     size = "small",
     srcs = ["python/kernel_tests/shape_test.py"],

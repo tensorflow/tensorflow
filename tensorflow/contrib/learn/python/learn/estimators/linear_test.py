@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import tempfile
 
 import numpy as np
@@ -84,12 +85,11 @@ class LinearClassifierTest(tf.test.TestCase):
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
 
-    def input_fn():
+    def input_fn(num_epochs=None):
       return {
-          'age': tf.constant([1]),
-          'language': tf.SparseTensor(values=['english'],
-                                      indices=[[0, 0]],
-                                      shape=[1, 1])
+          'age': tf.train.limit_epochs(tf.constant([1]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=['english'], indices=[[0, 0]], shape=[1, 1]),
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -100,14 +100,15 @@ class LinearClassifierTest(tf.test.TestCase):
         model_dir=model_dir,
         feature_columns=[age, language])
     classifier.fit(input_fn=input_fn, steps=30)
-    out1 = classifier.predict(input_fn=input_fn)
+    predict_input_fn = functools.partial(input_fn, num_epochs=1)
+    out1 = classifier.predict(input_fn=predict_input_fn, as_iterable=True)
     del classifier
 
     classifier2 = tf.contrib.learn.LinearClassifier(
         model_dir=model_dir,
         feature_columns=[age, language])
-    out2 = classifier2.predict(input_fn=input_fn)
-    self.assertEqual(out1, out2)
+    out2 = classifier2.predict(input_fn=predict_input_fn, as_iterable=True)
+    self.assertEqual(list(out1), list(out2))
 
   def testExport(self):
     """Tests that export model for servo works."""

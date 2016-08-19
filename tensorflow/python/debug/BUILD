@@ -16,6 +16,13 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
+    name = "debug_data",
+    srcs = ["debug_data.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "debug_utils",
     srcs = ["debug_utils.py"],
     srcs_version = "PY2AND3",
@@ -46,6 +53,8 @@ cuda_py_test(
         "session_debug_test.py",
     ],
     additional_deps = [
+        ":debug_data",
+        ":debug_utils",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",

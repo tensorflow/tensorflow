@@ -758,7 +758,7 @@ For example:
     run time.
 
   - Setting `new_shape` as [2, 3, 6] will be fine as this shape is larger or
-    eqaul in every dimension compared to the original shape [2, 3, 5].
+    equal in every dimension compared to the original shape [2, 3, 5].
 
   - On the other hand, setting new_shape as [2, 3, 4] is also an error: The
     third dimension is smaller than the original shape [2, 3, 5] (and an
@@ -772,7 +772,7 @@ For example:
 
 *  <b>`sp_input`</b>: The input `SparseTensor`.
 *  <b>`new_shape`</b>: None or a vector representing the new shape for the returned
-    `SpraseTensor`.
+    `SparseTensor`.
 
 ##### Returns:
 
@@ -875,7 +875,7 @@ For example:
 ```python
 # 'x' represents [[1, ?, 1]
 #                 [?, 1, ?]]
-# where ? is implictly-zero.
+# where ? is implicitly-zero.
 tf.sparse_reduce_sum(x) ==> 3
 tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
 tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.

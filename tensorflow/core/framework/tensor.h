@@ -133,10 +133,6 @@ class Tensor {
   // True iff the two tensors use the same underlying refcounted storage
   bool SharesBufferWith(const Tensor& b) const;
 
-  // The BufferHash of two tensors are equal when they share the same
-  // underlying refcounted storage
-  size_t BufferHash() const;
-
   /// \brief If necessary, has this Tensor been initialized?
   ///
   /// Zero-element Tensors are always considered initialized, even if they

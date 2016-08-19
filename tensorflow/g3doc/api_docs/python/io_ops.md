@@ -1939,7 +1939,7 @@ The underlying queue reference.
 
 ### `class tf.FIFOQueue` {#FIFOQueue}
 
-A queue implementation that dequeues elements in first-in-first out order.
+A queue implementation that dequeues elements in first-in first-out order.
 
 See [`tf.QueueBase`](#QueueBase) for a description of the methods on
 this class.
@@ -2443,7 +2443,7 @@ operations that depend on fixed batch_size would fail.
 Runs a list of tensors to fill a queue to create batches of examples.
 
 The `tensors_list` argument is a list of tuples of tensors, or a list of
-dictionaries of tensors.  Each element in the list is treated similarily
+dictionaries of tensors.  Each element in the list is treated similarly
 to the `tensors` argument of `tf.train.batch()`.
 
 Enqueues a different list of tensors in different threads.
@@ -2620,7 +2620,7 @@ operations that depend on fixed batch_size would fail.
 Create batches by randomly shuffling tensors.
 
 The `tensors_list` argument is a list of tuples of tensors, or a list of
-dictionaries of tensors.  Each element in the list is treated similarily
+dictionaries of tensors.  Each element in the list is treated similarly
 to the `tensors` argument of `tf.train.shuffle_batch()`.
 
 This version enqueues a different list of tensors in different threads.

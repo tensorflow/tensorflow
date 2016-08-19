@@ -31,8 +31,6 @@ module.exports = function() {
     'components/tf-*/**/*.ts',
     'components/vz-*/**/*.ts',
     'typings/**/*.ts',
-    // TODO(danmane): add plottable to the typings registry after updating it
-    // and remove this.
     'components/plottable/plottable.d.ts'
   ]);
 

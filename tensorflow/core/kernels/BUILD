@@ -2035,6 +2035,7 @@ filegroup(
         "tile_ops_cpu_impl_3.cc",
         "tile_ops_cpu_impl_4.cc",
         "tile_ops_cpu_impl_5.cc",
+        "tile_ops_cpu_impl_6.cc",
         "topk_op.cc",
         "training_ops.cc",
         "transpose_functor_cpu.cc",

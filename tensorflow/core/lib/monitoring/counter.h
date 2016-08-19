@@ -20,7 +20,7 @@ limitations under the License.
 // platforms.
 #include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
-#include "tensorflow/core/lib/monitoring/mobile/counter.h"
+#include "tensorflow/core/lib/monitoring/mobile_counter.h"
 #else
 
 #include <array>
@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-
-// WARNING: Not yet ready for usage.
 
 namespace tensorflow {
 namespace monitoring {

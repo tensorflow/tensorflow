@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/test_op.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 using namespace ops;  // NOLINT(build/namespaces)
@@ -34,20 +34,8 @@ Output Linear(const Scope& scope, Input x, Input w, Input b) {
 
 void GetTensors(const Scope& scope, OutputList tensors,
                 std::vector<Tensor>* out) {
-  SessionOptions options;
-  std::unique_ptr<Session> session(NewSession(options));
-  GraphDef def;
-  scope.graph()->ToGraphDef(&def);
-
-  graph::SetDefaultDevice("/cpu:0", &def);
-
-  TF_CHECK_OK(session->Create(def));
-  std::vector<string> names;
-  for (const auto& t : tensors) {
-    names.push_back(strings::StrCat(t.node()->name(), ":", t.index()));
-  }
-  TF_CHECK_OK(session->Run({}, names, {}, out));
-  TF_CHECK_OK(session->Close());
+  ClientSession session(scope);
+  TF_CHECK_OK(session.Run(tensors, out));
 }
 
 void GetTensor(const Scope& scope, Output tensor, Tensor* out) {

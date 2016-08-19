@@ -1799,8 +1799,7 @@ void ExecutorState::DumpIterationState(IterationState* iteration) {
                    << strings::StrCat("Tensor<type: ",
                                       DataTypeString(tensor->dtype()),
                                       " shape: ", tensor->shape().DebugString(),
-                                      ", bytes: ", tensor->TotalBytes(),
-                                      ", hash: ", tensor->BufferHash(), ">");
+                                      ", bytes: ", tensor->TotalBytes(), ">");
       total_bytes += tensor->TotalBytes();
     }
   }

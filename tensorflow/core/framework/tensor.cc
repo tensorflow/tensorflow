@@ -769,11 +769,6 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
   return buf_->root_buffer() == b.buf_->root_buffer();
 }
 
-size_t Tensor::BufferHash() const {
-  CHECK_NE(nullptr, buf_);
-  return std::hash<TensorBuffer*>()(buf_->root_buffer());
-}
-
 string Tensor::DebugString() const {
   return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
                          shape().DebugString(), " values: ", SummarizeValue(3),

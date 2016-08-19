@@ -309,12 +309,17 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 }  // namespace
 
 void Graph::ToGraphDef(GraphDef* graph_def) const {
+  ToGraphDefSubRange(graph_def, 0);
+}
+
+void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   graph_def->mutable_versions()->CopyFrom(versions());
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
-  for (const Node* node : nodes()) {
-    if (!node->IsOp()) continue;
+  for (auto id = from_node_id; id < num_node_ids(); ++id) {
+    const Node* node = FindNodeId(id);
+    if (node == nullptr || !node->IsOp()) continue;
     NodeDef* node_def = graph_def->add_node();
     *node_def = node->def();
 

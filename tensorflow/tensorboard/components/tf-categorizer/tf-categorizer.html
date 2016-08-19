@@ -62,7 +62,10 @@ categories are exclusive.
         },
         splitOnUnderscore: {
           type: Boolean,
-          value: false,
+          notify: true,
+          value: TF.URIStorage.getBooleanInitializer('splitOnUnderscore',
+              false),
+          observer: '_splitOnUnderscoreObserver'
         },
         categorizer: {
           type: Object,
@@ -92,6 +95,8 @@ categories are exclusive.
           return "TopLevelNamespaceCategorizer";
         }
       },
+      _splitOnUnderscoreObserver: TF.URIStorage.getBooleanObserver(
+          'splitOnUnderscore', false)
     });
   </script>
 </dom-module>

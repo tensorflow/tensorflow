@@ -334,6 +334,88 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
   contention.
 )doc");
 
+static Status ApplyAdagradDAShapeFn(InferenceContext* c, bool sparse) {
+  const Shape* unused;
+  const Shape* s = c->input(0);                      // var
+  TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));  // grad_accumulator
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, c->input(2), &s));  // gradient_squared_accumulator
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
+  int idx = sparse ? 5 : 4;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // l1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // l2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // global step
+  c->set_output(0, s);
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyAdagradDA")
+    .Input("var: Ref(T)")
+    .Input("gradient_accumulator: Ref(T)")
+    .Input("gradient_squared_accumulator: Ref(T)")
+    .Input("grad: T")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("global_step: int64")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdagradDAShapeFn(c, false /* sparse */);
+    })
+    .Doc(R"doc(
+Update '*var' according to the proximal adagrad scheme.
+
+var: Should be from a Variable().
+gradient_accumulator: Should be from a Variable().
+gradient_squared_accumulator: Should be from a Variable().
+grad: The gradient.
+lr: Scaling factor. Must be a scalar.
+l1: L1 regularization. Must be a scalar.
+l2: L2 regularization. Must be a scalar.
+global_step: Training step number. Must be a scalar.
+out: Same as "var".
+use_locking: If True, updating of the var and accum tensors will be protected by
+a lock; otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
+REGISTER_OP("SparseApplyAdagradDA")
+    .Input("var: Ref(T)")
+    .Input("gradient_accumulator: Ref(T)")
+    .Input("gradient_squared_accumulator: Ref(T)")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("global_step: int64")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdagradDAShapeFn(c, true /* sparse */);
+    })
+    .Doc(R"doc(
+Update entries in '*var' and '*accum' according to the proximal adagrad scheme.
+
+var: Should be from a Variable().
+gradient_accumulator: Should be from a Variable().
+gradient_squared_accumulator: Should be from a Variable().
+grad: The gradient.
+indices: A vector of indices into the first dimension of var and accum.
+lr: Learning rate. Must be a scalar.
+l1: L1 regularization. Must be a scalar.
+l2: L2 regularization. Must be a scalar.
+global_step: Training step number. Must be a scalar.
+out: Same as "var".
+use_locking: If True, updating of the var and accum tensors will be protected by
+a lock; otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
 REGISTER_OP("SparseApplyProximalAdagrad")
     .Input("var: Ref(T)")
     .Input("accum: Ref(T)")
