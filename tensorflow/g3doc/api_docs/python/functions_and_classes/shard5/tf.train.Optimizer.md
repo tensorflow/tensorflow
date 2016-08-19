@@ -184,7 +184,7 @@ applies gradients.
 
 ### Gating Gradients
 
-Both `minimize()` and `compute_gradients()` accept a `gate_gradient` argument
+Both `minimize()` and `compute_gradients()` accept a `gate_gradients` argument
 that controls the degree of parallelism during the application of the
 gradients.
 
