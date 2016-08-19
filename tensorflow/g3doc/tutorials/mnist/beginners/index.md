@@ -106,7 +106,7 @@ using here, a softmax regression (defined below), won't.
 The result is that `mnist.train.images` is a tensor (an n-dimensional array)
 with a shape of `[55000, 784]`. The first dimension is an index into the list
 of images and the second dimension is the index for each pixel in each image.
-East entry in the tensor is a pixel intensity between 0 and 1, for a particular
+Each entry in the tensor is a pixel intensity between 0 and 1, for a particular
 pixel in a particular image.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
@@ -119,7 +119,7 @@ representing the digit drawn in the image.
 For the purposes of this tutorial, we're going to want our labels as "one-hot
 vectors". A one-hot vector is a vector which is 0 in most dimensions, and 1 in a
 single dimension. In this case, the \\(n\\)th digit will be represented as a
-vector which is 1 in the \\(n\\)th dimensions. For example, 3 would be
+vector which is 1 in the \\(n\\)th dimension. For example, 3 would be
 \\([0,0,0,1,0,0,0,0,0,0]\\).  Consequently, `mnist.train.labels` is a
 `[55000, 10]` array of floats.
 
@@ -136,7 +136,7 @@ nine.  So there are only ten possible things that a given image can be. We want
 to be able to look at an image and give the probabilities for it being each
 digit. For example, our model might look at a picture of a nine and be 80% sure
 it's a nine, but give a 5% chance to it being an eight (because of the top loop)
-and a bit of probability to all the others because isn't 100% sure.
+and a bit of probability to all the others because it isn't 100% sure.
 
 This is a classic case where a softmax regression is a natural, simple model.
 If you want to assign probabilities to an object being one of several different
