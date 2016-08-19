@@ -161,7 +161,7 @@ static Graph* ParseExample(int batch_size, int num_keys) {
 // Benchmark settings (Sparse, Dense) X (Bytes, Int64, Float)
 typedef BenchmarkOptions<ExampleStore<BytesFiller>, false> SparseString;
 typedef BenchmarkOptions<ExampleStore<BytesFiller>, true> DenseString;
-typedef BenchmarkOptions<ExampleStore<Int64Filler>, false> SparseInt64;
+typedef BenchmarkOptions<ExampleStore<Int64Filler>, false> SparseIn64;
 typedef BenchmarkOptions<ExampleStore<Int64Filler>, true> DenseInt64;
 typedef BenchmarkOptions<ExampleStore<FloatFiller>, false> SparseFloat;
 typedef BenchmarkOptions<ExampleStore<FloatFiller>, true> DenseFloat;
@@ -176,19 +176,20 @@ typedef BenchmarkOptions<ExampleStore<FloatFiller>, true> DenseFloat;
   }                                                                      \
   BENCHMARK(BM_ParseExample##_##TYPE##_##B##_##K);
 
-#define BM_AllParseExample(Type)    \
-  BM_ParseExample(Type, 128, 10);   \
-  BM_ParseExample(Type, 512, 10);   \
-  BM_ParseExample(Type, 128, 100);  \
-  BM_ParseExample(Type, 512, 100);  \
-  BM_ParseExample(Type, 128, 1000); \
-  BM_ParseExample(Type, 512, 1000);
+#define BM_AllParseExample(B, K)       \
+  BM_ParseExample(SparseString, B, K); \
+  BM_ParseExample(DenseString, B, K);  \
+  BM_ParseExample(SparseIn64, B, K);   \
+  BM_ParseExample(DenseInt64, B, K);   \
+  BM_ParseExample(SparseFloat, B, K);  \
+  BM_ParseExample(DenseFloat, B, K);
 
-BM_AllParseExample(SparseString);
-BM_AllParseExample(DenseString);
-BM_AllParseExample(SparseInt64);
-BM_AllParseExample(DenseInt64);
-BM_AllParseExample(SparseFloat);
-BM_AllParseExample(DenseFloat);
+BM_AllParseExample(128, 10);
+BM_AllParseExample(128, 100);
+BM_AllParseExample(128, 1000);
+
+BM_AllParseExample(512, 10);
+BM_AllParseExample(512, 100);
+BM_AllParseExample(512, 1000);
 
 }  // end namespace tensorflow

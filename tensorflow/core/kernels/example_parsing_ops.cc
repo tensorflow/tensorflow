@@ -24,10 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/util/example_proto_fast_parsing.h"
 #include "tensorflow/core/util/example_proto_helper.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -69,7 +67,8 @@ class ExampleParserOp : public OpKernel {
       sparse_keys_t[di] = sparse_keys[di].scalar<string>()();
     }
 
-    if (names->NumElements() > 0) {
+    bool has_names = (names->NumElements() > 0);
+    if (has_names) {
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsVector(names->shape()),
           errors::InvalidArgument("Expected names to be a vector, got shape: ",
@@ -80,6 +79,7 @@ class ExampleParserOp : public OpKernel {
               "Expected len(names) == len(serialized), but got: ",
               names->NumElements(), " vs. ", serialized->NumElements()));
     }
+    auto names_t = names->flat<string>();
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(serialized->shape()),
                 errors::InvalidArgument(
@@ -106,43 +106,136 @@ class ExampleParserOp : public OpKernel {
       }
     }
 
-    example::Result result;
+    auto serialized_t = serialized->vec<string>();
 
-    example::FastParseExampleConfig config;
-    for (int d = 0; d < attrs_.num_dense; ++d) {
-      config.dense.push_back({dense_keys_t[d], attrs_.dense_types[d],
-                              attrs_.dense_shapes[d], dense_defaults[d]});
-    }
-    for (int d = 0; d < attrs_.num_sparse; ++d) {
-      config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
-    }
+    const int64 batch_size = serialized_t.size();
 
-    auto serialized_t = serialized->flat<string>();
-    auto names_t = names->flat<string>();
-    gtl::ArraySlice<string> slice(serialized_t.data(), serialized_t.size());
-    gtl::ArraySlice<string> names_slice(names_t.data(), names_t.size());
-
-    OP_REQUIRES_OK(
-        ctx,
-        FastParseExample(
-            config, slice, names_slice,
-            ctx->device()->tensorflow_cpu_worker_threads()->workers, &result));
-
-    OpOutputList dense_values;
     OpOutputList sparse_indices;
     OpOutputList sparse_values;
     OpOutputList sparse_shapes;
-    OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values));
+    OpOutputList dense_values;
+
     OP_REQUIRES_OK(ctx, ctx->output_list("sparse_indices", &sparse_indices));
     OP_REQUIRES_OK(ctx, ctx->output_list("sparse_values", &sparse_values));
     OP_REQUIRES_OK(ctx, ctx->output_list("sparse_shapes", &sparse_shapes));
+    OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values));
+
+    // Setup Dense features and the output_dense_values Tensor* vector.
+    std::vector<FixedLenFeature> fixed_len_features(attrs_.num_dense);
+    std::vector<Tensor*> output_dense_values(attrs_.num_dense);
+
     for (int d = 0; d < attrs_.num_dense; ++d) {
-      dense_values.set(d, result.dense_values[d]);
+      // Preallocate dense_values, since we know their sizes
+      TensorShape out_shape;
+      out_shape.AddDim(batch_size);
+      for (const int64 dim : attrs_.dense_shapes[d].dim_sizes()) {
+        out_shape.AddDim(dim);
+      }
+      Tensor* out = nullptr;
+      dense_values.allocate(d, out_shape, &out);
+
+      FixedLenFeature config;
+      config.key = dense_keys_t[d];
+      config.dtype = attrs_.dense_types[d];
+      config.shape = attrs_.dense_shapes[d];
+      config.default_value = dense_defaults[d];
+      fixed_len_features[d] = config;
+      output_dense_values[d] = dense_values[d];
     }
+
+    // sparse_values_tmp will be attrs_.num_sparse size map of batch_size length
+    // tensor vector's, containing the sparse values from the input layer.
+    // After these are all stored, we can allocate properly sized outputs
+    // and copy data over. Doing it this way saves us the trouble of either
+    // performing deserialization twice, or alternatively storing all copies of
+    // the full Example protos.
+    std::vector<std::vector<Tensor>> sparse_values_tmp(
+        attrs_.num_sparse, std::vector<Tensor>(batch_size));
+
+    // Setup Sparse features.
+    std::vector<VarLenFeature> var_len_features(attrs_.num_sparse);
     for (int d = 0; d < attrs_.num_sparse; ++d) {
-      sparse_indices.set(d, result.sparse_indices[d]);
-      sparse_values.set(d, result.sparse_values[d]);
-      sparse_shapes.set(d, result.sparse_shapes[d]);
+      VarLenFeature config;
+      config.key = sparse_keys_t[d];
+      config.dtype = attrs_.sparse_types[d];
+      var_len_features[d] = config;
+    }
+
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+
+    // Estimate the cost of parsing each batch element.
+    int64 work_unit_size = 1000 + 100 * attrs_.num_sparse;
+    for (int d = 0; d < attrs_.num_dense; ++d) {
+      work_unit_size += 100 + attrs_.dense_shapes[d].num_elements();
+    }
+
+    mutex mu;
+
+    auto DoWork = [&ctx, &mu, &serialized_t, has_names, &names_t,
+                   &fixed_len_features, &var_len_features, &output_dense_values,
+                   &sparse_values_tmp](int64 start, int64 limit) {
+      // Processing each Example in the batch starts here.
+      for (std::size_t b = static_cast<size_t>(start);
+           b < static_cast<size_t>(limit); ++b) {
+        // Benchmarks indicate that a tight Arena+Example is most performant.
+        protobuf::Arena arena;
+        // ex is owned by the arena.
+        Example* ex = protobuf::Arena::CreateMessage<Example>(&arena);
+        bool parse_success = ParseProtoUnlimited(ex, serialized_t(b));
+        if (!TF_PREDICT_TRUE(parse_success)) {
+          mutex_lock l(mu);
+          ctx->CtxFailure(errors::InvalidArgument(
+              "Could not parse example input, value: '", serialized_t(b), "'"));
+          return;
+        }
+        const string& example_name = (has_names) ? names_t(b) : "<unknown>";
+        Status s = SingleExampleProtoToTensors(
+            *ex, example_name, b, fixed_len_features, var_len_features,
+            &output_dense_values, &sparse_values_tmp);
+        if (!TF_PREDICT_TRUE(s.ok())) {
+          mutex_lock l(mu);
+          ctx->CtxFailureWithWarning(s);
+        }
+      }
+    };
+
+    Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
+          work_unit_size, DoWork);
+
+    if (!TF_PREDICT_TRUE(ctx->status().ok())) {
+      return;
+    }
+
+    // Copy from sparse_values_tmp into final resting Tensors
+    // -------------------------
+    for (int d = 0; d < attrs_.num_sparse; ++d) {
+      const VarLenFeature& feature_config = var_len_features[d];
+      const std::vector<Tensor>& sparse_values_tmp_tensors =
+          sparse_values_tmp[d];
+      VarLenFeatureBatchShapes sparse_tensor_batch_shapes;
+      GetSparseTensorShapes(feature_config, sparse_values_tmp_tensors,
+                            batch_size, &sparse_tensor_batch_shapes);
+
+      Tensor* sp_indices_d = nullptr;
+      Tensor* sp_values_d = nullptr;
+      Tensor* sp_shape_d = nullptr;
+
+      sparse_indices.allocate(d, sparse_tensor_batch_shapes.indices_shape,
+                              &sp_indices_d);
+      sparse_values.allocate(d, sparse_tensor_batch_shapes.values_shape,
+                             &sp_values_d);
+      sparse_shapes.allocate(d, TensorShape({2}), &sp_shape_d);
+
+      auto shape_t = sp_shape_d->vec<int64>();
+      shape_t(0) = batch_size;
+      shape_t(1) = sparse_tensor_batch_shapes.max_num_features;
+
+      int64 offset = 0;
+      for (int b = 0; b < batch_size; ++b) {
+        const int64 num_elements = CopyIntoSparseTensor(
+            sparse_values_tmp_tensors[b], b, offset, sp_indices_d, sp_values_d);
+        offset += num_elements;
+      }
     }
   }
 
