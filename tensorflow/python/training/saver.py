@@ -49,6 +49,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
@@ -1226,16 +1227,13 @@ class Saver(object):
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
             (latest_filename, save_path))
 
-    if not os.path.exists(os.path.dirname(save_path)):
-      raise ValueError("Parent directory of {} doesn't exist, can't save.".format(save_path))
+    if not gfile.IsDirectory(os.path.dirname(save_path)):
+      raise ValueError(
+          "Parent directory of {} doesn't exist, can't save.".format(save_path))
 
     save_path = os.path.dirname(save_path)
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
-
-    # Note a few lines above save_path was set to os.path.dirname(save_path)
-    if not os.path.exists(save_path):
-      raise ValueError("Parent directory {} doesn't exist, can't save.".format(save_path))
 
     model_checkpoint_path = sess.run(
         self.saver_def.save_tensor_name,
