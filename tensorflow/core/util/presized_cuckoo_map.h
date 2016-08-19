@@ -50,7 +50,10 @@ class PresizedCuckooMap {
   // The key type is fixed as a pre-hashed key for this specialized use.
   typedef uint64 key_type;
 
-  explicit PresizedCuckooMap(uint64 num_entries) : cpq_(new CuckooPathQueue) {
+  explicit PresizedCuckooMap(uint64 num_entries) { Clear(num_entries); }
+
+  void Clear(uint64 num_entries) {
+    cpq_.reset(new CuckooPathQueue());
     double n(num_entries);
     n /= kLoadFactor;
     num_buckets_ = (static_cast<uint64>(n) / kSlotsPerBucket);
@@ -62,6 +65,7 @@ class PresizedCuckooMap {
     for (int i = 0; i < kSlotsPerBucket; i++) {
       empty_bucket.keys[i] = kUnusedSlot;
     }
+    buckets_.clear();
     buckets_.resize(num_buckets_, empty_bucket);
 #if !defined(__GCUDACC__) && !defined(__GCUDACC_HOST__)
     buckets_divisor_ = Eigen::internal::TensorIntDivisor<uint64>(num_buckets_);
@@ -317,7 +321,7 @@ class PresizedCuckooMap {
   std::vector<Bucket> buckets_;
   Eigen::internal::TensorIntDivisor<uint64> buckets_divisor_;  // for fast mod
 
-  const std::unique_ptr<CuckooPathQueue> cpq_;
+  std::unique_ptr<CuckooPathQueue> cpq_;
   CuckooPathEntry visited_[kVisitedListSize];
 
   TF_DISALLOW_COPY_AND_ASSIGN(PresizedCuckooMap);
