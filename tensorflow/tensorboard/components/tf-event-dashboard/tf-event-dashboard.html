@@ -53,13 +53,6 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
             id="download-option"
             checked="{{_showDownloadLinks}}"
           >Data download links</paper-checkbox>
-          <tf-smoothing-input
-            enabled="{{_smoothingEnabled}}"
-            weight="{{_smoothingWeight}}"
-            step="0.001"
-            min="0"
-            max="1"
-            ></tf-smoothing-input>
           <div id="tooltip-sorting">
             <div id="tooltip-sorting-label">Tooltip sorting method:</div>
             <paper-dropdown-menu
@@ -73,6 +66,14 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
               </paper-menu>
             </paper-dropdown-menu>
           </div>
+        </div>
+        <div class="sidebar-section">
+          <tf-smoothing-input
+            weight="{{_smoothingWeight}}"
+            step="0.001"
+            min="0"
+            max="1"
+            ></tf-smoothing-input>
         </div>
         <div class="sidebar-section">
           <tf-option-selector
@@ -115,8 +116,8 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                         id="chart"
                         x-type="[[_xType]]"
                         color-scale="[[colorScale]]"
-                        smoothing-weight="[[_smoothingWeight]]"
                         smoothing-enabled="[[_smoothingEnabled]]"
+                        smoothing-weight="[[_smoothingWeight]]"
                         tooltip-sorting-method="[[_tooltipSortingMethod]]"
                         on-keyup="toggleSelected"
                         tabindex="2"
@@ -176,8 +177,16 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
               false),
           observer: '_showDownloadLinksObserver'
         },
-        _smoothingWeight: Number,
-        _smoothingEnabled: Boolean,
+        _smoothingWeight: {
+          type: Number,
+          notify: true,
+          value: TF.URIStorage.getNumberInitializer('_smoothingWeight', 0.6),
+          observer: '_smoothingWeightObserver'
+        },
+        _smoothingEnabled: {
+          type: Boolean,
+          computed: '_computeSmoothingEnabled(_smoothingWeight)'
+        },
         colorScale: {
           type: Object,
           notify: true,
@@ -202,6 +211,11 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
           '_showDownloadLinks', false),
+      _smoothingWeightObserver: TF.URIStorage.getNumberObserver(
+          '_smoothingWeight', 0.6),
+      _computeSmoothingEnabled: function(_smoothingWeight) {
+        return _smoothingWeight > 0;
+      },
       toggleSelected: function(e) {
         var currentTarget = Polymer.dom(e.currentTarget);
         var parentDiv = currentTarget.parentNode.parentNode;
