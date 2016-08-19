@@ -267,7 +267,7 @@ When peephole connections are used, the implementation is based on:
 The code uses optional peephole connections, shared_weights and cell clipping.
 - - -
 
-#### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None)` {#GridLSTMCell.__init__}
+#### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None, num_frequency_blocks=1, couple_input_forget_gates=False, state_is_tuple=False)` {#GridLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -291,6 +291,14 @@ Initialize the parameters for an LSTM cell.
 *  <b>`feature_size`</b>: int, The size of the input feature the LSTM spans over.
 *  <b>`frequency_skip`</b>: int, The amount the LSTM filter is shifted by in
     frequency.
+*  <b>`num_frequency_blocks`</b>: int, The total number of frequency blocks needed to
+    cover the whole input feature.
+*  <b>`couple_input_forget_gates`</b>: bool, Whether to couple the input and forget
+    gates, i.e. f_gate = 1.0 - i_gate, to reduce model parameters and
+    computation cost.
+*  <b>`state_is_tuple`</b>: If True, accepted and returned states are 2-tuples of
+    the `c_state` and `m_state`.  By default (False), they are concatenated
+    along the column axis.  This default behavior will soon be deprecated.
 
 
 - - -
@@ -303,6 +311,13 @@ Initialize the parameters for an LSTM cell.
 - - -
 
 #### `tf.contrib.rnn.GridLSTMCell.state_size` {#GridLSTMCell.state_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.GridLSTMCell.state_tuple_type` {#GridLSTMCell.state_tuple_type}
 
 
 
