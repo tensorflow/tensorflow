@@ -534,6 +534,7 @@
 
 * **[Training](../../api_docs/python/train.md)**:
   * [`AdadeltaOptimizer`](../../api_docs/python/train.md#AdadeltaOptimizer)
+  * [`AdagradDAOptimizer`](../../api_docs/python/train.md#AdagradDAOptimizer)
   * [`AdagradOptimizer`](../../api_docs/python/train.md#AdagradOptimizer)
   * [`AdamOptimizer`](../../api_docs/python/train.md#AdamOptimizer)
   * [`add_queue_runner`](../../api_docs/python/train.md#add_queue_runner)
