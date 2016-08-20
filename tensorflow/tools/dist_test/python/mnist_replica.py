@@ -56,9 +56,9 @@ flags.DEFINE_integer("worker_index", 0,
                      "Worker task index, should be >= 0. worker_index=0 is "
                      "the master worker task the performs the variable "
                      "initialization ")
-flags.DEFINE_integer("num_workers", None,
+flags.DEFINE_integer("num_workers", 2,
                      "Total number of workers (must be >= 1)")
-flags.DEFINE_integer("num_parameter_servers", 2,
+flags.DEFINE_integer("num_parameter_servers", 1,
                      "Total number of parameter servers (must be >= 1)")
 flags.DEFINE_integer("replicas_to_aggregate", None,
                      "Number of replicas to aggregate before parameter update"
@@ -68,7 +68,7 @@ flags.DEFINE_integer("grpc_port", 2222,
                      "TensorFlow GRPC port")
 flags.DEFINE_integer("hidden_units", 100,
                      "Number of units in the hidden layer of the NN")
-flags.DEFINE_integer("train_steps", 200,
+flags.DEFINE_integer("train_steps", 20000,
                      "Number of (global) training steps to perform")
 flags.DEFINE_integer("batch_size", 100, "Training batch size")
 flags.DEFINE_float("learning_rate", 0.01, "Learning rate")
@@ -79,6 +79,12 @@ flags.DEFINE_boolean("sync_replicas", False,
                      "Use the sync_replicas (synchronized replicas) mode, "
                      "wherein the parameter updates from workers are aggregated "
                      "before applied to avoid stale gradients")
+flags.DEFINE_string("ps_hosts","localhost:2222",
+                    "Comma-separated list of hostname:port pairs")
+flags.DEFINE_string("worker_hosts", "localhost:2223,localhost:2224", 
+                    "Comma-separated list of hostname:port pairs")
+flags.DEFINE_string("job_name", "","job name: worker or ps")
+
 FLAGS = flags.FLAGS
 
 
@@ -88,34 +94,28 @@ PARAM_SERVER_PREFIX = "tf-ps"  # Prefix of the parameter servers' domain names
 WORKER_PREFIX = "tf-worker"  # Prefix of the workers' domain names
 
 
-def get_device_setter(num_parameter_servers, num_workers):
-  """Get a device setter given number of servers in the cluster.
-
-  Given the numbers of parameter servers and workers, construct a device
-  setter object using ClusterSpec.
-
-  Args:
-    num_parameter_servers: Number of parameter servers
-    num_workers: Number of workers
+def get_cluster_setter():
+  """Get a cluster setter.
 
   Returns:
-    Device setter object.
+    Cluster setter and server object.
   """
 
-  ps_spec = []
-  for j in range(num_parameter_servers):
-    ps_spec.append("%s%d:%d" % (PARAM_SERVER_PREFIX, j, FLAGS.grpc_port))
+  ps_spec = FLAGS.ps_hosts.split(",")
+  worker_spec = FLAGS.worker_hosts.split(",")
 
-  worker_spec = []
-  for k in range(num_workers):
-    worker_spec.append("%s%d:%d" % (WORKER_PREFIX, k, FLAGS.grpc_port))
+  print(ps_spec)
+  print(worker_spec)
 
-  cluster_spec = tf.train.ClusterSpec({
+  cluster = tf.train.ClusterSpec({
       "ps": ps_spec,
       "worker": worker_spec})
+  server = tf.train.Server(cluster,
+                           job_name=FLAGS.job_name,
+                           task_index=FLAGS.worker_index)
 
   # Get device setter from the cluster spec
-  return tf.train.replica_device_setter(cluster=cluster_spec)
+  return cluster, server
 
 
 def main(unused_argv):
@@ -137,128 +137,133 @@ def main(unused_argv):
     raise ValueError("Invalid num_parameter_servers value: %d" %
                      FLAGS.num_parameter_servers)
 
-  is_chief = (FLAGS.worker_index == 0)
+  # Construct cluster setter object
+  cluster, server = get_cluster_setter()
+  
+  if FLAGS.job_name == "ps":
+    server.join()
+  elif FLAGS.job_name == "worker":
 
-  if FLAGS.sync_replicas:
-    if FLAGS.replicas_to_aggregate is None:
-      replicas_to_aggregate = FLAGS.num_workers
-    else:
-      replicas_to_aggregate = FLAGS.replicas_to_aggregate
+    is_chief = (FLAGS.worker_index == 0)
 
-  # Construct device setter object
-  device_setter = get_device_setter(FLAGS.num_parameter_servers,
-                                    FLAGS.num_workers)
-
-  # The device setter will automatically place Variables ops on separate
-  # parameter servers (ps). The non-Variable ops will be placed on the workers.
-  with tf.device(device_setter):
-    global_step = tf.Variable(0, name="global_step", trainable=False)
-
-    # Variables of the hidden layer
-    hid_w = tf.Variable(
-        tf.truncated_normal([IMAGE_PIXELS * IMAGE_PIXELS, FLAGS.hidden_units],
-                            stddev=1.0 / IMAGE_PIXELS), name="hid_w")
-    hid_b = tf.Variable(tf.zeros([FLAGS.hidden_units]), name="hid_b")
-
-    # Variables of the softmax layer
-    sm_w = tf.Variable(
-        tf.truncated_normal([FLAGS.hidden_units, 10],
-                            stddev=1.0 / math.sqrt(FLAGS.hidden_units)),
-        name="sm_w")
-    sm_b = tf.Variable(tf.zeros([10]), name="sm_b")
-
-    # Ops: located on the worker specified with FLAGS.worker_index
-    x = tf.placeholder(tf.float32, [None, IMAGE_PIXELS * IMAGE_PIXELS])
-    y_ = tf.placeholder(tf.float32, [None, 10])
-
-    hid_lin = tf.nn.xw_plus_b(x, hid_w, hid_b)
-    hid = tf.nn.relu(hid_lin)
-
-    y = tf.nn.softmax(tf.nn.xw_plus_b(hid, sm_w, sm_b))
-    cross_entropy = -tf.reduce_sum(y_ *
-                                   tf.log(tf.clip_by_value(y, 1e-10, 1.0)))
-
-    opt = tf.train.AdamOptimizer(FLAGS.learning_rate)
     if FLAGS.sync_replicas:
-      opt = tf.train.SyncReplicasOptimizer(
-          opt,
-          replicas_to_aggregate=replicas_to_aggregate,
-          total_num_replicas=FLAGS.num_workers,
-          replica_id=FLAGS.worker_index,
-          name="mnist_sync_replicas")
+      if FLAGS.replicas_to_aggregate is None:
+        replicas_to_aggregate = FLAGS.num_workers
+      else:
+        replicas_to_aggregate = FLAGS.replicas_to_aggregate
 
-    train_step = opt.minimize(cross_entropy,
-                              global_step=global_step)
+    # The device setter will automatically place Variables ops on separate
+    # parameter servers (ps). The non-Variable ops will be placed on the workers.
+    with tf.device(tf.train.replica_device_setter(
+        worker_device="/job:worker/task:%d" % FLAGS.worker_index,
+        cluster=cluster)):
+      global_step = tf.Variable(0, name="global_step", trainable=False)
 
-    if FLAGS.sync_replicas and is_chief:
-      # Initial token and chief queue runners required by the sync_replicas mode
-      chief_queue_runner = opt.get_chief_queue_runner()
-      init_tokens_op = opt.get_init_tokens_op()
+      # Variables of the hidden layer
+      hid_w = tf.Variable(
+          tf.truncated_normal([IMAGE_PIXELS * IMAGE_PIXELS, FLAGS.hidden_units],
+                              stddev=1.0 / IMAGE_PIXELS), name="hid_w")
+      hid_b = tf.Variable(tf.zeros([FLAGS.hidden_units]), name="hid_b")
 
-    init_op = tf.initialize_all_variables()
-    train_dir = tempfile.mkdtemp()
-    sv = tf.train.Supervisor(is_chief=is_chief,
-                             logdir=train_dir,
-                             init_op=init_op,
-                             recovery_wait_secs=1,
-                             global_step=global_step)
+      # Variables of the softmax layer
+      sm_w = tf.Variable(
+          tf.truncated_normal([FLAGS.hidden_units, 10],
+                              stddev=1.0 / math.sqrt(FLAGS.hidden_units)),
+          name="sm_w")
+      sm_b = tf.Variable(tf.zeros([10]), name="sm_b")
 
-    sess_config = tf.ConfigProto(
-        allow_soft_placement=True,
-        log_device_placement=True,
-        device_filters=["/job:ps", "/job:worker/task:%d" % FLAGS.worker_index])
+      # Ops: located on the worker specified with FLAGS.worker_index
+      x = tf.placeholder(tf.float32, [None, IMAGE_PIXELS * IMAGE_PIXELS])
+      y_ = tf.placeholder(tf.float32, [None, 10])
 
-    # The chief worker (worker_index==0) session will prepare the session,
-    # while the remaining workers will wait for the preparation to complete.
-    if is_chief:
-      print("Worker %d: Initializing session..." % FLAGS.worker_index)
-    else:
-      print("Worker %d: Waiting for session to be initialized..." %
-            FLAGS.worker_index)
+      hid_lin = tf.nn.xw_plus_b(x, hid_w, hid_b)
+      hid = tf.nn.relu(hid_lin)
 
-    sess = sv.prepare_or_wait_for_session(FLAGS.worker_grpc_url,
-                                          config=sess_config)
+      y = tf.nn.softmax(tf.nn.xw_plus_b(hid, sm_w, sm_b))
+      cross_entropy = -tf.reduce_sum(y_ *
+                                     tf.log(tf.clip_by_value(y, 1e-10, 1.0)))
 
-    print("Worker %d: Session initialization complete." % FLAGS.worker_index)
+      opt = tf.train.AdamOptimizer(FLAGS.learning_rate)
+      if FLAGS.sync_replicas:
+        opt = tf.train.SyncReplicasOptimizer(
+            opt,
+            replicas_to_aggregate=replicas_to_aggregate,
+            total_num_replicas=FLAGS.num_workers,
+            replica_id=FLAGS.worker_index,
+            name="mnist_sync_replicas")
 
-    if FLAGS.sync_replicas and is_chief:
-      # Chief worker will start the chief queue runner and call the init op
-      print("Starting chief queue runner and running init_tokens_op")
-      sv.start_queue_runners(sess, [chief_queue_runner])
-      sess.run(init_tokens_op)
+      train_step = opt.minimize(cross_entropy,
+                                global_step=global_step)
 
-    # Perform training
-    time_begin = time.time()
-    print("Training begins @ %f" % time_begin)
+      if FLAGS.sync_replicas and is_chief:
+        # Initial token and chief queue runners required by the sync_replicas mode
+        chief_queue_runner = opt.get_chief_queue_runner()
+        init_tokens_op = opt.get_init_tokens_op()
 
-    local_step = 0
-    while True:
-      # Training feed
-      batch_xs, batch_ys = mnist.train.next_batch(FLAGS.batch_size)
-      train_feed = {x: batch_xs,
-                    y_: batch_ys}
+      init_op = tf.initialize_all_variables()
+      train_dir = tempfile.mkdtemp()
+      sv = tf.train.Supervisor(is_chief=is_chief,
+                               logdir=train_dir,
+                               init_op=init_op,
+                               recovery_wait_secs=1,
+                               global_step=global_step)
 
-      _, step = sess.run([train_step, global_step], feed_dict=train_feed)
-      local_step += 1
+      sess_config = tf.ConfigProto(
+          allow_soft_placement=True,
+          log_device_placement=True,
+          device_filters=["/job:ps", "/job:worker/task:%d" % FLAGS.worker_index])
 
-      now = time.time()
-      print("%f: Worker %d: training step %d done (global step: %d)" %
-            (now, FLAGS.worker_index, local_step, step))
+      # The chief worker (worker_index==0) session will prepare the session,
+      # while the remaining workers will wait for the preparation to complete.
+      if is_chief:
+        print("Worker %d: Initializing session..." % FLAGS.worker_index)
+      else:
+        print("Worker %d: Waiting for session to be initialized..." %
+              FLAGS.worker_index)
 
-      if step >= FLAGS.train_steps:
-        break
+      sess = sv.prepare_or_wait_for_session(server.target,
+                                            config=sess_config)
 
-    time_end = time.time()
-    print("Training ends @ %f" % time_end)
-    training_time = time_end - time_begin
-    print("Training elapsed time: %f s" % training_time)
+      print("Worker %d: Session initialization complete." % FLAGS.worker_index)
 
-    # Validation feed
-    val_feed = {x: mnist.validation.images,
-                y_: mnist.validation.labels}
-    val_xent = sess.run(cross_entropy, feed_dict=val_feed)
-    print("After %d training step(s), validation cross entropy = %g" %
-          (FLAGS.train_steps, val_xent))
+      if FLAGS.sync_replicas and is_chief:
+        # Chief worker will start the chief queue runner and call the init op
+        print("Starting chief queue runner and running init_tokens_op")
+        sv.start_queue_runners(sess, [chief_queue_runner])
+        sess.run(init_tokens_op)
+
+      # Perform training
+      time_begin = time.time()
+      print("Training begins @ %f" % time_begin)
+
+      local_step = 0
+      while True:
+        # Training feed
+        batch_xs, batch_ys = mnist.train.next_batch(FLAGS.batch_size)
+        train_feed = {x: batch_xs,
+                      y_: batch_ys}
+
+        _, step = sess.run([train_step, global_step], feed_dict=train_feed)
+        local_step += 1
+
+        now = time.time()
+        print("%f: Worker %d: training step %d done (global step: %d)" %
+              (now, FLAGS.worker_index, local_step, step))
+
+        if step >= FLAGS.train_steps:
+          break
+
+      time_end = time.time()
+      print("Training ends @ %f" % time_end)
+      training_time = time_end - time_begin
+      print("Training elapsed time: %f s" % training_time)
+
+      # Validation feed
+      val_feed = {x: mnist.validation.images,
+                  y_: mnist.validation.labels}
+      val_xent = sess.run(cross_entropy, feed_dict=val_feed)
+      print("After %d training step(s), validation cross entropy = %g" %
+            (FLAGS.train_steps, val_xent))
 
 
 if __name__ == "__main__":
