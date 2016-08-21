@@ -583,8 +583,7 @@ void Examples::ComputeSquaredNormPerExample(
     }
   };
   // TODO(sibyl-Aix6ihai): Compute the cost optimally.
-  const int64 kCostPerUnit =
-      num_examples * (num_dense_features + num_sparse_features);
+  const int64 kCostPerUnit = num_dense_features + num_sparse_features;
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
         kCostPerUnit, compute_example_norm);
 }
@@ -708,8 +707,7 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
     };
     // TODO(sibyl-Aix6ihai): Tune this properly based on sparsity of the data,
     // number of cpus, and cost per example.
-    const int64 kCostPerUnit =
-        examples.num_examples() * examples.num_features();
+    const int64 kCostPerUnit = examples.num_features();
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers,
