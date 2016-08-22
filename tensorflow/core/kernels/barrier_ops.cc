@@ -201,12 +201,6 @@ class Barrier : public ResourceBase {
       if (closed_) {
         int available_elements = ready_size();
         if (allow_small_batch) {
-          // TODO(ebrevdo): race condition here.  two threads call
-          // TryTakeMany with allow_small_batch; both see ready_size()
-          // available elements.  Both try to get the same number of
-          // elements.  One blocks.  Perhaps add option
-          // allow_small_batch to PriorityQueue dequeuemany??
-
           // We want to deliver a maximum of num_elements, if there are less
           // elements available, we deliver at most the available_elements. If
           // there are no
@@ -217,7 +211,9 @@ class Barrier : public ResourceBase {
           // We're happy to wait for additional elements to be completed.
           available_elements += incomplete_.size();
         }
-        if (available_elements < num_elements_to_deliver) {
+        // If there are 0 available elements or less elements than the
+        // number we can deliver, then we are done.
+        if (available_elements < std::max(num_elements_to_deliver, 1)) {
           ctx->SetStatus(errors::OutOfRange(
               "Barrier '", name_, "' is closed and has ",
               "insufficient elements (requested ", num_elements_to_deliver,

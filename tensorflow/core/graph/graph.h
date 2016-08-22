@@ -307,6 +307,9 @@ class Graph {
   // array's size.
   int num_edges() const { return edges().size(); }
 
+  // Serialize the nodes starting at `from_node_id` to a GraphDef.
+  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
+
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
 

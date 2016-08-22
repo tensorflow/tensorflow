@@ -74,10 +74,9 @@ class TensorResponse {
   // Leaves *response with unspecified contents.
   Status InitFrom(RecvTensorResponse* response);
 
-  // Initialize tensor metadata from *response and allocate
+  // Initialize tensor metadata from response and allocate
   // uninitialized backing storage for actual contents.
-  // Leaves *response with unspecified contents.
-  void InitPartial(RecvTensorResponse* response);
+  void InitPartial(const RecvTensorResponse& response);
 
   // Return a reference to the parsed tensor.  The tensor will remain
   // live only until *this is destroyed or modified.

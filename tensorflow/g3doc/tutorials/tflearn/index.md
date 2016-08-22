@@ -42,8 +42,12 @@ training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
 test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
                                                    target_dtype=np.int)
 
+# Specify that all features have real-value data
+feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
+
 # Build 3 layer DNN with 10, 20, 10 units respectively.
-classifier = tf.contrib.learn.DNNClassifier(hidden_units=[10, 20, 10],
+classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
+                                            hidden_units=[10, 20, 10],
                                             n_classes=3,
                                             model_dir="/tmp/iris_model")
 
@@ -163,19 +167,30 @@ tf.contrib.learn offers a variety of predefined models, called [`Estimator`s]
 the box" to run training and evaluation operations on your data. Here, you'll
 configure a Deep Neural Network Classifier model to fit the Iris data. Using
 tf.contrib.learn, you can instantiate your [`DNNClassifier`]
-(../../api_docs/python/contrib.learn.html#DNNClassifier) with just one line of
+(../../api_docs/python/contrib.learn.html#DNNClassifier) with just a couple lines of
 code:
 
 ```python
+# Specify that all features have real-value data
+feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
+
 # Build 3 layer DNN with 10, 20, 10 units respectively.
-classifier = tf.contrib.learn.DNNClassifier(hidden_units=[10, 20, 10],
+classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
+                                            hidden_units=[10, 20, 10],
                                             n_classes=3,
                                             model_dir="/tmp/iris_model")
 ```
 
-The code above creates a `DNNClassifier` model with three [hidden layers]
-(http://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw),
-containing 10, 20, and 10 neurons, respectively (`hidden_units=[10, 20, 10]`),
+The code above first defines the model's feature columns, which specify
+the data type for the features in the data set, All the feature data is
+continuous, so `tf.contrib.layers.real_valued_column` is the appropriate function
+to use to construct the feature columns. There are four features in the data set
+(sepal width, sepal height, petal width, and petal height), so `dimensions` must
+be set accordingly to `4` to hold all the data.
+
+Then, the code creates a `DNNClassifier` model with the `feature_columns` defined
+above; three [hidden layers](http://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw),
+containing 10, 20, and 10 neurons, respectively (`hidden_units=[10, 20, 10]`);
 and three target classes (`n_classes=3`). Model data will be stored in
 `/tmp/iris_model`.
 

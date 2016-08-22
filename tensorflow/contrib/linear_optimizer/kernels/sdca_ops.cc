@@ -777,7 +777,7 @@ REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 // persistent storage, as its implementation may change in the future.
 //
 // The current probability of at least one collision for 1B example_ids is
-// approximately 10^-21 (ie 2^60 / 2^129).
+// approximately 10^-11 (ie 2^60 / 2^97).
 class SdcaFprint : public OpKernel {
  public:
   explicit SdcaFprint(OpKernelConstruction* const context)
@@ -797,12 +797,13 @@ class SdcaFprint : public OpKernel {
   }
 
  private:
-  // Returns a 16 character binary string of the fprint.
-  // The string object typically occupies 32 bytes of memory on 64-bit systems.
+  // Returns a 12 character binary string of the fprint.
+  // We use 12 of the 16 fingerprint bytes to save memory, in particular in
+  // string implementations that use a short string optimization.
   static string Fp128ToBinaryString(const Fprint128& fprint) {
     string result;
     core::PutFixed64(&result, fprint.low64);
-    core::PutFixed64(&result, fprint.high64);
+    core::PutFixed32(&result, fprint.high64);
     return result;
   }
 };

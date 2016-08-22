@@ -928,6 +928,11 @@ class ExportMonitor(EveryN):
     except (RuntimeError, TypeError):
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
+      # Exports depend on saved checkpoints for constructing the graph and
+      # getting the global step from the graph instance saved in the checkpoint.
+      # If the checkpoint is stale with respect to current step, the global step
+      # is taken to be the last saved checkpoints global step and exporter
+      # doesn't export the same checkpoint again with the following error.
       logging.info("Skipping exporting for the same step. "
                    "Consider exporting less frequently.")
 

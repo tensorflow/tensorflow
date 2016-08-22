@@ -97,8 +97,8 @@ class StabilityTest(tf.test.TestCase):
     self.assertAllClose(regressor1.weights_, regressor2.weights_)
     self.assertAllClose(regressor1.bias_, regressor2.bias_)
     self.assertAllClose(
-        regressor1.predict(boston.data), regressor2.predict(boston.data),
-        atol=1e-05)
+        list(regressor1.predict(boston.data, as_iterable=True)),
+        list(regressor2.predict(boston.data, as_iterable=True)), atol=1e-05)
 
   def testDNNRegression(self):
     my_seed = 42
@@ -129,8 +129,8 @@ class StabilityTest(tf.test.TestCase):
     for b1, b2 in zip(regressor2.bias_, regressor2.bias_):
       self.assertAllClose(b1, b2)
     self.assertAllClose(
-        regressor1.predict(boston.data), regressor2.predict(boston.data),
-        atol=1e-05)
+        list(regressor1.predict(boston.data, as_iterable=True)),
+        list(regressor2.predict(boston.data, as_iterable=True)), atol=1e-05)
 
 
 if __name__ == '__main__':

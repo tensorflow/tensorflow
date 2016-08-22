@@ -8,46 +8,39 @@ tf-smoothing-input creates an input component for exponential smoothing.
 -->
 <dom-module id="tf-smoothing-input">
   <template>
-    <div class="smoothing-line">
-      <paper-checkbox
-        checked="{{enabled}}"
-        >Smoothing</paper-checkbox>
-      <div class="smoothing-block">
-        <paper-slider
-          value="{{weight}}"
-          immediate-value="{{_immediateWeightNumberForPaperSlider}}"
-          type="number"
-          step="[[step]]"
-          min="[[min]]"
-          max="[[max]]"
-          disabled="[[!enabled]]"
-          ></paper-slider>
-        <paper-input
-          id="input"
-          label="weight"
-          no-label-float
-          value="{{_inputWeightStringForPaperInput}}"
-          type="number"
-          step="[[step]]"
-          min="[[min]]"
-          max="[[max]]"
-          disabled="[[!enabled]]"
-          ></paper-input>
-      </div>
+    <h3 class="title">Smoothing</h3>
+    <div class="smoothing-block">
+      <paper-slider
+        id="slider"
+        value="{{weight}}"
+        immediate-value="{{_immediateWeightNumberForPaperSlider}}"
+        type="number"
+        step="[[step]]"
+        min="[[min]]"
+        max="[[max]]"
+        ></paper-slider>
+      <paper-input
+        id="input"
+        label="weight"
+        no-label-float
+        value="{{_inputWeightStringForPaperInput}}"
+        type="number"
+        step="[[step]]"
+        min="[[min]]"
+        max="[[max]]"
+        ></paper-input>
     </div>
     <style>
-      .smoothing-line {
-        margin-top: 15px;
+      .title {
+        color: var(--paper-grey-800);
+        margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
       }
 
       .smoothing-block {
         display: flex;
-      }
-
-      paper-checkbox {
-        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
-        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
-        font-size: 14px;
       }
 
       paper-slider {
@@ -74,13 +67,6 @@ tf-smoothing-input creates an input component for exponential smoothing.
       is: "tf-smoothing-input",
 
       properties: {
-        enabled: {
-          type: Boolean,
-          value: false,
-          notify: true,
-          observer: '_enabledChanged'
-        },
-
         step: Number,
         max: Number,
         min: Number,
@@ -110,28 +96,13 @@ tf-smoothing-input creates an input component for exponential smoothing.
         this.weight = val;
       }, 250),
 
-      _enabledChanged: function() {
-        // Workaround for paper-input bug on firefox :(
-        // Element crashes if we change value while it is disabled.
-        if (this.enabled) {
-          this.$.input.label = '';
-          this._immediateWeightNumberForPaperSliderChanged();
-        }
-      },
-
       _immediateWeightNumberForPaperSliderChanged: function() {
-        if(!this.enabled) {
-          return;
-        }
         this._inputWeightStringForPaperInput =
             this._immediateWeightNumberForPaperSlider.toString();
         this._updateWeight.call(this, this._immediateWeightNumberForPaperSlider);
       },
 
       _inputWeightStringForPaperInputChanged: function() {
-        if(!this.enabled) {
-           return;
-        }
         if (+this._inputWeightStringForPaperInput < 0) {
           this._inputWeightStringForPaperInput = '0';
         }

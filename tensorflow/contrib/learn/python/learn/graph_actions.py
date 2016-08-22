@@ -225,8 +225,13 @@ def _monitored_train(graph,
     except:  # pylint: disable=bare-except
       pass
 
+  # Adapted SessionRunHooks such as ExportMonitor depend on the
+  # CheckpointSaverHook to be executed before they should be executed.
+  # The `hooks` param comprises of deprecated monitor hooks
+  # (such as ExportMonitor). Appending them after the basic_session_run_hooks.
+  all_hooks = []
   with graph.as_default():
-    hooks.extend([
+    all_hooks.extend([
         basic_session_run_hooks.NanTensorHook(
             loss_op, fail_on_nan_loss=fail_on_nan_loss),
         basic_session_run_hooks.LoggingTensorHook(
@@ -243,29 +248,30 @@ def _monitored_train(graph,
     if supervisor_is_chief:
       # See question about adding the summary writer to the scaffold.
       summary_writer = summary_writer_cache.SummaryWriterCache.get(output_dir)
-      hooks.append(
+      all_hooks.append(
           basic_session_run_hooks.StepCounterHook(
               summary_writer=summary_writer))
-      hooks.append(
+      all_hooks.append(
           basic_session_run_hooks.SummarySaverHook(
               save_steps=supervisor_save_summaries_steps,
               summary_writer=summary_writer,
               scaffold=scaffold))
       if supervisor_save_model_secs > 0:
-        hooks.append(
+        all_hooks.append(
             basic_session_run_hooks.CheckpointSaverHook(
                 output_dir,
                 save_secs=supervisor_save_model_secs,
                 scaffold=scaffold))
 
     if steps is not None or max_steps is not None:
-      hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+      all_hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+    all_hooks.extend(hooks)
 
     with monitored_session.MonitoredSession(
         supervisor_master,
         is_chief=supervisor_is_chief,
         checkpoint_dir=output_dir,
-        hooks=hooks,
+        hooks=all_hooks,
         scaffold=scaffold) as super_sess:
       loss = None
       while not super_sess.should_stop():

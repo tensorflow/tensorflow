@@ -20,7 +20,7 @@ For example:
 ```python
 # 'x' represents [[1, ?, 1]
 #                 [?, 1, ?]]
-# where ? is implictly-zero.
+# where ? is implicitly-zero.
 tf.sparse_reduce_sum(x) ==> 3
 tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
 tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
