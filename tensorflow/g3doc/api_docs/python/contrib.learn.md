@@ -4818,8 +4818,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 ##### Returns:
 
-  String `Tensor` of batched `Example` proto. If `keep_keys` is True, then
-  returns tuple of string `Tensor`s, where first value is the key.
+  String `Tensor` of batched `Example` proto.
 
 ##### Raises:
 
@@ -4869,7 +4868,6 @@ All ops are added to the default graph.
 ##### Returns:
 
   A dict of `Tensor` or `SparseTensor` objects for each in `features`.
-  If `keep_keys` is `True`, returns tuple of string `Tensor` and above dict.
 
 ##### Raises:
 
