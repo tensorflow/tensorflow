@@ -351,6 +351,12 @@ class DropoutTest(tf.test.TestCase):
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[x_dim, 1])
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[1, 1])
 
+  def testNoDropoutFast(self):
+    x = tf.zeros((5,))
+    for p in 1, tf.constant(1.0):
+      y = tf.nn.dropout(x, keep_prob=p)
+      self.assertTrue(x is y)
+
 
 class ComputeSampledLogitsTest(tf.test.TestCase):
 
