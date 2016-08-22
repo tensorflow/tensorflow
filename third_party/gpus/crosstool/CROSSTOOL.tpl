@@ -47,7 +47,7 @@ toolchain {
   tool_path { name: "cpp" path: "/usr/bin/cpp" }
   tool_path { name: "dwp" path: "/usr/bin/dwp" }
   # As part of the TensorFlow release, we place some cuda-related compilation
-  # files in third_party/gpus/crosstool/clang/bin, and this relative
+  # files in @local_config_cuda//crosstool/clang/bin, and this relative
   # path, combined with the rest of our Bazel configuration causes our
   # compilation to use those files.
   tool_path { name: "gcc" path: "clang/bin/crosstool_wrapper_driver_is_not_gcc" }
@@ -124,6 +124,9 @@ toolchain {
   # Gold linker only? Can we enable this by default?
   # linker_flag: "-Wl,--warn-execstack"
   # linker_flag: "-Wl,--detect-odr-violations"
+
+  # Include directory for cuda headers.
+  cxx_builtin_include_directory: "/usr/local/cuda%{cuda_version}/include"
 
   compilation_mode_flags {
     mode: DBG
@@ -220,6 +223,9 @@ toolchain {
 
   # Anticipated future default.
   linker_flag: "-no-canonical-prefixes"
+
+  # Include directory for cuda headers.
+  cxx_builtin_include_directory: "/usr/local/cuda%{cuda_version}/include"
 
   compilation_mode_flags {
     mode: DBG
