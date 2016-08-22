@@ -57,6 +57,7 @@ please exit the tensorflow source tree, and relaunch your python interpreter
 from there.""" % traceback.format_exc()
   raise ImportError(msg)
 
+from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.config_pb2 import *

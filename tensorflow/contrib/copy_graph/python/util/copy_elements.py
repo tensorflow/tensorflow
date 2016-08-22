@@ -198,7 +198,7 @@ def copy_op_to_graph(org_instance, to_graph, variables,
                       for x in op.inputs]
 
         #Make a new node_def based on that of the original.
-        #An instance of tensorflow.core.framework.graph_pb2.NodeDef, it
+        #An instance of tensorflow.core.framework.node_def_pb2.NodeDef, it
         #stores String-based info such as name, device and type of the op.
         #Unique to every Operation instance.
         new_node_def = deepcopy(op._node_def)

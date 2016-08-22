@@ -55,6 +55,7 @@ def tf_android_core_proto_sources_relative():
         "framework/graph.proto",
         "framework/kernel_def.proto",
         "framework/log_memory.proto",
+        "framework/node_def.proto",
         "framework/op_def.proto",
         "framework/step_stats.proto",
         "framework/summary.proto",
