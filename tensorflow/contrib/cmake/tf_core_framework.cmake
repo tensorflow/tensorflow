@@ -95,6 +95,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/graph.proto"
     "tensorflow/core/framework/kernel_def.proto"
     "tensorflow/core/framework/log_memory.proto"
+    "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"
