@@ -180,8 +180,14 @@ class L2LossTest(tf.test.TestCase):
 class L2NormalizeTest(tf.test.TestCase):
 
   def _l2Normalize(self, x, dim):
-    norm = np.apply_along_axis(np.linalg.norm, dim, x)
-    return x / np.expand_dims(norm, dim)
+    if isinstance(dim, list):
+      norm = np.linalg.norm(x, axis=tuple(dim))
+      for d in dim:
+        norm = np.expand_dims(norm, d)
+      return x / norm
+    else:
+      norm = np.apply_along_axis(np.linalg.norm, dim, x)
+      return x / np.expand_dims(norm, dim)
 
   def testL2Normalize(self):
     x_shape = [20, 7, 3]
@@ -193,6 +199,17 @@ class L2NormalizeTest(tf.test.TestCase):
         x_tf = tf.constant(x_np, name="x")
         y_tf = tf.nn.l2_normalize(x_tf, dim)
         self.assertAllClose(y_np, y_tf.eval())
+
+  def testL2NormalizeDimArray(self):
+    x_shape = [20, 7, 3]
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    dim = [1, 2]
+    y_np = self._l2Normalize(x_np, dim)
+    with self.test_session():
+      x_tf = tf.constant(x_np, name="x")
+      y_tf = tf.nn.l2_normalize(x_tf, dim)
+      self.assertAllClose(y_np, y_tf.eval())
 
   def testL2NormalizeGradient(self):
     x_shape = [20, 7, 3]
