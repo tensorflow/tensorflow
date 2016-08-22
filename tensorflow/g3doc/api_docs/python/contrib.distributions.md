@@ -1337,7 +1337,8 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: scalar.  Number of samples to draw from each distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG.
 *  <b>`name`</b>: name to give to the op.
 
@@ -1851,7 +1852,8 @@ Sample `n` observations from the Beta Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -2220,7 +2222,8 @@ Sample `n` observations from the Categorical distribution.
 ##### Args:
 
 
-*  <b>`n`</b>: 0-D.  Number of independent samples to draw for each distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Random seed (optional).
 *  <b>`name`</b>: A name for this operation (optional).
 
@@ -2697,8 +2700,8 @@ See the doc for tf.random_gamma for further detail.
 ##### Args:
 
 
-*  <b>`n`</b>: Python integer, the number of observations to sample from each
-    distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed for this operation.
 *  <b>`name`</b>: Optional name for the operation.
 
@@ -3175,7 +3178,8 @@ Sample `n` observations from the Exponential Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -3671,8 +3675,8 @@ See the doc for tf.random_gamma for further detail.
 ##### Args:
 
 
-*  <b>`n`</b>: Python integer, the number of observations to sample from each
-    distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed for this operation.
 *  <b>`name`</b>: Optional name for the operation.
 
@@ -4178,8 +4182,8 @@ See the doc for tf.random_gamma for further details on sampling strategy.
 ##### Args:
 
 
-*  <b>`n`</b>: Python integer, the number of observations to sample from each
-    distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed for this operation.
 *  <b>`name`</b>: Optional name for the operation.
 
@@ -4642,7 +4646,8 @@ Sample `n` observations from the Laplace Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -5122,7 +5127,8 @@ Sample `n` observations from the Normal Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -6014,7 +6020,8 @@ Sample `n` observations from the Student t Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -6454,7 +6461,8 @@ Sample `n` observations from the Uniform Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -6908,7 +6916,8 @@ Sample `n` observations from the Multivariate Normal Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -7363,7 +7372,8 @@ Sample `n` observations from the Multivariate Normal Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -7827,7 +7837,8 @@ Sample `n` observations from the Multivariate Normal Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -8383,7 +8394,8 @@ Sample `n` observations from the distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -9871,7 +9883,8 @@ https://en.wikipedia.org/wiki/Chi-squared_distribution#Gamma.2C_exponential.2C_a
 ##### Args:
 
 
-*  <b>`n`</b>: Scalar. Number of samples to draw from each distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer; random number generator seed.
 *  <b>`name`</b>: The name of this op.
 
@@ -10356,7 +10369,8 @@ https://en.wikipedia.org/wiki/Chi-squared_distribution#Gamma.2C_exponential.2C_a
 ##### Args:
 
 
-*  <b>`n`</b>: Scalar. Number of samples to draw from each distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer; random number generator seed.
 *  <b>`name`</b>: The name of this op.
 
@@ -10850,7 +10864,8 @@ Samples from the base distribution and then passes through the transform.
 ##### Args:
 
 
-*  <b>`n`</b>: scalar, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 
@@ -11131,7 +11146,8 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
@@ -11585,7 +11601,8 @@ Sample `n` observations from the Multivariate Normal Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 

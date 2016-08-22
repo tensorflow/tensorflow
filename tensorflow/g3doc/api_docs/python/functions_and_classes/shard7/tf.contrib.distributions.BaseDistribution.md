@@ -55,7 +55,8 @@ Generate `n` samples.
 ##### Args:
 
 
-*  <b>`n`</b>: scalar. Number of samples to draw.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
