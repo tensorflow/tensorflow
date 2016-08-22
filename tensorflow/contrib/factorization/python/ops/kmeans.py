@@ -28,7 +28,6 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.monitors import BaseMonitor
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 
 SQUARED_EUCLIDEAN_DISTANCE = clustering_ops.SQUARED_EUCLIDEAN_DISTANCE
@@ -221,7 +220,7 @@ class KMeansClustering(estimator.Estimator,
 
   def clusters(self):
     """Returns cluster centers."""
-    return checkpoints.load_variable(self.model_dir, self.CLUSTERS)
+    return tf.contrib.framework.load_variable(self.model_dir, self.CLUSTERS)
 
   def _get_train_ops(self, features, _):
     (_,
