@@ -125,4 +125,13 @@ TEST(ConstOpTest, Names) {
   EXPECT_EQ(c_y_1.node()->name(), "c/y_1");
 }
 
+TEST(ConstOpTest, TemplatedConst) {
+  Scope root = Scope::NewRootScope();
+  auto c1 = ops::Const<int>(root, {1, 2});
+  ExpectTypeAndShape(c1.node(), DT_INT32, {2});
+
+  auto c2 = ops::Const<string>(root, {{"this"}, {"is"}, {"a"}, {"constant"}});
+  ExpectTypeAndShape(c2.node(), DT_STRING, {4, 1});
+}
+
 }  // namespace tensorflow
