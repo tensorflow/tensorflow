@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Variable class."""
 from __future__ import absolute_import
 from __future__ import division
@@ -140,12 +139,19 @@ class Variable(object):
   @@graph
   @@op
   """
+
   # TODO(touts): Add @@value and @@ref in the docstring above once they are
   # ready for consumption.
 
-  def __init__(self, initial_value=None, trainable=True, collections=None,
-               validate_shape=True, caching_device=None, name=None,
-               variable_def=None, dtype=None):
+  def __init__(self,
+               initial_value=None,
+               trainable=True,
+               collections=None,
+               validate_shape=True,
+               caching_device=None,
+               name=None,
+               variable_def=None,
+               dtype=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -199,17 +205,23 @@ class Variable(object):
       self._init_from_proto(variable_def)
     else:
       # Create from initial_value.
-      self._init_from_args(initial_value=initial_value,
-                           trainable=trainable,
-                           collections=collections,
-                           validate_shape=validate_shape,
-                           caching_device=caching_device,
-                           name=name,
-                           dtype=dtype)
+      self._init_from_args(
+          initial_value=initial_value,
+          trainable=trainable,
+          collections=collections,
+          validate_shape=validate_shape,
+          caching_device=caching_device,
+          name=name,
+          dtype=dtype)
 
-  def _init_from_args(self, initial_value=None, trainable=True,
-                      collections=None, validate_shape=True,
-                      caching_device=None, name=None, dtype=None):
+  def _init_from_args(self,
+                      initial_value=None,
+                      trainable=True,
+                      collections=None,
+                      validate_shape=True,
+                      caching_device=None,
+                      name=None,
+                      dtype=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -259,31 +271,26 @@ class Variable(object):
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
-      with ops.name_scope(name, "Variable",
-                          [] if init_from_fn else [initial_value]) as name:
+      with ops.name_scope(name, "Variable", [] if init_from_fn else
+                          [initial_value]) as name:
 
         # Get the initial value from a callable function. The real shape of the
         # variable will be set later, since under the init_from_fn case, the
         # shape won't be known until after the function is invoked.
         if init_from_fn:
           self._variable = state_ops.variable_op(
-              [],
-              dtype.base_dtype,
-              set_shape=False,
-              name=name)
+              [], dtype.base_dtype, set_shape=False, name=name)
           with ops.colocate_with(self._variable.op):
             with ops.name_scope("Initializer"):
               # Colocate the tensors created by the initial_value() function
               # with the variable itself.
-              self._initial_value = ops.convert_to_tensor(initial_value(),
-                                                          name="initial_value",
-                                                          dtype=dtype)
+              self._initial_value = ops.convert_to_tensor(
+                  initial_value(), name="initial_value", dtype=dtype)
 
         # Or get the initial value from a Tensor or Python object.
         else:
-          self._initial_value = ops.convert_to_tensor(initial_value,
-                                                      name="initial_value",
-                                                      dtype=dtype)
+          self._initial_value = ops.convert_to_tensor(
+              initial_value, name="initial_value", dtype=dtype)
           # In this case, the variable op can't be created until after the
           # initial_value has been converted to a Tensor with a known type.
           self._variable = state_ops.variable_op(
@@ -296,8 +303,8 @@ class Variable(object):
         if validate_shape:
           initial_value_shape = self._initial_value.get_shape()
           if not initial_value_shape.is_fully_defined():
-            raise ValueError("initial_value must have a shape specified: %s"
-                             % self._initial_value)
+            raise ValueError("initial_value must have a shape specified: %s" %
+                             self._initial_value)
           self._variable.set_shape(initial_value_shape)
           # TODO(b/28152992): Remove the below hack modifying the node_def shape
           # directly once set_shape() handles it.
@@ -546,10 +553,11 @@ class Variable(object):
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
       raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
-    return state_ops.scatter_sub(self._variable,
-                                 sparse_delta.indices,
-                                 sparse_delta.values,
-                                 use_locking=use_locking)
+    return state_ops.scatter_sub(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking)
 
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
@@ -602,9 +610,11 @@ class Variable(object):
     Args:
       operator: string. The operator name.
     """
+
     def _run_op(a, *args):
       # pylint: disable=protected-access
       return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
+
     setattr(Variable, operator, _run_op)
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
@@ -677,8 +687,12 @@ class Variable(object):
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice."""
 
-    def __init__(self, full_name=None, full_shape=None, var_offset=None,
-                 var_shape=None, save_slice_info_def=None):
+    def __init__(self,
+                 full_name=None,
+                 full_shape=None,
+                 var_offset=None,
+                 var_shape=None,
+                 save_slice_info_def=None):
       """Create a `SaveSliceInfo`.
 
       Args:
@@ -710,7 +724,8 @@ class Variable(object):
       """Computes the spec string used for saving."""
       full_shape_str = " ".join(["%d" % d for d in self.full_shape]) + " "
       sl_spec = ":".join([
-          "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)])
+          "%d,%d" % (o, s) for o, s in zip(self.var_offset, self.var_shape)
+      ])
       return full_shape_str + sl_spec
 
     def to_proto(self):
@@ -768,8 +783,8 @@ class _PartitionedVariable(object):
 
     if len(self._variable_list) == 1:
       with ops.name_scope(None):
-        self._as_tensor = array_ops.identity(self._variable_list[0],
-                                             name=self._name)
+        self._as_tensor = array_ops.identity(
+            self._variable_list[0], name=self._name)
         return self._as_tensor
 
     if all([p < 2 for p in self._partitions]):
@@ -911,8 +926,7 @@ def initialize_variables(var_list, name="init"):
     An Op that run the initializers of all the specified variables.
   """
   if var_list:
-    return control_flow_ops.group(
-        *[v.initializer for v in var_list], name=name)
+    return control_flow_ops.group(*[v.initializer for v in var_list], name=name)
   return control_flow_ops.no_op(name=name)
 
 
@@ -1005,7 +1019,8 @@ def report_uninitialized_variables(var_list=None,
     name: Optional name of the `Operation`.
 
   Returns:
-    A 1-D tensor containing names of the uninitialized variables, or an empty 1-D
+    A 1-D tensor containing names of the uninitialized variables, or an empty
+    1-D
     tensor if there are no variables or no uninitialized variables.
   """
   if var_list is None:
@@ -1022,14 +1037,14 @@ def report_uninitialized_variables(var_list=None,
     return array_ops.constant([], dtype=dtypes.string, name=name)
   else:
     # Get a 1-D boolean tensor listing whether each variable is initialized.
-    variables_mask = math_ops.logical_not(array_ops.pack(
-        [state_ops.is_variable_initialized(v) for v in var_list]))
+    variables_mask = math_ops.logical_not(
+        array_ops.pack([state_ops.is_variable_initialized(v) for v in var_list
+                       ]))
     # Get a 1-D string tensor containing all the variable names.
     variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
     # Return a 1-D tensor containing all the names of uninitialized variables.
-    return array_ops.boolean_mask(variable_names_tensor, variables_mask,
-                                  name=name)
-
+    return array_ops.boolean_mask(
+        variable_names_tensor, variables_mask, name=name)
 
 # pylint: disable=protected-access
 ops.register_tensor_conversion_function(Variable,
@@ -1041,15 +1056,18 @@ ops.register_tensor_conversion_function(
 # pylint: enable=protected-access
 
 ops.register_dense_tensor_like_type(Variable)
-ops.register_proto_function(ops.GraphKeys.VARIABLES,
-                            proto_type=variable_pb2.VariableDef,
-                            to_proto=Variable.to_proto,
-                            from_proto=Variable.from_proto)
-ops.register_proto_function(ops.GraphKeys.TRAINABLE_VARIABLES,
-                            proto_type=variable_pb2.VariableDef,
-                            to_proto=Variable.to_proto,
-                            from_proto=Variable.from_proto)
-ops.register_proto_function(ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
-                            proto_type=variable_pb2.VariableDef,
-                            to_proto=Variable.to_proto,
-                            from_proto=Variable.from_proto)
+ops.register_proto_function(
+    ops.GraphKeys.VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=Variable.to_proto,
+    from_proto=Variable.from_proto)
+ops.register_proto_function(
+    ops.GraphKeys.TRAINABLE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=Variable.to_proto,
+    from_proto=Variable.from_proto)
+ops.register_proto_function(
+    ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=Variable.to_proto,
+    from_proto=Variable.from_proto)

@@ -2264,7 +2264,6 @@ REGISTER_KERNELS(GPU, double);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-
 // Note, this op works on cpu only.
 template <typename T, typename Tindex>
 class SparseApplyRMSPropOp : public OpKernel {
@@ -2330,9 +2329,9 @@ class SparseApplyRMSPropOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     for (int d = 1; d < var.dims(); d++) {
-      OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
-                  errors::InvalidArgument(
-                    "var and grad must match in dimension ", d));
+      OP_REQUIRES(
+          ctx, var.dim_size(d) == grad.dim_size(d),
+          errors::InvalidArgument("var and grad must match in dimension ", d));
     }
     const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
@@ -2401,6 +2400,5 @@ REGISTER_KERNELS(double, int32);
 REGISTER_KERNELS(double, int64);
 
 #undef REGISTER_KERNELS
-
 
 }  // namespace tensorflow
