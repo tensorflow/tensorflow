@@ -18,7 +18,7 @@
       <tf-graph-app id="tfgraph"></tf-graph-app>
       <script>
         let g = document.querySelector("#tfgraph");
-        fetch("graph.pbtxt").then(r => r.text()).then(pbtxt => {
+        fetch("graph.pbtxt", {credentials: "include"}).then(r => r.text()).then(pbtxt => {
           g.pbtxt = pbtxt;
         });
       </script>

@@ -71,7 +71,7 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
 
   def testSimpleWeighted(self):
     with self.test_session():
-      input_weights = [1.0, 2.0, 3.0, 4.0]
+      input_weights = [1.5, 2.0, 3.0, 4.0]
       (pcw_node_sums, _, pcw_splits_indices, pcw_splits_sums, _,
        pcw_totals_indices, pcw_totals_sums, _,
        leaves) = (self.ops.count_extremely_random_stats(
@@ -90,12 +90,13 @@ class CountExtremelyRandomStatsClassificationTest(test_util.TensorFlowTestCase):
            regression=False))
 
       self.assertAllEqual(
-          [[10., 1., 2., 3., 4.], [3., 1., 2., 0., 0.], [7., 0., 0., 3., 4.]],
+          [[10.5, 1.5, 2., 3., 4.],
+           [3.5, 1.5, 2., 0., 0.], [7., 0., 0., 3., 4.]],
           pcw_node_sums.eval())
       self.assertAllEqual([[0, 0, 0], [0, 0, 1]], pcw_splits_indices.eval())
-      self.assertAllEqual([1., 1.], pcw_splits_sums.eval())
+      self.assertAllEqual([1.5, 1.5], pcw_splits_sums.eval())
       self.assertAllEqual([[0, 2], [0, 0], [0, 1]], pcw_totals_indices.eval())
-      self.assertAllEqual([2., 3., 1.], pcw_totals_sums.eval())
+      self.assertAllEqual([2., 3.5, 1.5], pcw_totals_sums.eval())
       self.assertAllEqual([1, 1, 2, 2], leaves.eval())
 
   def testMissingLabel(self):

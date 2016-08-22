@@ -31,6 +31,7 @@ from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
@@ -366,6 +367,9 @@ class SdcaModel(object):
         value_dtype=dtypes.float32,
         num_shards=self._num_table_shards(),
         default_value=[0.0, 0.0, 0.0, 0.0])
+
+    logging_ops.scalar_summary('approximate_duality_gap',
+                               self.approximate_duality_gap())
 
   def _symmetric_l1_regularization(self):
     return self._options['symmetric_l1_regularization']

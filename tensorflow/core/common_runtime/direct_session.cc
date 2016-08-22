@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -60,6 +61,10 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+auto* direct_session_runs = monitoring::Counter<0>::New(
+    "/tensorflow/core/direct_session_runs",
+    "The number of times DirectSession::Run() has been called.");
 
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 t = options.config.inter_op_parallelism_threads();
@@ -262,6 +267,7 @@ Status DirectSession::Run(const RunOptions& run_options,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs,
                           RunMetadata* run_metadata) {
+  direct_session_runs->GetCell()->IncrementBy(1);
   {
     mutex_lock l(graph_def_lock_);
     if (!graph_created_) {

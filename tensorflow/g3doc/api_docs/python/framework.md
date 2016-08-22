@@ -820,7 +820,7 @@ with g.container('experiment0'):
     q3 = tf.FIFOQueue(30, tf.float32)
 
 # Resets container "experiment0", after which the state of v1, v2, v4, q1
-# will become undefined (such as unitialized).
+# will become undefined (such as uninitialized).
 tf.Session.reset(target, ["experiment0"])
 ```
 

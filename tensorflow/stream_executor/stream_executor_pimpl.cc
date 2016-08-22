@@ -309,6 +309,48 @@ bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
   return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
 }
 
+port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
+StreamExecutor::createRnnDescriptor(
+    int num_layers, int hidden_size, int input_size,
+    dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+    dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout, uint64 seed,
+    ScratchAllocator *state_allocator) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnDescriptor(
+      num_layers, hidden_size, input_size, input_mode, direction_mode, rnn_mode,
+      data_type, dropout, seed, state_allocator);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
+                                                  int batch_size, int data_size,
+                                                  dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnSequenceTensorDescriptor(seq_length, batch_size,
+                                                        data_size, data_type);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
+                                               int data_size,
+                                               dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
+                                                     data_size, data_type);
+}
+
 dnn::DnnSupport *StreamExecutor::AsDnn() {
   mutex_lock lock{mu_};
   if (dnn_ != nullptr) {

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -247,13 +247,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import sys
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import timeline
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -490,10 +494,38 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
 
   Returns:
     The total loss and a boolean indicating whether or not to stop training.
+
+  Raises:
+    ValueError: if 'should_trace' is in `train_step_kwargs` but `logdir` is not.
   """
   start_time = time.time()
-  total_loss, np_global_step = sess.run([train_op, global_step])
+
+  trace_run_options = None
+  run_metadata = None
+  if 'should_trace' in train_step_kwargs:
+    if 'logdir' not in train_step_kwargs:
+      raise ValueError('logdir must be present in train_step_kwargs when '
+                       'should_trace is present')
+    if sess.run(train_step_kwargs['should_trace']):
+      trace_run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+
+  total_loss, np_global_step = sess.run([train_op, global_step],
+                                        options=trace_run_options,
+                                        run_metadata=run_metadata)
   time_elapsed = time.time() - start_time
+
+  if run_metadata is not None:
+    tl = timeline.Timeline(run_metadata.step_stats)
+    trace = tl.generate_chrome_trace_format()
+    trace_filename = os.path.join(train_step_kwargs['logdir'],
+                                  'tf_trace-%d.json' % np_global_step)
+    logging.info('Writing trace to %s', trace_filename)
+    file_io.write_string_to_file(trace_filename, trace)
+    if 'summary_writer' in train_step_kwargs:
+      train_step_kwargs['summary_writer'].add_run_metadata(
+          run_metadata, 'run_metadata-%d' % np_global_step)
 
   if 'should_log' in train_step_kwargs:
     if sess.run(train_step_kwargs['should_log']):
@@ -546,7 +578,8 @@ def train(train_op,
           saver=None,
           save_interval_secs=600,
           sync_optimizer=None,
-          session_config=None):
+          session_config=None,
+          trace_every_n_steps=None):
   """Runs a training loop using a TensorFlow supervisor.
 
   When the sync_optimizer is supplied, gradient updates are applied
@@ -600,14 +633,18 @@ def train(train_op,
       `None`, gradient updates will be asynchronous.
     session_config: An instance of `tf.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
+    trace_every_n_steps: produce and save a `Timeline` in Chrome trace format
+      and add it to the summaries every `trace_every_n_steps`. If None, no trace
+      information will be produced or saved.
 
   Returns:
     the value of the loss function after training.
 
   Raises:
     ValueError: if `train_op` is empty or if `startup_delay_steps` is
-      non-zero when `sync_optimizer` is supplied, or if `number_of_steps` is
-      negative.
+      non-zero when `sync_optimizer` is supplied, if `number_of_steps` is
+      negative, or if `trace_every_n_steps` is not `None` and no `logdir` is
+      provided.
   """
   if train_op is None:
     raise ValueError('train_op cannot be None.')
@@ -617,6 +654,9 @@ def train(train_op,
       raise ValueError('Cannot provide summary_op because logdir=None')
     if saver is not None:
       raise ValueError('Cannot provide saver because logdir=None')
+    if trace_every_n_steps is not None:
+      raise ValueError('Cannot provide trace_every_n_steps because '
+                       'logdir=None')
 
   if sync_optimizer and startup_delay_steps > 0:
     raise ValueError(
@@ -674,6 +714,10 @@ def train(train_op,
       train_step_kwargs['should_stop'] = should_stop_op
       train_step_kwargs['should_log'] = math_ops.equal(
           math_ops.mod(global_step, log_every_n_steps), 0)
+      if is_chief and trace_every_n_steps is not None:
+        train_step_kwargs['should_trace'] = math_ops.equal(
+            math_ops.mod(global_step, trace_every_n_steps), 0)
+        train_step_kwargs['logdir'] = logdir
 
   sv = supervisor.Supervisor(
       graph=graph,
@@ -690,6 +734,9 @@ def train(train_op,
       save_summaries_secs=save_summaries_secs,
       save_model_secs=save_interval_secs,
       init_fn=init_fn)
+
+  if summary_writer is not None:
+    train_step_kwargs['summary_writer'] = sv.summary_writer
 
   should_retry = True
   while should_retry:

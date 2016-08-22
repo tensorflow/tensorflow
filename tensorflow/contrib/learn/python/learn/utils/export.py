@@ -72,7 +72,9 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
           variables.initialize_local_variables(),
           data_flow_ops.initialize_all_tables()),
                   default_graph_signature=default_graph_signature,
-                  named_graph_signatures=named_graph_signatures)
+                  named_graph_signatures=named_graph_signatures,
+                  assets_collection=ops.get_collection(
+                      ops.GraphKeys.ASSET_FILEPATHS))
       export.export(export_dir, contrib_variables.get_global_step(), session,
                     exports_to_keep=exports_to_keep)
 
