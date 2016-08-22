@@ -37,8 +37,7 @@ def inception_v3_base(inputs,
 
   Note that the names of the layers in the paper do not correspond to the names
   of the endpoints registered by this function although they build the same
-  network. This function follows the naming conventions in the style-guide at
-  cs/image/understanding/tensorflow/g3doc/index.md.
+  network.
 
   Here is a mapping from the old_names to the new names:
   Old name          | New name
