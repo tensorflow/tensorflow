@@ -35,9 +35,9 @@ class AdagradDAOptimizer(optimizer.Optimizer):
   equivalent to having updated them on every mini-batch.
 
   AdagradDA is typically used when there is a need for large sparsity in the
-  trained model. This optimizer only guarantees sparsity for linear models. Do
-  not use AdagradDA for deep networks as it will likely not converge or will
-  blow up.
+  trained model. This optimizer only guarantees sparsity for linear models. Be
+  careful when using AdagradDA for deep networks as it will require careful
+  initialization of the gradient accumulators for it to train.
 
   @@__init__
   """
