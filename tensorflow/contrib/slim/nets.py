@@ -16,6 +16,12 @@
 
 ## Standard Networks.
 @@alexnet_v2
+@@inception_v1
+@@inception_v1_base
+@@inception_v2
+@@inception_v2_base
+@@inception_v3
+@@inception_v3_base
 @@overfeat
 @@vgg_a
 @@vgg_16
@@ -30,6 +36,9 @@ from __future__ import print_function
 from tensorflow.contrib.slim.python.slim.nets import alexnet
 from tensorflow.contrib.slim.python.slim.nets import inception
 from tensorflow.contrib.slim.python.slim.nets import overfeat
+from tensorflow.contrib.slim.python.slim.nets import resnet_utils
+from tensorflow.contrib.slim.python.slim.nets import resnet_v1
+from tensorflow.contrib.slim.python.slim.nets import resnet_v2
 from tensorflow.contrib.slim.python.slim.nets import vgg
 from tensorflow.python.util.all_util import make_all
 # pylint: enable=unused-import

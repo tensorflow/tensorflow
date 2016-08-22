@@ -1,8 +1,8 @@
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
-
-<link rel="import" href="../tf-regex-group/tf-regex-group.html">
-<link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
+<link rel="import" href="../tf-storage/tf-storage.html">
+<link rel="import" href="tf-regex-group.html">
+<link rel="import" href="tensorboard-color.html">
 
 <!--
 `tf-categorizer` turns an array of tags into an array of categories
@@ -62,7 +62,10 @@ categories are exclusive.
         },
         splitOnUnderscore: {
           type: Boolean,
-          value: false,
+          notify: true,
+          value: TF.URIStorage.getBooleanInitializer('splitOnUnderscore',
+              false),
+          observer: '_splitOnUnderscoreObserver'
         },
         categorizer: {
           type: Object,
@@ -92,6 +95,8 @@ categories are exclusive.
           return "TopLevelNamespaceCategorizer";
         }
       },
+      _splitOnUnderscoreObserver: TF.URIStorage.getBooleanObserver(
+          'splitOnUnderscore', false)
     });
   </script>
 </dom-module>

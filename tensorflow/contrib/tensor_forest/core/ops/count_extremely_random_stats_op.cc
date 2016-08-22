@@ -527,9 +527,9 @@ class CountExtremelyRandomStats : public OpKernel {
     auto out_leaves = output_leaves->unaligned_flat<int32>();
 
     // <accumulator, class> -> count delta
-    PairMapType<int32> total_delta;
+    PairMapType<float> total_delta;
     // <accumulator, split, class> -> count delta
-    TupleMapType<int32> split_delta;
+    TupleMapType<float> split_delta;
 
     for (int32 i = 0; i < num_data; ++i) {
       out_leaves(i) = results[i].node_indices.back();

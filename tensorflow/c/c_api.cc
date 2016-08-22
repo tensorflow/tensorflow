@@ -689,8 +689,7 @@ tensorflow::string PortName(const TF_Port& port) {
 
 }  // namespace
 
-// TF_OperationDescription functions
-// -----------------------------------------------
+// TF_OperationDescription functions ------------------------------------------
 
 extern "C" {
 

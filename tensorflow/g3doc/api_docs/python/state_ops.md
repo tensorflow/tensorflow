@@ -90,7 +90,7 @@ collection `GraphKeys.VARIABLES`. The convenience function
 `all_variables()` returns the contents of that collection.
 
 When building a machine learning model it is often convenient to distinguish
-betwen variables holding the trainable model parameters and other variables
+between variables holding the trainable model parameters and other variables
 such as a `global step` variable used to count training steps. To make this
 easier, the variable constructor supports a `trainable=<bool>` parameter. If
 `True`, the new variable is also added to the graph collection
@@ -147,10 +147,6 @@ variable to its initial value.
 *  <b>`dtype`</b>: If set, initial_value will be converted to the given type.
     If `None`, either the datatype will be kept (if `initial_value` is
     a Tensor), or `convert_to_tensor` will decide.
-
-##### Returns:
-
-  A Variable.
 
 ##### Raises:
 
@@ -627,7 +623,8 @@ variables if there are any, or an empty array if there are none.
 
 ##### Returns:
 
-  A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+  A 1-D tensor containing names of the uninitialized variables, or an empty
+  1-D
   tensor if there are no variables or no uninitialized variables.
 
 
@@ -2167,7 +2164,7 @@ The `Graph` that contains the values, indices, and shape tensors.
 Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
 This function exports the graph, saver, and collection objects into
-`MetaGraphDef` protocol buffer with the intension of it being imported
+`MetaGraphDef` protocol buffer with the intention of it being imported
 at a later time or location to restart training, run inference, or be
 a subgraph.
 

@@ -185,6 +185,8 @@ handle these situations gracefully.
       });
     },
     synchronizeColors: function(e) {
+      if (!this.colorScale) return;
+
       var checkboxes = Array.prototype.slice.call(this.querySelectorAll("paper-checkbox"));
       var scale = this.colorScale;
       checkboxes.forEach(function(p) {

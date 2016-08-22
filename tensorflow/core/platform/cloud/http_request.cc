@@ -433,10 +433,10 @@ Status HttpRequest::Send() {
       }
       return Status::OK();
     case 401:
-      return errors::PermissionDenied(
-          "Not authorized to access the given HTTP resource.");
+    case 403:
+      return errors::PermissionDenied("Not authorized to access the resource.");
     case 404:
-      return errors::NotFound("The requested URL was not found.");
+      return errors::NotFound("The requested resource was not found.");
     case 416:  // Requested Range Not Satisfiable
       if (response_string_piece_) {
         *response_string_piece_ = StringPiece();
@@ -444,7 +444,7 @@ Status HttpRequest::Send() {
       return Status::OK();
     default:
       return errors::Unavailable(
-          strings::StrCat("Unexpected HTTP response code ", response_code));
+          strings::StrCat("Unexpected response code ", response_code));
   }
 }
 

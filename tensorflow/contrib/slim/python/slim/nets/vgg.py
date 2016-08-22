@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Contains model definitions for versions of the VGG network.
+"""Contains model definitions for versions of the Oxford VGG network.
 
-These model definitions were introduced in the technical report:
+These model definitions were introduced in the following technical report:
+
   Very Deep Convolutional Networks For Large-Scale Image Recognition
-  Karen Simonyan and Andrew Zisserman, ICLR 2015
+  Karen Simonyan and Andrew Zisserman
+  arXiv technical report, 2015
+  PDF: http://arxiv.org/pdf/1409.1556.pdf
+  ILSVRC 2014 Slides: http://www.robots.ox.ac.uk/~karen/pdf/ILSVRC_2014.pdf
+  CC-BY-4.0
 
 More information can be obtained from the VGG website:
 www.robots.ox.ac.uk/~vgg/research/very_deep/
@@ -41,6 +46,14 @@ slim = tf.contrib.slim
 
 
 def vgg_arg_scope(weight_decay=0.0005):
+  """Defines the VGG arg scope.
+
+  Args:
+    weight_decay: The l2 regularization coefficient.
+
+  Returns:
+    An arg_scope.
+  """
   with slim.arg_scope([slim.conv2d, slim.fully_connected],
                       activation_fn=tf.nn.relu,
                       weights_regularizer=slim.l2_regularizer(weight_decay),

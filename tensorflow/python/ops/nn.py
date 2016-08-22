@@ -547,7 +547,8 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
 
   Args:
     x: A `Tensor`.
-    dim: Dimension along which to normalize.
+    dim: Dimension along which to normalize.  A scalar or a vector of
+      integers.
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
@@ -557,7 +558,7 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    square_sum = math_ops.reduce_sum(math_ops.square(x), [dim], keep_dims=True)
+    square_sum = math_ops.reduce_sum(math_ops.square(x), dim, keep_dims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.mul(x, x_inv_norm, name=name)
 

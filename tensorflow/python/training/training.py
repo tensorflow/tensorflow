@@ -30,6 +30,7 @@ of the subclasses.
 @@GradientDescentOptimizer
 @@AdadeltaOptimizer
 @@AdagradOptimizer
+@@AdagradDAOptimizer
 @@MomentumOptimizer
 @@AdamOptimizer
 @@FtrlOptimizer
@@ -151,6 +152,7 @@ from tensorflow.python.ops import state_ops
 
 from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
+from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
 from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer

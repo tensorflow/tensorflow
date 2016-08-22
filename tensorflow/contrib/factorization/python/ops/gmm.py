@@ -30,7 +30,6 @@ from tensorflow.contrib.factorization.python.ops import gmm_ops
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 
 
@@ -157,13 +156,13 @@ class GMM(estimator.Estimator, TransformerMixin):
 
   def clusters(self):
     """Returns cluster centers."""
-    clusters = checkpoints.load_variable(self.model_dir,
-                                         gmm_ops.GmmAlgorithm.CLUSTERS_VARIABLE)
+    clusters = tf.contrib.framework.load_variable(
+        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_VARIABLE)
     return np.squeeze(clusters, 1)
 
   def covariances(self):
     """Returns the covariances."""
-    return checkpoints.load_variable(
+    return tf.contrib.framework.load_variable(
         self.model_dir,
         gmm_ops.GmmAlgorithm.CLUSTERS_COVS_VARIABLE)
 

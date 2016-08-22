@@ -25,7 +25,7 @@ Supported feature types are:
 
 Supported transformations on above features are:
  * Bucketization: also known as binning.
- * Crossing: also known as composition or union.
+ * Crossing: also known as conjunction or combination.
  * Embedding.
 
 Typical usage example:
@@ -1192,7 +1192,7 @@ def bucketized_column(source_column, boundaries):
 class _CrossedColumn(_FeatureColumn, collections.namedtuple(
     "_CrossedColumn", ["columns", "hash_bucket_size", "combiner",
                        "ckpt_to_load_from", "tensor_name_in_ckpt"])):
-  """Represents a cross transformation also known as composition or union.
+  """Represents a cross transformation also known as conjunction or combination.
 
   Instances of this class are immutable. It crosses given `columns`. Crossed
   column output will be hashed to hash_bucket_size.

@@ -18,8 +18,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_
 
-#include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace monitoring {
@@ -43,8 +43,8 @@ class Counter {
  public:
   ~Counter() {}
 
-  static Counter* New(
-      const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def) {
+  template <typename... MetricDefArgs>
+  static Counter* New(MetricDefArgs&&... metric_def_args) {
     return new Counter<NumLabels>();
   }
 

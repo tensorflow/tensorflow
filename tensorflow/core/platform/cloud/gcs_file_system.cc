@@ -144,7 +144,8 @@ class GcsRandomAccessFile : public RandomAccessFile {
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
     TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
-    TF_RETURN_IF_ERROR(request->Send());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
+                                    bucket_, "/", object_);
     return Status::OK();
   }
 
@@ -232,7 +233,8 @@ class GcsWritableFile : public WritableFile {
         request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetPostRequest(tmp_content_filename_));
-    TF_RETURN_IF_ERROR(request->Send());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when writing to gs://",
+                                    bucket_, "/", object_);
     return Status::OK();
   }
 
@@ -417,7 +419,7 @@ Status GcsFileSystem::GetChildren(const string& dirname,
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(
         request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-    TF_RETURN_IF_ERROR(request->Send());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
     std::stringstream response_stream;
     response_stream << response_piece;
     Json::Value root;
@@ -480,7 +482,7 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
       kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetDeleteRequest());
-  TF_RETURN_IF_ERROR(request->Send());
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when deleting ", fname);
   return Status::OK();
 }
 
@@ -516,7 +518,8 @@ Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(
       request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-  TF_RETURN_IF_ERROR(request->Send());
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading metadata of ",
+                                  fname);
   std::stringstream response_stream;
   response_stream << response_piece;
 
@@ -558,7 +561,8 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
       request->EscapeString(target_object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetPostRequest());
-  TF_RETURN_IF_ERROR(request->Send());
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when renaming ", src,
+                                  " to ", target);
 
   TF_RETURN_IF_ERROR(DeleteFile(src));
   return Status::OK();

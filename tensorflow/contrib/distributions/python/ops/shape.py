@@ -17,136 +17,194 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
+from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 
 
-class _ShapeUtil(object):
-  """Class which helps infer/identify subsets of tensor dimensions.
+class _DistributionShape(object):
+  """Manage and manipulate `Distribution` shape.
 
   Terminology:
     Recall that a `Tensor` has:
-      shape: sizes of tensor dimensions,
-      ndims: size of shape; number of tensor dimensions,
-       dims: indexes into shape; useful for transpose, reduce.
+      - `shape`: size of `Tensor` dimensions,
+      - `ndims`: size of `shape`; number of `Tensor` dimensions,
+      - `dims`: indexes into `shape`; useful for transpose, reduce.
 
-    Tensors sampled from a `Distribution` can be partitioned by:
-      sample dims: indexes independent, identically distributed (iid) draws,
-      batch dims:  indexes non-identical draws,
-      event dims:  indexes coordinates of a single draw.
+    `Tensor`s sampled from a `Distribution` can be partitioned by `sample_dims`,
+    `batch_dims`, and `event_dims`.  To understand the semantics of these
+    dimensions, consider when two of the three are fixed and the remaining
+    is varied:
+      - `sample_dims`: indexes independent draws from identical
+                       parameterizations of the `Distribution`.
+      - `batch_dims`:  indexes independent draws from non-identical
+                       parameterizations of the `Distribution`.
+      - `event_dims`:  indexes event coordinates from one sample.
 
-    The sample, batch, and event dimensions constitute the entirety of a
-    `Tensor` shape.  The dimensions are always in sample, batch, event order.
+    The `sample`, `batch`, and `event` dimensions constitute the entirety of a
+    `Distribution` `Tensor`'s shape.
 
-  Assumptions:
-    We assume that batch_ndims and event_ndims are statically known for both
-    creating this object and for inputs to its functions.
-    TODO(jvdillon): Relax this assumption and support fully unknown shape.
+    The dimensions are always in `sample`, `batch`, `event` order.
 
-    We also assume that the `Tensor` rank is static, i.e., `x.get_shape().ndims
-    is not None`.
+  Purpose:
+    This class partitions `Tensor` notions of `shape`, `ndims`, and `dims` into
+    `Distribution` notions of `sample,` `batch,` and `event` dimensions. That
+    is, it computes any of:
 
-  Possible use-cases:
-    ~ Sample dimensions:
+    ```
+    sample_shape     batch_shape     event_shape
+    sample_dims      batch_dims      event_dims
+    sample_ndims     batch_ndims     event_ndims
+    ```
+
+    for a given `Tensor`, e.g., the result of
+    `Distribution.sample(sample_shape=...)`.
+
+    For a given `Tensor`, this class computes the above table using minimal
+    information: `batch_ndims` and `event_ndims`.
+
+  Examples of `Distribution` `shape` semantics:
+    - Sample dimensions:
       Computing summary statistics, i.e., the average is a reduction over sample
       dimensions.
 
-    ~ Batch dimensions:
-      Log-likelihood under model predicted location:
       ```python
-      mu = ... # vector of predictions, one for each covariate.
-      neg_log_likelihood = -tf.reduce_mean(
-        Normal(loc=mu, scale=1).log_pdf(x),
-        reduce_dims=[0])
+      sample_dims = [0]
+      tf.reduce_mean(Normal(mu=1.3, sigma=1.).sample_n(1000),
+                     reduction_indices=sample_dims)  # ~= 1.3
       ```
 
+    - Batch dimensions:
       Monte Carlo estimation of a marginal probability:
       Average over batch dimensions where batch dimensions are associated with
-      random draws of a prior.
+      random draws from a prior.
       E.g., suppose we want to find the Monte Carlo estimate of the marginal
-      distribution of a Normal with a random Laplace location:
+      distribution of a `Normal` with a random `Laplace` location:
+
       ```
-        P(X=x) = integral P(X=x|y) P(Y=y) dy
-              ~= 1/n sum_{i=1}^n P(X=x|y_i),   y_i ~iid Laplace(0,1)
-               = tf.reduce_mean(Normal(loc=Laplace(0, 1).sample_n(n=1000),
-                                       scale=tf.ones([1000, 1])).pdf(x),
-                                reduce_dims=[0])
+      P(X=x) = integral P(X=x|y) P(Y=y) dy
+            ~= 1/n sum_{i=1}^n P(X=x|y_i),   y_i ~iid Laplace(0,1)
+             = tf.reduce_mean(Normal(mu=Laplace(0., 1.).sample_n(n=1000),
+                                     sigma=tf.ones(1000)).pdf(x),
+                              reduction_indices=batch_dims)
       ```
 
-      The `Laplace` distribution generates a tensor of shape [1000, 1]. When fed
-      to a `Normal`, this is interpreted as 1000 different locations, i.e.,
-      1000 non-identical Normals.  Therefore a single call to pdf(x) yields 1000
-      probabilities, one for every location.  The average over this batch yields
-      the marginal.
+      The `Laplace` distribution generates a `Tensor` of shape `[1000]`. When
+      fed to a `Normal`, this is interpreted as 1000 different locations, i.e.,
+      1000 non-identical Normals.  Therefore a single call to `pdf(x)` yields
+      1000 probabilities, one for every location.  The average over this batch
+      yields the marginal.
 
-    ~ Event dimensions:
+    - Event dimensions:
       Computing the determinant of the Jacobian of a function of a random
       variable involves a reduction over event dimensions.
+      E.g., Jacobian of the transform `Y = g(X) = exp(X)`:
 
-  Examples:
-    Write S, B, E for sample shape, batch shape, and event shape (resp.).
+      ```python
+      tf.div(1., tf.reduce_prod(x, event_dims))
+      ```
+
+  Examples using this class:
+    Write `S, B, E` for `sample_shape`, `batch_shape`, and `event_shape`.
 
     ```python
-    x.get_shape() == S + B + E  # For statically known x shape.
-
-    # 100 iid samples from one multivariate Normal with two
-    # degrees of freedom (DF).
+    # 150 iid samples from one multivariate Normal with two degrees of freedom.
     mu = [0., 0]
     sigma = [[1., 0],
              [0,  1]]
-    X = MultivariateNormal(loc=mu, scale=sigma).sample_n(n=100)
-    # S = [100]
+    mvn = MultivariateNormal(mu, sigma)
+    rand_mvn = mvn.sample(sample_shape=[3, 50])
+    shaper = DistributionShape(batch_ndims=0, event_ndims=1)
+    S, B, E = shaper.get_shape(rand_mvn)
+    # S = [3, 50]
     # B = []
     # E = [2]
 
-    # 100 iid samples from one Wishart with 2x2 DF.
+    # 12 iid samples from one Wishart with 2x2 events.
     sigma = [[1., 0],
-             [0,  1]]
-    X = Wishart(scale=sigma).sample_n(n=100)
-    # S = [100]
+             [2,  1]]
+    wishart = Wishart(df=5, scale=sigma)
+    rand_wishart = wishart.sample(sample_shape=[3, 4])
+    shaper = DistributionShape(batch_ndims=0, event_ndims=2)
+    S, B, E = shaper.get_shape(rand_wishart)
+    # S = [3, 4]
     # B = []
     # E = [2, 2]
 
-    # 100 iid samples (with shape [2, 50]) from two, non-identical bivariate
-    # Normal distributions.
-    mu    = ... # shape(2, 2)
-    sigma = ... # shape(2, 2, 2)
-    X = MultivariateNormal(loc=mu, scale=sigma).sample(shape=[2, 50])
-    # S = [2, 50]
+    # 100 iid samples from two, non-identical trivariate Normal distributions.
+    mu    = ... # shape(2, 3)
+    sigma = ... # shape(2, 3, 3)
+    X = MultivariateNormal(mu, sigma).sample(shape=[4, 25])
+    # S = [4, 25]
     # B = [2]
-    # E = [2]
+    # E = [3]
     ```
 
+  Argument Validation:
+    When `validate_args=True`, checks that cannot be done during
+    graph construction are performed at graph execution. This may result in a
+    performance degradation because data must be switched from GPU to CPU.
+
+    For example, when `validate_args=True` and `event_ndims` is a
+    non-constant `Tensor`, it is checked to be a non-negative integer at graph
+    execution. (Same for `batch_ndims`).  Constant `Tensor`s and non-`Tensor`
+    arguments are always checked for correctness since this can be done for
+    "free," i.e., during graph construction.
   """
 
-  def __init__(self, batch_ndims=None, event_ndims=None, name='ShapeUtil'):
-    """Construct ShapeUtil with known sample, batch, and/or event ndims.
+  def __init__(self,
+               batch_ndims=None,
+               event_ndims=None,
+               validate_args=True,
+               name="DistributionShape"):
+    """Construct `DistributionShape` with fixed `batch_ndims`, `event_ndims`.
 
-    Typically, batch_ndims and event_ndims are fixed throughout the lifetime of
-    a Distribution.
+    `batch_ndims` and `event_ndims` are fixed throughout the lifetime of a
+    `Distribution`.  They may only be known at graph execution.
+
+    If both `batch_ndims` and `event_ndims` are python scalars (rather than
+    either being a `Tensor`), functions in this class automatically perform
+    sanity checks during graph construction.
 
     Args:
-      batch_ndims: number of dims (rank) of the batch portion of indexes of a
-        `Tensor`.  A "batch" is a non-identical distribution, i.e, Normal with
-        different parameters.
-      event_ndims: number of dims (rank) of the event portion of indexes of a
-        `Tensor`. An "event" is what is sampled from a distribution, i.e., a
-        trivariate Normal has an event shape of [3] and a 4 dimensional Wishart
-        has an event shape of [4, 4].
-      name: `String`. The name to give Ops created by this class.
+      batch_ndims: `Tensor`. Number of `dims` (`rank`) of the batch portion of
+        indexes of a `Tensor`.  A "batch" is a non-identical distribution, i.e,
+        Normal with different parameters.
+      event_ndims: `Tensor`. Number of `dims` (`rank`) of the event portion of
+        indexes of a `Tensor`. An "event" is what is sampled from a
+        distribution, i.e., a trivariate Normal has an event shape of [3] and a
+        4 dimensional Wishart has an event shape of [4, 4].
+      validate_args: `Boolean`. When `True`, non-`tf.constant` `Tensor`
+        arguments are checked for correctness. (`tf.constant` arguments are
+        always checked.)
+      name: `String`. The name prepended to Ops created by this class.
 
     Raises:
-      ValueError: if batch_ndims or event_ndims are invalid.
+      ValueError: if either `batch_ndims` or `event_ndims` are: `None`,
+        negative, not `int32`.
     """
-    if batch_ndims < 0:
-      raise ValueError('must specify non-negative batch_ndims(%d)', batch_ndims)
-    if batch_ndims > 0 and event_ndims < 1:
-      raise ValueError('must specify positive event_ndims(%d) when '
-                       'batch_ndims(%d) is positive', event_ndims, batch_ndims)
-    # TODO(jvdillon): Support batches of scalars.
-    self._name = name
+    if batch_ndims is None: raise ValueError("batch_ndims cannot be None")
+    if event_ndims is None: raise ValueError("event_ndims cannot be None")
     self._batch_ndims = batch_ndims
     self._event_ndims = event_ndims
+    self._validate_args = validate_args
+    self._name = name
+    with self._name_scope("init"):
+      self._batch_ndims = self._assert_non_negative_int32_scalar(
+          ops.convert_to_tensor(batch_ndims, name="batch_ndims"))
+      self._batch_ndims_static, self._batch_ndims_is_0 = self._introspect_ndims(
+          self._batch_ndims)
+      self._event_ndims = self._assert_non_negative_int32_scalar(
+          ops.convert_to_tensor(event_ndims, name="event_ndims"))
+      self._event_ndims_static, self._event_ndims_is_0 = self._introspect_ndims(
+          self._event_ndims)
 
   @property
   def name(self):
@@ -163,234 +221,246 @@ class _ShapeUtil(object):
     """Returns number of dimensions needed to index a sample's coordinates."""
     return self._event_ndims
 
-  def get_ndims(self, x, name='get_ndims'):
-    """Get tensor ndims (rank).
+  @property
+  def validate_args(self):
+    """Returns True if graph-runtime `Tensor` checks are enabled."""
+    return self._validate_args
+
+  def get_ndims(self, x, name="get_ndims"):
+    """Get `Tensor` number of dimensions (rank).
 
     Args:
       x: `Tensor`.
       name: `String`. The name to give this op.
 
-    Raises:
-      ValueError: if ndims is not statically known.
-
     Returns:
-      `Scalar` number of dimensions associated with a `Tensor`.
+      ndims: Scalar number of dimensions associated with a `Tensor`.
     """
-    if x is None:
-      raise ValueError('Input was None which does not have known ndims.')
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[x]):
-        ndims = ops.convert_to_tensor(x).get_shape().ndims
-        if ndims is None:
-          raise ValueError('ShapeUtil assumes static number of '
-                           'dimensions(%d)', ndims)
-        return ndims
+    with self._name_scope(name, values=[x]):
+      x = ops.convert_to_tensor(x, name="x")
+      ndims = x.get_shape().ndims
+      if ndims is None:
+        return array_ops.rank(x, name="ndims")
+      return ops.convert_to_tensor(ndims, dtype=dtypes.int32, name="ndims")
 
-  def get_sample_ndims(self, x):
-    """Returns number of dimensions corresponding to iid draws.
+  def get_sample_ndims(self, x, name="get_sample_ndims"):
+    """Returns number of dimensions corresponding to iid draws ("sample").
 
     Args:
       x: `Tensor`.
-
-    Raises:
-      ValueError: if batch_ndims or event_ndims are not statically known.
-      ValueError: if static sample_ndims does not match inferred
-
-    Returns:
-      Scalar number of dimensions associated with a sample.
-    """
-    ndims = self.get_ndims(x)
-    sample_ndims = ndims - self.batch_ndims - self.event_ndims
-    if sample_ndims < 0:
-      raise ValueError('expected batch_ndims(%d) + event_ndims(%d) < ndims(%d)',
-                       self.batch_ndims, self.event_ndims, ndims)
-    return sample_ndims
-
-  def get_dims(self, x, sample=True, batch=True, event=True):
-    """Returns subset of tensor's dimension indexes (indexes into shape).
-
-    Args:
-      x: `Tensor`.
-      sample: `Boolean`. Include sample dimensions or not.
-      batch: `Boolean`. Include batch dimensions or not.
-      event: `Boolean`. Include event dimensions or not.
-
-    Raises:
-      ValueError: if `x.get_shape().ndims` is `None`
-
-    Returns:
-      List enumerating requested dimensions.
-    """
-    ndims = self.get_ndims(x)
-
-    if sample and batch and event:
-      return list(range(ndims))
-
-    sample_start = 0
-    batch_start = self.get_sample_ndims(x)
-    event_start = batch_start + self.batch_ndims
-
-    sample_shape = list(range(sample_start, batch_start)) if sample else []
-    batch_shape = list(range(batch_start, event_start)) if batch else []
-    event_shape = list(range(event_start, ndims)) if event else []
-
-    return sample_shape + batch_shape + event_shape
-
-  def get_shape(self, x, sample=True, batch=True, event=True, name='get_shape'):
-    """Returns subset of tensor's shape (size of dimensions).
-
-    Args:
-      x: `Tensor`.
-      sample: `Boolean`. Include sample shape or not.
-      batch: `Boolean`. Include batch shape or not.
-      event: `Boolean`. Include event shape or not.
       name: `String`. The name to give this op.
 
+    Returns:
+      sample_ndims: `Tensor` (0D, `int32`).
+
     Raises:
-      ValueError: if `x.get_shape().ndims` is `None`
+      ValueError: if `sample_ndims` is calculated to be negative.
+    """
+    with self._name_scope(name, values=[x]):
+      ndims = self.get_ndims(x, name=name)
+      if self._is_all_constant_helper(ndims, self.batch_ndims,
+                                      self.event_ndims):
+        ndims = tensor_util.constant_value(ndims)
+        sample_ndims = (ndims - self._batch_ndims_static -
+                        self._event_ndims_static)
+        if sample_ndims < 0:
+          raise ValueError(
+              "expected batch_ndims(%d) + event_ndims(%d) <= ndims(%d)" %
+              (self._batch_ndims_static, self._event_ndims_static, ndims))
+        return ops.convert_to_tensor(sample_ndims, name="sample_ndims")
+      else:
+        with ops.name_scope(name="sample_ndims"):
+          sample_ndims = ndims - self.batch_ndims - self.event_ndims
+          if self.validate_args:
+            sample_ndims = control_flow_ops.with_dependencies(
+                [check_ops.assert_non_negative(sample_ndims)], sample_ndims)
+        return sample_ndims
+
+  def get_dims(self, x, name="get_dims"):
+    """Returns dimensions indexing `sample_shape`, `batch_shape`, `event_shape`.
+
+    Example:
+
+    ```python
+    x = ... # Tensor with shape [4, 3, 2, 1]
+    sample_dims, batch_dims, event_dims = _DistributionShape(
+      batch_ndims=2, event_ndims=1).get_dims(x)
+    # sample_dims == [0]
+    # batch_dims == [1, 2]
+    # event_dims == [3]
+    # Note that these are not the shape parts, but rather indexes into shape.
+    ```
+
+    Args:
+      x: `Tensor`.
+      name: `String`. The name to give this op.
 
     Returns:
-      List describing event shape if known statically, `Tensor` otherwise.
+      sample_dims: `Tensor` (1D, `int32`).
+      batch_dims: `Tensor` (1D, `int32`).
+      event_dims: `Tensor` (1D, `int32`).
     """
-    if not sample and not batch and not event:
-      return []
-    with ops.name_scope(self._name):
-      with ops.name_scope(name, values=[x]):
-        x = ops.convert_to_tensor(x)
-        shape = (x.get_shape().as_list()
-                 if x.get_shape().is_fully_defined()
-                 else array_ops.shape(x))
-
-        if sample and batch and event:
-          return shape
-
-        sample_start = 0
-        batch_start = self.get_sample_ndims(x)
-        event_start = batch_start + self.batch_ndims
-
-        sample_shape = shape[sample_start:batch_start] if sample else []
-        batch_shape = shape[batch_start:event_start] if batch else []
-        event_shape = shape[event_start:] if event else []
-
-        if not batch and not event:
-          return sample_shape
-        if not sample and not event:
-          return batch_shape
-        if not sample and not batch:
-          return event_shape
-
-        if x.get_shape().is_fully_defined():
-          return sample_shape + batch_shape + event_shape
+    with self._name_scope(name, values=[x]):
+      def make_dims(start_sum, size, name):
+        """Closure to make dims range."""
+        start_sum = start_sum if start_sum else (
+            array_ops.zeros((), dtype=dtypes.int32, name="zero"),)
+        if self._is_all_constant_helper(size, *start_sum):
+          start = sum([tensor_util.constant_value(s) for s in start_sum])
+          stop = start + tensor_util.constant_value(size)
+          return ops.convert_to_tensor(
+              list(range(start, stop)), dtype=dtypes.int32, name=name)
         else:
-          return array_ops.concat(0, [sample_shape, batch_shape, event_shape])
+          start = sum(start_sum)
+          return math_ops.range(start, start + size)
+      sample_ndims = self.get_sample_ndims(x, name=name)
+      return (make_dims((), sample_ndims, name="sample_dims"),
+              make_dims((sample_ndims,), self.batch_ndims, name="batch_dims"),
+              make_dims((sample_ndims, self.batch_ndims),
+                        self.event_ndims, name="event_dims"))
 
-  def get_sample_dims(self, x):
-    """Returns dimension indexes corresponding to sample.
-
-    Convenience function; identical to:
-
-    ```python
-    get_dims(x, sample=True, batch=False, event=False)
-    ```
-
-    Args:
-      x: `Tensor`.
-
-    Raises:
-      ValueError: if `x.get_shape().ndims` is `None`
-
-    Returns:
-      List enumerating sample dimensions.
-    """
-    return self.get_dims(x, sample=True, batch=False, event=False)
-
-  def get_batch_dims(self, x):
-    """Returns dimension indexes corresponding to batch.
-
-    Convenience function; identical to:
-
-    ```python
-    get_dims(x, sample=False, batch=True, event=False)
-    ```
+  def get_shape(self, x, name="get_shape"):
+    """Returns `Tensor`'s shape partitioned into `sample`, `batch`, `event`.
 
     Args:
       x: `Tensor`.
-
-    Raises:
-      ValueError: if `x.get_shape().ndims` is `None`
+      name: `String`. The name to give this op.
 
     Returns:
-      List enumerating batch dimensions.
+      sample_shape: `Tensor` (1D, `int32`).
+      batch_shape: `Tensor` (1D, `int32`).
+      event_shape: `Tensor` (1D, `int32`).
     """
-    return self.get_dims(x, sample=False, batch=True, event=False)
+    with self._name_scope(name, values=[x]):
+      x = ops.convert_to_tensor(x, name="x")
+      def slice_shape(start_sum, size, name):
+        """Closure to slice out shape."""
+        start_sum = start_sum if start_sum else (
+            array_ops.zeros((), dtype=dtypes.int32, name="zero"),)
+        if (x.get_shape().ndims is not None and
+            self._is_all_constant_helper(size, *start_sum)):
+          start = sum([tensor_util.constant_value(s) for s in start_sum])
+          stop = start + tensor_util.constant_value(size)
+          slice_ = x.get_shape()[start:stop].as_list()
+          if all(s is not None for s in slice_):
+            return ops.convert_to_tensor(slice_, dtype=dtypes.int32, name=name)
+          # Fall-through intended.
+        return array_ops.slice(array_ops.shape(x), (sum(start_sum),), (size,))
+      sample_ndims = self.get_sample_ndims(x, name=name)
+      return (slice_shape((), sample_ndims,
+                          name="sample_shape"),
+              slice_shape((sample_ndims,), self.batch_ndims,
+                          name="batch_shape"),
+              slice_shape((sample_ndims, self.batch_ndims), self.event_ndims,
+                          name="event_shape"))
 
-  def get_event_dims(self, x):
-    """Returns dimension indexes corresponding to event.
+  def make_batch_of_event_sample_matrices(
+      self, x, name="make_batch_of_event_sample_matrices"):
+    """Reshapes/transposes `Distribution` `Tensor` from S+B+E to B_+E_+S_.
 
-    Convenience function; identical to:
-
-    ```python
-    get_dims(x, sample=False, batch=False, event=True)
-    ```
+    Where:
+      - `B_ = B if B else [1]`,
+      - `E_ = E if E else [1]`,
+      - `S_ = [tf.reduce_prod(S)]`.
 
     Args:
       x: `Tensor`.
-
-    Raises:
-      ValueError: if `x.get_shape().ndims` is `None`
+      name: `String`. The name to give this op.
 
     Returns:
-      List enumerating event dimensions.
+      x: `Tensor`. Input transposed/reshaped to `B_+E_+S_`.
+      sample_shape: `Tensor` (1D, `int32`).
     """
-    return self.get_dims(x, sample=False, batch=False, event=True)
+    with self._name_scope(name, values=[x]):
+      x = ops.convert_to_tensor(x, name="x")
+      sample_shape, batch_shape, event_shape = self.get_shape(x)
+      event_shape = distribution_util.pick_vector(
+          self._event_ndims_is_0, (1,), event_shape)
+      batch_shape = distribution_util.pick_vector(
+          self._batch_ndims_is_0, (1,), batch_shape)
+      new_shape = array_ops.concat(0, ((-1,), batch_shape, event_shape))
+      x = array_ops.reshape(x, shape=new_shape)
+      x = distribution_util.rotate_transpose(x, shift=-1)
+      return x, sample_shape
 
-  def get_sample_shape(self, x):
-    """Returns shape corresponding to sample.
+  def undo_make_batch_of_event_sample_matrices(
+      self, x, sample_shape, name="undo_make_batch_of_event_sample_matrices"):
+    """Reshapes/transposes `Distribution` `Tensor` from B_+E_+S_ to S+B+E.
 
-    Convenience function; identical to:
+    Where:
+      - `B_ = B if B else [1]`,
+      - `E_ = E if E else [1]`,
+      - `S_ = [tf.reduce_prod(S)]`.
 
-    ```python
-    get_shape(x, sample=True, batch=False, event=False)
-    ```
+    This function "reverses" `make_batch_of_event_sample_matrices`.
 
     Args:
-      x: `Tensor`.
+      x: `Tensor` of shape `B_+E_+S_`.
+      sample_shape: `Tensor` (1D, `int32`).
+      name: `String`. The name to give this op.
 
     Returns:
-      List describing sample shape if known statically, `Tensor` otherwise.
+      x: `Tensor`. Input transposed/reshaped to `S+B+E`.
     """
-    return self.get_shape(x, sample=True, batch=False, event=False)
+    with self._name_scope(name, values=[x, sample_shape]):
+      x = ops.convert_to_tensor(x, name="x")
+      sample_shape = ops.convert_to_tensor(sample_shape, name="sample_shape")
+      x = distribution_util.rotate_transpose(x, shift=1)
+      if self._is_all_constant_helper(self.batch_ndims, self.event_ndims):
+        if self._batch_ndims_is_0 or self._event_ndims_is_0:
+          b = ((min(-2, -1 - self._event_ndims_static),)
+               if self._batch_ndims_is_0 else ())
+          e = (-1,) if self._event_ndims_is_0 else ()
+          x = array_ops.squeeze(x, squeeze_dims=b + e)
+        _, batch_shape, event_shape = self.get_shape(x)
+      else:
+        s = (x.get_shape().as_list() if x.get_shape().is_fully_defined()
+             else array_ops.shape(x))
+        batch_shape = array_ops.slice(s, (1,), (self.batch_ndims,))
+        # Since sample_dims=1 and is left-most, we add 1 to the number of
+        # batch_ndims to get the event start dim.
+        event_start = math_ops.select(
+            self._batch_ndims_is_0, 2, 1 + self.batch_ndims)
+        event_shape = array_ops.slice(s, (event_start,), (self.event_ndims,))
+      new_shape = array_ops.concat(0, (sample_shape, batch_shape, event_shape))
+      x = array_ops.reshape(x, shape=new_shape)
+      return x
 
-  def get_batch_shape(self, x):
-    """Returns shape corresponding to batch.
+  @contextlib.contextmanager
+  def _name_scope(self, name=None, values=None):
+    """Helper function to standardize op scope."""
+    with ops.name_scope(self.name):
+      with ops.name_scope(name, values=(
+          (values or []) + [self.batch_ndims, self.event_ndims])) as scope:
+        yield scope
 
-    Convenience function; identical to:
+  def _is_all_constant_helper(self, *args):
+    """Helper which returns True if all inputs are constant_value."""
+    return all(tensor_util.constant_value(x) is not None for x in args)
 
-    ```python
-    get_shape(x, sample=False, batch=True, event=False)
-    ```
+  def _assert_non_negative_int32_scalar(self, x):
+    """Helper which ensures that input is a non-negative, int32, scalar."""
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.base_dtype != dtypes.int32.base_dtype:
+      raise TypeError("%s.dtype=%s is not %s" % (x.name, x.dtype, dtypes.int32))
+    x_value_static = tensor_util.constant_value(x)
+    if x.get_shape().ndims is not None and x_value_static is not None:
+      if x.get_shape().ndims != 0:
+        raise ValueError("%s.ndims=%d is not 0 (scalar)" %
+                         (x.name, x.get_shape().ndims))
+      if x_value_static < 0:
+        raise ValueError("%s.value=%d cannot be negative" %
+                         (x.name, x_value_static))
+      return x
+    if self.validate_args:
+      x = control_flow_ops.with_dependencies([
+          check_ops.assert_rank(x, 0),
+          check_ops.assert_non_negative(x)], x)
+    return x
 
-    Args:
-      x: `Tensor`.
-
-    Returns:
-      List describing batch shape if known statically, `Tensor` otherwise.
-    """
-    return self.get_shape(x, sample=False, batch=True, event=False)
-
-  def get_event_shape(self, x):
-    """Returns shape corresponding to event.
-
-    Convenience function; identical to:
-
-    ```python
-    get_shape(x, sample=False, batch=False, event=True)
-    ```
-
-    Args:
-      x: `Tensor`.
-
-    Returns:
-      List describing event shape if known statically, `Tensor` otherwise.
-    """
-    return self.get_shape(x, sample=False, batch=False, event=True)
+  def _introspect_ndims(self, ndims):
+    """Helper to establish some properties of input ndims args."""
+    if self._is_all_constant_helper(ndims):
+      return (tensor_util.constant_value(ndims),
+              tensor_util.constant_value(ndims) == 0)
+    return None, math_ops.equal(ndims, 0)

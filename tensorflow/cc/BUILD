@@ -52,6 +52,7 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -76,6 +77,35 @@ tf_cc_test(
         ":ops",
         ":scope",
         "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "client_session",
+    srcs = ["client/client_session.cc"],
+    hdrs = ["client/client_session.h"],
+    deps = [
+        ":ops",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "client/client_session_test.cc",
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -178,6 +208,7 @@ tf_cc_test(
     name = "framework/cc_ops_test.cc",
     deps = [
         ":cc_ops",
+        ":client_session",
         ":test_op",
         ":test_op_op_lib",
         "//tensorflow/core:all_kernels",

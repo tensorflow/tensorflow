@@ -379,13 +379,14 @@ class RandomForestGraphs(object):
 
     return control_flow_ops.group(*tree_graphs, name='train')
 
-  def inference_graph(self, input_data, data_spec=None):
+  def inference_graph(self, input_data, data_spec=None, **inference_args):
     """Constructs a TF graph for evaluating a random forest.
 
     Args:
       input_data: A tensor or SparseTensor or placeholder for input data.
       data_spec: A list of tf.dtype values specifying the original types of
         each column.
+      **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
       The last op in the random forest inference graph.
@@ -397,8 +398,8 @@ class RandomForestGraphs(object):
         tree_data = input_data
         if self.params.bagged_features:
           tree_data = self._bag_features(i, input_data)
-        probabilities.append(self.trees[i].inference_graph(tree_data,
-                                                           data_spec))
+        probabilities.append(self.trees[i].inference_graph(
+            tree_data, data_spec, **inference_args))
     with ops.device(self.device_assigner.get_device(0)):
       all_predict = array_ops.pack(probabilities)
       return math_ops.div(
@@ -415,7 +416,7 @@ class RandomForestGraphs(object):
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
         sizes.append(self.trees[i].size())
-    return math_ops.reduce_mean(array_ops.pack(sizes))
+    return math_ops.reduce_mean(math_ops.to_float(array_ops.pack(sizes)))
 
   # pylint: disable=unused-argument
   def training_loss(self, features, labels):

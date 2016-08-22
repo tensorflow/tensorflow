@@ -229,7 +229,7 @@ class MonitoredSession(object):
   * calls `hook.after_run()`
   * returns result of `session.run()` asked by user
   * if `AbortedError` occurs, it recovers or reinitializes the session before
-    executing the run() call agai
+    executing the run() call again
 
 
   Exit: At the `close()`, the monitored session does following things in order:
@@ -267,6 +267,7 @@ class MonitoredSession(object):
     self._config = config
     self._hooks = hooks or []
     self._scaffold = scaffold or Scaffold()
+    self._coord = None
     for h in self._hooks:
       h.begin()
     # Create the session.
@@ -299,12 +300,10 @@ class MonitoredSession(object):
     # Keep the tf_sess for quick runs of global step when needed.
     self._tf_sess = tf_sess
     # We don't want coordinator to suppress any exception.
-    coord = coordinator.Coordinator(clean_stop_exception_types=[])
-    coordinated_threads_to_join = queue_runner.start_queue_runners(
-        sess=tf_sess, coord=coord)
-    return _CoordinatedSession(
-        _HookedSession(tf_sess, self._hooks), coord,
-        coordinated_threads_to_join)
+    self._coord = coordinator.Coordinator(clean_stop_exception_types=[])
+    queue_runner.start_queue_runners(sess=tf_sess, coord=self._coord)
+    return _CoordinatedSession(_HookedSession(tf_sess, self._hooks),
+                               self._coord)
 
   @property
   def scaffold(self):
@@ -346,10 +345,20 @@ class MonitoredSession(object):
       if not exception_type:
         for h in self._hooks:
           h.end(self._tf_sess)
+      if not self._coord.joined:
+        # We exited cleanly without stopping.  Some things now.  This will also
+        # re-raise exceptions from the coordinated threads, as needed.
+        self._coord.request_stop()
+        self._coord.join()
     finally:
       self._sess.close()
       self._sess = None
       self._tf_sess = None
+      self._coord = None
+
+  @property
+  def coord(self):
+    return self._coord
 
   def _is_closed(self):
     """Return True if the supervised session is closed.  For tests only.
@@ -491,24 +500,22 @@ class _CoordinatedSession(_WrappedSession):
   raises an exception, the exception is reported to the coordinator.
 
   In addition, after each call to `run()` this session ask the coordinator if
-  the session should stop.  In that case it will will join all the coordinated
-  threads passed to the constructor before returning.
+  the session should stop.  In that case it will will join all the threads
+  registered with the coordinator before returning.
 
   If the coordinator was requested to stop with an exception, that exception
   will be re-raised from the call to `run()`.
   """
 
-  def __init__(self, sess, coord, coordinated_threads_to_join):
+  def __init__(self, sess, coord):
     """Create a new `_CoordinatedSession`.
 
     Args:
       sess: A `tf.Session` object.  The wrapped session.
       coord: A `tf.train.Coordinator` object.
-      coordinated_threads_to_join: A list of threads.
     """
     _WrappedSession.__init__(self, sess)
     self._coord = coord
-    self._coordinated_threads_to_join = coordinated_threads_to_join
 
   def _check_stop(self):
     # Check with the coordinator if we should stop.
@@ -518,7 +525,7 @@ class _CoordinatedSession(_WrappedSession):
     try:
       if not self._coord.should_stop():
         self._coord.request_stop()
-        self._coord.join(self._coordinated_threads_to_join)
+        self._coord.join()
     except Exception:  # pylint: disable=broad-except
       # Don't raise exception at close
       pass
@@ -530,8 +537,9 @@ class _CoordinatedSession(_WrappedSession):
       return self._sess.run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
       self._coord.request_stop(e)
-    if self._coord.should_stop():
-      self._coord.join(self._coordinated_threads_to_join)
+    finally:
+      if self._coord.should_stop():
+        self._coord.join()
 
 
 class _HookedSession(_WrappedSession):

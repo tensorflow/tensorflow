@@ -19,6 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import numbers
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -160,8 +163,8 @@ class WALSModel(object):
                col_init="random",
                num_row_shards=1,
                num_col_shards=1,
-               row_weights=None,
-               col_weights=None,
+               row_weights=1,
+               col_weights=1,
                use_factors_weights_cache=True):
     """Creates model for WALS matrix factorization.
 
@@ -177,10 +180,22 @@ class WALSModel(object):
       col_init: initializer for column factor. See row_init for details.
       num_row_shards: number of shards to use for row factors.
       num_col_shards: number of shards to use for column factors.
-      row_weights: If not None, along with col_weights, used to compute the
-        weight of an observed entry. w_ij = unobserved_weight + row_weights[i] *
-        col_weights[j]. If None, then w_ij = unobserved_weight, which simplifies
-        to ALS.
+      row_weights: Must be in one of the following three formats: None, a list
+        of lists of non-negative real numbers (or equivalent iterables) or a
+        single non-negative real number.
+        - When set to None, w_ij = unobserved_weight, which simplifies to ALS.
+        Note that col_weights must also be set to "None" in this case.
+        - If it is a list of lists of non-negative real numbers, it needs to be
+        in the form of [[w_0, w_1, ...], [w_k, ... ], [...]], with the number of
+        inner lists matching the number of row factor shards and the elements in
+        each inner list are the weights for the rows of the corresponding row
+        factor shard. In this case,  w_ij = unonbserved_weight +
+                                            row_weights[i] * col_weights[j].
+        - If this is a single non-negative real number, this value is used for
+        all row weights and w_ij = unobserved_weight + row_weights *
+                                   col_weights[j].
+        Note that it is allowed to have row_weights as a list while col_weights
+        a single number or vice versa.
       col_weights: See row_weights.
       use_factors_weights_cache: When True, the factors and weights will be
         cached on the workers before the updates start. Defaults to True.
@@ -195,8 +210,6 @@ class WALSModel(object):
                                                 shape=[self._n_components],
                                                 dtype=tf.float32))
                             if regularization is not None else None)
-    # TODO(yifanchen): Change the default row/col weights to be ones but
-    # continue to support the ALS behavior when they are explicitly set to None.
     assert (row_weights is None) == (col_weights is None)
     self._row_weights = WALSModel._create_weights(row_weights,
                                                   self._input_rows,
@@ -236,6 +249,16 @@ class WALSModel(object):
   def col_factors(self):
     """Returns a list of tensors corresponding to column factor shards."""
     return self._col_factors
+
+  @property
+  def row_weights(self):
+    """Returns a list of tensors corresponding to row weight shards."""
+    return self._row_weights
+
+  @property
+  def col_weights(self):
+    """Returns a list of tensors corresponding to col weight shards."""
+    return self._col_weights
 
   @property
   def initialize_op(self):
@@ -286,28 +309,63 @@ class WALSModel(object):
 
     return sharded_matrix
 
-  @staticmethod
-  def _create_weights(wt_init, num_wts, num_shards, name):
+  @classmethod
+  def _create_weights(cls, wt_init, num_wts, num_shards, name):
     """Helper function to create sharded weight vector.
 
     Args:
-      wt_init: init value for the weight. If None, weights are not created.
+      wt_init: init value for the weight. If None, weights are not created. This
+        can be one of the None, a list of non-negative real numbers or a single
+        non-negative real number (or equivalent iterables).
       num_wts: total size of all the weight shards
       num_shards: number of shards for the weights
       name: name for the new Variables.
 
     Returns:
       A list of weight shard Tensors.
+
+    Raises:
+      ValueError: If wt_init is not the right format.
     """
+
     if wt_init is None:
       return None
-    if num_shards == 1 and len(wt_init) == num_wts:
-      wt_init = [wt_init]
-    assert len(wt_init) == num_shards
-    return [tf.Variable(wt_init[i],
-                        dtype=tf.float32,
-                        name="%s_shard_%d" % (name, i))
-            for i in xrange(num_shards)]
+
+    init_mode = "list"
+    if isinstance(wt_init, collections.Iterable):
+      if num_shards == 1 and len(wt_init) == num_wts:
+        wt_init = [wt_init]
+      assert len(wt_init) == num_shards
+    elif isinstance(wt_init, numbers.Real) and wt_init >= 0:
+      init_mode = "scalar"
+    else:
+      raise ValueError(
+          "Invalid weight initialization argument. Must be one of these: "
+          "None, a real non-negative real number, or a list of lists of "
+          "non-negative real numbers (or equivalent iterables) corresponding "
+          "to sharded factors.")
+
+    sizes = cls._shard_sizes(num_wts, num_shards)
+    assert len(sizes) == num_shards
+
+    def make_wt_initializer(i, size):
+      def initializer():
+        if init_mode == "scalar":
+          return wt_init * tf.ones([size])
+        else:
+          return wt_init[i]
+      return initializer
+
+    sharded_weight = []
+    for i, size in enumerate(sizes):
+      var_name = "%s_shard_%d" % (name, i)
+      var_init = make_wt_initializer(i, size)
+      sharded_weight.append(tf.Variable(
+          var_init,
+          dtype=tf.float32,
+          name=var_name))
+
+    return sharded_weight
 
   @staticmethod
   def _create_gramian(n_components, name):

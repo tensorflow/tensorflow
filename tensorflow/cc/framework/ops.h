@@ -23,6 +23,8 @@ limitations under the License.
 // eventually. Remove the NOLINT comment when moving.
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace ops {
@@ -47,6 +49,8 @@ class Operation {
 
   uint64 hash(int64 index) const;
 
+  bool operator==(const Operation& other) const { return node_ == other.node_; }
+
  private:
   typedef std::vector<std::pair<Node*, int64>> Inputs;
   static Inputs GetInputs(Node* node);
@@ -67,12 +71,23 @@ class Output {
   Node* node() const { return op().node(); }
   int64 index() const { return index_; }
   DataType type() const { return op_.output_type(index_); }
+  string name() const { return strings::StrCat(node()->name(), ":", index()); }
+  bool operator==(const Output& other) const {
+    return op_ == other.op_ && index_ == other.index_;
+  }
 
   uint64 hash() const { return op_.hash(index_); }
 
  private:
   Operation op_ = Operation(nullptr);
   int64 index_ = 0;
+};
+
+struct OutputHash {
+  std::size_t operator()(const Output& output) const {
+    return Hash64Combine(std::hash<Node*>()(output.node()),
+                         std::hash<int64>()(output.index()));
+  }
 };
 
 // Represents a tensor value that can be used as an operand to an Operation.

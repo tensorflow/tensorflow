@@ -952,9 +952,9 @@ class SdcaFprintTest(SdcaModelTest):
       in_data = tf.constant(['abc', 'very looooooong string', 'def'])
       out_data = _sdca_ops.sdca_fprint(in_data)
       self.assertAllEqual(
-          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13\x90\xf0\x85\xa0',
-           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9M%Z\xbc',
-           b'"0\xe00"\x18_\x08\x12?\xa0\x17\xd8\x9c\x99y'], out_data.eval())
+          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13',
+           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9',
+           b'"0\xe00"\x18_\x08\x12?\xa0\x17'], out_data.eval())
 
 
 class ShardedMutableHashTableTest(SdcaModelTest):

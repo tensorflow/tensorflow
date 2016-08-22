@@ -31,8 +31,12 @@ training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
 test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
                                                    target_dtype=np.int)
 
+# Specify that all features have real-value data
+feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
+
 # Build 3 layer DNN with 10, 20, 10 units respectively.
-classifier = tf.contrib.learn.DNNClassifier(hidden_units=[10, 20, 10],
+classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
+                                            hidden_units=[10, 20, 10],
                                             n_classes=3,
                                             model_dir="/tmp/iris_model")
 
@@ -60,7 +64,7 @@ directory.
 
 In the following sections, you'll progressively make updates to the above code
 to add logging and monitoring capabilities. Final code incorporating all updates
-is [available for download here](../../../examples/tutorials/monitors/iris_monitors.py).
+is [available for download here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/monitors/iris_monitors.py).
 
 ## Overview
 
@@ -69,7 +73,7 @@ walked through how to implement a neural net classifier to categorize Iris
 examples into one of three species.
 
 But when [the code](#setup) from this tutorial is run, the output contains no
-logging tracking how model training is progressing&mdash;only the results 
+logging tracking how model training is progressing&mdash;only the results
 of the `print` statements that were included:
 
 ```none
@@ -183,7 +187,8 @@ quite small, and thus trains quickly, it makes sense to set
 sufficient number of checkpoints:
 
 ```python
-classifier = tf.contrib.learn.DNNClassifier(hidden_units=[10, 20, 10],
+classifier = tf.contrib.learn.DNNClassifier(feature_columns=feature_columns,
+                                            hidden_units=[10, 20, 10],
                                             n_classes=3,
                                             model_dir="/tmp/iris_model",
                                             config=tf.contrib.learn.RunConfig(
@@ -250,7 +255,7 @@ validation_monitor = tf.contrib.learn.monitors.ValidationMonitor(
     metrics=validation_metrics)
 ```
 
-Rerun the code again, and you should see precision and recall included in your
+Rerun the code, and you should see precision and recall included in your
 log output, e.g.:
 
 ```none
@@ -290,7 +295,7 @@ implement early stopping when specified conditions are met, via three params:
 :                                  : `early_stopping_metric_minimize` is       :
 :                                  : `True`) or increase (if                   :
 :                                  : `early_stopping_metric_minimize` is       :
-:                                  : False), training will be stopped. Default :
+:                                  : `False`), training will be stopped. Default :
 :                                  : is `None`, which means early stopping     :
 :                                  : will never occur.                         :
 

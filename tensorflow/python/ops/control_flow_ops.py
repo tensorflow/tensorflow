@@ -1136,7 +1136,7 @@ class ControlFlowContext(object):
       return self._outer_context.GetWhileContext()
     return None
 
-  def MaybeAddToWhileContext(self, op):
+  def _MaybeAddToWhileContext(self, op):
     """Add a control dependency to the containing WhileContext.
 
     The added control dependency ensures that the outputs of this op
@@ -1149,6 +1149,15 @@ class ControlFlowContext(object):
     while_ctxt = self.GetWhileContext()
     if while_ctxt is not None:
       op._add_control_input(while_ctxt.GetControlPivot().op)
+
+  def _MaybeRemoveExternalControlEdges(self, op):
+    """Remove any external control dependency on this op."""
+    internal_control_inputs = [x for x in op.control_inputs
+                               if x._get_control_flow_context() == self]
+    if len(internal_control_inputs) != len(op.control_inputs):
+      del op.control_inputs[:]
+      op._add_control_inputs(internal_control_inputs)
+    return internal_control_inputs
   # pylint: enable=protected-access
 
 
@@ -1218,8 +1227,10 @@ class CondContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
+      # Remove any external control dependency on this op
+      self._MaybeRemoveExternalControlEdges(op)
       # Add this op to the enclosing while context
-      self.MaybeAddToWhileContext(op)
+      self._MaybeAddToWhileContext(op)
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
@@ -1512,13 +1523,9 @@ class WhileContext(ControlFlowContext):
     """
     if not op.inputs:
       # Remove any external control dependency on this op
-      control_inputs = [x for x in op.control_inputs
-                        if x._get_control_flow_context() == self]
-      if len(control_inputs) != len(op.control_inputs):
-        del op.control_inputs[:]
-        op._add_control_inputs(control_inputs)
+      control_inputs = self._MaybeRemoveExternalControlEdges(op)
+      # Add a control edge from the control pivot to this op.
       if not control_inputs:
-        # Add a control edge from the control pivot to this op.
         # pylint: disable=protected-access
         op._add_control_input(self.GetControlPivot().op)
         # pylint: enable=protected-access
@@ -1536,11 +1543,7 @@ class WhileContext(ControlFlowContext):
           has_internal_data_input = True
       if not has_internal_data_input:
         # Remove any external control dependency on this op
-        control_inputs = [x for x in op.control_inputs
-                          if x._get_control_flow_context() == self]
-        if len(control_inputs) != len(op.control_inputs):
-          del op.control_inputs[:]
-          op._add_control_inputs(control_inputs)
+        self._MaybeRemoveExternalControlEdges(op)
       # Add a control dependency to prevent loop invariants from
       # enabling ops that should not be executed.
       self._MaybeAddControlDependency(op)
