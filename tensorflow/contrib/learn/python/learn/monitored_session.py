@@ -229,7 +229,7 @@ class MonitoredSession(object):
   * calls `hook.after_run()`
   * returns result of `session.run()` asked by user
   * if `AbortedError` occurs, it recovers or reinitializes the session before
-    executing the run() call agai
+    executing the run() call again
 
 
   Exit: At the `close()`, the monitored session does following things in order:
