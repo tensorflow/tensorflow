@@ -31,54 +31,62 @@ InferenceContext::InferenceContext(
     const NodeDef* node_def, const OpDef& op_def,
     const std::vector<string>& input_shapes,
     const std::vector<const Tensor*>& input_tensors)
-    : input_tensors_(input_tensors), node_def_(*CHECK_NOTNULL(node_def)) {
+    : node_def_(*CHECK_NOTNULL(node_def)) {
+  PreInputInit(op_def, input_tensors);
+
+  for (const string& spec : input_shapes) {
+    const Shape* shape;
+    construction_status_.Update(MakeShapeFromString(spec, &shape));
+    if (!construction_status_.ok()) {
+      return;
+    }
+    inputs_.push_back(shape);
+  }
+
+  PostInputInit();
+}
+
+InferenceContext::InferenceContext(
+    const NodeDef* node_def, const OpDef& op_def,
+    const std::vector<string>& input_shapes_string,
+    const std::vector<const Shape*>& input_shapes,
+    const std::vector<const Tensor*>& input_tensors)
+    : node_def_(*CHECK_NOTNULL(node_def)) {
+  PreInputInit(op_def, input_tensors);
+  if (!construction_status_.ok()) return;
+  inputs_ = input_shapes;
+  PostInputInit();
+}
+
+InferenceContext::~InferenceContext() {
+  for (auto* s : all_shapes_) delete s;
+  for (auto* d : all_dims_) delete d;
+}
+
+void InferenceContext::PreInputInit(
+    const OpDef& op_def, const std::vector<const Tensor*>& input_tensors) {
+  input_tensors_ = input_tensors;
+
   construction_status_ =
-      NameRangesForNode(*node_def, op_def, &input_name_map_, &output_name_map_);
+      NameRangesForNode(node_def_, op_def, &input_name_map_, &output_name_map_);
   if (!construction_status_.ok()) return;
 
   int num_outputs = 0;
   for (const auto& e : output_name_map_) {
     num_outputs = std::max(num_outputs, e.second.second);
   }
+  for (int i = 0; i < num_outputs; ++i) {
+    outputs_.push_back(nullptr);
+  }
+}
+
+void InferenceContext::PostInputInit() {
   int num_inputs_from_node_def = 0;
   for (const auto& e : input_name_map_) {
     num_inputs_from_node_def =
         std::max(num_inputs_from_node_def, e.second.second);
   }
 
-  for (const string& spec : input_shapes) {
-    if (spec == "?") {
-      inputs_.push_back(UnknownShape());
-    } else {
-      std::vector<const Dimension*> dims;
-      strings::Scanner scanner(spec);
-      scanner.OneLiteral("[");
-      while (scanner.Peek() != ']') {
-        if (scanner.Peek() == '?') {
-          scanner.OneLiteral("?");
-          dims.push_back(UnknownDim());
-        } else {
-          scanner.RestartCapture().Many(strings::Scanner::DIGIT);
-          StringPiece match;
-          int64 dim_size = 0;
-          CHECK(scanner.GetResult(nullptr, &match) &&
-                strings::safe_strto64(match, &dim_size))
-              << spec;
-          dims.push_back(MakeDim(dim_size));
-        }
-
-        if (scanner.Peek() == ',') {
-          scanner.OneLiteral(",");
-        } else if (scanner.Peek() != ']') {
-          construction_status_ = errors::InvalidArgument(
-              "Invalid input spec (] not found in dim shape): ", spec);
-          return;
-        }
-      }
-      CHECK(scanner.OneLiteral("]").Eos().GetResult());
-      inputs_.push_back(MakeShape(dims));
-    }
-  }
   if (inputs_.size() != num_inputs_from_node_def) {
     construction_status_ = errors::InvalidArgument(
         "Wrong number of inputs passed: ", inputs_.size(), " while ",
@@ -86,17 +94,9 @@ InferenceContext::InferenceContext(
     return;
   }
 
-  CHECK_LE(input_tensors_.size(), input_shapes.size());
-  input_tensors_.resize(input_shapes.size());
-
-  for (int i = 0; i < num_outputs; ++i) {
-    outputs_.push_back(UnknownShape());
-  }
-}
-
-InferenceContext::~InferenceContext() {
-  for (auto* s : all_shapes_) delete s;
-  for (auto* d : all_dims_) delete d;
+  CHECK_LE(input_tensors_.size(), inputs_.size());
+  input_tensors_.resize(inputs_.size());
+  requested_input_tensor_.resize(inputs_.size());
 }
 
 bool InferenceContext::FullyDefined(const Shape* s) {
@@ -649,6 +649,43 @@ Status InferenceContext::Max(const Dimension* first, DimensionOrConstant second,
       *out = MakeDim(second);
     }
   }
+  return Status::OK();
+}
+
+Status InferenceContext::MakeShapeFromString(const string& spec,
+                                             const Shape** output) {
+  if (spec == "?") {
+    *output = UnknownShape();
+    return Status::OK();
+  }
+
+  std::vector<const Dimension*> dims;
+  strings::Scanner scanner(spec);
+  scanner.OneLiteral("[");
+  while (scanner.Peek() != ']') {
+    if (scanner.Peek() == '?') {
+      scanner.OneLiteral("?");
+      dims.push_back(UnknownDim());
+    } else {
+      scanner.RestartCapture().Many(strings::Scanner::DIGIT);
+      StringPiece match;
+      int64 dim_size = 0;
+      CHECK(scanner.GetResult(nullptr, &match) &&
+            strings::safe_strto64(match, &dim_size))
+          << spec;
+      dims.push_back(MakeDim(dim_size));
+    }
+
+    if (scanner.Peek() == ',') {
+      scanner.OneLiteral(",");
+    } else if (scanner.Peek() != ']') {
+      return errors::InvalidArgument(
+          "Invalid input spec (] not found in dim shape): ", spec);
+    }
+  }
+  CHECK(scanner.OneLiteral("]").Eos().GetResult());
+  *output = MakeShape(dims);
+
   return Status::OK();
 }
 
