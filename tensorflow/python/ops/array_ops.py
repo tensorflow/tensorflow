@@ -1317,15 +1317,17 @@ def sparse_placeholder(dtype, shape=None, name=None):
   """
   if shape is None:
     shape = placeholder(
-        dtypes.int64, name=(name + "/shape") if name is not None else None)
+        dtypes.int64, shape=[None],
+        name=(name + "/shape") if name is not None else None)
   else:
     shape = ops.convert_to_tensor(
         shape, name=(name + "/shape") if name is not None else None)
   return ops.SparseTensor(
       values=placeholder(
-          dtype, name=(name + "/values") if name is not None else None),
+          dtype, shape=[None],
+          name=(name + "/values") if name is not None else None),
       indices=placeholder(
-          dtypes.int64,
+          dtypes.int64, shape=[None, None],
           name=(name + "/indices") if name is not None else None),
       shape=shape
   )
