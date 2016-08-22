@@ -1031,20 +1031,19 @@ def report_uninitialized_variables(var_list=None,
       for op in ops.get_default_graph().get_operations():
         if op.type in ["Variable", "AutoReloadVariable"]:
           var_list.append(op.outputs[0])
-  if not var_list:
-    # Return an empty tensor so we only need to check for returned tensor
-    # size being 0 as an indication of model ready.
-    return array_ops.constant([], dtype=dtypes.string, name=name)
-  else:
-    # Get a 1-D boolean tensor listing whether each variable is initialized.
-    variables_mask = math_ops.logical_not(
-        array_ops.pack([state_ops.is_variable_initialized(v) for v in var_list
-                       ]))
-    # Get a 1-D string tensor containing all the variable names.
-    variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
-    # Return a 1-D tensor containing all the names of uninitialized variables.
-    return array_ops.boolean_mask(
-        variable_names_tensor, variables_mask, name=name)
+  with ops.name_scope(name):
+    if not var_list:
+      # Return an empty tensor so we only need to check for returned tensor
+      # size being 0 as an indication of model ready.
+      return array_ops.constant([], dtype=dtypes.string)
+    else:
+      # Get a 1-D boolean tensor listing whether each variable is initialized.
+      variables_mask = math_ops.logical_not(array_ops.pack(
+          [state_ops.is_variable_initialized(v) for v in var_list]))
+      # Get a 1-D string tensor containing all the variable names.
+      variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
+      # Return a 1-D tensor containing all the names of uninitialized variables.
+      return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 # pylint: disable=protected-access
 ops.register_tensor_conversion_function(Variable,
