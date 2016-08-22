@@ -75,9 +75,12 @@ void TensorResponse::InitPartial(const RecvTensorResponse& response) {
 
 Status TensorResponse::ParseFrom(Source* source) {
   if (!on_host_) {
+    protobuf::io::CodedInputStream input(source->contents());
+    input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
+
     // Pre-parse into local storage, then delegate to device.
     RecvTensorResponse proto;
-    if (!proto.ParseFromZeroCopyStream(source->contents())) {
+    if (!proto.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
       return errors::InvalidArgument("Cannot parse tensor from response");
     }
     return device_->MakeTensorFromProto(proto.tensor(), alloc_attrs_, &tensor_);
