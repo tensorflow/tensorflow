@@ -1,0 +1,18 @@
+{
+  "name": "tensorflow",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "nan": "^2.3.2"
+  },
+  "devDependencies": {
+    "tape": "^4.5.1"
+  },
+  "scripts": {
+    "generate": "./generate.sh",
+    "install": "node-gyp rebuild",
+    "test": "node test/suite.js"
+  },
+  "license": "Apache-2.0"
+}
