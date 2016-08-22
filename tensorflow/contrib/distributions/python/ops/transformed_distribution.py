@@ -224,7 +224,8 @@ class TransformedDistribution(distribution.Distribution):
     Samples from the base distribution and then passes through the transform.
 
     Args:
-      n: scalar, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 

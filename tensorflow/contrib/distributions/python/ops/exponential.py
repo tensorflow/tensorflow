@@ -84,7 +84,8 @@ class Exponential(gamma.Gamma):
     """Sample `n` observations from the Exponential Distributions.
 
     Args:
-      n: `Scalar`, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 
