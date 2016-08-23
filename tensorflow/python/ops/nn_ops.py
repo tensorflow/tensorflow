@@ -429,6 +429,28 @@ ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
 ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
 
 
+def crelu(features, name=None):
+  """Computes Concatenated ReLU.
+
+  Concatenates a ReLU which selects only the positive part of the activation
+  with a ReLU which selects only the *negative* part of the activation.
+  Note that as a result this non-linearity doubles the depth of the activations.
+  Source: https://arxiv.org/abs/1603.05201
+
+  Args:
+    features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+      `int16`, or `int8`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `features`.
+  """
+  with ops.name_scope(name, "CRelu", [features]) as name:
+    features = ops.convert_to_tensor(features, name="features")
+    return gen_nn_ops.relu(array_ops.concat(array_ops.rank(features) - 1,
+                                            [features, -features], name=name))
+
+
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
 

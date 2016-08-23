@@ -701,5 +701,15 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
           sampled_softmax_loss_np, sampled_softmax_loss_tf.eval(), 1e-4)
 
 
+class CReluTest(tf.test.TestCase):
+
+  def test(self):
+    x = np.random.rand(3, 4).astype(np.float32)
+    y = np.concatenate([x * (x > 0), -x * (x < 0)], axis=1)
+    with self.test_session():
+      z = tf.nn.crelu(tf.constant(x)).eval()
+      self.assertAllClose(y, z, 1e-4)
+
+
 if __name__ == "__main__":
   tf.test.main()
