@@ -726,7 +726,8 @@ class MutableHashTable(LookupInterface):
         the given name across multiple sessions.
       name: A name for the operation (optional).
       checkpoint: if True, the contents of the table are saved to and restored
-        from checkpoints.
+        from checkpoints. If `shared_name` is empty, the table is shared using
+        the table node name.
 
     Returns:
       A `MutableHashTable` object.
@@ -738,16 +739,21 @@ class MutableHashTable(LookupInterface):
                                                 dtype=value_dtype)
     self._value_shape = self._default_value.get_shape()
 
+    # The table must be shared if checkpointing is requested. Use the node name
+    # if no shared_name has been explicitly specified.
+    use_node_name_sharing = checkpoint and shared_name is None
     # pylint: disable=protected-access
     if self._default_value.get_shape().ndims == 0:
       self._table_ref = gen_data_flow_ops._mutable_hash_table(
           shared_name=shared_name,
+          use_node_name_sharing=use_node_name_sharing,
           key_dtype=key_dtype,
           value_dtype=value_dtype,
           name=name)
     else:
       self._table_ref = gen_data_flow_ops._mutable_hash_table_of_tensors(
           shared_name=shared_name,
+          use_node_name_sharing=use_node_name_sharing,
           key_dtype=key_dtype,
           value_dtype=value_dtype,
           value_shape=self._default_value.get_shape(),

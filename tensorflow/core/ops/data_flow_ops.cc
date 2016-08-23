@@ -1128,6 +1128,7 @@ REGISTER_OP("HashTable")
     .Output("table_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("use_node_name_sharing: bool = false")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetIsStateful()
@@ -1144,6 +1145,8 @@ container: If non-empty, this table is placed in the given container.
   Otherwise, a default container is used.
 shared_name: If non-empty, this table is shared under the given name across
   multiple sessions.
+use_node_name_sharing: If true and shared_name is empty, the table is shared
+  using the node name.
 key_dtype: Type of the table keys.
 value_dtype: Type of the table values.
 )doc");
@@ -1152,6 +1155,7 @@ REGISTER_OP("MutableHashTable")
     .Output("table_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("use_node_name_sharing: bool = false")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetIsStateful()
@@ -1168,6 +1172,8 @@ container: If non-empty, this table is placed in the given container.
   Otherwise, a default container is used.
 shared_name: If non-empty, this table is shared under the given name across
   multiple sessions.
+use_node_name_sharing: If true and shared_name is empty, the table is shared
+  using the node name.
 key_dtype: Type of the table keys.
 value_dtype: Type of the table values.
 )doc");
@@ -1176,6 +1182,7 @@ REGISTER_OP("MutableHashTableOfTensors")
     .Output("table_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("use_node_name_sharing: bool = false")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .Attr("value_shape: shape = {}")

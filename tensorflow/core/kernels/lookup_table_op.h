@@ -42,13 +42,16 @@ class LookupTableOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
                                                  tensorflow::TensorShape({2}),
                                                  &table_handle_, nullptr));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
   }
 
   // ctx is not owned by this function.
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
     if (!table_handle_set_) {
-      OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def()));
+      OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
+                                      use_node_name_sharing_));
       auto creator = [ctx, this](lookup::LookupInterface** ret) {
         *ret = new Container(ctx, this);
         return Status::OK();
@@ -87,6 +90,7 @@ class LookupTableOp : public OpKernel {
   PersistentTensor table_handle_ GUARDED_BY(mu_);
   bool table_handle_set_ GUARDED_BY(mu_);
   ContainerInfo cinfo_;
+  bool use_node_name_sharing_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
 };

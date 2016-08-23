@@ -235,6 +235,33 @@ class HashTableOpTest(tf.test.TestCase):
             tf.contrib.lookup.KeyValueTensorInitializer(keys, values),
             default_val)
 
+  def testMultipleSessions(self):
+    # Start a server
+    server = tf.train.Server(
+        {"local0": ["localhost:0"]}, protocol="grpc", start=True)
+    # Create two sessions sharing the same state
+    session1 = tf.Session(server.target)
+    session2 = tf.Session(server.target)
+
+    default_val = -1
+    keys = tf.constant(["brain", "salad", "surgery"])
+    values = tf.constant([0, 1, 2], tf.int64)
+    table = tf.contrib.lookup.HashTable(
+        tf.contrib.lookup.KeyValueTensorInitializer(keys, values),
+        default_val,
+        name="t1")
+
+    # Init the table in the first session.
+    with session1:
+      table.init.run()
+      self.assertAllEqual(3, table.size().eval())
+
+    # Init the table in the second session and verify that we do not get a
+    # "Table already initialized" error.
+    with session2:
+      table.init.run()
+      self.assertAllEqual(3, table.size().eval())
+
 
 class MutableHashTableOpTest(tf.test.TestCase):
 
@@ -320,6 +347,36 @@ class MutableHashTableOpTest(tf.test.TestCase):
       input_string = tf.constant(["a", "b", "c", "d", "e"], tf.string)
       output = table.lookup(input_string)
       self.assertAllEqual([-1, 0, 1, 2, -1], output.eval())
+
+  def testSharing(self):
+    # Start a server to store the table state
+    server = tf.train.Server(
+        {"local0": ["localhost:0"]}, protocol="grpc", start=True)
+    # Create two sessions sharing the same state
+    session1 = tf.Session(server.target)
+    session2 = tf.Session(server.target)
+
+    table = tf.contrib.lookup.MutableHashTable(
+        tf.int64, tf.string, "-", name="t1")
+
+    # Populate the table in the first session
+    with session1:
+      self.assertAllEqual(0, table.size().eval())
+
+      keys = tf.constant([11, 12], tf.int64)
+      values = tf.constant(["a", "b"])
+      table.insert(keys, values).run()
+      self.assertAllEqual(2, table.size().eval())
+
+      output = table.lookup(tf.constant([11, 12, 13], tf.int64))
+      self.assertAllEqual([b"a", b"b", b"-"], output.eval())
+
+    # Verify that we can access the shared data from the second session
+    with session2:
+      self.assertAllEqual(2, table.size().eval())
+
+      output = table.lookup(tf.constant([10, 11, 12], tf.int64))
+      self.assertAllEqual([b"-", b"a", b"b"], output.eval())
 
   def testMutableHashTableOfTensors(self):
     with self.test_session():
