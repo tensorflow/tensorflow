@@ -1482,7 +1482,7 @@ REGISTER_OP("ReverseSequence")
     .Attr("seq_dim: int")
     .Attr("batch_dim: int = 0")
     .Attr("T: type")
-    .Attr("Tlen: {int32, int64}")
+    .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       const Shape* input = c->input(0);
       const Shape* seq_lens_shape;
