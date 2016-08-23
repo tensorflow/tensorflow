@@ -97,7 +97,8 @@ class BaseInMemorySource(transform.Transform):
                                            num_threads=self.num_threads,
                                            seed=self.seed,
                                            name=self.data_name,
-                                           enqueue_size=self.enqueue_size)
+                                           enqueue_size=self.enqueue_size,
+                                           num_epochs=kwargs.get("num_epochs"))
 
     dequeued = queue.dequeue_many(self.batch_size)
 
