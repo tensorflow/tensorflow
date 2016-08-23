@@ -356,7 +356,10 @@ class ServerDefTest(tf.test.TestCase):
     cluster_spec = tf.train.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
-  def testClusterSpec(self):
+
+class ClusterSpecTest(tf.test.TestCase):
+
+  def testProtoDictDefEquivalences(self):
     cluster_spec = tf.train.ClusterSpec(
         {"ps": ["ps0:2222", "ps1:2222"],
          "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
@@ -378,6 +381,32 @@ class ServerDefTest(tf.test.TestCase):
     self.assertProtoEquals(
         expected_proto,
         tf.train.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+
+  def testEmptyClusterSpecIsFalse(self):
+    self.assertFalse(tf.train.ClusterSpec({}))
+
+  def testNonEmptyClusterSpecIsTrue(self):
+    self.assertTrue(tf.train.ClusterSpec({"job": ["host:port"]}))
+
+  def testEq(self):
+    self.assertEquals(tf.train.ClusterSpec({}), tf.train.ClusterSpec({}))
+    self.assertEquals(
+        tf.train.ClusterSpec({"job": ["host:2222"]}),
+        tf.train.ClusterSpec({"job": ["host:2222"]}),)
+
+  def testNe(self):
+    self.assertNotEquals(
+        tf.train.ClusterSpec({}),
+        tf.train.ClusterSpec({"job": ["host:2223"]}),)
+    self.assertNotEquals(
+        tf.train.ClusterSpec({"job1": ["host:2222"]}),
+        tf.train.ClusterSpec({"job2": ["host:2222"]}),)
+    self.assertNotEquals(
+        tf.train.ClusterSpec({"job": ["host:2222"]}),
+        tf.train.ClusterSpec({"job": ["host:2223"]}),)
+    self.assertNotEquals(
+        tf.train.ClusterSpec({"job": ["host:2222", "host:2223"]}),
+        tf.train.ClusterSpec({"job": ["host:2223", "host:2222"]}),)
 
 
 if __name__ == "__main__":
