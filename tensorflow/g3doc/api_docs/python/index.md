@@ -850,6 +850,7 @@
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
   * [`GridLSTMCell`](../../api_docs/python/contrib.rnn.md#GridLSTMCell)
+  * [`GRUBlockCell`](../../api_docs/python/contrib.rnn.md#GRUBlockCell)
   * [`LSTMBlockCell`](../../api_docs/python/contrib.rnn.md#LSTMBlockCell)
   * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
 
