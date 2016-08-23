@@ -71,6 +71,9 @@ rundown:
    inside the library are not stripped out. To the linker, they can appear
    unused because no other code references the variables, but in fact their
    constructors have the important side effect of registering the class.
+
+ - You'll need to include the Accelerate framework in the "Link Binary with
+   Libraries" build phase of your project.
  
  - C++11 support (or later) should be enabled by setting `C++ Language Dialect` to
    `GNU++11` (or `GNU++14`), and `C++ Standard Library` to `libc++`.
