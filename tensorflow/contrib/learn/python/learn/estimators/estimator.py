@@ -382,9 +382,8 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  def export(self, export_dir, signature_fn=None,
-             input_fn=export.default_input_fn, default_batch_size=1,
-             exports_to_keep=None):
+  def export(self, export_dir, signature_fn=None, input_fn=None,
+             default_batch_size=1, exports_to_keep=None):
     """Exports inference graph into given dir.
 
     Args:
@@ -398,12 +397,14 @@ class BaseEstimator(
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
     """
-    export.export_estimator(estimator=self,
-                            export_dir=export_dir,
-                            signature_fn=signature_fn,
-                            input_fn=input_fn,
-                            default_batch_size=default_batch_size,
-                            exports_to_keep=exports_to_keep)
+    # pylint: disable=protected-access
+    export._export_estimator(estimator=self,
+                             export_dir=export_dir,
+                             signature_fn=signature_fn,
+                             input_fn=input_fn,
+                             default_batch_size=default_batch_size,
+                             exports_to_keep=exports_to_keep)
+    # pylint: enable=protected-access
 
   @abc.abstractproperty
   def _get_train_ops(self, features, targets):
