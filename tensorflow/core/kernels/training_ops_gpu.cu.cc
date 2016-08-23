@@ -154,6 +154,34 @@ struct ApplyRMSProp<GPUDevice, T> {
   }
 };
 
+template <typename T>
+struct ApplyPSGLD<GPUDevice, T> {
+  void operator()(const GPUDevice& d,
+				  typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat ms,
+				  typename TTypes<T>::Flat mom,
+				  typename TTypes<T>::Flat rnd,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar decay,
+                  typename TTypes<T>::ConstScalar momentum,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    const auto one = static_cast<T>(1.0);
+    ms.device(d) = ms
+                   + (decay.constant(one) - decay).reshape(single).broadcast(bcast)
+                   * (grad.square() - ms);
+    mom.device(d) = mom * momentum.reshape(single).broadcast(bcast)
+				    + lr.reshape(single).broadcast(bcast) * grad 
+					/ ((epsilon.reshape(single).broadcast(bcast) + ms).sqrt())
+				    + ( ( lr.reshape(single).broadcast(bcast) + lr.reshape(single).broadcast(bcast) )
+				        / ((epsilon.reshape(single).broadcast(bcast) + ms).sqrt()) ).sqrt() * rnd; 
+	  var.device(d) -= mom;
+  }
+};
+
 }  // namespace functor
 
 template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
@@ -179,6 +207,11 @@ template struct functor::ApplyAdam<GPUDevice, double>;
 template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
+
+template struct functor::ApplyPSGLD<GPUDevice, Eigen::half>;
+template struct functor::ApplyPSGLD<GPUDevice, float>;
+template struct functor::ApplyPSGLD<GPUDevice, double>;
+
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA
