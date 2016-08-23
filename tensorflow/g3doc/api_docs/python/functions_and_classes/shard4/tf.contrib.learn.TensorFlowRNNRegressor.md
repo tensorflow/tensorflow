@@ -93,7 +93,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
 
 Exports inference graph into given dir.
 

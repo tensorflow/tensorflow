@@ -50,7 +50,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
+#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
 
 Exports inference graph into given dir.
 

@@ -60,7 +60,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
+#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
 
 Exports inference graph into given dir.
 
@@ -325,7 +325,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
+#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
 
 Exports inference graph into given dir.
 
@@ -584,7 +584,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowClassifier.export}
+#### `tf.contrib.learn.TensorFlowClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -925,7 +925,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
+#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -1296,7 +1296,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
+#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -1564,7 +1564,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNClassifier.export}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -1816,7 +1816,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -2096,7 +2096,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
+#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
 
 Exports inference graph into given dir.
 
@@ -2502,7 +2502,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
+#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -2856,7 +2856,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
+#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -3124,7 +3124,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearClassifier.export}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -3376,7 +3376,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearRegressor.export}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -3670,7 +3670,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNClassifier.export}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -4038,7 +4038,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -4363,7 +4363,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
+#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
 
 Exports inference graph into given dir.
 

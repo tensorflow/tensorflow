@@ -68,7 +68,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
+#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
 
 Exports inference graph into given dir.
 
