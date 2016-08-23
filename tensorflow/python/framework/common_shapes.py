@@ -19,6 +19,9 @@ from __future__ import print_function
 
 import six.moves
 
+from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 
 
@@ -586,3 +589,34 @@ def broadcast_shape(shape_x, shape_y):
   return tensor_shape.TensorShape(return_dims)
 
 
+def call_cpp_shape_fn(op):
+  """A shape function that delegates to the registered C++ shape function.
+
+  Args:
+    op: the node in the graph for which to compute output shapes.
+
+  Returns:
+    A TensorShape list of the output shapes of the op, as computed using the
+    C++ shape inference function registered for the op.
+
+  Raises:
+    ValueError: If the C++ shape function returned an error (e.g. because the
+    shapes of the inputs are of the wrong rank or otherwise incompatible
+    according to the shape function).
+  """
+  node_def_str = op.node_def.SerializeToString()
+  input_shapes = [i.get_shape().as_proto().SerializeToString() for i in
+                  op.inputs]
+
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      output_shapes = pywrap_tensorflow.RunCppShapeInference(
+          node_def_str, input_shapes, status)
+  except errors.InvalidArgumentError as err:
+    raise ValueError(err.message)
+
+  # Convert TensorShapeProto values in output_shapes.
+  return [
+      tensor_shape.TensorShape(tensor_shape_pb2.TensorShapeProto.FromString(s))
+      for s in output_shapes
+  ]

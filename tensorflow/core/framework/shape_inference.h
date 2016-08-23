@@ -100,6 +100,17 @@ class InferenceContext {
                    const std::vector<const Shape*>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors);
 
+  // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
+  //
+  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
+  //
+  // TODO(cwhipkey): Remove 'input_shapes_string' once we can move the creation
+  // of Shapes from strings out of this class (or hide it).
+  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+                   const std::vector<string>& input_shapes_string,
+                   const std::vector<TensorShapeProto>& input_shapes,
+                   const std::vector<const Tensor*>& input_tensors);
+
   // This is a temporary constructor used for initial testing.
   //
   // TODO(cwhipkey): remove this temporary constructor.

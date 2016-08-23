@@ -17,6 +17,7 @@ limitations under the License.
 //
 %{
   #include <memory>
+  #include <vector>
   #include "tensorflow/core/platform/types.h"
   using tensorflow::uint64;
   using tensorflow::string;
@@ -75,6 +76,25 @@ limitations under the License.
     return PyUnicode_FromStringAndSize(s.data(), s.size());
 #endif
   }
+
+  template <class T>
+  bool tf_vector_input_helper(PyObject * seq, std::vector<T> * out,
+                              bool (*convert)(PyObject*, T * const)) {
+    PyObject *item, *it = PyObject_GetIter(seq);
+    if (!it) return false;
+    while ((item = PyIter_Next(it))) {
+      T elem;
+      bool success = convert(item, &elem);
+      Py_DECREF(item);
+      if (!success) {
+        Py_DECREF(it);
+        return false;
+      }
+      if (out) out->push_back(elem);
+    }
+    Py_DECREF(it);
+    return static_cast<bool>(!PyErr_Occurred());
+  }
 %}
 
 %typemap(in) string {
@@ -112,7 +132,7 @@ limitations under the License.
 
 %define _LIST_OUTPUT_TYPEMAP(type, py_converter)
     %typemap(in) std::vector<type>(std::vector<type> temp) {
-  if (!vector_input_helper($input, &temp, _PyObjAs<type>)) {
+  if (!tf_vector_input_helper($input, &temp, _PyObjAs<type>)) {
     if (!PyErr_Occurred())
       PyErr_SetString(PyExc_TypeError, "sequence(type) expected");
     return NULL;
@@ -121,7 +141,7 @@ limitations under the License.
 }
 %typemap(in) const std::vector<type>& (std::vector<type> temp),
    const std::vector<type>* (std::vector<type> temp) {
-  if (!vector_input_helper($input, &temp, _PyObjAs<type>)) {
+  if (!tf_vector_input_helper($input, &temp, _PyObjAs<type>)) {
     if (!PyErr_Occurred())
       PyErr_SetString(PyExc_TypeError, "sequence(type) expected");
     return NULL;

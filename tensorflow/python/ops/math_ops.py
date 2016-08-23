@@ -1354,8 +1354,8 @@ def matmul(a, b,
 sparse_matmul = gen_math_ops._sparse_mat_mul
 batch_matmul = gen_math_ops._batch_mat_mul
 
-ops.RegisterShape("MatMul")(common_shapes.matmul_shape)
-ops.RegisterShape("SparseMatMul")(common_shapes.matmul_shape)
+ops.RegisterShape("MatMul")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseMatMul")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("MatMul", "flops")

@@ -169,6 +169,18 @@ cc_library(
 )
 
 cc_library(
+    name = "cpp_shape_inference",
+    srcs = ["framework/cpp_shape_inference.cc"],
+    hdrs = ["framework/cpp_shape_inference.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_cc",
+    ],
+)
+
+cc_library(
     name = "python_op_gen_main",
     srcs = [
         "framework/python_op_gen_main.cc",
@@ -1125,6 +1137,7 @@ tf_py_wrap_cc(
         "client/net_lib.i",
         "client/quantize_training.i",
         "client/tf_session.i",
+        "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
@@ -1142,6 +1155,7 @@ tf_py_wrap_cc(
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
+        ":cpp_shape_inference",
         ":python_op_gen",
         ":tf_session_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
