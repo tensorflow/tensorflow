@@ -772,31 +772,47 @@ class _PartitionedVariable(object):
     self._partitions = partitions
     self._as_tensor = None
 
-  def as_tensor(self):
+  def concat(self):
     """Returns the overall concatenated value as a `Tensor`.
+
+    This is different from using the partitioned variable directly as a tensor
+    (through tensor conversion and `as_tensor`) in that it creates a new set of
+    operations that keeps the control dependencies from its scope.
 
     Returns:
       `Tensor` containing the concatenated value.
     """
-    if self._as_tensor is not None:
-      return self._as_tensor
-
     if len(self._variable_list) == 1:
       with ops.name_scope(None):
-        self._as_tensor = array_ops.identity(
-            self._variable_list[0], name=self._name)
-        return self._as_tensor
+        return array_ops.identity(self._variable_list[0], name=self._name)
 
     if all([p < 2 for p in self._partitions]):
       partition_ix = 0
     else:
       partition_ix = [i for i, p in enumerate(self._partitions) if p > 1][0]
+
     with ops.name_scope(self._name + "/ConcatPartitions/"):
       concatenated = array_ops.concat(partition_ix, self._variable_list)
+
     with ops.name_scope(None):
+      return array_ops.identity(concatenated, name=self._name)
+
+  def as_tensor(self):
+    """Returns the overall concatenated value as a `Tensor`.
+
+    The returned tensor will not inherit the control dependencies from the scope
+    where the value is used, which is similar to getting the value of
+    `Variable`.
+
+    Returns:
+      `Tensor` containing the concatenated value.
+    """
+    if self._as_tensor is None:
       # Be sure to cache the concatenated tensor to not do extraneous
       # computations.
-      self._as_tensor = array_ops.identity(concatenated, name=self._name)
+      with ops.control_dependencies(None):
+        self._as_tensor = self.concat()
+
     return self._as_tensor
 
   @staticmethod
