@@ -35,8 +35,18 @@ module VZ.Sorting {
       assert.deepEqual(sortTagNames(['a/b/03', 'a/b/1']), ['a/b/1', 'a/b/03']);
     });
 
-    it('sorts floating point portions', () => {
+    it('sorts fixed point numbers', () => {
       assert.deepEqual(sortTagNames(['a0.1', 'a0.01']), ['a0.01', 'a0.1']);
+    });
+
+    it('sorts engineering notation', () => {
+      assert.deepEqual(sortTagNames(['a1e9', 'a9e8']), ['a9e8', 'a1e9']);
+      assert.deepEqual(sortTagNames(['a1e+9', 'a9e+8']), ['a9e+8', 'a1e+9']);
+      assert.deepEqual(sortTagNames(['a1e+5', 'a9e-6']), ['a9e-6', 'a1e+5']);
+      assert.deepEqual(
+          sortTagNames(['a1.0e9', 'a9.0e8']), ['a9.0e8', 'a1.0e9']);
+      assert.deepEqual(
+          sortTagNames(['a1.0e+9', 'a9.0e+8']), ['a9.0e+8', 'a1.0e+9']);
     });
 
     it('is componentized by slash', () => {

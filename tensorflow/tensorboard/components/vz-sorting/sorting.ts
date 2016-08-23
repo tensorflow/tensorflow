@@ -14,16 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 module VZ.Sorting {
-
   /**
    * Compares tag names asciinumerically broken into components.
    *
    * <p>This is the comparison function used for sorting most string values in
    * TensorBoard. Unlike the standard asciibetical comparator, this function
-   * knows that 'a10b' > 'a2b'. Numbers with decimal points are supported. It
-   * also splits the input by slash and underscore and performs an array
-   * sort. Therefore it knows that 'a/a' < 'a+/a' even though '+' < '/' in the
-   * ASCII table.
+   * knows that 'a10b' > 'a2b'. Fixed point and engineering notation are
+   * supported. This function also splits the input by slash and underscore to
+   * perform array comparison. Therefore it knows that 'a/a' < 'a+/a' even
+   * though '+' < '/' in the ASCII table.
    */
   export function compareTagNames(a, b: string): number {
     let ai = 0;
@@ -57,14 +56,32 @@ module VZ.Sorting {
   }
 
   function consumeNumber(s: string, i: number): number {
-    let decimal = false;
+    enum State { NATURAL, REAL, EXPONENT_SIGN, EXPONENT }
+    let state = State.NATURAL;
     for (; i < s.length; i++) {
-      if (isDigit(s[i])) continue;
-      if (!decimal && s[i] === '.') {
-        decimal = true;
-        continue;
+      if (state === State.NATURAL) {
+        if (s[i] === '.') {
+          state = State.REAL;
+        } else if (s[i] === 'e' || s[i] === 'E') {
+          state = State.EXPONENT_SIGN;
+        } else if (!isDigit(s[i])) {
+          break;
+        }
+      } else if (state === State.REAL) {
+        if (s[i] === 'e' || s[i] === 'E') {
+          state = State.EXPONENT_SIGN;
+        } else if (!isDigit(s[i])) {
+          break;
+        }
+      } else if (state === State.EXPONENT_SIGN) {
+        if (isDigit(s[i]) || s[i] === '+' || s[i] === '-') {
+          state = State.EXPONENT;
+        } else {
+          break;
+        }
+      } else if (state === State.EXPONENT) {
+        if (!isDigit(s[i])) break;
       }
-      break;
     }
     return i;
   }
