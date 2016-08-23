@@ -12,9 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         python \
         python-dev \
-        python-numpy \
-        python-pip \
-        python-scipy \
         rsync \
         unzip \
         && \
@@ -29,6 +26,8 @@ RUN pip --no-cache-dir install \
         ipykernel \
         jupyter \
         matplotlib \
+        numpy \
+        scipy \
         && \
     python -m ipykernel.kernelspec
 
