@@ -54,8 +54,8 @@ def alexnet_v2_arg_scope(weight_decay=0.0005):
 
 def alexnet_v2(inputs,
                num_classes=1000,
-               dropout_keep_prob=0.5,
                is_training=True,
+               dropout_keep_prob=0.5,
                spatial_squeeze=True,
                scope='alexnet_v2'):
   """AlexNet version 2.
@@ -74,9 +74,9 @@ def alexnet_v2(inputs,
   Args:
     inputs: a tensor of size [batch_size, height, width, channels].
     num_classes: number of predicted classes.
+    is_training: whether or not the model is being trained.
     dropout_keep_prob: the probability that activations are kept in the dropout
       layers during training.
-    is_training: whether or not the model is being trained.
     spatial_squeeze: whether or not should squeeze the spatial dimensions of the
       outputs. Useful to remove unnecessary dimensions for classification.
     scope: Optional scope for the variables.
