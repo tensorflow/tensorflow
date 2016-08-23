@@ -24,17 +24,19 @@ type Operation struct {
 	c *C.TF_Operation
 }
 
-// Port represents a specific input or output of an operation, e.g. to specify
-// the specific output to pass as an input to a new op.
-//
-// Note the difference in naming convention: Port corresponds to Tensor/Output
-// in the Python API.
-type Port struct {
-	Op    *Operation
+// Output represents one of the outputs of an operation in the graph. Has a
+// DataType (and eventually a Shape).  May be passed as an input argument to a
+// function for adding operations to a graph, or to a Session's Run() method to
+// fetch that output as a tensor.
+type Output struct {
+	// Op is the Operation that produces this Output.
+	Op *Operation
+
+	// Index specifies the index of the output within the Operation.
 	Index int
 }
 
-func (p *Port) c() C.TF_Port {
+func (p *Output) c() C.TF_Port {
 	return C.TF_Port{oper: p.Op.c, index: C.int(p.Index)}
 }
 
@@ -67,7 +69,7 @@ func (b *opBuilder) SetAttrType(name string, typ DataType) {
 	C.free(unsafe.Pointer(attrName))
 }
 
-func (b *opBuilder) AddInput(port Port) {
+func (b *opBuilder) AddInput(port Output) {
 	C.TF_AddInput(b.c, port.c())
 }
 

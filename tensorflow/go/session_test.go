@@ -19,27 +19,27 @@ import (
 	"testing"
 )
 
-func Placeholder(g *Graph, name string, dt DataType) (Port, error) {
+func Placeholder(g *Graph, name string, dt DataType) (Output, error) {
 	b := newOpBuilder(g, "Placeholder", name)
 	b.SetAttrType("dtype", dt)
 	op, err := b.Build()
 	if err != nil {
-		return Port{}, err
+		return Output{}, err
 	}
-	return Port{op, 0}, nil
+	return Output{op, 0}, nil
 }
 
-func Neg(g *Graph, name string, port Port) (Port, error) {
+func Neg(g *Graph, name string, port Output) (Output, error) {
 	b := newOpBuilder(g, "Neg", name)
 	b.AddInput(port)
 	op, err := b.Build()
 	if err != nil {
-		return Port{}, err
+		return Output{}, err
 	}
-	return Port{op, 0}, nil
+	return Output{op, 0}, nil
 }
 
-func createTestGraph(t *testing.T, dt DataType) (*Graph, Port, Port) {
+func createTestGraph(t *testing.T, dt DataType) (*Graph, Output, Output) {
 	g := NewGraph()
 	inp, err := Placeholder(g, "p1", dt)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestSessionRunNeg(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSession() for %v: %v", test.input, err)
 		}
-		output, err := s.Run(map[Port]*Tensor{inp: t1}, []Port{out}, []*Operation{out.Op})
+		output, err := s.Run(map[Output]*Tensor{inp: t1}, []Output{out}, []*Operation{out.Op})
 		if err != nil {
 			t.Fatalf("Run() for %v: %v", test.input, err)
 		}
@@ -103,7 +103,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	for i := 0; i < 100; i++ {
 		// Session may close before Run() starts, so we don't check the error.
-		go s.Run(map[Port]*Tensor{inp: tensor}, []Port{out}, []*Operation{out.Op})
+		go s.Run(map[Output]*Tensor{inp: tensor}, []Output{out}, []*Operation{out.Op})
 	}
 	if err = s.Close(); err != nil {
 		t.Errorf("Close() 1: %v", err)

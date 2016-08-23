@@ -66,7 +66,7 @@ func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 // On success, returns the Tensor outputs in the same order as supplied in
 // the outputs argument. If outputs is set to nil, the returned Tensor outputs
 // is empty.
-func (s *Session) Run(inputs map[Port]*Tensor, outputs []Port, targets []*Operation) ([]*Tensor, error) {
+func (s *Session) Run(inputs map[Output]*Tensor, outputs []Output, targets []*Operation) ([]*Tensor, error) {
 	s.mu.Lock()
 	if s.c == nil {
 		s.mu.Unlock()
