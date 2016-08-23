@@ -224,7 +224,7 @@ ifeq ($(TARGET),ANDROID)
 	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-g++
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
--Wno-c++11-narrowing \
+-Wno-narrowing \
 -march=armv7-a \
 -fPIE
 
