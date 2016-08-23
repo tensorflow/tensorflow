@@ -39,7 +39,7 @@ class Evaluable(object):
     processed.
     - If `input_fn` is provided, and it raises an end-of-input
     exception (`OutOfRangeError` or `StopIteration`).
-    - If `x` is provided, and all items in `x` have ben processed.
+    - If `x` is provided, and all items in `x` have been processed.
 
     The return value is a dict containing the metrics specified in `metrics`, as
     well as an entry `global_step` which contains the value of the global step
