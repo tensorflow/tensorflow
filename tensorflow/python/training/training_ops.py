@@ -260,3 +260,37 @@ def _SparseApplyMomentumShape(op):
       tensor_shape.vector(grad_shape[0]))
   _AssertInputIsScalar(op, 5)  # momentum
   return [accum_shape]
+
+@ops.RegisterShape("ApplyPSGLD")
+def _ApplyPSGLDShape(op):
+    """Shape function for the ApplyPSGLD op."""
+    var_shape = op.inputs[0].get_shape()
+    ms_shape = op.inputs[1].get_shape().merge_with(var_shape)
+    mom_shape = op.inputs[2].get_shape().merge_with(ms_shape)
+    rnd_shape = op.inputs[3].get_shape().merge_with(mom_shape)
+    _AssertInputIsScalar(op, 4)  # lr
+    _AssertInputIsScalar(op, 5)  # decay
+    _AssertInputIsScalar(op, 6)  # momentum
+    _AssertInputIsScalar(op, 7)  # epsilon
+    grad_shape = op.inputs[8].get_shape().merge_with(mom_shape)
+    return [grad_shape]
+
+
+# sparse implementation
+
+@ops.RegisterShape("SparseApplyPSGLD")
+def _SparseApplyPSGLDShape(op):
+    """Shape function for the SparseApplyPSGLD op."""
+    var_shape = op.inputs[0].get_shape()
+    ms_shape = op.inputs[1].get_shape().merge_with(var_shape)
+    mom_shape = op.inputs[2].get_shape().merge_with(ms_shape)
+    rnd_shape = op.inputs[3].get_shape().merge_with(var_shape)
+    _AssertInputIsScalar(op, 4)  # lr
+    _AssertInputIsScalar(op, 5)  # decay
+    _AssertInputIsScalar(op, 6)  # momentum
+    _AssertInputIsScalar(op, 7)  # epsilon
+    grad_shape = op.inputs[8].get_shape().merge_with(
+        tensor_shape.TensorShape([None]).concatenate(mom_shape[1:]))
+    unused_indices_shape = op.inputs[9].get_shape().merge_with(
+        tensor_shape.vector(grad_shape[0]))
+    return [mom_shape]
