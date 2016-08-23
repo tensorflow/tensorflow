@@ -170,6 +170,7 @@ cc_library(
         "platform/env.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
+        "platform/hexagon/profile_utils/cpu_utils.h",
         "platform/host_info.h",  # TODO(josh11b): make internal
         "platform/init_main.h",
         "platform/logging.h",
@@ -1336,6 +1337,7 @@ tf_cc_tests(
         "lib/strings/stringprintf_test.cc",
         "lib/wav/wav_io_test.cc",
         "platform/fingerprint_test.cc",
+        "platform/hexagon/profile_utils/cpu_utils_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
         "platform/net_test.cc",
