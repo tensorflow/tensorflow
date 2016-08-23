@@ -33,6 +33,20 @@ struct SelectFunctor<GPUDevice, T> {
 };
 
 template <typename T>
+struct SelectScalarFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<bool>::ConstScalar cond,
+                  typename TTypes<T>::ConstFlat then_flat,
+                  typename TTypes<T>::ConstFlat else_flat) {
+    if (cond()){
+        To32Bit(out).device(d) = To32Bit(then_flat);
+    } else {
+        To32Bit(out).device(d) = To32Bit(else_flat);
+    }
+  }
+};
+
+template <typename T>
 struct BatchSelectFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d,
                   typename TTypes<T>::Matrix output_flat_outer_dims,
@@ -69,6 +83,7 @@ struct BatchSelectFunctor<GPUDevice, T> {
 
 #define SELECT_FUNCTOR(T)                      \
   template struct SelectFunctor<GPUDevice, T>; \
+  template struct SelectScalarFunctor<GPUDevice, T>; \
   template struct BatchSelectFunctor<GPUDevice, T>;
 
 SELECT_FUNCTOR(Eigen::half);

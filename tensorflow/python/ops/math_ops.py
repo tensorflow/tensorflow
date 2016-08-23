@@ -1788,8 +1788,10 @@ def _AddNShape(op):
 def _SelectShape(op):
   """Shape function for SelectOp."""
   # The inputs 'then' and 'else' must have the same shape.
-  # The input 'cond' must either have the same shape as 'then' and
-  # 'else', or be a vector if 'then' and 'else' are at least vectors.
+  # The input 'cond' must either:
+  # 1. be a scalar
+  # 2. have the same shape as 'then' and 'else'
+  # 3. be a vector if 'then' and 'else' are at least vectors
   c_shape = op.inputs[0].get_shape()
   t_shape = op.inputs[1].get_shape()
   e_shape = op.inputs[2].get_shape()
@@ -1797,9 +1799,13 @@ def _SelectShape(op):
   c_shape_list = c_shape.as_list() if c_shape.ndims is not None else None
   t_e_shape_list = t_e_shape.as_list() if t_e_shape.ndims is not None else None
   if c_shape_list is not None and t_e_shape_list is not None:
+    if len(c_shape_list) == 0:
+        return [t_e_shape]
+
     if len(c_shape_list) != 1:
       # If the rank of 'cond' is != 1, the shape must match 'then' and 'else'
       t_e_shape = t_e_shape.merge_with(c_shape)
+
     if t_e_shape_list:
       # If then and else are not scalars, then cond must be at least
       # a vector, and its first value must match that of 'else'

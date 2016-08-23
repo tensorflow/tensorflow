@@ -816,10 +816,13 @@ REGISTER_OP("Select")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle cond = c->input(0);
       ShapeHandle data = c->input(1);
-      TF_RETURN_IF_ERROR(c->Merge(data, c->input(2), &data));
+      ShapeHandle other = c->input(2);
+      TF_RETURN_IF_ERROR(c->Merge(data, other, &data));
 
-      // Validate condition's shape if possible.
-      if (c->RankKnown(data)) {
+      // cond is scalar
+      if (c->RankKnown(cond) && c->Rank(cond) == 0){
+        // data and other must be compatible. Nothing to do.
+      } else if (c->RankKnown(data)) {  // Validate condition's shape if possible.
         const int32 data_rank = c->Rank(data);
         if (data_rank == 0 || data_rank == 1) {
           // Cond must match inputs since they are scalar or vector.
