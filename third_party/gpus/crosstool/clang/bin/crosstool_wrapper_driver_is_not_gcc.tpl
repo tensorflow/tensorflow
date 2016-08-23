@@ -45,10 +45,9 @@ import re
 import sys
 import pipes
 
-# "configure" uses the specific format to substitute the following string.
-# If you change it, make sure you modify "configure" as well.
-CPU_COMPILER = ('/usr/bin/gcc')
-GCC_HOST_COMPILER_PATH = ('/usr/bin/gcc')
+# Template values set by cuda_autoconf.
+CPU_COMPILER = ('%{cpu_compiler}')
+GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 
 CURRENT_DIR = os.path.dirname(sys.argv[0])
 NVCC_PATH = CURRENT_DIR + '/../../../cuda/bin/nvcc'
@@ -229,9 +228,7 @@ def InvokeNvcc(argv, log=False):
   srcs = ' '.join(src_files)
   out = ' -o ' + out_file[0]
 
-  # "configure" uses the specific format to substitute the following string.
-  # If you change it, make sure you modify "configure" as well.
-  supported_cuda_compute_capabilities = [ "3.5", "5.2" ]
+  supported_cuda_compute_capabilities = [ %{cuda_compute_capabilities} ]
   nvccopts = ''
   for capability in supported_cuda_compute_capabilities:
     capability = capability.replace('.', '')

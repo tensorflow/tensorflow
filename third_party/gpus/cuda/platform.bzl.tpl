@@ -1,6 +1,6 @@
-CUDA_VERSION = ""
-CUDNN_VERSION = ""
-PLATFORM = ""
+CUDA_VERSION = "%{cuda_version}"
+CUDNN_VERSION = "%{cudnn_version}"
+PLATFORM = "%{platform}"
 
 def cuda_sdk_version():
   return CUDA_VERSION
