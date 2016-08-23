@@ -55,13 +55,15 @@ class TFExampleDecoderTest(tf.test.TestCase):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
   def _Encoder(self, image, image_format):
-    assert image_format  in ['jpeg', 'png']
-    if image_format == 'jpeg':
+    assert image_format  in ['jpeg', 'JPEG', 'png', 'PNG', 'raw', 'RAW']
+    if image_format in ['jpeg', 'JPEG']:
       tf_image = tf.constant(image, dtype=tf.uint8)
       return tf.image.encode_jpeg(tf_image)
-    if image_format == 'png':
+    if image_format in ['png', 'PNG']:
       tf_image = tf.constant(image, dtype=tf.uint8)
       return tf.image.encode_png(tf_image)
+    if image_format in ['raw', 'RAW']:
+      return tf.constant(image.tostring(), dtype=tf.string)
 
   def GenerateImage(self, image_format, image_shape):
     """Generates an image and an example containing the encoded image.
@@ -74,7 +76,7 @@ class TFExampleDecoderTest(tf.test.TestCase):
       image: the generated image.
       example: a TF-example with a feature key 'image/encoded' set to the
         serialized image and a feature key 'image/format' set to the image
-        encoding format ['jpeg', 'png'].
+        encoding format ['jpeg', 'JPEG', 'png', 'PNG', 'raw'].
     """
     num_pixels = image_shape[0] * image_shape[1] * image_shape[2]
     image = np.linspace(0, num_pixels-1, num=num_pixels).reshape(
@@ -135,6 +137,22 @@ class TFExampleDecoderTest(tf.test.TestCase):
     # Need to use a tolerance of 1 because of noise in the jpeg encode/decode
     self.assertAllClose(image, decoded_image, atol=1.001)
 
+  def testDecodeExampleWithJPEGEncoding(self):
+    test_image_channels = [1, 3]
+    for channels in test_image_channels:
+      image_shape = (2, 3, channels)
+      image, serialized_example = self.GenerateImage(
+          image_format='JPEG',
+          image_shape=image_shape)
+
+      decoded_image = self.RunDecodeExample(
+          serialized_example,
+          slim.tfexample_decoder.Image(channels=channels),
+          image_format='JPEG')
+
+      # Need to use a tolerance of 1 because of noise in the jpeg encode/decode
+      self.assertAllClose(image, decoded_image, atol=1.001)
+
   def testDecodeExampleWithNoShapeInfo(self):
     test_image_channels = [1, 3]
     for channels in test_image_channels:
@@ -150,15 +168,58 @@ class TFExampleDecoderTest(tf.test.TestCase):
       self.assertEqual(tf_decoded_image.get_shape().ndims, 3)
 
   def testDecodeExampleWithPngEncoding(self):
+    test_image_channels = [1, 3]
+    for channels in test_image_channels:
+      image_shape = (2, 3, channels)
+      image, serialized_example = self.GenerateImage(
+          image_format='png',
+          image_shape=image_shape)
+
+      decoded_image = self.RunDecodeExample(
+          serialized_example,
+          slim.tfexample_decoder.Image(channels=channels),
+          image_format='png')
+
+      self.assertAllClose(image, decoded_image, atol=0)
+
+  def testDecodeExampleWithPNGEncoding(self):
+    test_image_channels = [1, 3]
+    for channels in test_image_channels:
+      image_shape = (2, 3, channels)
+      image, serialized_example = self.GenerateImage(
+          image_format='PNG',
+          image_shape=image_shape)
+
+      decoded_image = self.RunDecodeExample(
+          serialized_example,
+          slim.tfexample_decoder.Image(channels=channels),
+          image_format='PNG')
+
+      self.assertAllClose(image, decoded_image, atol=0)
+
+  def testDecodeExampleWithRawEncoding(self):
     image_shape = (2, 3, 3)
     image, serialized_example = self.GenerateImage(
-        image_format='png',
+        image_format='raw',
         image_shape=image_shape)
 
     decoded_image = self.RunDecodeExample(
         serialized_example,
-        slim.tfexample_decoder.Image(),
-        image_format='png')
+        slim.tfexample_decoder.Image(shape=image_shape),
+        image_format='raw')
+
+    self.assertAllClose(image, decoded_image, atol=0)
+
+  def testDecodeExampleWithRAWEncoding(self):
+    image_shape = (2, 3, 3)
+    image, serialized_example = self.GenerateImage(
+        image_format='RAW',
+        image_shape=image_shape)
+
+    decoded_image = self.RunDecodeExample(
+        serialized_example,
+        slim.tfexample_decoder.Image(shape=image_shape),
+        image_format='RAW')
 
     self.assertAllClose(image, decoded_image, atol=0)
 

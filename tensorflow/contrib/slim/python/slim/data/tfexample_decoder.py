@@ -26,6 +26,7 @@ from __future__ import print_function
 import abc
 
 from tensorflow.contrib.slim.python.slim.data import data_decoder
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -270,7 +271,7 @@ class Image(ItemHandler):
     Args:
       image_key: the name of the TF-Example feature in which the encoded image
         is stored.
-      format_key: the name of the TF-Example feature in which the encoded image
+      format_key: the name of the TF-Example feature in which the image format
         is stored.
       shape: the output shape of the image. If provided, the image is reshaped
         accordingly. If left as None, no reshaping is done. A shape should be
@@ -310,16 +311,22 @@ class Image(ItemHandler):
     """
     def decode_png():
       return image_ops.decode_png(image_buffer, self._channels)
+    def decode_raw():
+      return parsing_ops.decode_raw(image_buffer, dtypes.uint8)
     def decode_jpg():
       return image_ops.decode_jpeg(image_buffer, self._channels)
 
     image = control_flow_ops.case({
-        math_ops.equal(image_format, 'png'): decode_png,
+        math_ops.logical_or(math_ops.equal(image_format, 'png'),
+                            math_ops.equal(image_format, 'PNG')): decode_png,
+        math_ops.logical_or(math_ops.equal(image_format, 'raw'),
+                            math_ops.equal(image_format, 'RAW')): decode_raw,
     }, default=decode_jpg, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:
       image = array_ops.reshape(image, self._shape)
+
     return image
 
 
