@@ -61,6 +61,13 @@ Returns bias of the rnn layer.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.config` {#TensorFlowRNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowRNNRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.

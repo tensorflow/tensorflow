@@ -102,6 +102,13 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNRegressor.config` {#DNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.

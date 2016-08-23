@@ -39,6 +39,13 @@ Initializes a BaseEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.config` {#BaseEstimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#BaseEstimator.evaluate}
 
 See `Evaluable`.
@@ -297,6 +304,13 @@ Constructs an Estimator instance.
 
 - - -
 
+#### `tf.contrib.learn.Estimator.config` {#Estimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#Estimator.evaluate}
 
 See `Evaluable`.
@@ -529,6 +543,13 @@ The following standard keys are defined:
 - - -
 
 #### `tf.contrib.learn.TensorFlowClassifier.bias_` {#TensorFlowClassifier.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.config` {#TensorFlowClassifier.config}
 
 
 
@@ -863,6 +884,13 @@ Initializes a DNNClassifier instance.
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.config` {#DNNClassifier.config}
 
 
 
@@ -1233,6 +1261,13 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNRegressor.config` {#DNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -1494,6 +1529,13 @@ component of a nested object.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNClassifier.config` {#TensorFlowDNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNClassifier.dnn_bias_` {#TensorFlowDNNClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -1733,6 +1775,13 @@ component of a nested object.
 - - -
 
 #### `tf.contrib.learn.TensorFlowDNNRegressor.bias_` {#TensorFlowDNNRegressor.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.config` {#TensorFlowDNNRegressor.config}
 
 
 
@@ -2011,6 +2060,13 @@ Initializes a TensorFlowEstimator instance.
     * 0: the algorithm and debug information is muted.
     * 1: trainer prints the progress.
     * 2: log device placement is printed.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowEstimator.config` {#TensorFlowEstimator.config}
+
+
 
 
 - - -
@@ -2411,6 +2467,13 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.config` {#LinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -2758,6 +2821,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.config` {#LinearRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -3019,6 +3089,13 @@ component of a nested object.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowLinearClassifier.config` {#TensorFlowLinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowLinearClassifier.dnn_bias_` {#TensorFlowLinearClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -3258,6 +3335,13 @@ component of a nested object.
 - - -
 
 #### `tf.contrib.learn.TensorFlowLinearRegressor.bias_` {#TensorFlowLinearRegressor.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.config` {#TensorFlowLinearRegressor.config}
 
 
 
@@ -3550,6 +3634,13 @@ Initializes a TensorFlowRNNClassifier instance.
 #### `tf.contrib.learn.TensorFlowRNNClassifier.bias_` {#TensorFlowRNNClassifier.bias_}
 
 Returns bias of the rnn layer.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRNNClassifier.config` {#TensorFlowRNNClassifier.config}
+
+
 
 
 - - -
@@ -3915,6 +4006,13 @@ Returns bias of the rnn layer.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.config` {#TensorFlowRNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowRNNRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.
@@ -4224,6 +4322,13 @@ Returns weights of the rnn layer.
 - - -
 
 #### `tf.contrib.learn.TensorFlowRegressor.bias_` {#TensorFlowRegressor.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRegressor.config` {#TensorFlowRegressor.config}
 
 
 

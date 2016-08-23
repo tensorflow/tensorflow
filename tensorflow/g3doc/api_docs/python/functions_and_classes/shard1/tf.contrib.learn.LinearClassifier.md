@@ -103,6 +103,13 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.config` {#LinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.

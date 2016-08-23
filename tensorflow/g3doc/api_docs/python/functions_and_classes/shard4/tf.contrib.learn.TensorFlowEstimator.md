@@ -46,6 +46,13 @@ Initializes a TensorFlowEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowEstimator.config` {#TensorFlowEstimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowEstimator.evaluate}
 
 Evaluates given model with provided evaluation data.
