@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("LSTMFusedCell")
+REGISTER_OP("LSTMBlockCell")
     .Input("x: T")
     .Input("cs_prev: T")
     .Input("h_prev: T")
@@ -74,7 +74,7 @@ co: The cell after the tanh.
 h: The output h vector.
 )doc");
 
-REGISTER_OP("LSTMFusedCellGrad")
+REGISTER_OP("LSTMBlockCellGrad")
     .Input("x: T")
     .Input("cs_prev: T")
     .Input("h_prev: T")
@@ -101,7 +101,7 @@ REGISTER_OP("LSTMFusedCellGrad")
     .Doc(R"doc(
 Computes the LSTM cell backward propagation for 1 timestep.
 
-This implementation is to be used in conjunction of LSTMFusedCell.
+This implementation is to be used in conjunction of LSTMBlockCell.
 
 x: The input to the LSTM cell.
 cs_prev: The previous cell state.
@@ -119,7 +119,7 @@ cs_prev_grad: The gradient of cs.
 dicfo: The derivative wrt to [i, cs, f, o].
 )doc");
 
-REGISTER_OP("FusedLSTM")
+REGISTER_OP("BlockLSTM")
     .Input("seq_len_max: int64")
     .Input("x: max_len * T")
     .Input("cs_prev: T")
@@ -144,7 +144,7 @@ REGISTER_OP("FusedLSTM")
     .Doc(R"doc(
 )doc");
 
-REGISTER_OP("FusedLSTMGrad")
+REGISTER_OP("BlockLSTMGrad")
     .Input("seq_len_max: int64")
     .Input("x: max_len * T")
     .Input("cs_prev: T")

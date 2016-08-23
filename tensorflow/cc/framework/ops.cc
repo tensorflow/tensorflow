@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
 namespace ops {
@@ -42,6 +43,11 @@ Output Operation::output(int i) const {
   CHECK_GE(i, 0);
   CHECK_LT(i, node_->num_outputs());
   return Output(node_, i);
+}
+
+uint64 Operation::hash(int64 index) const {
+  return ::tensorflow::Hash64(reinterpret_cast<const char*>(&node_),
+                              sizeof(Node*), index);
 }
 
 Operation::Inputs Operation::GetInputs(Node* node) {

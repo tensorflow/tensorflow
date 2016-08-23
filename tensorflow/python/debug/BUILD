@@ -13,6 +13,15 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+py_library(
+    name = "debug_data",
+    srcs = ["debug_data.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
 py_library(
     name = "debug_utils",
     srcs = ["debug_utils.py"],
@@ -37,14 +46,15 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "session_debug_test",
     size = "small",
     srcs = [
         "session_debug_test.py",
     ],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",

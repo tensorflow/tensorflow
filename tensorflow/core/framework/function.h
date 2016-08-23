@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -34,6 +35,7 @@ namespace tensorflow {
 class CancellationManager;
 class Node;
 class OpKernel;
+class ResourceMgr;
 
 // FunctionDefHelper::Define is a convenient helper to construct a
 // FunctionDef proto.
@@ -342,6 +344,9 @@ class FunctionLibraryRuntime {
     // The id of the step that is calling this function.
     int64 step_id = 0;
 
+    // Per-step resource manager. Does not take ownership.
+    ResourceMgr* step_resource_manager = nullptr;
+
     std::function<void(std::function<void()>)>* runner = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
@@ -364,6 +369,9 @@ class FunctionLibraryRuntime {
   // Returns the function library definition that backs this runtime.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
+
+  // Return the environment on which the function executes.
+  virtual Env* env() = 0;
 };
 
 // To register a gradient function for a builtin op, one should use

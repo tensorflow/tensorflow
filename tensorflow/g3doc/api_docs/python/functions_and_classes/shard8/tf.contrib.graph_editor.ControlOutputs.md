@@ -13,8 +13,8 @@ Create a dictionary of control-output dependencies.
 ##### Returns:
 
   A dictionary where a key is a tf.Operation instance and the corresponding
-  value is a list of all the ops which have the key as one of their
-  control-input dependencies.
+    value is a list of all the ops which have the key as one of their
+    control-input dependencies.
 
 ##### Raises:
 

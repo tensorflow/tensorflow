@@ -382,6 +382,45 @@ class SamplingOpsTest(tf.test.TestCase):
 
     self.normalBehaviorHelper(curried_sampler)
 
+  def testConditionallyEnqueueAndBatch(self):
+    tf.set_random_seed(1234)
+    tensor = tf.cond(
+        tf.greater(.5, tf.random_uniform([])),
+        lambda: tf.constant(1.0),
+        lambda: tf.constant(2.0))
+    accept_prob = tensor - 1
+    batch_size = 4
+
+    # Set up the test graph.
+    [batch] = tf.contrib.framework.sampling_ops._conditional_batch(
+        [tensor], accept_prob, batch_size)
+
+    # Check conditional operation.
+    with self.test_session():
+      coord = tf.train.Coordinator()
+      threads = tf.train.start_queue_runners(coord=coord)
+
+      batch_np = batch.eval()
+
+      coord.request_stop()
+      coord.join(threads)
+
+    # Check that all elements in batch come from tensors with acceptance prob
+    # 1, so that none come from acceptance prob 0.
+    self.assertListEqual(list(batch_np), [2.0] * batch_size)
+
+  def testConditionallyEnqueueAndBatchTypes(self):
+    tensor = tf.constant(1.0)
+    accept_prob = tensor - 1
+    batch_size = 4
+
+    # Check that output types are the same for 1 and 2-length input lists.
+    output1 = tf.contrib.framework.sampling_ops._conditional_batch(
+        [tensor], accept_prob, batch_size)
+    output2 = tf.contrib.framework.sampling_ops._conditional_batch(
+        [tensor, tensor], accept_prob, batch_size)
+    self.assertEqual(type(output1), type(output2))
+
 
 if __name__ == '__main__':
   tf.test.main()

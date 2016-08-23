@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 
 distributions = tf.contrib.distributions
@@ -36,8 +37,8 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
 
   def _random_cholesky_array(self, shape):
     mat = self._rng.rand(*shape)
-    chol = distributions.batch_matrix_diag_transform(mat,
-                                                     transform=tf.nn.softplus)
+    chol = distribution_util.batch_matrix_diag_transform(
+        mat, transform=tf.nn.softplus)
     # Zero the upper triangle because we're using this as a true Cholesky factor
     # in our tests.
     return tf.batch_matrix_band_part(chol, -1, 0).eval()
@@ -243,8 +244,8 @@ class BatchMatrixDiagTransformTest(tf.test.TestCase):
   def test_non_batch_matrix_with_transform(self):
     mat = self._rng.rand(4, 4)
     with self.test_session():
-      chol = distributions.batch_matrix_diag_transform(mat,
-                                                       transform=tf.nn.softplus)
+      chol = distributions.batch_matrix_diag_transform(
+          mat, transform=tf.nn.softplus)
       self.assertEqual((4, 4), chol.get_shape())
 
       self.check_off_diagonal_same(mat, chol.eval())
@@ -262,8 +263,8 @@ class BatchMatrixDiagTransformTest(tf.test.TestCase):
     mat = self._rng.rand(2, 4, 4)
     mat_0 = mat[0, :, :]
     with self.test_session():
-      chol = distributions.batch_matrix_diag_transform(mat,
-                                                       transform=tf.nn.softplus)
+      chol = distributions.batch_matrix_diag_transform(
+          mat, transform=tf.nn.softplus)
 
       self.assertEqual((2, 4, 4), chol.get_shape())
 

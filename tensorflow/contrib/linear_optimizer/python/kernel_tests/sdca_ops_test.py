@@ -18,8 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import uuid
-
+from threading import Thread
 import tensorflow as tf
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _sdca_ops
@@ -31,7 +30,7 @@ from tensorflow.python.platform import googletest
 
 _MAX_ITERATIONS = 100
 _SHARD_NUMBERS = [None, 1, 3, 10]
-
+_NUM_PARTITIONS = [2, 4]
 
 def make_example_proto(feature_dict, target, value=1.0):
   e = tf.train.Example()
@@ -146,11 +145,6 @@ def get_binary_predictions_for_hinge(predictions):
       dtype=tf.int32)
 
 
-# Setup the single container shared across all tests. This is testing proper
-# isolation across optimizers instantiated in each of the tests below.
-CONTAINER = uuid.uuid4().hex
-
-
 # TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
 # TODO(sibyl-vie3Poto): Refactor tests to avoid repetition of boilerplate code.
 class SdcaModelTest(TensorFlowTestCase):
@@ -182,10 +176,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(CONTAINER, examples, variables, options,
-                       num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -211,6 +205,62 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                             rtol=1e-2,
                             atol=1e-2)
 
+  def testDistributedSimple(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({'age': [0],
+                            'gender': [0]}, 0),
+        make_example_proto({'age': [1],
+                            'gender': [1]}, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    for num_shards in _SHARD_NUMBERS:
+      for num_partitions in _NUM_PARTITIONS:
+        with self._single_threaded_test_session():
+          examples = make_example_dict(example_protos, example_weights)
+          variables = make_variable_dict(1, 1)
+          options = dict(
+              symmetric_l2_regularization=1,
+              symmetric_l1_regularization=0,
+              loss_type='logistic_loss',
+              num_table_shards=num_shards,
+              num_partitions=num_partitions)
+
+          lr = SdcaModel(examples, variables, options)
+          tf.initialize_all_variables().run()
+          unregularized_loss = lr.unregularized_loss(examples)
+          loss = lr.regularized_loss(examples)
+          predictions = lr.predictions(examples)
+          self.assertAllClose(0.693147, unregularized_loss.eval())
+          self.assertAllClose(0.693147, loss.eval())
+
+          train_op = lr.minimize()
+
+          def Minimize():
+            with self._single_threaded_test_session():
+              for _ in range(_MAX_ITERATIONS):
+                train_op.run()
+
+          threads = []
+          for _ in range(num_partitions):
+            threads.append(Thread(target=Minimize))
+            threads[-1].start()
+
+          for t in threads:
+            t.join()
+
+          # The high tolerance in unregularized_loss comparisons is due to the
+          # fact that it's possible to trade off unregularized_loss vs.
+          # regularization and still have a sum that is quite close to the
+          # optimal regularized_loss value.  SDCA's duality gap only ensures
+          # that the regularized_loss is within 0.01 of optimal.
+          # 0.525457 is the optimal regularized_loss.
+          # 0.411608 is the unregularized_loss at that optimum.
+          self.assertAllClose(0.411608, unregularized_loss.eval(), atol=0.05)
+          self.assertAllClose(0.525457, loss.eval(), atol=0.01)
+          predicted_labels = get_binary_predictions_for_logistic(predictions)
+          self.assertAllEqual([0, 1], predicted_labels.eval())
+          self.assertTrue(lr.approximate_duality_gap().eval() < 0.02)
 
   def testSimpleNoL2(self):
     # Same as test above (so comments from above apply) but without an L2.
@@ -231,10 +281,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=0,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(CONTAINER, examples, variables, options,
-                       num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -285,10 +335,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(CONTAINER, examples, variables, options,
-                       num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -323,10 +373,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(CONTAINER, examples, variables, options,
-                       num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         with self.assertRaisesOpError(
             'Only labels of 0.0 or 1.0 are supported right now.'):
@@ -355,10 +405,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(3, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(CONTAINER, examples, variables, options,
-                       num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -395,10 +445,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(CONTAINER, examples, variables, options,
-                       num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -433,10 +483,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         variables = make_variable_dict(1, 1)
         options = dict(symmetric_l2_regularization=1,
                        symmetric_l1_regularization=0,
+                       num_table_shards=num_shards,
                        loss_type='logistic_loss')
 
-        lr = SdcaModel(CONTAINER, examples, variables, options,
-                       num_table_shards=num_shards)
+        lr = SdcaModel(examples, variables, options)
         tf.initialize_all_variables().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
@@ -452,6 +502,53 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                             lr.approximate_duality_gap().eval(),
                             rtol=1e-2,
                             atol=1e-2)
+
+  def testOutOfRangeSparseFeatures(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({'age': [0],
+                            'gender': [0]}, 0),
+        make_example_proto({'age': [1],
+                            'gender': [1]}, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(0, 0)
+      options = dict(
+          symmetric_l2_regularization=1,
+          symmetric_l1_regularization=0,
+          loss_type='logistic_loss')
+
+      lr = SdcaModel(examples, variables, options)
+      tf.initialize_all_variables().run()
+      train_op = lr.minimize()
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   'Found sparse feature indices out.*'):
+        train_op.run()
+
+  def testOutOfRangeDenseFeatures(self):
+    with self._single_threaded_test_session():
+      examples, variables = make_dense_examples_and_variables_dicts(
+          dense_features_values=[[[1.0, 0.0], [0.0, 1.0]]],
+          weights=[20.0, 10.0],
+          labels=[1.0, 0.0])
+      # Replace with a variable of size 1 instead of 2.
+      variables['dense_features_weights'] = [
+          tf.Variable(tf.zeros(
+              [1], dtype=tf.float32))
+      ]
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='logistic_loss')
+      lr = SdcaModel(examples, variables, options)
+      tf.initialize_all_variables().run()
+      train_op = lr.minimize()
+      with self.assertRaisesRegexp(
+          tf.errors.InvalidArgumentError,
+          'More dense features than we have parameters for.*'):
+        train_op.run()
 
   # TODO(katsiaspis): add a test for the case when examples at the end of an
   # epoch are repeated, since example id may be duplicated.
@@ -478,7 +575,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
 
-      lr = SdcaModel(CONTAINER, examples, variables, options)
+      lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = lr.predictions(examples)
       train_op = lr.minimize()
@@ -523,7 +620,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
 
-      lr = SdcaModel(CONTAINER, examples, variables, options)
+      lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = lr.predictions(examples)
 
@@ -557,7 +654,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=4.0,
                      loss_type='squared_loss')
-      lr = SdcaModel(CONTAINER, examples, variables, options)
+      lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       prediction = lr.predictions(examples)
       loss = lr.regularized_loss(examples)
@@ -593,7 +690,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
 
-      lr = SdcaModel(CONTAINER, examples, variables, options)
+      lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = lr.predictions(examples)
 
@@ -626,7 +723,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
-      lr = SdcaModel(CONTAINER, examples, variables, options)
+      lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = lr.predictions(examples)
 
@@ -656,7 +753,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
       options = dict(symmetric_l2_regularization=5.0,
                      symmetric_l1_regularization=0,
                      loss_type='squared_loss')
-      lr = SdcaModel(CONTAINER, examples, variables, options)
+      lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = lr.predictions(examples)
 
@@ -700,7 +797,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
-      model = SdcaModel(CONTAINER, examples, variables, options)
+      model = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
 
       # Before minimization, the weights default to zero. There is no loss due
@@ -737,7 +834,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
           symmetric_l2_regularization=1.0,
           symmetric_l1_regularization=0,
           loss_type='hinge_loss')
-      model = SdcaModel(CONTAINER, examples, variables, options)
+      model = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
@@ -767,7 +864,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
-      model = SdcaModel(CONTAINER, examples, variables, options)
+      model = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
@@ -796,7 +893,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
       options = dict(symmetric_l2_regularization=1.0,
                      symmetric_l1_regularization=0,
                      loss_type='hinge_loss')
-      model = SdcaModel(CONTAINER, examples, variables, options)
+      model = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
@@ -854,10 +951,10 @@ class SdcaFprintTest(SdcaModelTest):
     with self._single_threaded_test_session():
       in_data = tf.constant(['abc', 'very looooooong string', 'def'])
       out_data = _sdca_ops.sdca_fprint(in_data)
-      self.assertAllEqual([b'a085f09013029e45-3980b2afd2126c04',
-                           b'bc5a254df959f26c-512e479a50910f9f',
-                           b'79999cd817a03f12-085f182230e03022'],
-                          out_data.eval())
+      self.assertAllEqual(
+          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13',
+           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9',
+           b'"0\xe00"\x18_\x08\x12?\xa0\x17'], out_data.eval())
 
 
 class ShardedMutableHashTableTest(SdcaModelTest):

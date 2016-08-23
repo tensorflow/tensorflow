@@ -48,7 +48,7 @@ def _CountExtremelyRandomStatsShape(op):
   sparse_shape = op.inputs[3].get_shape()
   if sparse_shape.ndims > 0:
     num_points = None
-  num_nodes = op.inputs[6].get_shape()[0].value
+  num_nodes = op.inputs[7].get_shape()[0].value
   num_classes = op.get_attr('num_classes')
   # The output of TraverseTree is [leaf_node_index(x) for x in input_data].
   return [tensor_shape.TensorShape([num_nodes, num_classes]),  # node sums

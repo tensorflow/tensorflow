@@ -286,8 +286,8 @@ class WalsModelTest(tf.test.TestCase):
       wals_model = factorization_ops.WALSModel(
           5, 7, 3,
           col_init=col_init,
-          row_weights=[0] * 5,
-          col_weights=[0] * 7,
+          row_weights=0,
+          col_weights=0,
           use_factors_weights_cache=use_factors_weights_cache)
       wals_model.initialize_op.run()
       wals_model.worker_init.run()
@@ -432,7 +432,7 @@ class WalsModelTest(tf.test.TestCase):
       model = factorization_ops.WALSModel(
           rows, cols, dims,
           regularization=1e-5,
-          row_weights=[0] * rows,
+          row_weights=0,
           col_weights=[0] * cols,
           use_factors_weights_cache=use_factors_weights_cache)
       self.simple_train(model, inp, 25)

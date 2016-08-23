@@ -53,6 +53,26 @@ See `Evaluable`.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#BaseEstimator.fit}
 
 See `Trainable`.
@@ -291,6 +311,26 @@ See `Evaluable`.
 
 - - -
 
+#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#Estimator.fit}
 
 See `Trainable`.
@@ -519,6 +559,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowClassifier.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -760,7 +820,7 @@ Input of `fit` and `evaluate` should have following features,
     valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -833,6 +893,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -1106,7 +1186,7 @@ Input of `fit` and `evaluate` should have following features,
     valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -1177,6 +1257,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -1422,6 +1522,26 @@ See `Evaluable`.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNClassifier.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNClassifier.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowDNNClassifier.fit}
 
 
@@ -1643,6 +1763,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -1896,6 +2036,26 @@ See superclass Estimator for more details.
 ##### Returns:
 
   Returns `dict` with evaluation results.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -2209,7 +2369,7 @@ Input of `fit` and `evaluate` should have following features,
     valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -2275,6 +2435,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -2537,7 +2717,7 @@ Input of `fit` and `evaluate` should have following features,
       input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -2602,6 +2782,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -2847,6 +3047,26 @@ See `Evaluable`.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowLinearClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearClassifier.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowLinearClassifier.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowLinearClassifier.fit}
 
 
@@ -3068,6 +3288,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowLinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -3335,6 +3575,26 @@ See superclass Estimator for more details.
 ##### Returns:
 
   Returns `dict` with evaluation results.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNClassifier.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -3680,6 +3940,26 @@ See superclass Estimator for more details.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.fit(x, y, steps=None, monitors=None, logdir=None)` {#TensorFlowRNNRegressor.fit}
 
 Neural network model from provided `model_fn` and training data.
@@ -3978,6 +4258,26 @@ See `Evaluable`.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRegressor.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowRegressor.fit}
 
 
@@ -4176,7 +4476,7 @@ If you're a Google-internal user using command line flags with learn_runner.py
 probably want to use learn_runner.EstimatorConfig instead.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(master='', task=0, num_ps_replicas=0, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(master='', task=0, num_ps_replicas=0, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
 
 Constructor.
 
@@ -4190,6 +4490,9 @@ Constructor.
 *  <b>`log_device_placement`</b>: Log the op placement to devices (default: False).
 *  <b>`gpu_memory_fraction`</b>: Fraction of GPU memory used by the process on
     each GPU uniformly on the same machine.
+*  <b>`cluster_spec`</b>: a tf.train.ClusterSpec object that describes the cluster in
+    the case of distributed computation. If missing, reasonable assumptions
+    are made for the addresses of jobs.
 *  <b>`tf_random_seed`</b>: Random seed for TensorFlow initializers.
     Setting this value allows consistency between reruns.
 *  <b>`save_summary_steps`</b>: Save summaries every this many steps.
@@ -4526,7 +4829,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 - - -
 
-### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, name=None)` {#read_batch_features}
+### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, feature_queue_capacity=100, reader_num_threads=1, parser_num_threads=1, name=None)` {#read_batch_features}
 
 Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -4556,6 +4859,8 @@ All ops are added to the default graph.
     creates a variable that must be initialized, so call
     tf.initialize_local_variables() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
+*  <b>`feature_queue_capacity`</b>: Capacity of the parsed features queue. Set this
+    value to a small number, for example 5 if the parsed features are large.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.
     records to read at once

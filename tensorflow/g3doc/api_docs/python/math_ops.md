@@ -792,7 +792,7 @@ Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 The lower regularized incomplete Gamma function is defined as:
 
 ```
-P(a, x) = gamma(a, x) / Gamma(x) = 1 - Q(a, x)
+P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
 ```
 where
 ```
@@ -824,7 +824,7 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 The upper regularized incomplete Gamma function is defined as:
 
 ```
-Q(a, x) = Gamma(a, x) / Gamma(x) = 1 - P(a, x)
+Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
 ```
 where
 ```

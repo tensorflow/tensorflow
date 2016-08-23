@@ -705,6 +705,17 @@ TEST(ShapeInferenceTest, UnknownDim) {
   EXPECT_TRUE(d0 != d1);  // different pointers
 }
 
+TEST(ShapeInferenceTest, UnknownShapeOfRank) {
+  NodeDef def;
+  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
+
+  auto* unknown_shape_of_rank_3 = c.UnknownShapeOfRank(3);
+  EXPECT_EQ("[?,?,?]", c.DebugString(unknown_shape_of_rank_3));
+
+  auto* unknown_shape_of_rank_0 = c.UnknownShapeOfRank(0);
+  EXPECT_EQ("[]", c.DebugString(unknown_shape_of_rank_0));
+}
+
 TEST(ShapeInferenceTest, InputTensors) {
   const Tensor t1 = tensorflow::test::AsTensor<float>({10});
   const Tensor t2 = tensorflow::test::AsTensor<float>({20, 30});

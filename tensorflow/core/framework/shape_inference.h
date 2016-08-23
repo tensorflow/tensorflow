@@ -221,6 +221,9 @@ class InferenceContext {
   // Returns a new unknown shape.
   const Shape* UnknownShape();
 
+  // Returns a shape with specified rank but unknown dims.
+  const Shape* UnknownShapeOfRank(int32 rank);
+
   // Returns a new shape of zero dimensions.
   const Shape* Scalar();
 

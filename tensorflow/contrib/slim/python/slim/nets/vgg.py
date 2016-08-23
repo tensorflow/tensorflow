@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Contains model definitions for versions of the VGG network.
+"""Contains model definitions for versions of the Oxford VGG network.
 
-These model definitions were introduced in the technical report:
+These model definitions were introduced in the following technical report:
+
   Very Deep Convolutional Networks For Large-Scale Image Recognition
-  Karen Simonyan and Andrew Zisserman, ICLR 2015
+  Karen Simonyan and Andrew Zisserman
+  arXiv technical report, 2015
+  PDF: http://arxiv.org/pdf/1409.1556.pdf
+  ILSVRC 2014 Slides: http://www.robots.ox.ac.uk/~karen/pdf/ILSVRC_2014.pdf
+  CC-BY-4.0
 
 More information can be obtained from the VGG website:
 www.robots.ox.ac.uk/~vgg/research/very_deep/
@@ -31,6 +36,9 @@ Usage:
 @@vgg_a
 @@vgg_16
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 
@@ -38,6 +46,14 @@ slim = tf.contrib.slim
 
 
 def vgg_arg_scope(weight_decay=0.0005):
+  """Defines the VGG arg scope.
+
+  Args:
+    weight_decay: The l2 regularization coefficient.
+
+  Returns:
+    An arg_scope.
+  """
   with slim.arg_scope([slim.conv2d, slim.fully_connected],
                       activation_fn=tf.nn.relu,
                       weights_regularizer=slim.l2_regularizer(weight_decay),
@@ -70,7 +86,7 @@ def vgg_a(inputs,
   Returns:
     the last op containing the log predictions and end_points dict.
   """
-  with tf.variable_op_scope([inputs], scope, 'vgg_a') as sc:
+  with tf.variable_scope(scope, 'vgg_a', [inputs]) as sc:
     end_points_collection = sc.name + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
     with slim.arg_scope([slim.conv2d, slim.max_pool2d],
@@ -102,6 +118,7 @@ def vgg_a(inputs,
         net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+vgg_a.default_image_size = 224
 
 
 def vgg_16(inputs,
@@ -128,7 +145,7 @@ def vgg_16(inputs,
   Returns:
     the last op containing the log predictions and end_points dict.
   """
-  with tf.variable_op_scope([inputs], scope, 'vgg_16') as sc:
+  with tf.variable_scope(scope, 'vgg_16', [inputs]) as sc:
     end_points_collection = sc.name + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
     with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],
@@ -160,6 +177,7 @@ def vgg_16(inputs,
         net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net
       return net, end_points
+vgg_16.default_image_size = 224
 
 # Alias
 vgg_d = vgg_16

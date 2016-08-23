@@ -10,7 +10,7 @@ Additional RNN operations and cells.
 ### Fused RNNCells
 - - -
 
-### `class tf.contrib.rnn.LSTMFusedCell` {#LSTMFusedCell}
+### `class tf.contrib.rnn.LSTMBlockCell` {#LSTMBlockCell}
 
 Basic LSTM recurrent network cell.
 
@@ -24,7 +24,7 @@ weight and bias matrixes should be compatible as long as the variabel scope
 matches.
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMFusedCell.__init__}
+#### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMBlockCell.__init__}
 
 Initialize the basic LSTM cell.
 
@@ -38,21 +38,21 @@ Initialize the basic LSTM cell.
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.output_size` {#LSTMFusedCell.output_size}
+#### `tf.contrib.rnn.LSTMBlockCell.output_size` {#LSTMBlockCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.state_size` {#LSTMFusedCell.state_size}
+#### `tf.contrib.rnn.LSTMBlockCell.state_size` {#LSTMBlockCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.zero_state(batch_size, dtype)` {#LSTMFusedCell.zero_state}
+#### `tf.contrib.rnn.LSTMBlockCell.zero_state(batch_size, dtype)` {#LSTMBlockCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -267,7 +267,7 @@ When peephole connections are used, the implementation is based on:
 The code uses optional peephole connections, shared_weights and cell clipping.
 - - -
 
-#### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None)` {#GridLSTMCell.__init__}
+#### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None, num_frequency_blocks=1, couple_input_forget_gates=False, state_is_tuple=False)` {#GridLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -291,6 +291,14 @@ Initialize the parameters for an LSTM cell.
 *  <b>`feature_size`</b>: int, The size of the input feature the LSTM spans over.
 *  <b>`frequency_skip`</b>: int, The amount the LSTM filter is shifted by in
     frequency.
+*  <b>`num_frequency_blocks`</b>: int, The total number of frequency blocks needed to
+    cover the whole input feature.
+*  <b>`couple_input_forget_gates`</b>: bool, Whether to couple the input and forget
+    gates, i.e. f_gate = 1.0 - i_gate, to reduce model parameters and
+    computation cost.
+*  <b>`state_is_tuple`</b>: If True, accepted and returned states are 2-tuples of
+    the `c_state` and `m_state`.  By default (False), they are concatenated
+    along the column axis.  This default behavior will soon be deprecated.
 
 
 - - -
@@ -303,6 +311,13 @@ Initialize the parameters for an LSTM cell.
 - - -
 
 #### `tf.contrib.rnn.GridLSTMCell.state_size` {#GridLSTMCell.state_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.GridLSTMCell.state_tuple_type` {#GridLSTMCell.state_tuple_type}
 
 
 

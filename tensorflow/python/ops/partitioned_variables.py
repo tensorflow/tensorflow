@@ -30,7 +30,7 @@ A key design goal is to allow a different graph to repartition a variable
 with the same name but different slicings, including possibly no partitions.
 
 TODO(touts): If an initializer provides a seed, the seed must be changed
-deterministicaly for each slice, maybe by adding one to it, otherwise each
+deterministically for each slice, maybe by adding one to it, otherwise each
 slice will use the same values.  Maybe this can be done by passing the
 slice offsets to the initializer functions.
 
@@ -276,8 +276,8 @@ def create_partitioned_variables(
   # the partitioner.
   partitioner = lambda **unused_kwargs: slicing
 
-  with variable_scope.variable_op_scope(
-      [], name, "PartitionedVariable", reuse=reuse):
+  with variable_scope.variable_scope(
+      name, "PartitionedVariable", reuse=reuse):
     # pylint: disable=protected-access
     partitioned_var = variable_scope._get_partitioned_variable(
         name=None,

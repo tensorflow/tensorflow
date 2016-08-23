@@ -315,11 +315,6 @@ def _SliceHelper(tensor, slice_spec):
       strides.append(1)
       new_axis_mask |= (1 << index)
     else:
-      try:
-        s = int(s)
-      except TypeError:
-        raise TypeError("Bad slice index %s of type %s" % (s, type(s)))
-
       begin.append(s)
       end.append(s + 1)
       strides.append(1)
@@ -330,11 +325,10 @@ def _SliceHelper(tensor, slice_spec):
   # correct graph
   with ops.name_scope(None, "strided_slice",
                       [tensor] + begin + end + strides) as name:
-    begin_pack, end_pack, strides_pack = pack(begin), pack(end), pack(strides)
     return strided_slice(tensor,
-                         begin_pack,
-                         end_pack,
-                         strides_pack,
+                         pack(begin),
+                         pack(end),
+                         pack(strides),
                          begin_mask=begin_mask,
                          end_mask=end_mask,
                          shrink_axis_mask=shrink_axis_mask,
@@ -419,7 +413,7 @@ def strided_slice(input_,
 
   For the ith spec,
   `begin_mask`, `end_mask`, `ellipsis_mask`, `new_axis_mask`,
-  and `shrink_axis_mask` will have the ith bit corrsponding to
+  and `shrink_axis_mask` will have the ith bit corresponding to
   the ith spec.
 
   If the ith bit of `begin_mask` is non-zero, `begin[i]` is ignored and
@@ -769,7 +763,9 @@ def _PackShape(op):
     input_shape = input_shape.merge_with(inp.get_shape())
 
   input_shape = input_shape.as_list()
-  input_shape.insert(op.get_attr("axis"), len(op.inputs))
+  axis = op.get_attr("axis")
+  if axis < 0: axis += len(input_shape) + 1
+  input_shape.insert(axis, len(op.inputs))
   return [tensor_shape.TensorShape(input_shape)]
 
 

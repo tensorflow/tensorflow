@@ -34,8 +34,8 @@ namespace tensorflow {
 // "lib_def".  The caller must ensure "device" and "lib_def" outlives
 // the returned object.
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an

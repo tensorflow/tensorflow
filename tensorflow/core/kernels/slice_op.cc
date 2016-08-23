@@ -201,6 +201,33 @@ class SliceOp : public OpKernel {
   }
 };
 
+// Forward declarations of the functor specializations for declared in the
+// sharded source files.
+namespace functor {
+#define DECLARE_CPU_SPEC(T, NDIM)                                  \
+  template <>                                                      \
+  void Slice<CPUDevice, T, NDIM>::operator()(                      \
+      const CPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \
+      typename TTypes<T, NDIM>::ConstTensor input,                 \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,       \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);        \
+  extern template struct Slice<CPUDevice, T, NDIM>;
+
+#define DECLARE_FOR_N(T)  \
+  DECLARE_CPU_SPEC(T, 1); \
+  DECLARE_CPU_SPEC(T, 2); \
+  DECLARE_CPU_SPEC(T, 3); \
+  DECLARE_CPU_SPEC(T, 4); \
+  DECLARE_CPU_SPEC(T, 5); \
+  DECLARE_CPU_SPEC(T, 6);
+
+TF_CALL_ALL_TYPES(DECLARE_FOR_N);
+DECLARE_FOR_N(bfloat16);
+
+#undef DECLARE_FOR_N
+#undef DECLARE_CPU_SPEC
+}  // namespace functor
+
 #define REGISTER_SLICE(type)                             \
   REGISTER_KERNEL_BUILDER(Name("Slice")                  \
                               .Device(DEVICE_CPU)        \

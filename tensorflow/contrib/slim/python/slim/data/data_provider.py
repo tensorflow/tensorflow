@@ -16,7 +16,7 @@
 """Contains code for the DataProvider.
 
 A DataProvider is a class which provides some predefined data types from some
-source (SSTable, TFRecord, CNS directory, etc). The most basic function of a
+source (TFRecord, etc). The most basic function of a
 data provider is the `Get` operation where one requests one or more types of
 data, or 'items':
 

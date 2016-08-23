@@ -644,5 +644,136 @@ Status UnknownShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+Status ReductionShape(InferenceContext* c) {
+  const Shape* input = c->input(0);
+
+  const Shape* indices;
+  TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
+
+  const Tensor* reduction_indices_t = c->input_tensor(1);
+  if (reduction_indices_t == nullptr || !c->RankKnown(input)) {
+    // If we do not have the reduction values at runtime, or the
+    // rank of the input, we don't know the output shape.
+    return shape_inference::UnknownShape(c);
+  }
+
+  bool keep_dims;
+  TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));
+
+  // Validate rank of input.
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 1, &input));
+  const int32 input_rank = c->Rank(input);
+
+  std::set<int32> true_indices;
+  auto reduction_indices = reduction_indices_t->flat<int32>();
+  for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
+    int32 reduction_index = reduction_indices(i);
+    if (reduction_index < -input_rank || reduction_index >= input_rank) {
+      return errors::InvalidArgument("Invalid reduction dimension ",
+                                     reduction_index, " for input with ",
+                                     input_rank, " dimensions.");
+    }
+
+    int32 wrapped_index = reduction_index;
+    if (wrapped_index < 0) {
+      wrapped_index += input_rank;
+    }
+
+    const Dimension* reduce_dim = c->Dim(input, wrapped_index);
+    if (c->ValueKnown(reduce_dim) && c->Value(reduce_dim) == 0) {
+      return errors::InvalidArgument("Cannot reduce dimension ",
+                                     reduction_index, " with size 0");
+    }
+
+    true_indices.insert(wrapped_index);
+  }
+
+  std::vector<const Dimension*> dims;
+  bool reduce_all = reduction_indices_t->NumElements() == 0;
+  for (int i = 0; i < input_rank; ++i) {
+    if (reduce_all || true_indices.count(i) > 0) {
+      if (keep_dims) {
+        dims.emplace_back(c->MakeDim(1));
+      }
+    } else {
+      dims.emplace_back(c->Dim(input, i));
+    }
+  }
+
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+Status ConcatShape(InferenceContext* c) {
+  const Shape* unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+
+  const Tensor* concat_dim_t = c->input_tensor(0);
+  if (concat_dim_t == nullptr) {
+    // Return an unknown shape with same rank as inputs, or an unknown rank
+    // if no input's rank is known.
+
+    // Find rank.
+    int32 rank = InferenceContext::kUnknownRank;
+    for (int i = 1; i < c->num_inputs(); ++i) {
+      if (rank == InferenceContext::kUnknownRank) rank = c->Rank(c->input(i));
+      if (rank != InferenceContext::kUnknownRank) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+      }
+    }
+    if (rank == InferenceContext::kUnknownRank) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    }
+    if (rank == 0) {
+      return errors::InvalidArgument(
+          "Can't concatenate scalars (use tf.pack instead)");
+    }
+    // Build result of <rank> different unknown dims.
+    std::vector<const Dimension*> dims;
+    for (int i = 0; i < rank; ++i) dims.push_back(c->UnknownDim());
+    c->set_output(0, c->MakeShape(dims));
+    return Status::OK();
+  }
+
+  // Merge all the non-concat dims, and sum the concat dim to make an output
+  // shape.
+  const int32 concat_dim = concat_dim_t->scalar<int32>()();
+  if (concat_dim < 0) {
+    return errors::InvalidArgument("Expected concat_dim >= 0, but got ",
+                                   concat_dim);
+  }
+
+  const Shape* output_before;
+  const Shape* output_after;
+
+  const Shape* input = c->input(c->num_inputs() - 1);
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &output_before));
+  const Dimension* output_middle = c->Dim(input, concat_dim);
+  TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
+
+  for (int i = c->num_inputs() - 2; i > 0; --i) {
+    const Shape* before;
+    const Shape* after;
+    input = c->input(i);
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
+    TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &before));
+    const Dimension* middle = c->Dim(input, concat_dim);
+    TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
+
+    TF_RETURN_IF_ERROR(c->Merge(before, output_before, &output_before));
+    TF_RETURN_IF_ERROR(c->Add(output_middle, middle, &output_middle));
+    TF_RETURN_IF_ERROR(c->Merge(after, output_after, &output_after));
+  }
+
+  const Shape* s;
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(output_before, c->Vector(output_middle), &s));
+  TF_RETURN_IF_ERROR(c->Concatenate(s, output_after, &s));
+  c->set_output(0, s);
+  return Status::OK();
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

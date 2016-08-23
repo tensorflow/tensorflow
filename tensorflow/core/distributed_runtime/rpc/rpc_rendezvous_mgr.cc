@@ -57,14 +57,13 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
 // Used only to retrieve tensors from remote processes.
 class RpcRecvTensorCall : public BaseRecvTensorCall {
  public:
-  RpcRecvTensorCall()
-      : wi_(nullptr), allocator_(nullptr), dst_device_(nullptr) {}
+  RpcRecvTensorCall() : wi_(nullptr), dst_device_(nullptr) {}
 
   void Init(WorkerInterface* wi, int64 step_id, StringPiece key,
-            Allocator* allocator, Device* dst_device,
+            AllocatorAttributes alloc_attrs, Device* dst_device,
             const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
     wi_ = wi;
-    allocator_ = allocator;
+    alloc_attrs_ = alloc_attrs;
     dst_device_ = dst_device;
     recv_args_ = recv_args;
     done_ = std::move(done);
@@ -75,7 +74,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   void Reset() {
     delete wi_;
     wi_ = nullptr;
-    allocator_ = nullptr;
+    alloc_attrs_ = AllocatorAttributes();
     dst_device_ = nullptr;
     // We don't clear opts_ and assume that Init will set up the state for
     // opts_ appropriately.
@@ -120,7 +119,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
-    resp_.set_allocator(allocator_ == nullptr ? cpu_allocator() : allocator_);
+    resp_.InitAlloc(dst_device_, alloc_attrs_);
     using namespace std::placeholders;
     StatusCallback cb = std::bind(
         [this](std::function<void()> recv_done,
@@ -139,7 +138,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   string src_worker_;
   string src_rel_device_;
   WorkerInterface* wi_;
-  Allocator* allocator_;
+  AllocatorAttributes alloc_attrs_;
   Device* dst_device_;
   CallOptions opts_;
   RecvTensorRequest req_;
@@ -298,10 +297,9 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
-  Allocator* allocator = dst_device->GetAllocator(recv_args.alloc_attrs);
 
-  call->Init(rwi, step_id_, parsed.FullKey(), allocator, dst_device, recv_args,
-             std::move(done));
+  call->Init(rwi, step_id_, parsed.FullKey(), recv_args.alloc_attrs, dst_device,
+             recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
   RegisterCall(call);

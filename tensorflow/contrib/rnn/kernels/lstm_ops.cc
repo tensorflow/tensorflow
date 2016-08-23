@@ -89,9 +89,9 @@ template struct TensorCuBlasGemm<float>;
 }  // end namespace functor
 
 template <typename Device, typename T, bool USE_CUBLAS>
-class LSTMFusedCellOp : public OpKernel {
+class LSTMBlockCellOp : public OpKernel {
  public:
-  explicit LSTMFusedCellOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit LSTMBlockCellOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("forget_bias", &forget_bias_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("cell_clip", &cell_clip_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
@@ -214,7 +214,7 @@ class LSTMFusedCellOp : public OpKernel {
             ? ctx->op_device_context()->stream()
             : nullptr;
 
-    functor::LSTMFusedCellFprop<Device, T, USE_CUBLAS>(batch_size, input_size,
+    functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                        cell_size)(
         ctx, stream, device, forget_bias_, cell_clip_, use_peephole_,
         x_tensor->matrix<T>(), cs_prev_tensor->matrix<T>(),
@@ -233,8 +233,8 @@ class LSTMFusedCellOp : public OpKernel {
 
 #define REGISTER_KERNEL(T)                                             \
   REGISTER_KERNEL_BUILDER(                                             \
-      Name("LSTMFusedCell").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      LSTMFusedCellOp<CPUDevice, T, false>);
+      Name("LSTMBlockCell").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      LSTMBlockCellOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
 // REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
@@ -243,7 +243,7 @@ REGISTER_KERNEL(float);
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                \
   template <>                                                              \
-  void LSTMFusedCellFprop<GPUDevice, T, true>::operator()(                 \
+  void LSTMBlockCellFprop<GPUDevice, T, true>::operator()(                 \
       OpKernelContext* ctx, perftools::gputools::Stream* stream,           \
       const GPUDevice& d, const T forget_bias, const T cell_clip,          \
       bool use_peephole, typename TTypes<T>::ConstMatrix x,                \
@@ -257,7 +257,7 @@ namespace functor {
       typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,        \
       typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h);      \
                                                                            \
-  extern template struct LSTMFusedCellFprop<GPUDevice, T, true>;
+  extern template struct LSTMBlockCellFprop<GPUDevice, T, true>;
 
 DECLARE_GPU_SPEC(float);
 // DECLARE_GPU_SPEC(double);
@@ -266,8 +266,8 @@ DECLARE_GPU_SPEC(float);
 
 #define REGISTER_GPU_KERNEL(T)                                         \
   REGISTER_KERNEL_BUILDER(                                             \
-      Name("LSTMFusedCell").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      LSTMFusedCellOp<GPUDevice, T, true>);
+      Name("LSTMBlockCell").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      LSTMBlockCellOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
 // REGISTER_GPU_KERNEL(double);
@@ -275,9 +275,9 @@ REGISTER_GPU_KERNEL(float);
 #endif  // GOOGLE_CUDA
 
 template <typename Device, typename T, bool USE_CUBLAS>
-class LSTMFusedCellGradOp : public OpKernel {
+class LSTMBlockCellGradOp : public OpKernel {
  public:
-  explicit LSTMFusedCellGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit LSTMBlockCellGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
   }
 
@@ -499,7 +499,7 @@ class LSTMFusedCellGradOp : public OpKernel {
     functor::TensorZero<Device, T>()(device, wcf_grad_tensor->flat<float>());
     functor::TensorZero<Device, T>()(device, wco_grad_tensor->flat<float>());
 
-    functor::LSTMFusedCellBprop<Device, T, USE_CUBLAS>(batch_size, input_size,
+    functor::LSTMBlockCellBprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                        cell_size)(
         ctx, stream, device, use_peephole_, x_tensor->matrix<T>(),
         cs_prev_tensor->matrix<T>(), h_prev_tensor->matrix<T>(),
@@ -520,8 +520,8 @@ class LSTMFusedCellGradOp : public OpKernel {
 
 #define REGISTER_KERNEL(T)                                                 \
   REGISTER_KERNEL_BUILDER(                                                 \
-      Name("LSTMFusedCellGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      LSTMFusedCellGradOp<CPUDevice, T, false>);
+      Name("LSTMBlockCellGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      LSTMBlockCellGradOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
 // REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
@@ -530,7 +530,7 @@ REGISTER_KERNEL(float);
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                   \
   template <>                                                                 \
-  void LSTMFusedCellBprop<GPUDevice, T, true>::operator()(                    \
+  void LSTMBlockCellBprop<GPUDevice, T, true>::operator()(                    \
       OpKernelContext* ctx, perftools::gputools::Stream* stream,              \
       const GPUDevice& d, bool use_peephole,                                  \
       typename TTypes<T>::ConstMatrix x,                                      \
@@ -551,7 +551,7 @@ namespace functor {
       typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,     \
       typename TTypes<T>::Vec wco_grad);                                      \
                                                                               \
-  extern template struct LSTMFusedCellBprop<GPUDevice, T, true>;
+  extern template struct LSTMBlockCellBprop<GPUDevice, T, true>;
 
 DECLARE_GPU_SPEC(float);
 // DECLARE_GPU_SPEC(double);
@@ -560,8 +560,8 @@ DECLARE_GPU_SPEC(float);
 
 #define REGISTER_GPU_KERNEL(T)                                             \
   REGISTER_KERNEL_BUILDER(                                                 \
-      Name("LSTMFusedCellGrad").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      LSTMFusedCellGradOp<GPUDevice, T, true>);
+      Name("LSTMBlockCellGrad").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      LSTMBlockCellGradOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
 // REGISTER_GPU_KERNEL(double);
@@ -569,9 +569,9 @@ REGISTER_GPU_KERNEL(float);
 #endif  // GOOGLE_CUDA
 
 template <typename Device, typename T, bool USE_CUBLAS>
-class FusedLSTMOp : public OpKernel {
+class BlockLSTMOp : public OpKernel {
  public:
-  explicit FusedLSTMOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit BlockLSTMOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_len", &max_len_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("forget_bias", &forget_bias_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("cell_clip", &cell_clip_));
@@ -687,7 +687,7 @@ class FusedLSTMOp : public OpKernel {
       Tensor* co_tensor = co_list[t];
       Tensor* h_tensor = h_list[t];
 
-      functor::LSTMFusedCellFprop<Device, T, USE_CUBLAS>(batch_size, input_size,
+      functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                          cell_size)(
           ctx, stream, device, forget_bias_, cell_clip_, use_peephole_,
           x_tensor.matrix<T>(), cs_prev_tensor2.matrix<T>(),
@@ -717,8 +717,8 @@ class FusedLSTMOp : public OpKernel {
 
 #define REGISTER_KERNEL(T)                                         \
   REGISTER_KERNEL_BUILDER(                                         \
-      Name("FusedLSTM").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      FusedLSTMOp<CPUDevice, T, false>);
+      Name("BlockLSTM").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      BlockLSTMOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
 // REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
@@ -738,11 +738,11 @@ DECLARE_GPU_SPEC(float);
 }  // end namespace functor
 
 #define REGISTER_GPU_KERNEL(T)                           \
-  REGISTER_KERNEL_BUILDER(Name("FusedLSTM")              \
+  REGISTER_KERNEL_BUILDER(Name("BlockLSTM")              \
                               .Device(DEVICE_GPU)        \
                               .HostMemory("seq_len_max") \
                               .TypeConstraint<T>("T"),   \
-                          FusedLSTMOp<GPUDevice, T, true>);
+                          BlockLSTMOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
 // REGISTER_GPU_KERNEL(double);
@@ -750,9 +750,9 @@ REGISTER_GPU_KERNEL(float);
 #endif  // GOOGLE_CUDA
 
 template <typename Device, typename T, bool USE_CUBLAS>
-class FusedLSTMGradOp : public OpKernel {
+class BlockLSTMGradOp : public OpKernel {
  public:
-  explicit FusedLSTMGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit BlockLSTMGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_len", &max_len_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
   }
@@ -954,7 +954,7 @@ class FusedLSTMGradOp : public OpKernel {
       const Tensor& const_h_grad_tensor = h_grad_tensor;
 
       Tensor* x_grad_tensor = x_grad_list[t];
-      functor::FusedLSTMBprop<Device, T, USE_CUBLAS>(batch_size, input_size,
+      functor::BlockLSTMBprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                      cell_size)(
           ctx, stream, device, use_peephole_, x_tensor.matrix<T>(),
           cs_prev_tensor2.matrix<T>(), h_prev_tensor2.matrix<T>(),
@@ -985,8 +985,8 @@ class FusedLSTMGradOp : public OpKernel {
 
 #define REGISTER_KERNEL(T)                                             \
   REGISTER_KERNEL_BUILDER(                                             \
-      Name("FusedLSTMGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      FusedLSTMGradOp<CPUDevice, T, false>);
+      Name("BlockLSTMGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      BlockLSTMGradOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
 // REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
@@ -1005,7 +1005,7 @@ namespace functor {
       typename TTypes<T>::ConstFlat b, typename TTypes<T>::Flat c);            \
                                                                                \
   template <>                                                                  \
-  void FusedLSTMBprop<GPUDevice, T, true>::operator()(                         \
+  void BlockLSTMBprop<GPUDevice, T, true>::operator()(                         \
       OpKernelContext* ctx, perftools::gputools::Stream* stream,               \
       const GPUDevice& d, bool use_peephole,                                   \
       typename TTypes<T>::ConstMatrix x,                                       \
@@ -1031,7 +1031,7 @@ namespace functor {
                                                                                \
   extern template struct TensorCopy<GPUDevice, T>;                             \
   extern template struct TensorAdd<GPUDevice, T>;                              \
-  extern template struct FusedLSTMBprop<GPUDevice, T, true>;
+  extern template struct BlockLSTMBprop<GPUDevice, T, true>;
 
 DECLARE_GPU_SPEC(float);
 // DECLARE_GPU_SPEC(double);
@@ -1039,11 +1039,11 @@ DECLARE_GPU_SPEC(float);
 }  // end namespace functor
 
 #define REGISTER_GPU_KERNEL(T)                           \
-  REGISTER_KERNEL_BUILDER(Name("FusedLSTMGrad")          \
+  REGISTER_KERNEL_BUILDER(Name("BlockLSTMGrad")          \
                               .Device(DEVICE_GPU)        \
                               .HostMemory("seq_len_max") \
                               .TypeConstraint<T>("T"),   \
-                          FusedLSTMGradOp<GPUDevice, T, true>);
+                          BlockLSTMGradOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
 // REGISTER_GPU_KERNEL(double);

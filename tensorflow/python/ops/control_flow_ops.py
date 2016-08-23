@@ -718,7 +718,7 @@ class GradLoopState(object):
       The current value (the top of the stack).
     """
     history_ctxt = history_value.op._get_control_flow_context()
-    # Find the cond context that controls history_value.
+    # Find the cond context that controls history_value if any.
     cond_ctxt = None
     value_ctxt = value.op._get_control_flow_context()
     while value_ctxt and value_ctxt != history_ctxt:
@@ -729,18 +729,20 @@ class GradLoopState(object):
     with ops.control_dependencies(None):
       self.grad_context.Enter()
       if cond_ctxt:
-        # Guard stack pop with a switch if it is controlled by a cond
+        # Guard stack pop with a switch if it is controlled by a cond.
         grad_state = self
         pred = None
         while pred is None and grad_state:
           pred = grad_state.history_map.get(cond_ctxt.pred.name)
           grad_state = grad_state.outer_grad_state
+        if pred is None:
+          pred = cond_ctxt.pred
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
       pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
       self.grad_context.Exit()
     parallel_iterations = self.grad_context.parallel_iterations
-    if parallel_iterations is not None and parallel_iterations > 1:
+    if parallel_iterations > 1:
       # All pops are ordered after pivot_for_body and before grad_sync.
       self.grad_sync._add_control_input(pop.op)
     return pop
@@ -787,7 +789,10 @@ class GradLoopState(object):
 
       if real_value is None:
         # Add the stack pop op in the grad context.
-        real_value = self.AddBackPropAccumulatedValue(history_value, value)
+        real_value = cur_grad_state.AddBackPropAccumulatedValue(history_value,
+                                                                cur_value)
+        if cur_grad_state != self:
+          real_value = self._grad_context.AddValue(real_value)
       self._history_map[value.name] = real_value
     return real_value
 
@@ -1131,7 +1136,7 @@ class ControlFlowContext(object):
       return self._outer_context.GetWhileContext()
     return None
 
-  def MaybeAddToWhileContext(self, op):
+  def _MaybeAddToWhileContext(self, op):
     """Add a control dependency to the containing WhileContext.
 
     The added control dependency ensures that the outputs of this op
@@ -1144,6 +1149,15 @@ class ControlFlowContext(object):
     while_ctxt = self.GetWhileContext()
     if while_ctxt is not None:
       op._add_control_input(while_ctxt.GetControlPivot().op)
+
+  def _MaybeRemoveExternalControlEdges(self, op):
+    """Remove any external control dependency on this op."""
+    internal_control_inputs = [x for x in op.control_inputs
+                               if x._get_control_flow_context() == self]
+    if len(internal_control_inputs) != len(op.control_inputs):
+      del op.control_inputs[:]
+      op._add_control_inputs(internal_control_inputs)
+    return internal_control_inputs
   # pylint: enable=protected-access
 
 
@@ -1213,8 +1227,10 @@ class CondContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
+      # Remove any external control dependency on this op
+      self._MaybeRemoveExternalControlEdges(op)
       # Add this op to the enclosing while context
-      self.MaybeAddToWhileContext(op)
+      self._MaybeAddToWhileContext(op)
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
@@ -1376,6 +1392,9 @@ class WhileContext(ControlFlowContext):
   def __init__(self, parallel_iterations, back_prop, swap_memory, name,
                grad_state=None):
     ControlFlowContext.__init__(self)
+    if not isinstance(parallel_iterations, int) or (parallel_iterations <= 0):
+      raise ValueError("`parallel_iterations` must be a positive integer: "
+                       "%s" % parallel_iterations)
     self._name = ops.get_default_graph().unique_name(name)
     self._parallel_iterations = parallel_iterations
     self._back_prop = back_prop
@@ -1504,13 +1523,9 @@ class WhileContext(ControlFlowContext):
     """
     if not op.inputs:
       # Remove any external control dependency on this op
-      control_inputs = [x for x in op.control_inputs
-                        if x._get_control_flow_context() == self]
-      if len(control_inputs) != len(op.control_inputs):
-        del op.control_inputs[:]
-        op._add_control_inputs(control_inputs)
+      control_inputs = self._MaybeRemoveExternalControlEdges(op)
+      # Add a control edge from the control pivot to this op.
       if not control_inputs:
-        # Add a control edge from the control pivot to this op.
         # pylint: disable=protected-access
         op._add_control_input(self.GetControlPivot().op)
         # pylint: enable=protected-access
@@ -1528,11 +1543,7 @@ class WhileContext(ControlFlowContext):
           has_internal_data_input = True
       if not has_internal_data_input:
         # Remove any external control dependency on this op
-        control_inputs = [x for x in op.control_inputs
-                          if x._get_control_flow_context() == self]
-        if len(control_inputs) != len(op.control_inputs):
-          del op.control_inputs[:]
-          op._add_control_inputs(control_inputs)
+        self._MaybeRemoveExternalControlEdges(op)
       # Add a control dependency to prevent loop invariants from
       # enabling ops that should not be executed.
       self._MaybeAddControlDependency(op)
@@ -1792,7 +1803,7 @@ class WhileContext(ControlFlowContext):
     """Core: Add the loop termination condition and body to the graph."""
     flat_loop_vars = nest.flatten(original_loop_vars)
 
-    # Let the context know the loop variabes so the loop variables
+    # Let the context know the loop variables so the loop variables
     # would be added in the outer contexts properly.
     self._InitializeValues(loop_vars)
     real_vars = loop_vars
@@ -1960,7 +1971,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
 
   Returns:
     The output tensors for the loop variables after the loop. When the length
-    of `loop_vars` is 1 this is a Tensor, TensorArry or IndexedSlice and when
+    of `loop_vars` is 1 this is a Tensor, TensorArray or IndexedSlice and when
     the length of `loop_vars` is greater than 1 it returns a list.
 
   Raises:

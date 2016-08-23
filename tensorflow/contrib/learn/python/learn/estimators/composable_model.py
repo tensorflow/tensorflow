@@ -206,8 +206,10 @@ class LinearComposableModel(_ComposableModel):
     partitioner = partitioned_variables.min_max_variable_partitioner(
         max_partitions=self._num_ps_replicas,
         min_slice_size=64 << 20)
-    with variable_scope.variable_op_scope(
-        features.values(), self._scope, partitioner=partitioner) as scope:
+    with variable_scope.variable_scope(
+        self._scope,
+        values=features.values(),
+        partitioner=partitioner) as scope:
       logits, _, _ = layers.weighted_sum_from_feature_columns(
           columns_to_tensors=features,
           feature_columns=self._get_feature_columns(),
@@ -315,9 +317,9 @@ class DNNComposableModel(_ComposableModel):
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=self._num_ps_replicas,
             min_slice_size=64 << 20))
-    with variable_scope.variable_op_scope(
-        features.values(),
+    with variable_scope.variable_scope(
         self._scope + "/input_from_feature_columns",
+        values=features.values(),
         partitioner=input_layer_partitioner) as scope:
       net = layers.input_from_feature_columns(
           features,
@@ -329,8 +331,9 @@ class DNNComposableModel(_ComposableModel):
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=self._num_ps_replicas))
     for layer_id, num_hidden_units in enumerate(self._hidden_units):
-      with variable_scope.variable_op_scope(
-          [net], self._scope + "/hiddenlayer_%d" % layer_id,
+      with variable_scope.variable_scope(
+          self._scope + "/hiddenlayer_%d" % layer_id,
+          values=[net],
           partitioner=hidden_layer_partitioner) as scope:
         net = layers.fully_connected(
             net,
@@ -344,8 +347,9 @@ class DNNComposableModel(_ComposableModel):
               keep_prob=(1.0 - self._dropout))
       self._add_hidden_layer_summary(net, scope.name)
 
-    with variable_scope.variable_op_scope(
-        [net], self._scope + "/logits",
+    with variable_scope.variable_scope(
+        self._scope + "/logits",
+        values=[net],
         partitioner=hidden_layer_partitioner) as scope:
       logits = layers.fully_connected(
           net,

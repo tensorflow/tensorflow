@@ -47,10 +47,11 @@ class Scaffold(object):
   collections in the graph.  The `Scaffold` class helps pick these pieces from
   the graph collections, creating and adding them to the collections if needed.
 
-  If you call the scaffold constructor without any arguments it will pick
-  pieces from the collections, creating default ones if needed.  You can pass
-  arguments to the constructor to provide your own pieces.  Pieces that you
-  pass to the constructor are not added to the graph collections.
+  If you call the scaffold constructor without any arguments, it will pick
+  pieces from the collections, creating default ones if needed when
+  `scaffold.finalize()` is called.  You can pass arguments to the constructor to
+  provide your own pieces.  Pieces that you pass to the constructor are not
+  added to the graph collections.
 
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
@@ -79,9 +80,6 @@ class Scaffold(object):
   """
 
   # TODO(touts): consider adding the output dir and summary writer (cached)?
-  # TODO(touts): I do not think we should pass keep_checkpoint_max here.
-  # TODO(touts): Add individual static functions for init_op(), etc. that
-  # implement the caching logic.
 
   def __init__(self,
                init_op=None,
@@ -90,8 +88,7 @@ class Scaffold(object):
                ready_op=None,
                local_init_op=None,
                summary_op=None,
-               saver=None,
-               keep_checkpoint_max=5):
+               saver=None):
     """Create a scaffold.
 
     Args:
@@ -108,8 +105,6 @@ class Scaffold(object):
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.Saver` object to use to save and restore variables.
-      keep_checkpoint_max: Optional parameter to use to construct a saver if
-        none is already there in the graph.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -124,7 +119,6 @@ class Scaffold(object):
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
-    self._keep_checkpoint_max = keep_checkpoint_max
     self._init_feed_dict = init_feed_dict
 
   def finalize(self):
@@ -149,9 +143,9 @@ class Scaffold(object):
       self._saver = Scaffold._get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True,
-                                       max_to_keep=self._keep_checkpoint_max))
+          lambda: training_saver.Saver(sharded=True))
     # pylint: enable=g-long-lambda
+    self._saver.build()
 
     ops.get_default_graph().finalize()
 
@@ -206,10 +200,43 @@ class Scaffold(object):
                                   data_flow_ops.initialize_all_tables())
 
 
-# TODO(ispir): Document this class after interface is finalized.
-# mention StopIteration and OutOfRangeError
 class MonitoredSession(object):
-  """Session-like object that supports recovery and SessionRunHooks.
+  """Session-like object that handles initialization, recovery and hooks.
+
+  Example usage:
+  ```python
+  saver_hook = CheckpointSaverHook(...)
+  summary_hook = SummaryHook(...)
+  with MonitoredSession(master=..., hooks=[saver_hook, summary_hook]) as sess:
+    while not sess.should_stop():
+      sess.run(train_op)
+  ```
+
+  Initialization: At creation time the monitored session does following things
+  in given order:
+
+  * calls `hook.begin()`
+  * finalizes the graph via `scaffold.finalize()`
+  * create session
+  * initializes the model via initialization ops provided by `Scaffold`
+  * restores variables if a checkpoint exists
+  * launches queue runners
+
+  Run: When `run()` is called, the monitored session does following things:
+
+  * calls `hook.before_run()`
+  * calls TensorFlow `session.run()` with merged fetches and feed_dict
+  * calls `hook.after_run()`
+  * returns result of `session.run()` asked by user
+  * if `AbortedError` occurs, it recovers or reinitializes the session before
+    executing the run() call again
+
+
+  Exit: At the `close()`, the monitored session does following things in order:
+  * calls `hook.end()`
+  * closes the queue runners and the session
+  * surpresses `OutOfRange` error which indicates that all inputs have been
+    processed if the monitored_session is used as a context.
   """
 
   def __init__(self,
@@ -219,6 +246,20 @@ class MonitoredSession(object):
                hooks=None,
                scaffold=None,
                config=None):
+    """Creates a MonitoredSession.
+
+    Args:
+      master: `String` representation of the TensorFlow master to use.
+      is_chief: If True, it will take care of initialization and recovery the
+        underlying TensorFlow session. If False, it will wait on a chief to
+        initialize or recover the TensorFlow session.
+      checkpoint_dir: A string.  Optional path to a directory where to restore
+        variables.
+      hooks: An iterable of `SessionRunHook' objects.
+      scaffold: A `Scaffold` used for gathering or building supportive ops. If
+        not specified a default one is created. It's used to finalize the graph.
+      config: `ConfigProto` proto used to configure the session.
+    """
     self._graph = ops.get_default_graph()
     self._master = master
     self._checkpoint_dir = checkpoint_dir
@@ -226,6 +267,7 @@ class MonitoredSession(object):
     self._config = config
     self._hooks = hooks or []
     self._scaffold = scaffold or Scaffold()
+    self._coord = None
     for h in self._hooks:
       h.begin()
     # Create the session.
@@ -258,12 +300,10 @@ class MonitoredSession(object):
     # Keep the tf_sess for quick runs of global step when needed.
     self._tf_sess = tf_sess
     # We don't want coordinator to suppress any exception.
-    coord = coordinator.Coordinator(clean_stop_exception_types=[])
-    coordinated_threads_to_join = queue_runner.start_queue_runners(
-        sess=tf_sess, coord=coord)
-    return _CoordinatedSession(
-        _HookedSession(tf_sess, self._hooks), coord,
-        coordinated_threads_to_join)
+    self._coord = coordinator.Coordinator(clean_stop_exception_types=[])
+    queue_runner.start_queue_runners(sess=tf_sess, coord=self._coord)
+    return _CoordinatedSession(_HookedSession(tf_sess, self._hooks),
+                               self._coord)
 
   @property
   def scaffold(self):
@@ -305,10 +345,20 @@ class MonitoredSession(object):
       if not exception_type:
         for h in self._hooks:
           h.end(self._tf_sess)
+      if not self._coord.joined:
+        # We exited cleanly without stopping.  Some things now.  This will also
+        # re-raise exceptions from the coordinated threads, as needed.
+        self._coord.request_stop()
+        self._coord.join()
     finally:
       self._sess.close()
       self._sess = None
       self._tf_sess = None
+      self._coord = None
+
+  @property
+  def coord(self):
+    return self._coord
 
   def _is_closed(self):
     """Return True if the supervised session is closed.  For tests only.
@@ -450,24 +500,22 @@ class _CoordinatedSession(_WrappedSession):
   raises an exception, the exception is reported to the coordinator.
 
   In addition, after each call to `run()` this session ask the coordinator if
-  the session should stop.  In that case it will will join all the coordinated
-  threads passed to the constructor before returning.
+  the session should stop.  In that case it will will join all the threads
+  registered with the coordinator before returning.
 
   If the coordinator was requested to stop with an exception, that exception
   will be re-raised from the call to `run()`.
   """
 
-  def __init__(self, sess, coord, coordinated_threads_to_join):
+  def __init__(self, sess, coord):
     """Create a new `_CoordinatedSession`.
 
     Args:
       sess: A `tf.Session` object.  The wrapped session.
       coord: A `tf.train.Coordinator` object.
-      coordinated_threads_to_join: A list of threads.
     """
     _WrappedSession.__init__(self, sess)
     self._coord = coord
-    self._coordinated_threads_to_join = coordinated_threads_to_join
 
   def _check_stop(self):
     # Check with the coordinator if we should stop.
@@ -477,7 +525,7 @@ class _CoordinatedSession(_WrappedSession):
     try:
       if not self._coord.should_stop():
         self._coord.request_stop()
-        self._coord.join(self._coordinated_threads_to_join)
+        self._coord.join()
     except Exception:  # pylint: disable=broad-except
       # Don't raise exception at close
       pass
@@ -489,8 +537,9 @@ class _CoordinatedSession(_WrappedSession):
       return self._sess.run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
       self._coord.request_stop(e)
-    if self._coord.should_stop():
-      self._coord.join(self._coordinated_threads_to_join)
+    finally:
+      if self._coord.should_stop():
+        self._coord.join()
 
 
 class _HookedSession(_WrappedSession):
@@ -515,7 +564,7 @@ class _HookedSession(_WrappedSession):
 
     Args:
       sess: A `tf.Session` or a `_WrappedSession` object.
-      hooks: An iterable of `tf.contrib.learn.SessionRunHook' objects.
+      hooks: An iterable of `SessionRunHook' objects.
     """
 
     _WrappedSession.__init__(self, sess)

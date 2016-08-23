@@ -197,13 +197,13 @@ class OperatorPDBase(object):
     # Steps:
     # 1. Convert x to a matrix, flipping all extra dimensions in `x` to the
     #    final dimension of x_matrix.
-    x_matrix = _flip_vector_to_matrix(
+    x_matrix = flip_vector_to_matrix(
         x, self.batch_shape(), self.get_batch_shape())
     # 2. Get soln_matrix = S^{-1} x_matrix
     soln_matrix = self.sqrt_solve(x_matrix)
     # 3. Reshape back to a vector.
-    soln = _flip_matrix_to_vector(
-        soln_matrix, _extract_batch_shape(x, 1), x.get_shape()[:-1])
+    soln = flip_matrix_to_vector(
+        soln_matrix, extract_batch_shape(x, 1), x.get_shape()[:-1])
     # 4. L2 (batch) vector norm squared.
     result = math_ops.reduce_sum(
         math_ops.square(soln), reduction_indices=[-1])
@@ -215,13 +215,13 @@ class OperatorPDBase(object):
     # x^{-1} A^{-1} x
     # 1. Convert x to a matrix, flipping all extra dimensions in `x` to the
     #    final dimension of x_matrix.
-    x_matrix = _flip_vector_to_matrix(
+    x_matrix = flip_vector_to_matrix(
         x, self.batch_shape(), self.get_batch_shape())
     # 2. Get x_whitened_matrix = A^{-1} x_matrix
     soln_matrix = self.solve(x_matrix)
     # 3. Reshape back to a vector.
-    soln = _flip_matrix_to_vector(
-        soln_matrix, _extract_batch_shape(x, 1), x.get_shape()[:-1])
+    soln = flip_matrix_to_vector(
+        soln_matrix, extract_batch_shape(x, 1), x.get_shape()[:-1])
     # 4. Compute the dot product: x^T soln
     result = math_ops.reduce_sum(x * soln, reduction_indices=[-1])
     result.set_shape(x.get_shape()[:-1])
@@ -615,18 +615,18 @@ class OperatorPDBase(object):
     raise NotImplementedError('This operator has no dense sqrt representation.')
 
 
-def _flip_matrix_to_vector(mat, batch_shape, static_batch_shape):
+def flip_matrix_to_vector(mat, batch_shape, static_batch_shape):
   """Flip dims to reshape batch matrix `mat` to a vector with given batch shape.
 
   ```python
   mat = tf.random_normal(2, 3, 4, 6)
 
   # Flip the trailing dimension around to the front.
-  _flip_matrix_to_vector(mat, [6, 2, 3], [6, 3, 2])  # Shape [6, 2, 3, 4]
+  flip_matrix_to_vector(mat, [6, 2, 3], [6, 3, 2])  # Shape [6, 2, 3, 4]
 
   # Flip the trailing dimension around then reshape batch indices to batch_shape
-  _flip_matrix_to_vector(mat, [6, 3, 2], [6, 3, 2])  # Shape [6, 3, 2, 4]
-  _flip_matrix_to_vector(mat, [2, 3, 2, 3], [2,3,2,3])  # Shape [2, 3, 2, 3, 4]
+  flip_matrix_to_vector(mat, [6, 3, 2], [6, 3, 2])  # Shape [6, 3, 2, 4]
+  flip_matrix_to_vector(mat, [2, 3, 2, 3], [2,3,2,3])  # Shape [2, 3, 2, 3, 4]
   ```
 
   Assume `mat.shape = matrix_batch_shape + [k, M]`.  The returned vector is
@@ -639,7 +639,7 @@ def _flip_matrix_to_vector(mat, batch_shape, static_batch_shape):
   The reshape in step 2 will fail if the number of elements is not equal, i.e.
   `M*prod(matrix_batch_shape) != prod(batch_shape)`.
 
-  See also:  _flip_vector_to_matrix.
+  See also:  flip_vector_to_matrix.
 
   Args:
     mat:  `Tensor` with rank `>= 2`.
@@ -686,21 +686,21 @@ def _flip_matrix_to_vector_dynamic(mat, batch_shape):
   return vector
 
 
-def _flip_vector_to_matrix(vec, batch_shape, static_batch_shape):
+def flip_vector_to_matrix(vec, batch_shape, static_batch_shape):
   """Flip dims to reshape batch vector `x` to a matrix with given batch shape.
 
   ```python
   vec = tf.random_normal(2, 3, 4, 5)
 
   # Flip the leading dimension to the end.
-  _flip_vector_to_matrix(vec, [3, 4], [3, 4])  # Shape [3, 4, 5, 2]
+  flip_vector_to_matrix(vec, [3, 4], [3, 4])  # Shape [3, 4, 5, 2]
 
   # Flip nothing, just extend with a singleton dimension.
-  _flip_vector_to_matrix(vec, [2, 3, 4], [2, 3, 4])  # Shape [2, 3, 4, 5, 1]
+  flip_vector_to_matrix(vec, [2, 3, 4], [2, 3, 4])  # Shape [2, 3, 4, 5, 1]
 
   # Flip leading dimension to the end and reshape the batch indices to
   # batch_shape.
-  _flip_vector_to_matrix(vec, [4, 3], [4, 3])  # Shape [4, 3, 5, 2]
+  flip_vector_to_matrix(vec, [4, 3], [4, 3])  # Shape [4, 3, 5, 2]
   ```
 
   Suppose `batch_shape` is length `n`.  Then...
@@ -714,7 +714,7 @@ def _flip_vector_to_matrix(vec, batch_shape, static_batch_shape):
   `batch_shape + [k, 1]` by extending the tensor with a singleton dimension and
   possibly reshaping `[N1,...,Nn]` to `batch_shape`.
 
-  See also: _flip_matrix_to_vector.
+  See also: flip_matrix_to_vector.
 
   Args:
     vec:  `Tensor` with shape `[M1,...,Mm] + [N1,...,Nn] + [k]`
@@ -734,7 +734,7 @@ def _flip_vector_to_matrix(vec, batch_shape, static_batch_shape):
 
 
 def _flip_vector_to_matrix_dynamic(vec, batch_shape):
-  """_flip_vector_to_matrix with dynamic shapes."""
+  """flip_vector_to_matrix with dynamic shapes."""
   # Shapes associated with batch_shape
   batch_rank = array_ops.size(batch_shape)
 
@@ -768,7 +768,7 @@ def _flip_vector_to_matrix_dynamic(vec, batch_shape):
 
 
 def _flip_vector_to_matrix_static(vec, batch_shape):
-  """_flip_vector_to_matrix with static shapes."""
+  """flip_vector_to_matrix with static shapes."""
   # Shapes associated with batch_shape
   batch_rank = batch_shape.ndims
 
@@ -801,7 +801,7 @@ def _flip_vector_to_matrix_static(vec, batch_shape):
   return array_ops.reshape(x_flipped, new_shape)
 
 
-def _extract_batch_shape(x, num_event_dims, name='extract_batch_shape'):
+def extract_batch_shape(x, num_event_dims, name='extract_batch_shape'):
   """Extract the batch shape from `x`.
 
   Assuming `x.shape = batch_shape + event_shape`, when `event_shape` has

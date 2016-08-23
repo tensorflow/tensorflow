@@ -44,7 +44,7 @@ Input of `fit` and `evaluate` should have following features,
       input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -109,6 +109,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -

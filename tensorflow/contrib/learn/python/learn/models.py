@@ -81,8 +81,9 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('linear_regression'):
-    logging_ops.histogram_summary('linear_regression.x', x)
-    logging_ops.histogram_summary('linear_regression.y', y)
+    scope_name = vs.get_variable_scope().name
+    logging_ops.histogram_summary('%s.x' % scope_name, x)
+    logging_ops.histogram_summary('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     y_shape = y.get_shape()
     if len(y_shape) == 1:
@@ -103,8 +104,8 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('linear_regression.weights', weights)
-    logging_ops.histogram_summary('linear_regression.bias', bias)
+    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
+    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
@@ -139,8 +140,9 @@ def logistic_regression(x,
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('logistic_regression'):
-    logging_ops.histogram_summary('%s.x' % vs.get_variable_scope().name, x)
-    logging_ops.histogram_summary('%s.y' % vs.get_variable_scope().name, y)
+    scope_name = vs.get_variable_scope().name
+    logging_ops.histogram_summary('%s.x' % scope_name, x)
+    logging_ops.histogram_summary('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     # Set up the requested initialization.
     if init_mean is None:
@@ -157,10 +159,8 @@ def logistic_regression(x,
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('%s.weights' % vs.get_variable_scope().name,
-                                  weights)
-    logging_ops.histogram_summary('%s.bias' % vs.get_variable_scope().name,
-                                  bias)
+    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
+    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:

@@ -279,6 +279,9 @@ def evaluation_loop(master,
       If the value is left as 'None', the evaluation continues indefinitely.
     session_config: An instance of `tf.ConfigProto` that will be used to
       configure the `Session`. If left as `None`, the default will be used.
+
+  Returns:
+    The value of `final_op` or `None` if `final_op` is `None`.
   """
   if summary_op == _USE_DEFAULT:
     summary_op = logging_ops.merge_all_summaries()
@@ -314,16 +317,16 @@ def evaluation_loop(master,
         master, start_standard_services=False, config=session_config) as sess:
       sv.saver.restore(sess, last_checkpoint)
       sv.start_queue_runners(sess)
-      evaluation(sess,
-                 num_evals=num_evals,
-                 eval_op=eval_op,
-                 eval_op_feed_dict=eval_op_feed_dict,
-                 final_op=final_op,
-                 final_op_feed_dict=final_op_feed_dict,
-                 summary_op=summary_op,
-                 summary_op_feed_dict=summary_op_feed_dict,
-                 summary_writer=summary_writer,
-                 global_step=global_step)
+      final_op_value = evaluation(sess,
+                                  num_evals=num_evals,
+                                  eval_op=eval_op,
+                                  eval_op_feed_dict=eval_op_feed_dict,
+                                  final_op=final_op,
+                                  final_op_feed_dict=final_op_feed_dict,
+                                  summary_op=summary_op,
+                                  summary_op_feed_dict=summary_op_feed_dict,
+                                  summary_writer=summary_writer,
+                                  global_step=global_step)
 
     logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                            time.gmtime()))
@@ -337,3 +340,6 @@ def evaluation_loop(master,
     time_to_next_eval = start + eval_interval_secs - time.time()
     if time_to_next_eval > 0:
       time.sleep(time_to_next_eval)
+
+  return final_op_value
+

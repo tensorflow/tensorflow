@@ -379,13 +379,14 @@ class RandomForestGraphs(object):
 
     return control_flow_ops.group(*tree_graphs, name='train')
 
-  def inference_graph(self, input_data, data_spec=None):
+  def inference_graph(self, input_data, data_spec=None, **inference_args):
     """Constructs a TF graph for evaluating a random forest.
 
     Args:
       input_data: A tensor or SparseTensor or placeholder for input data.
       data_spec: A list of tf.dtype values specifying the original types of
         each column.
+      **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
       The last op in the random forest inference graph.
@@ -397,8 +398,8 @@ class RandomForestGraphs(object):
         tree_data = input_data
         if self.params.bagged_features:
           tree_data = self._bag_features(i, input_data)
-        probabilities.append(self.trees[i].inference_graph(tree_data,
-                                                           data_spec))
+        probabilities.append(self.trees[i].inference_graph(
+            tree_data, data_spec, **inference_args))
     with ops.device(self.device_assigner.get_device(0)):
       all_predict = array_ops.pack(probabilities)
       return math_ops.div(
@@ -415,7 +416,7 @@ class RandomForestGraphs(object):
     for i in range(self.params.num_trees):
       with ops.device(self.device_assigner.get_device(i)):
         sizes.append(self.trees[i].size())
-    return math_ops.reduce_mean(array_ops.pack(sizes))
+    return math_ops.reduce_mean(math_ops.to_float(array_ops.pack(sizes)))
 
   # pylint: disable=unused-argument
   def training_loss(self, features, labels):
@@ -525,8 +526,13 @@ class RandomTreeGraphs(object):
 
     return math_ops.reduce_sum(e_x2 - math_ops.square(e_x), 1)
 
-  def training_graph(self, input_data, input_labels, random_seed,
-                     data_spec, epoch=None):
+  def training_graph(self,
+                     input_data,
+                     input_labels,
+                     random_seed,
+                     data_spec,
+                     epoch=None,
+                     input_weights=None):
 
     """Constructs a TF graph for training a random tree.
 
@@ -539,11 +545,16 @@ class RandomTreeGraphs(object):
       data_spec: A list of tf.dtype values specifying the original types of
         each column.
       epoch: A tensor or placeholder for the epoch the training data comes from.
+      input_weights: A float tensor or placeholder holding per-input weights,
+        or None if all inputs are to be weighted equally.
 
     Returns:
       The last op in the random tree training graph.
     """
     epoch = [0] if epoch is None else epoch
+
+    if input_weights is None:
+      input_weights = []
 
     sparse_indices = []
     sparse_values = []
@@ -555,19 +566,25 @@ class RandomTreeGraphs(object):
       input_data = []
 
     # Count extremely random stats.
-    (node_sums, node_squares, splits_indices, splits_sums,
-     splits_squares, totals_indices, totals_sums,
-     totals_squares, input_leaves) = (
-         self.training_ops.count_extremely_random_stats(
-             input_data, sparse_indices, sparse_values, sparse_shape,
-             data_spec, input_labels, self.variables.tree,
-             self.variables.tree_thresholds,
-             self.variables.node_to_accumulator_map,
-             self.variables.candidate_split_features,
-             self.variables.candidate_split_thresholds,
-             self.variables.start_epoch, epoch,
-             num_classes=self.params.num_output_columns,
-             regression=self.params.regression))
+    (node_sums, node_squares, splits_indices, splits_sums, splits_squares,
+     totals_indices, totals_sums, totals_squares,
+     input_leaves) = (self.training_ops.count_extremely_random_stats(
+         input_data,
+         sparse_indices,
+         sparse_values,
+         sparse_shape,
+         data_spec,
+         input_labels,
+         input_weights,
+         self.variables.tree,
+         self.variables.tree_thresholds,
+         self.variables.node_to_accumulator_map,
+         self.variables.candidate_split_features,
+         self.variables.candidate_split_thresholds,
+         self.variables.start_epoch,
+         epoch,
+         num_classes=self.params.num_output_columns,
+         regression=self.params.regression))
     node_update_ops = []
     node_update_ops.append(
         state_ops.assign_add(self.variables.node_sums, node_sums))

@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.framework import tensor_util
+
 
 def make_categorical(batch_shape, num_classes, dtype=tf.int32):
   logits = tf.random_uniform(
@@ -40,10 +42,22 @@ class CategoricalTest(tf.test.TestCase):
     with self.test_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_categorical(batch_shape, 10)
-        self.assertAllEqual(batch_shape, dist.get_batch_shape().as_list())
+        self.assertAllEqual(batch_shape, dist.get_batch_shape())
         self.assertAllEqual(batch_shape, dist.batch_shape().eval())
-        self.assertAllEqual([], dist.get_event_shape().as_list())
+        self.assertAllEqual([], dist.get_event_shape())
         self.assertAllEqual([], dist.event_shape().eval())
+        self.assertEqual(10, dist.num_classes.eval())
+        # num_classes is available as a constant because the shape is
+        # known at graph build time.
+        self.assertEqual(10, tensor_util.constant_value(dist.num_classes))
+
+      for batch_shape in ([], [1], [2, 3, 4]):
+        dist = make_categorical(batch_shape, tf.constant(10, dtype=tf.int32))
+        self.assertAllEqual(len(batch_shape), dist.get_batch_shape().ndims)
+        self.assertAllEqual(batch_shape, dist.batch_shape().eval())
+        self.assertAllEqual([], dist.get_event_shape())
+        self.assertAllEqual([], dist.event_shape().eval())
+        self.assertEqual(10, dist.num_classes.eval())
 
   def testDtype(self):
     dist = make_categorical([], 5, dtype=tf.int32)
@@ -58,6 +72,20 @@ class CategoricalTest(tf.test.TestCase):
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
     self.assertEqual(dist.logits.dtype, dist.pmf(0).dtype)
     self.assertEqual(dist.logits.dtype, dist.log_pmf(0).dtype)
+
+  def testUnknownShape(self):
+    with self.test_session():
+      logits = tf.placeholder(dtype=tf.float32)
+      dist = tf.contrib.distributions.Categorical(logits)
+      sample = dist.sample()
+      # Will sample class 1.
+      sample_value = sample.eval(feed_dict={logits: [-1000.0, 1000.0]})
+      self.assertEqual(1, sample_value)
+
+      # Batch entry 0 will sample class 1, batch entry 1 will sample class 0.
+      sample_value_batch = sample.eval(
+          feed_dict={logits: [[-1000.0, 1000.0], [1000.0, -1000.0]]})
+      self.assertAllEqual([1, 0], sample_value_batch)
 
   def testPMFWithBatch(self):
     histograms = [[0.2, 0.8], [0.6, 0.4]]

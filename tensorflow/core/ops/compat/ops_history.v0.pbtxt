@@ -875,6 +875,78 @@ op {
   }
 }
 op {
+  name: "ApplyAdagradDA"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "ApplyAdam"
   input_arg {
     name: "var"
@@ -8101,6 +8173,17 @@ op {
   }
 }
 op {
+  name: "DecodeBase64"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+}
+op {
   name: "DecodeCSV"
   input_arg {
     name: "records"
@@ -9032,6 +9115,33 @@ op {
   }
 }
 op {
+  name: "DynamicStitch"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "data"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "merged"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "EditDistance"
   input_arg {
     name: "hypothesis_indices"
@@ -9116,6 +9226,24 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
       }
+    }
+  }
+}
+op {
+  name: "EncodeBase64"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "pad"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -12592,6 +12720,30 @@ op {
   }
 }
 op {
+  name: "LookupTableImport"
+  input_arg {
+    name: "table_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+}
+op {
   name: "LookupTableInsert"
   input_arg {
     name: "table_handle"
@@ -15963,6 +16115,21 @@ op {
       }
     }
     has_minimum: true
+  }
+}
+op {
+  name: "ParseTensor"
+  input_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
   }
 }
 op {
@@ -22470,6 +22637,92 @@ op {
   }
 }
 op {
+  name: "SparseApplyAdagradDA"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "SparseApplyFtrl"
   input_arg {
     name: "var"
@@ -25042,6 +25295,29 @@ op {
   }
 }
 op {
+  name: "StringSplit"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "delimiter"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "shape"
+    type: DT_INT64
+  }
+}
+op {
   name: "StringToHashBucket"
   input_arg {
     name: "string_tensor"
@@ -25890,6 +26166,27 @@ op {
     name: "handle"
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGrad"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
   }
   input_arg {
     name: "flow_in"

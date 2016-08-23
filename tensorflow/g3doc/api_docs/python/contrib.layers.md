@@ -31,7 +31,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
     both strides must have the same value.
 *  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
 *  <b>`outputs_collections`</b>: The collections to which the outputs are added.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
@@ -54,8 +54,8 @@ Can be used as a normalizer function for conv2d and fully_connected.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a tensor of size `[batch_size, height, width, channels]`
-          or `[batch_size, channels]`.
+*  <b>`inputs`</b>: a tensor with 2 or more dimensions, where the first dimension has
+    `batch_size`. The normalization is over all but the last dimension.
 *  <b>`decay`</b>: decay for the moving average.
 *  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
@@ -77,7 +77,7 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -136,7 +136,7 @@ greater than one.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -191,7 +191,7 @@ operations such as image gradients:
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+*  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
 
@@ -234,7 +234,7 @@ second variable called 'biases' is added to the result of the operation.
     a dictionay containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
@@ -259,7 +259,7 @@ Flattens the input while maintaining the batch_size.
 
 *  <b>`inputs`</b>: a tensor of size [batch_size, ...].
 *  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
@@ -293,7 +293,7 @@ prior to the initial matrix multiply by `weights`.
 
 *  <b>`inputs`</b>: A tensor of with at least rank 2 and value for the last dimension,
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
-*  <b>`num_outputs`</b>: Integer, the number of output units in the layer.
+*  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
 *  <b>`activation_fn`</b>: activation function.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
     `normalize_fn` is provided then `biases_initializer` and
@@ -310,7 +310,7 @@ prior to the initial matrix multiply by `weights`.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
@@ -342,7 +342,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
     both strides must have the same value.
 *  <b>`padding`</b>: The padding method, either 'VALID' or 'SAME'.
 *  <b>`outputs_collections`</b>: The collections to which the outputs are added.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
@@ -368,7 +368,7 @@ Transform numeric labels into onehot_labels using tf.one_hot.
 *  <b>`on_value`</b>: A scalar defining the on-value.
 *  <b>`off_value`</b>: A scalar defining the off-value.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
-*  <b>`scope`</b>: Optional scope for op_scope.
+*  <b>`scope`</b>: Optional scope for name_scope.
 
 ##### Returns:
 
@@ -457,7 +457,7 @@ to produce the end result.
     a dictionay containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 
@@ -520,7 +520,7 @@ Note that the rank of `input` must be known.
 *  <b>`inputs`</b>: A `Tensor` of arbitrary size.
 *  <b>`dim`</b>: The dimension along which the input is normalized.
 *  <b>`epsilon`</b>: A small value to add to the inputs to avoid dividing by zero.
-*  <b>`scope`</b>: Optional scope for variable_op_scope.
+*  <b>`scope`</b>: Optional scope for variable_scope.
 
 ##### Returns:
 

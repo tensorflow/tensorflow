@@ -197,7 +197,6 @@ class TensorShape {
   // an extra word of storage.
   friend class Tensor;
   friend class TensorShapeTestHelper;
-  friend class BitcastOp;
   DataType data_type() const { return static_cast<DataType>(buf()[13]); }
   void set_data_type(DataType dt) {
     // We only have 8 bits available to store DataType, so make sure it fits

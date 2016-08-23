@@ -76,12 +76,6 @@ def get_summary_writer(logdir):
   return summary_writer_cache.SummaryWriterCache.get(logdir)
 
 
-class NanLossDuringTrainingError(RuntimeError):
-
-  def __str__(self):
-    return 'NaN loss during training.'
-
-
 def _make_saver(graph, keep_checkpoint_max=5):
   vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
   if vars_to_save:
@@ -120,25 +114,25 @@ def _run_with_monitors(session, step, tensors, feed_dict, monitors):
   return outputs, should_stop
 
 
-def _supervised_train(graph,
-                      output_dir,
-                      train_op,
-                      loss_op,
-                      global_step_tensor=None,
-                      init_op=None,
-                      init_feed_dict=None,
-                      init_fn=None,
-                      log_every_steps=10,
-                      supervisor_is_chief=True,
-                      supervisor_master='',
-                      supervisor_save_model_secs=600,
-                      keep_checkpoint_max=5,
-                      supervisor_save_summaries_steps=100,
-                      feed_fn=None,
-                      steps=None,
-                      fail_on_nan_loss=True,
-                      hooks=None,
-                      max_steps=None):
+def _monitored_train(graph,
+                     output_dir,
+                     train_op,
+                     loss_op,
+                     global_step_tensor=None,
+                     init_op=None,
+                     init_feed_dict=None,
+                     init_fn=None,
+                     log_every_steps=10,
+                     supervisor_is_chief=True,
+                     supervisor_master='',
+                     supervisor_save_model_secs=600,
+                     keep_checkpoint_max=5,
+                     supervisor_save_summaries_steps=100,
+                     feed_fn=None,
+                     steps=None,
+                     fail_on_nan_loss=True,
+                     hooks=None,
+                     max_steps=None):
   """Train a model via monitored_session.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
@@ -231,48 +225,53 @@ def _supervised_train(graph,
     except:  # pylint: disable=bare-except
       pass
 
+  # Adapted SessionRunHooks such as ExportMonitor depend on the
+  # CheckpointSaverHook to be executed before they should be executed.
+  # The `hooks` param comprises of deprecated monitor hooks
+  # (such as ExportMonitor). Appending them after the basic_session_run_hooks.
+  all_hooks = []
   with graph.as_default():
-    hooks.extend([
+    all_hooks.extend([
         basic_session_run_hooks.NanTensorHook(
             loss_op, fail_on_nan_loss=fail_on_nan_loss),
         basic_session_run_hooks.LoggingTensorHook(
             {'loss': loss_op.name}, every_n_iter=log_every_steps),
     ])
 
-    # Finalize graph and add savers
-    # TODO(ispir): remove keep_checkpoint_max from Scaffold interface
     scaffold = monitored_session.Scaffold(
         init_op=init_op,
         init_feed_dict=init_feed_dict,
         init_fn=init_fn,
-        keep_checkpoint_max=keep_checkpoint_max)
+        saver=tf_saver.Saver(
+            sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True))
 
     if supervisor_is_chief:
       # See question about adding the summary writer to the scaffold.
       summary_writer = summary_writer_cache.SummaryWriterCache.get(output_dir)
-      hooks.append(
+      all_hooks.append(
           basic_session_run_hooks.StepCounterHook(
               summary_writer=summary_writer))
-      hooks.append(
+      all_hooks.append(
           basic_session_run_hooks.SummarySaverHook(
               save_steps=supervisor_save_summaries_steps,
               summary_writer=summary_writer,
               scaffold=scaffold))
       if supervisor_save_model_secs > 0:
-        hooks.append(
+        all_hooks.append(
             basic_session_run_hooks.CheckpointSaverHook(
                 output_dir,
                 save_secs=supervisor_save_model_secs,
                 scaffold=scaffold))
 
     if steps is not None or max_steps is not None:
-      hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+      all_hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+    all_hooks.extend(hooks)
 
     with monitored_session.MonitoredSession(
         supervisor_master,
         is_chief=supervisor_is_chief,
         checkpoint_dir=output_dir,
-        hooks=hooks,
+        hooks=all_hooks,
         scaffold=scaffold) as super_sess:
       loss = None
       while not super_sess.should_stop():
@@ -497,7 +496,7 @@ def _train_internal(graph,
           failure_message = 'Model diverged with loss = NaN.'
           if fail_on_nan_loss:
             logging.error(failure_message)
-            raise NanLossDuringTrainingError()
+            raise monitors_lib.NanLossDuringTrainingError()
           else:
             logging.warning(failure_message)
 
@@ -621,6 +620,9 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
     if (isinstance(eval_results[key], np.float32) or
         isinstance(eval_results[key], float)):
       value.simple_value = float(eval_results[key])
+    else:
+      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+                   key)
   summary_writer.add_summary(summary, current_global_step)
   summary_writer.flush()
 

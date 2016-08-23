@@ -28,7 +28,6 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.monitors import BaseMonitor
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 
 SQUARED_EUCLIDEAN_DISTANCE = clustering_ops.SQUARED_EUCLIDEAN_DISTANCE
@@ -177,8 +176,10 @@ class KMeansClustering(estimator.Estimator,
     Returns:
       Array with same number of rows as x, containing cluster ids.
     """
-    return super(KMeansClustering, self).predict(
-        x=x, batch_size=batch_size)[KMeansClustering.CLUSTER_IDX]
+    return np.array([
+        prediction[KMeansClustering.CLUSTER_IDX] for prediction in
+        super(KMeansClustering, self).predict(
+            x=x, batch_size=batch_size, as_iterable=True)])
 
   def score(self, x, batch_size=None):
     """Predict total sum of distances to nearest clusters.
@@ -212,12 +213,14 @@ class KMeansClustering(estimator.Estimator,
       Array with same number of rows as x, and num_clusters columns, containing
       distances to the cluster centers.
     """
-    return super(KMeansClustering, self).predict(
-        x=x, batch_size=batch_size)[KMeansClustering.ALL_SCORES]
+    return np.array([
+        prediction[KMeansClustering.ALL_SCORES] for prediction in
+        super(KMeansClustering, self).predict(
+            x=x, batch_size=batch_size, as_iterable=True)])
 
   def clusters(self):
     """Returns cluster centers."""
-    return checkpoints.load_variable(self.model_dir, self.CLUSTERS)
+    return tf.contrib.framework.load_variable(self.model_dir, self.CLUSTERS)
 
   def _get_train_ops(self, features, _):
     (_,

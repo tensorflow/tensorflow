@@ -61,29 +61,6 @@ MemoryType MTypeFromDType(const DataType dtype) {
   return (dtype == DT_INT32) ? HOST_MEMORY : DEVICE_MEMORY;
 }
 
-// Initialize the default memory types for type list arguments from the data
-// types. (The default can be overridden by an explicit HostMemory()
-// declaration.)
-Status SetTypeListMTypesFromDTypes(
-    const NameRangeMap& name_ranges,
-    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
-    const DataTypeVector& dtypes, MemoryTypeVector* mtypes) {
-  for (const auto& a : args) {
-    if (!a.type_list_attr().empty()) {
-      auto it = name_ranges.find(a.name());
-      if (it == name_ranges.end()) {
-        return errors::InvalidArgument("Name range for argument ", a.name(),
-                                       " not found.");
-      }
-
-      for (int i = it->second.first; i < it->second.second; ++i) {
-        (*mtypes)[i] = MTypeFromDType(dtypes[i]);
-      }
-    }
-  }
-  return Status::OK();
-}
-
 }  // namespace
 
 Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
@@ -107,12 +84,13 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   inp_mtypes->clear();
   out_mtypes->clear();
 
-  if (!status.ok()) {
-    // When there is no kernel def for this op, we can only best-effort derive
-    // the memory type from the data type.  For now, we assume int32 is always
-    // on host memory and other types are always on device memory. We should
-    // do type inference over function body to derive the correct
-    // input/output memory types.
+  // For functions (which have no KernelDef) and their gradients, we can only
+  // best-effort derive the memory type from the data type. For now, we assume
+  // int32 is always on host memory and other types are always on device memory.
+  // TODO(zhifengc,phawkins): We should do type inference over function bodies
+  // to derive the correct input/output memory types. We should also split
+  // host-memory and non host-memory arguments into separate type lists.
+  if (!status.ok() || ndef.op() == "SymbolicGradient") {
     for (const auto& t : inp_dtypes) inp_mtypes->push_back(MTypeFromDType(t));
     for (const auto& t : out_dtypes) out_mtypes->push_back(MTypeFromDType(t));
     return Status::OK();
@@ -126,12 +104,6 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
   inp_mtypes->resize(GetTotal(inp_names), DEVICE_MEMORY);
   out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
-
-  // For type list arguments, mark int32 arguments as host memory.
-  TF_RETURN_IF_ERROR(SetTypeListMTypesFromDTypes(inp_names, op_def->input_arg(),
-                                                 inp_dtypes, inp_mtypes));
-  TF_RETURN_IF_ERROR(SetTypeListMTypesFromDTypes(
-      out_names, op_def->output_arg(), out_dtypes, out_mtypes));
 
   // Fills in host memory types based on the kernel def.
   const auto& from_proto = kdef->host_memory_arg();

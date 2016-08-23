@@ -15,16 +15,35 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+class DummyDevice : public DeviceBase {
+ public:
+  explicit DummyDevice(Env* env) : DeviceBase(env) {
+    attr_.set_device_type("CPU");
+  }
+
+  const DeviceAttributes& attributes() const override { return attr_; }
+
+  Allocator* GetAllocator(AllocatorAttributes attr) override {
+    return cpu_allocator();
+  }
+
+ private:
+  DeviceAttributes attr_;
+};
 
 class StringSource : public TensorResponse::Source {
  public:
@@ -69,7 +88,8 @@ class TensorResponseTest : public ::testing::Test {
     StringSource source(&encoded, 1024);
 
     TensorResponse response;
-    response.set_allocator(cpu_allocator());
+    DummyDevice cpu_device(Env::Default());
+    response.InitAlloc(&cpu_device, AllocatorAttributes());
     for (int i = 0; i < 2; i++) {  // Twice so we exercise reuse of "response"
       Status s = response.ParseFrom(&source);
       EXPECT_TRUE(s.ok());
@@ -155,10 +175,11 @@ string MakeFloatTensorTestCase(int num_elems) {
 static void BM_TensorResponse(int iters, int arg) {
   testing::StopTiming();
   string encoded = MakeFloatTensorTestCase(arg);
+  DummyDevice cpu_device(Env::Default());
   testing::StartTiming();
   while (--iters > 0) {
     TensorResponse response;
-    response.set_allocator(cpu_allocator());
+    response.InitAlloc(&cpu_device, AllocatorAttributes());
     StringSource source(&encoded, -1);
     Status s = response.ParseFrom(&source);
     if (iters == 1) {

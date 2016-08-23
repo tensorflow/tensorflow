@@ -66,6 +66,8 @@ tf.app.flags.DEFINE_boolean("decode", False,
                             "Set to True for interactive decoding.")
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
+tf.app.flags.DEFINE_boolean("use_fp16", False,
+                            "Train using fp16 instead of fp32.")
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -114,11 +116,19 @@ def read_data(source_path, target_path, max_size=None):
 
 def create_model(session, forward_only):
   """Create translation model and initialize or load parameters in session."""
+  dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
   model = seq2seq_model.Seq2SeqModel(
-      FLAGS.en_vocab_size, FLAGS.fr_vocab_size, _buckets,
-      FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
-      forward_only=forward_only)
+      FLAGS.en_vocab_size,
+      FLAGS.fr_vocab_size,
+      _buckets,
+      FLAGS.size,
+      FLAGS.num_layers,
+      FLAGS.max_gradient_norm,
+      FLAGS.batch_size,
+      FLAGS.learning_rate,
+      FLAGS.learning_rate_decay_factor,
+      forward_only=forward_only,
+      dtype=dtype)
   ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
@@ -179,7 +189,7 @@ def train():
       # Once in a while, we save checkpoint, print statistics, and run evals.
       if current_step % FLAGS.steps_per_checkpoint == 0:
         # Print statistics for the previous epoch.
-        perplexity = math.exp(loss) if loss < 300 else float('inf')
+        perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
         print ("global step %d learning rate %.4f step-time %.2f perplexity "
                "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                          step_time, perplexity))
@@ -200,7 +210,8 @@ def train():
               dev_set, bucket_id)
           _, eval_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
                                        target_weights, bucket_id, True)
-          eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
+          eval_ppx = math.exp(float(eval_loss)) if eval_loss < 300 else float(
+              "inf")
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
         sys.stdout.flush()
 

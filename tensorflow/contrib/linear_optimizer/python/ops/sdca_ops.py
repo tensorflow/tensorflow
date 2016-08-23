@@ -31,6 +31,7 @@ from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
@@ -67,18 +68,17 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
                value_dtype,
                default_value,
                num_shards=1,
-               name=None):
+               name='ShardedMutableHashTable'):
     with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
       super(_ShardedMutableHashTable, self).__init__(key_dtype, value_dtype,
                                                      scope)
       table_shards = []
-      for _ in range(num_shards):
-        # TODO(andreasst): add placement hints once bug 30002625 is fixed.
+      for i in range(num_shards):
         table_shards.append(lookup_ops.MutableHashTable(
             key_dtype=key_dtype,
             value_dtype=value_dtype,
             default_value=default_value,
-            name=name))
+            name='%s-%d-of-%d' % (name, i + 1, num_shards)))
       self._table_shards = table_shards
       # TODO(andreasst): add a value_shape() method to LookupInterface
       # pylint: disable=protected-access
@@ -281,8 +281,7 @@ class SdcaModel(object):
 
     ```python
     # Create a solver with the desired parameters.
-    lr = tf.contrib.linear_optimizer.SdcaModel(
-        container, examples, variables, options)
+    lr = tf.contrib.linear_optimizer.SdcaModel(examples, variables, options)
     opt_op = lr.minimize()
 
     predictions = lr.predictions(examples)
@@ -291,9 +290,6 @@ class SdcaModel(object):
     # Primal loss only
     unregularized_loss = lr.unregularized_loss(examples)
 
-    container: Name of the container (eg a hex-encoded UUID) where internal
-      state of the optimizer can be stored. The container can be safely shared
-      across many models.
     examples: {
       sparse_features: list of SparseFeatureColumn.
       dense_features: list of dense tensors of type float32.
@@ -309,6 +305,12 @@ class SdcaModel(object):
       symmetric_l1_regularization: 0.0
       symmetric_l2_regularization: 1.0
       loss_type: "logistic_loss"
+      num_partitions: 1 (Optional, with default value of 1. Number of
+      partitions of the global loss function, 1 means single machine solver,
+      and >=1 when we have more than one optimizer working concurrently.)
+      num_table_shards: 1 (Optional, with default value of 1. Number of shards
+      of the internal state table, typically set to match the number of
+      parameter servers for large data sets.
     }
     ```
 
@@ -326,13 +328,10 @@ class SdcaModel(object):
   """
 
   def __init__(self,
-               container,
                examples,
                variables,
-               options,
-               num_table_shards=None):  # pylint: disable=unused-argument
+               options):
     """Create a new sdca optimizer."""
-    # TODO(andreasst): get rid of obsolete container parameter
 
     if not examples or not variables or not options:
       raise ValueError('examples, variables and options must all be specified.')
@@ -359,10 +358,6 @@ class SdcaModel(object):
         raise ValueError('%s should be non-negative. Found (%f)' %
                          (name, value))
 
-    # TODO(andreasst): set num_table_shards automatically based on the number of
-    # parameter servers
-    if num_table_shards is None:
-      num_table_shards = 1
     self._examples = examples
     self._variables = variables
     self._options = options
@@ -370,12 +365,32 @@ class SdcaModel(object):
     self._hashtable = _ShardedMutableHashTable(
         key_dtype=dtypes.string,
         value_dtype=dtypes.float32,
-        num_shards=num_table_shards,
+        num_shards=self._num_table_shards(),
         default_value=[0.0, 0.0, 0.0, 0.0])
+
+    logging_ops.scalar_summary('approximate_duality_gap',
+                               self.approximate_duality_gap())
+
+  def _symmetric_l1_regularization(self):
+    return self._options['symmetric_l1_regularization']
 
   def _symmetric_l2_regularization(self):
     # Algorithmic requirement (for now) is to have minimal l2 of 1.0.
     return max(self._options['symmetric_l2_regularization'], 1.0)
+
+  def _num_partitions(self):
+    # Number of partitions of the global objective.
+    # TODO(andreasst): set num_partitions automatically based on the number
+    # of workers
+    return self._options.get('num_partitions', 1)
+
+  def _num_table_shards(self):
+    # Number of hash table shards.
+    # Return 1 if not specified or if the value is 'None'
+    # TODO(andreasst): set num_table_shards automatically based on the number
+    # of parameter servers
+    num_shards = self._options.get('num_table_shards')
+    return 1 if num_shards is None else num_shards
 
   # TODO(sibyl-Aix6ihai): Use optimizer interface to make use of slot creation logic.
   def _create_slots(self):
@@ -384,8 +399,12 @@ class SdcaModel(object):
     self._slots = collections.defaultdict(list)
     for name in ['sparse_features_weights', 'dense_features_weights']:
       for var in self._variables[name]:
-        self._slots['unshrinked_' + name].append(var_ops.Variable(
-            array_ops.zeros_like(var.initialized_value(), dtypes.float32)))
+        with ops.device(var.device):
+          # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
+          # fixed
+          self._slots['unshrinked_' + name].append(var_ops.Variable(
+              array_ops.zeros_like(var.initialized_value(), dtypes.float32),
+              name=var.op.name + '_unshrinked/SDCAOptimizer'))
 
   def _assertSpecified(self, items, check_in):
     for x in items:
@@ -514,7 +533,7 @@ class SdcaModel(object):
           loss_type=self._options['loss_type'],
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
-          num_partitions=1,
+          num_partitions=self._num_partitions(),
           # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
           # to run more than one iteration on single mini-batch as we want to
           # spend more time in compute. SDCA works better with larger
@@ -546,15 +565,17 @@ class SdcaModel(object):
 
           # Apply proximal step.
           with ops.control_dependencies([update_group]):
-            shrink_l1 = _sdca_ops.sdca_shrink_l1(
-                self._convert_n_to_tensor(
-                    self._variables['sparse_features_weights'],
-                    as_ref=True),
-                self._convert_n_to_tensor(
-                    self._variables['dense_features_weights'],
-                    as_ref=True),
-                l1=self._options['symmetric_l1_regularization'],
-                l2=self._symmetric_l2_regularization())
+            shrink_ops = []
+            for name in ['sparse_features_weights', 'dense_features_weights']:
+              for var in self._variables[name]:
+                with ops.device(var.device):
+                  shrink_ops.append(
+                      _sdca_ops.sdca_shrink_l1(
+                          self._convert_n_to_tensor(
+                              [var], as_ref=True),
+                          l1=self._symmetric_l1_regularization(),
+                          l2=self._symmetric_l2_regularization()))
+            shrink_l1 = control_flow_ops.group(*shrink_ops)
       if not global_step:
         return shrink_l1
       with ops.control_dependencies([shrink_l1]):

@@ -42,7 +42,6 @@ class BitcastOp : public OpKernel {
     const Tensor& input_tensor = context->input(0);
 
     TensorShape adjusted_shape = input_tensor.shape();
-    adjusted_shape.set_data_type(output_data_type_);
     OP_REQUIRES(context, in_size_ >= out_size_ ||
                              (input_tensor.dims() > 0 &&
                               input_tensor.dim_size(input_tensor.dims() - 1) ==
@@ -60,7 +59,8 @@ class BitcastOp : public OpKernel {
     }
     Tensor output_tensor;
 
-    output_tensor.UnsafeCopyFromInternal(input_tensor, adjusted_shape);
+    output_tensor.UnsafeCopyFromInternal(input_tensor, output_data_type_,
+                                         adjusted_shape);
     context->set_output(0, output_tensor);
   }
 

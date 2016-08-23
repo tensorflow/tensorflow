@@ -354,50 +354,69 @@ class VariableScopeTest(tf.test.TestCase):
   def testVarOpScope(self):
     with self.test_session():
       with tf.name_scope("scope1"):
-        with tf.variable_op_scope([], "tower", "default"):
+        with tf.variable_scope("tower", "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower/scope2/")
-        with tf.variable_op_scope([], "tower", "default"):
+        with tf.variable_scope("tower", "default", []):
           with self.assertRaises(ValueError):
             tf.get_variable("w", [])
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower_1/scope2/")
 
       with tf.name_scope("scope2"):
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope2/default/scope2/")
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "default_1/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope2/default_1/scope2/")
 
+  def testVarOpScopeUniqueNamesInterleavedSubstringScopes(self):
+    with self.test_session():
+      with tf.variable_scope(None, "defaultScope1"):
+        with tf.variable_scope(None, "layer"):
+          self.assertEqual(tf.get_variable("w", []).name,
+                           "defaultScope1/layer/w:0")
+      with tf.variable_scope(None, "defaultScope1"):
+        with tf.variable_scope(None, "layer"):
+          self.assertEqual(tf.get_variable("w", []).name,
+                           "defaultScope1_1/layer/w:0")
+      with tf.variable_scope(None, "defaultScope"):
+        with tf.variable_scope(None, "layer"):
+          self.assertEqual(tf.get_variable("w", []).name,
+                           "defaultScope/layer/w:0")
+      with tf.variable_scope(None, "defaultScope1"):
+        with tf.variable_scope(None, "layer"):
+          self.assertEqual(tf.get_variable("w", []).name,
+                           "defaultScope1_2/layer/w:0")
+
   def testVarOpScopeReuse(self):
     with self.test_session():
       with tf.variable_scope("outer") as outer:
-        with tf.variable_op_scope([], "tower", "default"):
+        with tf.variable_scope("tower", "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/tower/scope2/")
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/default/scope2/")
 
       with tf.variable_scope(outer, reuse=True) as outer:
-        with tf.variable_op_scope([], "tower", "default"):
+        with tf.variable_scope("tower", "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/tower/scope2/")
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
@@ -503,25 +522,25 @@ class VariableScopeTest(tf.test.TestCase):
   def testVarOpScopeReuseParam(self):
     with self.test_session():
       with tf.variable_scope("outer") as outer:
-        with tf.variable_op_scope([], "tower", "default"):
+        with tf.variable_scope("tower", "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/tower/scope2/")
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/default/scope2/")
 
       with tf.variable_scope(outer) as outer:
-        with tf.variable_op_scope([], "tower", "default", reuse=True):
+        with tf.variable_scope("tower", "default", reuse=True):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/tower/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/tower/scope2/")
         outer.reuse_variables()
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
@@ -530,7 +549,7 @@ class VariableScopeTest(tf.test.TestCase):
   def testVarOpScopeReuseError(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        with tf.variable_op_scope([], None, "default", reuse=True):
+        with tf.variable_scope(None, "default", reuse=True):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/tower/w:0")
 
@@ -538,24 +557,24 @@ class VariableScopeTest(tf.test.TestCase):
     with self.test_session():
       with tf.variable_scope("outer") as outer:
         pass
-      with tf.variable_op_scope([], outer, "default"):
+      with tf.variable_scope(outer, "default", []):
         self.assertEqual(tf.get_variable("w", []).name,
                          "outer/w:0")
         with tf.name_scope("scope2") as sc2:
           self.assertEqual(sc2, "outer_1/scope2/")
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
-      with tf.variable_op_scope([], outer, "default", reuse=True):
+      with tf.variable_scope(outer, "default", reuse=True):
         self.assertEqual(tf.get_variable("w", []).name,
                          "outer/w:0")
         with tf.name_scope("scope2") as sc2:
           self.assertEqual(sc2, "outer_2/scope2/")
         outer.reuse_variables()
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
@@ -564,23 +583,23 @@ class VariableScopeTest(tf.test.TestCase):
   def testVarOpScopeNestedOuterScope(self):
     with self.test_session():
       with tf.variable_scope("outer") as outer:
-        with tf.variable_op_scope([], outer, "default"):
+        with tf.variable_scope(outer, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/outer/scope2/")
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer/default/scope2/")
 
-      with tf.variable_op_scope([], outer, "default", reuse=True):
+      with tf.variable_scope(outer, "default", reuse=True):
         self.assertEqual(tf.get_variable("w", []).name,
                          "outer/w:0")
         with tf.name_scope("scope2") as sc2:
           self.assertEqual(sc2, "outer_1/scope2/")
-        with tf.variable_op_scope([], None, "default"):
+        with tf.variable_scope(None, "default", []):
           self.assertEqual(tf.get_variable("w", []).name,
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:

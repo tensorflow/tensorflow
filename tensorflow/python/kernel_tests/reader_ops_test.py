@@ -21,8 +21,10 @@ from __future__ import print_function
 
 import collections
 import os
+import six
 import threading
 import tensorflow as tf
+import zlib
 
 
 class IdentityReaderTest(tf.test.TestCase):
@@ -178,7 +180,8 @@ class WholeFileReaderTest(tf.test.TestCase):
                        for i in range(3)]
     self._content = [b"One\na\nb\n", b"Two\nC\nD", b"Three x, y, z"]
     for fn, c in zip(self._filenames, self._content):
-      open(fn, "wb").write(c)
+      with open(fn, "wb") as h:
+        h.write(c)
 
   def tearDown(self):
     super(WholeFileReaderTest, self).tearDown()
@@ -240,13 +243,13 @@ class TextLineReaderTest(tf.test.TestCase):
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
       filenames.append(fn)
-      f = open(fn, "wb")
-      for j in range(self._num_lines):
-        f.write(self._LineText(i, j))
-        # Always include a newline after the record unless it is
-        # at the end of the file, in which case we include it sometimes.
-        if j + 1 != self._num_lines or i == 0:
-          f.write(b"\r\n" if crlf else b"\n")
+      with open(fn, "wb") as f:
+        for j in range(self._num_lines):
+          f.write(self._LineText(i, j))
+          # Always include a newline after the record unless it is
+          # at the end of the file, in which case we include it sometimes.
+          if j + 1 != self._num_lines or i == 0:
+            f.write(b"\r\n" if crlf else b"\n")
     return filenames
 
   def _testOneEpoch(self, files):
@@ -311,11 +314,11 @@ class FixedLengthRecordReaderTest(tf.test.TestCase):
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
       filenames.append(fn)
-      f = open(fn, "wb")
-      f.write(b"H" * self._header_bytes)
-      for j in range(self._num_records):
-        f.write(self._Record(i, j))
-      f.write(b"F" * self._footer_bytes)
+      with open(fn, "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        for j in range(self._num_records):
+          f.write(self._Record(i, j))
+        f.write(b"F" * self._footer_bytes)
     return filenames
 
   def testOneEpoch(self):
@@ -455,6 +458,47 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
+
+  def testZLibFlushRecord(self):
+    fn = os.path.join(self.get_temp_dir(), "tf_record.txt")
+
+    writer = tf.python_io.TFRecordWriter(fn, options=None)
+    writer.write(b"small record")
+    writer.close()
+    del writer
+
+    with open(fn, "rb") as h:
+      buff = h.read()
+
+    # creating more blocks and trailing blocks shouldn't break reads
+    compressor = zlib.compressobj(9, zlib.DEFLATED, zlib.MAX_WBITS)
+
+    output = b""
+    for c in buff:
+      if type(c) == int:
+        c = six.int2byte(c)
+      output += compressor.compress(c)
+      output += compressor.flush(zlib.Z_FULL_FLUSH)
+
+    output += compressor.flush(zlib.Z_FULL_FLUSH)
+    output += compressor.flush(zlib.Z_FULL_FLUSH)
+    output += compressor.flush(zlib.Z_FINISH)
+
+    # overwrite the original file with the compressed data
+    with open(fn, "wb") as h:
+      h.write(output)
+
+    with self.test_session() as sess:
+      options = tf.python_io.TFRecordOptions(
+          compression_type=tf.python_io.TFRecordCompressionType.ZLIB)
+      reader = tf.TFRecordReader(name="test_reader", options=options)
+      queue = tf.FIFOQueue(1, [tf.string], shapes=())
+      key, value = reader.read(queue)
+      queue.enqueue(fn).run()
+      queue.close().run()
+      k, v = sess.run([key, value])
+      self.assertTrue(tf.compat.as_text(k).startswith("%s:" % fn))
+      self.assertAllEqual(b"small record", v)
 
 
 class TFRecordIteratorTest(tf.test.TestCase):

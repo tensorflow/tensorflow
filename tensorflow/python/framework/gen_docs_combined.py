@@ -56,6 +56,7 @@ def module_names():
       "tf.summary",
       "tf.test",
       "tf.contrib.bayesflow.stochastic_graph",
+      "tf.contrib.bayesflow.variational_inference",
       "tf.contrib.copy_graph",
       "tf.contrib.distributions",
       "tf.contrib.ffmpeg",
@@ -67,7 +68,9 @@ def module_names():
       "tf.contrib.losses",
       "tf.contrib.rnn",
       "tf.contrib.metrics",
+      "tf.contrib.training",
       "tf.contrib.util",
+      "tf.contrib.slim",
   ]
 
 
@@ -191,6 +194,9 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.bayesflow.stochastic_graph",
               "BayesFlow Stochastic Graph (contrib)",
               tf.contrib.bayesflow.stochastic_graph),
+      library("contrib.bayesflow.variational_inference",
+              "BayesFlow Variational Inference (contrib)",
+              tf.contrib.bayesflow.variational_inference),
       library("contrib.distributions", "Statistical distributions (contrib)",
               tf.contrib.distributions),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
@@ -204,6 +210,7 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.losses", "Losses (contrib)", tf.contrib.losses),
       library("contrib.rnn", "RNN (contrib)", tf.contrib.rnn),
       library("contrib.metrics", "Metrics (contrib)", tf.contrib.metrics),
+      library("contrib.training", "Training (contrib)", tf.contrib.training),
       library("contrib.util", "Utilities (contrib)", tf.contrib.util),
       library("contrib.copy_graph", "Copying Graph Elements (contrib)",
               tf.contrib.copy_graph),

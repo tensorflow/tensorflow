@@ -67,14 +67,14 @@ TEST(CPUAllocatorTest, Simple) {
     ptrs.push_back(raw);
   }
   std::sort(ptrs.begin(), ptrs.end());
-  CheckStats(a, 1023, 553920, 553920, 1024);
+  CheckStats(a, 1023, 549056, 549056, 1024);
   for (size_t i = 0; i < ptrs.size(); i++) {
     if (i > 0) {
       CHECK_NE(ptrs[i], ptrs[i - 1]);  // No dups
     }
     a->DeallocateRaw(ptrs[i]);
   }
-  CheckStats(a, 1023, 0, 553920, 1024);
+  CheckStats(a, 1023, 0, 549056, 1024);
   float* t1 = a->Allocate<float>(1024);
   double* t2 = a->Allocate<double>(1048576);
   CheckStats(a, 1025, 1048576 * sizeof(double) + 1024 * sizeof(float),

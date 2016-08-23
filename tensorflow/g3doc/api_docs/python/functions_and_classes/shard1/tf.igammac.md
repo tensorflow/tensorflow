@@ -5,7 +5,7 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 The upper regularized incomplete Gamma function is defined as:
 
 ```
-Q(a, x) = Gamma(a, x) / Gamma(x) = 1 - P(a, x)
+Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
 ```
 where
 ```

@@ -603,5 +603,62 @@ TEST(CommonShapeFnsTest, UnknownShapeTest) {
   }
 }
 
+TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
+  ShapeInferenceTestOp op("Sum");
+  op.input_tensors.resize(2);
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "Sum")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("reduction_indices", 1, DT_INT32)
+                   .Attr("keep_dims", false)
+                   .Finalize(&op.node_def));
+
+  // Reduction indices not available, so output is unknown.
+  INFER_OK(op, "[2,4,5];[2]", "?");
+
+  Tensor indices = test::AsTensor<int32>({1, 2});
+  op.input_tensors[1] = &indices;
+
+  // Reduction indices available
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
+
+  // Unknown input rank
+  INFER_OK(op, "?;[2]", "?");
+
+  // Wrapped indices
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
+
+  // Scalar
+  indices = test::AsScalar<int32>(0);
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
+
+  // Cannot reduce 0 dimension
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_ERROR("Cannot reduce dimension -2 with size 0", op, "[2,0,5];[2]");
+
+  indices = test::AsScalar<int32>(-4);
+  op.input_tensors[1] = &indices;
+  INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
+
+  // Empty reduction indices
+  indices = test::AsTensor<int32>({});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[0]", "[]");
+
+  // Keep dims = true
+  TF_ASSERT_OK(NodeDefBuilder("test", "Sum")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("reduction_indices", 1, DT_INT32)
+                   .Attr("keep_dims", true)
+                   .Finalize(&op.node_def));
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
+}
+
 }  // namespace shape_inference
 }  // namespace tensorflow

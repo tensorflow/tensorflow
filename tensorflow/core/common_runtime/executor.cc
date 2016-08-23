@@ -742,6 +742,8 @@ class ExecutorState {
   Rendezvous* rendezvous_;
   SessionState* session_state_;
   TensorStore* tensor_store_;
+  // Step-local resource manager.
+  ResourceMgr* step_resource_manager_;
   StepStatsCollector* stats_collector_;
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
@@ -752,9 +754,6 @@ class ExecutorState {
   Executor::Args::Runner runner_;
 
   // Owned.
-
-  // Step-local resource manager.
-  ResourceMgr step_resource_manager_;
 
   // A flag that is set on error after the frame state has been
   // dumped for diagnostic purposes.
@@ -892,6 +891,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       rendezvous_(args.rendezvous),
       session_state_(args.session_state),
       tensor_store_(args.tensor_store),
+      step_resource_manager_(args.step_resource_manager),
       stats_collector_(args.stats_collector),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -918,10 +918,6 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
 
   // Initialize the executor state.
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
-
-  if (args.step_resource_manager_init) {
-    args.step_resource_manager_init(&step_resource_manager_);
-  }
 }
 
 ExecutorState::~ExecutorState() {
@@ -1061,7 +1057,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.call_frame = call_frame_;
   params.function_library = impl_->params_.function_library;
   params.resource_manager = device->resource_manager();
-  params.step_resource_manager = &step_resource_manager_;
+  params.step_resource_manager = step_resource_manager_;
   params.slice_reader_cache = slice_reader_cache_;
   params.inputs = &inputs;
   params.input_device_contexts = &input_device_contexts;
@@ -1513,8 +1509,7 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
     bool dst_need_input = !e->IsControlEdge();
     if (IsMerge(dst_node)) {
       // A merge node is ready if all control inputs have arrived and either
-      // a) a live data input becomes available or b) all data inputs are
-      // dead.
+      // a) a live data input becomes available or b) all data inputs are dead.
       // For Merge, pending's LSB is set iff a live data input has arrived.
       if (e->IsControlEdge()) {
         output_iter_state->decrement_pending(dst_id, 2);
@@ -1536,10 +1531,13 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
           dst_ready = (count == 1);
           dst_need_input = ((count & 0x1) == 1);
         } else {
-          // This is a dead data input.
+          // This is a dead data input. Note that dst_node is dead if node is
+          // a dead enter. We need this to handle properly a while loop on
+          // the untaken branch of a conditional.
+          // TODO(yuanbyu): This is a bit hacky, but a good solution for now.
           output_iter_state->increment_dead_count(dst_id);
-          dst_dead =
-              (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
+          const int dead_cnt = output_iter_state->dead_count(dst_id);
+          dst_dead = (dead_cnt == dst_node->num_inputs()) || IsEnter(node);
           dst_ready = (output_iter_state->pending(dst_id) == 1) && dst_dead;
           dst_need_input = false;
         }
@@ -1801,8 +1799,7 @@ void ExecutorState::DumpIterationState(IterationState* iteration) {
                    << strings::StrCat("Tensor<type: ",
                                       DataTypeString(tensor->dtype()),
                                       " shape: ", tensor->shape().DebugString(),
-                                      ", bytes: ", tensor->TotalBytes(),
-                                      ", hash: ", tensor->BufferHash(), ">");
+                                      ", bytes: ", tensor->TotalBytes(), ">");
       total_bytes += tensor->TotalBytes();
     }
   }
@@ -2082,21 +2079,5 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
 }
 
 void DeleteNonCachedKernel(OpKernel* kernel) { delete kernel; }
-
-Status CreateCachedKernel(Device* device, const string& session,
-                          FunctionLibraryRuntime* flib, const NodeDef& ndef,
-                          int graph_def_version, OpKernel** kernel) {
-  auto op_seg = device->op_segment();
-  auto create_fn = [device, flib, &ndef, graph_def_version](OpKernel** kernel) {
-    return CreateNonCachedKernel(device, flib, ndef, graph_def_version, kernel);
-  };
-  return op_seg->FindOrCreate(session, ndef.name(), kernel, create_fn);
-}
-
-// Deletes "kernel".
-void DeleteCachedKernel(Device* device, const string& session,
-                        OpKernel* kernel) {
-  // Do nothing.
-}
 
 }  // end namespace tensorflow

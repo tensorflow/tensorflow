@@ -16,19 +16,23 @@
         position: relative;
       }
 
-      .card .card-title {
+      .card .card-title, .card .card-subtitle {
         flex-grow: 0;
         flex-shrink: 0;
-        margin-bottom: 10px;
         font-size: 14px;
         text-overflow: ellipsis;
         overflow: hidden;
+      }
+
+      .card .card-subtitle {
+        font-size: 12px;
       }
 
       .card .card-content {
         flex-grow: 1;
         flex-shrink: 1;
         display: flex;
+        margin-top: 10px;
       }
       .card .card-bottom-row {
         position: absolute;
@@ -73,6 +77,22 @@
       #runSelector {
         flex-shrink: 1;
         flex-grow: 1;
+      }
+
+      #tooltip-sorting {
+        display: flex;
+        font-size: 14px;
+      }
+
+      #tooltip-sorting-label {
+        margin-top: 13px;
+        margin-left: 28px;
+      }
+
+      #tooltip-sorting paper-dropdown-menu {
+        margin-left: 10px;
+        --paper-input-container-focus-color: var(--tb-orange-strong);
+        width: 105px;
       }
 
       .sidebar-section {

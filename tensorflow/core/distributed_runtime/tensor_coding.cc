@@ -14,18 +14,47 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/common_runtime/device.h"
 
 namespace tensorflow {
 
 TensorResponse::Source::~Source() {}
 
-Status TensorResponse::InitFrom(RecvTensorResponse* response) {
-  meta_.Swap(response);
-  Status s;
-  if (!tensor_.FromProto(allocator_, meta_.tensor())) {
-    s = errors::InvalidArgument("Cannot parse tensor from response");
+void TensorResponse::Clear() {
+  on_host_ = false;
+  device_ = nullptr;
+  alloc_attrs_ = AllocatorAttributes();
+  allocator_ = nullptr;
+  already_used_ = false;
+  ClearTensor();
+}
+
+void TensorResponse::ClearTensor() {
+  meta_.Clear();
+  tensor_ = Tensor();
+}
+
+void TensorResponse::InitAlloc(DeviceBase* d, const AllocatorAttributes& aa) {
+  Clear();
+  device_ = d;
+  alloc_attrs_ = aa;
+  const DeviceAttributes& da = d->attributes();
+  if (alloc_attrs_.on_host() || da.device_type() == "CPU") {
+    on_host_ = true;
   }
-  // Reduce memory usage for big tensors.
+  allocator_ = device_->GetAllocator(alloc_attrs_);
+}
+
+Status TensorResponse::InitFrom(RecvTensorResponse* response) {
+  Status s;
+  meta_.Swap(response);
+  if (on_host_) {
+    if (!tensor_.FromProto(allocator_, meta_.tensor())) {
+      s = errors::InvalidArgument("Cannot parse tensor from response");
+    }
+  } else {
+    s = device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_);
+  }
   {
     TensorProto empty;
     meta_.mutable_tensor()->Swap(&empty);
@@ -34,19 +63,30 @@ Status TensorResponse::InitFrom(RecvTensorResponse* response) {
   return s;
 }
 
-void TensorResponse::InitPartial(RecvTensorResponse* response) {
+void TensorResponse::InitPartial(const RecvTensorResponse& response) {
   // Everything except content is present in *response.  Content will
   // arrive later; allocate a Tensor with appropriate storage for that
   // content.
-  meta_.Swap(response);
+  meta_ = response;
   TensorShape shape(meta_.tensor().tensor_shape());
   Tensor t(allocator_, meta_.tensor().dtype(), shape);
   tensor_ = std::move(t);
 }
 
 Status TensorResponse::ParseFrom(Source* source) {
+  if (!on_host_) {
+    protobuf::io::CodedInputStream input(source->contents());
+    input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
+
+    // Pre-parse into local storage, then delegate to device.
+    RecvTensorResponse proto;
+    if (!proto.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
+      return errors::InvalidArgument("Cannot parse tensor from response");
+    }
+    return device_->MakeTensorFromProto(proto.tensor(), alloc_attrs_, &tensor_);
+  }
   if (already_used_) {
-    Clear();
+    ClearTensor();
   }
   already_used_ = true;
   if (ParseFast(source)) return Status::OK();
@@ -237,11 +277,6 @@ bool TensorResponse::ParseSlow(Source* source) {
   meta_.clear_tensor();
 
   return true;
-}
-
-void TensorResponse::Clear() {
-  meta_.Clear();
-  tensor_ = Tensor();
 }
 
 }  // namespace tensorflow

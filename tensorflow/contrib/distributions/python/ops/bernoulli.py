@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.distributions.python.ops import kullback_leibler  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape

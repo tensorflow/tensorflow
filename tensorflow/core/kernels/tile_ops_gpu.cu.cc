@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/tile_ops.h"
 #include <stdio.h>
+#include "tensorflow/core/kernels/tile_ops_impl.h"
 
 namespace tensorflow {
 namespace functor {
@@ -30,7 +30,8 @@ typedef Eigen::GpuDevice GPUDevice;
   DEFINE_DIM(T, 2)     \
   DEFINE_DIM(T, 3)     \
   DEFINE_DIM(T, 4)     \
-  DEFINE_DIM(T, 5)
+  DEFINE_DIM(T, 5)     \
+  DEFINE_DIM(T, 6)
 
 #define DEFINE_DIM(T, NDIM)                     \
   template struct Tile<GPUDevice, T, NDIM>;     \

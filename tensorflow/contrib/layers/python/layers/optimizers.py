@@ -106,7 +106,7 @@ def optimize_loss(loss,
   Raises:
     ValueError: if optimizer is wrong type.
   """
-  with vs.variable_op_scope([loss, global_step], name, "OptimizeLoss"):
+  with vs.variable_scope(name, "OptimizeLoss", [loss, global_step]):
     # Update ops take UPDATE_OPS collection if not provided.
     if update_ops is None:
       update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))

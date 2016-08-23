@@ -81,7 +81,7 @@ InferenceContext::InferenceContext(
   }
   if (inputs_.size() != num_inputs_from_node_def) {
     construction_status_ = errors::InvalidArgument(
-        "Wrong number of arguments passed: ", inputs_.size(), " while ",
+        "Wrong number of inputs passed: ", inputs_.size(), " while ",
         num_inputs_from_node_def, " expected based on NodeDef");
     return;
   }
@@ -407,6 +407,15 @@ const Shape* InferenceContext::UnknownShape() {
   all_shapes_.push_back(new Shape());
   return all_shapes_.back();
 }
+
+const Shape* InferenceContext::UnknownShapeOfRank(int32 rank) {
+  std::vector<const Dimension*> dims(rank);
+  for (int32 i = 0; i < rank; ++i) {
+    dims[i] = UnknownDim();
+  }
+  return MakeShape(dims);
+}
+
 const Shape* InferenceContext::Scalar() { return MakeShape({}); }
 
 const Shape* InferenceContext::Vector(DimensionOrConstant dim) {

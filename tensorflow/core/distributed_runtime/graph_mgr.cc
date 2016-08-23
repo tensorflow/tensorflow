@@ -168,8 +168,9 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
     // Function library runtime.
     unit->lib = NewFunctionLibraryRuntime(
-        worker_env_->device_mgr, unit->device, def->versions().producer(),
-        item->lib_def, graph_options.optimizer_options());
+        worker_env_->device_mgr, worker_env_->env, unit->device,
+        def->versions().producer(), item->lib_def,
+        graph_options.optimizer_options());
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;
@@ -196,7 +197,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       }
     };
 
-    optimizer.Optimize(lib, params.device, &subgraph);
+    optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph);
     s = EnsureMemoryTypes(DeviceType(unit->device->device_type()),
                           unit->device->name(), subgraph);
     if (!s.ok()) {
@@ -328,9 +329,13 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   //
   // NOTE: Transfer one ref of rendezvous and one ref of item to
   // RunAllDone.
+  ResourceMgr* step_resource_manager = new ResourceMgr;
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_units, rendezvous, std::bind(&ME::RunAllDone, this, item, rendezvous,
-                                       out, done, std::placeholders::_1));
+      num_units, rendezvous, [this, item, rendezvous, out, done,
+                              step_resource_manager](const Status& status) {
+        RunAllDone(item, rendezvous, out, done, status);
+        delete step_resource_manager;
+      });
   Executor::Args args;
   {
     mutex_lock l(mu_);
@@ -339,6 +344,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   args.rendezvous = rendezvous;
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
+  args.step_resource_manager = step_resource_manager;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

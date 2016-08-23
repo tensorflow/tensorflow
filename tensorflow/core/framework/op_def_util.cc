@@ -484,7 +484,8 @@ void AddComma(string* s, bool* add_comma) {
 // old_attrs, or substituting the default value from new_attrs.
 string ComputeArgSignature(
     const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
-    const AttrMap& old_attrs, const AttrMap& new_attrs) {
+    const AttrMap& old_attrs, const AttrMap& new_attrs,
+    std::vector<bool>* ref) {
   string s;
   bool add_comma = false;
   for (const OpDef::ArgDef& arg : args) {
@@ -495,7 +496,7 @@ string ComputeArgSignature(
         // Both old and new have the list(type) attr, so can use it directly.
         AddComma(&s, &add_comma);
         strings::StrAppend(&s, arg.type_list_attr());
-        if (arg.is_ref()) strings::StrAppend(&s, " ref");
+        ref->push_back(arg.is_ref());
       } else {
         // Missing the list(type) attr in the old, so use the default
         // value for the attr from new instead.
@@ -507,7 +508,7 @@ string ComputeArgSignature(
           AddComma(&s, &add_comma);
           strings::StrAppend(
               &s, DataTypeString(static_cast<DataType>(type_list.Get(i))));
-          if (arg.is_ref()) strings::StrAppend(&s, " ref");
+          ref->push_back(arg.is_ref());
         }
       }
     } else {
@@ -548,12 +549,12 @@ string ComputeArgSignature(
           type = DataTypeString(new_attr->default_value().type());
         }
       }
-      if (arg.is_ref()) strings::StrAppend(&type, " ref");
 
       // Record `num` * `type` in the signature.
       for (int i = 0; i < num; ++i) {
         AddComma(&s, &add_comma);
         strings::StrAppend(&s, type);
+        ref->push_back(arg.is_ref());
       }
     }
   }
@@ -598,19 +599,34 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
              new_attr.name(), "' added without default");
   }
 
-  const string old_in_sig =
-      ComputeArgSignature(old_op.input_arg(), old_attrs, new_attrs);
-  const string new_in_sig =
-      ComputeArgSignature(new_op.input_arg(), old_attrs, new_attrs);
+  std::vector<bool> old_in_ref, new_in_ref, old_out_ref, new_out_ref;
+  const string old_in_sig = ComputeArgSignature(old_op.input_arg(), old_attrs,
+                                                new_attrs, &old_in_ref);
+  const string new_in_sig = ComputeArgSignature(new_op.input_arg(), old_attrs,
+                                                new_attrs, &new_in_ref);
   VALIDATE(old_in_sig == new_in_sig, "Input signature mismatch '", old_in_sig,
            "' vs. '", new_in_sig, "'");
+  VALIDATE(old_in_ref.size() == new_in_ref.size(),  // Should not happen
+           "Unexpected change in input ref lists.");
+  for (int i = 0; i < old_in_ref.size(); ++i) {
+    // Allowed to remove "ref" from an input (or leave it unchanged).
+    VALIDATE(old_in_ref[i] || !new_in_ref[i], "Input ", i,
+             " changed from non-ref to ref");
+  }
 
-  const string old_out_sig =
-      ComputeArgSignature(old_op.output_arg(), old_attrs, new_attrs);
-  const string new_out_sig =
-      ComputeArgSignature(new_op.output_arg(), old_attrs, new_attrs);
+  const string old_out_sig = ComputeArgSignature(old_op.output_arg(), old_attrs,
+                                                 new_attrs, &old_out_ref);
+  const string new_out_sig = ComputeArgSignature(new_op.output_arg(), old_attrs,
+                                                 new_attrs, &new_out_ref);
   VALIDATE(old_out_sig == new_out_sig, "Output signature mismatch '",
            old_out_sig, "' vs. '", new_out_sig, "'");
+  VALIDATE(old_out_ref.size() == new_out_ref.size(),  // Should not happen
+           "Unexpected change in output ref lists");
+  for (int i = 0; i < old_out_ref.size(); ++i) {
+    // Allowed to add "ref" to an output (or leave it unchanged).
+    VALIDATE(!old_out_ref[i] || new_out_ref[i], "Output ", i,
+             " changed from ref to non-ref");
+  }
 
   return Status::OK();
 }

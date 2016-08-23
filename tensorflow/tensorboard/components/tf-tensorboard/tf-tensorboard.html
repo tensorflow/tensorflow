@@ -8,6 +8,7 @@
 <link rel="import" href="../tf-globals/tf-globals.html">
 <link rel="import" href="../tf-event-dashboard/tf-event-dashboard.html">
 <link rel="import" href="../tf-distribution-dashboard/tf-distribution-dashboard.html">
+<link rel="import" href="../tf-histogram-dashboard/tf-histogram-dashboard.html">
 <link rel="import" href="../tf-image-dashboard/tf-image-dashboard.html">
 <link rel="import" href="../tf-audio-dashboard/tf-audio-dashboard.html">
 <link rel="import" href="../tf-graph-dashboard/tf-graph-dashboard.html">
@@ -95,6 +96,13 @@ allows the user to toggle between various dashboards.
             id="distributions"
             backend="[[_backend]]"
           ></tf-distribution-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
+          <tf-histogram-dashboard
+            id="histograms"
+            backend="[[_backend]]"
+          ></tf-histogram-dashboard>
         </template>
       </div>
     </paper-header-panel>
@@ -229,6 +237,9 @@ allows the user to toggle between various dashboards.
       },
       _modeIsDistributions: function(mode) {
         return mode === "distributions";
+      },
+      _modeIsHistograms: function(mode) {
+        return mode === "histograms";
       },
       selectedDashboard: function() {
         var dashboard = this.$$("#" + this.mode);

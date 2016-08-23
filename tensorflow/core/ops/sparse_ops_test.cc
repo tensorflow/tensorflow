@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -89,13 +90,13 @@ TEST(SparseOpsTest, SparseReshape_ShapeFn) {
 
 TEST(SparseOpsTest, SparseSplit_ShapeFn) {
   ShapeInferenceTestOp op("SparseSplit");
-  TF_CHECK_OK(NodeDefBuilder("test", "SparseSplit")
-                  .Input({"split_dim", 0, DT_INT64})
-                  .Input({"indices", 1, DT_INT64})
-                  .Input({"values", 2, DT_INT64})
-                  .Input({"shape", 3, DT_INT64})
-                  .Attr("num_split", 2)  // each output is copied twice.
-                  .Finalize(&op.node_def));
+  TF_ASSERT_OK(NodeDefBuilder("test", "SparseSplit")
+                   .Input({"split_dim", 0, DT_INT64})
+                   .Input({"indices", 1, DT_INT64})
+                   .Input({"values", 2, DT_INT64})
+                   .Input({"shape", 3, DT_INT64})
+                   .Attr("num_split", 2)  // each output is copied twice.
+                   .Finalize(&op.node_def));
 
   // output has three shape types, derived from input_shape (which is input(3)).
   // each type is copied #splits times.
@@ -165,13 +166,13 @@ TEST(SparseOpsTest, DeserializeManySparse_ShapeFn) {
 TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
   ShapeInferenceTestOp op("SparseTensorDenseMatMul");
   auto set_adjoint_b = [&op](bool adjoint_b) {
-    TF_CHECK_OK(NodeDefBuilder("test", "SparseSplit")
-                    .Input({"a_indices", 1, DT_INT64})
-                    .Input({"a_values", 2, DT_INT64})
-                    .Input({"a_shape", 3, DT_INT64})
-                    .Input({"b", 3, DT_INT64})
-                    .Attr("adjoint_b", adjoint_b)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "SparseSplit")
+                     .Input({"a_indices", 1, DT_INT64})
+                     .Input({"a_values", 2, DT_INT64})
+                     .Input({"a_shape", 3, DT_INT64})
+                     .Input({"b", 3, DT_INT64})
+                     .Attr("adjoint_b", adjoint_b)
+                     .Finalize(&op.node_def));
   };
 
   // Inputs are a_indices, a_values, a_shape, b.
@@ -233,12 +234,12 @@ TEST(SparseOpsTest, SparseConcat_ShapeFn) {
   std::vector<NodeDefBuilder::NodeOut> src_list;
   int n = 2;
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_INT64);
-  TF_CHECK_OK(NodeDefBuilder("test", "SparseConcat")
-                  .Input(src_list)
-                  .Input(src_list)
-                  .Input(src_list)
-                  .Attr("N", n)
-                  .Finalize(&op.node_def));
+  TF_ASSERT_OK(NodeDefBuilder("test", "SparseConcat")
+                   .Input(src_list)
+                   .Input(src_list)
+                   .Input(src_list)
+                   .Attr("N", n)
+                   .Finalize(&op.node_def));
 
   // Rank checks.
   INFER_ERROR("must be rank 2", op, "[1];?;?;?;?;?");  // indices

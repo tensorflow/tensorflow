@@ -25,9 +25,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 
 
 @ops.RegisterGradient("Pack")
@@ -62,6 +62,24 @@ def _ConcatGrad(op, grad):
     begin = array_ops.fill(shape_of_shape, 0)
     return mask, begin
 
+  def _ExtractInputShapes(inputs):
+    """Extract the shapes of a set of input tensors."""
+    sizes = []
+    fully_known = True
+    for x in inputs:
+      input_shape = array_ops.shape(x)
+      if not isinstance(input_shape,
+                        ops.Tensor) or input_shape.op.type != "Const":
+        fully_known = False
+        break
+      else:
+        sizes.append(input_shape)
+
+    if fully_known:
+      return sizes
+    else:
+      return array_ops.shape_n(inputs)
+
   # Degenerate concatenation, just return grad.
   if len(op.inputs) == 2:
     return [None, grad]
@@ -70,7 +88,7 @@ def _ConcatGrad(op, grad):
   out_grads = []
   if isinstance(grad, ops.Tensor):
     # Get the inputs' tensor shapes
-    sizes = array_ops.shape_n(op.inputs[1:])
+    sizes = _ExtractInputShapes(op.inputs[1:])
     # pylint: disable=protected-access
     offset = gen_array_ops._concat_offset(concat_dim, sizes)
     # pylint: enable=protected-access
@@ -258,18 +276,18 @@ ops.NoGradient("ZerosLike")
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
-  if op.inputs[0].get_shape().is_fully_defined():
-    dense_shape = constant_op.constant(op.inputs[0].get_shape().as_list())
-    values_shape = [-1] + op.inputs[0].get_shape()[1:].as_list()
-  else:
-    # op.inputs[0] can be large, so colocate the shape calculation with it.
-    with ops.colocate_with(op.inputs[0]):
-      dense_shape = array_ops.shape(op.inputs[0])
-      values_shape = array_ops.concat(0, [[-1], dense_shape[1:]])
+  # params can be large, so colocate the shape calculation with it.
+  params = op.inputs[0]
+  with ops.colocate_with(params):
+    params_shape = array_ops.shape(params)
 
+  # Build appropriately shaped IndexedSlices
+  indices = op.inputs[1]
+  size = array_ops.expand_dims(array_ops.size(indices), 0)
+  values_shape = array_ops.concat(0, [size, params_shape[1:]])
   values = array_ops.reshape(grad, values_shape)
-  indices = array_ops.reshape(op.inputs[1], [-1])
-  return [ops.IndexedSlices(values, indices, dense_shape), None]
+  indices = array_ops.reshape(indices, size)
+  return [ops.IndexedSlices(values, indices, params_shape), None]
 
 
 @ops.RegisterGradient("GatherNd")
@@ -280,7 +298,8 @@ def _GatherNdGrad(unused_op, unused_grad):
 @ops.RegisterGradient("CheckNumerics")
 def _CheckNumericsGrad(_, grad):
   """Gradient for check_numerics op."""
-  return grad
+  return array_ops.check_numerics(
+      grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
 
 
 @ops.RegisterGradient("Identity")
@@ -470,13 +489,13 @@ def _ExtractImagePatchesGrad(op, grad):
   ksize_r_eff = ksize_r + (ksize_r - 1) * (rate_r - 1)
   ksize_c_eff = ksize_c + (ksize_c - 1) * (rate_c - 1)
 
-  if padding == 'SAME':
+  if padding == b'SAME':
     rows_out = int(ceil(rows_in / stride_r))
     cols_out = int(ceil(cols_in / stride_h))
     pad_rows = ((rows_out - 1) * stride_r + ksize_r_eff - rows_in) // 2
     pad_cols = ((cols_out - 1) * stride_h + ksize_c_eff - cols_in) // 2
 
-  elif padding == 'VALID':
+  elif padding == b'VALID':
     rows_out = int(ceil((rows_in - ksize_r_eff + 1) / stride_r))
     cols_out = int(ceil((cols_in - ksize_c_eff + 1) / stride_h))
     pad_rows = (rows_out - 1) * stride_r + ksize_r_eff - rows_in

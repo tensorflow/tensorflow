@@ -27,6 +27,9 @@ Usage:
 
 @@overfeat
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 
@@ -77,7 +80,7 @@ def overfeat(inputs,
     the last op containing the log predictions and end_points dict.
 
   """
-  with tf.variable_op_scope([inputs], scope, 'overfeat') as sc:
+  with tf.variable_scope(scope, 'overfeat', [inputs]) as sc:
     end_points_collection = sc.name + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d
     with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],

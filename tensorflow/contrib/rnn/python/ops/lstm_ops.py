@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""LSTM Fused Cell ops."""
+"""LSTM Block Cell ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -36,7 +36,7 @@ assert _lstm_ops_so, "Could not load _lstm_ops.so."
 
 
 # pylint: disable=invalid-name
-def _lstm_fused_cell(x,
+def _lstm_block_cell(x,
                      cs_prev,
                      h_prev,
                      w,
@@ -108,7 +108,7 @@ def _lstm_fused_cell(x,
     wcf = wci
 
   # pylint: disable=protected-access
-  return _lstm_ops_so.lstm_fused_cell(x=x,
+  return _lstm_ops_so.lstm_block_cell(x=x,
                                       cs_prev=cs_prev,
                                       h_prev=h_prev,
                                       w=w,
@@ -123,7 +123,7 @@ def _lstm_fused_cell(x,
   # pylint: enable=protected-access
 
 
-def _fused_lstm(seq_len_max,
+def _block_lstm(seq_len_max,
                 x,
                 w,
                 b,
@@ -193,7 +193,7 @@ def _fused_lstm(seq_len_max,
     wcf = wci
 
   # pylint: disable=protected-access
-  return _lstm_ops_so.fused_lstm(seq_len_max=seq_len_max,
+  return _lstm_ops_so.block_lstm(seq_len_max=seq_len_max,
                                  x=x,
                                  cs_prev=cs_prev,
                                  h_prev=h_prev,
@@ -210,12 +210,12 @@ def _fused_lstm(seq_len_max,
   # pylint: enable=invalid-name
 
 
-ops.RegisterShape("LSTMFusedCell")(None)
-_lstm_fused_cell_grad_outputs = ["cs_prev_grad", "dicfo"]
+ops.RegisterShape("LSTMBlockCell")(None)
+_lstm_block_cell_grad_outputs = ["cs_prev_grad", "dicfo"]
 
 
-@ops.RegisterShape("LSTMFusedCell")
-def _LSTMFusedCellShape(op):
+@ops.RegisterShape("LSTMBlockCell")
+def _LSTMBlockCellShape(op):
   batch_size = op.inputs[0].get_shape().with_rank(2)[0].value
   cell_size = op.inputs[1].get_shape().with_rank(2)[1].value
 
@@ -228,9 +228,9 @@ def _LSTMFusedCellShape(op):
           tensor_shape.TensorShape([batch_size, cell_size]))
 
 
-@ops.RegisterGradient("LSTMFusedCell")
-def _LSTMFusedCellGrad(op, *grad):
-  """Gradient for LSTMFusedCell."""
+@ops.RegisterGradient("LSTMBlockCell")
+def _LSTMBlockCellGrad(op, *grad):
+  """Gradient for LSTMBlockCell."""
   (x, cs_prev, h_prev, w, wci, wco, wcf, b) = op.inputs
   (i, cs, f, o, ci, co, _) = op.outputs
   (_, cs_grad, _, _, _, _, h_grad) = grad
@@ -246,7 +246,7 @@ def _LSTMFusedCellGrad(op, *grad):
     raise ValueError("cell_size from `cs_prev` should not be None.")
 
   (cs_prev_grad, dicfo, wci_grad, wcf_grad,
-   wco_grad) = _lstm_ops_so.lstm_fused_cell_grad(
+   wco_grad) = _lstm_ops_so.lstm_block_cell_grad(
        x,
        cs_prev,
        h_prev,
@@ -288,8 +288,8 @@ def _LSTMFusedCellGrad(op, *grad):
           wco_grad, b_grad)
 
 
-@ops.RegisterShape("LSTMFusedCellGrad")
-def _LSTMFusedCellGradShape(op):
+@ops.RegisterShape("LSTMBlockCellGrad")
+def _LSTMBlockCellGradShape(op):
   batch_size = op.inputs[0].get_shape().with_rank(2)[0].value
   cell_size = op.inputs[1].get_shape().with_rank(2)[1].value
 
@@ -300,8 +300,8 @@ def _LSTMFusedCellGradShape(op):
           tensor_shape.TensorShape([cell_size])]
 
 
-@ops.RegisterShape("FusedLSTM")
-def _FusedLSTMShape(op):
+@ops.RegisterShape("BlockLSTM")
+def _BlockLSTMShape(op):
   max_len = op.get_attr("max_len")
 
   x = op.inputs[1]
@@ -313,9 +313,9 @@ def _FusedLSTMShape(op):
   return [tensor_shape.TensorShape([batch_size, cell_size])] * max_len * 7
 
 
-@ops.RegisterGradient("FusedLSTM")
-def _FusedLSTMGrad(op, *grad):
-  """Gradient for FusedLSTM."""
+@ops.RegisterGradient("BlockLSTM")
+def _BlockLSTMGrad(op, *grad):
+  """Gradient for BlockLSTM."""
   max_len = op.get_attr("max_len")
 
   seq_len_max = op.inputs[0]
@@ -340,7 +340,7 @@ def _FusedLSTMGrad(op, *grad):
   h_grad = grad[-max_len:]
 
   (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wco_grad, wcf_grad,
-   b_grad) = _lstm_ops_so.fused_lstm_grad(
+   b_grad) = _lstm_ops_so.block_lstm_grad(
        seq_len_max,
        x,
        cs_prev,
@@ -365,9 +365,9 @@ def _FusedLSTMGrad(op, *grad):
                             wco_grad, wcf_grad, b_grad]
 
 
-@ops.RegisterShape("FusedLSTMGrad")
-def _FusedLSTMGradShape(op):
-  """Shape for FusedLSTM."""
+@ops.RegisterShape("BlockLSTMGrad")
+def _BlockLSTMGradShape(op):
+  """Shape for BlockLSTM."""
   max_len = op.get_attr("max_len")
 
   x = op.inputs[1]
@@ -392,7 +392,7 @@ def _FusedLSTMGradShape(op):
                                 wco_shape, wcf_shape, b_shape]
 
 
-class LSTMFusedCell(rnn_cell.RNNCell):
+class LSTMBlockCell(rnn_cell.RNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -442,7 +442,7 @@ class LSTMFusedCell(rnn_cell.RNNCell):
       wco = vs.get_variable("wco", [self._num_units])
       wcf = vs.get_variable("wcf", [self._num_units])
       (cs_prev, h_prev) = states_prev
-      (_, cs, _, _, _, _, h) = _lstm_fused_cell(x,
+      (_, cs, _, _, _, _, h) = _lstm_block_cell(x,
                                                 cs_prev,
                                                 h_prev,
                                                 w,

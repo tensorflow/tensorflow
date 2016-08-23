@@ -20,6 +20,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
@@ -34,20 +35,39 @@ using tensorforest::DataColumnTypes;
 using tensorforest::FeatureSpec;
 using tensorforest::Sum;
 
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
+
 REGISTER_OP("TreePredictions")
-  .Attr("valid_leaf_threshold: float")
-  .Input("input_data: float")
-  .Input("sparse_input_indices: int64")
-  .Input("sparse_input_values: float")
-  .Input("sparse_input_shape: int64")
-  .Input("input_spec: int32")
+    .Attr("valid_leaf_threshold: float")
+    .Input("input_data: float")
+    .Input("sparse_input_indices: int64")
+    .Input("sparse_input_values: float")
+    .Input("sparse_input_shape: int64")
+    .Input("input_spec: int32")
 
-  .Input("tree: int32")
-  .Input("tree_thresholds: float")
-  .Input("node_per_class_weights: float")
+    .Input("tree: int32")
+    .Input("tree_thresholds: float")
+    .Input("node_per_class_weights: float")
 
-  .Output("predictions: float")
-  .Doc(R"doc(
+    .Output("predictions: float")
+    .SetShapeFn([](InferenceContext* c) {
+      // The output of TreePredictions is
+      // [node_pcw(evaluate_tree(x), c) for c in classes for x in input_data].
+      const Dimension* num_points = c->Dim(c->input(0), 0);
+      const Dimension* num_classes = c->Dim(c->input(7), 1);
+
+      if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
+        num_points = c->UnknownDim();
+      }
+
+      TF_RETURN_IF_ERROR(c->Subtract(num_classes, 1, &num_classes));
+
+      c->set_output(0, c->Matrix(num_points, num_classes));
+      return Status::OK();
+    })
+    .Doc(R"doc(
   Returns the per-class probabilities for each input.
 
   input_data: The training batch's features as a 2-d tensor; `input_data[i][j]`
@@ -69,7 +89,6 @@ REGISTER_OP("TreePredictions")
   valid_leaf_threshold: Minimum number of samples that have arrived to a leaf
     to be considered a valid leaf, otherwise use the parent.
 )doc");
-
 
 class TreePredictions : public OpKernel {
  public:

@@ -71,6 +71,18 @@ TEST(CApi, Tensor) {
   EXPECT_TRUE(deallocator_called);
 }
 
+TEST(CApi, AllocateTensor) {
+  const int num_bytes = 6 * sizeof(float);
+  int64_t dims[] = {2, 3};
+  TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, dims, 2, num_bytes);
+  EXPECT_EQ(TF_FLOAT, TF_TensorType(t));
+  EXPECT_EQ(2, TF_NumDims(t));
+  EXPECT_EQ(dims[0], TF_Dim(t, 0));
+  EXPECT_EQ(dims[1], TF_Dim(t, 1));
+  EXPECT_EQ(num_bytes, TF_TensorByteSize(t));
+  TF_DeleteTensor(t);
+}
+
 static void TestEncodeDecode(int line,
                              const std::vector<tensorflow::string>& data) {
   const tensorflow::int64 n = data.size();

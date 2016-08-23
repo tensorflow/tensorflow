@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import tempfile
 
 import numpy as np
@@ -51,15 +52,44 @@ class LinearClassifierTest(tf.test.TestCase):
     self.assertLess(loss2, 0.01)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
+  def testTrainWithPartitionedVariables(self):
+    """Tests training with partitioned variables."""
+
+    def _input_fn():
+      features = {
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      target = tf.constant([[1], [0], [0]])
+      return features, target
+
+    sparse_features = [
+        # The given hash_bucket_size results in variables larger than the
+        # default min_slice_size attribute, so the variables are partitioned.
+        tf.contrib.layers.sparse_column_with_hash_bucket('language',
+                                                         hash_bucket_size=2e7)
+    ]
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=sparse_features,
+        # Because we did not start a distributed cluster, we need to pass an
+        # empty ClusterSpec, otherwise the device_setter will look for
+        # distributed jobs, such as "/job:ps" which are not present.
+        config=tf.contrib.learn.RunConfig(
+            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({})))
+    classifier.fit(input_fn=_input_fn, steps=200)
+    loss = classifier.evaluate(input_fn=_input_fn, steps=1)['loss']
+    self.assertLess(loss, 0.05)
+
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
 
-    def input_fn():
+    def input_fn(num_epochs=None):
       return {
-          'age': tf.constant([1]),
-          'language': tf.SparseTensor(values=['english'],
-                                      indices=[[0, 0]],
-                                      shape=[1, 1])
+          'age': tf.train.limit_epochs(tf.constant([1]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=['english'], indices=[[0, 0]], shape=[1, 1]),
       }, tf.constant([[1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
@@ -69,15 +99,16 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         model_dir=model_dir,
         feature_columns=[age, language])
-    classifier.fit(input_fn=input_fn, steps=100)
-    out1 = classifier.predict(input_fn=input_fn)
+    classifier.fit(input_fn=input_fn, steps=30)
+    predict_input_fn = functools.partial(input_fn, num_epochs=1)
+    out1 = classifier.predict(input_fn=predict_input_fn, as_iterable=True)
     del classifier
 
     classifier2 = tf.contrib.learn.LinearClassifier(
         model_dir=model_dir,
         feature_columns=[age, language])
-    out2 = classifier2.predict(input_fn=input_fn)
-    self.assertEqual(out1, out2)
+    out2 = classifier2.predict(input_fn=predict_input_fn, as_iterable=True)
+    self.assertEqual(list(out1), list(out2))
 
   def testExport(self):
     """Tests that export model for servo works."""
@@ -97,7 +128,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language])
     classifier.fit(input_fn=input_fn, steps=100)
-    tf.contrib.learn.utils.export.export_estimator(classifier, export_dir)
+    classifier.export(export_dir)
 
   def testDisableCenteredBias(self):
     """Tests that we can disable centered bias."""
@@ -229,7 +260,7 @@ class LinearClassifierTest(tf.test.TestCase):
         weight_column_name='weights',
         optimizer=sdca_optimizer)
     classifier.fit(input_fn=input_fn, steps=50)
-    scores = classifier.evaluate(input_fn=input_fn, steps=2)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerSparseFeatures(self):
@@ -255,7 +286,7 @@ class LinearClassifierTest(tf.test.TestCase):
         weight_column_name='weights',
         optimizer=sdca_optimizer)
     classifier.fit(input_fn=input_fn, steps=50)
-    scores = classifier.evaluate(input_fn=input_fn, steps=2)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerWeightedSparseFeatures(self):
@@ -282,7 +313,7 @@ class LinearClassifierTest(tf.test.TestCase):
         feature_columns=[country_weighted_by_price],
         optimizer=sdca_optimizer)
     classifier.fit(input_fn=input_fn, steps=50)
-    scores = classifier.evaluate(input_fn=input_fn, steps=2)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerCrossedFeatures(self):
@@ -311,7 +342,7 @@ class LinearClassifierTest(tf.test.TestCase):
         feature_columns=[country_language],
         optimizer=sdca_optimizer)
     classifier.fit(input_fn=input_fn, steps=10)
-    scores = classifier.evaluate(input_fn=input_fn, steps=2)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerMixedFeatures(self):
@@ -344,7 +375,7 @@ class LinearClassifierTest(tf.test.TestCase):
         weight_column_name='weights',
         optimizer=sdca_optimizer)
     classifier.fit(input_fn=input_fn, steps=50)
-    scores = classifier.evaluate(input_fn=input_fn, steps=2)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testEval(self):
@@ -366,7 +397,7 @@ class LinearClassifierTest(tf.test.TestCase):
 
     # Evaluate on trained mdoel
     classifier.fit(input_fn=input_fn, steps=100)
-    classifier.evaluate(input_fn=input_fn, steps=2)
+    classifier.evaluate(input_fn=input_fn, steps=1)
 
     # TODO(ispir): Enable accuracy check after resolving the randomness issue.
     # self.assertLess(evaluated_values['loss/mean'], 0.3)
@@ -417,6 +448,119 @@ class LinearRegressorTest(tf.test.TestCase):
     # TODO(ispir): Disable centered_bias.
     # assert abs(bias - regressor.bias_) < 0.1
 
+  def testSdcaOptimizerRealValuedLinearFeatures(self):
+    """Tests LinearRegressor with SDCAOptimizer and real valued features."""
+    x = [[1.2, 2.0, -1.5], [-2.0, 3.0, -0.5], [1.0, -0.5, 4.0]]
+    weights = [3.0, -1.2, 0.5]
+    y = np.dot(x, weights)
+
+    def input_fn():
+      return {
+          'example_id': tf.constant(['1', '2', '3']),
+          'x': tf.constant(x),
+          'weights': tf.constant([[10.0], [10.0], [10.0]])
+      }, tf.constant(y)
+
+    x_column = tf.contrib.layers.real_valued_column('x', dimension=3)
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id')
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=[x_column],
+        weight_column_name='weights',
+        optimizer=sdca_optimizer)
+    regressor.fit(input_fn=input_fn, steps=20)
+    loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss, 0.01)
+    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.1)
+
+  def testSdcaOptimizerMixedFeaturesArbitraryWeights(self):
+    """Tests LinearRegressor with SDCAOptimizer and a mix of features."""
+
+    def input_fn():
+      return {
+          'example_id': tf.constant(['1', '2', '3']),
+          'price': tf.constant([[0.6], [0.8], [0.3]]),
+          'sq_footage': tf.constant([[900.0], [700.0], [600.0]]),
+          'country': tf.SparseTensor(
+              values=['IT', 'US', 'GB'],
+              indices=[[0, 0], [1, 3], [2, 1]],
+              shape=[3, 5]),
+          'weights': tf.constant([[3.0], [5.0], [7.0]])
+      }, tf.constant([[1.55], [-1.25], [-3.0]])
+
+    price = tf.contrib.layers.real_valued_column('price')
+    sq_footage_bucket = tf.contrib.layers.bucketized_column(
+        tf.contrib.layers.real_valued_column('sq_footage'),
+        boundaries=[650.0, 800.0])
+    country = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'country', hash_bucket_size=5)
+    sq_footage_country = tf.contrib.layers.crossed_column(
+        [sq_footage_bucket, country], hash_bucket_size=10)
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id', symmetric_l2_regularization=1.0)
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=[price, sq_footage_bucket, country, sq_footage_country],
+        weight_column_name='weights',
+        optimizer=sdca_optimizer)
+    regressor.fit(input_fn=input_fn, steps=20)
+    loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss, 0.05)
+
+  def testSdcaOptimizerSparseFeaturesWithL1Reg(self):
+    """Tests LinearClasssifier with SDCAOptimizer and sparse features."""
+
+    def input_fn():
+      return {
+          'example_id': tf.constant(['1', '2', '3']),
+          'price': tf.constant([[0.4], [0.6], [0.3]]),
+          'country': tf.SparseTensor(
+              values=['IT', 'US', 'GB'],
+              indices=[[0, 0], [1, 3], [2, 1]],
+              shape=[3, 5]),
+          'weights': tf.constant([[10.0], [10.0], [10.0]])
+      }, tf.constant([[1.4], [-0.8], [2.6]])
+
+    price = tf.contrib.layers.real_valued_column('price')
+    country = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'country', hash_bucket_size=5)
+    # Regressor with no L1 regularization.
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id')
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=[price, country],
+        weight_column_name='weights',
+        optimizer=sdca_optimizer)
+    regressor.fit(input_fn=input_fn, steps=20)
+    no_l1_reg_loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
+    no_l1_reg_weights = regressor.weights_
+
+    # Regressor with L1 regularization.
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id', symmetric_l1_regularization=1.0)
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=[price, country],
+        weight_column_name='weights',
+        optimizer=sdca_optimizer)
+    regressor.fit(input_fn=input_fn, steps=20)
+    l1_reg_loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
+    l1_reg_weights = regressor.weights_
+
+    # Unregularized loss is lower when there is no L1 regularization.
+    self.assertLess(no_l1_reg_loss, l1_reg_loss)
+    self.assertLess(no_l1_reg_loss, 0.05)
+
+    # But weights returned by the regressor with L1 regularization have smaller
+    # L1 norm.
+    l1_reg_weights_norm, no_l1_reg_weights_norm = 0.0, 0.0
+    for var_name in sorted(l1_reg_weights):
+      l1_reg_weights_norm += sum(
+          np.absolute(l1_reg_weights[var_name].flatten()))
+      no_l1_reg_weights_norm += sum(
+          np.absolute(no_l1_reg_weights[var_name].flatten()))
+      print('Var name: %s, value: %s' %
+            (var_name, no_l1_reg_weights[var_name].flatten()))
+    self.assertLess(l1_reg_weights_norm, no_l1_reg_weights_norm)
+
 
 def boston_input_fn():
   boston = tf.contrib.learn.datasets.load_boston()
@@ -426,12 +570,6 @@ def boston_input_fn():
 
 
 class FeatureColumnTest(tf.test.TestCase):
-
-  # TODO(b/29580537): Remove when we deprecate feature column inference.
-  def testTrainWithInferredFeatureColumns(self):
-    est = tf.contrib.learn.LinearRegressor()
-    est.fit(input_fn=boston_input_fn, steps=1)
-    _ = est.evaluate(input_fn=boston_input_fn, steps=1)
 
   def testTrain(self):
     feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input_fn(

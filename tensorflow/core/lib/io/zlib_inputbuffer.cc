@@ -163,7 +163,7 @@ Status ZlibInputBuffer::ReadNBytes(int64 bytes_to_read, string* result) {
 
 Status ZlibInputBuffer::Inflate() {
   int error = inflate(z_stream_.get(), zlib_options_.flush_mode);
-  if (error != Z_OK && error != Z_FINISH) {
+  if (error != Z_OK && error != Z_STREAM_END) {
     string error_string =
         strings::StrCat("inflate() failed with error ", error);
     if (z_stream_->msg != NULL) {

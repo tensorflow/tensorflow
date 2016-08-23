@@ -7,13 +7,14 @@ Detach the inputs of a subgraph view.
 
 *  <b>`sgv`</b>: the subgraph view to be detached. This argument is converted to a
     subgraph using the same rules as the function subgraph.make_view.
+    Note that sgv is modified in place.
 *  <b>`control_inputs`</b>: if True control_inputs are also detached.
 
 ##### Returns:
 
-  A new subgraph view of the detached subgraph.
-    Note that sgv is also modified in place.
-  A list of the created input placeholders.
+  A tuple `(sgv, input_placeholders)` where
+    `sgv` is a new subgraph view of the detached subgraph;
+    `input_placeholders` is a list of the created input placeholders.
 
 ##### Raises:
 

@@ -83,20 +83,22 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_uses_passed_values(self):
     with tf.Graph().as_default():
+      tf.Variable([1])
+      saver = tf.train.Saver()
       scaffold = monitored_session.Scaffold(
           init_op=2,
           init_feed_dict=3,
           init_fn=lambda scaffold, sess: 4,
           ready_op=5,
           local_init_op=6,
-          saver=7)
+          saver=saver)
       scaffold.finalize()
       self.assertEqual(2, scaffold.init_op)
       self.assertEqual(3, scaffold.init_feed_dict)
       self.assertTrue(callable(scaffold.init_fn))
       self.assertEqual(5, scaffold.ready_op)
       self.assertEqual(6, scaffold.local_init_op)
-      self.assertEqual(7, scaffold.saver)
+      self.assertEqual(saver, scaffold.saver)
 
   def test_graph_is_finalized(self):
     with tf.Graph().as_default():
@@ -185,7 +187,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
     with self.test_session() as sess:
       tf.constant(0.0)
       coord = tf.train.Coordinator()
-      coord_sess = monitored_session._CoordinatedSession(sess, coord, [])
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertEquals(sess.graph, coord_sess.graph)
       self.assertEquals(sess.sess_str, coord_sess.sess_str)
 
@@ -194,13 +196,13 @@ class CoordinatedSessionTest(tf.test.TestCase):
       c = tf.constant(0)
       v = tf.identity(c)
       coord = tf.train.Coordinator()
-      coord_sess = monitored_session._CoordinatedSession(sess, coord, [])
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertEqual(42, coord_sess.run(v, feed_dict={c: 42}))
 
   def test_should_stop_on_close(self):
     with self.test_session() as sess:
       coord = tf.train.Coordinator()
-      coord_sess = monitored_session._CoordinatedSession(sess, coord, [])
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertFalse(coord_sess.should_stop())
       coord_sess.close()
       self.assertTrue(coord_sess.should_stop())
@@ -208,7 +210,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
   def test_should_stop_on_coord_stop(self):
     with self.test_session() as sess:
       coord = tf.train.Coordinator()
-      coord_sess = monitored_session._CoordinatedSession(sess, coord, [])
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertFalse(coord_sess.should_stop())
       coord.request_stop()
       self.assertTrue(coord_sess.should_stop())
@@ -218,7 +220,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
       c = tf.constant(0)
       v = tf.identity(c)
       coord = tf.train.Coordinator()
-      coord_sess = monitored_session._CoordinatedSession(sess, coord, [])
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertFalse(coord_sess.should_stop())
       self.assertEqual(0, coord_sess.run(c))
       self.assertEqual(1, coord_sess.run(v, feed_dict={c: 1}))
@@ -235,8 +237,9 @@ class CoordinatedSessionTest(tf.test.TestCase):
       threads = [threading.Thread(
           target=busy_wait_for_coord_stop, args=(coord,)) for _ in range(3)]
       for t in threads:
+        coord.register_thread(t)
         t.start()
-      coord_sess = monitored_session._CoordinatedSession(sess, coord, threads)
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
       self.assertFalse(coord_sess.should_stop())
       for t in threads:
         self.assertTrue(t.is_alive())
@@ -259,8 +262,9 @@ class CoordinatedSessionTest(tf.test.TestCase):
       threads = [threading.Thread(
           target=busy_wait_for_coord_stop, args=(coord,)) for _ in range(3)]
       for t in threads:
+        coord.register_thread(t)
         t.start()
-      coord_sess = monitored_session._CoordinatedSession(sess, coord, threads)
+      coord_sess = monitored_session._CoordinatedSession(sess, coord)
       coord_sess.close()
       for t in threads:
         self.assertFalse(t.is_alive())
@@ -763,6 +767,46 @@ class MonitoredSessionTest(tf.test.TestCase):
           self.assertFalse(True)
       self.assertTrue(hook.raised)
       self.assertTrue(session.should_stop())
+
+  def test_regular_exception_reported_to_coord_pass_through_run(self):
+    # Tests that regular exceptions reported to the coordinator from a thread
+    # passes through a "run()" call within a "with MonitoredSession" block and
+    # set the session in stop mode.
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      scaffold = monitored_session.Scaffold()
+      session = monitored_session.MonitoredSession('', scaffold=scaffold)
+      with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
+        with session:
+          self.assertEqual(0, session.run(gstep))
+          # Report an exception through the coordinator.
+          try:
+            raise RuntimeError('a thread wants to stop')
+          except RuntimeError as e:
+            session.coord.request_stop(e)
+          # Call run() which should raise the reported exception.
+          self.assertEqual(0, session.run(gstep))
+          # We should not hit this
+          self.assertFalse(True)
+
+  def test_regular_exception_reported_to_coord_pass_through_return(self):
+    # Tests that regular exceptions reported to the coordinator from a thread
+    # passes through returning from a "with MonitoredSession" block and
+    # set the session in stop mode.
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      scaffold = monitored_session.Scaffold()
+      session = monitored_session.MonitoredSession('', scaffold=scaffold)
+      with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
+        with session:
+          self.assertEqual(0, session.run(gstep))
+          # Report an exception through the coordinator.
+          try:
+            raise RuntimeError('a thread wants to stop')
+          except RuntimeError as e:
+            session.coord.request_stop(e)
+          # Do not call run, just terminate the with.session block cleanly.
+          self.assertTrue(session.should_stop())
 
   # This set of tests, verifies the session behavior when exceptions are raised
   # from code inside a "with MonitoredSession:" context.

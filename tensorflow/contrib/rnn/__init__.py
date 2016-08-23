@@ -17,7 +17,7 @@
 ## This package provides additional contributed RNNCells.
 
 ### Fused RNNCells
-@@LSTMFusedCell
+@@LSTMBlockCell
 
 ### LSTM-like cells
 @@CoupledInputForgetGateLSTMCell

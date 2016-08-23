@@ -149,6 +149,30 @@ class MirrorPadOp : public OpKernel {
 using CpuDevice = Eigen::ThreadPoolDevice;
 using GpuDevice = Eigen::GpuDevice;
 
+namespace functor {
+// Forward declarations of the functor specializations defined in the sharded
+// files.
+#define DECLARE_CPU_SPEC(T, i)                                               \
+  template <>                                                                \
+  void MirrorPad<CpuDevice, T, i>::operator()(                               \
+      const CpuDevice&, typename TTypes<T, i, int32>::Tensor,                \
+      typename TTypes<T, i, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
+      int);                                                                  \
+  extern template struct MirrorPad<CpuDevice, T, i>;
+
+#define DECLARE_CPU_SPECS(T) \
+  DECLARE_CPU_SPEC(T, 1);    \
+  DECLARE_CPU_SPEC(T, 2);    \
+  DECLARE_CPU_SPEC(T, 3);    \
+  DECLARE_CPU_SPEC(T, 4);    \
+  DECLARE_CPU_SPEC(T, 5);
+
+TF_CALL_POD_TYPES(DECLARE_CPU_SPECS);
+
+#undef DECLARE_CPU_SPEC
+#undef DECLARE_CPU_SPECS
+}  // namespace functor
+
 #define REGISTER_KERNEL(type)                            \
   REGISTER_KERNEL_BUILDER(Name("MirrorPad")              \
                               .Device(DEVICE_CPU)        \
@@ -307,6 +331,29 @@ class MirrorPadGradOp : public OpKernel {
  private:
   int offset_;
 };
+
+namespace functor {
+// Forward declarations of the functor specializations defined in the sharded
+// files.
+#define DECLARE_CPU_SPEC(T, k)                                               \
+  template <>                                                                \
+  void MirrorPadGrad<CpuDevice, T, k>::operator()(                           \
+      const CpuDevice&, typename TTypes<T, k, int32>::Tensor,                \
+      typename TTypes<T, k, int32>::ConstTensor, TTypes<int32>::ConstMatrix, \
+      int, typename TTypes<T, k, int32>::Tensor);                            \
+  extern template struct MirrorPadGrad<CpuDevice, T, k>;
+
+#define DECLARE_CPU_SPECS(T) \
+  DECLARE_CPU_SPEC(T, 1);    \
+  DECLARE_CPU_SPEC(T, 2);    \
+  DECLARE_CPU_SPEC(T, 3);    \
+  DECLARE_CPU_SPEC(T, 4);    \
+  DECLARE_CPU_SPEC(T, 5);
+
+TF_CALL_NUMBER_TYPES(DECLARE_CPU_SPECS);
+#undef DECLARE_CPU_SPECS
+#undef DECLARE_CPU_SPEC
+}  // namespace functor
 
 #define REGISTER_KERNEL(type)                            \
   REGISTER_KERNEL_BUILDER(Name("MirrorPadGrad")          \

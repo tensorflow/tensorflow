@@ -225,6 +225,7 @@ def audio_summary(tag,
 
 
 def merge_summary(inputs, collections=None, name=None):
+  # pylint: disable=line-too-long
   """Merges summaries.
 
   This op creates a
@@ -246,7 +247,7 @@ def merge_summary(inputs, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer resulting from the merging.
   """
-  with ops.name_scope(name, "MergeSummary", inputs) as scope:
+  with ops.name_scope(name, "MergeSummary", inputs):
     val = gen_logging_ops._merge_summary(inputs=inputs, name=name)
     _Collect(val, collections, [])
   return val

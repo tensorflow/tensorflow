@@ -58,19 +58,21 @@ class RNNTest(tf.test.TestCase):
     classifier = tf.contrib.learn.TensorFlowRNNClassifier(rnn_size=2,
                                                           cell_type="lstm",
                                                           n_classes=2,
+                                                          steps=150,
                                                           input_op_fn=rnn_input_fn)
     classifier.fit(data, labels)
     # pylint: disable=pointless-statement
     classifier.weights_
     classifier.bias_
     # pylint: enable=pointless-statement
-    predictions = classifier.predict(test_data)
-    self.assertAllClose(predictions, np.array([1, 0]))
+    predictions = classifier.predict(data[:2])
+    self.assertAllClose(predictions, labels[:2])
 
     classifier = tf.contrib.learn.TensorFlowRNNClassifier(rnn_size=2,
                                                           cell_type="rnn",
                                                           n_classes=2,
                                                           input_op_fn=rnn_input_fn,
+                                                          steps=100,
                                                           num_layers=2)
     classifier.fit(data, labels)
     classifier = tf.contrib.learn.TensorFlowRNNClassifier(
@@ -82,6 +84,7 @@ class RNNTest(tf.test.TestCase):
     # Regression
     regressor = tf.contrib.learn.TensorFlowRNNRegressor(rnn_size=2,
                                                         cell_type="gru",
+                                                        steps=100,
                                                         input_op_fn=rnn_input_fn)
     regressor.fit(data, targets)
     # pylint: disable=pointless-statement
@@ -97,11 +100,12 @@ class RNNTest(tf.test.TestCase):
                                                           input_op_fn=rnn_input_fn,
                                                           bidirectional=False,
                                                           attn_length=2,
+                                                          steps=100,
                                                           attn_size=2,
                                                           attn_vec_size=2)
     classifier.fit(data, labels)
-    predictions = classifier.predict(test_data)
-    self.assertAllClose(predictions, np.array([1, 0]))
+    predictions = classifier.predict(data[:2])
+    self.assertAllClose(predictions, labels[:2])
 
   def testBidirectionalRNN(self):
     # Classification
@@ -109,10 +113,11 @@ class RNNTest(tf.test.TestCase):
                                                           cell_type="lstm",
                                                           n_classes=2,
                                                           input_op_fn=rnn_input_fn,
+                                                          steps=100,
                                                           bidirectional=True)
     classifier.fit(data, labels)
-    predictions = classifier.predict(test_data)
-    self.assertAllClose(predictions, np.array([1, 0]))
+    predictions = classifier.predict(data[:2])
+    self.assertAllClose(predictions, labels[:2])
 
     # bidirectional rnn with attention
     classifier = tf.contrib.learn.TensorFlowRNNClassifier(rnn_size=2,
@@ -122,10 +127,11 @@ class RNNTest(tf.test.TestCase):
                                                           bidirectional=True,
                                                           attn_length=2,
                                                           attn_size=2,
+                                                          steps=100,
                                                           attn_vec_size=2)
     classifier.fit(data, labels)
-    predictions = classifier.predict(test_data)
-    self.assertAllClose(predictions, np.array([1, 0]))
+    predictions = classifier.predict(data[:2])
+    self.assertAllClose(predictions, labels[:2])
 
 if __name__ == "__main__":
   tf.test.main()

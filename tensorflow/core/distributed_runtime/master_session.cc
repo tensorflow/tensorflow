@@ -204,9 +204,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     // timelines, the pruned graph, statistics, etc.).
   }
 
-  ~ReffedClientGraph() override {
-    DeregisterPartitions();
-  }
+  ~ReffedClientGraph() override { DeregisterPartitions(); }
 
   const SimpleClientGraph* client_graph() { return client_graph_.get(); }
 
@@ -225,9 +223,9 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                        const RunStepRequest& req, RunStepResponse* resp,
                        CancellationManager* cm);
 
-  // Calls workers to cleanup states for the step "step_id".  Waits
-  // till all cleanup rpcs complete.
-  Status CleanupPartitions(int64 step_id);
+  // Calls workers to cleanup states for the step "step_id".  Calls
+  // `done` when all cleanup RPCs have completed.
+  void CleanupPartitionsAsync(int64 step_id, StatusCallback done);
 
   // TODO(mrry): Runtime statistics collection.
 
@@ -607,31 +605,72 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   return status;
 }
 
-Status MasterSession::ReffedClientGraph::CleanupPartitions(int64 step_id) {
-  struct Call {
-    CleanupGraphRequest req;
-    CleanupGraphResponse resp;
-    Notification done;
-    Status status;
-  };
+namespace {
+
+class CleanupBroadcastHelper {
+ public:
+  CleanupBroadcastHelper(int64 step_id, int num_calls, StatusCallback done)
+      : resps_(num_calls), num_pending_(num_calls), done_(std::move(done)) {
+    req_.set_step_id(step_id);
+  }
+
+  // Returns a non-owned pointer to a request buffer for all calls.
+  CleanupGraphRequest* request() { return &req_; }
+
+  // Returns a non-owned pointer to a response buffer for the ith call.
+  CleanupGraphResponse* response(int i) { return &resps_[i]; }
+
+  // Called when the ith response is received.
+  void call_done(int i, const Status& s) {
+    bool run_callback = false;
+    Status status_copy;
+    {
+      mutex_lock l(mu_);
+      status_.Update(s);
+      if (--num_pending_ == 0) {
+        run_callback = true;
+        status_copy = status_;
+      }
+    }
+    if (run_callback) {
+      done_(status_copy);
+      // This is the last call, so delete the helper object.
+      delete this;
+    }
+  }
+
+ private:
+  // A single request shared between all workers.
+  CleanupGraphRequest req_;
+  // One response buffer for each worker.
+  gtl::InlinedVector<CleanupGraphResponse, 4> resps_;
+
+  mutex mu_;
+  // Number of requests remaining to be collected.
+  int num_pending_ GUARDED_BY(mu_);
+  // Aggregate status of the operation.
+  Status status_ GUARDED_BY(mu_);
+  // Callback to be called when all operations complete.
+  StatusCallback done_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CleanupBroadcastHelper);
+};
+
+}  // namespace
+
+
+void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
+    int64 step_id, StatusCallback done) {
   const int num = partitions_.size();
-  gtl::InlinedVector<Call, 4> calls(num);
+  // Helper object will be deleted when the final call completes.
+  CleanupBroadcastHelper* helper =
+      new CleanupBroadcastHelper(step_id, num, std::move(done));
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
-    Call* c = &calls[i];
-    c->req.set_step_id(step_id);
-    part.worker->CleanupGraphAsync(&c->req, &c->resp, [c](const Status& s) {
-      c->status = s;
-      c->done.Notify();
-    });
+    part.worker->CleanupGraphAsync(
+        helper->request(), helper->response(i),
+        [helper, i](const Status& s) { helper->call_done(i, s); });
   }
-  Status s;
-  for (int i = num - 1; i >= 0; --i) {
-    Call* c = &calls[i];
-    c->done.WaitForNotification();
-    s.Update(c->status);
-  }
-  return s;
 }
 
 // Makes async calls to workers without waiting deregistering subgraphs.
@@ -920,19 +959,12 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 
   pss.end_micros = Env::Default()->NowMicros();
 
-  // Schedule post-processing and cleanup to be done async.
-  rcg->Ref();
-  // TODO(tucker): We're doing the stats processing prior to returning
-  // the response to the client.  Ensure it's safe to do so, then schedule
-  // in a closure.
-  SchedClosure([this, rcg, step_id]() {
-    Status s = rcg->CleanupPartitions(step_id);
+  // Schedule post-processing and cleanup to be done asynchronously.
+  rcg->CleanupPartitionsAsync(step_id, [](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;
     }
-    rcg->Unref();
   });
-
   return Status::OK();
 }
 

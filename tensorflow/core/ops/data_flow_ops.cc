@@ -109,7 +109,7 @@ REGISTER_OP("DynamicStitch")
     .Input("indices: N * int32")
     .Input("data: N * T")
     .Output("merged: T")
-    .Attr("N : int >= 2")
+    .Attr("N : int >= 1")
     .Attr("T : type")
     .SetShapeFn([](InferenceContext* c) {
       int64 num_partitions;
@@ -570,7 +570,7 @@ tensor_array_name: Overrides the name used for the temporary tensor_array
 )doc");
 
 REGISTER_OP("TensorArrayGrad")
-    .Input("handle: Ref(string)")
+    .Input("handle: string")
     .Input("flow_in: float")
     .Output("grad_handle: Ref(string)")
     .Attr("source: string")
@@ -1099,6 +1099,29 @@ Outputs all keys and values in the table.
 table_handle: Handle to the table.
 keys: Vector of all keys present in the table.
 values: Tensor of all values in the table. Indexed in parallel with `keys`.
+)doc");
+
+REGISTER_OP("LookupTableImport")
+    .Input("table_handle: Ref(string)")
+    .Input("keys: Tin")
+    .Input("values: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->input(2), &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Replaces the contents of the table with the specified keys and values.
+
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+
+table_handle: Handle to the table.
+keys:  Any shape.  Keys to look up.
+values: Same shape as `keys`.  Values to associate with keys.
 )doc");
 
 REGISTER_OP("HashTable")

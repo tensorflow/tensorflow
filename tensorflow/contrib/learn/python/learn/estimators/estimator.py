@@ -31,6 +31,7 @@ import six
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
+from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
@@ -43,6 +44,7 @@ from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -150,6 +152,25 @@ def _get_arguments(func):
     return _get_arguments(func.func)
 
 
+def _get_replica_device_setter(config):
+  """Creates a replica device setter if required.
+
+  Args:
+    config: A RunConfig instance.
+
+  Returns:
+    A replica device setter, or None.
+  """
+  ps_ops = ['Variable', 'AutoReloadVariable',
+            'MutableHashTable', 'MutableHashTableOfTensors']
+  if config.num_ps_replicas > 0:
+    return device_setter.replica_device_setter(
+        ps_tasks=config.num_ps_replicas, merge_devices=False, ps_ops=ps_ops,
+        cluster=config.cluster_spec)
+  else:
+    return None
+
+
 class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
@@ -194,13 +215,7 @@ class BaseEstimator(
     logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
-    if self._config.num_ps_replicas > 0:
-      ps_ops = ['Variable', 'AutoReloadVariable']
-      self._device_fn = device_setter.replica_device_setter(
-          ps_tasks=self._config.num_ps_replicas,
-          merge_devices=False, ps_ops=ps_ops)
-    else:
-      self._device_fn = None
+    self._device_fn = _get_replica_device_setter(self._config)
 
     # Features and targets TensorSignature objects.
     # TODO(wicke): Rename these to something more descriptive
@@ -361,6 +376,29 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
+  def export(self, export_dir, signature_fn=None,
+             input_fn=export.default_input_fn, default_batch_size=1,
+             exports_to_keep=None):
+    """Exports inference graph into given dir.
+
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      input_fn: Function that given `Tensor` of `Example` strings, parses it
+        into features that are then passed to the model.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
+    """
+    export.export_estimator(estimator=self,
+                            export_dir=export_dir,
+                            signature_fn=signature_fn,
+                            input_fn=input_fn,
+                            default_batch_size=default_batch_size,
+                            exports_to_keep=exports_to_keep)
+
   @abc.abstractproperty
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -514,9 +552,10 @@ class BaseEstimator(
       for monitor in deprecated_monitors:
         monitor.set_estimator(self)
 
-      hooks.append(monitor_lib.RunHookAdapterForMonitors(deprecated_monitors))
+      if deprecated_monitors:
+        hooks.append(monitor_lib.RunHookAdapterForMonitors(deprecated_monitors))
 
-      return graph_actions._supervised_train(  # pylint: disable=protected-access
+      return graph_actions._monitored_train(  # pylint: disable=protected-access
           graph=g,
           output_dir=self._model_dir,
           train_op=train_op,
@@ -529,6 +568,7 @@ class BaseEstimator(
           supervisor_is_chief=supervisor_is_chief,
           supervisor_master=self._config.master,
           supervisor_save_model_secs=self._config.save_checkpoints_secs,
+          supervisor_save_summaries_steps=self._config.save_summary_steps,
           keep_checkpoint_max=self._config.keep_checkpoint_max,
           feed_fn=feed_fn,
           steps=steps,
@@ -806,7 +846,8 @@ class Estimator(BaseEstimator):
       ValueError: if `metrics` don't match `targets`.
     """
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
-    result = {'loss': loss}
+    result = {'loss': metrics_lib.streaming_mean(loss)}
+
     metrics = metrics or {}
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.

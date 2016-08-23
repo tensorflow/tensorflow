@@ -732,6 +732,8 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
 
     # Verify we can now see all of the data
     acc.Reload()
+    id_events = acc.Scalars('id')
+    sq_events = acc.Scalars('sq')
     self.assertEqual(40, len(id_events))
     self.assertEqual(40, len(sq_events))
     for i in xrange(40):

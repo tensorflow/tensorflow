@@ -75,7 +75,7 @@ collection `GraphKeys.VARIABLES`. The convenience function
 `all_variables()` returns the contents of that collection.
 
 When building a machine learning model it is often convenient to distinguish
-betwen variables holding the trainable model parameters and other variables
+between variables holding the trainable model parameters and other variables
 such as a `global step` variable used to count training steps. To make this
 easier, the variable constructor supports a `trainable=<bool>` parameter. If
 `True`, the new variable is also added to the graph collection
@@ -132,10 +132,6 @@ variable to its initial value.
 *  <b>`dtype`</b>: If set, initial_value will be converted to the given type.
     If `None`, either the datatype will be kept (if `initial_value` is
     a Tensor), or `convert_to_tensor` will decide.
-
-##### Returns:
-
-  A Variable.
 
 ##### Raises:
 
