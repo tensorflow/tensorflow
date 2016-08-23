@@ -772,7 +772,7 @@ REGISTER_OP("BatchSvd")
     .Output("v: T")
     .Attr("compute_uv: bool = True")
     .Attr("full_matrices: bool = False")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(BatchSvdShapeFn)
     .Doc(R"doc(
 Computes the singular value decompositions of a batch of matrices.
