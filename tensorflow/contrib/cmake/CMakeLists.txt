@@ -53,7 +53,7 @@ include(highwayhash)
 include(tf_core_framework.cmake)
 # This is currently broken due to issue #3996 (cuda_configure changes).
 # TODO: Re-enable when we support CUDA in the CMake build.
-include(tf_stream_executor.cmake)
+# include(tf_stream_executor.cmake)
 include(tf_core_cpu.cmake)
 include(tf_models.cmake)
 include(tf_core_ops.cmake)
