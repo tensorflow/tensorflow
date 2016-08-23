@@ -74,20 +74,19 @@ def run(experiment_fn, output_dir, schedule):
   # Execute the schedule
   if not hasattr(experiment, schedule):
     logging.error('Schedule references non-existent task %s', schedule)
-    valid_tasks = _valid_tasks(experiment)
+    valid_tasks = [x for x in experiment.__dict__
+                   if callable(getattr(experiment, x))]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise ValueError('Schedule references non-existent task %s' % schedule)
+    raise ValueError('Schedule references non-existent task %s', schedule)
 
   task = getattr(experiment, schedule)
   if not callable(task):
     logging.error('Schedule references non-callable member %s', schedule)
-    valid_tasks = _valid_tasks(experiment)
+    valid_tasks = [
+        x for x in experiment.__dict__
+        if callable(getattr(experiment, x)) and not x.startswith('_')
+    ]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise TypeError('Schedule references non-callable member %s' % schedule)
+    raise TypeError('Schedule references non-callable member %s', schedule)
 
   return task()
-
-
-def _valid_tasks(experiment):
-  return [x for x in dir(experiment)
-          if callable(getattr(experiment, x)) and not x.startswith('_')]
