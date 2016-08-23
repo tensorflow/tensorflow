@@ -234,8 +234,10 @@ def _monitored_train(graph,
     all_hooks.extend([
         basic_session_run_hooks.NanTensorHook(
             loss_op, fail_on_nan_loss=fail_on_nan_loss),
-        basic_session_run_hooks.LoggingTensorHook(
-            {'loss': loss_op.name}, every_n_iter=log_every_steps),
+        basic_session_run_hooks.LoggingTensorHook({
+            'loss': loss_op.name,
+            'step': global_step_tensor.name
+        }, every_n_iter=log_every_steps),
     ])
 
     scaffold = monitored_session.Scaffold(
