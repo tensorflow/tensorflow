@@ -885,6 +885,8 @@
   * [`batch_sequences_with_states`](../../api_docs/python/contrib.training.md#batch_sequences_with_states)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
+  * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
+  * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
