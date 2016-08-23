@@ -96,6 +96,50 @@ class ItemHandlerCallback(ItemHandler):
     return self._func(keys_to_tensors)
 
 
+class BoundingBox(ItemHandler):
+  """An ItemHandler that concatenates a set of parsed Tensors to Bounding Boxes.
+  """
+
+  def __init__(self, keys=None, prefix=None):
+    """Initialize the bounding box handler.
+
+    Args:
+      keys: A list of four key names representing the ymin, xmin, ymax, mmax
+      prefix: An optional prefix for each of the bounding box keys.
+        If provided, `prefix` is appended to each key in `keys`.
+
+    Raises:
+      ValueError: if keys is not `None` and also not a list of exactly 4 keys
+    """
+    if keys is None:
+      keys = ['ymin', 'xmin', 'ymax', 'xmax']
+    elif len(keys) != 4:
+      raise ValueError('BoundingBox expects 4 keys but got {}'.format(
+          len(keys)))
+    self._prefix = prefix
+    self._keys = keys
+    self._full_keys = [prefix + k for k in keys]
+    super(BoundingBox, self).__init__(self._full_keys)
+
+  def tensors_to_item(self, keys_to_tensors):
+    """Maps the given dictionary of tensors to a contatenated list of bboxes.
+
+    Args:
+      keys_to_tensors: a mapping of TF-Example keys to parsed tensors.
+
+    Returns:
+      [num_boxes, 4] tensor of bounding box coordinates,
+        i.e. 1 bounding box per row, in order [y_min, x_min, y_max, x_max].
+    """
+    sides = []
+    for key in self._full_keys:
+      side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
+      sides.append(side)
+
+    bounding_box = array_ops.concat(0, sides)
+    return array_ops.transpose(bounding_box)
+
+
 class Tensor(ItemHandler):
   """An ItemHandler that returns a parsed Tensor."""
 
@@ -273,6 +317,7 @@ class Image(ItemHandler):
         math_ops.equal(image_format, 'png'): decode_png,
     }, default=decode_jpg, exclusive=True)
 
+    image.set_shape([None, None, self._channels])
     if self._shape is not None:
       image = array_ops.reshape(image, self._shape)
     return image

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -76,7 +76,9 @@ class TFExampleDecoderTest(tf.test.TestCase):
         serialized image and a feature key 'image/format' set to the image
         encoding format ['jpeg', 'png'].
     """
-    image = np.linspace(0, 17, num=18).reshape(image_shape).astype(np.uint8)
+    num_pixels = image_shape[0] * image_shape[1] * image_shape[2]
+    image = np.linspace(0, num_pixels-1, num=num_pixels).reshape(
+        image_shape).astype(np.uint8)
     tf_encoded = self._Encoder(image, image_format)
     example = tf.train.Example(features=tf.train.Features(feature={
         'image/encoded': self._EncodedBytesFeature(tf_encoded),
@@ -85,35 +87,39 @@ class TFExampleDecoderTest(tf.test.TestCase):
 
     return image, example.SerializeToString()
 
-  def DecodeExample(self, serialized_example, item_handler, image_shape,
-                    image_format):
+  def DecodeExample(self, serialized_example, item_handler, image_format):
     """Decodes the given serialized example with the specified item handler.
 
     Args:
       serialized_example: a serialized TF example string.
       item_handler: the item handler used to decode the image.
-      image_shape: the shape of the image being decoded.
       image_format: the image format being decoded.
 
     Returns:
       the decoded image found in the serialized Example.
     """
+    serialized_example = tf.reshape(serialized_example, shape=[])
+    decoder = slim.tfexample_decoder.TFExampleDecoder(
+        keys_to_features={
+            'image/encoded': tf.FixedLenFeature(
+                (), tf.string, default_value=''),
+            'image/format': tf.FixedLenFeature(
+                (), tf.string, default_value=image_format),
+        },
+        items_to_handlers={'image': item_handler}
+    )
+    [tf_image] = decoder.decode(serialized_example, ['image'])
+    return tf_image
+
+  def RunDecodeExample(self, serialized_example, item_handler, image_format):
+    tf_image = self.DecodeExample(serialized_example, item_handler,
+                                  image_format)
+
     with self.test_session():
-      serialized_example = tf.reshape(serialized_example, shape=[])
-      decoder = slim.tfexample_decoder.TFExampleDecoder(
-          keys_to_features={
-              'image/encoded': tf.FixedLenFeature(
-                  (), tf.string, default_value=''),
-              'image/format': tf.FixedLenFeature(
-                  (), tf.string, default_value=image_format),
-          },
-          items_to_handlers={'image': item_handler}
-      )
-      [tf_image] = decoder.decode(serialized_example, ['image'])
       decoded_image = tf_image.eval()
 
-    # We need to recast them here to avoid some issues with uint8.
-    return decoded_image.astype(np.float32)
+      # We need to recast them here to avoid some issues with uint8.
+      return decoded_image.astype(np.float32)
 
   def testDecodeExampleWithJpegEncoding(self):
     image_shape = (2, 3, 3)
@@ -121,14 +127,27 @@ class TFExampleDecoderTest(tf.test.TestCase):
         image_format='jpeg',
         image_shape=image_shape)
 
-    decoded_image = self.DecodeExample(
+    decoded_image = self.RunDecodeExample(
         serialized_example,
         slim.tfexample_decoder.Image(),
-        image_shape=image_shape,
         image_format='jpeg')
 
     # Need to use a tolerance of 1 because of noise in the jpeg encode/decode
     self.assertAllClose(image, decoded_image, atol=1.001)
+
+  def testDecodeExampleWithNoShapeInfo(self):
+    test_image_channels = [1, 3]
+    for channels in test_image_channels:
+      image_shape = (2, 3, channels)
+      _, serialized_example = self.GenerateImage(
+          image_format='jpeg',
+          image_shape=image_shape)
+
+      tf_decoded_image = self.DecodeExample(
+          serialized_example,
+          slim.tfexample_decoder.Image(shape=None, channels=channels),
+          image_format='jpeg')
+      self.assertEqual(tf_decoded_image.get_shape().ndims, 3)
 
   def testDecodeExampleWithPngEncoding(self):
     image_shape = (2, 3, 3)
@@ -136,10 +155,9 @@ class TFExampleDecoderTest(tf.test.TestCase):
         image_format='png',
         image_shape=image_shape)
 
-    decoded_image = self.DecodeExample(
+    decoded_image = self.RunDecodeExample(
         serialized_example,
         slim.tfexample_decoder.Image(),
-        image_shape=image_shape,
         image_format='png')
 
     self.assertAllClose(image, decoded_image, atol=0)
@@ -593,6 +611,45 @@ class TFExampleDecoderTest(tf.test.TestCase):
           self.assertAllClose(image, decoded_image, rtol=.5, atol=1.001)
         else:
           self.assertAllClose(image, decoded_image, atol=0)
+
+  def testDecodeExampleWithBoundingBox(self):
+    num_bboxes = 10
+    np_ymin = np.random.rand(num_bboxes, 1)
+    np_xmin = np.random.rand(num_bboxes, 1)
+    np_ymax = np.random.rand(num_bboxes, 1)
+    np_xmax = np.random.rand(num_bboxes, 1)
+    np_bboxes = np.hstack([np_ymin, np_xmin, np_ymax, np_xmax])
+
+    example = tf.train.Example(features=tf.train.Features(feature={
+        'image/object/bbox/ymin': self._EncodedFloatFeature(np_ymin),
+        'image/object/bbox/xmin': self._EncodedFloatFeature(np_xmin),
+        'image/object/bbox/ymax': self._EncodedFloatFeature(np_ymax),
+        'image/object/bbox/xmax': self._EncodedFloatFeature(np_xmax),
+    }))
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = tf.reshape(serialized_example, shape=[])
+
+      keys_to_features = {
+          'image/object/bbox/ymin': tf.VarLenFeature(tf.float32),
+          'image/object/bbox/xmin': tf.VarLenFeature(tf.float32),
+          'image/object/bbox/ymax': tf.VarLenFeature(tf.float32),
+          'image/object/bbox/xmax': tf.VarLenFeature(tf.float32),
+      }
+
+      items_to_handlers = {
+          'object/bbox': slim.tfexample_decoder.BoundingBox(
+              ['ymin', 'xmin', 'ymax', 'xmax'], 'image/object/bbox/'),
+      }
+
+      decoder = slim.tfexample_decoder.TFExampleDecoder(
+          keys_to_features,
+          items_to_handlers)
+      [tf_bboxes] = decoder.decode(serialized_example, ['object/bbox'])
+      bboxes = tf_bboxes.eval()
+
+    self.assertAllClose(np_bboxes, bboxes)
 
 if __name__ == '__main__':
   tf.test.main()
