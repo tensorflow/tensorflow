@@ -143,9 +143,7 @@ cc_library(
         "lib/core/threadpool.h",
         "lib/gtl/array_slice.h",
         "lib/gtl/inlined_vector.h",
-        "lib/gtl/map_util.h",  # TODO(josh11b): make internal
         "lib/gtl/priority_queue_util.h",
-        "lib/gtl/stl_util.h",  # TODO(josh11b): make internal
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
         "lib/histogram/histogram.h",
         "lib/io/inputbuffer.h",  # TODO(josh11b): make internal
@@ -875,6 +873,8 @@ cc_library(
         "lib/gtl/int_type.h",
         "lib/gtl/iterator_range.h",
         "lib/gtl/manual_constructor.h",
+        "lib/gtl/map_util.h",
+        "lib/gtl/stl_util.h",
         "lib/gtl/top_n.h",
         "lib/hash/hash.h",
         "lib/io/inputstream_interface.h",
@@ -1264,6 +1264,7 @@ cc_library(
     deps = [
         ":framework",
         ":lib",
+        ":lib_internal",
         ":test",
     ],
 )
