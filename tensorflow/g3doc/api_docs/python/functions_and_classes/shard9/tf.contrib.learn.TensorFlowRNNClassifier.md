@@ -60,6 +60,13 @@ Returns bias of the rnn layer.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNClassifier.config` {#TensorFlowRNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowRNNClassifier.evaluate}
 
 Evaluates given model with provided evaluation data.

@@ -15,6 +15,13 @@
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNClassifier.config` {#TensorFlowDNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNClassifier.dnn_bias_` {#TensorFlowDNNClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.

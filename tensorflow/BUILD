@@ -138,6 +138,7 @@ filegroup(
         "//tensorflow/examples/tutorials/word2vec:all_files",
         "//tensorflow/g3doc/how_tos/adding_an_op:all_files",
         "//tensorflow/g3doc/tutorials:all_files",
+        "//tensorflow/go:all_files",
         "//tensorflow/models/embedding:all_files",
         "//tensorflow/models/image/alexnet:all_files",
         "//tensorflow/models/image/cifar10:all_files",
@@ -175,6 +176,7 @@ cc_binary(
     name = "libtensorflow.so",
     linkshared = 1,
     deps = [
+        "//tensorflow/c:c_api",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -183,6 +185,7 @@ cc_binary(
     name = "libtensorflow_cc.so",
     linkshared = 1,
     deps = [
+        "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:tensorflow",
     ],

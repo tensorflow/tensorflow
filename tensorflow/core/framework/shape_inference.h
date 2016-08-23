@@ -89,6 +89,17 @@ class InferenceContext {
   static constexpr int64 kUnknownDim = -1;
   static constexpr int32 kUnknownRank = -1;
 
+  // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
+  //
+  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
+  //
+  // TODO(vrv): Remove 'input_shapes_string' once we can move the
+  // creation of Shapes from strings out of this class (or hide it).
+  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+                   const std::vector<string>& input_shapes_string,
+                   const std::vector<const Shape*>& input_shapes,
+                   const std::vector<const Tensor*>& input_tensors);
+
   // This is a temporary constructor used for initial testing.
   //
   // TODO(cwhipkey): remove this temporary constructor.
@@ -106,6 +117,7 @@ class InferenceContext {
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<string>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors);
+
   ~InferenceContext();
 
   const Shape* input(int idx) const { return inputs_[idx]; }
@@ -113,7 +125,20 @@ class InferenceContext {
 
   // Returns the input tensor at index <idx>, or nullptr if the input tensor is
   // not available at the time of shape inference.
-  const Tensor* input_tensor(int idx) const { return input_tensors_[idx]; }
+  const Tensor* input_tensor(int idx) {
+    // Mark that this idx was requested.
+    requested_input_tensor_[idx] = true;
+    return input_tensors_[idx];
+  }
+
+  // Returns true iff input_tensor(idx) was called by the shape function.
+  bool requested_input_tensor(int idx) const {
+    return requested_input_tensor_[idx];
+  }
+
+  void set_input_tensors(const std::vector<const Tensor*>& input_tensors) {
+    input_tensors_ = input_tensors;
+  }
 
   void set_output(int idx, const Shape* shape) { outputs_[idx] = shape; }
   int num_outputs() const { return outputs_.size(); }
@@ -351,6 +376,15 @@ class InferenceContext {
   }
 
  private:
+  // Shared initialization across the two constructors.  Remove
+  // once we get rid of one of them.
+  void PreInputInit(const OpDef& op_def,
+                    const std::vector<const Tensor*>& input_tensors);
+  void PostInputInit();
+
+  // Returns a shape from 'shape_string'.
+  Status MakeShapeFromString(const string& shape_string, const Shape** output);
+
   const Dimension* GetDimension(const DimensionOrConstant& d);
 
   Status ReturnUnknownShape(const Shape** out) {
@@ -369,6 +403,7 @@ class InferenceContext {
   // inputs_ and outputs_ refer to values from all_shapes_.
   std::vector<const Shape*> inputs_;
   std::vector<const Tensor*> input_tensors_;
+  std::vector<bool> requested_input_tensor_;
   std::vector<const Shape*> outputs_;
 
   const NodeDef& node_def_;

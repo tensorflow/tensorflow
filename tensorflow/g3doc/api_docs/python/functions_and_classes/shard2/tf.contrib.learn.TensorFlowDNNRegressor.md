@@ -15,6 +15,13 @@
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNRegressor.config` {#TensorFlowDNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNRegressor.dnn_bias_` {#TensorFlowDNNRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.

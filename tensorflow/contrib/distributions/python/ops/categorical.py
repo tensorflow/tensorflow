@@ -170,7 +170,8 @@ class Categorical(distribution.Distribution):
     """Sample `n` observations from the Categorical distribution.
 
     Args:
-      n: 0-D.  Number of independent samples to draw for each distribution.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Random seed (optional).
       name: A name for this operation (optional).
 

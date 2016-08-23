@@ -519,10 +519,17 @@ class BaseSession(SessionInterface):
           tf_session.TF_CloseSession(self._session, status)
 
   def __del__(self):
-    self.close()
+    # cleanly ignore all exceptions
+    try:
+      self.close()
+    except Exception:  # pylint: disable=broad-except
+      pass
     if self._session is not None:
-      with errors.raise_exception_on_not_ok_status() as status:
+      try:
+        status = tf_session.TF_NewStatus()
         tf_session.TF_DeleteSession(self._session, status)
+      finally:
+        tf_session.TF_DeleteStatus(status)
       self._session = None
 
   @property

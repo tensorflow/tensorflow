@@ -38,7 +38,6 @@ All ops are added to the default graph.
 ##### Returns:
 
   A dict of `Tensor` or `SparseTensor` objects for each in `features`.
-  If `keep_keys` is `True`, returns tuple of string `Tensor` and above dict.
 
 ##### Raises:
 

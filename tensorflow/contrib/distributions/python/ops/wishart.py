@@ -338,7 +338,8 @@ class _WishartOperatorPD(distribution.Distribution):
     https://en.wikipedia.org/wiki/Chi-squared_distribution#Gamma.2C_exponential.2C_and_related_distributions).
 
     Args:
-      n: Scalar. Number of samples to draw from each distribution.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer; random number generator seed.
       name: The name of this op.
 

@@ -28,26 +28,14 @@ namespace tensorflow {
 // stored in a `grpc::CompletionQueue`.
 class GrpcClientCQTag {
  public:
-  GrpcClientCQTag(::grpc::ClientContext* context, StatusCallback cb)
-      : context_(context), cb_(std::move(cb)) {}
-  ~GrpcClientCQTag() { delete context_; }
+  GrpcClientCQTag() {}
+  virtual ~GrpcClientCQTag() {}
 
-  void OnCompleted(bool ok) {
-    if (!ok) {
-      VLOG(2) << "Call returned with non-ok status: "
-              << status_.error_message();
-    }
-    cb_(FromGrpcStatus(status_));
-  }
-
-  ::grpc::ClientContext* context() { return context_; }
-  ::grpc::Status* status() { return &status_; }
+  // OnCompleted is invoked when the RPC has finished.
+  // Implementations of OnCompleted must delete *this.
+  virtual void OnCompleted(bool ok) = 0;
 
  private:
-  ::grpc::ClientContext* context_;
-  ::grpc::Status status_;
-  StatusCallback cb_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcClientCQTag);
 };
 

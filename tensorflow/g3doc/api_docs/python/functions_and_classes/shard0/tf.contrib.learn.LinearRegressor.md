@@ -85,6 +85,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.config` {#LinearRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
