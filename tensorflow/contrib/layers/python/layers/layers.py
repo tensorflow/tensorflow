@@ -261,7 +261,8 @@ def batch_norm(inputs,
     outputs.set_shape(inputs_shape)
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -313,7 +314,8 @@ def bias_add(inputs,
     outputs = nn.bias_add(inputs, biases)
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -426,7 +428,8 @@ def convolution2d(inputs,
         outputs = nn.bias_add(outputs, biases)
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -526,7 +529,8 @@ def convolution2d_in_plane(
 
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -653,7 +657,8 @@ def convolution2d_transpose(
 
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -830,7 +835,8 @@ def fully_connected(inputs,
       # Reshape back outputs
       outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
       outputs.set_shape(static_shape)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -1079,7 +1085,8 @@ def separable_convolution2d(
 
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope

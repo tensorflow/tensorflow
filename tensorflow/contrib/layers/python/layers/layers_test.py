@@ -202,6 +202,16 @@ class Convolution2dTest(tf.test.TestCase):
       output = tf.contrib.layers.convolution2d(images, 32, [3, 3],
                                                scope='conv1')
       self.assertEquals(output.op.name, 'conv1/Relu')
+  
+  def testCreateConvWithCollection(self):
+    height, width = 3, 3
+    images = tf.random_uniform((5, height, width, 3), seed=1)
+    with tf.name_scope('fe'):
+      conv = tf.contrib.layers.convolution2d(
+        images, 32, [3, 3], outputs_collections='outputs',
+        scope='Conv')
+    namedOutputs = tf.get_collection('outputs')[0]
+    self.assertEquals(namedOutputs.name, 'fe/Conv')
 
   def testCreateConvWithoutActivation(self):
     height, width = 3, 3
@@ -988,6 +998,16 @@ class FCTest(tf.test.TestCase):
       inputs = tf.random_uniform((5, height * width * 3), seed=1)
       output = tf.contrib.layers.fully_connected(inputs, 32, scope='fc1')
       self.assertEquals(output.op.name, 'fc1/Relu')
+      
+  def testCreateFCWithCollection(self):
+    height, width = 3, 3
+    inputs = tf.random_uniform((5, height * width * 3), seed=1)
+    with tf.name_scope('fe'):
+      fc = tf.contrib.layers.fully_connected(
+        inputs, 7, outputs_collections='outputs',
+        scope='fc')
+    namedOutputs = tf.get_collection('outputs')[0]
+    self.assertEquals(namedOutputs.name, 'fe/fc')
 
   def testCreateFcCreatesWeightsAndBiasesVars(self):
     height, width = 3, 3
