@@ -70,7 +70,6 @@ def module_names():
       "tf.contrib.metrics",
       "tf.contrib.training",
       "tf.contrib.util",
-      "tf.contrib.slim",
   ]
 
 
