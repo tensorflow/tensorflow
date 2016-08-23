@@ -168,6 +168,10 @@ extern template class LinearAlgebraOp<float, false>;
 extern template class LinearAlgebraOp<float, true>;
 extern template class LinearAlgebraOp<double, false>;
 extern template class LinearAlgebraOp<double, true>;
+extern template class LinearAlgebraOp<complex64, false>;
+extern template class LinearAlgebraOp<complex64, true>;
+extern template class LinearAlgebraOp<complex128, false>;
+extern template class LinearAlgebraOp<complex128, true>;
 
 }  // namespace tensorflow
 

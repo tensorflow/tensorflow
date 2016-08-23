@@ -244,5 +244,9 @@ template class LinearAlgebraOp<float, false>;
 template class LinearAlgebraOp<float, true>;
 template class LinearAlgebraOp<double, false>;
 template class LinearAlgebraOp<double, true>;
+template class LinearAlgebraOp<complex64, false>;
+template class LinearAlgebraOp<complex64, true>;
+template class LinearAlgebraOp<complex128, false>;
+template class LinearAlgebraOp<complex128, true>;
 
 }  // namespace tensorflow
