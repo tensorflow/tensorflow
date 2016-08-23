@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import copy
 import inspect
 import itertools
 import os
@@ -223,6 +224,11 @@ class BaseEstimator(
     self._targets_info = None
 
     self._graph = None
+
+  @property
+  def config(self):
+    # TODO(wicke): make RunConfig immutable, and then return it without a copy.
+    return copy.deepcopy(self._config)
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
