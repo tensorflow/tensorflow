@@ -34,6 +34,7 @@ of the subclasses.
 @@AdamOptimizer
 @@FtrlOptimizer
 @@RMSPropOptimizer
+@@PSGLDOptimizer
 
 ## Gradient Computation
 
@@ -158,6 +159,7 @@ from tensorflow.python.training.momentum import MomentumOptimizer
 from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
+from tensorflow.python.training.psgld import PSGLDOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
@@ -236,4 +238,5 @@ __all__.extend([
     "generate_checkpoint_state_proto",
     "import_meta_graph",
     "queue_runner",
+    "PSGLDOptimizer",
 ])
