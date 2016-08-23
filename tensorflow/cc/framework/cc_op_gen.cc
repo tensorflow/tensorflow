@@ -232,7 +232,7 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
 string ToCamelCase(const string& str) {
   string result;
   const char joiner = '_';
-  int i = 0;
+  size_t i = 0;
   bool cap = true;
   while (i < str.size()) {
     const char c = str[i++];

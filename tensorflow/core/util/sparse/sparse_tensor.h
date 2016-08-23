@@ -283,7 +283,7 @@ void SparseTensor::Reorder(const VarDimArray& order) {
   // permutation (the inverse).  This can be calculated with O(1)
   // additional
   // and O(n) time (INVPERM) but we just do the simple thing here.
-  std::vector<int64> permutation(reorder.size());
+  std::vector<size_t> permutation(reorder.size());
   for (std::size_t n = 0; n < reorder.size(); ++n) {
     permutation[reorder[n]] = n;
   }

@@ -740,7 +740,7 @@ string Tensor::SummarizeValue(int64 max_entries) const {
       string ret;
       // TODO(irving): Don't call flat every time around this
       // loop.
-      for (int64 i = 0; i < limit; ++i) {
+      for (size_t i = 0; i < limit; ++i) {
         if (i > 0) strings::StrAppend(&ret, " ");
         switch (dtype()) {
           case DT_STRING:
