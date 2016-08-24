@@ -370,6 +370,7 @@ def _MaxPoolGradWithArgmax(op, grad, unused_argmax_grad):
                                                op.get_attr("strides"),
                                                padding=op.get_attr("padding"))
 
+
 @ops.RegisterGradient("BatchNormWithGlobalNormalization")
 def _BatchNormWithGlobalNormalizationGrad(op, grad):
   """Return the gradients for the 5 inputs of BatchNormWithGlobalNormalization.
