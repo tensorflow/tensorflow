@@ -174,16 +174,20 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     else:
       centered_bias_step = []
     with ops.control_dependencies(centered_bias_step):
-      loss = self._target_column.loss(logits, targets, features)
-    logging_ops.scalar_summary("loss", loss)
+      training_loss = self._target_column.training_loss(logits, targets,
+                                                        features)
+      weighted_average_loss = self._target_column.loss(logits, targets,
+                                                       features)
 
-    linear_train_step = self._linear_model.get_train_step(loss)
-    dnn_train_step = (self._dnn_model.get_train_step(loss)
-                      if self._dnn_model else [])
+    logging_ops.scalar_summary("loss", weighted_average_loss)
+
+    linear_train_step = self._linear_model.get_train_step(training_loss)
+    dnn_train_step = (self._dnn_model.get_train_step(training_loss) if
+                      self._dnn_model else [])
 
     with ops.control_dependencies(linear_train_step + dnn_train_step):
       with ops.get_default_graph().colocate_with(global_step):
-        return state_ops.assign_add(global_step, 1).op, loss
+        return state_ops.assign_add(global_step, 1).op, weighted_average_loss
 
   def _get_eval_ops(self, features, targets, metrics=None):
     """See base class."""
@@ -242,10 +246,11 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     logits = array_ops.reshape(
         array_ops.tile(centered_bias[0], [batch_size]),
         [batch_size, self._target_column.num_label_columns])
-    loss = self._target_column.loss(logits, targets, features)
+    training_loss = self._target_column.training_loss(logits, targets, features)
     # Learn central bias by an optimizer. 0.1 is a convervative lr for a single
     # variable.
-    return training.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
+    return training.AdagradOptimizer(0.1).minimize(
+        training_loss, var_list=centered_bias)
 
   def _logits(self, features, is_training=False):
     linear_feature_columns = self._get_linear_feature_columns()
