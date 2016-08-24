@@ -24,7 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import distributions
-from tensorflow.contrib.bayesflow import stochastic_graph as sg
+from tensorflow.contrib.bayesflow.python.ops import stochastic_graph as sg
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
