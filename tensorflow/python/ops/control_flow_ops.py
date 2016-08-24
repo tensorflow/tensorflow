@@ -1355,6 +1355,8 @@ def cond(pred, fn1, fn2, name=None):
     pivot_1 = array_ops.identity(p_1, name="switch_t")
     pivot_2 = array_ops.identity(p_2, name="switch_f")
     pred = array_ops.identity(pred, name="pred_id")
+    for tensor in [p_1, p_2, pivot_1, pivot_2, pred]:
+      tensor.op.graph.prevent_fetching(tensor.op)
 
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
