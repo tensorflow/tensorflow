@@ -71,7 +71,7 @@ const class StaticVariableInitializer {
   fscanf(fp, "%lld", &freq_hz);
   pclose(fp);
   if (freq_hz < 1e6) {
-    LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " Hz";
+    LOG(WARNING) << "Failed to get CPU frequency: " << freq_hz << " Hz";
     return INVALID_FREQUENCY;
   }
   return freq_hz;
