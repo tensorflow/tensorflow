@@ -262,6 +262,7 @@ class FileIoTest(tf.test.TestCase):
     self.assertEquals(7, file_statistics.length)
     self.assertEqual(
         int(os_statistics.st_mtime), int(file_statistics.mtime_nsec / 1e9))
+    self.assertEqual(33188, file_statistics.mode)
 
 if __name__ == "__main__":
   tf.test.main()
