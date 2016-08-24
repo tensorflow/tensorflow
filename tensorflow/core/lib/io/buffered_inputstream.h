@@ -56,8 +56,17 @@ class BufferedInputStream : public InputStreamInterface {
   // some other non-OK status.
   Status ReadLine(string* result);
 
+  // Returns one text line of data until end-of-file or a '\n' is read. The '\n'
+  // is included in the result.
+  // This method is a substitute for ReadLine() when called from Python which is
+  // the expectation in the python File::readline() API.
+  // Also, '\0's are treated like any other character within the line and given
+  // no special treatment.
+  string ReadLineAsString();
+
  private:
   Status FillBuffer();
+  Status ReadLineHelper(string* result, bool include_eol);
 
   InputStreamInterface* input_stream_;  // not owned.
   size_t size_;                         // buffer size.

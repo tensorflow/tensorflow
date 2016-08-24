@@ -47,7 +47,7 @@ Status BufferedInputStream::FillBuffer() {
   return s;
 }
 
-Status BufferedInputStream::ReadLine(string* result) {
+Status BufferedInputStream::ReadLineHelper(string* result, bool include_eol) {
   result->clear();
   Status s;
   while (true) {
@@ -60,7 +60,9 @@ Status BufferedInputStream::ReadLine(string* result) {
     }
     char c = buf_[pos_++];
     if (c == '\n') {
-      // We don't append the '\n' to *result
+      if (include_eol) {
+        *result += c;
+      }
       return Status::OK();
     }
     // We don't append '\r' to *result
@@ -129,6 +131,16 @@ Status BufferedInputStream::SkipNBytes(int64 bytes_to_skip) {
 
 int64 BufferedInputStream::Tell() const {
   return input_stream_->Tell() - (limit_ - pos_);
+}
+
+Status BufferedInputStream::ReadLine(string* result) {
+  return ReadLineHelper(result, false);
+}
+
+string BufferedInputStream::ReadLineAsString() {
+  string result;
+  ReadLineHelper(&result, true);
+  return result;
 }
 
 }  // namespace io

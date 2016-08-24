@@ -213,3 +213,9 @@ _COPY_TYPEMAPS(unsigned int, mode_t);
 %define %ignoreall %ignore ""; %enddef
 %define %unignore %rename("%s") %enddef
 %define %unignoreall %rename("%s") ""; %enddef
+
+#if SWIG_VERSION < 0x030000
+// Define some C++11 keywords safe to ignore so older SWIG does not choke.
+%define final %enddef
+%define override %enddef
+#endif
