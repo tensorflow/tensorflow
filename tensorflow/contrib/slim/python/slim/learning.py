@@ -448,24 +448,29 @@ def create_train_op(
 
   # Scale gradients.
   if gradient_multipliers:
-    grads = multiply_gradients(grads, gradient_multipliers)
+    with ops.name_scope('multiply_grads'):
+      grads = multiply_gradients(grads, gradient_multipliers)
 
   # Clip gradients.
   if clip_gradient_norm > 0:
-    grads = clip_gradient_norms(grads, clip_gradient_norm)
+    with ops.name_scope('clip_grads'):
+      grads = clip_gradient_norms(grads, clip_gradient_norm)
 
   # Summarize gradients.
   if summarize_gradients:
-    add_gradients_summaries(grads)
+    with ops.name_scope('summarize_grads'):
+      add_gradients_summaries(grads)
 
   # Create gradient updates.
   grad_updates = optimizer.apply_gradients(grads, global_step=global_step)
 
-  # Make sure total_loss is valid.
-  total_loss = array_ops.check_numerics(total_loss, 'LossTensor is inf or nan')
+  with ops.name_scope('train_op'):
+    # Make sure total_loss is valid.
+    total_loss = array_ops.check_numerics(total_loss,
+                                          'LossTensor is inf or nan')
 
-  # Ensure the train_tensor computes grad_updates.
-  return control_flow_ops.with_dependencies([grad_updates], total_loss)
+    # Ensure the train_tensor computes grad_updates.
+    return control_flow_ops.with_dependencies([grad_updates], total_loss)
 
 
 def _wait_for_step(sess, global_step, step):
@@ -672,22 +677,23 @@ def train(train_op,
       global_step = variables.get_or_create_global_step()
     saver = saver or tf_saver.Saver()
 
-    if init_op == _USE_DEFAULT:
-      init_op = tf_variables.initialize_all_variables()
+    with ops.name_scope('init_ops'):
+      if init_op == _USE_DEFAULT:
+        init_op = tf_variables.initialize_all_variables()
 
-    if ready_op == _USE_DEFAULT:
-      ready_op = tf_variables.report_uninitialized_variables()
+      if ready_op == _USE_DEFAULT:
+        ready_op = tf_variables.report_uninitialized_variables()
+
+      if local_init_op == _USE_DEFAULT:
+        local_init_op = control_flow_ops.group(
+            tf_variables.initialize_local_variables(),
+            data_flow_ops.initialize_all_tables())
 
     if summary_op == _USE_DEFAULT:
       summary_op = logging_ops.merge_all_summaries()
 
     if summary_writer == _USE_DEFAULT:
       summary_writer = supervisor.Supervisor.USE_DEFAULT
-
-    if local_init_op == _USE_DEFAULT:
-      local_init_op = control_flow_ops.group(
-          tf_variables.initialize_local_variables(),
-          data_flow_ops.initialize_all_tables())
 
     cleanup_op = None
 
@@ -705,19 +711,20 @@ def train(train_op,
       cleanup_op = sync_optimizer.get_clean_up_op()
 
     if train_step_kwargs == _USE_DEFAULT:
-      train_step_kwargs = {}
+      with ops.name_scope('train_step'):
+        train_step_kwargs = {}
 
-      if number_of_steps:
-        should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
-      else:
-        should_stop_op = constant_op.constant(False)
-      train_step_kwargs['should_stop'] = should_stop_op
-      train_step_kwargs['should_log'] = math_ops.equal(
-          math_ops.mod(global_step, log_every_n_steps), 0)
-      if is_chief and trace_every_n_steps is not None:
-        train_step_kwargs['should_trace'] = math_ops.equal(
-            math_ops.mod(global_step, trace_every_n_steps), 0)
-        train_step_kwargs['logdir'] = logdir
+        if number_of_steps:
+          should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
+        else:
+          should_stop_op = constant_op.constant(False)
+        train_step_kwargs['should_stop'] = should_stop_op
+        train_step_kwargs['should_log'] = math_ops.equal(
+            math_ops.mod(global_step, log_every_n_steps), 0)
+        if is_chief and trace_every_n_steps is not None:
+          train_step_kwargs['should_trace'] = math_ops.equal(
+              math_ops.mod(global_step, trace_every_n_steps), 0)
+          train_step_kwargs['logdir'] = logdir
 
   sv = supervisor.Supervisor(
       graph=graph,
