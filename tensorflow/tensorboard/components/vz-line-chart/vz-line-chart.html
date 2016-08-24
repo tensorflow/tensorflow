@@ -173,6 +173,16 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         },
 
         /**
+         * The scale for the y-axis. Allows:
+         * - "linear" - linear scale (Plottable.Scales.Linear)
+         * - "log" - modified-log scale (Plottable.Scales.ModifiedLog)
+         */
+        yScaleType: {
+          type: String,
+          value: 'linear'
+        },
+
+        /**
          * Change how the tooltip is sorted. Allows:
          * - "default" - Sort the tooltip by input order.
          * - "ascending" - Sort the tooltip by ascending value.
@@ -209,7 +219,7 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         }
       },
       observers: [
-        "_makeChart(xType, colorScale, _attached)",
+        "_makeChart(xType, yScaleType, colorScale, _attached)",
         "_reloadFromCache(_chart)",
         "_smoothingChanged(smoothingEnabled, smoothingWeight, _chart)",
         "_tooltipSortingMethodChanged(tooltipSortingMethod, _chart)",
@@ -265,7 +275,7 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         this.scopeSubtree(this.$.tooltip, true);
         this.scopeSubtree(this.$.chartsvg, true);
       },
-      _makeChart: function(xType, colorScale, _attached) {
+      _makeChart: function(xType, yScaleType, colorScale, _attached) {
         if (this._makeChartAsyncCallbackId === null) {
           this.cancelAsync(this._makeChartAsyncCallbackId);
         }
@@ -275,7 +285,7 @@ such as different X scales (linear and temporal), tooltips and smoothing.
           if (!this._attached) return;
           if (this._chart) this._chart.destroy();
           var tooltip = d3.select(this.$.tooltip);
-          var chart = new VZ.LineChart(xType, colorScale, tooltip);
+          var chart = new VZ.LineChart(xType, yScaleType, colorScale, tooltip);
           var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
           this._chart = chart;
