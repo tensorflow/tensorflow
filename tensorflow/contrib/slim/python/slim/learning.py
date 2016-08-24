@@ -534,7 +534,7 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
 
   if 'should_log' in train_step_kwargs:
     if sess.run(train_step_kwargs['should_log']):
-      logging.info('global step %d: loss = %.4f (%.2f sec)',
+      logging.info('global step %d: loss = %.4f (%.2f sec/step)',
                    np_global_step, total_loss, time_elapsed)
 
   # TODO(nsilberman): figure out why we can't put this into sess.run. The

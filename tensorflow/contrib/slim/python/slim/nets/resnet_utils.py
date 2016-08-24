@@ -206,7 +206,7 @@ def stack_blocks_dense(net, blocks, output_stride=None,
   return net
 
 
-def resnet_arg_scope(is_training=False,
+def resnet_arg_scope(is_training=True,
                      weight_decay=0.0001,
                      batch_norm_decay=0.997,
                      batch_norm_epsilon=1e-5,
@@ -236,7 +236,8 @@ def resnet_arg_scope(is_training=False,
       'is_training': is_training,
       'decay': batch_norm_decay,
       'epsilon': batch_norm_epsilon,
-      'scale': batch_norm_scale
+      'scale': batch_norm_scale,
+      'updates_collections': tf.GraphKeys.UPDATE_OPS,
   }
 
   with slim.arg_scope(

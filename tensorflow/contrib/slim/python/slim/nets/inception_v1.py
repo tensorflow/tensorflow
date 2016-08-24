@@ -299,3 +299,52 @@ def inception_v1(inputs,
         end_points['Predictions'] = prediction_fn(logits, scope='Predictions')
   return logits, end_points
 inception_v1.default_image_size = 224
+
+
+def inception_v1_arg_scope(weight_decay=0.00004,
+                           use_batch_norm=True,
+                           batch_norm_var_collection='moving_vars'):
+  """Defines the default InceptionV1 arg scope.
+
+  Note: Althougth the original paper didn't use batch_norm we found it useful.
+
+  Args:
+    weight_decay: The weight decay to use for regularizing the model.
+    use_batch_norm: "If `True`, batch_norm is applied after each convolution.
+    batch_norm_var_collection: The name of the collection for the batch norm
+      variables.
+
+  Returns:
+    An `arg_scope` to use for the inception v3 model.
+  """
+  batch_norm_params = {
+      # Decay for the moving averages.
+      'decay': 0.9997,
+      # epsilon to prevent 0s in variance.
+      'epsilon': 0.001,
+      # collection containing update_ops.
+      'updates_collections': tf.GraphKeys.UPDATE_OPS,
+      # collection containing the moving mean and moving variance.
+      'variables_collections': {
+          'beta': None,
+          'gamma': None,
+          'moving_mean': [batch_norm_var_collection],
+          'moving_variance': [batch_norm_var_collection],
+      }
+  }
+  if use_batch_norm:
+    normalizer_fn = slim.batch_norm
+    normalizer_params = batch_norm_params
+  else:
+    normalizer_fn = None
+    normalizer_params = {}
+  # Set weight_decay for weights in Conv and FC layers.
+  with slim.arg_scope([slim.conv2d, slim.fully_connected],
+                      weights_regularizer=slim.l2_regularizer(weight_decay)):
+    with slim.arg_scope(
+        [slim.conv2d],
+        weights_initializer=slim.variance_scaling_initializer(),
+        activation_fn=tf.nn.relu,
+        normalizer_fn=normalizer_fn,
+        normalizer_params=normalizer_params) as sc:
+      return sc
