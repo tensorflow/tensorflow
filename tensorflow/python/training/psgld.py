@@ -19,7 +19,7 @@ PSGLD algorithm [Preconditioned Stochastic Gradient Langevin Dynamics for Deep N
 
 A detailed description of PSGLD.
 
-- SGLD is derived from Stochastic Gradient Langevin Dynamics (SGLD) and SGD
+- PSGLD is derived from Stochastic Gradient Langevin Dynamics (SGLD) and SGD
 - require only the gradient on mini-batches of data
 - incorperating adaptive preconditioners from RMSProp
 
