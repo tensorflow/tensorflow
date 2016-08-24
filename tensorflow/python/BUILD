@@ -311,9 +311,7 @@ py_test(
 tf_gen_op_wrapper_py(
     name = "functional_ops",
     out = "ops/gen_functional_ops.py",
-    hidden = [
-        "SymbolicGradient",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
 )
 
 py_library(
@@ -513,51 +511,19 @@ py_test(
 
 tf_gen_op_wrapper_py(
     name = "array_ops",
-    hidden = [
-        "BroadcastGradientArgs",
-        "ConcatOffset",
-        "Concat",
-        "Const",
-        "EditDistance",
-        "MirrorPad",
-        "MirrorPadGrad",
-        "OneHot",
-        "Pack",
-        "Pad",
-        "Placeholder",
-        "RefIdentity",
-        "Split",
-        "Slice",
-        "TileGrad",  # Exported through array_grad instead of array_ops.
-        "ZerosLike",  # TODO(josh11b): Use this instead of the Python version.
-        "Unpack",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "candidate_sampling_ops",
-    hidden = [
-        "AllCandidateSampler",
-        "ComputeAccidentalHits",
-        "FixedUnigramCandidateSampler",
-        "LearnedUnigramCandidateSampler",
-        "LogUniformCandidateSampler",
-        "ThreadUnsafeUnigramCandidateSampler",
-        "UniformCandidateSampler",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "control_flow_ops",
-    hidden = [
-        "Switch",
-        "Merge",
-        "RefMerge",
-        "Exit",
-        "RefExit",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
     deps = [
         "//tensorflow/core:control_flow_ops_op_lib",
@@ -567,263 +533,98 @@ tf_gen_op_wrapper_py(
 
 tf_gen_op_wrapper_py(
     name = "ctc_ops",
-    hidden = [
-        "CTCLoss",
-        "CTCGreedyDecoder",
-        "CTCBeamSearchDecoder",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "data_flow_ops",
-    hidden = [
-        "Barrier",
-        "BarrierClose",
-        "BarrierIncompleteSize",
-        "BarrierInsertMany",
-        "BarrierReadySize",
-        "BarrierTakeMany",
-        "PriorityQueue",
-        "FIFOQueue",
-        "HashTable",
-        "InitializeTable",
-        "InitializeTableFromTextFile",
-        "LookupTableExport",
-        "LookupTableFind",
-        "LookupTableImport",
-        "LookupTableInsert",
-        "LookupTableSize",
-        "MutableHashTable",
-        "MutableHashTableOfTensors",
-        "Mutex",
-        "MutexAcquire",
-        "MutexRelease",
-        "PaddingFIFOQueue",
-        "QueueClose",
-        "QueueDequeue",
-        "QueueDequeueMany",
-        "QueueDequeueUpTo",
-        "QueueEnqueue",
-        "QueueEnqueueMany",
-        "QueueSize",
-        "RandomShuffleQueue",
-        "Stack",
-        "StackPop",
-        "StackPush",
-        "StackClose",
-        "TensorArray",
-        "TensorArrayClose",
-        "TensorArrayConcat",
-        "TensorArrayGrad",
-        "TensorArrayRead",
-        "TensorArrayPack",
-        "TensorArraySize",
-        "TensorArraySplit",
-        "TensorArrayUnpack",
-        "TensorArrayWrite",
-        "GetSessionHandle",
-        "GetSessionTensor",
-        "DeleteSessionTensor",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "image_ops",
-    hidden = [
-        "RandomCrop",
-        "ResizeBilinearGrad",
-        "ResizeNearestNeighborGrad",
-        "AdjustContrastv2",
-        "ScaleImageGrad",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "io_ops",
-    hidden = [
-        "FixedLengthRecordReader",
-        "IdentityReader",
-        "ReaderClose",
-        "ReaderEnqueueWork",
-        "ReaderNumRecordsProduced",
-        "ReaderNumWorkUnitsCompleted",
-        "ReaderRead",
-        "ReaderReadUpTo",
-        "ReaderReset",
-        "ReaderRestoreState",
-        "ReaderSerializeState",
-        "ReaderWorkQueueLength",
-        "Restore",
-        "RestoreSlice",
-        "Save",
-        "SaveSlices",
-        "ShardedFilename",
-        "ShardedFilespec",
-        "TextLineReader",
-        "TFRecordReader",
-        "WholeFileReader",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "linalg_ops",
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "logging_ops",
-    hidden = [
-        "Assert",
-        "AudioSummary",
-        "HistogramAccumulatorSummary",
-        "HistogramSummary",
-        "ImageSummary",
-        "MergeSummary",
-        "Print",
-        "ScalarSummary",
-        "TensorSummary",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "math_ops",
-    hidden = [
-        "Abs",
-        "AddN",
-        "All",
-        "Any",
-        "BatchMatMul",
-        "Complex",
-        "Max",
-        "Mean",
-        "Min",
-        "Pow",
-        "Prod",
-        "Range",
-        "SparseMatMul",
-        "Sum",
-        "MatMul",
-        "Sigmoid",
-        "Tanh",
-        "SigmoidGrad",
-        "TanhGrad",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "nn_ops",
-    hidden = [
-        "AvgPoolGrad",  # "*Grad" accessible through nn_grad instead of nn_ops.
-        "BatchNormWithGlobalNormalization",
-        "BatchNormWithGlobalNormalizationGrad",
-        "SoftmaxCrossEntropyWithLogits",
-        "SparseSoftmaxCrossEntropyWithLogits",
-        "LRNGrad",
-        "MaxPoolGrad",
-        "MaxPoolGradWithArgmax",
-        "ReluGrad",
-        "Relu6Grad",
-        "EluGrad",
-        "SoftplusGrad",
-        "SoftsignGrad",
-        "TopK",
-        "TopKV2",
-        "BiasAdd",
-        "BiasAddV1",
-        "Relu6",
-        "AvgPool",
-        "MaxPool",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "parsing_ops",
-    hidden = [
-        "ParseExample",
-        "ParseSingleSequenceExample",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "random_ops",
-    hidden = [
-        "RandomGamma",
-        "RandomUniform",
-        "RandomUniformInt",
-        "RandomShuffle",
-        "RandomStandardNormal",
-        "ParameterizedTruncatedNormal",
-        "TruncatedNormal",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "script_ops",
-    hidden = [
-        "PyFunc",
-        "PyFuncStateless",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "state_ops",
-    hidden = [
-        "Variable",
-        "TemporaryVariable",
-        "DestroyTemporaryVariable",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "sparse_ops",
-    hidden = [
-        "DeserializeManySparse",
-        "SerializeManySparse",
-        "SerializeSparse",
-        "SparseAdd",
-        "SparseAddGrad",
-        "SparseConcat",
-        "SparseSplit",
-        "SparseSelectLastK",
-        "SparseReorder",
-        "SparseReshape",
-        "SparseToDense",
-        "SparseTensorDenseAdd",
-        "SparseTensorDenseMatMul",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "string_ops",
-    hidden = [
-        "StringSplit",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_py(
     name = "user_ops",
-    hidden = [
-        "Fact",
-    ],
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = False,
 )
 
 tf_gen_op_wrapper_py(
     name = "training_ops",
     out = "training/gen_training_ops.py",
+    hidden_file = "ops/hidden_ops.txt",
     require_shape_functions = True,
 )
 
