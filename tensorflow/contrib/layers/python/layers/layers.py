@@ -859,8 +859,8 @@ def layer_norm(inputs,
   Can be used as a normalizer function for conv2d and fully_connected.
 
   Args:
-    inputs: a tensor of size `[batch_size, height, width, channels]`
-            or `[batch_size, channels]`.
+    inputs: a tensor with 2 or more dimensions. The normalization
+            occurs over all but the first dimension.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
@@ -880,8 +880,8 @@ def layer_norm(inputs,
   Raises:
     ValueError: if rank or last dimension of `inputs` is undefined.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'LayerNorm', reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
@@ -922,7 +922,9 @@ def layer_norm(inputs,
     outputs.set_shape(inputs_shape)
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope,
+                                       outputs)
 
 
 @add_arg_scope

@@ -1538,7 +1538,7 @@ class LayerNormTest(tf.test.TestCase):
     height, width = 3, 3
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
-      tf.contrib.layers.layer_norm(images, scale=True)
+      tf.contrib.layers.layer_norm(images)
       beta = tf.contrib.framework.get_variables_by_name('beta')[0]
       gamma = tf.contrib.framework.get_variables_by_name('gamma')[0]
       self.assertEquals(beta.op.name, 'LayerNorm/beta')
@@ -1548,8 +1548,8 @@ class LayerNormTest(tf.test.TestCase):
     height, width = 3, 3
     with self.test_session():
       images = tf.random_uniform((5, height, width, 3), seed=1)
-      tf.contrib.layers.layer_norm(images, scale=True, scope='ln')
-      tf.contrib.layers.layer_norm(images, scale=True, scope='ln', reuse=True)
+      tf.contrib.layers.layer_norm(images, scope='ln')
+      tf.contrib.layers.layer_norm(images, scope='ln', reuse=True)
       beta = tf.contrib.framework.get_variables_by_name('beta')
       gamma = tf.contrib.framework.get_variables_by_name('gamma')
       self.assertEquals(len(beta), 1)
@@ -1561,8 +1561,7 @@ class LayerNormTest(tf.test.TestCase):
       image_shape = (10, height, width, 3)
       image_values = np.random.rand(*image_shape)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
-      output_train = tf.contrib.layers.layer_norm(images,
-                                                  scope='LN')
+      output_train = tf.contrib.layers.layer_norm(images, scope='LN')
       output_eval = tf.contrib.layers.layer_norm(images,
                                                  scope='LN',
                                                  reuse=True)
@@ -1575,10 +1574,7 @@ class LayerNormTest(tf.test.TestCase):
     with self.test_session() as sess:
       input_values = np.random.rand(*input_shape)
       inputs = tf.constant(input_values, shape=input_shape, dtype=tf.float32)
-      output_op = tf.contrib.layers.layer_norm(inputs,
-                                               center=True,
-                                               scale=True,
-                                               scope='LN')
+      output_op = tf.contrib.layers.layer_norm(inputs, scope='LN')
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       # The mean and variance of the output should be close to 0 and 1
