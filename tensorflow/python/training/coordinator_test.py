@@ -25,9 +25,10 @@ import time
 import tensorflow as tf
 
 
-def StopInN(coord, n_secs):
-  time.sleep(n_secs)
+def StopOnEvent(coord, wait_for_stop, set_when_stopped):
+  wait_for_stop.wait()
   coord.request_stop()
+  set_when_stopped.set()
 
 
 def RaiseInN(coord, n_secs, ex, report_exception):
@@ -53,6 +54,14 @@ def SleepABit(n_secs, coord=None):
   time.sleep(n_secs)
 
 
+def WaitForThreadsToRegister(coord, num_threads):
+  while True:
+    with coord._lock:
+      if len(coord._registered_threads) == num_threads:
+        break
+    time.sleep(0.001)
+
+
 class CoordinatorTest(tf.test.TestCase):
 
   def testStopAPI(self):
@@ -67,9 +76,15 @@ class CoordinatorTest(tf.test.TestCase):
     coord = tf.train.Coordinator()
     self.assertFalse(coord.should_stop())
     self.assertFalse(coord.wait_for_stop(0.1))
-    threading.Thread(target=StopInN, args=(coord, 0.02)).start()
+    wait_for_stop_ev = threading.Event()
+    has_stopped_ev = threading.Event()
+    t = threading.Thread(target=StopOnEvent,
+                         args=(coord, wait_for_stop_ev, has_stopped_ev))
+    t.start()
     self.assertFalse(coord.should_stop())
     self.assertFalse(coord.wait_for_stop(0.01))
+    wait_for_stop_ev.set()
+    has_stopped_ev.wait()
     self.assertTrue(coord.wait_for_stop(0.05))
     self.assertTrue(coord.should_stop())
 
@@ -93,6 +108,7 @@ class CoordinatorTest(tf.test.TestCase):
         threading.Thread(target=SleepABit, args=(0.01, coord))]
     for t in threads:
       t.start()
+    WaitForThreadsToRegister(coord, 3)
     coord.join()
     for t in threads:
       self.assertFalse(t.is_alive())
@@ -105,6 +121,7 @@ class CoordinatorTest(tf.test.TestCase):
         threading.Thread(target=SleepABit, args=(0.01, coord))]
     for t in threads:
       t.start()
+    WaitForThreadsToRegister(coord, 2)
     # threads[1] is not registered we must pass it in.
     coord.join(threads[1:1])
     for t in threads:
@@ -113,12 +130,17 @@ class CoordinatorTest(tf.test.TestCase):
   def testJoinGraceExpires(self):
     def TestWithGracePeriod(stop_grace_period):
       coord = tf.train.Coordinator()
+      wait_for_stop_ev = threading.Event()
+      has_stopped_ev = threading.Event()
       threads = [
-          threading.Thread(target=StopInN, args=(coord, 0.01)),
+          threading.Thread(target=StopOnEvent,
+                           args=(coord, wait_for_stop_ev, has_stopped_ev)),
           threading.Thread(target=SleepABit, args=(10.0,))]
       for t in threads:
         t.daemon = True
         t.start()
+      wait_for_stop_ev.set()
+      has_stopped_ev.wait()
       with self.assertRaisesRegexp(RuntimeError, "threads still running"):
         coord.join(threads, stop_grace_period_secs=stop_grace_period)
     TestWithGracePeriod(1e-10)
