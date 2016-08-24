@@ -232,17 +232,19 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
           chartScaffold.chart().redraw();
         }
       },
+
       toggleYScale: function(e) {
         var currentTarget = Polymer.dom(e.currentTarget);
 
         var b = currentTarget.parentNode.querySelector('.log-option-button');
         var c = currentTarget.parentNode.querySelector('vz-line-chart');
         if (c !== null) {
-          c.yScale = c.yScale === 'log' ? 'linear' : 'log';
-          b.icon = c.yScale === 'log' ? 'line-weight' : 'reorder';
+          c.yScaleType = c.yScaleType === 'log' ? 'linear' : 'log';
+          b.icon = c.yScaleType === 'log' ? 'line-weight' : 'reorder';
           c.redraw();
         }
       },
+
       validRuns: function(tag, runsChange, run2tagChange) {
         var _this = this;
         var result = this.selectedRuns.filter(function(r) {
