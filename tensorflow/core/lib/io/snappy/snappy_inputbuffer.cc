@@ -47,6 +47,11 @@ Status SnappyInputBuffer::ReadNBytes(int64 bytes_to_read, string* result) {
   return Status::OK();
 }
 
+int64 SnappyInputBuffer::Tell() const {
+  // TODO(srbs): Implement this.
+  return -1;
+}
+
 size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
                                              string* result) {
   size_t can_read_bytes = std::min(bytes_to_read, avail_out_);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/random_inputstream.h"
 
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -28,21 +29,27 @@ TEST(RandomInputStream, ReadNBytes) {
   WriteStringToFile(env, fname, "0123456789");
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
   string read;
   RandomAccessInputStream in(file.get());
-  TF_CHECK_OK(in.ReadNBytes(3, &read));
+  TF_ASSERT_OK(in.ReadNBytes(3, &read));
   EXPECT_EQ(read, "012");
-  TF_CHECK_OK(in.ReadNBytes(0, &read));
+  EXPECT_EQ(3, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(0, &read));
   EXPECT_EQ(read, "");
-  TF_CHECK_OK(in.ReadNBytes(5, &read));
+  EXPECT_EQ(3, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(5, &read));
   EXPECT_EQ(read, "34567");
-  TF_CHECK_OK(in.ReadNBytes(0, &read));
+  EXPECT_EQ(8, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(0, &read));
   EXPECT_EQ(read, "");
+  EXPECT_EQ(8, in.Tell());
   EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(20, &read)));
   EXPECT_EQ(read, "89");
-  TF_CHECK_OK(in.ReadNBytes(0, &read));
+  EXPECT_EQ(10, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(0, &read));
   EXPECT_EQ(read, "");
+  EXPECT_EQ(10, in.Tell());
 }
 
 TEST(RandomInputStream, SkipNBytes) {
@@ -51,22 +58,29 @@ TEST(RandomInputStream, SkipNBytes) {
   WriteStringToFile(env, fname, "0123456789");
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
   string read;
   RandomAccessInputStream in(file.get());
-  TF_CHECK_OK(in.SkipNBytes(3));
-  TF_CHECK_OK(in.ReadNBytes(0, &read));
+  TF_ASSERT_OK(in.SkipNBytes(3));
+  EXPECT_EQ(3, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(0, &read));
   EXPECT_EQ(read, "");
-  TF_CHECK_OK(in.ReadNBytes(4, &read));
+  EXPECT_EQ(3, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(4, &read));
   EXPECT_EQ(read, "3456");
-  TF_CHECK_OK(in.SkipNBytes(0));
-  TF_CHECK_OK(in.ReadNBytes(2, &read));
+  EXPECT_EQ(7, in.Tell());
+  TF_ASSERT_OK(in.SkipNBytes(0));
+  EXPECT_EQ(7, in.Tell());
+  TF_ASSERT_OK(in.ReadNBytes(2, &read));
   EXPECT_EQ(read, "78");
+  EXPECT_EQ(9, in.Tell());
   EXPECT_TRUE(errors::IsOutOfRange(in.SkipNBytes(20)));
+  EXPECT_EQ(10, in.Tell());
   // Making sure that if we read after we've skipped beyond end of file, we get
   // nothing.
   EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, &read)));
   EXPECT_EQ(read, "");
+  EXPECT_EQ(10, in.Tell());
 }
 
 }  // anonymous namespace

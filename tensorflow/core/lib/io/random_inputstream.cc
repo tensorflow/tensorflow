@@ -50,27 +50,7 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   return Status::OK();
 }
 
-Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
-  if (bytes_to_skip < 0) {
-    return errors::InvalidArgument("Can only skip forward, not backwards");
-  }
-  // Tries to read one byte at future location to see whether we've skipped
-  // beyond the end of file or not.
-  StringPiece data;
-  char scratch;
-  Status s = file_->Read(pos_ + bytes_to_skip, 1, &data, &scratch);
-  // Advance pointer if OK or OutOfRange status is returned.
-  if (s.ok() || errors::IsOutOfRange(s)) {
-    pos_ += bytes_to_skip;
-  }
-  // Passing on the return status from file_->Read(). We can get the following
-  //  * OK: We have skipped to some portion in the file. Return OK.
-  //  * OutOfRange: Despite b/30839063 an OutOfRange return status means that
-  //                no bytes were read and we've skipped beyond EOF. The
-  //                return semantics of SkipNBytes dictate we return OutOfRange.
-  //  * other: if some other error is encountered we just pass that along.
-  return s;
-}
+int64 RandomAccessInputStream::Tell() const { return pos_; }
 
 }  // namespace io
 }  // namespace tensorflow
