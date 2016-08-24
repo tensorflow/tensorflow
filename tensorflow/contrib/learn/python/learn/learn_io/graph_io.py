@@ -74,8 +74,7 @@ def read_batch_examples(file_pattern, batch_size, reader,
     name: Name of resulting op.
 
   Returns:
-    String `Tensor` of batched `Example` proto. If `keep_keys` is True, then
-    returns tuple of string `Tensor`s, where first value is the key.
+    String `Tensor` of batched `Example` proto.
 
   Raises:
     ValueError: for invalid inputs.
@@ -127,8 +126,9 @@ def read_keyed_batch_examples(
     name: Name of resulting op.
 
   Returns:
-    String `Tensor` of batched `Example` proto. If `keep_keys` is True, then
-    returns tuple of string `Tensor`s, where first value is the key.
+    Returns tuple of:
+    - `Tensor` of string keys.
+    - String `Tensor` of batched `Example` proto.
 
   Raises:
     ValueError: for invalid inputs.
@@ -272,8 +272,9 @@ def read_keyed_batch_features(file_pattern,
     name: Name of resulting op.
 
   Returns:
-    A dict of `Tensor` or `SparseTensor` objects for each in `features`.
-    If `keep_keys` is `True`, returns tuple of string `Tensor` and above dict.
+    Returns tuple of:
+    - `Tensor` of string keys.
+    - A dict of `Tensor` or `SparseTensor` objects for each in `features`.
 
   Raises:
     ValueError: for invalid inputs.
@@ -392,7 +393,6 @@ def read_batch_features(file_pattern, batch_size, features, reader,
 
   Returns:
     A dict of `Tensor` or `SparseTensor` objects for each in `features`.
-    If `keep_keys` is `True`, returns tuple of string `Tensor` and above dict.
 
   Raises:
     ValueError: for invalid inputs.

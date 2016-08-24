@@ -47,6 +47,13 @@ Constructs an Estimator instance.
 
 - - -
 
+#### `tf.contrib.learn.Estimator.config` {#Estimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#Estimator.evaluate}
 
 See `Evaluable`.

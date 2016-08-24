@@ -284,7 +284,8 @@ class Laplace(distribution.Distribution):
     """Sample `n` observations from the Laplace Distributions.
 
     Args:
-      n: `Scalar`, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 
@@ -294,7 +295,7 @@ class Laplace(distribution.Distribution):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[self._loc, self._scale, n]):
-        n = ops.convert_to_tensor(n)
+        n = ops.convert_to_tensor(n, name="n")
         n_val = tensor_util.constant_value(n)
         shape = array_ops.concat(0, ([n], self.batch_shape()))
         # Sample uniformly-at-random from the open-interval (-1, 1).

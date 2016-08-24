@@ -366,8 +366,8 @@ class InverseGamma(distribution.Distribution):
     See the doc for tf.random_gamma for further details on sampling strategy.
 
     Args:
-      n: Python integer, the number of observations to sample from each
-        distribution.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed for this operation.
       name: Optional name for the operation.
 

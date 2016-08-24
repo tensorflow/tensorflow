@@ -220,7 +220,9 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 @@dynamic_rnn
 @@rnn
 @@state_saving_rnn
+@@bidirectional_dynamic_rnn
 @@bidirectional_rnn
+@@raw_rnn
 
 ## Conectionist Temporal Classification (CTC)
 

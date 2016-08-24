@@ -104,6 +104,13 @@ Initializes a DNNClassifier instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNClassifier.config` {#DNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.

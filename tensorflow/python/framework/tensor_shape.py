@@ -438,6 +438,8 @@ class TensorShape(object):
             # Protos store variable-size dimensions as -1
             as_dimension(dim.size if dim.size != -1 else None)
             for dim in dims.dim]
+    elif isinstance(dims, TensorShape):
+      self._dims = dims.dims
     else:
       try:
         dims_iter = iter(dims)

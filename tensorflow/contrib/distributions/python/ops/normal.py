@@ -329,7 +329,8 @@ class Normal(distribution.Distribution):
     """Sample `n` observations from the Normal Distributions.
 
     Args:
-      n: `Scalar`, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 
@@ -341,7 +342,7 @@ class Normal(distribution.Distribution):
       with ops.name_scope(name, values=[self._mu, self._sigma, n]):
         broadcast_shape = common_shapes.broadcast_shape(
             self._mu.get_shape(), self._sigma.get_shape())
-        n = ops.convert_to_tensor(n)
+        n = ops.convert_to_tensor(n, name="n")
         shape = array_ops.concat(0, ([n], array_ops.shape(self.mean())))
         sampled = random_ops.random_normal(
             shape=shape, mean=0, stddev=1, dtype=self._mu.dtype, seed=seed)

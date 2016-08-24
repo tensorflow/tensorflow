@@ -457,8 +457,8 @@ See the doc for tf.random_gamma for further detail.
 ##### Args:
 
 
-*  <b>`n`</b>: Python integer, the number of observations to sample from each
-    distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed for this operation.
 *  <b>`name`</b>: Optional name for the operation.
 

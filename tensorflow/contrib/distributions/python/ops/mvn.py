@@ -348,7 +348,8 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     """Sample `n` observations from the Multivariate Normal Distributions.
 
     Args:
-      n: `Scalar`, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 
@@ -360,7 +361,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
       with ops.name_scope(name, values=[self._mu, n] + self._cov.inputs):
         # Recall _check_mu ensures mu and self._cov have same batch shape.
         broadcast_shape = self.mu.get_shape()
-        n = ops.convert_to_tensor(n)
+        n = ops.convert_to_tensor(n, name="n")
 
         shape = array_ops.concat(0, [self._cov.vector_shape(), [n]])
         white_samples = random_ops.random_normal(shape=shape,

@@ -413,7 +413,8 @@ https://en.wikipedia.org/wiki/Chi-squared_distribution#Gamma.2C_exponential.2C_a
 ##### Args:
 
 
-*  <b>`n`</b>: Scalar. Number of samples to draw from each distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer; random number generator seed.
 *  <b>`name`</b>: The name of this op.
 
