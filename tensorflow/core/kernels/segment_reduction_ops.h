@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -27,7 +27,10 @@ class OpKernelContext;
 
 namespace functor {
 
-// Functor for UnsortedSegmentSumOp.
+// Base Functor for UnsortedSegmentReduction.
+// recives template functions:
+// 'unsortedSegmentInitializationOp': initialization of output
+// 'unsortedSegmentReductionOp': reduction function of the input
 // 'output_rows': the number of output segments (unique segment ids in
 //                'segment_ids').
 // 'segment_ids_shape': shape of 'segment_ids' tensor.
@@ -36,8 +39,14 @@ namespace functor {
 // 'data_size': size of input data tensor.
 // 'data': input data tensor.
 // 'output': output reshaped to {output_rows, output.size/output_rows}
-template <typename Device, typename T, typename Index>
-struct UnsortedSegmentSumFunctor {
+template <typename Device, typename T, typename Index,
+          void (*unsortedSegmentInitializationOp)(
+              Eigen::TensorMap<Eigen::Tensor<T, 2, 1, long int>, 16>*),
+          void (*unsortedSegmentReductionOp)(
+              Eigen::TensorMap<Eigen::Tensor<const T, 2, 1, long int>, 16>*,
+              Eigen::TensorMap<Eigen::Tensor<T, 2, 1, long int>, 16>*, int64,
+              Index)>
+struct UnsortedSegmentBaseFunctor {
   void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,

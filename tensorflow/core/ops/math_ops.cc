@@ -1532,7 +1532,41 @@ output: Has same shape as data, except for the first `segment_ids.rank`
   `num_segments`.
 
 )doc");
+REGISTER_OP("UnsortedSegmentMax")
+    .Input("data: T")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: int32")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Doc(R"doc(
+Computes the Max along segments of a tensor.
 
+Read [the section on
+Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
+of segments.
+
+This operator is similar to the [unsorted segment sum operator] (../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+Instead of computing the sum over segments, it computes the maximum
+such that:
+
+\\(output_i = \max_j data_j\\) where max is over `j` such
+that `segment_ids[j] == i`.
+
+If the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,
+ `output[i] = numeric_limits<T>::min()`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+</div>
+
+segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+first dimension.
+
+output: Has same shape as data, except for dimension 0 which
+has size `num_segments`.
+
+)doc");
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")
     .Input("indices: Tidx")
