@@ -107,13 +107,18 @@ class GcsRandomAccessFile : public RandomAccessFile {
     }
 
     // Update the buffer content based on the new requested range.
-    auto buffer_size = n + read_ahead_bytes_;
-    buffer_.reset(new char[buffer_size]);
+    const size_t desired_buffer_size = n + read_ahead_bytes_;
+    if (n > buffer_size_ || desired_buffer_size > 2 * buffer_size_) {
+      // Re-allocate only if buffer size increased significantly.
+      buffer_.reset(new char[desired_buffer_size]);
+      buffer_size_ = desired_buffer_size;
+    }
+
     buffer_start_offset_ = offset;
     buffer_content_size_ = 0;
     StringPiece buffer_content;
     TF_RETURN_IF_ERROR(
-        ReadFromGCS(offset, buffer_size, &buffer_content, buffer_.get()));
+        ReadFromGCS(offset, buffer_size_, &buffer_content, buffer_.get()));
     buffer_content_size_ = buffer_content.size();
 
     // Set the results.
@@ -159,6 +164,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
   // The buffer-related members need to be mutable, because they are modified
   // by the const Read() method.
   mutable std::unique_ptr<char[]> buffer_;
+  mutable size_t buffer_size_ = 0;
   // The original file offset of the first byte in the buffer.
   mutable size_t buffer_start_offset_ = 0;
   mutable size_t buffer_content_size_ = 0;
