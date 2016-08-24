@@ -21,9 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using shape_inference::InferenceContext;
-static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
+namespace shape_inference {
 
 namespace {
 
@@ -54,7 +52,8 @@ string RunInferShapes(const string& op_name, const string& ins,
                   .Attr("N", num_inputs)
                   .Finalize(&op.node_def));
   global_fn_ptr = &fn;
-  return InferShapes(op, ins, expected_outs).error_message();
+  return ShapeInferenceTestutil::InferShapes(op, ins, expected_outs)
+      .error_message();
 }
 
 }  // namespace
@@ -79,7 +78,7 @@ TEST(ShapeInferenceTestutilTest, Failures) {
     return Status::OK();
   };
   auto fn_output_u_2 = [](InferenceContext* c) {
-    c->set_output(0, c->Matrix(kUnknownDim, 2));
+    c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
     return Status::OK();
   };
   const string& op = "OpOneOut";
@@ -88,9 +87,10 @@ TEST(ShapeInferenceTestutilTest, Failures) {
             RunInferShapes(op, "[1];[2];[1]", "e", fn_copy_input_0));
   EXPECT_EQ("Wrong number of expected outputs (2 vs 1)",
             RunInferShapes(op, "[1];[2];[1]", "[1];[2]", fn_copy_input_0));
-  EXPECT_EQ(
-      "Op type not registered 'NoSuchOp'",
-      InferShapes(ShapeInferenceTestOp("NoSuchOp"), "", "").error_message());
+  EXPECT_EQ("Op type not registered 'NoSuchOp'",
+            ShapeInferenceTestutil::InferShapes(
+                ShapeInferenceTestOp("NoSuchOp"), "", "")
+                .error_message());
 
   // Wrong shape error messages.
   EXPECT_EQ(
@@ -176,4 +176,5 @@ TEST(ShapeInferenceTestutilTest, Failures) {
             RunInferShapes(op, ins, "[d0_1,2,?,d0_0|d2_0]", fn));
 }
 
+}  // namespace shape_inference
 }  // namespace tensorflow
