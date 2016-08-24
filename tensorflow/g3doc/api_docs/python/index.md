@@ -593,6 +593,17 @@
   * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
   * [`main`](../../api_docs/python/test.md#main)
 
+* **[BayesFlow Entropy (contrib)](../../api_docs/python/contrib.bayesflow.entropy.md)**:
+  * [`elbo_ratio`](../../api_docs/python/contrib.bayesflow.entropy.md#elbo_ratio)
+  * [`entropy_shannon`](../../api_docs/python/contrib.bayesflow.entropy.md#entropy_shannon)
+  * [`renyi_alpha`](../../api_docs/python/contrib.bayesflow.entropy.md#renyi_alpha)
+  * [`renyi_ratio`](../../api_docs/python/contrib.bayesflow.entropy.md#renyi_ratio)
+
+* **[BayesFlow Monte Carlo (contrib)](../../api_docs/python/contrib.bayesflow.monte_carlo.md)**:
+  * [`expectation`](../../api_docs/python/contrib.bayesflow.monte_carlo.md#expectation)
+  * [`expectation_importance_sampler`](../../api_docs/python/contrib.bayesflow.monte_carlo.md#expectation_importance_sampler)
+  * [`expectation_importance_sampler_logspace`](../../api_docs/python/contrib.bayesflow.monte_carlo.md#expectation_importance_sampler_logspace)
+
 * **[BayesFlow Stochastic Graph (contrib)](../../api_docs/python/contrib.bayesflow.stochastic_graph.md)**:
   * [`DistributionTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#DistributionTensor)
   * [`get_current_value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#get_current_value_type)
