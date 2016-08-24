@@ -233,4 +233,47 @@ static void BM_RMSProp(int iters, int params) {
 }
 BENCHMARK(BM_RMSProp)->Arg(128 << 10)->Arg(256 << 10);
 
+static void PSGLD(int32 n, Graph** init_g, Graph** train_g) {
+  TensorShape shape({n});
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto ms = Var(g, n);
+    auto mom = Var(g, n);
+    auto rnd = Var(g, n);
+    auto zero = Zeros(g, n);
+    test::graph::Assign(g, var, zero);
+    test::graph::Assign(g, ms, zero);
+    test::graph::Assign(g, mom, zero);
+    test::graph::Assign(g, rnd, zero);
+    *init_g = g;
+  }
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto ms = Var(g, n);
+    auto mom = Var(g, n);
+    auto rnd = Var(g, n);
+    auto lr = Scalar(g, 0.01);
+    auto rho = Scalar(g, 0.9);
+    auto momentum = Scalar(g, 0.9);
+    auto epsilon = Scalar(g, 1e-8);
+    auto grad = Random(g, n);
+    test::graph::Multi(g, "ApplyPSGLD",
+                       {var, ms, mom, rnd, lr, decay, momentum, epsilon, grad});
+    *train_g = g;
+  }
+}
+
+static void BM_PSGLD(int iters, int params) {
+  const int64 tot = static_cast<int64>(iters) * params;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * sizeof(float));
+  Graph* init;
+  Graph* train;
+  PSGLD(params, &init, &train);
+  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+}
+BENCHMARK(BM_PSGLD)->Arg(128 << 10)->Arg(256 << 10);
+
 }  // end namespace tensorflow
