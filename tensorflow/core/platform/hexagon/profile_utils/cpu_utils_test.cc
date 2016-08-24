@@ -42,5 +42,30 @@ TEST(CpuUtils, CheckGetCurrentCycleClock) {
   }
 }
 
+TEST(CpuUtils, CheckCpuFrequency) {
+  const int64 cpu_frequency = CpuUtils::GetCpuFrequency();
+  CHECK_GT(cpu_frequency, 0);
+  CHECK_NE(cpu_frequency, CpuUtils::INVALID_FREQUENCY);
+  if (DBG) {
+    LOG(INFO) << "Cpu frequency = " << cpu_frequency;
+  }
+}
+
+TEST(CpuUtils, CheckClockPerMicroSec) {
+  const int clock_per_micro_sec = CpuUtils::GetClockPerMicroSec();
+  CHECK_GT(clock_per_micro_sec, 0);
+  if (DBG) {
+    LOG(INFO) << "Clock per micro sec = " << clock_per_micro_sec;
+  }
+}
+
+TEST(CpuUtils, CheckMicroSecPerClock) {
+  const double micro_sec_per_clock = CpuUtils::GetMicroSecPerClock();
+  CHECK_GT(micro_sec_per_clock, 0.0);
+  if (DBG) {
+    LOG(INFO) << "Micro sec per clock = " << micro_sec_per_clock;
+  }
+}
+
 }  // namespace profile_utils
 }  // namespace tensorflow

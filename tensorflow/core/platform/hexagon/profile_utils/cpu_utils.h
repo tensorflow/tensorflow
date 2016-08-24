@@ -30,6 +30,9 @@ namespace profile_utils {
 
 class CpuUtils {
  public:
+  // Constant for invalid frequency.
+  // This value is returned when the furequency is not obtained somehow.
+  static constexpr int64 INVALID_FREQUENCY = -1;
   static constexpr uint64 DUMMY_CYCLE_CLOCK = 1;
 
   // Return cpu count obtained by rdtsc. This function is designed to
@@ -78,7 +81,27 @@ class CpuUtils {
 #endif
   }
 
+  // Return cpu frequency. As this method caches the cpu frequency internally,
+  // there is no overhead except function call to call this method.
+  static int64 GetCpuFrequency();
+
+  // Return cached cpu count per each micro second.
+  // As this method caches the cpu frequency internally,
+  // there is no overhead except function call to call this method.
+  static int GetClockPerMicroSec();
+
+  // Return micro secound per each clock
+  // As this method caches the cpu frequency internally,
+  // there is no overhead except function call to call this method.
+  static double GetMicroSecPerClock();
+
  private:
+  // Return cpu frequency.
+  // CAVEAT: as this method calls system call and parse the mssage,
+  // this call may be slow. This is why this class caches the value by
+  // StaticVariableInitializer.
+  static int64 GetCpuFrequencyImpl();
+
   TF_DISALLOW_COPY_AND_ASSIGN(CpuUtils);
 };
 

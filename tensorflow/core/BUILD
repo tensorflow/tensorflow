@@ -859,6 +859,8 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.h",
             "platform/*.cc",
+            "platform/hexagon/**/*.h",
+            "platform/hexagon/**/*.cc",
         ] + tf_additional_lib_srcs(),
         exclude = [
             "**/*test*",
