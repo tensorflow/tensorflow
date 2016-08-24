@@ -128,6 +128,13 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                       icon="fullscreen"
                       on-tap="toggleSelected"
                     ></paper-icon-button>
+                      <paper-icon-button
+                              class="log-option-button"
+                              icon="line-weight"
+                              on-tap="toggleYScale"
+                              title="Toggle y-axis scale (log, linear)"
+                              ></paper-icon-button>
+
                   </div>
                   <template is="dom-if" if="[[_showDownloadLinks]]">
                     <div class="card-bottom-row">
@@ -223,6 +230,17 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
         var chartScaffold = currentTarget.previousElementSibling;
         if (chartScaffold) {
           chartScaffold.chart().redraw();
+        }
+      },
+      toggleYScale: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+
+        var b = currentTarget.parentNode.querySelector('.log-option-button');
+        var c = currentTarget.parentNode.querySelector('vz-line-chart');
+        if (c !== null) {
+          c.yScale = c.yScale === 'log' ? 'linear' : 'log';
+          b.icon = c.yScale === 'log' ? 'line-weight' : 'reorder';
+          c.redraw();
         }
       },
       validRuns: function(tag, runsChange, run2tagChange) {
