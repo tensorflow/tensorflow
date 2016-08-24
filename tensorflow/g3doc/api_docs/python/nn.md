@@ -12,7 +12,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 The activation ops provide different types of nonlinearities for use in neural
 networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
 `softplus`, and `softsign`), continuous but not everywhere differentiable
-functions (`relu`, `relu6`, and `relu_x`), and random regularization
+functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
 (`dropout`).
 
 All activation ops apply componentwise, and produce a tensor of the same
@@ -40,6 +40,29 @@ Computes rectified linear: `max(features, 0)`.
 ### `tf.nn.relu6(features, name=None)` {#relu6}
 
 Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+
+##### Args:
+
+
+*  <b>`features`</b>: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+    `int16`, or `int8`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` with the same type as `features`.
+
+
+- - -
+
+### `tf.nn.crelu(features, name=None)` {#crelu}
+
+Computes Concatenated ReLU.
+
+Concatenates a ReLU which selects only the positive part of the activation
+with a ReLU which selects only the *negative* part of the activation.
+Note that as a result this non-linearity doubles the depth of the activations.
+Source: https://arxiv.org/abs/1603.05201
 
 ##### Args:
 

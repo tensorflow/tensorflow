@@ -452,6 +452,7 @@
   * [`conv2d`](../../api_docs/python/nn.md#conv2d)
   * [`conv2d_transpose`](../../api_docs/python/nn.md#conv2d_transpose)
   * [`conv3d`](../../api_docs/python/nn.md#conv3d)
+  * [`crelu`](../../api_docs/python/nn.md#crelu)
   * [`ctc_beam_search_decoder`](../../api_docs/python/nn.md#ctc_beam_search_decoder)
   * [`ctc_greedy_decoder`](../../api_docs/python/nn.md#ctc_greedy_decoder)
   * [`ctc_loss`](../../api_docs/python/nn.md#ctc_loss)
