@@ -29,10 +29,10 @@ iris = datasets.load_iris()
 x_train, x_test, y_train, y_test = cross_validation.train_test_split(
     iris.data, iris.target, test_size=0.2, random_state=42)
 
-classifier = learn.TensorFlowLinearClassifier(
+classifier = learn.LinearClassifier(
     feature_columns=learn.infer_real_valued_columns_from_input(x_train),
     n_classes=3)
-classifier.fit(x_train, y_train)
+classifier.fit(x_train, y_train, steps=200)
 score = metrics.accuracy_score(y_test, classifier.predict(x_test))
 print('Accuracy: {0:f}'.format(score))
 

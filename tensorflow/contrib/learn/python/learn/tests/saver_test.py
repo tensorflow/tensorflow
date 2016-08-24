@@ -35,10 +35,9 @@ class SaverTest(tf.test.TestCase):
     iris = datasets.load_iris()
     cont_features = [
         tf.contrib.layers.real_valued_column('', dimension=4)]
-    classifier = learn.TensorFlowLinearClassifier(
-        feature_columns=cont_features, n_classes=3)
-    classifier.fit(iris.data, iris.target)
-    classifier.save(path)
+    classifier = learn.LinearClassifier(
+        feature_columns=cont_features, n_classes=3, model_dir=path)
+    classifier.fit(iris.data, iris.target, steps=200)
     # TODO(ipolosukhin): Remove or restore.
     # new_classifier = learn.TensorFlowEstimator.restore(path)
     # self.assertEqual(type(new_classifier), type(classifier))
