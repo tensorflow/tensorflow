@@ -17,6 +17,7 @@ limitations under the License.
 //
 %{
   #include <memory>
+  #include <vector>
   #include "tensorflow/core/platform/types.h"
   using tensorflow::uint64;
   using tensorflow::string;
@@ -75,6 +76,25 @@ limitations under the License.
     return PyUnicode_FromStringAndSize(s.data(), s.size());
 #endif
   }
+
+  template <class T>
+  bool tf_vector_input_helper(PyObject * seq, std::vector<T> * out,
+                              bool (*convert)(PyObject*, T * const)) {
+    PyObject *item, *it = PyObject_GetIter(seq);
+    if (!it) return false;
+    while ((item = PyIter_Next(it))) {
+      T elem;
+      bool success = convert(item, &elem);
+      Py_DECREF(item);
+      if (!success) {
+        Py_DECREF(it);
+        return false;
+      }
+      if (out) out->push_back(elem);
+    }
+    Py_DECREF(it);
+    return static_cast<bool>(!PyErr_Occurred());
+  }
 %}
 
 %typemap(in) string {
@@ -112,7 +132,7 @@ limitations under the License.
 
 %define _LIST_OUTPUT_TYPEMAP(type, py_converter)
     %typemap(in) std::vector<type>(std::vector<type> temp) {
-  if (!vector_input_helper($input, &temp, _PyObjAs<type>)) {
+  if (!tf_vector_input_helper($input, &temp, _PyObjAs<type>)) {
     if (!PyErr_Occurred())
       PyErr_SetString(PyExc_TypeError, "sequence(type) expected");
     return NULL;
@@ -121,7 +141,7 @@ limitations under the License.
 }
 %typemap(in) const std::vector<type>& (std::vector<type> temp),
    const std::vector<type>* (std::vector<type> temp) {
-  if (!vector_input_helper($input, &temp, _PyObjAs<type>)) {
+  if (!tf_vector_input_helper($input, &temp, _PyObjAs<type>)) {
     if (!PyErr_Occurred())
       PyErr_SetString(PyExc_TypeError, "sequence(type) expected");
     return NULL;
@@ -148,6 +168,7 @@ std::vector<type>* OUTPUT (std::vector<type> temp),
 _LIST_OUTPUT_TYPEMAP(string, _SwigBytes_FromString);
 _LIST_OUTPUT_TYPEMAP(long long, PyLong_FromLongLong);
 _LIST_OUTPUT_TYPEMAP(unsigned long long, PyLong_FromUnsignedLongLong);
+_LIST_OUTPUT_TYPEMAP(unsigned int, PyLong_FromUnsignedLong);
 
 %typemap(in) uint64 {
   // TODO(gps): Check if another implementation
@@ -180,6 +201,7 @@ _LIST_OUTPUT_TYPEMAP(unsigned long long, PyLong_FromUnsignedLongLong);
 
 _COPY_TYPEMAPS(unsigned long long, uint64);
 _COPY_TYPEMAPS(long long, int64);
+_COPY_TYPEMAPS(unsigned int, mode_t);
 
 // SWIG macros for explicit API declaration.
 // Usage:
@@ -191,3 +213,9 @@ _COPY_TYPEMAPS(long long, int64);
 %define %ignoreall %ignore ""; %enddef
 %define %unignore %rename("%s") %enddef
 %define %unignoreall %rename("%s") ""; %enddef
+
+#if SWIG_VERSION < 0x030000
+// Define some C++11 keywords safe to ignore so older SWIG does not choke.
+%define final %enddef
+%define override %enddef
+#endif

@@ -104,6 +104,13 @@ Initializes a DNNClassifier instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNClassifier.config` {#DNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -132,7 +139,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
+#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
 Exports inference graph into given dir.
 

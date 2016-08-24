@@ -36,8 +36,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 ##### Returns:
 
-  String `Tensor` of batched `Example` proto. If `keep_keys` is True, then
-  returns tuple of string `Tensor`s, where first value is the key.
+  String `Tensor` of batched `Example` proto.
 
 ##### Raises:
 

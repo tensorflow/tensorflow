@@ -416,8 +416,8 @@ def inception_v3_base(inputs,
 
 def inception_v3(inputs,
                  num_classes=1000,
-                 dropout_keep_prob=0.8,
                  is_training=True,
+                 dropout_keep_prob=0.8,
                  min_depth=16,
                  depth_multiplier=1.0,
                  prediction_fn=slim.softmax,
@@ -441,8 +441,8 @@ def inception_v3(inputs,
   Args:
     inputs: a tensor of size [batch_size, height, width, channels].
     num_classes: number of predicted classes.
-    dropout_keep_prob: the percentage of activation values that are retained.
     is_training: whether is training or not.
+    dropout_keep_prob: the percentage of activation values that are retained.
     min_depth: Minimum depth value (number of channels) for all convolution ops.
       Enforced when depth_multiplier < 1, and not an active constraint when
       depth_multiplier >= 1.

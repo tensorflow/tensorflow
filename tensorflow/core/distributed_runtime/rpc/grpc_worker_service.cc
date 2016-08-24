@@ -85,7 +85,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
   }
 
 // This macro creates a new request for the given RPC method name
-// (e.g., `ENQUEUE_REQUEST(GetStatus);`), and enqueues it on
+// (e.g., `ENQUEUE_REQUEST(GetStatus, false);`), and enqueues it on
 // `this->cq_`.
 //
 // This macro is invoked one or more times for each RPC method to
@@ -95,17 +95,17 @@ class GrpcWorkerService : public AsyncServiceInterface {
 // The implementation of the request handler for each RPC method
 // must ensure that it calls ENQUEUE_REQUEST() for that RPC method,
 // to keep accepting new requests.
-#define ENQUEUE_REQUEST(method, supports_cancel)                              \
-  do {                                                                        \
-    mutex_lock l(shutdown_mu_);                                               \
-    if (!is_shutdown_) {                                                      \
-      Call<GrpcWorkerService, grpc::WorkerService::AsyncService,              \
-           method##Request, method##Response>::                               \
-          EnqueueRequest(&worker_service_, cq_,                               \
-                         &grpc::WorkerService::AsyncService::Request##method, \
-                         &GrpcWorkerService::method##Handler,                 \
-                         (supports_cancel));                                  \
-    }                                                                         \
+#define ENQUEUE_REQUEST(method, supports_cancel)                       \
+  do {                                                                 \
+    mutex_lock l(shutdown_mu_);                                        \
+    if (!is_shutdown_) {                                               \
+      Call<GrpcWorkerService, grpc::WorkerService::AsyncService,       \
+           method##Request, method##Response>::                        \
+          EnqueueRequestForMethod(                                     \
+              &worker_service_, cq_,                                   \
+              static_cast<int>(GrpcWorkerMethod::k##method),           \
+              &GrpcWorkerService::method##Handler, (supports_cancel)); \
+    }                                                                  \
   } while (0)
 
   // This method blocks forever handling requests from the completion queue.
@@ -145,7 +145,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
           static_cast<UntypedCall<GrpcWorkerService>::Tag*>(tag);
       if (callback_tag) {
         callback_tag->OnCompleted(this, ok);
-        delete callback_tag;
       } else {
         // NOTE(mrry): A null `callback_tag` indicates that this is
         // the shutdown alarm.
@@ -267,9 +266,9 @@ class GrpcWorkerService : public AsyncServiceInterface {
     if (!is_shutdown_) {
       Call<GrpcWorkerService, grpc::WorkerService::AsyncService,
            RecvTensorRequest, ::grpc::ByteBuffer>::
-          EnqueueRequest(
+          EnqueueRequestForMethod(
               &worker_service_, cq_,
-              &grpc::WorkerService::AsyncService::RequestRecvTensorRaw,
+              static_cast<int>(GrpcWorkerMethod::kRecvTensor),
               &GrpcWorkerService::RecvTensorHandlerRaw,
               true /* supports cancel*/);
     }

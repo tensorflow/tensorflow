@@ -26,9 +26,9 @@
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 using std::placeholders::_1;
 using tensorforest::BestFeatureClassification;
@@ -45,7 +45,7 @@ REGISTER_OP("BestSplits")
     .Input("accumulator_sqaures: float")
     .Output("split_indices: int32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* finished_nodes;
+      ShapeHandle finished_nodes;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &finished_nodes));
       c->set_output(0, c->Vector(c->Dim(finished_nodes, 0)));
       return Status::OK();

@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("QuantizeV2")
     .Input("input: float")
@@ -33,7 +33,7 @@ REGISTER_OP("QuantizeV2")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
@@ -110,7 +110,7 @@ REGISTER_OP("Dequantize")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       return Status::OK();
@@ -168,7 +168,7 @@ REGISTER_OP("QuantizedConcat")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::ConcatShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       for (int i = 2; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
       }

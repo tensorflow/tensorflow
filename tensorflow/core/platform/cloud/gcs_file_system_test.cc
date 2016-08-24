@@ -192,9 +192,10 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-           "path%2Frandom_access.txt?fields=size\n"
+           "path%2Frandom_access.txt?fields=size%2Cupdated\n"
            "Auth Token: fake_token\n",
-           strings::StrCat("{\"size\": \"", content.size(), "\"}")),
+           strings::StrCat("{\"size\": \"", content.size(),
+                           "\", \"updated\": \"2016-04-29T23:15:24.896Z\"}")),
        new FakeHttpRequest(
            strings::StrCat("Uri: https://bucket.storage.googleapis.com/"
                            "path%2Frandom_access.txt\n"
@@ -398,9 +399,10 @@ TEST(GcsFileSystemTest, DeleteDir_NonEmpty) {
 TEST(GcsFileSystemTest, GetFileSize) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-      "file.txt?fields=size\n"
+      "file.txt?fields=size%2Cupdated\n"
       "Auth Token: fake_token\n",
-      strings::StrCat("{\"size\": \"1010\"}"))});
+      strings::StrCat("{\"size\": \"1010\","
+                      "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
@@ -432,6 +434,25 @@ TEST(GcsFileSystemTest, RenameFile) {
 
   TF_EXPECT_OK(
       fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
+}
+
+TEST(GcsFileSystemTest, Stat) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+      "file.txt?fields=size%2Cupdated\n"
+      "Auth Token: fake_token\n",
+      strings::StrCat("{\"size\": \"1010\","
+                      "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
+
+  FileStatistics stat;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
+  EXPECT_EQ(1010, stat.length);
+  EXPECT_EQ(1461971724896, stat.mtime_nsec / 1000 / 1000);
+  EXPECT_EQ(0600, stat.mode);
 }
 
 }  // namespace

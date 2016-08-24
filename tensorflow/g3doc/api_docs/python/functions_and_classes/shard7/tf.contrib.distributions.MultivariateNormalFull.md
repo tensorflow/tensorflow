@@ -402,7 +402,8 @@ Sample `n` observations from the Multivariate Normal Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 

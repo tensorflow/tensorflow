@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -466,7 +467,67 @@ Status GcsFileSystem::GetChildren(const string& dirname,
 }
 
 Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
-  return errors::Unimplemented("Stat unimplemented");
+  if (!stat) {
+    return errors::Internal("'stat' cannot be nullptr.");
+  }
+  string bucket, object_prefix;
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object_prefix));
+
+  string auth_token;
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+
+  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
+  StringPiece response_piece;
+
+  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+  TF_RETURN_IF_ERROR(request->Init());
+  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object_prefix),
+      "?fields=size%2Cupdated")));
+  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+  TF_RETURN_IF_ERROR(
+      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading metadata of ",
+                                  fname);
+  std::stringstream response_stream;
+  response_stream << response_piece;
+
+  Json::Value root;
+  Json::Reader reader;
+  if (!reader.parse(response_stream.str(), root)) {
+    return errors::Internal("Couldn't parse JSON response from GCS.");
+  }
+
+  // Parse file size.
+  const auto size = root.get("size", Json::Value::null);
+  if (size == Json::Value::null) {
+    return errors::Internal("'size' was expected in the JSON response.");
+  }
+  if (size.isNumeric()) {
+    stat->length = size.asUInt64();
+  } else if (size.isString()) {
+    if (!strings::safe_strto64(size.asString().c_str(), &(stat->length))) {
+      return errors::Internal("'size' couldn't be parsed as a nubmer.");
+    }
+  } else {
+    return errors::Internal("'size' is not a number in the JSON response.");
+  }
+
+  // Parse file modification time.
+  const auto updated = root.get("updated", Json::Value::null);
+  if (updated == Json::Value::null) {
+    return errors::Internal("'updated' was expected in the JSON response.");
+  }
+  if (!updated.isString()) {
+    return errors::Internal(
+        "'updated' is expected to be a string in the JSON response.");
+  }
+  TF_RETURN_IF_ERROR(ParseRfc3339Time(updated.asString(), &(stat->mtime_nsec)));
+
+  // Converting GCS ACL into mode_t is hard, return -rw------- instead.
+  stat->mode = 0600;
+
+  return Status::OK();
 }
 
 Status GcsFileSystem::DeleteFile(const string& fname) {
@@ -501,46 +562,12 @@ Status GcsFileSystem::DeleteDir(const string& dirname) {
 }
 
 Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
-  string bucket, object_prefix;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object_prefix));
-
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
-
-  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
-  StringPiece response_piece;
-
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(
-      strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
-                      request->EscapeString(object_prefix), "?fields=size")));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-  TF_RETURN_IF_ERROR(
-      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading metadata of ",
-                                  fname);
-  std::stringstream response_stream;
-  response_stream << response_piece;
-
-  Json::Value root;
-  Json::Reader reader;
-  if (!reader.parse(response_stream.str(), root)) {
-    return errors::Internal("Couldn't parse JSON response from GCS.");
+  if (!file_size) {
+    return errors::Internal("'file_size' cannot be nullptr.");
   }
-  const auto size = root.get("size", Json::Value::null);
-  if (size == Json::Value::null) {
-    return errors::Internal("'size' was expected in the JSON response.");
-  }
-  if (size.isNumeric()) {
-    *file_size = size.asUInt64();
-  } else if (size.isString()) {
-    if (!strings::safe_strtou64(size.asString().c_str(), file_size)) {
-      return errors::Internal("'size' couldn't be parsed as a nubmer.");
-    }
-  } else {
-    return errors::Internal("'size' is not a number in the JSON response.");
-  }
+  FileStatistics stat;
+  TF_RETURN_IF_ERROR(Stat(fname, &stat));
+  *file_size = stat.length;
   return Status::OK();
 }
 

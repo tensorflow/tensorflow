@@ -21,9 +21,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
-from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixin
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
@@ -315,18 +313,3 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   @property
   def bias_(self):
     return self.linear_bias_
-
-
-# TensorFlowLinearRegressor and TensorFlowLinearClassifier are deprecated.
-class TensorFlowLinearRegressor(DeprecatedMixin, LinearRegressor,
-                                _sklearn.RegressorMixin):
-  pass
-
-
-class TensorFlowLinearClassifier(DeprecatedMixin, LinearClassifier,
-                                 _sklearn.ClassifierMixin):
-  pass
-
-
-TensorFlowRegressor = TensorFlowLinearRegressor
-TensorFlowClassifier = TensorFlowLinearClassifier

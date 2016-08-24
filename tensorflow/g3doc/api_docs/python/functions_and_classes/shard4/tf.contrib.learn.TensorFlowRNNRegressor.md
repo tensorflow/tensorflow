@@ -61,6 +61,13 @@ Returns bias of the rnn layer.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.config` {#TensorFlowRNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowRNNRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.
@@ -86,7 +93,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
 
 Exports inference graph into given dir.
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"

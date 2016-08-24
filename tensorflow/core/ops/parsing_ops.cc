@@ -20,9 +20,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
@@ -31,7 +31,7 @@ REGISTER_OP("DecodeRaw")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(
           c->input(0), c->Vector(InferenceContext::kUnknownDim), &out));
       c->set_output(0, out);
@@ -68,9 +68,9 @@ REGISTER_OP("ParseExample")
       ParseSingleExampleAttrs attrs;
       TF_RETURN_IF_ERROR(attrs.Init(c));
 
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // names
 
       // Output sparse_indices, sparse_values, and sparse_shapes.
@@ -89,7 +89,7 @@ REGISTER_OP("ParseExample")
       TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_dense; ++i) {
         attrs.dense_shapes[i].AsProto(&shape_proto);
-        const Shape* dense;
+        ShapeHandle dense;
         TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &dense));
         TF_RETURN_IF_ERROR(c->Concatenate(input, dense, &dense));
         c->set_output(output_idx++, dense);
@@ -161,11 +161,11 @@ REGISTER_OP("ParseSingleSequenceExample")
     .Attr("feature_list_sparse_types: list({float,int64,string}) >= 0 = []")
     .Attr("feature_list_dense_shapes: list(shape) >= 0 = []")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       ParseSingleSequenceExampleAttrs attrs;
       TF_RETURN_IF_ERROR(attrs.Init(c));
 
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
 
       // feature_list_dense_missing_assumed_empty
@@ -189,7 +189,7 @@ REGISTER_OP("ParseSingleSequenceExample")
       TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_context_dense; ++i) {
         attrs.context_dense_shapes[i].AsProto(&shape_proto);
-        const Shape* s;
+        ShapeHandle s;
         TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
         c->set_output(output_idx++, s);
       }
@@ -209,7 +209,7 @@ REGISTER_OP("ParseSingleSequenceExample")
       // Output feature_list_dense_shapes.
       for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
         attrs.feature_list_dense_shapes[i].AsProto(&shape_proto);
-        const Shape* s;
+        ShapeHandle s;
         TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
         TF_RETURN_IF_ERROR(
             c->Concatenate(c->Vector(InferenceContext::kUnknownDim), s, &s));
@@ -312,7 +312,7 @@ REGISTER_OP("DecodeCSV")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
-        const Shape* v;
+        ShapeHandle v;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &v));
         if (c->Value(c->Dim(v, 0)) > 1) {
           return errors::InvalidArgument(

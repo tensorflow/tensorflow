@@ -21,9 +21,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("QuantizedAvgPool")
     .Input("input: T")
@@ -38,7 +38,7 @@ REGISTER_OP("QuantizedAvgPool")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::AvgPoolShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
@@ -76,7 +76,7 @@ REGISTER_OP("QuantizedBiasAdd")
     .Attr("out_type: quantizedtype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::BiasAddShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
@@ -117,7 +117,7 @@ REGISTER_OP("QuantizedConv2D")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
@@ -159,7 +159,7 @@ REGISTER_OP("QuantizedMaxPool")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
@@ -193,7 +193,7 @@ REGISTER_OP("QuantizedRelu")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
@@ -222,7 +222,7 @@ REGISTER_OP("QuantizedRelu6")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
@@ -252,7 +252,7 @@ REGISTER_OP("QuantizedReluX")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
@@ -294,17 +294,17 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
     .Attr("variance_epsilon: float")
     .Attr("scale_after_normalization: bool")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
-      const Dimension* last_dim = c->Dim(input, 3);
+      DimensionHandle last_dim = c->Dim(input, 3);
       for (int i = 1; i < 5; ++i) {  // covers m, v, beta, gamma
-        const Shape* vec;
+        ShapeHandle vec;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i * 3), 1, &vec));
         TF_RETURN_IF_ERROR(c->Merge(last_dim, c->Dim(vec, 0), &last_dim));
       }
 
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &out));
       c->set_output(0, out);
       c->set_output(1, c->Scalar());

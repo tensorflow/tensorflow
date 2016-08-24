@@ -167,7 +167,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
 
   if (attr_value.value_case() == AttrValue::kPlaceholder) {
     return errors::InvalidArgument(
-        "AttrValue had value with unexpected type 'placeholder");
+        "AttrValue had value with unexpected type 'placeholder'");
   }
 
   // If the attr type is 'list', we expect attr_value.has_list() to be

@@ -102,6 +102,13 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNRegressor.config` {#DNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -130,7 +137,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
+#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
 
 Exports inference graph into given dir.
 

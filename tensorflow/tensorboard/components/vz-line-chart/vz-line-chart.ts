@@ -304,8 +304,11 @@ module VZ {
         points =
             _.sortBy(points, (d) => valueSortMethod(d.datum, -1, d.dataset))
                 .reverse();
-      } else {  // Sort by 'name'
-        points = _.sortBy(points, (d) => d.dataset.metadata().name);
+      } else {
+        // The 'default' sorting method maintains the order of names passed to
+        // setVisibleSeries(). However we reverse that order when defining the
+        // datasets. So we must call reverse again to restore the order.
+        points = points.slice(0).reverse();
       }
 
       let rows = this.tooltip.select('tbody')

@@ -64,7 +64,8 @@ class BaseDistribution(object):
     """Generate `n` samples.
 
     Args:
-      n: scalar. Number of samples to draw.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer seed for RNG
       name: name to give to the op.
 

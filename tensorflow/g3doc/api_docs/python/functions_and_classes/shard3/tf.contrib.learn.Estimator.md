@@ -47,6 +47,13 @@ Constructs an Estimator instance.
 
 - - -
 
+#### `tf.contrib.learn.Estimator.config` {#Estimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#Estimator.evaluate}
 
 See `Evaluable`.
@@ -61,7 +68,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
+#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
 
 Exports inference graph into given dir.
 

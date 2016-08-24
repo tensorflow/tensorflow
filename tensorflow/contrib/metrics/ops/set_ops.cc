@@ -19,9 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("SetSize")
     .Input("set_indices: int64")
@@ -67,15 +67,15 @@ REGISTER_OP("DenseToDenseSetOperation")
       // python/ops/set_ops.py.
       // Dimension n contains the set values to be compared, so ranks and the
       // first n-1 dimensions of inputs and output must match.
-      const Dimension* output_rank;
-      const Shape* input0_shape = c->input(0);
+      DimensionHandle output_rank;
+      ShapeHandle input0_shape = c->input(0);
       if (c->RankKnown(input0_shape)) {
         const int32 input0_rank = c->Rank(input0_shape);
         if (input0_rank < 2) {
           return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
                                          input0_rank, ".");
         }
-        const Shape* input1_shape = c->input(1);
+        ShapeHandle input1_shape = c->input(1);
         if (c->RankKnown(input1_shape)) {
           const int32 rank = c->Rank(input1_shape);
           if (input0_rank != rank) {
@@ -83,19 +83,19 @@ REGISTER_OP("DenseToDenseSetOperation")
                                            input0_rank, ", input 1 ", rank,
                                            ".");
           }
-          const Shape* group0_shape;
+          ShapeHandle group0_shape;
           TF_RETURN_IF_ERROR(
               c->Subshape(input0_shape, 0, rank - 1, &group0_shape));
-          const Shape* group1_shape;
+          ShapeHandle group1_shape;
           TF_RETURN_IF_ERROR(
               c->Subshape(input1_shape, 0, rank - 1, &group1_shape));
-          const Shape* unused_shape;
+          ShapeHandle unused_shape;
           TF_RETURN_IF_ERROR(
               c->Merge(group0_shape, group1_shape, &unused_shape));
         }
         output_rank = c->MakeDim(input0_rank);
       } else {
-        const Shape* input1_shape = c->input(1);
+        ShapeHandle input1_shape = c->input(1);
         if (c->RankKnown(input1_shape)) {
           const int32 input1_rank = c->Rank(input1_shape);
           if (input1_rank < 2) {
@@ -107,9 +107,9 @@ REGISTER_OP("DenseToDenseSetOperation")
           output_rank = c->UnknownDim();
         }
       }
-      const Dimension* output_num_elements = c->Dim(input0_shape, 0);
+      DimensionHandle output_num_elements = c->Dim(input0_shape, 0);
       if (!c->ValueKnown(output_num_elements)) {
-        const Shape* input1_shape = c->input(1);
+        ShapeHandle input1_shape = c->input(1);
         output_num_elements = c->Dim(input1_shape, 0);
         if (!c->ValueKnown(output_num_elements)) {
           output_num_elements = c->UnknownDim();
@@ -163,8 +163,8 @@ REGISTER_OP("DenseToSparseSetOperation")
       // python/ops/set_ops.py.
       // Dimension n contains the set values to be compared, so ranks and the
       // first n-1 dimensions of inputs and output must match.
-      const Dimension* output_rank;
-      const Shape* input0_shape = c->input(0);
+      DimensionHandle output_rank;
+      ShapeHandle input0_shape = c->input(0);
       if (c->RankKnown(input0_shape)) {
         const int32 input0_rank = c->Rank(input0_shape);
         if (input0_rank < 2) {
@@ -177,7 +177,7 @@ REGISTER_OP("DenseToSparseSetOperation")
       }
       TF_RETURN_IF_ERROR(
           c->ValidateSparseTensor(c->input(1), c->input(2), c->input(3)));
-      const Dimension* output_num_elements = c->Dim(input0_shape, 0);
+      DimensionHandle output_num_elements = c->Dim(input0_shape, 0);
       if (!c->ValueKnown(output_num_elements)) {
         output_num_elements = c->UnknownDim();
       }

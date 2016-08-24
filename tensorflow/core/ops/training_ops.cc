@@ -18,28 +18,28 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 // Handle the gradient and, if <sparse>, indices inputs.
 // <s> is an input+output parameter, containing the current known input shape to
 // the gradient.
 static Status HandleGradAndIndicesInputs(InferenceContext* c, bool sparse,
-                                         int grad_idx, const Shape** s) {
-  const Shape* grad = c->input(grad_idx);
+                                         int grad_idx, ShapeHandle* s) {
+  ShapeHandle grad = c->input(grad_idx);
   if (!sparse) {
     TF_RETURN_IF_ERROR(c->Merge(*s, grad, s));
     return Status::OK();
   }
   // Indices is a vector where indices.dim[0].rank == grad[0].rank.
-  const Shape* indices;
+  ShapeHandle indices;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(grad_idx + 1), 1, &indices));
-  const Dimension* unused;
+  DimensionHandle unused;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(indices, 0), c->Dim(grad, 0), &unused));
 
   // Trailing part of grad matches *s.
-  const Shape* grad_subshape;
+  ShapeHandle grad_subshape;
   TF_RETURN_IF_ERROR(c->Subshape(grad, 1, &grad_subshape));
   TF_RETURN_IF_ERROR(c->Merge(*s, grad_subshape, s));
 
@@ -47,8 +47,8 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, bool sparse,
 }
 
 static Status ApplyGradientDescentShapeFn(InferenceContext* c) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));  // alpha
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // delta
   c->set_output(0, s);
@@ -76,8 +76,8 @@ use_locking: If `True`, the subtraction will be protected by a lock;
 
 static Status ApplyProximalGradientDescentShapeFn(InferenceContext* c,
                                                   bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));  // alpha
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // l1
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l2
@@ -146,8 +146,8 @@ use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 static Status ApplyAdadeltaShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // accum update
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr
@@ -224,8 +224,8 @@ a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
 static Status ApplyAdagradShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
   TF_RETURN_IF_ERROR(
@@ -261,8 +261,8 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
   contention.
 )doc");
 static Status ApplyProximalAdagradShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l1
@@ -335,8 +335,8 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
 )doc");
 
 static Status ApplyAdagradDAShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                      // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));  // grad_accumulator
   TF_RETURN_IF_ERROR(
       c->Merge(s, c->input(2), &s));  // gradient_squared_accumulator
@@ -453,8 +453,8 @@ a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
 static Status ApplyFtrlShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                      // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));  // accum
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));  // linear
   TF_RETURN_IF_ERROR(
@@ -549,8 +549,8 @@ use_locking: If `True`, updating of the var and accum tensors will be protected
 )doc");
 
 static Status ApplyMomentumShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // accum
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
   TF_RETURN_IF_ERROR(
@@ -635,8 +635,8 @@ var - lr * momentum * accum.
 )doc");
 
 static Status ApplyAdamShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // m
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // v
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // beta1_power
@@ -693,8 +693,8 @@ use_locking: If `True`, updating of the var, m, and v tensors will be protected
 )doc");
 
 static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {
-  const Shape* unused;
-  const Shape* s = c->input(0);                              // var
+  ShapeHandle unused;
+  ShapeHandle s = c->input(0);                               // var
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));          // ms
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // mom
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr

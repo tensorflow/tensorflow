@@ -109,8 +109,8 @@ TEST(ShapeInferenceTest, WithRank) {
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
-  const Shape* s1 = nullptr;
-  const Shape* s2 = nullptr;
+  ShapeHandle s1 = nullptr;
+  ShapeHandle s2 = nullptr;
 
   // WithRank on a shape with unknown dimensionality always succeeds.
   EXPECT_TRUE(c.WithRank(in0, 1, &s1).ok());
@@ -147,8 +147,8 @@ TEST(ShapeInferenceTest, WithRankAtMost) {
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
-  const Shape* s1 = nullptr;
-  const Shape* s2 = nullptr;
+  ShapeHandle s1 = nullptr;
+  ShapeHandle s2 = nullptr;
 
   // WithRankAtMost on a shape with unknown dimensionality always succeeds.
   EXPECT_TRUE(c.WithRankAtMost(in0, 1, &s1).ok());
@@ -182,8 +182,8 @@ TEST(ShapeInferenceTest, WithRankAtLeast) {
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
-  const Shape* s1 = nullptr;
-  const Shape* s2 = nullptr;
+  ShapeHandle s1 = nullptr;
+  ShapeHandle s2 = nullptr;
 
   // WithRankAtLeast on a shape with unknown dimensionality always succeeds.
   EXPECT_TRUE(c.WithRankAtLeast(in0, 1, &s1).ok());
@@ -217,8 +217,8 @@ TEST(ShapeInferenceTest, WithValue) {
 
   auto d0 = c.Dim(c.input(0), 0);
   auto d1 = c.Dim(c.input(0), 1);
-  const Dimension* out1 = nullptr;
-  const Dimension* out2 = nullptr;
+  DimensionHandle out1 = nullptr;
+  DimensionHandle out2 = nullptr;
 
   // WithValue on a dimension with unknown value always succeeds.
   EXPECT_TRUE(c.WithValue(d1, 1, &out1).ok());
@@ -259,7 +259,7 @@ TEST(ShapeInferenceTest, MergeDim) {
   auto d2_b = c.Dim(c.input(0), 2);
   auto d1 = c.Dim(c.input(0), 3);
   auto d_unknown_b = c.Dim(c.input(0), 4);
-  const Dimension* out = nullptr;
+  DimensionHandle out = nullptr;
 
   // Merging anything with unknown returns the same pointer.
   EXPECT_TRUE(c.Merge(d2, d_unknown, &out).ok());
@@ -302,7 +302,7 @@ TEST(ShapeInferenceTest, MergeShape) {
   auto s_1_3 = c.input(4);
   auto s_unknown_b = c.input(5);
   auto s_1 = c.input(6);
-  const Shape* out = nullptr;
+  ShapeHandle out = nullptr;
 
   // Merging any shape with unknown returns the shape.
   EXPECT_TRUE(c.Merge(s_unknown, s_1_2, &out).ok());
@@ -359,8 +359,8 @@ TEST(ShapeInferenceTest, MergePrefix) {
   auto s_1_u_3 = c.input(2);
   auto s_2_4 = c.input(3);
 
-  const Shape* s_out = nullptr;
-  const Shape* s_prefix_out = nullptr;
+  ShapeHandle s_out = nullptr;
+  ShapeHandle s_prefix_out = nullptr;
 
   // Merging with unknown returns the inputs.
   EXPECT_TRUE(c.MergePrefix(s_unknown, s_u_2, &s_out, &s_prefix_out).ok());
@@ -399,8 +399,8 @@ TEST(ShapeInferenceTest, Subshape) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(2, 2), {"[1,2,3,?,5]", "?"}, {});
 
-  const Shape* unknown = c.input(1);
-  const Shape* out;
+  ShapeHandle unknown = c.input(1);
+  ShapeHandle out;
   EXPECT_TRUE(c.Subshape(unknown, 0, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out == unknown);
@@ -412,7 +412,7 @@ TEST(ShapeInferenceTest, Subshape) {
   EXPECT_TRUE(out != unknown);
 
   const int kFullRank = 5;
-  const Shape* out_arr[4];
+  ShapeHandle out_arr[4];
   auto in0 = c.input(0);
   EXPECT_TRUE(c.Subshape(in0, 0, &out).ok());
   EXPECT_EQ("[1,2,3,?,5]", c.DebugString(out));
@@ -472,8 +472,8 @@ TEST(ShapeInferenceTest, Concatenate) {
 
   auto in0 = c.input(0);
   auto in1 = c.input(1);
-  const Shape* unknown = c.input(2);
-  const Shape* out;
+  ShapeHandle unknown = c.input(2);
+  ShapeHandle out;
   EXPECT_TRUE(c.Concatenate(unknown, unknown, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out != unknown);
@@ -499,7 +499,7 @@ TEST(ShapeInferenceTest, ReplaceDim) {
   auto in = c.input(0);
   auto unknown = c.input(1);
 
-  const Shape* replaced;
+  ShapeHandle replaced;
   EXPECT_TRUE(c.ReplaceDim(in, 0, c.Dim(in, 1), &replaced).ok());
   EXPECT_EQ("[2,2,3]", c.DebugString(replaced));
   EXPECT_TRUE(c.ReplaceDim(in, 2, c.Dim(in, 1), &replaced).ok());
@@ -527,7 +527,7 @@ TEST(ShapeInferenceTest, MakeShape) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(1, 2), {"[1,2,3,?,5]"}, {});
 
-  std::vector<const Dimension*> dims;
+  std::vector<DimensionHandle> dims;
   auto in0 = c.input(0);
   const int rank = c.Rank(in0);
   for (int i = 0; i < rank; ++i) {
@@ -608,7 +608,7 @@ TEST(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   auto create = [](Tensor* t) {
     NodeDef def;
     InferenceContext c(&def, MakeOpDef(1, 0), {"?"}, {t});
-    const Shape* out;
+    ShapeHandle out;
     Status s = c.MakeShapeFromShapeTensor(0, &out);
     if (s.ok()) {
       return c.DebugString(out);
@@ -643,7 +643,7 @@ TEST(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   {
     NodeDef def;
     InferenceContext c(&def, MakeOpDef(1, 0), {"[1,?]"}, {nullptr});
-    const Shape* out;
+    ShapeHandle out;
     EXPECT_EQ("Shape must be rank 1 but is rank 2",
               c.MakeShapeFromShapeTensor(0, &out).error_message());
   }
@@ -655,7 +655,7 @@ TEST(ShapeInferenceTest, MakeShapeFromShapeProto) {
   TensorShapeProto proto;
 
   // With a set unknown rank.
-  const Shape* out;
+  ShapeHandle out;
   proto.set_unknown_rank(true);
   EXPECT_TRUE(c.MakeShapeFromShapeProto(proto, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
@@ -733,7 +733,7 @@ TEST(ShapeInferenceTest, MakeDimForScalarInput) {
   NodeDef def;
   InferenceContext c(&def, MakeOpDef(2, 2), {"[]", "[]"}, {&t1, &t2});
 
-  const Dimension* d;
+  DimensionHandle d;
   EXPECT_TRUE(c.MakeDimForScalarInput(0, &d).ok());
   EXPECT_EQ("20", c.DebugString(d));
 
@@ -776,7 +776,7 @@ TEST(ShapeInferenceTest, Divide) {
   auto d_unknown = c.Dim(s, 1);
 
   // Dividing unknown by non-1 gives new unknown.
-  const Dimension* out;
+  DimensionHandle out;
   EXPECT_TRUE(c.Divide(d_unknown, 2, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out != d_unknown);
@@ -808,7 +808,7 @@ TEST(ShapeInferenceTest, Add) {
   auto d_0 = c.Dim(s, 2);
 
   // Adding non-zero to unknown gives new unknown.
-  const Dimension* out;
+  DimensionHandle out;
   EXPECT_TRUE(c.Add(d_unknown, 1, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out != d_unknown);
@@ -858,7 +858,7 @@ TEST(ShapeInferenceTest, Subtract) {
   auto d_5 = c.Dim(s, 3);
 
   // Subtracting non-zero from unknown gives new unknown.
-  const Dimension* out;
+  DimensionHandle out;
   EXPECT_TRUE(c.Subtract(d_unknown, 1, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(out != d_unknown);
@@ -906,7 +906,7 @@ TEST(ShapeInferenceTest, Multiply) {
   auto d_1 = c.Dim(s, 3);
 
   // Multiplying non-zero to unknown gives new unknown.
-  const Dimension* out;
+  DimensionHandle out;
   EXPECT_TRUE(c.Multiply(d_unknown, 2, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
 
@@ -979,7 +979,7 @@ TEST(ShapeInferenceTest, Min) {
   auto d_0 = c.Dim(s, 3);
 
   // Minimum involving zero and unknown returns zero.
-  const Dimension* out;
+  DimensionHandle out;
   EXPECT_TRUE(c.Min(d_0, d_unknown, &out).ok());
   EXPECT_EQ(d_0, out);
   EXPECT_TRUE(c.Min(d_unknown, d_0, &out).ok());
@@ -1026,7 +1026,7 @@ TEST(ShapeInferenceTest, Max) {
   auto d_unknown = c.Dim(s, 2);
 
   // Maximum involving unknowns gives new unknown.
-  const Dimension* out;
+  DimensionHandle out;
   EXPECT_TRUE(c.Max(d_unknown, d_unknown, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(c.Max(d_unknown, 1, &out).ok());

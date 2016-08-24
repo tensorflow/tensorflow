@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -95,7 +95,7 @@ class EvaluationTest(tf.test.TestCase):
       self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
 
   def testFinalOpsOnEvaluationLoop(self):
-    _, update_op = slim.metrics.streaming_accuracy(
+    value_op, update_op = slim.metrics.streaming_accuracy(
         self._predictions, self._labels)
     init_op = tf.group(tf.initialize_all_variables(),
                        tf.initialize_local_variables())
@@ -104,15 +104,18 @@ class EvaluationTest(tf.test.TestCase):
     gfile.MakeDirs(chkpt_dir)
     logdir = os.path.join(self.get_temp_dir(), 'tmp_logs2/')
     gfile.MakeDirs(logdir)
-    saver = tf.train.Saver(tf.all_variables())
+
+    # Save initialized variables to checkpoint directory
+    saver = tf.train.Saver()
     with self.test_session() as sess:
       init_op.run()
-      # Save initialized variables to checkpoint directory
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
-      accuracy_value = slim.evaluation.evaluation_loop(
-          '', chkpt_dir, logdir, final_op=update_op,
-          max_number_of_evaluations=1)
-      self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
+
+    # Now, run the evaluation loop:
+    accuracy_value = slim.evaluation.evaluation_loop(
+        '', chkpt_dir, logdir, eval_op=update_op, final_op=value_op,
+        max_number_of_evaluations=1)
+    self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
 
   def _create_names_to_metrics(self, predictions, labels):
     accuracy0, update_op0 = tf.contrib.metrics.streaming_accuracy(
@@ -246,6 +249,54 @@ class EvaluationTest(tf.test.TestCase):
     self.assertGreater(end, start + 0.5)
     # The timeout kicked in.
     self.assertLess(end, start + 1.1)
+
+
+class SingleEvaluationTest(tf.test.TestCase):
+
+  def setUp(self):
+    super(SingleEvaluationTest, self).setUp()
+
+    num_classes = 8
+    batch_size = 16
+    inputs, labels = GenerateTestData(num_classes, batch_size)
+    self._expected_accuracy = GroundTruthAccuracy(inputs, labels, batch_size)
+
+    self._global_step = slim.get_or_create_global_step()
+    self._inputs = tf.constant(inputs, dtype=tf.float32)
+    self._labels = tf.constant(labels, dtype=tf.int64)
+    self._predictions, self._scale = TestModel(self._inputs)
+
+  def testErrorRaisedIfCheckpointDoesntExist(self):
+    checkpoint_path = os.path.join(self.get_temp_dir(),
+                                   'this_file_doesnt_exist')
+    log_dir = os.path.join(self.get_temp_dir(), 'error_raised')
+    with self.assertRaises(ValueError):
+      slim.evaluation.evaluate_once(checkpoint_path, log_dir)
+
+  def testRestoredModelPerformance(self):
+    checkpoint_path = os.path.join(self.get_temp_dir(), 'model.ckpt')
+    log_dir = os.path.join(self.get_temp_dir(), 'log_dir1/')
+
+    # First, save out the current model to a checkpoint:
+    init_op = tf.group(tf.initialize_all_variables(),
+                       tf.initialize_local_variables())
+    saver = tf.train.Saver()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      saver.save(sess, checkpoint_path)
+
+    # Next, determine the metric to evaluate:
+    value_op, update_op = slim.metrics.streaming_accuracy(
+        self._predictions, self._labels)
+
+    # Run the evaluation and verify the results:
+    accuracy_value = slim.evaluation.evaluate_once(
+        checkpoint_path,
+        log_dir,
+        eval_op=update_op,
+        final_op=value_op)
+    self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
+
 
 if __name__ == '__main__':
   tf.test.main()

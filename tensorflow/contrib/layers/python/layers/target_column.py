@@ -175,8 +175,24 @@ class _TargetColumn(object):
   def problem_type(self):
     return self._problem_type
 
-  def loss(self, logits, target, features):
-    """Returns loss tensor for this head.
+  def _weighted_loss(self, loss, weight_tensor):
+    """Returns cumulative weighted loss."""
+    unweighted_loss = array_ops.reshape(loss, shape=(-1,))
+    weighted_loss = math_ops.mul(unweighted_loss,
+                                 array_ops.reshape(
+                                     weight_tensor, shape=(-1,)))
+    return weighted_loss
+
+  def training_loss(self, logits, target, features):
+    """Returns training loss tensor for this head.
+
+    Training loss is different from the loss reported on the tensorboard as we
+    should respect the example weights when computing the gradient.
+
+      L = sum_{i} w_{i} * l_{i} / B
+
+    where B is the number of examples in the batch, l_{i}, w_{i} are individual
+    losses, and example weight.
 
     Args:
       logits: logits, a float tensor.
@@ -194,10 +210,33 @@ class _TargetColumn(object):
     if weight_tensor is None:
       return math_ops.reduce_mean(loss_unweighted, name="loss")
     else:
-      loss_unweighted = array_ops.reshape(loss_unweighted, shape=(-1,))
-      loss_weighted = math_ops.mul(
-          loss_unweighted,
-          array_ops.reshape(weight_tensor, shape=(-1,)))
+      loss_weighted = self._weighted_loss(loss_unweighted, weight_tensor)
+      return math_ops.reduce_mean(loss_weighted, name="loss")
+
+  def loss(self, logits, target, features):
+    """Returns loss tensor for this head.
+
+    The loss returned is the weighted average.
+
+      L = sum_{i} w_{i} * l_{i} / sum_{i} w_{i}
+
+    Args:
+      logits: logits, a float tensor.
+      target: either a tensor for labels or in multihead case, a dict of string
+        to target tensor.
+      features: features dict.
+
+    Returns:
+      Loss tensor.
+    """
+    target = target[self.name] if isinstance(target, dict) else target
+    loss_unweighted = self._loss_fn(logits, target)
+
+    weight_tensor = self.get_weight_tensor(features)
+    if weight_tensor is None:
+      return math_ops.reduce_mean(loss_unweighted, name="loss")
+    else:
+      loss_weighted = self._weighted_loss(loss_unweighted, weight_tensor)
       return math_ops.div(
           math_ops.reduce_sum(loss_weighted),
           math_ops.to_float(math_ops.reduce_sum(weight_tensor)),
