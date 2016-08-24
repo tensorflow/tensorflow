@@ -206,7 +206,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     scale = clip_norm * math_ops.minimum(
         1.0 / use_norm,
-        constant_op.constant(1.0 / clip_norm, dtype=use_norm.dtype))
+        constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
 
     values = [
         ops.convert_to_tensor(
@@ -268,7 +268,7 @@ def clip_by_average_norm(t, clip_norm, name=None):
         math_ops.reduce_sum(t * t, math_ops.range(array_ops.rank(t))))
     tclip = array_ops.identity(
         t * clip_norm * math_ops.minimum(
-            l2norm_inv * n_element, constant_op.constant(1.0 / clip_norm)),
+            l2norm_inv * n_element, constant_op.constant(1.0) / clip_norm),
         name=name)
 
   return tclip
