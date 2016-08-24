@@ -576,7 +576,7 @@ class FusedResizeAndPadConvFunctor {
                                   (out_y * output_width) + out_x;
           const int patch_index_within_chunk = patch_index % patches_per_chunk;
           T1* im2col_patch_start =
-              im2col_buffer + (patch_index * filter_value_count);
+              im2col_buffer + (patch_index_within_chunk * filter_value_count);
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int conv_in_y = in_y_origin + filter_y;
             float in_y = (conv_in_y - top_padding);
