@@ -1763,9 +1763,6 @@ cc_library(
     ":gpr",
     ":grpc_unsecure",
   ],
-  copts = [
-    "-std=gnu99",
-  ],
 )
 
 
