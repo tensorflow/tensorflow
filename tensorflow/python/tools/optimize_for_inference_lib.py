@@ -27,6 +27,8 @@ the network is used only for inference. These include:
 
  - Folding batch normalization ops into the pre-calculated weights.
 
+ - Fusing common operations into unified versions.
+
 This script takes a frozen GraphDef file (where the weight variables have been
 converted into constants by the freeze_graph script) and outputs a new GraphDef
 with the optimizations applied.
@@ -74,13 +76,15 @@ def optimize_for_inference(input_graph_def, input_node_names,
   Returns:
     An optimized version of the input graph.
   """
-  stripped_graph_def = strip_unused_lib.strip_unused(input_graph_def,
-                                                     input_node_names,
-                                                     output_node_names,
-                                                     placeholder_type_enum)
-  detrained_graph_def = graph_util.remove_training_nodes(stripped_graph_def)
-  folded_graph_def = fold_batch_norms(detrained_graph_def)
-  return folded_graph_def
+  optimized_graph_def = input_graph_def
+  optimized_graph_def = strip_unused_lib.strip_unused(optimized_graph_def,
+                                                      input_node_names,
+                                                      output_node_names,
+                                                      placeholder_type_enum)
+  optimized_graph_def = graph_util.remove_training_nodes(optimized_graph_def)
+  optimized_graph_def = fold_batch_norms(optimized_graph_def)
+  optimized_graph_def = fuse_resize_and_conv(optimized_graph_def)
+  return optimized_graph_def
 
 
 def node_name_from_input(node_name):
@@ -292,6 +296,76 @@ def fold_batch_norms(input_graph_def):
     bias_add_op.attr["T"].CopyFrom(conv_op.attr["T"])
     bias_add_op.input.extend([new_conv_op.name, offset_op.name])
     new_ops.extend([scaled_weights_op, new_conv_op, offset_op, bias_add_op])
+
+  result_graph_def = tf.GraphDef()
+  for node in input_graph_def.node:
+    if node.name in nodes_to_skip:
+      continue
+    new_node = tf.NodeDef()
+    new_node.CopyFrom(node)
+    result_graph_def.node.extend([new_node])
+
+  result_graph_def.node.extend(new_ops)
+  return result_graph_def
+
+
+def fuse_resize_and_conv(input_graph_def):
+  """Merges preceding resize and mirror pad ops into a specialized convolution.
+
+  There's a common pattern of enlarging the input to a convolution using a
+  resize operation, and also using MirrorPad to extend the boundaries to that
+  zero edge pixels don't bleed inwards when convolving. This routine looks for
+  that pattern of operations, and fuses them together into a Conv2DWithResizeOp.
+
+  Args:
+    input_graph_def: A GraphDef containing a model.
+
+  Returns:
+    Modified graph with resize and pad ops merged.
+
+  Raises:
+    ValueError: If the graph is badly formed with duplicate node names.
+  """
+
+  input_node_map = {}
+  for node in input_graph_def.node:
+    if node.name not in input_node_map.keys():
+      input_node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected.")
+
+  nodes_to_skip = {}
+  new_ops = []
+  for node in input_graph_def.node:
+
+    if node.op != "Conv2D":
+      continue
+    conv_op = node
+
+    mirror_pad_op = node_from_map(input_node_map, conv_op.input[0])
+    if mirror_pad_op.op != "MirrorPad":
+      continue
+
+    resize_op = node_from_map(input_node_map, mirror_pad_op.input[0])
+    if resize_op.op != "ResizeBilinear":
+      continue
+
+    nodes_to_skip[conv_op.name] = True
+    nodes_to_skip[mirror_pad_op.name] = True
+    nodes_to_skip[resize_op.name] = True
+
+    fused_conv_op = tf.NodeDef()
+    fused_conv_op.op = "FusedResizeAndPadConv2D"
+    fused_conv_op.name = conv_op.name
+    fused_conv_op.input.extend([resize_op.input[0], resize_op.input[1],
+                                mirror_pad_op.input[1], conv_op.input[1]])
+    fused_conv_op.attr["T"].CopyFrom(conv_op.attr["T"])
+    fused_conv_op.attr["resize_align_corners"].CopyFrom(
+        resize_op.attr["align_corners"])
+    fused_conv_op.attr["mode"].CopyFrom(mirror_pad_op.attr["mode"])
+    fused_conv_op.attr["strides"].CopyFrom(conv_op.attr["strides"])
+    fused_conv_op.attr["padding"].CopyFrom(conv_op.attr["padding"])
+    new_ops.extend([fused_conv_op])
 
   result_graph_def = tf.GraphDef()
   for node in input_graph_def.node:
