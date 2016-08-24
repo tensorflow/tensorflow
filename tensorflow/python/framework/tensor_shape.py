@@ -487,6 +487,13 @@ class TensorShape(object):
   # Python 3 wants __bool__, Python 2.7 wants __nonzero__
   __nonzero__ = __bool__
 
+  def __iter__(self):
+    """Returns `self.dims` if the rank is known, otherwise raises ValueError."""
+    if self._dims is None:
+      raise ValueError("Cannot iterate over a shape with unknown rank.")
+    else:
+      return iter(self._dims)
+
   def __getitem__(self, key):
     """Returns the value of a dimension or a shape, depending on the key.
 
