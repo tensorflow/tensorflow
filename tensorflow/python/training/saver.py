@@ -396,7 +396,8 @@ class BaseSaverBuilder(object):
                 name="restore_shard"))
     return control_flow_ops.group(*sharded_restores, name="restore_all")
 
-  def _IsVariable(self, v):
+  @staticmethod
+  def _IsVariable(v):
     return isinstance(v, ops.Tensor) and (v.op.type == "Variable" or
                                           v.op.type == "AutoReloadVariable")
 
@@ -427,7 +428,8 @@ class BaseSaverBuilder(object):
       per_device[canonical_device.pop()].append(saveable)
     return sorted(per_device.items(), key=lambda t: t[0])
 
-  def _OpListToDict(self, op_list):
+  @staticmethod
+  def OpListToDict(op_list):
     """Create a dictionary of names to operation lists.
 
     Args:
@@ -462,7 +464,7 @@ class BaseSaverBuilder(object):
           names_to_saveables[name] = [var]
       else:
         var = ops.convert_to_tensor(var, as_ref=True)
-        if not self._IsVariable(var):
+        if not BaseSaverBuilder._IsVariable(var):
           raise TypeError("Variable to save is not a Variable: %s" % var)
         name = var.op.name
         if name in names_to_saveables:
@@ -489,7 +491,7 @@ class BaseSaverBuilder(object):
         (this also applies to slices of SlicedVariables).
     """
     if not isinstance(names_to_saveables, dict):
-      names_to_saveables = self._OpListToDict(names_to_saveables)
+      names_to_saveables = BaseSaverBuilder.OpListToDict(names_to_saveables)
 
     saveables = []
     seen_ops = set()
@@ -523,7 +525,7 @@ class BaseSaverBuilder(object):
       else:
         # A variable or tensor.
         variable = ops.convert_to_tensor(op, as_ref=True)
-        if not self._IsVariable(variable):
+        if not BaseSaverBuilder._IsVariable(variable):
           raise TypeError("names_to_saveables must be a dict mapping string "
                           "names to Tensors/Variables. Not a variable: %s" %
                           variable)
