@@ -102,7 +102,7 @@ Status UnchangedShape(shape_inference::InferenceContext* c);
 // Transfers shape of input(0) to output(0), after asserting its rank is <rank>.
 inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
                                      int32 rank) {
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &out));
   c->set_output(0, out);
   return Status::OK();
@@ -111,7 +111,7 @@ inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
 // Transfers shape of input(0) to output(0), after asserting its rank >= <rank>.
 inline Status UnchangedShapeWithRankAtLeast(
     shape_inference::InferenceContext* c, int32 rank) {
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), rank, &out));
   c->set_output(0, out);
   return Status::OK();
@@ -120,7 +120,7 @@ inline Status UnchangedShapeWithRankAtLeast(
 // Transfers shape of input(0) to output(0), after asserting its rank <= <rank>.
 inline Status UnchangedShapeWithRankAtMost(shape_inference::InferenceContext* c,
                                            int32 rank) {
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), rank, &out));
   c->set_output(0, out);
   return Status::OK();
@@ -139,7 +139,7 @@ inline Status ScalarShape(shape_inference::InferenceContext* c) {
 
 // Shape function for binary ops where both inputs and the output match.
 inline Status MergeBothInputsShapeFn(InferenceContext* c) {
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &out));
   c->set_output(0, out);
   return Status::OK();

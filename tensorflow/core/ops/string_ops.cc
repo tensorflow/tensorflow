@@ -19,9 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
@@ -180,7 +180,7 @@ REGISTER_OP("StringJoin")
       // Merge the non-scalars to find the output shape.
       // Don't merge inputs with unknown rank, as they can actually be scalars
       // or the output shape.
-      const Shape* out = c->UnknownShape();
+      ShapeHandle out = c->UnknownShape();
       for (int i = 0; i < c->num_inputs(); ++i) {
         if (c->RankKnown(c->input(i)) && c->Rank(c->input(i)) != 0) {
           TF_RETURN_IF_ERROR(c->Merge(out, c->input(i), &out));
@@ -206,7 +206,7 @@ REGISTER_OP("StringSplit")
     .Output("values: string")
     .Output("shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unsed_shape;
+      ShapeHandle unsed_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unsed_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unsed_shape));
 

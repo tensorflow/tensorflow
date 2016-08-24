@@ -25,8 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
-using shape_inference::Shape;
+using shape_inference::DimensionHandle;
+using shape_inference::ShapeHandle;
 using errors::Unknown;
 
 Status InferShapes(ShapeInferenceTestOp op, const string& ins,
@@ -48,9 +48,9 @@ Status InferShapes(ShapeInferenceTestOp op, const string& ins,
   TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
   const int num_outputs = c.num_outputs();
 
-  std::unordered_map<const Dimension*, std::pair<int, int>>
+  std::unordered_map<DimensionHandle, std::pair<int, int>>
       dim_to_input_and_dim_idx;
-  std::unordered_map<const Shape*, int> shape_to_input_idx;
+  std::unordered_map<ShapeHandle, int> shape_to_input_idx;
   for (int i = 0; i < c.num_inputs(); ++i) {
     auto in = c.input(i);
     shape_to_input_idx[in] = i;
@@ -120,7 +120,7 @@ Status InferShapes(ShapeInferenceTestOp op, const string& ins,
     for (int j = 0; j < expected_dims.size(); ++j) {
       err_prefix = strings::StrCat("Output dim ", i, ",", j);
       StringPiece expected_dim(expected_dims[j]);
-      const Dimension* out_dim = c.Dim(out, j);
+      DimensionHandle out_dim = c.Dim(out, j);
       std::pair<int, int> in_dim_idx = gtl::FindWithDefault(
           dim_to_input_and_dim_idx, out_dim, std::make_pair(-1, -1));
       if (expected_dim == "?") {

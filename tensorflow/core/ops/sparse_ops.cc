@@ -19,14 +19,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 namespace {
 
 Status SparseSparseMinOrMaxShapeFn(InferenceContext* c) {
-  const Shape* unused;
+  ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));  // a_indices
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // a_values
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));  // a_shape
@@ -50,8 +50,8 @@ REGISTER_OP("SparseAddGrad")
     .Output("b_val_grad: T")
     .Attr("T: numbertype")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* a_indices;
-      const Shape* b_indices;
+      ShapeHandle a_indices;
+      ShapeHandle b_indices;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &a_indices));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &b_indices));
       c->set_output(0, c->Vector(c->Dim(a_indices, 0)));
@@ -92,7 +92,7 @@ REGISTER_OP("SparseAdd")
     .Attr("T: numbertype")
     .Attr("Treal: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* a_shape;
+      ShapeHandle a_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &a_shape));
       c->set_output(
           0, c->Matrix(InferenceContext::kUnknownDim, c->Dim(a_shape, 0)));
@@ -137,10 +137,10 @@ REGISTER_OP("SparseTensorDenseMatMul")
     .Attr("adjoint_a: bool = false")
     .Attr("adjoint_b: bool = false")
     .SetShapeFn([](InferenceContext* c) {
-      const Dimension* unused_dim;
-      const Shape* unused;
-      const Shape* b;
-      const Shape* a_shape;
+      DimensionHandle unused_dim;
+      ShapeHandle unused;
+      ShapeHandle b;
+      ShapeHandle a_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));  // a_indices
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // a_values
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &a_shape));
@@ -152,7 +152,7 @@ REGISTER_OP("SparseTensorDenseMatMul")
 
       // TODO(zongheng): 1) incorporate adjoint_a. 2) When both attrs are
       // considered, check the inner dimensions match.
-      const Dimension* output_right = c->Dim(b, adjoint_b ? 0 : 1);
+      DimensionHandle output_right = c->Dim(b, adjoint_b ? 0 : 1);
       c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, output_right));
       return Status::OK();
     })
@@ -186,7 +186,7 @@ REGISTER_OP("SerializeSparse")
     .Attr("T: type")
     .Output("serialized_sparse: string")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
@@ -208,7 +208,7 @@ REGISTER_OP("SerializeManySparse")
     .Attr("T: type")
     .Output("serialized_sparse: string")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
@@ -239,9 +239,9 @@ REGISTER_OP("DeserializeManySparse")
     .Output("sparse_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
       // serialized sparse is [?,3] matrix.
-      const Shape* serialized_sparse;
+      ShapeHandle serialized_sparse;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &serialized_sparse));
-      const Dimension* unused;
+      DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->WithValue(c->Dim(serialized_sparse, 1), 3, &unused));
 
@@ -311,7 +311,7 @@ REGISTER_OP("SparseToDense")
     .Output("dense: T")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -363,23 +363,23 @@ REGISTER_OP("SparseConcat")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
       // These accumulates the sum.
-      const Dimension* output_row_count = c->MakeDim(0ll);
+      DimensionHandle output_row_count = c->MakeDim(0ll);
 
       // These are only merged.
-      const Dimension* output_ind_cols = c->UnknownDim();
-      const Shape* output_shape = c->UnknownShape();
+      DimensionHandle output_ind_cols = c->UnknownDim();
+      ShapeHandle output_shape = c->UnknownShape();
 
       const int n = c->num_inputs() / 3;
       for (int i = 0; i < n; i++) {
-        const Shape* ind;
+        ShapeHandle ind;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &ind));
-        const Shape* val;
+        ShapeHandle val;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i + n), 1, &val));
-        const Shape* shape;
+        ShapeHandle shape;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 2 * n), 1, &shape));
 
         // Add to output_ind_rows.
-        const Dimension* num_dim;
+        DimensionHandle num_dim;
         TF_RETURN_IF_ERROR(c->Merge(c->Dim(ind, 0), c->Dim(val, 0), &num_dim));
         TF_RETURN_IF_ERROR(
             c->Add(output_row_count, num_dim, &output_row_count));
@@ -460,11 +460,11 @@ REGISTER_OP("SparseSplit")
     .Attr("num_split: int >= 1")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input_shape = c->input(3);
-      const Shape* output_indices =
+      ShapeHandle input_shape = c->input(3);
+      ShapeHandle output_indices =
           c->Matrix(InferenceContext::kUnknownDim, c->NumElements(input_shape));
-      const Shape* output_values = c->Vector(InferenceContext::kUnknownDim);
-      const Shape* output_shape = input_shape;
+      ShapeHandle output_values = c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle output_shape = input_shape;
 
       // Copy the outputs into the output ranges.
       int num_splits = c->num_outputs() / 3;
@@ -520,9 +520,9 @@ REGISTER_OP("SparseReorder")
     .Output("output_values: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* indices;
-      const Shape* values;
-      const Shape* unused;
+      ShapeHandle indices;
+      ShapeHandle values;
+      ShapeHandle unused;
 
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &indices));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &values));
@@ -560,9 +560,9 @@ REGISTER_OP("SparseReshape")
     .Output("output_indices: int64")
     .Output("output_shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* indices;
-      const Shape* unused;
-      const Shape* new_shape;
+      ShapeHandle indices;
+      ShapeHandle unused;
+      ShapeHandle new_shape;
 
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &indices));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
@@ -670,7 +670,7 @@ output: `R-K`-D.  The reduced Tensor.
       .Output("output: T")                                       \
       .Attr("T: numbertype")                                     \
       .SetShapeFn([](InferenceContext* c) {                      \
-        const Shape* input;                                      \
+        ShapeHandle input;                                       \
         TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &input)); \
         c->set_output(0, c->Vector(c->Dim(input, 0)));           \
         return Status::OK();                                     \
@@ -737,8 +737,8 @@ REGISTER_OP("SparseSoftmax")
     .Output("output: T")
     .Attr("T: {float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
-      const Shape* values;
+      ShapeHandle unused;
+      ShapeHandle values;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));  // sp_indices
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &values));  // sp_values
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));

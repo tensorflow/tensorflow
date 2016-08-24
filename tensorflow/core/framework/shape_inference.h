@@ -43,37 +43,41 @@ class Dimension {
   TF_DISALLOW_COPY_AND_ASSIGN(Dimension);
 };
 
+typedef const Dimension* DimensionHandle;
+
 // Shape rank and dimensions are accessed through InferenceContext.
 class Shape {
  private:
   Shape();
-  Shape(const std::vector<const Dimension*>& dims);
+  Shape(const std::vector<DimensionHandle>& dims);
   ~Shape() {}
 
   const int32 rank_;
-  const std::vector<const Dimension*> dims_;
+  const std::vector<DimensionHandle> dims_;
 
   friend class InferenceContext;
   TF_DISALLOW_COPY_AND_ASSIGN(Shape);
 };
 
-// Struct used to allow functions to take const Dimension* or a dimension value.
+// Struct used to allow functions to take DimensionHandle or a dimension value.
 // Not meant to be constructed directly.
 struct DimensionOrConstant {
  public:
   // Intentionally not explicit.
-  DimensionOrConstant(const Dimension* dim);
+  DimensionOrConstant(DimensionHandle dim);
 
   // val must be non-negative or InferenceContext::kUnknownDim.
   DimensionOrConstant(int64 val);
 
   // dim takes precedence. If dim != nullptr, val is ignored.
-  const Dimension* dim;
+  DimensionHandle dim;
   int64 val;
 
  private:
   DimensionOrConstant();
 };
+
+typedef const Shape* ShapeHandle;
 
 // Note: This is experimental support for op shape inference in C++.  Shape
 // inference functions are not ready to be implemented yet.
@@ -97,7 +101,7 @@ class InferenceContext {
   // creation of Shapes from strings out of this class (or hide it).
   InferenceContext(const NodeDef* node_def, const OpDef& op_def,
                    const std::vector<string>& input_shapes_string,
-                   const std::vector<const Shape*>& input_shapes,
+                   const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
@@ -131,7 +135,7 @@ class InferenceContext {
 
   ~InferenceContext();
 
-  const Shape* input(int idx) const { return inputs_[idx]; }
+  ShapeHandle input(int idx) const { return inputs_[idx]; }
   int num_inputs() const { return inputs_.size(); }
 
   // Returns the input tensor at index <idx>, or nullptr if the input tensor is
@@ -151,13 +155,13 @@ class InferenceContext {
     input_tensors_ = input_tensors;
   }
 
-  void set_output(int idx, const Shape* shape) { outputs_[idx] = shape; }
+  void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
   int num_outputs() const { return outputs_.size(); }
-  const Shape* output(int idx) { return outputs_[idx]; }
+  ShapeHandle output(int idx) { return outputs_[idx]; }
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
-  const Dimension* Dim(const Shape* s, int32 idx) {
+  DimensionHandle Dim(ShapeHandle s, int32 idx) {
     if (s->rank_ == kUnknownRank) {
       return UnknownDim();
     }
@@ -166,8 +170,8 @@ class InferenceContext {
     }
     return s->dims_[idx];
   }
-  int32 Rank(const Shape* s) { return s->rank_; }
-  bool RankKnown(const Shape* s) { return Rank(s) != kUnknownRank; }
+  int32 Rank(ShapeHandle s) { return s->rank_; }
+  bool RankKnown(ShapeHandle s) { return Rank(s) != kUnknownRank; }
   inline int64 Value(DimensionOrConstant d) {
     return d.dim ? d.dim->value_ : d.val;
   }
@@ -176,111 +180,111 @@ class InferenceContext {
   }
 
   // Returns true if the rank and all dimensions of the Shape are known.
-  bool FullyDefined(const Shape* s);
+  bool FullyDefined(ShapeHandle s);
 
   // Returns the total number of elements, or an unknown dimension for an
   // incomplete shape.
-  const Dimension* NumElements(const Shape* s);
+  DimensionHandle NumElements(ShapeHandle s);
 
-  string DebugString(const Shape* s);
-  string DebugString(const Dimension* d);
+  string DebugString(ShapeHandle s);
+  string DebugString(DimensionHandle d);
 
   // If <shape> has rank <rank>, or its rank is unknown, return OK and return
   // the shape with asserted rank in <*out>. Otherwise return an error.
   //
   // Note that <*out> may be set to <shape>.
-  Status WithRank(const Shape* shape, int32 rank,
-                  const Shape** out) TF_MUST_USE_RESULT;
-  Status WithRankAtLeast(const Shape* shape, int32 rank,
-                         const Shape** out) TF_MUST_USE_RESULT;
-  Status WithRankAtMost(const Shape* shape, int32 rank,
-                        const Shape** out) TF_MUST_USE_RESULT;
+  Status WithRank(ShapeHandle shape, int32 rank,
+                  ShapeHandle* out) TF_MUST_USE_RESULT;
+  Status WithRankAtLeast(ShapeHandle shape, int32 rank,
+                         ShapeHandle* out) TF_MUST_USE_RESULT;
+  Status WithRankAtMost(ShapeHandle shape, int32 rank,
+                        ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
   // the dimension with asserted value in <*out>. Otherwise returns an error.
   //
   // Note that <*out> may be set to <dim>.
-  Status WithValue(const Dimension* dim, int64 value,
-                   const Dimension** out) TF_MUST_USE_RESULT;
+  Status WithValue(DimensionHandle dim, int64 value,
+                   DimensionHandle* out) TF_MUST_USE_RESULT;
 
   // Merges <in0> and <in1> and returns the merged shape in <*out>. If <in0> and
   // <in1> are incompatible in rank, or in the value of any dimension, returns
   // an error.
   //
   // Note that <*out> may be set to <in0> or <in1>.
-  Status Merge(const Shape* in0, const Shape* in1,
-               const Shape** out) TF_MUST_USE_RESULT;
+  Status Merge(ShapeHandle in0, ShapeHandle in1,
+               ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Asserts that <s>'s rank >= <prefix>'s rank, and the first
   // <prefix.rank> dimensions of <s> are compatible with the dimensions of
   // <prefix>.
   // Returns the merged results in <*s_out> and <*prefix_out>.
-  Status MergePrefix(const Shape* s, const Shape* prefix, const Shape** s_out,
-                     const Shape** prefix_out) TF_MUST_USE_RESULT;
+  Status MergePrefix(ShapeHandle s, ShapeHandle prefix, ShapeHandle* s_out,
+                     ShapeHandle* prefix_out) TF_MUST_USE_RESULT;
 
   // Merges <d0> and <d1> and returns the merged dimension in <*out>. If <d0>
   // and <d1> have incompatible values, returns an error.
   //
   // Note that <*out> may be set to <d0> or <d1>.
-  Status Merge(const Dimension* d0, const Dimension* d1,
-               const Dimension** out) TF_MUST_USE_RESULT;
+  Status Merge(DimensionHandle d0, DimensionHandle d1,
+               DimensionHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> a sub-shape of <s> with dimensions [start:].
   // <start> can be negative to index from the end of the shape. If <start> >
   // rank of <s>, then an empty subshape is returned.
   // Returns an error if the rank of <s> is < <start>.
-  Status Subshape(const Shape* s, int64 start,
-                  const Shape** out) TF_MUST_USE_RESULT;
+  Status Subshape(ShapeHandle s, int64 start,
+                  ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> a sub-shape of <s>, with dimensions [start:end].
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
   // Returns an error if the rank of <s> is insufficient.
-  Status Subshape(const Shape* s, int64 start, int64 end,
-                  const Shape** out) TF_MUST_USE_RESULT;
+  Status Subshape(ShapeHandle s, int64 start, int64 end,
+                  ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those
   // of <s1>.
-  Status Concatenate(const Shape* s1, const Shape* s2,
-                     const Shape** out) TF_MUST_USE_RESULT;
+  Status Concatenate(ShapeHandle s1, ShapeHandle s2,
+                     ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <out> the shape from replacing <s.dim[dim_index]> with
   // <new_dim>.
-  Status ReplaceDim(const Shape* s, int dim_index, const Dimension* new_dim,
-                    const Shape** out) TF_MUST_USE_RESULT;
+  Status ReplaceDim(ShapeHandle s, int dim_index, DimensionHandle new_dim,
+                    ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns a new shape with the given dims. The returned value is owned by
   // this context.
-  const Shape* MakeShape(const std::vector<const Dimension*>& dims);
-  const Shape* MakeShape(std::initializer_list<DimensionOrConstant> dims);
+  ShapeHandle MakeShape(const std::vector<DimensionHandle>& dims);
+  ShapeHandle MakeShape(std::initializer_list<DimensionOrConstant> dims);
 
   // Returns a new unknown shape.
-  const Shape* UnknownShape();
+  ShapeHandle UnknownShape();
 
   // Returns a shape with specified rank but unknown dims.
-  const Shape* UnknownShapeOfRank(int32 rank);
+  ShapeHandle UnknownShapeOfRank(int32 rank);
 
   // Returns a new shape of zero dimensions.
-  const Shape* Scalar();
+  ShapeHandle Scalar();
 
   // Returns a new shape of one dimension.
-  const Shape* Vector(DimensionOrConstant dim);
+  ShapeHandle Vector(DimensionOrConstant dim);
 
   // Returns a new shape of two dimensions.
-  const Shape* Matrix(DimensionOrConstant dim1, DimensionOrConstant dim2);
+  ShapeHandle Matrix(DimensionOrConstant dim1, DimensionOrConstant dim2);
 
   // Returns in <out> a new shape whose dimension sizes come from input tensor
   // <input_idx>. The tensor must be a 1-dimensional int32 or int64 tensor.  If
   // the input tensor is NULL, then an unknown shape is returned.
-  Status MakeShapeFromShapeTensor(int input_idx, const Shape** out);
+  Status MakeShapeFromShapeTensor(int input_idx, ShapeHandle* out);
 
   // Returns in <out> a new shape corresponding to <proto>.
   Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
-                                 const Shape** out);
+                                 ShapeHandle* out);
 
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
-  inline const Dimension* MakeDim(DimensionOrConstant d) {
+  inline DimensionHandle MakeDim(DimensionOrConstant d) {
     if (d.dim) {
       return d.dim;
     } else {
@@ -288,12 +292,12 @@ class InferenceContext {
       return all_dims_.back();
     }
   }
-  inline const Dimension* UnknownDim() { return MakeDim(kUnknownDim); }
+  inline DimensionHandle UnknownDim() { return MakeDim(kUnknownDim); }
 
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get
   // the value.
-  Status MakeDimForScalarInput(int idx, const Dimension** out);
+  Status MakeDimForScalarInput(int idx, DimensionHandle* out);
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or
@@ -304,37 +308,36 @@ class InferenceContext {
   // Returns in <out> the result of dividing <dividend> by <divisor>.
   // Returns an error if <divisor>  is not positive or does not evenly
   // divide <dividend>.
-  Status Divide(const Dimension* dividend, int64 divisor,
-                const Dimension** out);
+  Status Divide(DimensionHandle dividend, int64 divisor, DimensionHandle* out);
 
   // Returns in <out> the sum of <first> and <second>.
-  Status Add(const Dimension* first, DimensionOrConstant second,
-             const Dimension** out);
+  Status Add(DimensionHandle first, DimensionOrConstant second,
+             DimensionHandle* out);
 
   // Returns in <out> the dimension that is <first> minus <second>.
-  Status Subtract(const Dimension* first, DimensionOrConstant second,
-                  const Dimension** out);
+  Status Subtract(DimensionHandle first, DimensionOrConstant second,
+                  DimensionHandle* out);
 
   // Returns in <out> the product of <first> and <second>.
-  Status Multiply(const Dimension* first, DimensionOrConstant second,
-                  const Dimension** out);
+  Status Multiply(DimensionHandle first, DimensionOrConstant second,
+                  DimensionHandle* out);
 
   // Returns in <out> the minimum of <first> and <second>. If either <first> or
   // <second> is zero the results is zero. Otherwise, if either <first> or
   // <second> is unknown the results is unknown.
-  Status Min(const Dimension* first, DimensionOrConstant second,
-             const Dimension** out);
+  Status Min(DimensionHandle first, DimensionOrConstant second,
+             DimensionHandle* out);
 
   // Returns in <out> the maximum of <first> and <second>. If either <first> or
   // <second> is unknown the results is unknown.
-  Status Max(const Dimension* first, DimensionOrConstant second,
-             const Dimension** out);
+  Status Max(DimensionHandle first, DimensionOrConstant second,
+             DimensionHandle* out);
 
   Status construction_status() const { return construction_status_; }
 
   // Validates that 'dim' has a known value, and prints an error
   // message containing 'name' if validation fails.
-  Status ValidateKnownDim(const Dimension* dim, const char* name) {
+  Status ValidateKnownDim(DimensionHandle dim, const char* name) {
     if (!ValueKnown(dim)) {
       return errors::InvalidArgument("Cannot infer shape because dimension ",
                                      name, " is not known.");
@@ -344,19 +347,19 @@ class InferenceContext {
 
   // Validates the 3 component tensors of a sparse tensor have the proper
   // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
-  Status ValidateSparseTensor(const Shape* indices_shape,
-                              const Shape* values_shape,
-                              const Shape* shape_shape) {
+  Status ValidateSparseTensor(ShapeHandle indices_shape,
+                              ShapeHandle values_shape,
+                              ShapeHandle shape_shape) {
     // Validate ranks.
-    const Shape* unused_shape;
+    ShapeHandle unused_shape;
     TF_RETURN_IF_ERROR(WithRank(indices_shape, 2, &unused_shape));
     TF_RETURN_IF_ERROR(WithRank(values_shape, 1, &unused_shape));
     TF_RETURN_IF_ERROR(WithRank(shape_shape, 1, &unused_shape));
 
     // Number of elements in indices and values must match.
-    const Dimension* num_index_elements_dim = Dim(indices_shape, 0);
+    DimensionHandle num_index_elements_dim = Dim(indices_shape, 0);
     if (ValueKnown(num_index_elements_dim)) {
-      const Dimension* num_values_elements_dim = Dim(values_shape, 0);
+      DimensionHandle num_values_elements_dim = Dim(values_shape, 0);
       if (ValueKnown(num_values_elements_dim)) {
         int64 num_index_elements = Value(num_index_elements_dim);
         int64 num_values_elements = Value(num_values_elements_dim);
@@ -369,9 +372,9 @@ class InferenceContext {
     }
 
     // Rank embedded in indices must match shape.
-    const Dimension* index_rank_dim = Dim(indices_shape, 1);
+    DimensionHandle index_rank_dim = Dim(indices_shape, 1);
     if (ValueKnown(index_rank_dim)) {
-      const Dimension* shape_rank_dim = Dim(shape_shape, 0);
+      DimensionHandle shape_rank_dim = Dim(shape_shape, 0);
       if (ValueKnown(shape_rank_dim)) {
         int64 index_rank = Value(index_rank_dim);
         int32 shape_rank = Value(shape_rank_dim);
@@ -394,16 +397,16 @@ class InferenceContext {
   void PostInputInit();
 
   // Returns a shape from 'shape_string'.
-  Status MakeShapeFromString(const string& shape_string, const Shape** output);
+  Status MakeShapeFromString(const string& shape_string, ShapeHandle* output);
 
-  const Dimension* GetDimension(const DimensionOrConstant& d);
+  DimensionHandle GetDimension(const DimensionOrConstant& d);
 
-  Status ReturnUnknownShape(const Shape** out) {
+  Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
     return Status::OK();
   }
-  Status ReturnCreatedShape(const std::vector<const Dimension*>& dims,
-                            const Shape** out) {
+  Status ReturnCreatedShape(const std::vector<DimensionHandle>& dims,
+                            ShapeHandle* out) {
     *out = MakeShape(dims);
     return Status::OK();
   }
@@ -412,10 +415,10 @@ class InferenceContext {
   std::vector<Dimension*> all_dims_;  // values are owned.
 
   // inputs_ and outputs_ refer to values from all_shapes_.
-  std::vector<const Shape*> inputs_;
+  std::vector<ShapeHandle> inputs_;
   std::vector<const Tensor*> input_tensors_;
   std::vector<bool> requested_input_tensor_;
-  std::vector<const Shape*> outputs_;
+  std::vector<ShapeHandle> outputs_;
 
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;
@@ -440,10 +443,10 @@ inline Dimension::Dimension(int64 value) : value_(value) {
 }
 
 inline Shape::Shape() : rank_(InferenceContext::kUnknownRank) {}
-inline Shape::Shape(const std::vector<const Dimension*>& dims)
+inline Shape::Shape(const std::vector<DimensionHandle>& dims)
     : rank_(dims.size()), dims_(dims) {}
 
-inline DimensionOrConstant::DimensionOrConstant(const Dimension* dim)
+inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
     : dim(dim) {
   DCHECK(dim != nullptr) << "Internal error: Got nullptr for Dimension.";
 }
