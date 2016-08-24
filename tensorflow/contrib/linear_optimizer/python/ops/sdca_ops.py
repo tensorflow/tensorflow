@@ -150,7 +150,7 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
 
     return control_flow_ops.group(*return_values)
 
-  def values_reduce_sum(self, name=None):
+  def values_reduce_sum(self, dtype=dtypes.float64, name=None):
     """Computes reduce_sum reducing dimension 0 across all values in all shards.
 
     Args:
@@ -165,7 +165,8 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
     sums = []
     for table_shard in self._table_shards:
       _, exported_values = table_shard.export(name=name)
-      sums.append(math_ops.reduce_sum(exported_values, 0))
+      sums.append(math_ops.reduce_sum(
+          math_ops.cast(exported_values, dtype), 0))
     return math_ops.add_n(sums)
 
 
@@ -594,9 +595,9 @@ class SdcaModel(object):
     example_weights = summed_values[3]
     # TODO(andreasst): what about handle examples_weights == 0?
     return (
-        primal_loss + dual_loss + math_ops.to_float(self._l1_loss()) +
+        primal_loss + dual_loss + math_ops.to_double(self._l1_loss()) +
         (2.0 *
-         math_ops.to_float(self._l2_loss(self._symmetric_l2_regularization())))
+         math_ops.to_double(self._l2_loss(self._symmetric_l2_regularization())))
     ) / example_weights
 
   def unregularized_loss(self, examples):

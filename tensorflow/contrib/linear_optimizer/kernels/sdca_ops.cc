@@ -64,7 +64,8 @@ using UnalignedInt64Vector = TTypes<const int64>::UnalignedConstVec;
 struct ExampleStatistics {
   // feature_weights dot feature_values for the example.
   double wx = 0;
-
+  // dot product using the previous weights
+  double prev_wx = 0;
   // sum of squared feature values occurring in the example divided by
   // L2 * sum(example_weights).
   double normalized_squared_norm = 0;
@@ -279,7 +280,7 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
   result.normalized_squared_norm =
       squared_norm_ / regularization.symmetric_l2();
 
-  // Compute the w \dot x.
+  // Compute the w \dot x and prev_w \dot x.
 
   // Sparse features contribution.
   for (size_t j = 0; j < sparse_features_.size(); ++j) {
@@ -294,6 +295,9 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
       const double feature_weight =
           sparse_weights.nominals(feature_index) +
           sparse_weights.deltas(feature_index) * num_partitions;
+      result.prev_wx +=
+          feature_value *
+          regularization.Shrink(sparse_weights.nominals(feature_index));
       result.wx += feature_value * regularization.Shrink(feature_weight);
     }
   }
@@ -306,9 +310,14 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
     const Eigen::Tensor<float, 1, Eigen::RowMajor> feature_weights =
         dense_weights.nominals +
         dense_weights.deltas * dense_weights.deltas.constant(num_partitions);
+    const Eigen::Tensor<float, 0, Eigen::RowMajor> prev_prediction =
+        (dense_vector.row() *
+         regularization.EigenShrink(dense_weights.nominals))
+            .sum();
     const Eigen::Tensor<float, 0, Eigen::RowMajor> prediction =
         (dense_vector.row() * regularization.EigenShrink(feature_weights))
             .sum();
+    result.prev_wx += prev_prediction();
     result.wx += prediction();
   }
 
@@ -699,7 +708,7 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
         // Update example data.
         example_state_data(example_index, 0) = new_dual;
         example_state_data(example_index, 1) = loss_updater_->ComputePrimalLoss(
-            example_statistics.wx, example_label, example_weight);
+            example_statistics.prev_wx, example_label, example_weight);
         example_state_data(example_index, 2) =
             loss_updater_->ComputeDualLoss(dual, example_label, example_weight);
         example_state_data(example_index, 3) = example_weight;
