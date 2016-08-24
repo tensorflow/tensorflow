@@ -432,6 +432,14 @@ def _IsLoopExit(op):
   return op.type == "Exit" or op.type == "RefExit"
 
 
+def _GetOutputContext(op):
+  """Return the control flow context for the output of an op."""
+  ctxt = op._get_control_flow_context()
+  if _IsLoopExit(op):
+    ctxt = ctxt.outer_context
+  return ctxt
+
+
 def _ShapeIntersection(shape1, shape2):
   if shape1.dims is None or shape1.ndims != shape2.ndims:
     return tensor_shape.unknown_shape()
@@ -665,9 +673,7 @@ class GradLoopState(object):
 
       # Add the stack_push op in the context of value.op.
       swap_enabled = self.forward_context.swap_memory
-      value_ctxt = value.op._get_control_flow_context()
-      if _IsLoopExit(value.op):
-        value_ctxt = value_ctxt.outer_context
+      value_ctxt = _GetOutputContext(value.op)
       if value_ctxt == self.forward_context:
         # value is not nested in the forward context.
         self.forward_context.Enter()
@@ -1153,7 +1159,7 @@ class ControlFlowContext(object):
   def _MaybeRemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
     internal_control_inputs = [x for x in op.control_inputs
-                               if x._get_control_flow_context() == self]
+                               if _GetOutputContext(x) == self]
     if len(internal_control_inputs) != len(op.control_inputs):
       del op.control_inputs[:]
       op._add_control_inputs(internal_control_inputs)
@@ -1349,6 +1355,8 @@ def cond(pred, fn1, fn2, name=None):
     pivot_1 = array_ops.identity(p_1, name="switch_t")
     pivot_2 = array_ops.identity(p_2, name="switch_f")
     pred = array_ops.identity(pred, name="pred_id")
+    for tensor in [p_1, p_2, pivot_1, pivot_2, pred]:
+      tensor.op.graph.prevent_fetching(tensor.op)
 
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)

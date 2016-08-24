@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.contrib.training.python.training import sampling_ops
 
 
 class SamplingOpsThreadingTest(tf.test.TestCase):
@@ -30,10 +31,10 @@ class SamplingOpsThreadingTest(tf.test.TestCase):
     tf.set_random_seed(1234)
     label = tf.cast(tf.round(tf.random_uniform([1]) * num_classes), tf.int32)
 
-    prob_estimate = tf.contrib.framework.sampling_ops._estimate_data_distribution(  # pylint: disable=line-too-long
+    prob_estimate = sampling_ops._estimate_data_distribution(  # pylint: disable=protected-access
         label, num_classes)
     # Check that prob_estimate is well-behaved in a multithreaded context.
-    _, _, [prob_estimate] = tf.contrib.framework.sampling_ops._verify_input(
+    _, _, [prob_estimate] = sampling_ops._verify_input(  # pylint: disable=protected-access
         [], label, [prob_estimate])
 
     # Use queues to run multiple threads over the graph, each of which

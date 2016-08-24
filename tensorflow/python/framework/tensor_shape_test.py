@@ -187,6 +187,9 @@ class ShapeTest(test_util.TensorFlowTestCase):
       len(s)
     self.assertFalse(s)
     self.assertIs(None, s.dims)
+    with self.assertRaises(ValueError):
+      for _ in tensor_shape.TensorShape(None):
+        pass
 
   def testFullyDefinedShape(self):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
@@ -205,6 +208,8 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual([3, 4, 7], s.as_list())
     s.assert_is_compatible_with([3, 4, 7])
     s.assert_same_rank([6, 3, 7])
+    for d1, d2 in zip(s, [3, 4, 7]):
+      assert d1.value == d2
 
   def testPartiallyDefinedShape(self):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
@@ -219,6 +224,8 @@ class ShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.Dimension(None).value, s[1].value)
     self.assertEqual(tensor_shape.Dimension(7), s[2])
     s.assert_same_rank([6, 3, 7])
+    for d1, d2 in zip(s, [3, None, 7]):
+      assert d1.value == d2
 
   def testMergeFullShapes(self):
     self.assertEqual([3, 4, 7],

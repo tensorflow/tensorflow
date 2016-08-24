@@ -29,9 +29,9 @@
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
@@ -51,10 +51,10 @@ REGISTER_OP("SampleInputs")
     .Output("new_split_feature_rows: int32")
     .Output("new_split_threshold_rows: float")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* candidate_split_features;
+      ShapeHandle candidate_split_features;
       TF_RETURN_IF_ERROR(
           c->WithRank(c->input(6), 2, &candidate_split_features));
-      const Dimension* split_dim = c->Dim(candidate_split_features, 1);
+      DimensionHandle split_dim = c->Dim(candidate_split_features, 1);
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(1, c->Matrix(InferenceContext::kUnknownDim, split_dim));
       c->set_output(2, c->Matrix(InferenceContext::kUnknownDim, split_dim));

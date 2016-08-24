@@ -49,9 +49,9 @@ using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
 using tensorforest::FeatureSpec;
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 // A data structure to store the results of parallel tree traversal.
 struct InputDataResult {
@@ -174,11 +174,11 @@ REGISTER_OP("CountExtremelyRandomStats")
       bool regression;
       TF_RETURN_IF_ERROR(c->GetAttr("regression", &regression));
 
-      const Dimension* num_points = c->Dim(c->input(0), 0);
+      DimensionHandle num_points = c->Dim(c->input(0), 0);
       if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
         num_points = c->UnknownDim();
       }
-      const Dimension* num_nodes = c->Dim(c->input(7), 0);
+      DimensionHandle num_nodes = c->Dim(c->input(7), 0);
 
       // Node sums
       c->set_output(0, c->Matrix(num_nodes, num_classes));

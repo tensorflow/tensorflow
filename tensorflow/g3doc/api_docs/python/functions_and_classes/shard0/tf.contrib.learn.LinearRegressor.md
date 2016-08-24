@@ -85,6 +85,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.config` {#LinearRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -113,7 +120,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
+#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
 
 Exports inference graph into given dir.
 

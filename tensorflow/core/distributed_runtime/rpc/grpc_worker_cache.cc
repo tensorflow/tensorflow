@@ -38,7 +38,6 @@ class GrpcWorkerCache : public WorkerCachePartial {
           while (completion_queue_.Next(&tag, &ok)) {
             GrpcClientCQTag* callback_tag = static_cast<GrpcClientCQTag*>(tag);
             callback_tag->OnCompleted(ok);
-            delete callback_tag;
           }
         });
   }

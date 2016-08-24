@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.ops import control_flow_ops
@@ -31,7 +32,7 @@ from tensorflow.python.training import momentum
 class GroupTestCase(TensorFlowTestCase):
 
   def _StripNode(self, nd):
-    snode = graph_pb2.NodeDef(name=nd.name, op=nd.op, input=nd.input)
+    snode = node_def_pb2.NodeDef(name=nd.name, op=nd.op, input=nd.input)
     if nd.device:
       snode.device = nd.device
     return snode

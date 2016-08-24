@@ -35,10 +35,10 @@ class MultiOutputTest(tf.test.TestCase):
     rng = np.random.RandomState(1)
     x = np.sort(200 * rng.rand(100, 1) - 100, axis=0)
     y = np.array([np.pi * np.sin(x).ravel(), np.pi * np.cos(x).ravel()]).T
-    regressor = learn.TensorFlowLinearRegressor(
+    regressor = learn.LinearRegressor(
         feature_columns=learn.infer_real_valued_columns_from_input(x),
-        learning_rate=0.01, target_dimension=2)
-    regressor.fit(x, y)
+        target_dimension=2)
+    regressor.fit(x, y, steps=100)
     score = mean_squared_error(regressor.predict(x), y)
     self.assertLess(score, 10, "Failed with score = {0}".format(score))
 

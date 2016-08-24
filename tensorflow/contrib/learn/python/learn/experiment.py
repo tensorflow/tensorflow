@@ -89,6 +89,10 @@ class Experiment(object):
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
 
+  @property
+  def estimator(self):
+    return self._estimator
+
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.
 
@@ -102,10 +106,8 @@ class Experiment(object):
       The trained estimator.
     """
     if delay_secs is None:
-      task_id = 0
-      if hasattr(FLAGS, "task"):
-        task_id = FLAGS.task
-      delay_secs = min(60, task_id*5)
+      task_id = self._estimator.config.task or 0
+      delay_secs = min(60, task_id * 5)
 
     if delay_secs:
       logging.info("Waiting %d secs before starting training.", delay_secs)

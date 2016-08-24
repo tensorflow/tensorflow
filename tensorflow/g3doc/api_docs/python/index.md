@@ -445,12 +445,14 @@
   * [`avg_pool3d`](../../api_docs/python/nn.md#avg_pool3d)
   * [`batch_normalization`](../../api_docs/python/nn.md#batch_normalization)
   * [`bias_add`](../../api_docs/python/nn.md#bias_add)
+  * [`bidirectional_dynamic_rnn`](../../api_docs/python/nn.md#bidirectional_dynamic_rnn)
   * [`bidirectional_rnn`](../../api_docs/python/nn.md#bidirectional_rnn)
   * [`compute_accidental_hits`](../../api_docs/python/nn.md#compute_accidental_hits)
   * [`conv1d`](../../api_docs/python/nn.md#conv1d)
   * [`conv2d`](../../api_docs/python/nn.md#conv2d)
   * [`conv2d_transpose`](../../api_docs/python/nn.md#conv2d_transpose)
   * [`conv3d`](../../api_docs/python/nn.md#conv3d)
+  * [`crelu`](../../api_docs/python/nn.md#crelu)
   * [`ctc_beam_search_decoder`](../../api_docs/python/nn.md#ctc_beam_search_decoder)
   * [`ctc_greedy_decoder`](../../api_docs/python/nn.md#ctc_greedy_decoder)
   * [`ctc_loss`](../../api_docs/python/nn.md#ctc_loss)
@@ -478,6 +480,7 @@
   * [`moments`](../../api_docs/python/nn.md#moments)
   * [`nce_loss`](../../api_docs/python/nn.md#nce_loss)
   * [`normalize_moments`](../../api_docs/python/nn.md#normalize_moments)
+  * [`raw_rnn`](../../api_docs/python/nn.md#raw_rnn)
   * [`relu`](../../api_docs/python/nn.md#relu)
   * [`relu6`](../../api_docs/python/nn.md#relu6)
   * [`rnn`](../../api_docs/python/nn.md#rnn)
@@ -590,6 +593,17 @@
   * [`is_built_with_cuda`](../../api_docs/python/test.md#is_built_with_cuda)
   * [`main`](../../api_docs/python/test.md#main)
 
+* **[BayesFlow Entropy (contrib)](../../api_docs/python/contrib.bayesflow.entropy.md)**:
+  * [`elbo_ratio`](../../api_docs/python/contrib.bayesflow.entropy.md#elbo_ratio)
+  * [`entropy_shannon`](../../api_docs/python/contrib.bayesflow.entropy.md#entropy_shannon)
+  * [`renyi_alpha`](../../api_docs/python/contrib.bayesflow.entropy.md#renyi_alpha)
+  * [`renyi_ratio`](../../api_docs/python/contrib.bayesflow.entropy.md#renyi_ratio)
+
+* **[BayesFlow Monte Carlo (contrib)](../../api_docs/python/contrib.bayesflow.monte_carlo.md)**:
+  * [`expectation`](../../api_docs/python/contrib.bayesflow.monte_carlo.md#expectation)
+  * [`expectation_importance_sampler`](../../api_docs/python/contrib.bayesflow.monte_carlo.md#expectation_importance_sampler)
+  * [`expectation_importance_sampler_logspace`](../../api_docs/python/contrib.bayesflow.monte_carlo.md#expectation_importance_sampler_logspace)
+
 * **[BayesFlow Stochastic Graph (contrib)](../../api_docs/python/contrib.bayesflow.stochastic_graph.md)**:
   * [`DistributionTensor`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#DistributionTensor)
   * [`get_current_value_type`](../../api_docs/python/contrib.bayesflow.stochastic_graph.md#get_current_value_type)
@@ -652,6 +666,10 @@
   * [`assert_or_get_global_step`](../../api_docs/python/contrib.framework.md#assert_or_get_global_step)
   * [`assert_same_float_dtype`](../../api_docs/python/contrib.framework.md#assert_same_float_dtype)
   * [`assert_scalar_int`](../../api_docs/python/contrib.framework.md#assert_scalar_int)
+  * [`assign_from_checkpoint`](../../api_docs/python/contrib.framework.md#assign_from_checkpoint)
+  * [`assign_from_checkpoint_fn`](../../api_docs/python/contrib.framework.md#assign_from_checkpoint_fn)
+  * [`assign_from_values`](../../api_docs/python/contrib.framework.md#assign_from_values)
+  * [`assign_from_values_fn`](../../api_docs/python/contrib.framework.md#assign_from_values_fn)
   * [`convert_to_tensor_or_sparse_tensor`](../../api_docs/python/contrib.framework.md#convert_to_tensor_or_sparse_tensor)
   * [`create_global_step`](../../api_docs/python/contrib.framework.md#create_global_step)
   * [`deprecated`](../../api_docs/python/contrib.framework.md#deprecated)
@@ -844,6 +862,7 @@
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
   * [`GridLSTMCell`](../../api_docs/python/contrib.rnn.md#GridLSTMCell)
+  * [`GRUBlockCell`](../../api_docs/python/contrib.rnn.md#GRUBlockCell)
   * [`LSTMBlockCell`](../../api_docs/python/contrib.rnn.md#LSTMBlockCell)
   * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
 
@@ -879,6 +898,8 @@
   * [`batch_sequences_with_states`](../../api_docs/python/contrib.training.md#batch_sequences_with_states)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
+  * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
+  * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)

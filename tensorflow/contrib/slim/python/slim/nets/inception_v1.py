@@ -245,8 +245,8 @@ def inception_v1_base(inputs,
 
 def inception_v1(inputs,
                  num_classes=1000,
-                 dropout_keep_prob=0.8,
                  is_training=True,
+                 dropout_keep_prob=0.8,
                  prediction_fn=slim.softmax,
                  spatial_squeeze=True,
                  reuse=None,
@@ -265,8 +265,8 @@ def inception_v1(inputs,
   Args:
     inputs: a tensor of size [batch_size, height, width, channels].
     num_classes: number of predicted classes.
-    dropout_keep_prob: the percentage of activation values that are retained.
     is_training: whether is training or not.
+    dropout_keep_prob: the percentage of activation values that are retained.
     prediction_fn: a function to get predictions out of logits.
     spatial_squeeze: if True, logits is of shape is [B, C], if false logits is
         of shape [B, 1, 1, C], where B is batch_size and C is number of classes.

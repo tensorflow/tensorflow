@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -136,7 +136,12 @@ from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor
 from tensorflow.python.training import training_util
 
-__all__ = ['evaluation', 'evaluation_loop', 'wait_for_new_checkpoint']
+__all__ = [
+    'evaluate_once',
+    'evaluation',
+    'evaluation_loop',
+    'wait_for_new_checkpoint'
+]
 
 
 def wait_for_new_checkpoint(checkpoint_dir,
@@ -239,6 +244,88 @@ def evaluation(sess,
 
 
 _USE_DEFAULT = 0
+
+
+def evaluate_once(checkpoint_path,
+                  logdir,
+                  master='',
+                  num_evals=1,
+                  eval_op=None,
+                  eval_op_feed_dict=None,
+                  final_op=None,
+                  final_op_feed_dict=None,
+                  summary_op=_USE_DEFAULT,
+                  summary_op_feed_dict=None,
+                  variables_to_restore=None,
+                  session_config=None):
+  """Evaluates the model at the given checkpoint path.
+
+  Args:
+    checkpoint_path: The path to a checkpoint to use for evaluation.
+    logdir: The directory where the TensorFlow summaries are written to.
+    master: The BNS address of the TensorFlow master.
+    num_evals: The number of times to run `eval_op`.
+    eval_op: A operation run `num_evals` times.
+    eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
+    final_op: An operation to execute after all of the `eval_op` executions. The
+      value of `final_op` is returned.
+    final_op_feed_dict: A feed dictionary to use when executing `final_op`.
+    summary_op: The summary_op to evaluate after running TF-Slims metric ops. By
+      default the summary_op is set to tf.merge_all_summaries().
+    summary_op_feed_dict: An optional feed dictionary to use when running the
+      `summary_op`.
+    variables_to_restore: A list of TensorFlow variables to restore during
+      evaluation. If the argument is left as `None` then
+      slim.variables.GetVariablesToRestore() is used.
+    session_config: An instance of `tf.ConfigProto` that will be used to
+      configure the `Session`. If left as `None`, the default will be used.
+
+  Returns:
+    The value of `final_op` or `None` if `final_op` is `None`.
+  """
+  if summary_op == _USE_DEFAULT:
+    summary_op = logging_ops.merge_all_summaries()
+
+  global_step = variables.get_or_create_global_step()
+
+  init_op = control_flow_ops.group(tf_variables.initialize_all_variables(),
+                                   tf_variables.initialize_local_variables(),
+                                   data_flow_ops.initialize_all_tables())
+
+  saver = tf_saver.Saver(variables_to_restore or
+                         variables.get_variables_to_restore())
+
+  summary_writer = summary_io.SummaryWriter(logdir)
+
+  sv = supervisor.Supervisor(graph=ops.get_default_graph(),
+                             logdir=logdir,
+                             init_op=init_op,
+                             summary_op=None,
+                             summary_writer=None,
+                             global_step=None,
+                             saver=None)
+
+  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+                                                         time.gmtime()))
+  with sv.managed_session(
+      master, start_standard_services=False, config=session_config) as sess:
+    saver.restore(sess, checkpoint_path)
+    sv.start_queue_runners(sess)
+    final_op_value = evaluation(sess,
+                                num_evals=num_evals,
+                                eval_op=eval_op,
+                                eval_op_feed_dict=eval_op_feed_dict,
+                                final_op=final_op,
+                                final_op_feed_dict=final_op_feed_dict,
+                                summary_op=summary_op,
+                                summary_op_feed_dict=summary_op_feed_dict,
+                                summary_writer=summary_writer,
+                                global_step=global_step)
+
+  logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+                                                         time.gmtime()))
+
+  return final_op_value
 
 
 def evaluation_loop(master,

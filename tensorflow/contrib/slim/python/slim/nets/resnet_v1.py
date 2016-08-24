@@ -196,6 +196,7 @@ def resnet_v1(inputs,
       if num_classes is not None:
         end_points['predictions'] = slim.softmax(net, scope='predictions')
       return net, end_points
+resnet_v1.default_image_size = 224
 
 
 def resnet_v1_50(inputs,

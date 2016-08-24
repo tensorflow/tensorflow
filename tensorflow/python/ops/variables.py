@@ -772,31 +772,47 @@ class _PartitionedVariable(object):
     self._partitions = partitions
     self._as_tensor = None
 
-  def as_tensor(self):
+  def concat(self):
     """Returns the overall concatenated value as a `Tensor`.
+
+    This is different from using the partitioned variable directly as a tensor
+    (through tensor conversion and `as_tensor`) in that it creates a new set of
+    operations that keeps the control dependencies from its scope.
 
     Returns:
       `Tensor` containing the concatenated value.
     """
-    if self._as_tensor is not None:
-      return self._as_tensor
-
     if len(self._variable_list) == 1:
       with ops.name_scope(None):
-        self._as_tensor = array_ops.identity(
-            self._variable_list[0], name=self._name)
-        return self._as_tensor
+        return array_ops.identity(self._variable_list[0], name=self._name)
 
     if all([p < 2 for p in self._partitions]):
       partition_ix = 0
     else:
       partition_ix = [i for i, p in enumerate(self._partitions) if p > 1][0]
+
     with ops.name_scope(self._name + "/ConcatPartitions/"):
       concatenated = array_ops.concat(partition_ix, self._variable_list)
+
     with ops.name_scope(None):
+      return array_ops.identity(concatenated, name=self._name)
+
+  def as_tensor(self):
+    """Returns the overall concatenated value as a `Tensor`.
+
+    The returned tensor will not inherit the control dependencies from the scope
+    where the value is used, which is similar to getting the value of
+    `Variable`.
+
+    Returns:
+      `Tensor` containing the concatenated value.
+    """
+    if self._as_tensor is None:
       # Be sure to cache the concatenated tensor to not do extraneous
       # computations.
-      self._as_tensor = array_ops.identity(concatenated, name=self._name)
+      with ops.control_dependencies(None):
+        self._as_tensor = self.concat()
+
     return self._as_tensor
 
   @staticmethod
@@ -1030,20 +1046,19 @@ def report_uninitialized_variables(var_list=None,
       for op in ops.get_default_graph().get_operations():
         if op.type in ["Variable", "AutoReloadVariable"]:
           var_list.append(op.outputs[0])
-  if not var_list:
-    # Return an empty tensor so we only need to check for returned tensor
-    # size being 0 as an indication of model ready.
-    return array_ops.constant([], dtype=dtypes.string, name=name)
-  else:
-    # Get a 1-D boolean tensor listing whether each variable is initialized.
-    variables_mask = math_ops.logical_not(
-        array_ops.pack([state_ops.is_variable_initialized(v) for v in var_list
-                       ]))
-    # Get a 1-D string tensor containing all the variable names.
-    variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
-    # Return a 1-D tensor containing all the names of uninitialized variables.
-    return array_ops.boolean_mask(
-        variable_names_tensor, variables_mask, name=name)
+  with ops.name_scope(name):
+    if not var_list:
+      # Return an empty tensor so we only need to check for returned tensor
+      # size being 0 as an indication of model ready.
+      return array_ops.constant([], dtype=dtypes.string)
+    else:
+      # Get a 1-D boolean tensor listing whether each variable is initialized.
+      variables_mask = math_ops.logical_not(array_ops.pack(
+          [state_ops.is_variable_initialized(v) for v in var_list]))
+      # Get a 1-D string tensor containing all the variable names.
+      variable_names_tensor = array_ops.constant([s.op.name for s in var_list])
+      # Return a 1-D tensor containing all the names of uninitialized variables.
+      return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 # pylint: disable=protected-access
 ops.register_tensor_conversion_function(Variable,

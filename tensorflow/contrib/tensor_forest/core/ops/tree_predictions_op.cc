@@ -35,9 +35,9 @@ using tensorforest::DataColumnTypes;
 using tensorforest::FeatureSpec;
 using tensorforest::Sum;
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("TreePredictions")
     .Attr("valid_leaf_threshold: float")
@@ -55,8 +55,8 @@ REGISTER_OP("TreePredictions")
     .SetShapeFn([](InferenceContext* c) {
       // The output of TreePredictions is
       // [node_pcw(evaluate_tree(x), c) for c in classes for x in input_data].
-      const Dimension* num_points = c->Dim(c->input(0), 0);
-      const Dimension* num_classes = c->Dim(c->input(7), 1);
+      DimensionHandle num_points = c->Dim(c->input(0), 0);
+      DimensionHandle num_classes = c->Dim(c->input(7), 1);
 
       if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
         num_points = c->UnknownDim();

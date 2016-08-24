@@ -330,7 +330,8 @@ Sample `n` observations from the Categorical distribution.
 ##### Args:
 
 
-*  <b>`n`</b>: 0-D.  Number of independent samples to draw for each distribution.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Random seed (optional).
 *  <b>`name`</b>: A name for this operation (optional).
 

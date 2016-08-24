@@ -39,6 +39,13 @@ Initializes a BaseEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.config` {#BaseEstimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#BaseEstimator.evaluate}
 
 See `Evaluable`.
@@ -53,7 +60,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
+#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
 
 Exports inference graph into given dir.
 
@@ -297,6 +304,13 @@ Constructs an Estimator instance.
 
 - - -
 
+#### `tf.contrib.learn.Estimator.config` {#Estimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#Estimator.evaluate}
 
 See `Evaluable`.
@@ -311,7 +325,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
+#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
 
 Exports inference graph into given dir.
 
@@ -535,6 +549,13 @@ The following standard keys are defined:
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowClassifier.config` {#TensorFlowClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowClassifier.dnn_bias_` {#TensorFlowClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -563,7 +584,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowClassifier.export}
+#### `tf.contrib.learn.TensorFlowClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -869,6 +890,13 @@ Initializes a DNNClassifier instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNClassifier.config` {#DNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -897,7 +925,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
+#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -1233,6 +1261,13 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNRegressor.config` {#DNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -1261,7 +1296,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
+#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -1494,6 +1529,13 @@ component of a nested object.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNClassifier.config` {#TensorFlowDNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNClassifier.dnn_bias_` {#TensorFlowDNNClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -1522,7 +1564,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNClassifier.export}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -1739,6 +1781,13 @@ component of a nested object.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNRegressor.config` {#TensorFlowDNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNRegressor.dnn_bias_` {#TensorFlowDNNRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -1767,7 +1816,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -2015,6 +2064,13 @@ Initializes a TensorFlowEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowEstimator.config` {#TensorFlowEstimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowEstimator.evaluate}
 
 Evaluates given model with provided evaluation data.
@@ -2040,7 +2096,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
+#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
 
 Exports inference graph into given dir.
 
@@ -2411,6 +2467,13 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.config` {#LinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -2439,7 +2502,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
+#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -2758,6 +2821,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.config` {#LinearRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -2786,7 +2856,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
+#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -3019,6 +3089,13 @@ component of a nested object.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowLinearClassifier.config` {#TensorFlowLinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowLinearClassifier.dnn_bias_` {#TensorFlowLinearClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -3047,7 +3124,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearClassifier.export}
+#### `tf.contrib.learn.TensorFlowLinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -3264,6 +3341,13 @@ component of a nested object.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowLinearRegressor.config` {#TensorFlowLinearRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowLinearRegressor.dnn_bias_` {#TensorFlowLinearRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -3292,7 +3376,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowLinearRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearRegressor.export}
+#### `tf.contrib.learn.TensorFlowLinearRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowLinearRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -3554,6 +3638,13 @@ Returns bias of the rnn layer.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNClassifier.config` {#TensorFlowRNNClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowRNNClassifier.evaluate}
 
 Evaluates given model with provided evaluation data.
@@ -3579,7 +3670,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNClassifier.export}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNClassifier.export}
 
 Exports inference graph into given dir.
 
@@ -3915,6 +4006,13 @@ Returns bias of the rnn layer.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.config` {#TensorFlowRNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowRNNRegressor.evaluate}
 
 Evaluates given model with provided evaluation data.
@@ -3940,7 +4038,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -4230,6 +4328,13 @@ Returns weights of the rnn layer.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRegressor.config` {#TensorFlowRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRegressor.dnn_bias_` {#TensorFlowRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -4258,7 +4363,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
+#### `tf.contrib.learn.TensorFlowRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRegressor.export}
 
 Exports inference graph into given dir.
 
@@ -4818,8 +4923,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 ##### Returns:
 
-  String `Tensor` of batched `Example` proto. If `keep_keys` is True, then
-  returns tuple of string `Tensor`s, where first value is the key.
+  String `Tensor` of batched `Example` proto.
 
 ##### Raises:
 
@@ -4869,7 +4973,6 @@ All ops are added to the default graph.
 ##### Returns:
 
   A dict of `Tensor` or `SparseTensor` objects for each in `features`.
-  If `keep_keys` is `True`, returns tuple of string `Tensor` and above dict.
 
 ##### Raises:
 

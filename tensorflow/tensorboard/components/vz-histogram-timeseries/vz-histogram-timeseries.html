@@ -12,6 +12,7 @@ visualization.
 -->
 <dom-module id="vz-histogram-timeseries">
     <template>
+      <div id="tooltip"><span></span></div>
       <svg id="svg">
         <g>
           <g class="axis x"></g>
@@ -42,6 +43,14 @@ visualization.
           width: 100%;
           flex-grow: 1;
           flex-shrink: 1;
+        }
+
+        #tooltip {
+          position: absolute;
+          display: block;
+          opacity: 0;
+          font-weight: bold;
+          font-size: 11px;
         }
 
         .background {
@@ -312,6 +321,7 @@ visualization.
         var name = this._name;
         var mode = this.mode;
         var color = d3.hcl(this.colorScale(name));
+        var tooltip = d3.select(this.$.tooltip);
 
         var xAccessor = function(d) { return d[xProp] };
         var yAccessor = function(d) { return d[yProp] };
@@ -350,10 +360,10 @@ visualization.
         var yAxisFormat = d3.format(".0f");
 
         if (timeProp === "wall_time") {
-          yAxisFormat = d3.time.format("%X");
+          yAxisFormat = d3.time.format("%m/%d %X");
         } else if (timeProp === "relative") {
           yAxisFormat = function(d) {
-            return d3.format(".1r")(d / 3.6e6); // Convert to hours.
+            return d3.format(".1r")(d / 3.6e6) + 'h'; // Convert to hours.
           };
         }
 
@@ -466,6 +476,7 @@ visualization.
               xAxisHoverUpdate.style("opacity", 1);
               yAxisHoverUpdate.style("opacity", 1);
               ySliceAxisHoverUpdate.style("opacity", 1);
+              tooltip.style("opacity", 1);
             })
             .on("mouseout", function() {
               hoverUpdate.style("opacity", 0);
@@ -474,6 +485,7 @@ visualization.
               ySliceAxisHoverUpdate.style("opacity", 0);
               hoverUpdate.classed("hover-closest", false);
               outlineUpdate.classed("outline-hover", false);
+              tooltip.style("opacity", 0);
             })
             .on("mousemove", onMouseMove);
 
@@ -665,6 +677,14 @@ visualization.
             .select("text")
               .text(function(d) { return fsy(closestSliceData[binsProp][index][yProp]); });
 
+          var svgMouse = d3.mouse(svgNode);
+          tooltip.style("transform", "translate(" + (svgMouse[0] + 15) + "px," +
+              (svgMouse[1] - 15) + "px)")
+            .select('span')
+            .text(mode === "offset" ?
+                fsy(closestSliceData[binsProp][index][yProp]) :
+                (timeProp === "step" ? "step " : "") +
+                fy(timeAccessor(closestSliceData)));
         }
       }
     });

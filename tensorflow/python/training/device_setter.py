@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -76,7 +76,7 @@ class _ReplicaDeviceChooser(object):
     current_device = pydev.DeviceSpec.from_string(op.device or "")
     spec = pydev.DeviceSpec()
     if self._ps_tasks and self._ps_device:
-      node_def = op if isinstance(op, graph_pb2.NodeDef) else op.node_def
+      node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
       if node_def.op in self._ps_ops:
         device_string = "%s/task:%d" % (self._ps_device, self._next_task())
         if self._merge_devices:

@@ -15,6 +15,13 @@
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowClassifier.config` {#TensorFlowClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowClassifier.dnn_bias_` {#TensorFlowClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -43,7 +50,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowClassifier.export}
+#### `tf.contrib.learn.TensorFlowClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowClassifier.export}
 
 Exports inference graph into given dir.
 

@@ -127,7 +127,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_git_repository(
     name = "grpc",
-    commit = "39650266",
+    commit = "d7ff4ff40071d2b486a052183e3e9f9382afb745",
     init_submodules = True,
     remote = "https://github.com/grpc/grpc.git",
     build_file = path_prefix + "grpc.BUILD",

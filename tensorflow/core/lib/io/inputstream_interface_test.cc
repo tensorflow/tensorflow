@@ -37,6 +37,8 @@ class TestStringStream : public InputStreamInterface {
     return Status::OK();
   }
 
+  int64 Tell() const override { return pos_; }
+
  private:
   string content_;
   int64 pos_ = 0;

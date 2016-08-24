@@ -174,7 +174,8 @@ class Bernoulli(distribution.Distribution):
     """Generate `n` samples.
 
     Args:
-      n: scalar.  Number of samples to draw from each distribution.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer seed for RNG.
       name: name to give to the op.
 

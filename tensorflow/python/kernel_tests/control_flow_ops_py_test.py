@@ -685,7 +685,7 @@ class ControlFlowTest(tf.test.TestCase):
     self._testNestedWhile_1(use_gpu=True)
 
   def _testNestedWhile_2(self, use_gpu):
-    """ Test the cases that A -> Enter and Exit -> A are partitioned."""
+    # Test the cases that A -> Enter and Exit -> A are partitioned.
     with self.test_session(use_gpu=use_gpu):
       s0 = tf.constant(2.0)
       def inner_loop(s):
@@ -722,8 +722,7 @@ class ControlFlowTest(tf.test.TestCase):
           r_ = tf.constant(12)
         return [n_, r_]
 
-      res = tf.while_loop(condition, body, [n, r],
-                          parallel_iterations=1)
+      res = tf.while_loop(condition, body, [n, r], parallel_iterations=1)
       self.assertAllEqual(12, res[1].eval())
 
   def testWhileWithControl_2(self):
@@ -769,6 +768,25 @@ class ControlFlowTest(tf.test.TestCase):
       with tf.control_dependencies([tf.no_op()]):
         loop = tf.while_loop(cond, body, (tf.constant(5),))
       self.assertEqual(0, sess.run(loop))
+
+  def testWhileCondExitControl(self):
+    with self.test_session():
+      v = tf.Variable(1)
+      def false_branch():
+        cond = lambda i: i < 100
+        def body(i):
+          x = tf.assign(v, i)
+          return x + 1
+        loop = tf.while_loop(cond, body, [0])
+        # Make sure to handle correctly control edge from Exit to a node.
+        with tf.control_dependencies([loop]):
+          return tf.constant(6.0)
+      r = tf.cond(tf.constant(False),
+                  lambda: tf.constant(1.0),
+                  false_branch)
+      tf.initialize_all_variables().run()
+      self.assertEqual(6.0, r.eval())
+      self.assertEqual(99, v.eval())
 
   def testCondWhile_1(self):
     with self.test_session():

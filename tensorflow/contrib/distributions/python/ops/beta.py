@@ -359,7 +359,8 @@ class Beta(distribution.Distribution):
     """Sample `n` observations from the Beta Distributions.
 
     Args:
-      n: `Scalar`, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 
@@ -371,7 +372,7 @@ class Beta(distribution.Distribution):
       with ops.name_scope(name, values=[self.a, self.b, n]):
         a = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.a
         b = array_ops.ones_like(self._a_b_sum, dtype=self.dtype) * self.b
-        n = ops.convert_to_tensor(n)
+        n = ops.convert_to_tensor(n, name="n")
 
         gamma1_sample = random_ops.random_gamma(
             [n,], a, dtype=self.dtype, seed=seed)
