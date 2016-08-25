@@ -50,6 +50,12 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
     case DT_DOUBLE:
       ExpectClose<double>(x, y, atol, rtol);
       break;
+    case DT_COMPLEX64:
+      ExpectClose<complex64>(x, y, atol, rtol);
+      break;
+    case DT_COMPLEX128:
+      ExpectClose<complex128>(x, y, atol, rtol);
+      break;
     default:
       LOG(FATAL) << "Unexpected type : " << DataTypeString(x.dtype());
   }
