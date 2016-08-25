@@ -33,6 +33,9 @@ py_test(
     name = "moving_average_optimizer_test",
     srcs = ["python/training/moving_average_optimizer_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "notsan",  # b/31055119
+    ],
     deps = [
         ":opt_py",
         "//tensorflow:tensorflow_py",
