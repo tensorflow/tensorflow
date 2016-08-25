@@ -1158,8 +1158,17 @@ class ControlFlowContext(object):
 
   def _MaybeRemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
-    internal_control_inputs = [x for x in op.control_inputs
-                               if _GetOutputContext(x) == self]
+    while_ctxt = self.GetWhileContext()
+    # A control input of `op` is internal if it is in the same while
+    # loop context as the enclosing while loop context of self.
+    if while_ctxt is None:
+      internal_control_inputs = op.control_inputs
+    else:
+      internal_control_inputs = []
+      for x in op.control_inputs:
+        ctxt = _GetOutputContext(x)
+        if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
+          internal_control_inputs.append(x)
     if len(internal_control_inputs) != len(op.control_inputs):
       del op.control_inputs[:]
       op._add_control_inputs(internal_control_inputs)

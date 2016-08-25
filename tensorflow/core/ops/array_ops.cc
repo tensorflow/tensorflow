@@ -1386,7 +1386,7 @@ REGISTER_OP("UniqueWithCounts")
     .Output("count: int32")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      auto* uniq = c->Vector(InferenceContext::kUnknownDim);
+      auto uniq = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, uniq);
       c->set_output(1, c->input(0));
       c->set_output(2, uniq);

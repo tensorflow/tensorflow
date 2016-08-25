@@ -42,7 +42,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 

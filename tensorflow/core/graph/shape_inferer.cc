@@ -31,7 +31,7 @@ Status ShapeInferer::AddNode(const Node* node) {
   // from 'input's InferenceContext, and store into a vector
   // indexed by 'node's input.
   std::vector<const Node*> input_nodes(node->num_inputs());
-  std::vector<const shape_inference::Shape*> input_shapes(node->num_inputs());
+  std::vector<shape_inference::ShapeHandle> input_shapes(node->num_inputs());
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string.h>
 
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"

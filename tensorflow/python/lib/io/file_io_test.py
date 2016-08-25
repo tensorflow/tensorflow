@@ -276,7 +276,10 @@ class FileIoTest(tf.test.TestCase):
     self.assertEquals(7, file_statistics.length)
     self.assertEqual(
         int(os_statistics.st_mtime), int(file_statistics.mtime_nsec / 1e9))
-    self.assertEqual(33188, file_statistics.mode)
+
+    # 644 and 666 are the two possible default permissions of newly-created
+    # files.
+    self.assertTrue(file_statistics.mode in [0o100644, 0o100666])
 
   def testReadLine(self):
     file_path = os.path.join(self._base_dir, "temp_file")

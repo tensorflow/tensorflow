@@ -219,7 +219,7 @@ class PartitionerCreatorsTest(tf.test.TestCase):
                                           expected_partitions=[4, 1, 1])
 
 
-def _IotaInitializer(shape, dtype=tf.float32):
+def _IotaInitializer(shape, dtype=tf.float32, partition_info=None):
   assert dtype == tf.float32
   if len(shape) == 1:
     return range(shape[0])
