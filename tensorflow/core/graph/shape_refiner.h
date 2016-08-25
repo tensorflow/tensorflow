@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_INFERER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_INFERER_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_REFINER_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_REFINER_H_
 
 #include <vector>
 
@@ -24,20 +24,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-// ShapeInferer performs shape inference for TensorFlow Graphs.  It is
+// ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
 // responsible for instantiating InferenceContext objects for each
 // Node in the Graph, and providing/storing the 'input_tensor' Tensors
 // used by Shape Inference functions, when available at graph
 // construction time.
-class ShapeInferer {
+class ShapeRefiner {
  public:
-  ShapeInferer();
-  ~ShapeInferer();
+  ShapeRefiner();
+  ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,
   // storing its shape outputs.
   //
-  // All inputs of 'node' must be added to ShapeInferer prior to
+  // All inputs of 'node' must be added to ShapeRefiner prior to
   // adding 'node'.
   //
   // Returns an error if:
@@ -77,9 +77,9 @@ class ShapeInferer {
   std::unordered_map<const Node*, shape_inference::InferenceContext*>
       node_to_context_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeInferer);
+  TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_INFERER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_REFINER_H_

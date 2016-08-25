@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/graph/shape_inferer.h"
+#include "tensorflow/core/graph/shape_refiner.h"
 
 #include <memory>
 #include <vector>
@@ -23,10 +23,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-ShapeInferer::ShapeInferer() {}
-ShapeInferer::~ShapeInferer() { gtl::STLDeleteValues(&node_to_context_); }
+ShapeRefiner::ShapeRefiner() {}
+ShapeRefiner::~ShapeRefiner() { gtl::STLDeleteValues(&node_to_context_); }
 
-Status ShapeInferer::AddNode(const Node* node) {
+Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector
   // indexed by 'node's input.
@@ -40,7 +40,7 @@ Status ShapeInferer::AddNode(const Node* node) {
     if (it == node_to_context_.end()) {
       return errors::FailedPrecondition(
           "Input ", e->dst_input(), " ('", input->name(), "') for '",
-          node->name(), "' was not previously added to ShapeInferer.");
+          node->name(), "' was not previously added to ShapeRefiner.");
     }
 
     shape_inference::InferenceContext* c = it->second;
@@ -113,7 +113,7 @@ Status ShapeInferer::AddNode(const Node* node) {
   return Status::OK();
 }
 
-Status ShapeInferer::ConstantValue(const Node* node, Tensor* tensor_storage,
+Status ShapeRefiner::ConstantValue(const Node* node, Tensor* tensor_storage,
                                    const Tensor** input_tensor) const {
   *input_tensor = nullptr;
   // For now, we do a simple static analysis of the graph to
@@ -140,14 +140,14 @@ Status ShapeInferer::ConstantValue(const Node* node, Tensor* tensor_storage,
   return Status::OK();
 }
 
-Status ShapeInferer::Constant(const Node* node, Tensor* tensor_storage,
+Status ShapeRefiner::Constant(const Node* node, Tensor* tensor_storage,
                               const Tensor** input_tensor) const {
   TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "value", tensor_storage));
   *input_tensor = tensor_storage;
   return Status::OK();
 }
 
-Status ShapeInferer::Shape(const Node* node, Tensor* tensor_storage,
+Status ShapeRefiner::Shape(const Node* node, Tensor* tensor_storage,
                            const Tensor** input_tensor) const {
   // Get the input to the node.
   const Node* shape_node;
@@ -176,7 +176,7 @@ Status ShapeInferer::Shape(const Node* node, Tensor* tensor_storage,
   return Status::OK();
 }
 
-Status ShapeInferer::Size(const Node* node, Tensor* tensor_storage,
+Status ShapeRefiner::Size(const Node* node, Tensor* tensor_storage,
                           const Tensor** input_tensor) const {
   // Get the input to the node.
   const Node* size_node;
@@ -202,7 +202,7 @@ Status ShapeInferer::Size(const Node* node, Tensor* tensor_storage,
   return Status::OK();
 }
 
-Status ShapeInferer::Rank(const Node* node, Tensor* tensor_storage,
+Status ShapeRefiner::Rank(const Node* node, Tensor* tensor_storage,
                           const Tensor** input_tensor) const {
   // Get the input to the node.
   const Node* rank_node;

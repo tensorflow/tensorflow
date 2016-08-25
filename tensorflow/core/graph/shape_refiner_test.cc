@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/graph/shape_inferer.h"
+#include "tensorflow/core/graph/shape_refiner.h"
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -33,19 +33,19 @@ namespace {
     EXPECT_EQ(EXPECTED, ctx->DebugString(ctx->output(IDX)));          \
   } while (0);
 
-TEST(ShapeInfererTest, Constant) {
+TEST(ShapeRefinerTest, Constant) {
   // Create a constant node and validate that adding it is successful
   // and that its shape is correct.
   Scope root = Scope::NewRootScope();
   auto c = ops::Const(root, 42.0f);
-  ShapeInferer m;
+  ShapeRefiner m;
   TF_ASSERT_OK(m.AddNode(c.node()));
 
   EXPECT_SHAPE("[]", m, c, 0);
 }
 
-TEST(ShapeInfererTest, MatMul) {
-  ShapeInferer m;
+TEST(ShapeRefinerTest, MatMul) {
+  ShapeRefiner m;
 
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
@@ -61,8 +61,8 @@ TEST(ShapeInfererTest, MatMul) {
   EXPECT_SHAPE("[2,2]", m, mm, 0);
 }
 
-TEST(ShapeInfererTest, InvalidOrder) {
-  ShapeInferer m;
+TEST(ShapeRefinerTest, InvalidOrder) {
+  ShapeRefiner m;
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
   auto b = ops::Const(root, {{1.0f, 2.0f}});
@@ -72,12 +72,12 @@ TEST(ShapeInfererTest, InvalidOrder) {
   ASSERT_FALSE(s.ok());
   ASSERT_EQ(
       "Input 0 ('Const') for 'MatMul' was not previously added to "
-      "ShapeInferer.",
+      "ShapeRefiner.",
       s.error_message());
 }
 
-TEST(ShapeInfererTest, BadShapes) {
-  ShapeInferer m;
+TEST(ShapeRefinerTest, BadShapes) {
+  ShapeRefiner m;
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
   auto b = ops::Const(root, {{1.0f}, {2.0f}});
@@ -92,7 +92,7 @@ TEST(ShapeInfererTest, BadShapes) {
   ASSERT_EQ("Dimensions must be equal, but are 1 and 2", s.error_message());
 }
 
-TEST(ShapeInfererTest, PropagateConstants) {
+TEST(ShapeRefinerTest, PropagateConstants) {
   // Reduction dimension is a variable, so we don't know its value.
   // So the output shape value is unknown (though its rank is known).
   {
@@ -103,7 +103,7 @@ TEST(ShapeInfererTest, PropagateConstants) {
     auto dim = ops::Variable(root, {}, DT_INT32);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeInferer m;
+    ShapeRefiner m;
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -120,7 +120,7 @@ TEST(ShapeInfererTest, PropagateConstants) {
     auto dim = ops::Const(root, 1);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeInferer m;
+    ShapeRefiner m;
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -136,7 +136,7 @@ TEST(ShapeInfererTest, PropagateConstants) {
     auto dim = ops::Const(root, 0);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeInferer m;
+    ShapeRefiner m;
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -165,8 +165,8 @@ REGISTER_OP("TestOp")
 
 }  // namespace
 
-TEST(ShapeInfererTest, InputTensorDependencies) {
-  ShapeInferer m;
+TEST(ShapeRefinerTest, InputTensorDependencies) {
+  ShapeRefiner m;
   Graph graph(OpRegistry::Global());
   Node* node;
 
@@ -214,7 +214,7 @@ REGISTER_OP("ShapeData")
 
 }  // namespace
 
-TEST(ShapeInfererTest, PropagateShape) {
+TEST(ShapeRefinerTest, PropagateShape) {
   Scope root = Scope::NewRootScope();
   // 3x2 input
   auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
@@ -227,7 +227,7 @@ TEST(ShapeInfererTest, PropagateShape) {
                    .Input(shape.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeInferer m;
+  ShapeRefiner m;
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(shape.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -236,7 +236,7 @@ TEST(ShapeInfererTest, PropagateShape) {
   EXPECT_EQ("[3,2]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeInfererTest, PropagateSize) {
+TEST(ShapeRefinerTest, PropagateSize) {
   Scope root = Scope::NewRootScope();
   // 3x2 input
   auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
@@ -248,7 +248,7 @@ TEST(ShapeInfererTest, PropagateSize) {
                    .Input(size.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeInferer m;
+  ShapeRefiner m;
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(size.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -257,7 +257,7 @@ TEST(ShapeInfererTest, PropagateSize) {
   EXPECT_EQ("[6]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeInfererTest, PropagateRank) {
+TEST(ShapeRefinerTest, PropagateRank) {
   Scope root = Scope::NewRootScope();
   // 3x2 input
   auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
@@ -269,7 +269,7 @@ TEST(ShapeInfererTest, PropagateRank) {
                    .Input(rank.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeInferer m;
+  ShapeRefiner m;
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(rank.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
