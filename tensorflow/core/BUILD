@@ -175,6 +175,7 @@ cc_library(
         "platform/mem.h",
         "platform/net.h",
         "platform/mutex.h",
+        "platform/notification.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
         "platform/strong_hash.h",
@@ -1008,6 +1009,7 @@ filegroup(
         "platform/default/integral_types.h",
         "platform/default/logging.h",
         "platform/default/mutex.h",
+        "platform/default/notification.h",
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/env.h",
@@ -1020,6 +1022,7 @@ filegroup(
         "platform/mem.h",
         "platform/mutex.h",
         "platform/net.h",
+        "platform/notification.h",
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/strong_hash.h",

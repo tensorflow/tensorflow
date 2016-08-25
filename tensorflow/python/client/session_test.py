@@ -38,6 +38,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -1439,6 +1440,20 @@ class SessionTest(test_util.TensorFlowTestCase):
       session.Session(config=37)
     with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
       session.Session(graph=37)
+
+  def testTimeoutWithShortOperations(self):
+    num_epochs = 5
+    q = data_flow_ops.FIFOQueue(
+        capacity=50, dtypes=[dtypes.int32], shapes=[()])
+    enqueue_op = q.enqueue_many(constant_op.constant([1, 2]))
+
+    # Use a 10-second timeout, which should be longer than any
+    # non-blocking enqueue_many op.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=10000)
+    with session.Session(config=config) as sess:
+      for _ in range(num_epochs):
+        sess.run(enqueue_op)
+      self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
 
 if __name__ == '__main__':
