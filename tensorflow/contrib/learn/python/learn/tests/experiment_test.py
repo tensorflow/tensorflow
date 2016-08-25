@@ -142,8 +142,7 @@ class ExperimentTest(tf.test.TestCase):
     # The server should not have started because there was no ClusterSpec.
     self.assertFalse(mock_server.called)
 
-  def test_train_raises_if_not_enough_info_to_start_server(self):
-    # Job name is missing.
+  def test_train_raises_if_job_name_is_missing(self):
     no_job_name = tf.contrib.learn.RunConfig(
         cluster_spec=tf.train.ClusterSpec(
             {'ps': ['host1:2222', 'host2:2222'],
@@ -153,20 +152,6 @@ class ExperimentTest(tf.test.TestCase):
     )
     with self.assertRaises(ValueError):
       ex = tf.contrib.learn.Experiment(TestEstimator(no_job_name),
-                                       train_input_fn='train_input',
-                                       eval_input_fn='eval_input')
-      ex.train()
-
-    # Task index is missing.
-    no_task = tf.contrib.learn.RunConfig(
-        cluster_spec=tf.train.ClusterSpec(
-            {'ps': ['host1:2222', 'host2:2222'],
-             'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
-        ),
-        job_name='worker',
-    )
-    with self.assertRaises(ValueError):
-      ex = tf.contrib.learn.Experiment(TestEstimator(no_task),
                                        train_input_fn='train_input',
                                        eval_input_fn='eval_input')
       ex.train()

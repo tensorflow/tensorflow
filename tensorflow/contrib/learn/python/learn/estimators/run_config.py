@@ -19,8 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
+import os
+
 from tensorflow.python import ConfigProto
 from tensorflow.python import GPUOptions
+from tensorflow.python.training.server_lib import ClusterSpec
 
 
 class RunConfig(object):
@@ -33,9 +37,9 @@ class RunConfig(object):
 
   # TODO(wicke): Move options out once functionality is covered by monitors
   def __init__(self,
-               master='',
-               task=0,
-               num_ps_replicas=0,
+               master=None,
+               task=None,
+               num_ps_replicas=None,
                num_cores=4,
                log_device_placement=False,
                gpu_memory_fraction=1,
@@ -48,8 +52,46 @@ class RunConfig(object):
                job_name=None):
     """Constructor.
 
+    If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`, and
+    `job_name` are set based on the TF_CONFIG environment variable, if the
+    pertinent information is present; otherwise, the defaults listed in the
+    Args section apply.
+
+    The TF_CONFIG environment variable is a JSON object with two relevant
+    attributes: `task` and `cluster_spec`. `cluster_spec` is a JSON serialized
+    version of the Python dict described in server_lib.py. `task` has two
+    attributes: `type` and `index`, where `type` can be any of the task types
+    in the cluster_spec. When TF_CONFIG contains said information, the
+    following properties are set on this class:
+
+      * `job_name` is set to [`task`][`type`]
+      * `task` is set to [`task`][`index`]
+      * `cluster_spec` is parsed from [`cluster`]
+      * 'master' is determined by looking up `job_name` and `task` in the
+        cluster_spec.
+      * `num_ps_replicas` is set by counting the number of nodes listed
+        in the `ps` job of `cluster_spec`.
+
+    Note that any of these values can be overridden by explicitly passing
+    their value to the constructor.
+
+    Example:
+    ```
+      cluster = {'ps': ['host1:2222', 'host2:2222'],
+                 'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+      os.environ['TF_CONFIG'] = json.dumps({
+          {'cluster': cluster,
+           'task': {'type': 'worker', 'index': 1}}})
+      config = RunConfig()
+      assert config.master == 'host4:2222'
+      assert config.task == 1
+      assert config.num_ps_replicas == 2
+      assert config.cluster_spec == server_lib.ClusterSpec(cluster)
+      assert config.job_name == 'worker'
+    ```
+
     Args:
-      master: TensorFlow master. Empty string (the default) for local.
+      master: TensorFlow master. Defaults to empty string for local.
       task: Task id of the replica running the training (default: 0).
       num_ps_replicas: Number of parameter server tasks to use (default: 0).
       num_cores: Number of cores to be used (default: 4).
@@ -71,19 +113,43 @@ class RunConfig(object):
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
       job_name: the type of task, e.g., 'ps', 'worker', etc. Must exist in
-        cluster_spec.jobs.
+        `cluster_spec.jobs`.
+
+    Raises:
+      ValueError: if num_ps_replicas and cluster_spec are set (cluster_spec
+        may fome from the TF_CONFIG environment variable).
     """
-    self.master = master
-    self.task = task
-    self._job_name = job_name
-    self.num_ps_replicas = num_ps_replicas
+    # If not explicitly specified in the constructor and the TF_CONFIG
+    # environment variable is present, load cluster_spec from TF_CONFIG.
+    config = json.loads(os.environ.get('TF_CONFIG') or '{}')
+    if not cluster_spec and 'cluster' in config:
+      cluster_spec = ClusterSpec(config['cluster'])
+    self.cluster_spec = cluster_spec
+
+    # Set job_name and task. If explicitly specified, use those values,
+    # otherwise, if the TF_CONFIG environment variable is present, use that.
+    # Otherwise, use the respective default (None / 0).
+    task_env = config.get('task', {})
+    self._job_name = job_name or task_env.get('type') or None
+    self.task = task or task_env.get('index') or 0
+
+    self.master = (master or _get_master(self.cluster_spec, self.job_name,
+                                         self.task) or '')
+
+    if num_ps_replicas is not None and self.cluster_spec:
+      raise ValueError('Cannot specify both num_ps_replicas and cluster_spec. '
+                       'Note: cluster_spec may have been set in the TF_CONFIG '
+                       'environment variable.')
+    self.num_ps_replicas = num_ps_replicas or _count_ps(self.cluster_spec) or 0
+
     gpu_options = GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
-    self.tf_config = ConfigProto(log_device_placement=log_device_placement,
-                                 inter_op_parallelism_threads=num_cores,
-                                 intra_op_parallelism_threads=num_cores,
-                                 gpu_options=gpu_options)
-    self.cluster_spec = cluster_spec
+    self.tf_config = ConfigProto(
+        log_device_placement=log_device_placement,
+        inter_op_parallelism_threads=num_cores,
+        intra_op_parallelism_threads=num_cores,
+        gpu_options=gpu_options)
+
     self.tf_random_seed = tf_random_seed
     self.save_summary_steps = save_summary_steps
     self.save_checkpoints_secs = save_checkpoints_secs
@@ -93,3 +159,42 @@ class RunConfig(object):
   @property
   def job_name(self):
     return self._job_name
+
+
+def _count_ps(cluster_spec):
+  """Counts the number of parameter servers in cluster_spec."""
+  return len(cluster_spec.as_dict().get('ps', [])) if cluster_spec else 0
+
+
+def _get_master(cluster_spec, job_name, task_index):
+  """Returns the appropriate string for the TensorFlow master."""
+  if not cluster_spec:
+    return ''
+
+  # If there is only one node in the cluster, do things locally.
+  jobs = cluster_spec.jobs
+  if len(jobs) == 1 and len(cluster_spec.job_tasks(jobs[0])) == 1:
+    return ''
+
+  # Lookup the master in cluster_spec using job_name and task_index,
+  # if possible.
+  if job_name:
+    if job_name not in jobs:
+      raise ValueError(
+          '%s is not a valid task in the cluster_spec:\n'
+          '%s\n\n'
+          'Note that these values may be coming from the TF_CONFIG environment '
+          'variable.' % (job_name, cluster_spec))
+    addresses = cluster_spec.job_tasks(job_name)
+    if task_index >= len(addresses) or task_index < 0:
+      raise ValueError(
+          '%d is not a valid task index for task type %s in the '
+          'cluster_spec:\n'
+          '%s\n\n'
+          'Note that these value may be coming from the TF_CONFIG environment '
+          'variable.' % (task_index, job_name, cluster_spec))
+    return addresses[task_index]
+
+  # For backwards compatibility, we return empty string if job_name was
+  # not set (job_name did not previously exist).
+  return ''
