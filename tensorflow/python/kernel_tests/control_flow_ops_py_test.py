@@ -1405,6 +1405,26 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r, v)[0]
       self.assertAllClose(512.0, r.eval())
 
+  def testNestedWhileGrad_ParallelIterations(self):
+    # Make sure the stack pushes and pops of an inner loop are executed in
+    # the sequential order of the iterations of its outer loop.
+    with self.test_session() as sess:
+      def inner_loop(t):
+        fn = lambda n: n + tf.square(var)
+        return tf.map_fn(fn=fn, elems=t, parallel_iterations=10)
+
+      def outer_loop(inp):
+        return tf.map_fn(fn=inner_loop, elems=inp, parallel_iterations=10)
+
+      var = tf.Variable(tf.constant(3.0))
+      inp = tf.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+      res = outer_loop(inp)
+      optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+      train_op = optimizer.minimize(tf.reduce_mean(tf.square(res)))
+      sess.run(tf.initialize_all_variables())
+      sess.run(train_op)
+      self.assertAllClose(2.999, var.eval())
+
   def _testWhileCondGrad_Simple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       v = tf.convert_to_tensor(2.0, name="v")

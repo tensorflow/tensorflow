@@ -504,7 +504,7 @@ class GradLoopState(object):
     # The while loop context for forward.
     self._forward_context = None
 
-    # The loop counter added by AddForwardCounter. It is the value
+    # The loop counter added by AddForwardLoopCounter. It is the value
     # of the loop counter for the next iteration.
     self._forward_index = None
 
@@ -514,7 +514,7 @@ class GradLoopState(object):
     # The while loop context for backprop.
     self._grad_context = None
 
-    # The loop counter added by AddBackPropCounter. It is the value
+    # The loop counter added by AddBackPropLoopCounter. It is the value
     # of the loop counter for the current iteration.
     self._grad_index = None
 
@@ -533,7 +533,7 @@ class GradLoopState(object):
 
     # Add the forward loop counter.
     if outer_forward_ctxt: outer_forward_ctxt.Enter()
-    cnt, forward_index = forward_ctxt.AddForwardCounter()
+    cnt, forward_index = forward_ctxt.AddForwardLoopCounter(outer_grad_state)
     if outer_forward_ctxt: outer_forward_ctxt.Exit()
     self._forward_context = forward_ctxt
     self._forward_index = forward_index
@@ -553,7 +553,8 @@ class GradLoopState(object):
                                         forward_ctxt.name,
                                         self)
       real_cnt = outer_grad_state.AddBackPropAccumulatedValue(history_cnt, cnt)
-      self._grad_index = self._grad_context.AddBackPropCounter(real_cnt)
+      self._grad_index = self._grad_context.AddBackPropLoopCounter(
+          real_cnt, outer_grad_state)
       outer_grad_ctxt.Exit()
     else:
       if outer_forward_ctxt: outer_forward_ctxt.Enter()
@@ -562,7 +563,8 @@ class GradLoopState(object):
                                         forward_ctxt.swap_memory,
                                         forward_ctxt.name,
                                         self)
-      self._grad_index = self._grad_context.AddBackPropCounter(cnt)
+      self._grad_index = self._grad_context.AddBackPropLoopCounter(
+          cnt, outer_grad_state)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
 
   @property
@@ -1142,6 +1144,15 @@ class ControlFlowContext(object):
       return self._outer_context.GetWhileContext()
     return None
 
+  def _IsInOuterContext(self, op):
+    op_ctxt = _GetOutputContext(op)
+    outer_ctxt = self.outer_context
+    while outer_ctxt != op_ctxt:
+      if outer_ctxt is None:
+        return False
+      outer_ctxt = outer_ctxt.outer_context
+    return True
+
   def _MaybeAddToWhileContext(self, op):
     """Add a control dependency to the containing WhileContext.
 
@@ -1364,6 +1375,7 @@ def cond(pred, fn1, fn2, name=None):
     pivot_1 = array_ops.identity(p_1, name="switch_t")
     pivot_2 = array_ops.identity(p_2, name="switch_f")
     pred = array_ops.identity(pred, name="pred_id")
+    # Disable the fetching of tensors that are only on one branch of cond.
     for tensor in [p_1, p_2, pivot_1, pivot_2, pred]:
       tensor.op.graph.prevent_fetching(tensor.op)
 
@@ -1583,7 +1595,7 @@ class WhileContext(ControlFlowContext):
       op._add_control_input(self.GetControlPivot().op)
       # pylint: enable=protected-access
 
-  def AddForwardCounter(self):
+  def AddForwardLoopCounter(self, outer_grad_state):
     """Adds a loop that counts the number of iterations.
 
     This is added to the forward loop at the time when we start to
@@ -1593,11 +1605,21 @@ class WhileContext(ControlFlowContext):
     The pseudocode is:
       `n = 0; while (_pivot) { n++; }`
 
+    Note that a control dependency is added to `n` to ensure the correct
+    execution order of stack push ops.
+
+    Args:
+      outer_grad_state: The outer grad state. None if not nested.
+
     Returns:
       The number of iterations taken by the forward loop and the loop index.
     """
     n = constant_op.constant(0, name="f_count")
-    assert n.op._get_control_flow_context() == self.outer_context
+    if outer_grad_state is not None:
+      # Force the stack pushes of i-th execution of an inner loop to be ordered
+      # before the pushes of (i+1)-th execution of the same inner loop.
+      outer_add_op = outer_grad_state.forward_index.op.inputs[0].op
+      n.op._add_control_input(outer_add_op)  # pylint: disable=protected-access
 
     self.Enter()
     self.AddName(n.name)
@@ -1616,7 +1638,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return total_iterations, next_n
 
-  def AddBackPropCounter(self, count):
+  def AddBackPropLoopCounter(self, count, outer_grad_state):
     """Add the backprop loop that controls the iterations.
 
     This is added to the backprop loop. It is used to control the loop
@@ -1626,8 +1648,12 @@ class WhileContext(ControlFlowContext):
     The pseudocode is:
       `n = count; while (n >= 1) { n--; }`
 
+    Note that a control dependency is added to `final_zero` to ensure the
+    correct execution order of stack pop ops.
+
     Args:
       count: The number of iterations for backprop.
+      outer_grad_state: The outer grad state. None if not nested.
 
     Returns:
       The loop index.
@@ -1651,6 +1677,15 @@ class WhileContext(ControlFlowContext):
     next_count = _NextIteration(index)
     merge_count.op._update_input(1, next_count)
 
+    final_zero = exit(switch_count[0], name="b_count")
+    if outer_grad_state is not None:
+      # Force the stack pops of i-th execution of an inner loop to be ordered
+      # before the pops of (i+1)-th execution of the same inner loop.
+      # pylint: disable=protected-access
+      outer_grad_state.grad_sync._add_control_input(final_zero.op)
+      # pylint: enable=protected-access
+
+    self.ExitResult([final_zero])
     self.Exit()
     return next_count
 
@@ -1938,10 +1973,10 @@ class WhileContext(ControlFlowContext):
       for x in xs:
         inp_op = x.op.inputs[0]
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
-        control_inputs = [op for op in control_inputs
-                          if op._get_control_flow_context() != self]
+        outer_control_inputs = [op for op in control_inputs
+                                if self._IsInOuterContext(op)]
         x.op._set_control_flow_context(self)
-        x.op._add_control_inputs(control_inputs)
+        x.op._add_control_inputs(outer_control_inputs)
         graph._record_op_seen_by_control_dependencies(x.op)
     # pylint: enable=protected-access
 
