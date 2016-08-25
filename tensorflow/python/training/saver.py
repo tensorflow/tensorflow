@@ -881,7 +881,8 @@ class Saver(object):
                restore_sequentially=False,
                saver_def=None,
                builder=None,
-               defer_build=False):
+               defer_build=False,
+               allow_empty=False):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -943,6 +944,9 @@ class Saver(object):
       defer_build: If `True`, defer adding the save and restore ops to the
         `build()` call. In that case `build()` should be called before
         finalizing the graph or using the saver.
+      allow_empty: If `False` (default) raise an error if there are no
+        variables in the graph. Otherwise, construct the saver anyway and make
+        it a no-op.
 
     Raises:
       TypeError: If `var_list` is invalid.
@@ -962,6 +966,8 @@ class Saver(object):
     self.saver_def = saver_def
     self._builder = builder
     self._is_built = False
+    self._allow_empty = allow_empty
+    self._is_empty = None
     if not defer_build:
       self.build()
     if self.saver_def:
@@ -979,7 +985,12 @@ class Saver(object):
         # pylint: disable=protected-access
         self._var_list = variables._all_saveable_objects()
       if not self._var_list:
-        raise ValueError("No variables to save")
+        if self._allow_empty:
+          self._is_empty = True
+          return
+        else:
+          raise ValueError("No variables to save")
+      self._is_empty = False
       self.saver_def = self._builder.build(
           self._var_list,
           reshape=self._reshape,
@@ -1207,6 +1218,7 @@ class Saver(object):
       A string: path at which the variables were saved.  If the saver is
         sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
         is the number of shards created.
+      If the saver is empty, returns None.
 
     Raises:
       TypeError: If `sess` is not a `Session`.
@@ -1216,7 +1228,7 @@ class Saver(object):
     """
     if not self._is_built:
       raise RuntimeError(
-          "`build()` should be called before save if deffer_build==True")
+          "`build()` should be called before save if defer_build==True")
     if latest_filename is None:
       latest_filename = "checkpoint"
 
@@ -1244,21 +1256,26 @@ class Saver(object):
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
 
-    model_checkpoint_path = sess.run(
-        self.saver_def.save_tensor_name,
-        {self.saver_def.filename_tensor_name: checkpoint_file})
-    model_checkpoint_path = compat.as_str(model_checkpoint_path)
-    self._MaybeDeleteOldCheckpoints(
-        model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
-    update_checkpoint_state(save_path, model_checkpoint_path,
-                            self.last_checkpoints, latest_filename)
+    if not self._is_empty:
+      model_checkpoint_path = sess.run(
+          self.saver_def.save_tensor_name,
+          {self.saver_def.filename_tensor_name: checkpoint_file})
+      model_checkpoint_path = compat.as_str(model_checkpoint_path)
+      self._MaybeDeleteOldCheckpoints(
+          model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
+      update_checkpoint_state(save_path, model_checkpoint_path,
+                              self.last_checkpoints, latest_filename)
+
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
       with sess.graph.as_default():
         self.export_meta_graph(meta_graph_filename)
 
-    return model_checkpoint_path
+    if self._is_empty:
+      return None
+    else:
+      return model_checkpoint_path
 
   def export_meta_graph(self,
                         filename=None,
@@ -1299,6 +1316,9 @@ class Saver(object):
     Raises:
       ValueError: If the given `save_path` does not point to a file.
     """
+    if self._is_empty:
+      return
+
     if not file_io.get_matching_files(
         _prefix_to_checkpoint_path(save_path, self.saver_def.version)):
       raise ValueError("Restore called with invalid save path %s" % save_path)

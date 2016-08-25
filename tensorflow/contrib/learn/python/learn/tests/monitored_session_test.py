@@ -61,6 +61,18 @@ class ScaffoldTest(tf.test.TestCase):
         sess.run([scaffold.init_op, scaffold.local_init_op])
         self.assertEquals(0, len(sess.run(scaffold.ready_op)))
 
+  def test_defaults_no_variables(self):
+    with tf.Graph().as_default():
+      scaffold = monitored_session.Scaffold()
+      tf.constant(1, name='my_const')
+      scaffold.finalize()
+      self.assertTrue(isinstance(scaffold.init_op, tf.Operation))
+      self.assertEqual(None, scaffold.init_feed_dict)
+      self.assertEqual(None, scaffold.init_fn)
+      self.assertTrue(isinstance(scaffold.ready_op, tf.Tensor))
+      self.assertTrue(isinstance(scaffold.local_init_op, tf.Operation))
+      self.assertTrue(isinstance(scaffold.saver, tf.train.Saver))
+
   def test_caches_values(self):
     with tf.Graph().as_default():
       tf.Variable([1])
