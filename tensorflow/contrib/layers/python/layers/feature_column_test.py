@@ -418,17 +418,22 @@ class FeatureColumnTest(tf.test.TestCase):
                                    values=[0, 1, 2, 3],
                                    shape=[4, 4])
 
-    # Invoking 'crossed_col.to_weighted_sum' will create the crossed column
-    # weights variable.
+    # Invoking 'weighted_sum_from_feature_columns' will create the crossed
+    # column weights variable.
     with tf.variable_scope("run_1"):
       with tf.variable_scope(crossed_col.name):
         # Returns looked up column weights which is same as crossed column
         # weights as well as actual references to weights variables.
-        col_weights, weights = crossed_col.to_weighted_sum(input_tensor)
+        _, col_weights, _ = (
+            tf.contrib.layers.weighted_sum_from_feature_columns(
+                {sparse_col_1.name: input_tensor,
+                 sparse_col_2.name: input_tensor},
+                [crossed_col],
+                1))
         # Update the weights since default initializer initializes all weights
         # to 0.0.
-        for weight in weights:
-          assign_op = tf.assign(weight, weight + 0.5)
+        for weight in col_weights.values():
+          assign_op = tf.assign(weight[0], weight[0] + 0.5)
 
     save = tf.train.Saver()
     checkpoint_path = os.path.join(self.get_temp_dir(), "model.ckpt")
@@ -436,21 +441,28 @@ class FeatureColumnTest(tf.test.TestCase):
     with self.test_session() as sess:
       sess.run(tf.initialize_all_variables())
       sess.run(assign_op)
-      saved_col_weights = col_weights.eval()
+      saved_col_weights = col_weights[crossed_col][0].eval()
       save.save(sess, checkpoint_path)
 
     crossed_col_initialized = tf.contrib.layers.crossed_column(
         columns=[sparse_col_1, sparse_col_2],
         hash_bucket_size=4,
         ckpt_to_load_from=checkpoint_path,
-        tensor_name_in_ckpt="run_1/col_1_X_col_2/weights")
+        tensor_name_in_ckpt=("run_1/col_1_X_col_2/"
+                             "weighted_sum_from_feature_columns/"
+                             "col_1_X_col_2/weights"))
 
     with tf.variable_scope("run_2"):
       # This will initialize the crossed column weights from provided checkpoint
       # and return a [4, 1] tensor which is same as weights variable. Since we
       # won't modify weights, this should be same as 'saved_col_weights'.
-      col_weights_from_ckpt, _ = crossed_col_initialized.to_weighted_sum(
-          input_tensor)
+      _, col_weights, _ = (
+          tf.contrib.layers.weighted_sum_from_feature_columns(
+              {sparse_col_1.name: input_tensor,
+               sparse_col_2.name: input_tensor},
+              [crossed_col_initialized],
+              1))
+      col_weights_from_ckpt = col_weights[crossed_col_initialized][0]
 
     with self.test_session() as sess:
       sess.run(tf.initialize_all_variables())

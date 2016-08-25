@@ -498,6 +498,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
     self.assertEquals(1, len(classifier.linear_bias_))
     self.assertEquals(2, len(classifier.linear_weights_))
+    print(classifier.linear_weights_)
     self.assertEquals(1, len(classifier.linear_weights_['linear/age/weight']))
     self.assertEquals(
         100, len(classifier.linear_weights_['linear/language/weights']))
