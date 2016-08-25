@@ -76,6 +76,7 @@ import collections
 import math
 
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
+from tensorflow.contrib.framework.python.framework import deprecation
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import embedding_ops
 from tensorflow.contrib.layers.python.ops import bucketization_op
@@ -92,6 +93,20 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 
 
+class _EmbeddingLookupArguments(
+    collections.namedtuple("_EmbeddingLookupArguments",
+                           ["input_tensor",
+                            "weight_tensor",
+                            "vocab_size",
+                            "initializer",
+                            "combiner"])):
+  """Represents the information needed from a column for embedding lookup.
+
+  Used to to compute DNN inputs and weighted sum.
+  """
+  pass
+
+
 class _FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -106,21 +121,33 @@ class _FeatureColumn(object):
   __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
+  @deprecation.deprecated(
+      "2016-09-25",
+      "Should be private.")
   def name(self):
     """Returns the name of column or transformed column."""
     pass
 
   @abc.abstractproperty
+  @deprecation.deprecated(
+      "2016-09-25",
+      "Should be private.")
   def config(self):
     """Returns configuration of the base feature for `tf.parse_example`."""
     pass
 
   @abc.abstractproperty
+  @deprecation.deprecated(
+      "2016-09-25",
+      "Should be private.")
   def key(self):
     """Returns a string which will be used as a key when we do sorting."""
     pass
 
   @abc.abstractmethod
+  @deprecation.deprecated(
+      "2016-09-25",
+      "Should be private.")
   def insert_transformed_feature(self, columns_to_tensors):
     """Apply transformation and inserts it into columns_to_tensors.
 
@@ -133,6 +160,9 @@ class _FeatureColumn(object):
         self))
 
   @abc.abstractmethod
+  @deprecation.deprecated(
+      "2016-09-25",
+      "Use layers.input_from_feature_columns instead.")
   def to_dnn_input_layer(self,
                          input_tensor,
                          weight_collection=None,
@@ -141,6 +171,9 @@ class _FeatureColumn(object):
     raise ValueError("Calling an abstract method.")
 
   @abc.abstractmethod
+  @deprecation.deprecated(
+      "2016-09-25",
+      "Use layers.weighted_sum_from_feature_columns instead.")
   def to_weighted_sum(self,
                       input_tensor,
                       num_outputs=1,
@@ -148,6 +181,22 @@ class _FeatureColumn(object):
                       trainable=True):
     """Returns a Tensor as linear predictions and a list of created Variable."""
     raise ValueError("Calling an abstract method.")
+
+  # It is expected that classes implement either to_embedding_lookup_arguments
+  # or to_dense_tensor to be used in linear models.
+  # pylint: disable=unused-argument
+  def _to_embedding_lookup_arguments(self, input_tensor):
+    """Returns arguments to look up embeddings for this column."""
+    raise NotImplementedError("Calling an abstract method.")
+
+  # pylint: disable=unused-argument
+  def _to_dense_tensor(self, input_tensor):
+    """Returns a dense tensor representing this column's values."""
+    raise NotImplementedError("Calling an abstract method.")
+
+  def _checkpoint_path(self):
+    """Returns None, or a (path,tensor_name) to load a checkpoint from."""
+    return None
 
   def _key_without_properties(self, properties):
     """Helper method for self.key() that omits particular properties."""
@@ -302,6 +351,14 @@ class _SparseColumn(_FeatureColumn,
         initializer=init_ops.zeros_initializer,
         combiner=self.combiner,
         trainable=trainable)
+
+  def _to_embedding_lookup_arguments(self, input_tensor):
+    return _EmbeddingLookupArguments(
+        input_tensor=self.id_tensor(input_tensor),
+        weight_tensor=self.weight_tensor(input_tensor),
+        vocab_size=self.length,
+        initializer=init_ops.zeros_initializer,
+        combiner=self.combiner)
 
 
 class _SparseColumnIntegerized(_SparseColumn):
@@ -547,6 +604,14 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
         combiner=self.sparse_id_column.combiner,
         trainable=trainable)
 
+  def _to_embedding_lookup_arguments(self, input_tensor):
+    return _EmbeddingLookupArguments(
+        input_tensor=self.id_tensor(input_tensor),
+        weight_tensor=self.weight_tensor(input_tensor),
+        vocab_size=self.length,
+        initializer=init_ops.zeros_initializer,
+        combiner=self.sparse_id_column.combiner)
+
 
 def weighted_sparse_column(sparse_id_column,
                            weight_column_name,
@@ -691,6 +756,11 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
           {self.tensor_name_in_ckpt: weights_to_restore})
     return output
 
+  def _checkpoint_path(self):
+    if self.ckpt_to_load_from is not None:
+      return self.ckpt_to_load_from, self.tensor_name_in_ckpt
+    return None
+
   # pylint: disable=unused-argument
   def to_weighted_sum(self,
                       input_tensor,
@@ -699,6 +769,11 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
                       trainable=True):
     raise ValueError("EmbeddingColumn is not supported in linear models. "
                      "Please use sparse_column. column: {}".format(self))
+
+  # pylint: disable=unused-argument
+  def _to_embedding_lookup_arguments(self, input_tensor):
+    raise ValueError("Column {} is not supported in linear models. "
+                     "Please use sparse_column.".format(self))
 
 
 def embedding_column(sparse_id_column,
@@ -928,6 +1003,9 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     log_odds_by_dim = math_ops.matmul(
         transformed_input_tensor, weight, name="matmul")
     return log_odds_by_dim, [weight]
+
+  def _to_dense_tensor(self, input_tensor):
+    return input_tensor
 
 
 def real_valued_column(column_name,
@@ -1172,6 +1250,14 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
         combiner="sum",
         trainable=trainable)
 
+  def _to_embedding_lookup_arguments(self, input_tensor):
+    return _EmbeddingLookupArguments(
+        input_tensor=self.to_sparse_tensor(input_tensor),
+        weight_tensor=None,
+        vocab_size=self.length * self.source_column.dimension,
+        initializer=init_ops.zeros_initializer,
+        combiner="sum")
+
 
 def bucketized_column(source_column, boundaries):
   """Creates a _BucketizedColumn.
@@ -1371,6 +1457,19 @@ class _CrossedColumn(_FeatureColumn, collections.namedtuple(
           {self.tensor_name_in_ckpt: weights_to_restore})
     return output, embedding_weights
 
+  def _checkpoint_path(self):
+    if self.ckpt_to_load_from is not None:
+      return self.ckpt_to_load_from, self.tensor_name_in_ckpt
+    return None
+
+  def _to_embedding_lookup_arguments(self, input_tensor):
+    return _EmbeddingLookupArguments(
+        input_tensor=input_tensor,
+        weight_tensor=None,
+        vocab_size=self.length,
+        initializer=init_ops.zeros_initializer,
+        combiner=self.combiner)
+
 
 def crossed_column(columns, hash_bucket_size, combiner="sum",
                    ckpt_to_load_from=None,
@@ -1487,6 +1586,9 @@ class DataFrameColumn(_FeatureColumn,
     # The _RealValuedColumn has the shape of [batch_size, column.dimension].
     log_odds_by_dim = math_ops.matmul(input_tensor, weight, name="matmul")
     return log_odds_by_dim, [weight]
+
+  def _to_dense_tensor(self, input_tensor):
+    return self.to_dnn_input_layer(input_tensor)
 
   def __eq__(self, other):
     if isinstance(other, self.__class__):

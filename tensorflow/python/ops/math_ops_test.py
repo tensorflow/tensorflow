@@ -47,6 +47,70 @@ class ReduceTest(test_util.TensorFlowTestCase):
       math_ops.reduce_sum(x, axis)
 
 
+class LogSumExpTest(test_util.TensorFlowTestCase):
+
+  def testReduceLogSumExp(self):
+    for dtype in [np.float16, np.float32, np.double]:
+      x_np = np.random.rand(5, 5).astype(dtype)
+      with self.test_session():
+        y_tf_np = math_ops.reduce_logsumexp(x_np).eval()
+        y_np = log(np.sum(exp(x_np)))
+        self.assertAllClose(y_tf_np, y_np)
+
+  def testReductionIndices(self):
+    for dtype in [np.float16, np.float32, np.double]:
+      x_np = np.random.rand(5, 5).astype(dtype)
+      with self.test_session():
+        y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=[0])
+        y_np = log(np.sum(exp(x_np), axis=0))
+        self.assertShapeEqual(y_np, y_tf)
+        y_tf_np = y_tf.eval()
+        self.assertAllClose(y_tf_np, y_np)
+
+  def testKeepDims(self):
+    for dtype in [np.float16, np.float32, np.double]:
+      x_np = np.random.rand(5, 5).astype(dtype)
+      with self.test_session():
+        y_tf_np = math_ops.reduce_logsumexp(x_np, keep_dims=True).eval()
+        self.assertEqual(y_tf_np.ndim, x_np.ndim)
+        y_np = log(np.sum(exp(x_np), keepdims=True))
+        self.assertAllClose(y_tf_np, y_np)
+
+  def testOverflow(self):
+    x = [1000, 1001, 1002, 1003]
+    for dtype in [np.float16, np.float32, np.double]:
+      x_np = np.array(x, dtype=dtype)
+      max_np = np.max(x_np)
+      with self.assertRaisesRegexp(RuntimeWarning,
+                                   "overflow encountered in exp"):
+        out = log(np.sum(exp(x_np)))
+        if out == np.inf:
+          raise RuntimeWarning("overflow encountered in exp")
+
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, shape=x_np.shape)
+        y_tf_np = math_ops.reduce_logsumexp(x_tf).eval()
+        y_np = log(np.sum(exp(x_np - max_np))) + max_np
+        self.assertAllClose(y_tf_np, y_np)
+
+  def testUnderflow(self):
+    x = [-1000, -1001, -1002, -1003]
+    for dtype in [np.float16, np.float32, np.double]:
+      x_np = np.array(x, dtype=dtype)
+      max_np = np.max(x_np)
+      with self.assertRaisesRegexp(RuntimeWarning,
+                                   "divide by zero encountered in log"):
+        out = log(np.sum(exp(x_np)))
+        if out == -np.inf:
+          raise RuntimeWarning("divide by zero encountered in log")
+
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, shape=x_np.shape)
+        y_tf_np = math_ops.reduce_logsumexp(x_tf).eval()
+        y_np = log(np.sum(exp(x_np - max_np))) + max_np
+        self.assertAllClose(y_tf_np, y_np)
+
+
 class RoundTest(test_util.TensorFlowTestCase):
 
   def testRounding(self):

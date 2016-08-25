@@ -143,7 +143,7 @@ class Scaffold(object):
       self._saver = Scaffold._get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True))
+          lambda: training_saver.Saver(sharded=True, allow_empty=True))
     # pylint: enable=g-long-lambda
     self._saver.build()
 
@@ -240,7 +240,7 @@ class MonitoredSession(object):
   """
 
   def __init__(self,
-               master,
+               master='',
                is_chief=True,
                checkpoint_dir=None,
                hooks=None,

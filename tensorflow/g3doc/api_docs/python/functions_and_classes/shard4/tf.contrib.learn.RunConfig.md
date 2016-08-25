@@ -5,7 +5,7 @@ If you're a Google-internal user using command line flags with learn_runner.py
 probably want to use learn_runner.EstimatorConfig instead.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(master='', task=0, num_ps_replicas=0, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(master='', task=0, num_ps_replicas=0, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None)` {#RunConfig.__init__}
 
 Constructor.
 
@@ -33,5 +33,14 @@ Constructor.
 *  <b>`keep_checkpoint_every_n_hours`</b>: Number of hours between each checkpoint
     to be saved. The default value of 10,000 hours effectively disables
     the feature.
+*  <b>`job_name`</b>: the type of task, e.g., 'ps', 'worker', etc. Must exist in
+    cluster_spec.jobs.
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.job_name` {#RunConfig.job_name}
+
+
 
 

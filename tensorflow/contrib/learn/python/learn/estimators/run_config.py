@@ -44,7 +44,8 @@ class RunConfig(object):
                save_summary_steps=100,
                save_checkpoints_secs=60,
                keep_checkpoint_max=5,
-               keep_checkpoint_every_n_hours=10000):
+               keep_checkpoint_every_n_hours=10000,
+               job_name=None):
     """Constructor.
 
     Args:
@@ -69,9 +70,12 @@ class RunConfig(object):
       keep_checkpoint_every_n_hours: Number of hours between each checkpoint
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
+      job_name: the type of task, e.g., 'ps', 'worker', etc. Must exist in
+        cluster_spec.jobs.
     """
     self.master = master
     self.task = task
+    self._job_name = job_name
     self.num_ps_replicas = num_ps_replicas
     gpu_options = GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
@@ -85,3 +89,7 @@ class RunConfig(object):
     self.save_checkpoints_secs = save_checkpoints_secs
     self.keep_checkpoint_max = keep_checkpoint_max
     self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+
+  @property
+  def job_name(self):
+    return self._job_name

@@ -62,6 +62,9 @@ public:
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
 
+    // Exit early if there's nothing to compute
+    if (output_shape.num_elements() == 0) return;
+
     const Device& d = ctx->eigen_device<Device>();
     Reducer reducer;
 
