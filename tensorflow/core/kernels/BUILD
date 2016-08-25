@@ -1331,6 +1331,7 @@ tf_kernel_library(
     ],
     hdrs = [
         "conv_grad_ops.h",
+        "gemm_functors.h",
         "image_resizer_state.h",
     ],
     prefix = "conv_ops",
