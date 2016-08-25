@@ -204,8 +204,9 @@ applies gradients.
 
 ### Gating Gradients
 
-Both `minimize()` and `compute_gradients()` accept a `gate_gradients` argument
-that controls the degree of parallelism during the application of the gradients.
+Both `minimize()` and `compute_gradients()` accept a `gate_gradients`
+argument that controls the degree of parallelism during the application of
+the gradients.
 
 The possible values are: `GATE_NONE`, `GATE_OP`, and `GATE_GRAPH`.
 
