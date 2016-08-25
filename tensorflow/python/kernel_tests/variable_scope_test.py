@@ -751,5 +751,63 @@ class VariableScopeWithCustomGetterTest(tf.test.TestCase):
       np_vars, np_v = sess.run([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
 
+
+class PartitionInfoTest(tf.test.TestCase):
+
+  def testConstructorChecks(self):
+    # Invalid arg types.
+    with self.assertRaises(TypeError):
+      variable_scope._PartitionInfo(full_shape=None, var_offset=[0, 1])
+    with self.assertRaises(TypeError):
+      variable_scope._PartitionInfo(full_shape=[0, 1], var_offset=None)
+    with self.assertRaises(TypeError):
+      variable_scope._PartitionInfo(full_shape="foo", var_offset=[0, 1])
+    with self.assertRaises(TypeError):
+      variable_scope._PartitionInfo(full_shape=[0, 1], var_offset="foo")
+
+    # full_shape and var_offset must have same length.
+    with self.assertRaises(ValueError):
+      variable_scope._PartitionInfo(full_shape=[0, 1], var_offset=[0])
+    # Offset must always be less than shape.
+    with self.assertRaises(ValueError):
+      variable_scope._PartitionInfo(full_shape=[1, 1], var_offset=[0, 1])
+
+  def testSingleOffset(self):
+    partition_info = variable_scope._PartitionInfo(
+        full_shape=[9, 3], var_offset=[4, 0])
+    self.assertEqual(4, partition_info.single_offset([1, 3]))
+
+    # Tests when the variable isn't partitioned at all.
+    partition_info = variable_scope._PartitionInfo(
+        full_shape=[9, 3], var_offset=[0, 0])
+    self.assertEqual(0, partition_info.single_offset([9, 3]))
+
+  def testSingleSliceDim(self):
+    partition_info = variable_scope._PartitionInfo(
+        full_shape=[9, 3], var_offset=[4, 0])
+    # Invalid shape.
+    with self.assertRaises(TypeError):
+      partition_info.single_slice_dim(None)
+
+    # Rank of shape differs from full_shape.
+    with self.assertRaises(ValueError):
+      partition_info.single_slice_dim([1, 2, 3])
+
+    # Shape is too large given var_offset (4+6 > 9).
+    with self.assertRaises(ValueError):
+      partition_info.single_slice_dim([6, 3])
+
+    # Multiple possible slice dim from shape.
+    with self.assertRaises(ValueError):
+      partition_info.single_slice_dim([1, 1])
+
+    partition_info = variable_scope._PartitionInfo(
+        full_shape=[9, 3], var_offset=[0, 0])
+    self.assertEqual(1, partition_info.single_slice_dim([9, 2]))
+    partition_info = variable_scope._PartitionInfo(
+        full_shape=[9, 3], var_offset=[4, 0])
+    self.assertEqual(0, partition_info.single_slice_dim([2, 3]))
+
+
 if __name__ == "__main__":
   tf.test.main()

@@ -65,14 +65,15 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   // and
   // pad with 1 to make them the same length.
   std::vector<DimensionHandle> dims;
-  DimensionHandle dim_one = rank_x == rank_y ? nullptr : c->MakeDim(1);
+  DimensionHandle dim_one;
+  if (rank_x != rank_y) dim_one = c->MakeDim(1);
   for (int i = 0; i < rank_out; ++i) {
-    const auto* dim_x = i < (rank_out - rank_x)
-                            ? dim_one
-                            : c->Dim(shape_x, i - (rank_out - rank_x));
-    const auto* dim_y = i < (rank_out - rank_y)
-                            ? dim_one
-                            : c->Dim(shape_y, i - (rank_out - rank_y));
+    const auto dim_x = i < (rank_out - rank_x)
+                           ? dim_one
+                           : c->Dim(shape_x, i - (rank_out - rank_x));
+    const bool dim_y_is_one = (i < (rank_out - rank_y));
+    const auto dim_y =
+        dim_y_is_one ? dim_one : c->Dim(shape_y, i - (rank_out - rank_y));
     if (!c->ValueKnown(dim_x) || !c->ValueKnown(dim_y)) {
       // One or both dimensions is unknown.
       //
@@ -94,7 +95,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
         dims.push_back(c->UnknownDim());
       }
     } else if (c->Value(dim_x) == 1 || c->Value(dim_y) == 1) {
-      if (c->Value(dim_x) == 1 && dim_y != dim_one) {
+      if (c->Value(dim_x) == 1 && !dim_y_is_one) {
         // We will broadcast dim_x to dim_y.
         dims.push_back(dim_y);
       } else {
@@ -833,7 +834,7 @@ REGISTER_OP("Select")
               DimensionHandle merged_dim;
               TF_RETURN_IF_ERROR(
                   c->Merge(c->Dim(data, 0), c->Dim(cond, 0), &merged_dim));
-              if (merged_dim != c->Dim(data, 0)) {
+              if (c->Value(merged_dim) != c->Value(c->Dim(data, 0))) {
                 // Merging used the cond dim.  Update data to refer to it.
                 std::vector<DimensionHandle> dims{merged_dim};
                 for (int i = 1; i < data_rank; ++i) {

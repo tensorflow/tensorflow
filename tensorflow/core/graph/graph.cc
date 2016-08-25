@@ -46,8 +46,6 @@ Node::Node()
     : id_(-1),
       cost_id_(-1),
       class_(NC_UNINITIALIZED),
-      is_host_send_(false),
-      is_host_recv_(false),
       props_(nullptr),
       assigned_device_name_() {}
 
@@ -89,8 +87,10 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
   SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
   SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
-  SET_CLASS(NC_SEND, ts, "_Send", "_HostSend");
-  SET_CLASS(NC_RECV, ts, "_Recv", "_HostRecv");
+  SET_CLASS(NC_SEND, ts, "_Send", "");
+  SET_CLASS(NC_HOST_SEND, ts, "_HostSend", "");
+  SET_CLASS(NC_RECV, ts, "_Recv", "");
+  SET_CLASS(NC_HOST_RECV, ts, "_HostRecv", "");
   SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
   SET_CLASS(NC_VARIABLE, ts, "Variable", "");
   SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
@@ -101,12 +101,6 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
     class_ = NC_OTHER;  // Catch all
   }
 #undef SET_CLASS
-
-  if (ts == "_HostSend") {
-    is_host_send_ = true;
-  } else if (ts == "_HostRecv") {
-    is_host_recv_ = true;
-  }
 }
 
 void Node::Clear() {

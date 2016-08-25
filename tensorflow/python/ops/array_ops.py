@@ -254,7 +254,7 @@ def rank_internal(input, name=None, optimize=True):
 
 # DEPRECATED use init_ops.zeros_initializer
 # TODO(irving) Move it to init_ops.py
-def zeros_initializer(shape, dtype=dtypes.float32):
+def zeros_initializer(shape, dtype=dtypes.float32, partition_info=None):
   """An adaptor for zeros() to match the Initializer spec."""
   return zeros(shape, dtype)
 

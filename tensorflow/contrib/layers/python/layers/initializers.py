@@ -105,7 +105,8 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
     raise TypeError('Cannot create initializer for non-floating point type.')
   if mode not in ['FAN_IN', 'FAN_OUT', 'FAN_AVG']:
     raise TypeError('Unknow mode %s [FAN_IN, FAN_OUT, FAN_AVG]', mode)
-  def _initializer(shape, dtype=dtype):
+
+  def _initializer(shape, dtype=dtype, partition_info=None):
     """Initializer function."""
     if not dtype.is_floating:
       raise TypeError('Cannot create initializer for non-floating point type.')

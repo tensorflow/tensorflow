@@ -28,6 +28,7 @@ limitations under the License.
 namespace tensorflow {
 namespace shape_inference {
 
+struct DimensionOrConstant;
 class InferenceContext;
 
 // Dimension values are accessed through InferenceContext.
@@ -43,7 +44,26 @@ class Dimension {
   TF_DISALLOW_COPY_AND_ASSIGN(Dimension);
 };
 
-typedef const Dimension* DimensionHandle;
+class DimensionHandle {
+ public:
+  DimensionHandle() {}
+
+ private:
+  DimensionHandle(const Dimension* dim) { ptr_ = dim; }
+
+  const Dimension* operator->() { return ptr_; }
+  bool IsSet() const { return ptr_ != nullptr; }
+  bool SameHandle(DimensionHandle d) const { return ptr_ == d.ptr_; }
+
+  const Dimension* ptr_ = nullptr;
+
+  friend class DimensionOrConstant;
+  friend class InferenceContext;
+  friend class ShapeInferenceTest;
+  friend class ShapeInferenceTestutil;
+
+  // Intentionally copyable.
+};
 
 // Shape rank and dimensions are accessed through InferenceContext.
 class Shape {
@@ -56,7 +76,27 @@ class Shape {
   const std::vector<DimensionHandle> dims_;
 
   friend class InferenceContext;
+
   TF_DISALLOW_COPY_AND_ASSIGN(Shape);
+};
+
+class ShapeHandle {
+ public:
+  ShapeHandle() {}
+
+ private:
+  ShapeHandle(const Shape* shape) { ptr_ = shape; }
+  const Shape* operator->() { return ptr_; }
+  bool IsSet() const { return ptr_ != nullptr; }
+  bool SameHandle(ShapeHandle s) const { return ptr_ == s.ptr_; }
+
+  const Shape* ptr_ = nullptr;
+
+  friend class InferenceContext;
+  friend class ShapeInferenceTest;
+  friend class ShapeInferenceTestutil;
+
+  // Intentionally copyable.
 };
 
 // Struct used to allow functions to take DimensionHandle or a dimension value.
@@ -76,8 +116,6 @@ struct DimensionOrConstant {
  private:
   DimensionOrConstant();
 };
-
-typedef const Shape* ShapeHandle;
 
 // Note: This is experimental support for op shape inference in C++.  Shape
 // inference functions are not ready to be implemented yet.
@@ -173,7 +211,7 @@ class InferenceContext {
   int32 Rank(ShapeHandle s) { return s->rank_; }
   bool RankKnown(ShapeHandle s) { return Rank(s) != kUnknownRank; }
   inline int64 Value(DimensionOrConstant d) {
-    return d.dim ? d.dim->value_ : d.val;
+    return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
   inline bool ValueKnown(DimensionOrConstant d) {
     return Value(d) != kUnknownDim;
@@ -285,7 +323,7 @@ class InferenceContext {
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
   inline DimensionHandle MakeDim(DimensionOrConstant d) {
-    if (d.dim) {
+    if (d.dim.IsSet()) {
       return d.dim;
     } else {
       all_dims_.push_back(new Dimension(d.val));
@@ -448,11 +486,10 @@ inline Shape::Shape(const std::vector<DimensionHandle>& dims)
 
 inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
     : dim(dim) {
-  DCHECK(dim != nullptr) << "Internal error: Got nullptr for Dimension.";
+  DCHECK(dim.IsSet()) << "Internal error: Got nullptr for Dimension.";
 }
 
-inline DimensionOrConstant::DimensionOrConstant(int64 val)
-    : dim(nullptr), val(val) {
+inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
   DCHECK(val >= 0 || val == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
          "InferenceContext::kUnknownDim but got"
