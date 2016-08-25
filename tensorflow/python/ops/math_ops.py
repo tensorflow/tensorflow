@@ -150,6 +150,7 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_mean
 @@reduce_all
 @@reduce_any
+@@reduce_logsumexp
 
 @@accumulate_n
 
@@ -1248,6 +1249,56 @@ def reduce_any(input_tensor, reduction_indices=None, keep_dims=False,
   return gen_math_ops._any(input_tensor, _ReductionDims(input_tensor,
                                                         reduction_indices),
                            keep_dims, name=name)
+
+
+def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
+                     name=None):
+  """Computes log(sum(exp(elements across dimensions of a tensor))).
+
+  Reduces `input_tensor` along the dimensions given in `reduction_indices`.
+  Unless `keep_dims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `reduction_indices`. If `keep_dims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `reduction_indices` has no entries, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  This funciton is more numerically stable than log(sum(exp(input))). It avoids
+  overflows caused by taking the exp of large inputs and underflows caused by
+  taking the log of small inputs.
+
+  For example:
+
+  ```python
+  # 'x' is [[0, 0, 0]]
+  #         [0, 0, 0]]
+  tf.reduce_logsumexp(x) ==> log(6)
+  tf.reduce_logsumexp(x, 0) ==> [log(2), log(2), log(2)]
+  tf.reduce_logsumexp(x, 1) ==> [log(3), log(3)]
+  tf.reduce_logsumexp(x, 1, keep_dims=True) ==> [[log(3)], [log(3)]]
+  tf.reduce_logsumexp(x, [0, 1]) ==> log(6)
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    reduction_indices: The dimensions to reduce. If `None` (the defaut),
+      reduces all dimensions.
+    keep_dims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+  """
+  with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
+    my_max = array_ops.stop_gradient(
+        reduce_max(input_tensor, reduction_indices, keep_dims=True))
+    result = gen_math_ops.log(reduce_sum(
+        gen_math_ops.exp(input_tensor - my_max),
+        reduction_indices,
+        keep_dims=True)) + my_max
+    if not keep_dims:
+      result = array_ops.squeeze(result, reduction_indices)
+    return result
 
 
 def trace(x, name=None):

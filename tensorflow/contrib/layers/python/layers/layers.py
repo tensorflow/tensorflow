@@ -129,6 +129,18 @@ def batch_norm(inputs,
 
   Can be used as a normalizer function for conv2d and fully_connected.
 
+  Note: When is_training is True the moving_mean and moving_variance need to be
+  updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
+  they need to be added as a dependency to the train_op, example:
+
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    if update_ops:
+      updates = tf.group(update_ops)
+      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+
+  One can set update_collections=None to force the updates in place, but that
+  can have speed penalty, specially in distributed settings.
+
   Args:
     inputs: a tensor with 2 or more dimensions, where the first dimension has
       `batch_size`. The normalization is over all but the last dimension.
@@ -140,8 +152,9 @@ def batch_norm(inputs,
     epsilon: small float added to variance to avoid dividing by zero.
     activation_fn: Optional activation function.
     updates_collections: collections to collect the update ops for computation.
+      The updates_ops need to be excuted with the train_op.
       If None, a control dependency would be added to make sure the updates are
-      computed.
+      computed in place.
     is_training: whether or not the layer is in training mode. In training mode
       it would accumulate the statistics of the moments into `moving_mean` and
       `moving_variance` using an exponential moving average with the given
@@ -222,7 +235,9 @@ def batch_norm(inputs,
     need_moments = is_training_value is None or is_training_value
     if need_moments:
       # Calculate the moments based on the individual batch.
-      mean, variance = nn.moments(inputs, axis, shift=moving_mean)
+      # Use a copy of moving_mean as a shift to compute more reliable moments.
+      shift = math_ops.add(moving_mean, 0)
+      mean, variance = nn.moments(inputs, axis, shift=shift)
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
         def _force_updates():

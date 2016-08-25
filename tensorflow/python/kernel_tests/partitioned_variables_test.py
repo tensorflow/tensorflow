@@ -25,6 +25,16 @@ import tensorflow as tf
 
 class PartitionerCreatorsTest(tf.test.TestCase):
 
+  def testFixedSizePartitioner(self):
+    with self.test_session():
+      partitioner = tf.fixed_size_partitioner(5, axis=0)
+      with tf.variable_scope("root", partitioner=partitioner):
+        v0 = tf.get_variable("v0", dtype=tf.float32, shape=(10, 10))
+        v0_list = v0._get_variable_list()
+        v0_part = v0._get_partitions()
+        self.assertEqual(len(v0_list), 5)
+        self.assertAllEqual(v0_part, (5, 1))
+
   def _testVariableAxisSizePartitioner(self, name, axis, max_shard_bytes,
                                        expected_axis_shards,
                                        expected_partitions,

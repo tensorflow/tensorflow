@@ -139,6 +139,13 @@ class Node {
 
   void ClearAttr(const string& name);
 
+  // Returns into '*e' the edge connecting to the 'idx' input of this Node.
+  Status input_edge(int idx, const Edge** e) const;
+
+  // Returns into '*n' the node that has an output connected to the
+  // 'idx' input of this Node.
+  Status input_node(int idx, const Node** n) const;
+
  private:
   friend class Graph;
   Node();

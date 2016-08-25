@@ -71,6 +71,11 @@ class CumsumTest(tf.test.TestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  def testEmpty(self):
+    for dtype in self.valid_dtypes:
+      x = np.zeros([0]).astype(dtype)
+      self._compareAll(x, 0)
+
   def test1D(self):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
@@ -155,6 +160,10 @@ class CumprodTest(tf.test.TestCase):
       for reverse in [True, False]:
         self._compare(x, axis, exclusive, reverse)
 
+  def testEmpty(self):
+    for dtype in self.valid_dtypes:
+      x = np.zeros([0]).astype(dtype)
+      self._compareAll(x, 0)
 
   def test1D(self):
     for dtype in self.valid_dtypes:
