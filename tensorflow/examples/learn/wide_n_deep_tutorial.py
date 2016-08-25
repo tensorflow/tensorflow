@@ -20,8 +20,8 @@ from __future__ import print_function
 import tempfile
 import urllib
 
-import pandas as pd
 import tensorflow as tf
+
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -179,6 +179,8 @@ def input_fn(df):
 def train_and_eval():
   """Train and evaluate the model."""
   train_file_name, test_file_name = maybe_download()
+
+  import pandas as pd  # pylint: disable=g-import-not-at-top
   df_train = pd.read_csv(
       tf.gfile.Open(train_file_name),
       names=COLUMNS,
