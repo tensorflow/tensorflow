@@ -27,6 +27,7 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 
 FLAGS = flags.FLAGS
 
@@ -105,12 +106,18 @@ class Experiment(object):
     Returns:
       The trained estimator.
     """
+    start = time.time()
     if delay_secs is None:
       task_id = self._estimator.config.task or 0
       delay_secs = min(60, task_id * 5)
 
+    # Start the server, if needed.
+    self._maybe_start_server()
+
     if delay_secs:
-      logging.info("Waiting %d secs before starting training.", delay_secs)
+      elapsed_secs = time.time() - start
+      remaining = delay_secs - elapsed_secs
+      logging.info("Waiting %d secs before starting training.", remaining)
       time.sleep(delay_secs)
 
     return self._estimator.fit(input_fn=self._train_input_fn,
@@ -234,3 +241,18 @@ class Experiment(object):
                                     steps=1,
                                     metrics=self._eval_metrics,
                                     name="one_pass")
+
+  def _maybe_start_server(self):
+    config = self._estimator.config
+    if config.cluster_spec:
+      if not config.job_name or not config.master or config.task is None:
+        raise ValueError("Could not start server; be sure to specify "
+                         "cluster_spec, job_name, master, and task in "
+                         "RunConfig or set the TF_CONFIG environment variable.")
+      server = server_lib.Server(
+          config.cluster_spec,
+          job_name=config.job_name,
+          task_index=config.task,
+          config=config.tf_config,
+          start=False)
+      server.start()

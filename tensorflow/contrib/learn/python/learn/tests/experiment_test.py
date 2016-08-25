@@ -88,6 +88,60 @@ class ExperimentTest(tf.test.TestCase):
       duration = time.time() - start
       self.assertAlmostEqual(duration, task*5, delta=0.5)
 
+  @tf.test.mock.patch('tensorflow.python.training.server_lib.Server')  # pylint: disable=line-too-long
+  def test_train_starts_server(self, mock_server):
+    # Arrange.
+    config = tf.contrib.learn.RunConfig(
+        master='host4:2222',
+        cluster_spec=tf.train.ClusterSpec(
+            {'ps': ['host1:2222', 'host2:2222'],
+             'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+        ),
+        job_name='worker',
+        task=1,
+        num_cores=15,
+        gpu_memory_fraction=0.314,
+    )
+
+    est = TestEstimator(config)
+    ex = tf.contrib.learn.Experiment(est,
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input')
+
+    # Act.
+    # We want to make sure we discount the time it takes to start the server
+    # in our accounting of the delay, so we set a small delay here.
+    start = time.time()
+    ex.train(delay_secs=1)
+    duration = time.time() - start
+
+    # Assert.
+    expected_config_proto = tf.ConfigProto()
+    expected_config_proto.inter_op_parallelism_threads = 15
+    expected_config_proto.intra_op_parallelism_threads = 15
+    expected_config_proto.gpu_options.per_process_gpu_memory_fraction = 0.314
+    mock_server.assert_called_with(
+        config.cluster_spec,
+        job_name='worker',
+        task_index=1,
+        config=expected_config_proto,
+        start=False)
+    mock_server.assert_has_calls([tf.test.mock.call().start()])
+
+    # Ensure that the delay takes into account the time to start the server.
+    self.assertAlmostEqual(duration, 1.0, delta=0.5)
+
+  @tf.test.mock.patch('tensorflow.python.training.server_lib.Server')  # pylint: disable=line-too-long
+  def test_server_does_not_start_without_cluster_spec(self, mock_server):
+    config = tf.contrib.learn.RunConfig(master='host4:2222')
+    ex = tf.contrib.learn.Experiment(TestEstimator(config),
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input')
+    ex.train()
+
+    # The server should not have started because there was no ClusterSpec.
+    self.assertFalse(mock_server.called)
+
   def test_evaluate(self):
     est = TestEstimator()
     ex = tf.contrib.learn.Experiment(est,
@@ -166,6 +220,35 @@ class ExperimentTest(tf.test.TestCase):
     ex.test()
     self.assertEquals(1, est.fit_count)
     self.assertEquals(1, est.eval_count)
+
+  def test_start_server_raises_without_all_info(self):
+    # Job name is missing.
+    no_job_name = tf.contrib.learn.RunConfig(
+        cluster_spec=tf.train.ClusterSpec(
+            {'ps': ['host1:2222', 'host2:2222'],
+             'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+        ),
+        task=1,
+    )
+    with self.assertRaises(ValueError):
+      ex = tf.contrib.learn.Experiment(TestEstimator(no_job_name),
+                                       train_input_fn='train_input',
+                                       eval_input_fn='eval_input')
+      ex.train()
+
+    # Task index is missing.
+    no_task = tf.contrib.learn.RunConfig(
+        cluster_spec=tf.train.ClusterSpec(
+            {'ps': ['host1:2222', 'host2:2222'],
+             'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+        ),
+        job_name='worker',
+    )
+    with self.assertRaises(ValueError):
+      ex = tf.contrib.learn.Experiment(TestEstimator(no_task),
+                                       train_input_fn='train_input',
+                                       eval_input_fn='eval_input')
+      ex.train()
 
 
 if __name__ == '__main__':
