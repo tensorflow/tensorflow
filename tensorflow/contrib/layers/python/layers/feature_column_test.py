@@ -52,6 +52,55 @@ class FeatureColumnTest(tf.test.TestCase):
     self.assertEqual(b.dimension, 4)
     self.assertEqual(b.combiner, "mean")
 
+  def testSharedEmbeddingColumn(self):
+    a1 = tf.contrib.layers.sparse_column_with_keys(
+        "a1", ["marlo", "omar", "stringer"])
+    a2 = tf.contrib.layers.sparse_column_with_keys(
+        "a2", ["marlo", "omar", "stringer"])
+    b = tf.contrib.layers.shared_embedding_columns(
+        [a1, a2], dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name, "a1_a2_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name, "a1_a2_shared_embedding")
+
+    # Create a sparse id tensor for a1.
+    input_tensor_c1 = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2]],
+                                      values=[0, 1, 2], shape=[3, 3])
+    # Create a sparse id tensor for a2.
+    input_tensor_c2 = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2]],
+                                      values=[0, 1, 2], shape=[3, 3])
+    with tf.variable_scope("run_1"):
+      b1 = b[0].to_dnn_input_layer(input_tensor_c1)
+      b2 = b[1].to_dnn_input_layer(input_tensor_c2)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      b1_value = b1.eval()
+      b2_value = b2.eval()
+    for i in range(len(b1_value)):
+      self.assertAllClose(b1_value[i], b2_value[i])
+
+    # Test the case when a shared_embedding_name is explictly specified.
+    d = tf.contrib.layers.shared_embedding_columns(
+        [a1, a2], dimension=4, combiner="mean",
+        shared_embedding_name="my_shared_embedding")
+    # a3 is a completely different sparse column with a1 and a2, but since the
+    # same shared_embedding_name is passed in, a3 will have the same embedding
+    # as a1 and a2
+    a3 = tf.contrib.layers.sparse_column_with_keys(
+        "a3", ["cathy", "tom", "anderson"])
+    e = tf.contrib.layers.shared_embedding_columns(
+        [a3], dimension=4, combiner="mean",
+        shared_embedding_name="my_shared_embedding")
+    with tf.variable_scope("run_2"):
+      d1 = d[0].to_dnn_input_layer(input_tensor_c1)
+      e1 = e[0].to_dnn_input_layer(input_tensor_c1)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      d1_value = d1.eval()
+      e1_value = e1.eval()
+    for i in range(len(d1_value)):
+      self.assertAllClose(d1_value[i], e1_value[i])
+
   def testRealValuedColumn(self):
     a = tf.contrib.layers.real_valued_column("aaa")
     self.assertEqual(a.name, "aaa")
