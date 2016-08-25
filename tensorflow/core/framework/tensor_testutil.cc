@@ -22,7 +22,7 @@ namespace test {
 template <typename T>
 bool IsClose(const T& x, const T& y, double atol, double rtol) {
   // Need x == y so that infinities are close to themselves
-  return x == y || fabs(x - y) < atol + rtol * fabs(x);
+  return x == y || std::abs(x - y) < atol + rtol * std::abs(x);
 }
 
 template <typename T>
