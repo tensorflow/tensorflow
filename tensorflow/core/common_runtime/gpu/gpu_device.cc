@@ -785,10 +785,8 @@ struct CudaVersion {
   int minor_part = -1;
 };
 
-// "configure" uses the specific name to substitute the following string.
-// If you change it, make sure you modify "configure" as well.
 std::vector<CudaVersion> supported_cuda_compute_capabilities = {
-    CudaVersion("3.5"), CudaVersion("5.2")};
+    TF_CUDA_CAPABILITIES,};
 
 std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
   auto cuda_caps = supported_cuda_compute_capabilities;

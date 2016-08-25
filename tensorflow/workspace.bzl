@@ -1,9 +1,12 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
+load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+
 # If TensorFlow is linked as a submodule, path_prefix is TensorFlow's directory
 # within the workspace (e.g. "tensorflow/"), and tf_repo_name is the name of the
 # local_repository rule (e.g. "@tf").
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
+  cuda_configure(name = "local_config_cuda")
 
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and hash.

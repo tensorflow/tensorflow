@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "cuda/include/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 

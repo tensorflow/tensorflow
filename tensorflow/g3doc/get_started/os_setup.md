@@ -7,11 +7,10 @@ github source.
 
 The TensorFlow Python API supports Python 2.7 and Python 3.3+.
 
-The GPU version (Linux only) works best with Cuda Toolkit 7.5 and
-cuDNN v4.  other versions are supported (Cuda toolkit >= 7.0 and
-cuDNN 6.5(v2), 7.0(v3), v5) only when installing from sources.
-Please see [Cuda installation](#optional-install-cuda-gpus-on-linux)
-for details.
+The GPU version (Linux & Mac OS X only) works best with Cuda Toolkit 7.5 and
+cuDNN v4. other versions are supported (Cuda toolkit >= 7.0 and cuDNN 6.5(v2),
+7.0(v3), v5) only when installing from sources. Please see [Cuda installation]
+(#optional-install-cuda-gpus-on-linux) for details.
 
 ## Overview
 

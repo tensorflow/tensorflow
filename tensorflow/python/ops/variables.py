@@ -1036,8 +1036,7 @@ def report_uninitialized_variables(var_list=None,
 
   Returns:
     A 1-D tensor containing names of the uninitialized variables, or an empty
-    1-D
-    tensor if there are no variables or no uninitialized variables.
+    1-D tensor if there are no variables or no uninitialized variables.
   """
   if var_list is None:
     var_list = all_variables() + local_variables()
