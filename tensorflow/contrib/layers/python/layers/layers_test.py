@@ -202,7 +202,7 @@ class Convolution2dTest(tf.test.TestCase):
       output = tf.contrib.layers.convolution2d(images, 32, [3, 3],
                                                scope='conv1')
       self.assertEquals(output.op.name, 'conv1/Relu')
-  
+
   def testCreateConvWithCollection(self):
     height, width = 3, 3
     images = tf.random_uniform((5, height, width, 3), seed=1)
@@ -998,7 +998,7 @@ class FCTest(tf.test.TestCase):
       inputs = tf.random_uniform((5, height * width * 3), seed=1)
       output = tf.contrib.layers.fully_connected(inputs, 32, scope='fc1')
       self.assertEquals(output.op.name, 'fc1/Relu')
-      
+
   def testCreateFCWithCollection(self):
     height, width = 3, 3
     inputs = tf.random_uniform((5, height * width * 3), seed=1)
@@ -1585,8 +1585,9 @@ class LayerNormTest(tf.test.TestCase):
       expected_var = np.ones(input_shape[0])
       mean = np.mean(outputs, axis=moments_axis)
       var = np.var(outputs, axis=moments_axis)
-      self.assertAllClose(mean, expected_mean, rtol=1e-5)
-      self.assertAllClose(var, expected_var, rtol=1e-5)
+      tol = 1e-5
+      self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
+      self.assertAllClose(var, expected_var, rtol=tol, atol=tol)
 
   def testOutput2DInput(self):
     self.doOutputTest((10, 300))
