@@ -57,7 +57,7 @@ class DimensionHandle {
 
   const Dimension* ptr_ = nullptr;
 
-  friend class DimensionOrConstant;
+  friend struct DimensionOrConstant;
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
