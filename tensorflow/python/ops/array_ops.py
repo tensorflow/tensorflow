@@ -1121,14 +1121,16 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   Returns:
     A `Tensor` with all elements set to zero.
   """
+  dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "zeros", [shape]) as name:
+    zero = False if dtype == dtypes.bool else 0
     try:
       shape = tensor_shape.as_shape(shape)
-      output = constant(0, shape=shape, dtype=dtype, name=name)
+      output = constant(zero, shape=shape, dtype=dtype, name=name)
     except (TypeError, ValueError):
       shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(0, dtype=dtype), name=name)
-  assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
+      output = fill(shape, constant(zero, dtype=dtype), name=name)
+  assert output.dtype.base_dtype == dtype
   return output
 
 
@@ -1184,7 +1186,8 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   Args:
     tensor: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-    `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
+      `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, `complex128` or
+      `bool`.
     name: A name for the operation (optional).
     optimize: if true, attempt to statically determine the shape of 'tensor'
     and encode it as a constant.
@@ -1222,14 +1225,16 @@ def ones(shape, dtype=dtypes.float32, name=None):
   Returns:
     A `Tensor` with all elements set to 1.
   """
+  dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
+    one = True if dtype == dtypes.bool else 1
     try:
       shape = tensor_shape.as_shape(shape)
-      output = constant(1, shape=shape, dtype=dtype, name=name)
+      output = constant(one, shape=shape, dtype=dtype, name=name)
     except (TypeError, ValueError):
       shape = ops.convert_to_tensor(shape, dtype=dtypes.int32, name="shape")
-      output = fill(shape, constant(1, dtype=dtype), name=name)
-  assert output.dtype.base_dtype == dtypes.as_dtype(dtype).base_dtype
+      output = fill(shape, constant(one, dtype=dtype), name=name)
+  assert output.dtype.base_dtype == dtype
   return output
 
 
