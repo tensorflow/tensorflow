@@ -39,8 +39,8 @@ bazel build tensorflow/python/tools:optimize_for_inference && \
 bazel-bin/tensorflow/python/tools/optimize_for_inference \
 --input_graph=some_graph_def.pb \
 --output_graph=/tmp/optimized_graph.pb \
---input_node_names=Mul
---output_node_names=softmax
+--input_names=Mul \
+--output_names=softmax
 
 """
 
@@ -342,27 +342,46 @@ def fuse_resize_and_conv(input_graph_def):
       continue
     conv_op = node
 
-    mirror_pad_op = node_from_map(input_node_map, conv_op.input[0])
-    if mirror_pad_op.op != "MirrorPad":
-      continue
+    input_op = node_from_map(input_node_map, conv_op.input[0])
+    if input_op.op == "MirrorPad":
+      mirror_pad_op = input_op
+      resize_op = node_from_map(input_node_map, mirror_pad_op.input[0])
+    else:
+      mirror_pad_op = None
+      resize_op = input_op
 
-    resize_op = node_from_map(input_node_map, mirror_pad_op.input[0])
     if resize_op.op != "ResizeBilinear":
       continue
 
     nodes_to_skip[conv_op.name] = True
-    nodes_to_skip[mirror_pad_op.name] = True
+    if mirror_pad_op:
+      nodes_to_skip[mirror_pad_op.name] = True
     nodes_to_skip[resize_op.name] = True
 
     fused_conv_op = tf.NodeDef()
     fused_conv_op.op = "FusedResizeAndPadConv2D"
     fused_conv_op.name = conv_op.name
+    if mirror_pad_op:
+      mirror_paddings_name = mirror_pad_op.input[1]
+      mirror_paddings_mode = mirror_pad_op.attr["mode"]
+    else:
+      paddings_op = tf.NodeDef()
+      paddings_op.op = "Const"
+      paddings_op.name = conv_op.name + "_dummy_paddings"
+      paddings_op.attr["dtype"].CopyFrom(tf.AttrValue(
+          type=tf.int32.as_datatype_enum))
+      paddings_op.attr["value"].CopyFrom(tf.AttrValue(
+        tensor=tensor_util.make_tensor_proto(
+            [0, 0, 0, 0, 0, 0, 0, 0], tf.int32, [4, 2])))
+      new_ops.extend([paddings_op])
+      mirror_paddings_name = paddings_op.name
+      mirror_paddings_mode = tf.AttrValue(s="REFLECT")
     fused_conv_op.input.extend([resize_op.input[0], resize_op.input[1],
-                                mirror_pad_op.input[1], conv_op.input[1]])
+                                mirror_paddings_name, conv_op.input[1]])
     fused_conv_op.attr["T"].CopyFrom(conv_op.attr["T"])
     fused_conv_op.attr["resize_align_corners"].CopyFrom(
         resize_op.attr["align_corners"])
-    fused_conv_op.attr["mode"].CopyFrom(mirror_pad_op.attr["mode"])
+    fused_conv_op.attr["mode"].CopyFrom(mirror_paddings_mode)
     fused_conv_op.attr["strides"].CopyFrom(conv_op.attr["strides"])
     fused_conv_op.attr["padding"].CopyFrom(conv_op.attr["padding"])
     new_ops.extend([fused_conv_op])
