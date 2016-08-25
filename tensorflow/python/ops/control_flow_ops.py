@@ -155,7 +155,7 @@ def _NextIteration(data, name=None):
 
 
 def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
-           use_ref=True, name=None):
+           use_ref=True, use_input_shape=True, name=None):
   """Creates or finds a child frame, and makes `data` available to it.
 
   The unique `frame_name` is used by the `Executor` to identify frames. If
@@ -177,27 +177,37 @@ def _Enter(data, frame_name, is_constant=False, parallel_iterations=10,
   data = ops.convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype.is_ref_dtype and use_ref:
-      return ref_enter(data, frame_name, is_constant, parallel_iterations,
-                       name=name)
+      result = ref_enter(data, frame_name, is_constant, parallel_iterations,
+                         name=name)
     else:
-      return enter(data, frame_name, is_constant, parallel_iterations,
-                   name=name)
+      result = enter(data, frame_name, is_constant, parallel_iterations,
+                     name=name)
+    if use_input_shape:
+      result.set_shape(data.get_shape())
+    return result
   else:
     if not isinstance(data, (ops.IndexedSlices, ops.SparseTensor)):
       raise TypeError("Type %s not supported" % type(data))
     values = _Enter(data.values, frame_name, is_constant,
-                    parallel_iterations, name=name)
+                    parallel_iterations=parallel_iterations,
+                    use_input_shape=use_input_shape, name=name)
     indices = enter(data.indices, frame_name, is_constant,
                     parallel_iterations, name="indices")
+    if use_input_shape:
+      indices.set_shape(data.indices.get_shape())
     if isinstance(data, ops.IndexedSlices):
       dense_shape = data.dense_shape
       if dense_shape is not None:
         dense_shape = enter(dense_shape, frame_name, is_constant,
                             parallel_iterations, name="dense_shape")
+        if use_input_shape:
+          dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
       dense_shape = enter(data.shape, frame_name, is_constant,
                           parallel_iterations, name="dense_shape")
+      if use_input_shape:
+        dense_shape.set_shape(data.shape.get_shape())
       return ops.SparseTensor(indices, values, dense_shape)
 
 
@@ -440,16 +450,139 @@ def _GetOutputContext(op):
   return ctxt
 
 
-def _ShapeIntersection(shape1, shape2):
-  if shape1.dims is None or shape1.ndims != shape2.ndims:
-    return tensor_shape.unknown_shape()
-  rdims = []
+def _ShapeLessThanOrEqual(shape1, shape2):
+  if shape2.dims is None:
+    return True
+  if shape1.ndims != shape2.ndims:
+    return False
   for dim1, dim2 in zip(shape1.dims, shape2.dims):
-    if dim1 == dim2:
-      rdims.append(dim1)
+    if dim2.value is not None and dim1.value != dim2.value:
+      return False
+  return True
+
+
+def _SetShapeInvariants(input_vars, enter_vars, shapes):
+  """Set the shapes of the tensors in `enter_vars` to `shapes`.
+
+  Args:
+    input_vars: A list of tensors that are inputs to `enter_vars`.
+    enter_vars: A list of tensors whose shapes will be set.
+    shapes: A (possibly nested) list of shapes.
+
+  Raises:
+    ValueError: If any tensor in `enter_vars` has a less specific shape
+      than its corresponding shape in `shapes`.
+  """
+  if shapes is None:
+    return
+  flat_shapes = nest.flatten(shapes)
+  if not all([isinstance(s, tensor_shape.TensorShape) for s in flat_shapes]):
+    raise ValueError("`shapes` must be a (possibly nested) list of shapes.")
+  # Check that the shapes of the inputs are less than the shape invariants,
+  # and set the shapes of `enter_vars` to the shape invariants.
+  for inp, var, shape in zip(input_vars, enter_vars, flat_shapes):
+    if isinstance(var, ops.Tensor):
+      if not _ShapeLessThanOrEqual(inp.get_shape(), shape):
+        raise ValueError(
+            "The shape invariant specified for %s is not compatible with "
+            "the initial shape of the loop variable. It enters the loop "
+            "with shape %s, but the specified shape invariant is %s."
+            % (inp.name, inp.get_shape(), shape))
+      var.set_shape(shape)
     else:
-      rdims.append(tensor_shape.Dimension(None))
-  return tensor_shape.TensorShape(rdims)
+      if not isinstance(var, (ops.IndexedSlices, ops.SparseTensor)):
+        raise TypeError("Type %s not supported" % type(var))
+      if isinstance(var, ops.IndexedSlices):
+        if not _ShapeLessThanOrEqual(inp.values.get_shape(), shape):
+          raise ValueError(
+              "The shape invariant specified for %s is not compatible with "
+              "the initial shape of the values tensor of this IndexedSlices. "
+              "It enters the loop with shape %s, but the specified shape "
+              "invariant is %s."
+              % (inp.values.name, inp.values.get_shape(), shape))
+        var.values.set_shape(shape)
+        var.indices.set_shape(tensor_shape.TensorShape([shape[0]]))
+        if var.dense_shape is not None:
+          var.dense_shape.set_shape(tensor_shape.TensorShape([shape.ndims]))
+      else:
+        if not _ShapeLessThanOrEqual(inp.shape.get_shape(), shape):
+          raise ValueError(
+              "The shape invariant specified for %s is not compatible with "
+              "the initial shape of the shape tensor of this SparseTensor. "
+              "It enters the loop with shape %s, but the specified shape "
+              "invariant is %s."
+              % (inp.shape.name, inp.shape.get_shape(), shape))
+        var.values.set_shape(tensor_shape.TensorShape([None]))
+        var.indices.set_shape(tensor_shape.TensorShape([None, shape.ndims]))
+        var.shape.set_shape(shape)
+
+
+def _EnforceShapeInvariant(merge_var, next_var):
+  """Check if the shapes of the loops variables are invariants.
+
+  Args:
+    merge_vars: The list of tensors representing the initial values of the
+      loop variables.
+    next_vars: The list of tensors representing the values of the loop
+      variables after one loop iteration.
+
+  Raises:
+    ValueError: If any tensor in `merge_vars` has a more specific shape than
+      its correspnding tensor in `next_var`.
+  """
+  if isinstance(merge_var, ops.Tensor):
+    m_shape = merge_var.get_shape()
+    n_shape = next_var.get_shape()
+    if not _ShapeLessThanOrEqual(n_shape, m_shape):
+      raise ValueError(
+          "The shape for %s is not an invariant for the loop. It enters "
+          "the loop with shape %s, but has shape %s after one iteration. "
+          "Provide shape invariants using either the `shape_invariants` "
+          "argument of tf.while_loop or set_shape() on the loop variables."
+          % (merge_var.name, m_shape, n_shape))
+  else:
+    if not isinstance(var, (ops.IndexedSlices, ops.SparseTensor)):
+      raise TypeError("Type %s not supported" % type(var))
+    if isinstance(var, ops.IndexedSlices):
+      m_values_shape = merge_var.values.get_shape()
+      m_indices_shape = merge_var.indices.get_shape()
+      m_shape_shape = tensor_shape.TensorShape(None)
+      if merge_var.dense_shape is not None:
+        m_shape_shape = merge_var.dense_shape.get_shape()
+      n_values_shape = next_var.values.get_shape()
+      n_indices_shape = next_var.indices.get_shape()
+      n_shape_shape = tensor_shape.TensorShape(None)
+      if next_var.dense_shape is not None:
+        n_shape_shape = next_var.dense_shape.get_shape()
+      if (not _ShapeLessThanOrEqual(n_values_shape, m_values_shape) or
+          not _ShapeLessThanOrEqual(n_indices_shape, m_indices_shape)):
+        if not _ShapeLessThanOrEqual(n_values_shape, m_values_shape):
+          raise ValueError(
+              "The shape for %s is not an invariant for the loop. It enters "
+              "the loop with shape (%s, %s, %s), but has shape (%s, %s, %s) "
+              "after one iteration. Provide shape invariants using either the "
+              "`shape_invariants` argument of tf.while_loop or set_shape() "
+              "on the loop variables."
+              % (merge_var.name, m_values_shape, m_indices_shape, m_shape_shape,
+                 n_values_shape, n_indices_shape, n_shape_shape))
+    else:
+      m_values_shape = merge_var.values.get_shape()
+      m_indices_shape = merge_var.indices.get_shape()
+      m_shape_shape = merge_var.shape.get_shape()
+      n_values_shape = next_var.values.get_shape()
+      n_indices_shape = next_var.indices.get_shape()
+      n_shape_shape = next_var.shape.get_shape()
+      if (not _ShapeLessThanOrEqual(n_values_shape, m_values_shape) or
+          not _ShapeLessThanOrEqual(n_indices_shape, m_indices_shape) or
+          not _ShapeLessThanOrEqual(n_shape_shape, m_shape_shape)):
+        raise ValueError(
+          "The shape for %s is not an invariant for the loop. It enters "
+          "the loop with shape (%s, %s, %s), but has shape (%s, %s, %s) "
+          "after one iteration. Provide shape invariants using either "
+          "the `shape_invariants` argument of tf.while_loop or set_shape() "
+          "on the loop variables."
+          % (merge_var.name, m_values_shape, m_indices_shape, m_shape_shape,
+             n_values_shape, n_indices_shape, n_shape_shape))
 
 
 def _AddNextAndBackEdge(m, v):
@@ -1018,12 +1151,13 @@ class ControlFlowState(object):
             shape = None
           grad_state.grad_context.Enter()
           grad_val = constant_op.constant(0, dtype=dtype, shape=shape)
-          grad_val = _NextIteration(grad_val)
+          next_grad_val = _NextIteration(grad_val)
           grad_state.grad_context.Exit()
           # pylint: disable=protected-access
           if not shape:
             grad_val._shape = b_merge.op.inputs[0].get_shape()
-          b_merge.op._update_input(1, grad_val)
+            next_grad_val.set_shape(grad_val.get_shape())
+          b_merge.op._update_input(1, next_grad_val)
           # pylint: enable=protected-access
 
 
@@ -1835,6 +1969,7 @@ class WhileContext(ControlFlowContext):
         dense_shape=acc_exits[2] if shape_acc is not None else None)
 
   def _InitializeValues(self, values):
+    """Makes the values known to this context."""
     self._values = set()
     for x in values:
       if isinstance(x, ops.Tensor):
@@ -1851,7 +1986,8 @@ class WhileContext(ControlFlowContext):
         if dense_shape is not None:
           self._values.add(dense_shape.name)
 
-  def _BuildLoop(self, pred, body, original_loop_vars, loop_vars):
+  def _BuildLoop(self, pred, body, original_loop_vars, loop_vars,
+                 shape_invariants):
     """Core: Add the loop termination condition and body to the graph."""
     flat_loop_vars = nest.flatten(original_loop_vars)
 
@@ -1863,8 +1999,11 @@ class WhileContext(ControlFlowContext):
       real_vars = [self._outer_context.AddValue(x) for x in loop_vars]
     with ops.control_dependencies(None):
       enter_vars = [_Enter(x, self._name, is_constant=False,
-                           parallel_iterations=self._parallel_iterations)
+                           parallel_iterations=self._parallel_iterations,
+                           use_input_shape=(shape_invariants is None))
                     for x in real_vars]
+    _SetShapeInvariants(real_vars, enter_vars, shape_invariants)
+
     # Fix the control inputs and control flow context of these enter ops.
     self._FixControlInputsAndContext(enter_vars)
     self._InitializeValues(enter_vars)
@@ -1921,16 +2060,16 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = exit_vars
 
     # Make sure the shapes of loop outputs are correct.
-    for m_var, n_var, e_var in zip(merge_vars, next_vars, exit_vars):
+    for m_var, n_var in zip(merge_vars, next_vars):
       if isinstance(m_var, ops.Tensor):
-        e_var._shape = _ShapeIntersection(m_var.get_shape(), n_var.get_shape())
+        _EnforceShapeInvariant(m_var, n_var)
 
     # Exit the loop.
     self.ExitResult(exit_vars)
 
     return original_body_result, exit_vars
 
-  def BuildLoop(self, pred, body, loop_vars):
+  def BuildLoop(self, pred, body, loop_vars, shape_invariants):
     """Add the loop termination condition and body to the graph."""
 
     # Keep original_loop_vars to identify which are TensorArrays
@@ -1942,7 +2081,7 @@ class WhileContext(ControlFlowContext):
     try:
       self.Enter()
       original_body_result, exit_vars = self._BuildLoop(
-          pred, body, original_loop_vars, loop_vars)
+          pred, body, original_loop_vars, loop_vars, shape_invariants)
     finally:
       self.Exit()
 
@@ -1981,8 +2120,9 @@ class WhileContext(ControlFlowContext):
     # pylint: enable=protected-access
 
 
-def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
-               swap_memory=False, name=None):
+def while_loop(cond, body, loop_vars, shape_invariants=None,
+               parallel_iterations=10, back_prop=True, swap_memory=False,
+               name=None):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
@@ -1992,11 +2132,39 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
   and `body`. `cond` and `body` both take as many arguments as there are
   `loop_vars`.
 
+  While `cond` evaluates to true, `body` is executed.
+
   In addition to regular Tensors or IndexedSlices, the body may accept and
   return TensorArray objects.  The flows of the TensorArray objects will
   be appropriately forwarded between loops and during gradient calculations.
 
-  While `cond` evaluates to true, `body` is executed.
+  For correctness, `tf.while_loop()` strictly enforces shape invariants for
+  the loop variables. A shape invariant is a (possibly partial) shape that
+  is unchanged across the iterations of the loop. An error will be raised
+  if the shape of a loop variable after an iteration is determined to be more
+  general than or incompatible with its shape invariant. For example, a shape
+  of [11, None] is more general than a shape of [11, 17], and [11, 21] is not
+  compatible with [11, 17]. By default (if the argument `shape_invariants` is
+  not specified), it is assumed that the initial shape of each tensor in
+  `loop_vars` is the same in every iteration. The `shape_invariants` argument
+  allows the caller to specify a less specific shape invariant for each loop
+  variable, which is needed if the shape varies between iterations. The
+  [`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
+  function may also be used in the `body` function to indicate that
+  the output loop variable has a particular shape. The shape invariant for
+  SparseTensor and IndexedSlices are treated specially as follows:
+
+  a) If a loop variable is a SparseTensor, the shape invariant must be
+  TensorShape([r]) where r is the rank of the dense tensor represented
+  by the sparse tensor. It means the shapes of the three tensors of the
+  SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
+  is the shape of the SparseTensor.shape property. It must be the shape of
+  a vector.
+
+  b) If a loop variable is an IndexedSlices, the shape invariant must be
+  a shape invariant of the values tensor of the IndexedSlices. It means
+  the shapes of the three tensors of the IndexedSlices are (shape, [shape[0]],
+  [shape.ndims]).
 
   `while_loop` implements non-strict semantics, enabling multiple iterations
   to run in parallel. The maximum number of parallel iterations can be
@@ -2016,6 +2184,7 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     body: A callable that represents the loop body.
     loop_vars: A (possibly nested) tuple or list of numpy array, `Tensor`,
       and `TensorArray` objects.
+    shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel.
     back_prop: Whether backprop is enabled for this while loop.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
@@ -2047,6 +2216,19 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     b = lambda i, (j, k): (i + 1, ((j + k), (j - k)))
     ijk_final = tf.while_loop(c, b, ijk_0)
     ```
+
+  Example using shape_invariants:
+
+    ```python
+    i0 = tf.constant(0)
+    m0 = tf.ones([2, 2])
+    c = lambda i, m: i < 10
+    b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+    tf.while_loop(
+        c, b, loop_vars=[i0, m0],
+        shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])
+    ```
+
   """
   with ops.name_scope(name, "while", loop_vars) as name:
     if not loop_vars:
@@ -2056,17 +2238,12 @@ def while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
     if not callable(body):
       raise TypeError("body must be callable.")
 
+    if shape_invariants is not None:
+      nest.assert_same_structure(loop_vars, shape_invariants)
+
     context = WhileContext(parallel_iterations, back_prop, swap_memory, name)
-    result = context.BuildLoop(cond, body, loop_vars)
+    result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
-
-
-def While(cond, body, loop_vars, parallel_iterations=10, back_prop=True,
-          swap_memory=False, name=None):
-  """DEPRECATED: Use `while_loop`."""
-  return while_loop(cond=cond, body=body, loop_vars=loop_vars,
-                    parallel_iterations=parallel_iterations,
-                    back_prop=back_prop, swap_memory=swap_memory, name=name)
 
 
 def _AsTensorList(x, p):
@@ -2440,7 +2617,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     return case_seq
 
 
-ops.RegisterShape("Enter")(common_shapes.unchanged_shape)
+ops.RegisterShape("Enter")(common_shapes.unknown_shape)
 ops.RegisterShape("Exit")(common_shapes.unchanged_shape)
 ops.RegisterShape("NextIteration")(common_shapes.unchanged_shape)
 ops.RegisterShape("RefEnter")(common_shapes.unchanged_shape)

@@ -736,6 +736,9 @@ class TensorArrayCPUTest(tf.test.TestCase):
           cond=lambda time, unused_1, unused_2: time < 3,
           body=body,
           loop_vars=(time_0, ta, state0),
+          shape_invariants=(time_0.get_shape(),
+                            tensor_shape.unknown_shape(),
+                            tensor_shape.unknown_shape()),
           parallel_iterations=3)
       vout = h_final.pack()
 
