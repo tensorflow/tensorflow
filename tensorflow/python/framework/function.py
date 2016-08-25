@@ -166,7 +166,6 @@ def _add_op_node(graph, op, func):
   func.node.extend([node])
 
 
-# pylint: disable=line-too-long
 def graph_to_function_def(graph, name, inputs, outputs):
   """Returns `graph` as a `FunctionDef` protocol buffer.
 
@@ -184,7 +183,7 @@ def graph_to_function_def(graph, name, inputs, outputs):
   different graph to make it available there.
 
   Args:
-    graph: GraphDef proto.
+    graph: Graph.
     name: string. The name to use for the function.
     inputs: List of tensors. Inputs to the function.
     outputs: List of tensors. Outputs of the function.
@@ -192,13 +191,10 @@ def graph_to_function_def(graph, name, inputs, outputs):
   Returns:
     A FunctionDef protocol buffer.
   """
-  # pylint: enable=line-too-long
   func = function_pb2.FunctionDef()
   func.signature.name = name
-  func.signature.input_arg.extend([_tensor_to_argdef(graph.get_tensor_by_name(
-      i.name)) for i in inputs])
-  func.signature.output_arg.extend([_tensor_to_argdef(graph.get_tensor_by_name(
-      o.name)) for o in outputs])
+  func.signature.input_arg.extend([_tensor_to_argdef(i) for i in inputs])
+  func.signature.output_arg.extend([_tensor_to_argdef(o) for o in outputs])
   func_arg_placeholders = set([i.name for i in inputs])
   g = ops.get_default_graph()
   for op in graph.get_operations():
