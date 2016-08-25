@@ -151,9 +151,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
       cluster_spec = server_lib.ClusterSpec(cluster).as_dict()
     # Get ps_job_name from ps_device by striping "/job:".
     ps_job_name = pydev.DeviceSpec.from_string(ps_device).job
-    print(ps_job_name)
     if ps_job_name not in cluster_spec or cluster_spec[ps_job_name] is None:
-      print("None")
       return None
     ps_tasks = len(cluster_spec[ps_job_name])
 
