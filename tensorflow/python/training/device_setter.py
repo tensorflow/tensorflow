@@ -30,13 +30,12 @@ class _ReplicaDeviceChooser(object):
   `replica_device_setter()` below.
   """
 
-  def __init__(self, ps_tasks, ps_device, ps_device_name, worker_device, merge_devices, ps_ops):
+  def __init__(self, ps_tasks, ps_device, worker_device, merge_devices, ps_ops):
     """Create a new `_ReplicaDeviceChooser`.
 
     Args:
       ps_tasks: Number of tasks in the `ps` job.
       ps_device: String.  Name of the `ps` job.
-      ps_device_name: String.  Name of the `ps` device.
       worker_device: String.  Name of the `worker` job.
       merge_devices: Boolean. Set to True to allow merging of device specs.
       ps_ops: List of `Operations` that must be placed on `ps` jobs.
@@ -48,7 +47,6 @@ class _ReplicaDeviceChooser(object):
       ps_ops = ["Variable"]
     self._ps_tasks = ps_tasks
     self._ps_device = ps_device
-    self._ps_device_name = ps_device_name
     self._worker_device = worker_device
     self._merge_devices = merge_devices
     self._next_task_num = 0
@@ -81,8 +79,6 @@ class _ReplicaDeviceChooser(object):
       node_def = op if isinstance(op, graph_pb2.NodeDef) else op.node_def
       if node_def.op in self._ps_ops:
         device_string = "%s/task:%d" % (self._ps_device, self._next_task())
-        if(self._ps_device_name is not None):
-        	device_string += self._ps_device_name
         if self._merge_devices:
           spec = pydev.DeviceSpec.from_string(device_string)
           spec.merge_from(current_device)
@@ -101,7 +97,7 @@ class _ReplicaDeviceChooser(object):
     return spec.to_string()
 
 
-def replica_device_setter(ps_tasks=0, ps_device="/job:ps", ps_device_name=None, 
+def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
                           worker_device="/job:worker", merge_devices=True,
                           cluster=None, ps_ops=None):
   """Return a `device function` to use when building a Graph for replicas.
@@ -132,9 +128,8 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps", ps_device_name=None,
 
   Args:
     ps_tasks: Number of tasks in the `ps` job.
-    ps_device: String.  Job name of the `ps` job.  If empty no `ps` job is used.
+    ps_device: String.  Device of the `ps` job.  If empty no `ps` job is used.
       Defaults to `ps`.
-    ps_device_name: String.  Device of the 'ps' job. 
     worker_device: String.  Device of the `worker` job.  If empty no `worker`
       job is used.
     merge_devices: `Boolean`. If `True`, merges or only sets a device if the
@@ -155,8 +150,10 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps", ps_device_name=None,
     else:
       cluster_spec = server_lib.ClusterSpec(cluster).as_dict()
     # Get ps_job_name from ps_device by striping "/job:".
-    ps_job_name = ps_device.lstrip("/job:")
+    ps_job_name = pydev.DeviceSpec.from_string(ps_device).job
+    print(ps_job_name)
     if ps_job_name not in cluster_spec or cluster_spec[ps_job_name] is None:
+      print("None")
       return None
     ps_tasks = len(cluster_spec[ps_job_name])
 
@@ -168,5 +165,5 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps", ps_device_name=None,
           "DEPRECATION: It is recommended to set merge_devices=true in "
           "replica_device_setter")
     chooser = _ReplicaDeviceChooser(
-        ps_tasks, ps_device, ps_device_name, worker_device, merge_devices, ps_ops)
+        ps_tasks, ps_device, worker_device, merge_devices, ps_ops)
     return chooser.device_function
