@@ -3,19 +3,25 @@
 
 `cuda_configure` depends on the following environment variables:
 
-  * `ENABLE_CUDA`: Whether to enable building with CUDA.
-  * `CC`: The GCC host compiler path
+  * `TF_NEED_CUDA`: Whether to enable building with CUDA.
+  * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path
   * `CUDA_TOOLKIT_PATH`: The path to the CUDA toolkit. Default is
     `/usr/local/cuda`.
-  * `CUDA_VERSION`: The version of the CUDA toolkit. If this is blank, then
+  * `TF_CUDA_VERSION`: The version of the CUDA toolkit. If this is blank, then
     use the system default.
-  * `CUDNN_VERSION`: The version of the cuDNN library.
+  * `TF_CUDNN_VERSION`: The version of the cuDNN library.
   * `CUDNN_INSTALL_PATH`: The path to the cuDNN library. Default is
     `/usr/local/cuda`.
-  * `CUDA_COMPUTE_CAPABILITIES`: The CUDA compute capabilities. Default is
+  * `TF_CUDA_COMPUTE_CAPABILITIES`: The CUDA compute capabilities. Default is
     `3.5,5.2`.
 """
 
+_GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
+_CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
+_TF_CUDA_VERSION = "TF_CUDA_VERSION"
+_TF_CUDNN_VERSION = "TF_CUDNN_VERSION"
+_CUDNN_INSTALL_PATH = "CUDNN_INSTALL_PATH"
+_TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 
 _DEFAULT_CUDA_VERSION = ""
 _DEFAULT_CUDNN_VERSION = ""
@@ -30,8 +36,8 @@ _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 def find_cc(repository_ctx):
   """Find the C++ compiler."""
   cc_name = "gcc"
-  if "CC" in repository_ctx.os.environ:
-    cc_name = repository_ctx.os.environ["CC"].strip()
+  if _GCC_HOST_COMPILER_PATH in repository_ctx.os.environ:
+    cc_name = repository_ctx.os.environ[_GCC_HOST_COMPILER_PATH].strip()
     if not cc_name:
       cc_name = "gcc"
   if cc_name.startswith("/"):
@@ -93,8 +99,8 @@ def _enable_cuda(repository_ctx):
 def _cuda_toolkit_path(repository_ctx):
   """Finds the cuda toolkit directory."""
   cuda_toolkit_path = _DEFAULT_CUDA_TOOLKIT_PATH
-  if "CUDA_TOOLKIT_PATH" in repository_ctx.os.environ:
-    cuda_toolkit_path = repository_ctx.os.environ["CUDA_TOOLKIT_PATH"].strip()
+  if _CUDA_TOOLKIT_PATH in repository_ctx.os.environ:
+    cuda_toolkit_path = repository_ctx.os.environ[_CUDA_TOOLKIT_PATH].strip()
   if not repository_ctx.path(cuda_toolkit_path).exists:
     fail("Cannot find cuda toolkit path.")
   return cuda_toolkit_path
@@ -103,8 +109,8 @@ def _cuda_toolkit_path(repository_ctx):
 def _cudnn_install_basedir(repository_ctx):
   """Finds the cudnn install directory."""
   cudnn_install_path = _DEFAULT_CUDNN_INSTALL_PATH
-  if "CUDNN_INSTALL_PATH" in repository_ctx.os.environ:
-    cudnn_install_path = repository_ctx.os.environ["CUDNN_INSTALL_PATH"].strip()
+  if _CUDNN_INSTALL_PATH in repository_ctx.os.environ:
+    cudnn_install_path = repository_ctx.os.environ[_CUDNN_INSTALL_PATH].strip()
   if not repository_ctx.path(cudnn_install_path).exists:
     fail("Cannot find cudnn install path.")
   return cudnn_install_path
@@ -112,25 +118,25 @@ def _cudnn_install_basedir(repository_ctx):
 
 def _cuda_version(repository_ctx):
   """Detects the cuda version."""
-  if "CUDA_VERSION" in repository_ctx.os.environ:
-    return repository_ctx.os.environ["CUDA_VERSION"].strip()
+  if _TF_CUDA_VERSION in repository_ctx.os.environ:
+    return repository_ctx.os.environ[_TF_CUDA_VERSION].strip()
   else:
     return ""
 
 
 def _cudnn_version(repository_ctx):
   """Detects the cudnn version."""
-  if "CUDNN_VERSION" in repository_ctx.os.environ:
-    return repository_ctx.os.environ["CUDNN_VERSION"].strip()
+  if _TF_CUDNN_VERSION in repository_ctx.os.environ:
+    return repository_ctx.os.environ[_TF_CUDNN_VERSION].strip()
   else:
     return ""
 
 
 def _compute_capabilities(repository_ctx):
   """Returns a list of strings representing cuda compute capabilities."""
-  if "CUDA_COMPUTE_CAPABILITIES" not in repository_ctx.os.environ:
+  if _TF_CUDA_COMPUTE_CAPABILITIES not in repository_ctx.os.environ:
     return _DEFAULT_CUDA_COMPUTE_CAPABILITIES
-  capabilities_str = repository_ctx.os.environ["CUDA_COMPUTE_CAPABILITIES"]
+  capabilities_str = repository_ctx.os.environ[_TF_CUDA_COMPUTE_CAPABILITIES]
   capabilities = capabilities_str.split(",")
   for capability in capabilities:
     # Workaround for Skylark's lack of support for regex. This check should
