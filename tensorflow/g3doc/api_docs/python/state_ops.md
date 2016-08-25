@@ -736,7 +736,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -801,6 +801,9 @@ checkpoints per device.
 *  <b>`defer_build`</b>: If `True`, defer adding the save and restore ops to the
     `build()` call. In that case `build()` should be called before
     finalizing the graph or using the saver.
+*  <b>`allow_empty`</b>: If `False` (default) raise an error if there are no
+    variables in the graph. Otherwise, construct the saver anyway and make
+    it a no-op.
 
 ##### Raises:
 
@@ -845,6 +848,7 @@ path can be passed directly to a call to `restore()`.
   A string: path at which the variables were saved.  If the saver is
     sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
     is the number of shards created.
+  If the saver is empty, returns None.
 
 ##### Raises:
 
