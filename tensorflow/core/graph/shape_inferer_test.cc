@@ -190,5 +190,93 @@ TEST(ShapeInfererTest, InputTensorDependencies) {
   EXPECT_EQ("[10,10]", ctx->DebugString(ctx->output(0)));
 }
 
+namespace {
+
+// An op with a shape function that looks at its input tensor
+// data and makes a Shape out of it.
+REGISTER_OP("ShapeData")
+    .Input("a: int32")
+    .Output("o: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      const Tensor* shape_data = c->input_tensor(0);
+      if (shape_data == nullptr) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      std::vector<shape_inference::DimensionHandle> dims;
+      for (int i = 0; i < shape_data->NumElements(); ++i) {
+        dims.emplace_back(c->MakeDim(shape_data->flat<int32>()(i)));
+      }
+
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    });
+
+}  // namespace
+
+TEST(ShapeInfererTest, PropagateShape) {
+  Scope root = Scope::NewRootScope();
+  // 3x2 input
+  auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
+
+  // Shape is a vector of 2 elements (3,2)
+  auto shape = ops::Shape(root, input);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(shape.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeInferer m;
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(shape.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[3,2]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeInfererTest, PropagateSize) {
+  Scope root = Scope::NewRootScope();
+  // 3x2 input
+  auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
+
+  auto size = ops::Size(root, input);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(size.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeInferer m;
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(size.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[6]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeInfererTest, PropagateRank) {
+  Scope root = Scope::NewRootScope();
+  // 3x2 input
+  auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
+
+  auto rank = ops::Rank(root, input);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(rank.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeInferer m;
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(rank.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[2]", ctx->DebugString(ctx->output(0)));
+}
+
 }  // namespace
 }  // namespace tensorflow

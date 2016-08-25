@@ -94,21 +94,8 @@ Status ShapeInferer::AddNode(const Node* node) {
       if (c->requested_input_tensor(i) && !attempted_materialization[i]) {
         rerun_shape_fn = true;
         attempted_materialization[i] = true;
-
-        // For now, we do a simple static analysis of the graph to
-        // materialize those tensors, but in the future, we should try to do
-        // a partial evaluation of the graph.
-        const Node* input_node = input_nodes[i];
-
-        // TODO(vrv): Handle other types of nodes, like we do in python:
-        // Shape, Size, Rank, Range, Cast, Concat, Pack.  Some of these
-        // require recursively accessing the input's inputs, while some
-        // can be computed using local information.
-        if (input_node->IsConstant()) {
-          TF_RETURN_IF_ERROR(
-              GetNodeAttr(input_node->def(), "value", &real_tensors[i]));
-          input_tensors[i] = &real_tensors[i];
-        }
+        TF_RETURN_IF_ERROR(
+            ConstantValue(input_nodes[i], &real_tensors[i], &input_tensors[i]));
       }
     }
 
@@ -122,6 +109,116 @@ Status ShapeInferer::AddNode(const Node* node) {
 
   // Store the resulting InferenceContext object in the map.
   node_to_context_[node] = c.release();
+
+  return Status::OK();
+}
+
+Status ShapeInferer::ConstantValue(const Node* node, Tensor* tensor_storage,
+                                   const Tensor** input_tensor) const {
+  *input_tensor = nullptr;
+  // For now, we do a simple static analysis of the graph to
+  // materialize those tensors, but in the future, we should try to do
+  // a partial evaluation of the graph.
+
+  // TODO(vrv): Handle other types of nodes, like we do in python:
+  // Size, Rank, Range, Cast, Concat, Pack.  Some of these
+  // require recursively accessing the input's inputs, while some
+  // can be computed using local information.
+  if (node->IsConstant()) {
+    return Constant(node, tensor_storage, input_tensor);
+  }
+  if (node->type_string() == "Shape") {
+    return Shape(node, tensor_storage, input_tensor);
+  }
+  if (node->type_string() == "Size") {
+    return Size(node, tensor_storage, input_tensor);
+  }
+  if (node->type_string() == "Rank") {
+    return Rank(node, tensor_storage, input_tensor);
+  }
+
+  return Status::OK();
+}
+
+Status ShapeInferer::Constant(const Node* node, Tensor* tensor_storage,
+                              const Tensor** input_tensor) const {
+  TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "value", tensor_storage));
+  *input_tensor = tensor_storage;
+  return Status::OK();
+}
+
+Status ShapeInferer::Shape(const Node* node, Tensor* tensor_storage,
+                           const Tensor** input_tensor) const {
+  // Get the input to the node.
+  const Node* shape_node;
+  TF_RETURN_IF_ERROR(node->input_node(0, &shape_node));
+  auto ic = GetContext(shape_node);
+  if (!ic) {
+    return errors::Internal("Could not find InferenceContext for ",
+                            shape_node->name());
+  }
+  shape_inference::ShapeHandle input_shape = ic->output(0);
+  if (ic->FullyDefined(input_shape)) {
+    *tensor_storage = Tensor(DT_INT32, {ic->Rank(input_shape)});
+    for (int i = 0; i < ic->Rank(input_shape); ++i) {
+      int64 dim = ic->Value(ic->Dim(input_shape, i));
+      if (dim > std::numeric_limits<int32>::max()) {
+        // The output of Shape is 32-bits, so we cannot fill in anything
+        // here.  See b/28119922.
+        return Status::OK();
+      }
+
+      tensor_storage->vec<int32>()(i) = dim;
+    }
+    *input_tensor = tensor_storage;
+  }
+
+  return Status::OK();
+}
+
+Status ShapeInferer::Size(const Node* node, Tensor* tensor_storage,
+                          const Tensor** input_tensor) const {
+  // Get the input to the node.
+  const Node* size_node;
+  TF_RETURN_IF_ERROR(node->input_node(0, &size_node));
+  auto ic = GetContext(size_node);
+  if (!ic) {
+    return errors::Internal("Could not find InferenceContext for ",
+                            size_node->name());
+  }
+  auto num_elements = ic->NumElements(ic->output(0));
+  if (ic->ValueKnown(num_elements)) {
+    *tensor_storage = Tensor(DT_INT32, {});
+    int64 ne = ic->Value(num_elements);
+    if (ne > std::numeric_limits<int32>::max()) {
+      // The output of Size is 32-bits, so we cannot fill in anything
+      // here.  See b/28119922.
+      return Status::OK();
+    }
+    tensor_storage->scalar<int32>()() = ic->Value(num_elements);
+    *input_tensor = tensor_storage;
+  }
+
+  return Status::OK();
+}
+
+Status ShapeInferer::Rank(const Node* node, Tensor* tensor_storage,
+                          const Tensor** input_tensor) const {
+  // Get the input to the node.
+  const Node* rank_node;
+  TF_RETURN_IF_ERROR(node->input_node(0, &rank_node));
+  auto ic = GetContext(rank_node);
+  if (!ic) {
+    return errors::Internal("Could not find InferenceContext for ",
+                            rank_node->name());
+  }
+
+  if (ic->RankKnown(ic->output(0))) {
+    int32 rank = ic->Rank(ic->output(0));
+    *tensor_storage = Tensor(DT_INT32, {});
+    tensor_storage->scalar<int32>()() = rank;
+    *input_tensor = tensor_storage;
+  }
 
   return Status::OK();
 }

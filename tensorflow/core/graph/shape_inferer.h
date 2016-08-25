@@ -47,7 +47,7 @@ class ShapeInferer {
   Status AddNode(const Node* node);
 
   // Returns the InferenceContext for 'node', if present.
-  shape_inference::InferenceContext* GetContext(const Node* node) {
+  shape_inference::InferenceContext* GetContext(const Node* node) const {
     auto it = node_to_context_.find(node);
     if (it == node_to_context_.end()) {
       return nullptr;
@@ -56,6 +56,21 @@ class ShapeInferer {
   }
 
  private:
+  // Extracts the 'constant_value' of 'input_node' if possible.  Uses
+  // 'tensor_storage' for storage and sets '*input_tensor' to
+  // 'tensor_storage' if a constant value could be extracted.
+  Status ConstantValue(const Node* node, Tensor* tensor_storage,
+                       const Tensor** input_tensor) const;
+
+  // Helper functions to extract the Tensor associated with 'node'.
+  Status Constant(const Node* node, Tensor* tensor_storage,
+                  const Tensor** input_tensor) const;
+  Status Shape(const Node* node, Tensor* tensor_storage,
+               const Tensor** input_tensor) const;
+  Status Size(const Node* node, Tensor* tensor_storage,
+              const Tensor** input_tensor) const;
+  Status Rank(const Node* node, Tensor* tensor_storage,
+              const Tensor** input_tensor) const;
   // Stores a map from a node to its InferenceContext.
   //
   // Owns values.
