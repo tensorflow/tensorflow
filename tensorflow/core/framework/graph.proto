@@ -6,9 +6,7 @@ option java_outer_classname = "GraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
-// Temporarily include node_def.proto here as a public import until
-// users can be migrated to reference node_def.proto to get NodeDef.
-import public "tensorflow/core/framework/node_def.proto";
+import "tensorflow/core/framework/node_def.proto";
 import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/versions.proto";
 
