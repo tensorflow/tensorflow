@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -82,7 +83,7 @@ class Uniform(distribution.Distribution):
     """
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
-    with ops.op_scope([a, b], name):
+    with ops.name_scope(name, values=[a, b]):
       with ops.control_dependencies([check_ops.assert_less(
           a, b, message="uniform not defined when a > b.")] if validate_args
                                     else []):
@@ -92,7 +93,8 @@ class Uniform(distribution.Distribution):
     self._a = a
     self._b = b
     self._name = name
-    self._batch_shape = self._ones().get_shape()
+    self._batch_shape = common_shapes.broadcast_shape(
+        self._a.get_shape(), self._b.get_shape())
     self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((a, b))
@@ -117,15 +119,15 @@ class Uniform(distribution.Distribution):
 
   def batch_shape(self, name="batch_shape"):
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
-        return array_ops.shape(self._ones())
+      with ops.name_scope(name, values=[self._a, self._b]):
+        return array_ops.shape(self._a + self._b)
 
   def get_batch_shape(self):
     return self._batch_shape
 
   def event_shape(self, name="event_shape"):
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], dtype=dtypes.int32)
 
   def get_event_shape(self):
@@ -151,7 +153,7 @@ class Uniform(distribution.Distribution):
           will return `nan`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, x], name):
+      with ops.name_scope(name, values=[self.a, self.b, x]):
         x = ops.convert_to_tensor(x, name="x")
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
@@ -180,7 +182,7 @@ class Uniform(distribution.Distribution):
           return `nan`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, x], name):
+      with ops.name_scope(name, values=[self.a, self.b, x]):
         x = ops.convert_to_tensor(x, name="x")
         if x.dtype != self.dtype:
           raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
@@ -195,7 +197,7 @@ class Uniform(distribution.Distribution):
 
   def log_cdf(self, x, name="log_cdf"):
     with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, x], name):
+      with ops.name_scope(name, values=[self.a, self.b, x]):
         x = ops.convert_to_tensor(x, name="x")
         return math_ops.log(self.cdf(x))
 
@@ -209,14 +211,15 @@ class Uniform(distribution.Distribution):
       entropy: tensor of dtype `dtype`, the entropy.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, self.range()], name):
+      with ops.name_scope(name, values=[self.a, self.b, self.range()]):
         return math_ops.log(self.range())
 
   def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Uniform Distributions.
 
     Args:
-      n: `Scalar`, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 
@@ -225,7 +228,7 @@ class Uniform(distribution.Distribution):
           with values of type `self.dtype`.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b, n], name):
+      with ops.name_scope(name, values=[self.a, self.b, n]):
         n = ops.convert_to_tensor(n, name="n")
         n_val = tensor_util.constant_value(n)
 
@@ -244,36 +247,31 @@ class Uniform(distribution.Distribution):
 
   def mean(self, name="mean"):
     with ops.name_scope(self.name):
-      with ops.op_scope([self._a, self._b], name):
+      with ops.name_scope(name, values=[self._a, self._b]):
         return (self.a + self.b) / 2
 
   def variance(self, name="variance"):
     with ops.name_scope(self.name):
-      with ops.op_scope([self.range()], name):
+      with ops.name_scope(name, values=[self.range()]):
         return math_ops.square(self.range()) / 12.
 
   def std(self, name="std"):
     with ops.name_scope(self.name):
-      with ops.op_scope([self.range()], name):
+      with ops.name_scope(name, values=[self.range()]):
         return self.range() / math_ops.sqrt(12.)
 
   def range(self, name="range"):
     """`b - a`."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self.a, self.b], name):
+      with ops.name_scope(name, values=[self.a, self.b]):
         return self.b - self.a
 
   @property
   def is_reparameterized(self):
     return True
 
-  # TODO(rsepassi): Find a more efficient way of doing the broadcasting in_ones
-  # and _zeros.
   def _ones(self):
     return array_ops.ones_like(self.a + self.b)
-
-  def _zeros(self):
-    return array_ops.zeros_like(self.a + self.b)
 
   @property
   def is_continuous(self):

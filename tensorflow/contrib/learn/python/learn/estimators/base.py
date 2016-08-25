@@ -60,7 +60,98 @@ def _copy_dir(dir_in, dir_out):
       gfile.Copy(name_in, name_out, overwrite=True)
 
 
-class TensorFlowEstimator(estimator.Estimator):
+class DeprecatedMixin(object):
+  """This is mixin for deprecated TensorFlowYYY classes."""
+
+  def __init__(self, *args, **kwargs):
+    this_class = type(self).__name__
+    alternative_class = this_class[len('TensorFlow'):]
+    logging.warning(
+        '%s class is deprecated. Please consider using %s as an alternative.',
+        this_class, alternative_class)
+    # Handle deprecated arguments.
+    self.__deprecated_n_classes = kwargs.get('n_classes', 0)
+    if self.__deprecated_n_classes < 1 and 'n_classes' in kwargs:
+      kwargs.pop('n_classes')
+    self.batch_size = kwargs.pop('batch_size', 32)
+    self.steps = kwargs.pop('steps', 200)
+    if 'optimizer' in kwargs or 'learning_rate' in kwargs:
+      self.learning_rate = kwargs.pop('learning_rate', 0.1)
+      self.optimizer = kwargs.pop('optimizer', 'Adagrad')
+      if isinstance(self.learning_rate, types.FunctionType):
+        raise ValueError('Function-like learning_rate are not supported '
+                         'consider using custom Estimator.')
+      else:
+        learning_rate = self.learning_rate
+      if isinstance(self.optimizer, types.FunctionType):
+        optimizer = self.optimizer(learning_rate)
+      elif isinstance(self.optimizer, six.string_types):
+        optimizer = layers.OPTIMIZER_CLS_NAMES[self.optimizer](learning_rate)
+      else:
+        optimizer = self.optimizer
+      kwargs['optimizer'] = optimizer
+    if 'class_weight' in kwargs:
+      raise ValueError('Sorry we switched interface for providing class '
+                       'weights. Please use weight column instead which '
+                       'provides more granular control (per example).')
+    if 'clip_gradients' in kwargs:
+      logging.warning('clip_gradients argument in %s is now converted to '
+                      'gradient_clip_norm.' % this_class)
+      kwargs['gradient_clip_norm'] = kwargs.pop('clip_gradients')
+    else:
+      kwargs['gradient_clip_norm'] = 5.0
+    if 'continue_training' in kwargs:
+      logging.warning('continue_training argument in %s is now ignored.' %
+                      this_class)
+      kwargs.pop('continue_training')
+    if 'verbose' in kwargs:
+      logging.warning('verbose argument in %s is now ignored.' %
+                      this_class)
+      kwargs.pop('verbose')
+    super(DeprecatedMixin, self).__init__(*args, **kwargs)
+
+  def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
+    if logdir is not None:
+      self._model_dir = logdir
+    return super(DeprecatedMixin, self).fit(
+        x=x, y=y, steps=steps or self.steps,
+        batch_size=batch_size or self.batch_size, monitors=monitors)
+
+  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
+              axis=1):
+    """Predict class or regression for `x`."""
+    if x is not None:
+      predict_data_feeder = setup_train_data_feeder(
+          x, None, n_classes=None,
+          batch_size=batch_size or self.batch_size,
+          shuffle=False, epochs=1)
+      result_iter = super(DeprecatedMixin, self)._infer_model(
+          input_fn=predict_data_feeder.input_builder,
+          feed_fn=predict_data_feeder.get_feed_dict_fn(),
+          outputs=outputs, as_iterable=True)
+    else:
+      result_iter = super(DeprecatedMixin, self)._infer_model(
+          input_fn=input_fn, outputs=outputs, as_iterable=True)
+    result = np.array(list(result_iter))
+    if self.__deprecated_n_classes > 1 and axis is not None:
+      return np.argmax(result, axis)
+    return result
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None):
+    return self.predict(x=x, input_fn=input_fn, batch_size=batch_size,
+                        outputs=outputs, axis=None)
+
+  def save(self, path):
+    """Saves checkpoints and graph to given path.
+
+    Args:
+      path: Folder to save model to.
+    """
+    # Copy model dir into new path.
+    _copy_dir(self.model_dir, path)
+
+
+class TensorFlowEstimator(estimator.Estimator, DeprecatedMixin):
   """Base class for all TensorFlow estimators."""
 
   def __init__(self,
@@ -166,8 +257,32 @@ class TensorFlowEstimator(estimator.Estimator):
                       monitors=monitors)
     return self
 
-  def evaluate(self, x=None, y=None, input_fn=None, steps=None):
-    """See base class."""
+  def evaluate(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               feed_fn=None,
+               batch_size=None,
+               steps=None,
+               metrics=None,
+               name=None):
+    """Evaluates given model with provided evaluation data.
+
+    See superclass Estimator for more details.
+
+    Args:
+      x: features.
+      y: targets.
+      input_fn: Input function.
+      feed_fn: Function creating a feed dict every time it is called.
+      batch_size: minibatch size to use on the input.
+      steps: Number of steps for which to evaluate model.
+      metrics: Dict of metric ops to run. If None, the default metrics are used.
+      name: Name of the evaluation.
+
+    Returns:
+      Returns `dict` with evaluation results.
+    """
     feed_fn = None
     if x is not None:
       eval_data_feeder = setup_train_data_feeder(
@@ -175,7 +290,8 @@ class TensorFlowEstimator(estimator.Estimator):
       input_fn, feed_fn = (eval_data_feeder.input_builder,
                            eval_data_feeder.get_feed_dict_fn())
     return self._evaluate_model(
-        input_fn=input_fn, feed_fn=feed_fn, steps=steps or self.steps)
+        input_fn=input_fn, feed_fn=feed_fn, steps=steps or self.steps,
+        name=name)
 
   def partial_fit(self, x, y):
     """Incremental fit on a batch of samples.
@@ -212,13 +328,12 @@ class TensorFlowEstimator(estimator.Estimator):
         batch_size=batch_size,
         shuffle=False, epochs=1)
 
-    preds = self._infer_model(
+    preds = np.array(list(self._infer_model(
         input_fn=predict_data_feeder.input_builder,
-        feed_fn=predict_data_feeder.get_feed_dict_fn())
+        feed_fn=predict_data_feeder.get_feed_dict_fn(),
+        as_iterable=True)))
     if self.n_classes > 1 and axis != -1:
       preds = preds.argmax(axis=axis)
-    else:
-      preds = preds
     return preds
 
   def predict(self, x, axis=1, batch_size=None):
@@ -402,101 +517,6 @@ class TensorFlowBaseTransformer(TensorFlowEstimator, _sklearn.TransformerMixin):
     return(super(TensorFlowBaseTransformer, self).predict(
         x, axis=1, batch_size=None))
 
-  def fit(self, x, y=None, monitor=None, logdir=None):
-    """Fit a transformer."""
-    return(super(TensorFlowBaseTransformer, self).fit(
-        x, y, monitors=None, logdir=None))
-
-  def fit_transform(self, x, y=None, monitor=None, logdir=None):
+  def fit_transform(self, x, y=None, monitors=None, logdir=None):
     """Fit transformer and transform `x` using trained transformer."""
-    return self.fit(x, y, monitor=None, logdir=None).transform(x)
-
-
-class DeprecatedMixin(object):
-  """This is mixin for deprecated TensorFlowYYY classes."""
-
-  def __init__(self, *args, **kwargs):
-    this_class = type(self).__name__
-    alternative_class = this_class[len('TensorFlow'):]
-    logging.warning(
-        '%s class is deprecated. Please consider using %s as an alternative.',
-        this_class, alternative_class)
-    # Handle deprecated arguments.
-    self.__deprecated_n_classes = kwargs.get('n_classes', 0)
-    if self.__deprecated_n_classes < 1 and 'n_classes' in kwargs:
-      kwargs.pop('n_classes')
-    self.batch_size = kwargs.pop('batch_size', 32)
-    self.steps = kwargs.pop('steps', 200)
-    if 'optimizer' in kwargs or 'learning_rate' in kwargs:
-      self.learning_rate = kwargs.pop('learning_rate', 0.1)
-      self.optimizer = kwargs.pop('optimizer', 'Adagrad')
-      if isinstance(self.learning_rate, types.FunctionType):
-        raise ValueError('Function-like learning_rate are not supported '
-                         'consider using custom Estimator.')
-      else:
-        learning_rate = self.learning_rate
-      if isinstance(self.optimizer, types.FunctionType):
-        optimizer = self.optimizer(learning_rate)
-      elif isinstance(self.optimizer, six.string_types):
-        optimizer = layers.OPTIMIZER_CLS_NAMES[self.optimizer](learning_rate)
-      else:
-        optimizer = self.optimizer
-      kwargs['optimizer'] = optimizer
-    if 'class_weight' in kwargs:
-      raise ValueError('Sorry we switched interface for providing class '
-                       'weights. Please use weight column instead which '
-                       'provides more granular control (per example).')
-    if 'clip_gradients' in kwargs:
-      logging.warning('clip_gradients argument in %s is now converted to '
-                      'gradient_clip_norm.' % this_class)
-      kwargs['gradient_clip_norm'] = kwargs.pop('clip_gradients')
-    else:
-      kwargs['gradient_clip_norm'] = 5.0
-    if 'continue_training' in kwargs:
-      logging.warning('continue_training argument in %s is now ignored.' %
-                      this_class)
-      kwargs.pop('continue_training')
-    if 'verbose' in kwargs:
-      logging.warning('verbose argument in %s is now ignored.' %
-                      this_class)
-      kwargs.pop('verbose')
-    super(DeprecatedMixin, self).__init__(*args, **kwargs)
-
-  def fit(self, x, y, steps=None, batch_size=None, monitors=None, logdir=None):
-    if logdir is not None:
-      self._model_dir = logdir
-    return super(DeprecatedMixin, self).fit(
-        x=x, y=y, steps=steps or self.steps,
-        batch_size=batch_size or self.batch_size, monitors=monitors)
-
-  def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
-              axis=1):
-    """Predict class or regression for `x`."""
-    if x is not None:
-      predict_data_feeder = setup_train_data_feeder(
-          x, None, n_classes=None,
-          batch_size=batch_size or self.batch_size,
-          shuffle=False, epochs=1)
-      result = super(DeprecatedMixin, self)._infer_model(
-          input_fn=predict_data_feeder.input_builder,
-          feed_fn=predict_data_feeder.get_feed_dict_fn(),
-          outputs=outputs)
-    else:
-      result = super(DeprecatedMixin, self)._infer_model(
-          input_fn=input_fn, outputs=outputs)
-    if self.__deprecated_n_classes > 1 and axis is not None:
-      return np.argmax(result, axis)
-    return result
-
-  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None):
-    return self.predict(x=x, input_fn=input_fn, batch_size=batch_size,
-                        outputs=outputs, axis=None)
-
-  def save(self, path):
-    """Saves checkpoints and graph to given path.
-
-    Args:
-      path: Folder to save model to.
-    """
-    # Copy model dir into new path.
-    _copy_dir(self.model_dir, path)
+    return self.fit(x, y, monitors=monitors, logdir=logdir).transform(x)

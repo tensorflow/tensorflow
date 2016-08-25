@@ -455,7 +455,7 @@ def sparse_reshape(sp_input, shape, name=None):
   if not isinstance(sp_input, ops.SparseTensor):
     raise TypeError("Input must be a SparseTensor")
 
-  with ops.op_scope([sp_input], name, "SparseReshape") as name:
+  with ops.name_scope(name, "SparseReshape", [sp_input]) as name:
     reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
         sp_input.indices, sp_input.shape, shape, name=name)
 
@@ -630,7 +630,7 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
   ```python
   # 'x' represents [[1, ?, 1]
   #                 [?, 1, ?]]
-  # where ? is implictly-zero.
+  # where ? is implicitly-zero.
   tf.sparse_reduce_sum(x) ==> 3
   tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
   tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
@@ -760,7 +760,7 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
   if not isinstance(sp_input, ops.SparseTensor):
     raise TypeError("Input must be a SparseTensor")
 
-  with ops.op_scope([sp_input], name, "SparseToIndicator") as name:
+  with ops.name_scope(name, "SparseToIndicator", [sp_input]) as name:
     num_entries = array_ops.shape(sp_input.indices)[0]
     new_values = array_ops.fill(array_ops.expand_dims(num_entries, 0), True)
     sp_values = ops.SparseTensor(sp_input.indices, new_values, sp_input.shape)
@@ -858,7 +858,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
   if not isinstance(sp_values, ops.SparseTensor):
     raise TypeError("sp_values must be a SparseTensor")
 
-  with ops.op_scope([sp_ids, sp_values], name, "SparseMerge"):
+  with ops.name_scope(name, "SparseMerge", [sp_ids, sp_values]):
     indices_shape = array_ops.shape(sp_ids.indices)
     rank = indices_shape[1]
 
@@ -952,7 +952,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
       run time.
 
     - Setting `new_shape` as [2, 3, 6] will be fine as this shape is larger or
-      eqaul in every dimension compared to the original shape [2, 3, 5].
+      equal in every dimension compared to the original shape [2, 3, 5].
 
     - On the other hand, setting new_shape as [2, 3, 4] is also an error: The
       third dimension is smaller than the original shape [2, 3, 5] (and an
@@ -964,7 +964,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
   Args:
     sp_input: The input `SparseTensor`.
     new_shape: None or a vector representing the new shape for the returned
-      `SpraseTensor`.
+      `SparseTensor`.
 
   Returns:
     A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
@@ -1061,7 +1061,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
   if not isinstance(sp_input, ops.SparseTensor):
     raise TypeError("Input must be a SparseTensor")
 
-  with ops.op_scope([sp_input], name, "SparseFillEmptyRows"):
+  with ops.name_scope(name, "SparseFillEmptyRows", [sp_input]):
     default_value = ops.convert_to_tensor(default_value,
                                           dtype=sp_input.values.dtype)
 
@@ -1413,8 +1413,8 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   # pylint: enable=line-too-long
   if not isinstance(sp_a, ops.SparseTensor):
     raise TypeError("sp_a must be a SparseTensor")
-  with ops.op_scope(
-      [sp_a.indices, sp_a.values, b], name, "SparseTensorDenseMatMul") as name:
+  with ops.name_scope(name, "SparseTensorDenseMatMul",
+                      [sp_a.indices, sp_a.values, b]) as name:
     b = ops.convert_to_tensor(b, name="b")
     return gen_sparse_ops._sparse_tensor_dense_mat_mul(
         a_indices=sp_a.indices,
@@ -1483,8 +1483,8 @@ def sparse_softmax(sp_input, name=None):
   Returns:
     output: N-D `SparseTensor` representing the results.
   """
-  with ops.op_scope([sp_input.indices, sp_input.values], name,
-                    "SparseSoftmax") as name:
+  with ops.name_scope(name, "SparseSoftmax",
+                      [sp_input.indices, sp_input.values]) as name:
     out_vals = gen_sparse_ops.sparse_softmax(sp_input.indices,
                                              sp_input.values,
                                              sp_input.shape)
@@ -1523,8 +1523,9 @@ def sparse_maximum(sp_a, sp_b, name=None):
   Returns:
     output: the output SparseTensor.
   """
-  with ops.op_scope([sp_a.indices, sp_a.values, sp_b.indices, sp_b.values],
-                    name, "SparseSparseMaximum") as name:
+  with ops.name_scope(name, "SparseSparseMaximum",
+                      [sp_a.indices, sp_a.values,
+                       sp_b.indices, sp_b.values]) as name:
     out_indices, out_values = gen_sparse_ops.sparse_sparse_maximum(sp_a.indices,
                                                                    sp_a.values,
                                                                    sp_a.shape,
@@ -1557,8 +1558,9 @@ def sparse_minimum(sp_a, sp_b, name=None):
   Returns:
     output: the output SparseTensor.
   """
-  with ops.op_scope([sp_a.indices, sp_a.values, sp_b.indices, sp_b.values],
-                    name, "SparseSparseMinimum") as name:
+  with ops.name_scope(name, "SparseSparseMinimum",
+                      [sp_a.indices, sp_a.values,
+                       sp_b.indices, sp_b.values]) as name:
     out_indices, out_values = gen_sparse_ops.sparse_sparse_minimum(sp_a.indices,
                                                                    sp_a.values,
                                                                    sp_a.shape,

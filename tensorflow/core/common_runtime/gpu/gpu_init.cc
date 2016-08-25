@@ -47,6 +47,8 @@ std::unique_ptr<std::map<std::pair<int, int>, bool>> GetPeerAccessMap(
 Status EnablePeerAccess(gpu::Platform* platform, int device_count) {
   for (int i = 0; i < device_count; ++i) {
     for (int j = 0; j < device_count; ++j) {
+      // We have already validated that ExecutorForDevice() calls
+      // return OK.
       gpu::StreamExecutor* from = platform->ExecutorForDevice(i).ValueOrDie();
       gpu::StreamExecutor* to = platform->ExecutorForDevice(j).ValueOrDie();
 
@@ -64,13 +66,22 @@ Status EnablePeerAccess(gpu::Platform* platform, int device_count) {
   return Status::OK();
 }
 
-static void InitGPU() {
+namespace {
+
+// TODO(vrv): Move this out into a common header so it can be used
+// more widely.
+Status ConvertStatus(const perftools::gputools::port::Status& s) {
+  return s.ok() ? Status::OK() : Status(static_cast<tensorflow::error::Code>(
+                                            static_cast<int>(s.code())),
+                                        s.error_message());
+}
+
+}  // namespace
+
+static Status InitGPU() {
   auto result = gpu::MultiPlatformManager::PlatformWithName("CUDA");
   if (!result.ok()) {
-    LOG(WARNING)
-        << "Not initializing the GPU, could not create GPU MachineManager. "
-        << "Error: " << result.status();
-    return;
+    return ConvertStatus(result.status());
   }
 
   gpu::Platform* platform = result.ValueOrDie();
@@ -79,11 +90,16 @@ static void InitGPU() {
 
   if (dev_count <= 0) {
     LOG(INFO) << "No GPU devices available on machine.";
-    return;
+    return Status::OK();
   }
 
   for (int i = 0; i < dev_count; ++i) {
-    auto stream_exec = platform->ExecutorForDevice(i).ValueOrDie();
+    auto executor = platform->ExecutorForDevice(i);
+    if (!executor.ok()) {
+      return ConvertStatus(executor.status());
+    }
+
+    auto stream_exec = executor.ValueOrDie();
     int64 free_bytes;
     int64 total_bytes;
     if (!stream_exec->DeviceMemoryUsage(&free_bytes, &total_bytes)) {
@@ -110,11 +126,7 @@ static void InitGPU() {
   }
 
   // Enable peer access
-
-  auto status = EnablePeerAccess(platform, dev_count);
-  if (!status.ok()) {
-    LOG(FATAL) << "could not enable peer access for GPU devices: " << status;
-  }
+  TF_RETURN_IF_ERROR(EnablePeerAccess(platform, dev_count));
 
   // Print out a matrix showing which devices can DMA to one
   // another.
@@ -135,23 +147,28 @@ static void InitGPU() {
     }
     LOG(INFO) << line_buf;
   }
+
+  return Status::OK();
 }
 
-static bool InitModule() {
-  InitGPU();
-  return true;
-}
+static Status InitModule() { return InitGPU(); }
 
 }  // namespace
 
 gpu::Platform* GPUMachineManager() {
   // Create the machine manager singleton and initialize the GPUs only
   // once.
-  static bool init = InitModule();
-  CHECK(init);  // Avoids compiler warning that init is unused.
+  static Status init = InitModule();
+  if (!init.ok()) {
+    LOG(WARNING)
+        << "Not initializing the GPU, could not create GPU MachineManager. "
+        << "Error: " << init;
+    return nullptr;
+  }
 
   auto result = gpu::MultiPlatformManager::PlatformWithName("CUDA");
   if (!result.ok()) {
+    LOG(FATAL) << "Could not find Platform with name CUDA";
     return nullptr;
   }
 

@@ -33,9 +33,11 @@ class SaverTest(tf.test.TestCase):
     path = tf.test.get_temp_dir() + '/tmp.saver'
     random.seed(42)
     iris = datasets.load_iris()
-    classifier = learn.TensorFlowLinearClassifier(n_classes=3)
-    classifier.fit(iris.data, iris.target)
-    classifier.save(path)
+    cont_features = [
+        tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = learn.LinearClassifier(
+        feature_columns=cont_features, n_classes=3, model_dir=path)
+    classifier.fit(iris.data, iris.target, steps=200)
     # TODO(ipolosukhin): Remove or restore.
     # new_classifier = learn.TensorFlowEstimator.restore(path)
     # self.assertEqual(type(new_classifier), type(classifier))
@@ -63,7 +65,10 @@ class SaverTest(tf.test.TestCase):
     path = tf.test.get_temp_dir() + '/tmp_saver3'
     random.seed(42)
     iris = datasets.load_iris()
-    classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+    cont_features = [
+        tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = learn.TensorFlowDNNClassifier(feature_columns=cont_features,
+                                               hidden_units=[10, 20, 10],
                                                n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)
@@ -81,7 +86,10 @@ class SaverTest(tf.test.TestCase):
     path = tf.test.get_temp_dir() + '/tmp/tmp.saver4'
     random.seed(42)
     iris = datasets.load_iris()
-    classifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10],
+    cont_features = [
+        tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = learn.TensorFlowDNNClassifier(feature_columns=cont_features,
+                                               hidden_units=[10, 20, 10],
                                                n_classes=3)
     classifier.fit(iris.data, iris.target)
     classifier.save(path)

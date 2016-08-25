@@ -30,9 +30,10 @@ from six import reraise
 
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
+from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn import summary_writer_cache
-from tensorflow.contrib.learn.python.learn import supervised_session
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
@@ -75,12 +76,6 @@ def get_summary_writer(logdir):
   return summary_writer_cache.SummaryWriterCache.get(logdir)
 
 
-class NanLossDuringTrainingError(RuntimeError):
-
-  def __str__(self):
-    return 'NaN loss during training.'
-
-
 def _make_saver(graph, keep_checkpoint_max=5):
   vars_to_save = graph.get_collection(ops.GraphKeys.VARIABLES)
   if vars_to_save:
@@ -119,26 +114,26 @@ def _run_with_monitors(session, step, tensors, feed_dict, monitors):
   return outputs, should_stop
 
 
-def _supervised_train(graph,
-                      output_dir,
-                      train_op,
-                      loss_op,
-                      global_step_tensor=None,
-                      init_op=None,
-                      init_feed_dict=None,
-                      init_fn=None,
-                      log_every_steps=10,
-                      supervisor_is_chief=True,
-                      supervisor_master='',
-                      supervisor_save_model_secs=600,
-                      keep_checkpoint_max=5,
-                      supervisor_save_summaries_steps=100,
-                      feed_fn=None,
-                      steps=None,
-                      fail_on_nan_loss=True,
-                      monitors=None,
-                      max_steps=None):
-  """Train a model via supervised_session.
+def _monitored_train(graph,
+                     output_dir,
+                     train_op,
+                     loss_op,
+                     global_step_tensor=None,
+                     init_op=None,
+                     init_feed_dict=None,
+                     init_fn=None,
+                     log_every_steps=10,
+                     supervisor_is_chief=True,
+                     supervisor_master='',
+                     supervisor_save_model_secs=600,
+                     keep_checkpoint_max=5,
+                     supervisor_save_summaries_steps=100,
+                     feed_fn=None,
+                     steps=None,
+                     fail_on_nan_loss=True,
+                     hooks=None,
+                     max_steps=None):
+  """Train a model via monitored_session.
 
   Given `graph`, a directory to write outputs to (`output_dir`), and some ops,
   run a training loop. The given `train_op` performs one step of training on the
@@ -184,7 +179,7 @@ def _supervised_train(graph,
     steps: Trains for this many steps (e.g. current global step + `steps`).
     fail_on_nan_loss: If true, raise `NanLossDuringTrainingError` if `loss_op`
       evaluates to `NaN`. If false, continue training as if nothing happened.
-    monitors: List of `BaseMonitor` subclass instances. Used for callbacks
+    hooks: List of `SessionRunHook` subclass instances. Used for callbacks
       inside the training loop.
     max_steps: Number of total steps for which to train model. If `None`,
       train forever. Two calls fit(steps=100) means 200 training iterations.
@@ -210,10 +205,10 @@ def _supervised_train(graph,
     raise ValueError('Missing train_op.')
   if loss_op is None:
     raise ValueError('Missing loss_op.')
-  if monitors is None:
-    monitors = []
-  if not isinstance(monitors, list):
-    raise ValueError('Monitors should be a list.')
+  if hooks is None:
+    hooks = []
+  if not isinstance(hooks, list):
+    raise ValueError('Hooks should be a list.')
   with graph.as_default():
     global_step_tensor = contrib_variables.assert_or_get_global_step(
         graph, global_step_tensor)
@@ -230,51 +225,56 @@ def _supervised_train(graph,
     except:  # pylint: disable=bare-except
       pass
 
+  # Adapted SessionRunHooks such as ExportMonitor depend on the
+  # CheckpointSaverHook to be executed before they should be executed.
+  # The `hooks` param comprises of deprecated monitor hooks
+  # (such as ExportMonitor). Appending them after the basic_session_run_hooks.
+  all_hooks = []
   with graph.as_default():
-    # See question about adding the summary writer to the scaffold.
-    if supervisor_is_chief:
-      summary_writer = summary_writer_cache.SummaryWriterCache.get(output_dir)
-      monitors.extend([
-          monitors_lib.StepCounter(summary_writer=summary_writer),
-          monitors_lib.NanLoss(loss_op,
-                               fail_on_nan_loss=fail_on_nan_loss),
-          monitors_lib.PrintTensor({'loss': loss_op.name},
-                                   every_n=log_every_steps),
-      ])
+    all_hooks.extend([
+        basic_session_run_hooks.NanTensorHook(
+            loss_op, fail_on_nan_loss=fail_on_nan_loss),
+        basic_session_run_hooks.LoggingTensorHook({
+            'loss': loss_op.name,
+            'step': global_step_tensor.name
+        }, every_n_iter=log_every_steps),
+    ])
 
-    # Finalize graph and add savers
-    # TODO(ispir): remove keep_checkpoint_max from Scaffold interface
-    scaffold = supervised_session.Scaffold(
-        global_step_tensor=global_step_tensor,
+    scaffold = monitored_session.Scaffold(
         init_op=init_op,
         init_feed_dict=init_feed_dict,
         init_fn=init_fn,
-        keep_checkpoint_max=keep_checkpoint_max)
+        saver=tf_saver.Saver(
+            sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True))
+
     if supervisor_is_chief:
-      monitors.append(
-          monitors_lib.SummarySaver(
-              summary_op=None,
+      # See question about adding the summary writer to the scaffold.
+      summary_writer = summary_writer_cache.SummaryWriterCache.get(output_dir)
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              summary_writer=summary_writer))
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
               save_steps=supervisor_save_summaries_steps,
               summary_writer=summary_writer,
               scaffold=scaffold))
       if supervisor_save_model_secs > 0:
-        monitors.append(
-            monitors_lib.CheckpointSaver(
+        all_hooks.append(
+            basic_session_run_hooks.CheckpointSaverHook(
                 output_dir,
                 save_secs=supervisor_save_model_secs,
                 scaffold=scaffold))
 
     if steps is not None or max_steps is not None:
-      monitors.append(monitors_lib.StopAtStep(steps, max_steps))
-    if not supervisor_is_chief:
-      # Prune list of monitor to the ones runnable on all workers.
-      monitors = [monitor for monitor in monitors if monitor.run_on_all_workers]
+      all_hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
+    all_hooks.extend(hooks)
 
-    with supervised_session.SupervisedSession(supervisor_master,
-                                              is_chief=supervisor_is_chief,
-                                              checkpoint_dir=output_dir,
-                                              monitors=monitors,
-                                              scaffold=scaffold) as super_sess:
+    with monitored_session.MonitoredSession(
+        supervisor_master,
+        is_chief=supervisor_is_chief,
+        checkpoint_dir=output_dir,
+        hooks=all_hooks,
+        scaffold=scaffold) as super_sess:
       loss = None
       while not super_sess.should_stop():
         _, loss = super_sess.run([train_op, loss_op], feed_fn() if feed_fn else
@@ -498,7 +498,7 @@ def _train_internal(graph,
           failure_message = 'Model diverged with loss = NaN.'
           if fail_on_nan_loss:
             logging.error(failure_message)
-            raise NanLossDuringTrainingError()
+            raise monitors_lib.NanLossDuringTrainingError()
           else:
             logging.warning(failure_message)
 
@@ -622,6 +622,9 @@ def _write_summary_results(output_dir, eval_results, current_global_step):
     if (isinstance(eval_results[key], np.float32) or
         isinstance(eval_results[key], float)):
       value.simple_value = float(eval_results[key])
+    else:
+      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+                   key)
   summary_writer.add_summary(summary, current_global_step)
   summary_writer.flush()
 

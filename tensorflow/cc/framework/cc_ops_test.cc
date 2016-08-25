@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/test_op.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 using namespace ops;  // NOLINT(build/namespaces)
@@ -34,20 +34,8 @@ Output Linear(const Scope& scope, Input x, Input w, Input b) {
 
 void GetTensors(const Scope& scope, OutputList tensors,
                 std::vector<Tensor>* out) {
-  SessionOptions options;
-  std::unique_ptr<Session> session(NewSession(options));
-  GraphDef def;
-  scope.graph()->ToGraphDef(&def);
-
-  graph::SetDefaultDevice("/cpu:0", &def);
-
-  TF_CHECK_OK(session->Create(def));
-  std::vector<string> names;
-  for (const auto& t : tensors) {
-    names.push_back(strings::StrCat(t.node()->name(), ":", t.index()));
-  }
-  TF_CHECK_OK(session->Run({}, names, {}, out));
-  TF_CHECK_OK(session->Close());
+  ClientSession session(scope);
+  TF_CHECK_OK(session.Run(tensors, out));
 }
 
 void GetTensor(const Scope& scope, Output tensor, Tensor* out) {
@@ -224,6 +212,51 @@ TEST(CCOpTest, ColocateWith) {
   auto c6 = Const(with_colocate.WithOpName("c6").ClearColocation(), 7);
   const auto& attrs = c6.op().node()->def().attr();
   EXPECT_TRUE(attrs.find("_class") == attrs.end());
+}
+
+TEST(CCOpTest, TemplatedConst) {
+  Scope root = Scope::NewRootScope();
+  auto c1 = ops::Const<float>(root, {{3, 2}, {-1, 0}});
+  TF_EXPECT_OK(root.status());
+
+  Tensor out;
+  GetTensor(root, c1, &out);
+  test::ExpectTensorEqual<float>(
+      out, test::AsTensor<float>({3.f, 2.f, -1.f, 0.f}, {2, 2}));
+
+  auto c2 = ops::Const<string>(root, {{"this"}, {"is"}, {"a"}, {"constant"}});
+  GetTensor(root, c2, &out);
+  test::ExpectTensorEqual<string>(
+      out, test::AsTensor<string>({"this", "is", "a", "constant"}, {4, 1}));
+}
+
+TEST(CCOpTest, EmptyConst) {
+  Scope root = Scope::NewRootScope();
+
+  auto c1 = ops::Const(root, {});
+  TF_CHECK_OK(root.status());
+
+  Tensor out;
+  GetTensor(root, c1, &out);
+  test::ExpectTensorEqual<float>(out, Tensor(DT_FLOAT, {0}));
+
+  auto c2 = ops::Const(root, {{}});
+  TF_CHECK_OK(root.status());
+  GetTensor(root, c2, &out);
+  test::ExpectTensorEqual<float>(out, Tensor(DT_FLOAT, {1, 0}));
+
+  auto c3 = ops::Const(root, {{{}, {}}});
+  TF_CHECK_OK(root.status());
+  GetTensor(root, c3, &out);
+  test::ExpectTensorEqual<float>(out, Tensor(DT_FLOAT, {1, 2, 0}));
+
+  auto c4 = ops::Const<int>(root, {{{}}});
+  TF_CHECK_OK(root.status());
+  GetTensor(root, c4, &out);
+  test::ExpectTensorEqual<int>(out, Tensor(DT_INT32, {1, 1, 0}));
+
+  ops::Const(root, {{}, {{}}});
+  EXPECT_FALSE(root.status().ok());
 }
 
 }  // namespace tensorflow

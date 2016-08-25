@@ -36,6 +36,9 @@ flags.DEFINE_string("data_dir", "/tmp/census-data",
                     "Directory for storing the cesnsus data data")
 flags.DEFINE_string("model_dir", "/tmp/census_wide_and_deep_model",
                     "Directory for storing the model")
+flags.DEFINE_string("output_dir", "", "Base output directory.")
+flags.DEFINE_string("schedule", "local_run",
+                    "Schedule to run for this experiment.")
 flags.DEFINE_string("master_grpc_url", "",
                     "URL to master GRPC tensorflow server, e.g.,"
                     "grpc://127.0.0.1:2222")
@@ -260,7 +263,9 @@ def _create_experiment_fn(output_dir):  # pylint: disable=unused-argument
 
 def main(unused_argv):
   print("Worker index: %d" % FLAGS.worker_index)
-  learn_runner.run(experiment_fn=_create_experiment_fn)
+  learn_runner.run(experiment_fn=_create_experiment_fn,
+                   output_dir=FLAGS.output_dir,
+                   schedule=FLAGS.schedule)
 
 
 if __name__ == "__main__":

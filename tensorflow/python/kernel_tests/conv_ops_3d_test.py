@@ -196,7 +196,13 @@ class Conv3DTest(tf.test.TestCase):
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
     if use_gpu:
       data_type = tf.float32
-      tolerance = 4e-3
+      if tf.test.is_gpu_available():
+        tolerance = 4e-3
+      else:
+        # As of Aug 2016, higher tolerance is needed for some CPU architectures.
+        # Runs on a single machine can also generate slightly different errors
+        # because of multithreading.
+        tolerance = 8e-3
     else:
       data_type = tf.float64
       tolerance = 1e-8

@@ -466,6 +466,89 @@ op {
   description: "accum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
 }
 op {
+  name: "ApplyAdagradDA"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lr"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    description: "Training step number. Must be a scalar."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update \'*var\' according to the proximal adagrad scheme."
+}
+op {
   name: "ApplyAdam"
   input_arg {
     name: "var"
@@ -4420,6 +4503,21 @@ op {
   description: "Counts number of NaNs in the input tensor, for debugging."
 }
 op {
+  name: "DecodeBase64"
+  input_arg {
+    name: "input"
+    description: "Base64 strings to decode."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "Decoded strings."
+    type: DT_STRING
+  }
+  summary: "Decode web-safe base64-encoded strings."
+  description: "Input may or may not have padding at the end. See EncodeBase64 for padding.\nWeb-safe means that input must use - and _ instead of + and /."
+}
+op {
   name: "DecodeCSV"
   input_arg {
     name: "records"
@@ -5273,7 +5371,7 @@ op {
     name: "N"
     type: "int"
     has_minimum: true
-    minimum: 2
+    minimum: 1
   }
   attr {
     name: "T"
@@ -5385,6 +5483,29 @@ op {
     }
   }
   summary: "Computes gradients for the exponential linear (Elu) operation."
+}
+op {
+  name: "EncodeBase64"
+  input_arg {
+    name: "input"
+    description: "Strings to be encoded."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "Input strings encoded in base64."
+    type: DT_STRING
+  }
+  attr {
+    name: "pad"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Bool whether padding is applied at the ends."
+  }
+  summary: "Encode strings into web-safe base64 format."
+  description: "Refer to the following article for more information on base64 format:\nen.wikipedia.org/wiki/Base64. Base64 strings may have padding with \'=\' at the\nend so that the encoded has length multiple of 4. See Padding section of the\nlink above.\n\nWeb-safe means that the encoder uses - and _ instead of + and /."
 }
 op {
   name: "EncodeJpeg"
@@ -6370,6 +6491,14 @@ op {
     description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
   }
   attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true and shared_name is empty, the table is shared\nusing the node name."
+  }
+  attr {
     name: "key_dtype"
     type: "type"
     description: "Type of the table keys."
@@ -6535,7 +6664,7 @@ op {
     }
   }
   summary: "Compute the lower regularized incomplete Gamma function `Q(a, x)`."
-  description: "The lower regularized incomplete Gamma function is defined as:\n\n```\nP(a, x) = gamma(a, x) / Gamma(x) = 1 - Q(a, x)\n```\nwhere\n```\ngamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\n```\nis the lower incomplete Gamma function.\n\nNote, above `Q(a, x)` (`Igammac`) is the upper regularized complete\nGamma function."
+  description: "The lower regularized incomplete Gamma function is defined as:\n\n```\nP(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\n```\nwhere\n```\ngamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\n```\nis the lower incomplete Gamma function.\n\nNote, above `Q(a, x)` (`Igammac`) is the upper regularized complete\nGamma function."
 }
 op {
   name: "Igammac"
@@ -6562,7 +6691,7 @@ op {
     }
   }
   summary: "Compute the upper regularized incomplete Gamma function `Q(a, x)`."
-  description: "The upper regularized incomplete Gamma function is defined as:\n\n```\nQ(a, x) = Gamma(a, x) / Gamma(x) = 1 - P(a, x)\n```\nwhere\n```\nGamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\n```\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
+  description: "The upper regularized incomplete Gamma function is defined as:\n\n```\nQ(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\n```\nwhere\n```\nGamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\n```\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
 }
 op {
   name: "Imag"
@@ -7553,6 +7682,35 @@ op {
   description: "The tensor `keys` must of the same type as the keys of the table.\nThe output `values` is of the type of the table values.\n\nThe scalar `default_value` is the value output for keys not present in the\ntable. It must also be of the same type as the table values."
 }
 op {
+  name: "LookupTableImport"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "keys"
+    description: "Any shape.  Keys to look up."
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    description: "Same shape as `keys`.  Values to associate with keys."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  summary: "Replaces the contents of the table with the specified keys and values."
+  description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
+}
+op {
   name: "LookupTableInsert"
   input_arg {
     name: "table_handle"
@@ -8429,7 +8587,7 @@ op {
     minimum: 1
   }
   summary: "Forwards the value of an available tensor from `inputs` to `output`."
-  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`."
 }
 op {
   name: "MergeSummary"
@@ -8747,6 +8905,14 @@ op {
     description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
   }
   attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true and shared_name is empty, the table is shared\nusing the node name."
+  }
+  attr {
     name: "key_dtype"
     type: "type"
     description: "Type of the table keys."
@@ -8783,6 +8949,13 @@ op {
       s: ""
     }
     description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "key_dtype"
@@ -9500,6 +9673,25 @@ op {
     has_minimum: true
   }
   summary: "Transforms a scalar brain.SequenceExample proto (as strings) into typed tensors."
+}
+op {
+  name: "ParseTensor"
+  input_arg {
+    name: "serialized"
+    description: "A scalar string containing a serialized TensorProto proto."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "A Tensor of type `out_type`."
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    description: "The type of the serialized tensor.  The provided type must match the\ntype of the serialized tensor and no implicit conversion will take place."
+  }
+  summary: "Transforms a serialized tensorflow.TensorProto proto into a Tensor."
 }
 op {
   name: "Placeholder"
@@ -10742,7 +10934,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce over.  Dimensions are reduced in the\norder specified.  If `reduction_indices` has higher rank than `1`, it is\nflattened.  Omitting `reduction_indices` is equivalent to passing\n`[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported."
+    description: "The dimensions to reduce over.  Dimensions are reduced in the\norder specified.  Omitting `reduction_indices` is equivalent to passing\n`[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported."
     type: DT_INT32
   }
   output_arg {
@@ -10767,7 +10959,7 @@ op {
     description: "The separator to use when joining."
   }
   summary: "Joins a string Tensor across the given dimensions."
-  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing\nan empty `reduction_indices` joins all strings in linear index order and outputs\na scalar string.\n\n\nFor example:\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
+  description: "Computes the string join across dimensions in the given string Tensor of shape\n`[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input\nstrings with the given separator (default: empty string).  Negative indices are\ncounted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing\nan empty `reduction_indices` joins all strings in linear index order and outputs\na scalar string.\n\n\nFor example:\n\n```\n# tensor `a` is [[\"a\", \"b\"], [\"c\", \"d\"]]\ntf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> [\"ac\", \"bd\"]\ntf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> [\"ab\", \"cd\"]\ntf.reduce_join(a, 0, keep_dims=True) ==> [[\"ac\", \"bd\"]]\ntf.reduce_join(a, 1, keep_dims=True) ==> [[\"ab\"], [\"cd\"]]\ntf.reduce_join(a, 0, separator=\".\") ==> [\"a.c\", \"b.d\"]\ntf.reduce_join(a, [0, 1]) ==> [\"acbd\"]\ntf.reduce_join(a, [1, 0]) ==> [\"abcd\"]\ntf.reduce_join(a, []) ==> [\"abcd\"]\n```"
 }
 op {
   name: "RefEnter"
@@ -10882,7 +11074,7 @@ op {
     minimum: 1
   }
   summary: "Forwards the value of an available tensor from `inputs` to `output`."
-  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`.\n\nIt is an error if more than one tensor in `inputs` is available."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`."
 }
 op {
   name: "RefNextIteration"
@@ -11471,6 +11663,7 @@ op {
         type: DT_UINT8
         type: DT_INT8
         type: DT_INT32
+        type: DT_INT64
         type: DT_BOOL
         type: DT_HALF
         type: DT_FLOAT
@@ -13197,6 +13390,104 @@ op {
   }
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the adagrad scheme."
   description: "That is for rows we have grad for, we update var and accum as follows:\naccum += grad * grad\nvar -= lr * grad * (1 / sqrt(accum))"
+}
+op {
+  name: "SparseApplyAdagradDA"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_accumulator"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "gradient_squared_accumulator"
+    description: "Should be from a Variable()."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "grad"
+    description: "The gradient."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A vector of indices into the first dimension of var and accum."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "lr"
+    description: "Learning rate. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l1"
+    description: "L1 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "l2"
+    description: "L2 regularization. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "global_step"
+    description: "Training step number. Must be a scalar."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "out"
+    description: "Same as \"var\"."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, updating of the var and accum tensors will be protected by\na lock; otherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Update entries in \'*var\' and \'*accum\' according to the proximal adagrad scheme."
 }
 op {
   name: "SparseApplyFtrl"
@@ -15116,6 +15407,36 @@ op {
   description: "with the given separator (default is an empty separator)."
 }
 op {
+  name: "StringSplit"
+  input_arg {
+    name: "input"
+    description: "1-D. Strings to split."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "delimiter"
+    description: "0-D. Delimiter character, or empty string."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "indices"
+    description: "A dense matrix of int64 representing the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    description: "A vector of strings corresponding to the splited values."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "shape"
+    description: "a length-2 vector of int64 representing the shape of the sparse\ntensor, where the first value is N and the second value is the maximum number\nof tokens in a single input entry."
+    type: DT_INT64
+  }
+  summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
+  description: "Let N be the size of source (typically N will be the batch size). Split each\nelement of `input` based on `delimiter` and return a `SparseTensor`\ncontaining the splitted tokens. Empty tokens are ignored.\n\n`delimiter` can be empty or a single character. If `delimiter` is an empty\n string, each element of `input` is split into individual 1 character strings.\n\nFor example:\n  N = 2, input[0] is \'hello world\' and input[1] is \'a b c\', then the output\n  will be\n\n  indices = [0, 0;\n             0, 1;\n             1, 0;\n             1, 1;\n             1, 2]\n  shape = [2, 3]\n  values = [\'hello\', \'world\', \'a\', \'b\', \'c\']"
+}
+op {
   name: "StringToHashBucket"
   input_arg {
     name: "string_tensor"
@@ -15658,7 +15979,6 @@ op {
     name: "handle"
     description: "The handle to the forward TensorArray."
     type: DT_STRING
-    is_ref: true
   }
   input_arg {
     name: "flow_in"

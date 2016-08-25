@@ -47,11 +47,19 @@ struct SessionBundle {
   MetaGraphDef meta_graph_def;
 };
 
-// Loads a manifest and initialized session using the output of an Exporter
-// using the format defined at go/tf-exporter.
+// Loads a manifest and initialized session using the output of an Exporter.
 Status LoadSessionBundleFromPath(const SessionOptions& options,
                                  const StringPiece export_dir,
                                  SessionBundle* bundle);
+
+// Similar to the LoadSessionBundleFromPath(), but also allows the session run
+// invocations for the restore and init ops to be configured with
+// tensorflow::RunOptions.
+//
+// This method is EXPERIMENTAL and may change or be removed.
+Status LoadSessionBundleFromPathUsingRunOptions(
+    const SessionOptions& session_options, const RunOptions& run_options,
+    const StringPiece export_dir, SessionBundle* bundle);
 
 // Sanity checks whether the directory looks like an export directory. Note that
 // we don't try to load any data in this method.

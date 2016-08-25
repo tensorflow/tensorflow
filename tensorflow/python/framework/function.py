@@ -234,7 +234,8 @@ def call_function(func_def, *inputs, **kwargs):
   Args:
     func_def: A `FunctionDef` protocol buffer.
     *inputs: A list of tensors
-    **kwargs: Optional keyword arguments.  Can only contain 'name'.
+    **kwargs: Optional keyword arguments.  Can only contain 'name' or
+        'noinline'.
 
   Returns:
     A list of tensors representing the outputs of the call to `func_def`.
@@ -248,11 +249,11 @@ def call_function(func_def, *inputs, **kwargs):
     attrs = None
   else:
     attrs = {}
-    attrs["noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+    attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   func_name = func_def.signature.name
-  with ops.op_scope(inputs, name, func_name) as name:
+  with ops.name_scope(name, func_name, inputs) as name:
     if len(inputs) != len(func_def.signature.input_arg):
       raise ValueError("Expected number of arguments: %d, received: %d" %
                        (len(func_def.signature.input_arg), len(inputs)))

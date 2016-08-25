@@ -27,6 +27,9 @@ Usage:
 
 @@overfeat
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import tensorflow as tf
 
@@ -46,8 +49,8 @@ def overfeat_arg_scope(weight_decay=0.0005):
 
 def overfeat(inputs,
              num_classes=1000,
-             dropout_keep_prob=0.5,
              is_training=True,
+             dropout_keep_prob=0.5,
              spatial_squeeze=True,
              scope='overfeat'):
   """Contains the model definition for the OverFeat network.
@@ -66,9 +69,9 @@ def overfeat(inputs,
   Args:
     inputs: a tensor of size [batch_size, height, width, channels].
     num_classes: number of predicted classes.
+    is_training: whether or not the model is being trained.
     dropout_keep_prob: the probability that activations are kept in the dropout
       layers during training.
-    is_training: whether or not the model is being trained.
     spatial_squeeze: whether or not should squeeze the spatial dimensions of the
       outputs. Useful to remove unnecessary dimensions for classification.
     scope: Optional scope for the variables.
@@ -77,7 +80,7 @@ def overfeat(inputs,
     the last op containing the log predictions and end_points dict.
 
   """
-  with tf.variable_op_scope([inputs], scope, 'overfeat') as sc:
+  with tf.variable_scope(scope, 'overfeat', [inputs]) as sc:
     end_points_collection = sc.name + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d
     with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],

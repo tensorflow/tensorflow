@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -74,25 +75,26 @@ DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
   return it->second.factory.get();
 }
 
-void DeviceFactory::AddDevices(const SessionOptions& options,
-                               const string& name_prefix,
-                               std::vector<Device*>* devices) {
+Status DeviceFactory::AddDevices(const SessionOptions& options,
+                                 const string& name_prefix,
+                                 std::vector<Device*>* devices) {
   // CPU first.
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
-    LOG(FATAL)
-        << "CPU Factory not registered.  Did you link in threadpool_device?";
+    return errors::NotFound(
+        "CPU Factory not registered.  Did you link in threadpool_device?");
   }
   size_t init_size = devices->size();
   cpu_factory->CreateDevices(options, name_prefix, devices);
   if (devices->size() == init_size) {
-    LOG(FATAL) << "No CPU devices are available in this process";
+    return errors::NotFound("No CPU devices are available in this process");
   }
 
   // Then GPU.
   auto gpu_factory = GetFactory("GPU");
   if (gpu_factory) {
-    gpu_factory->CreateDevices(options, name_prefix, devices);
+    TF_RETURN_IF_ERROR(
+        gpu_factory->CreateDevices(options, name_prefix, devices));
   }
 
   // Then the rest.
@@ -100,9 +102,11 @@ void DeviceFactory::AddDevices(const SessionOptions& options,
   for (auto& p : device_factories()) {
     auto factory = p.second.factory.get();
     if (factory != cpu_factory && factory != gpu_factory) {
-      factory->CreateDevices(options, name_prefix, devices);
+      TF_RETURN_IF_ERROR(factory->CreateDevices(options, name_prefix, devices));
     }
   }
+
+  return Status::OK();
 }
 
 Device* DeviceFactory::NewDevice(const string& type,

@@ -26,6 +26,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib import learn
+from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.session_bundle import manifest_pb2
 
 
@@ -49,16 +50,18 @@ class ExportTest(tf.test.TestCase):
     random.seed(42)
     x = np.random.rand(1000)
     y = 2 * x + 3
-    regressor = learn.LinearRegressor()
+    cont_features = [tf.contrib.layers.real_valued_column('', dimension=1)]
+    regressor = learn.LinearRegressor(feature_columns=cont_features)
     export_dir = tempfile.mkdtemp() + 'export/'
-    export_monitor = learn.monitors.ExportMonitor(every_n_steps=1,
-                                                  export_dir=export_dir,
-                                                  exports_to_keep=1)
+    export_monitor = learn.monitors.ExportMonitor(
+        every_n_steps=1, export_dir=export_dir, exports_to_keep=2,
+        signature_fn=export.generic_signature_fn)
     regressor.fit(x, y, steps=10,
                   monitors=[export_monitor])
 
     self.assertTrue(tf.gfile.Exists(export_dir))
-    self.assertFalse(tf.gfile.Exists(export_dir + '00000000/export'))
+    # Only the written checkpoints are exported.
+    self.assertTrue(tf.gfile.Exists(export_dir + '00000001/export'))
     self.assertTrue(tf.gfile.Exists(export_dir + '00000010/export'))
     # Validate the signature
     signature = self._get_default_signature(export_dir + '00000010/export.meta')
@@ -76,7 +79,8 @@ class ExportTest(tf.test.TestCase):
     random.seed(42)
     x = np.random.rand(1000)
     y = 2 * x + 3
-    regressor = learn.LinearRegressor()
+    cont_features = [tf.contrib.layers.real_valued_column('', dimension=1)]
+    regressor = learn.LinearRegressor(feature_columns=cont_features)
     export_dir = tempfile.mkdtemp() + 'export/'
     export_monitor = learn.monitors.ExportMonitor(
         every_n_steps=1,

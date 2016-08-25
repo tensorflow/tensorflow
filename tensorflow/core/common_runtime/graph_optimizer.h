@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -33,7 +34,8 @@ class GraphOptimizer {
   // 'device' is device on which the 'graph' will execute. It's passed to the
   // optimizers so that they can respect constraints if any, that should be
   // respected.
-  void Optimize(FunctionLibraryRuntime* runtime, Device* device, Graph** graph);
+  void Optimize(FunctionLibraryRuntime* runtime, Env* env, Device* device,
+                Graph** graph);
 
  private:
   OptimizerOptions opts_;

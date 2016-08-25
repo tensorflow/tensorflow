@@ -10,7 +10,7 @@ Additional RNN operations and cells.
 ### Fused RNNCells
 - - -
 
-### `class tf.contrib.rnn.LSTMFusedCell` {#LSTMFusedCell}
+### `class tf.contrib.rnn.LSTMBlockCell` {#LSTMBlockCell}
 
 Basic LSTM recurrent network cell.
 
@@ -24,7 +24,7 @@ weight and bias matrixes should be compatible as long as the variabel scope
 matches.
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMFusedCell.__init__}
+#### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMBlockCell.__init__}
 
 Initialize the basic LSTM cell.
 
@@ -38,21 +38,101 @@ Initialize the basic LSTM cell.
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.output_size` {#LSTMFusedCell.output_size}
+#### `tf.contrib.rnn.LSTMBlockCell.output_size` {#LSTMBlockCell.output_size}
 
 
 
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.state_size` {#LSTMFusedCell.state_size}
+#### `tf.contrib.rnn.LSTMBlockCell.state_size` {#LSTMBlockCell.state_size}
 
 
 
 
 - - -
 
-#### `tf.contrib.rnn.LSTMFusedCell.zero_state(batch_size, dtype)` {#LSTMFusedCell.zero_state}
+#### `tf.contrib.rnn.LSTMBlockCell.zero_state(batch_size, dtype)` {#LSTMBlockCell.zero_state}
+
+Return zero-filled state tensor(s).
+
+##### Args:
+
+
+*  <b>`batch_size`</b>: int, float, or unit Tensor representing the batch size.
+*  <b>`dtype`</b>: the data type to use for the state.
+
+##### Returns:
+
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
+
+  If `state_size` is a nested list or tuple, then the return value is
+  a nested list or tuple (of the same structure) of `2-D` tensors with
+the shapes `[batch_size x s]` for each s in `state_size`.
+
+
+
+- - -
+
+### `class tf.contrib.rnn.GRUBlockCell` {#GRUBlockCell}
+
+Block GRU cell implementation.
+
+The implementation is based on:  http://arxiv.org/abs/1406.1078
+Computes the LSTM cell forward propagation for 1 time step.
+
+This kernel op implements the following mathematical equations:
+
+Baises are initialized with :
+`b_ru` - constant_initializer(1.0)
+`b_c` - constant_initializer(0.0)
+```
+x_h_prev = [x, h_prev]
+
+[r_bar u_bar] = x_h_prev * w_ru + b_ru
+
+r = sigmoid(r_bar)
+u = sigmoid(u_bar)
+
+h_prevr = h_prev \circ r
+
+x_h_prevr = [x h_prevr]
+
+c_bar = x_h_prevr * w_c + b_c
+c = tanh(c_bar)
+
+h = (1-u) \circ c + u \circ h_prev
+```
+- - -
+
+#### `tf.contrib.rnn.GRUBlockCell.__init__(cell_size)` {#GRUBlockCell.__init__}
+
+Initialize the Block GRU cell.
+
+##### Args:
+
+
+*  <b>`cell_size`</b>: int, GRU cell size.
+
+
+- - -
+
+#### `tf.contrib.rnn.GRUBlockCell.output_size` {#GRUBlockCell.output_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.GRUBlockCell.state_size` {#GRUBlockCell.state_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.GRUBlockCell.zero_state(batch_size, dtype)` {#GRUBlockCell.zero_state}
 
 Return zero-filled state tensor(s).
 
@@ -267,7 +347,7 @@ When peephole connections are used, the implementation is based on:
 The code uses optional peephole connections, shared_weights and cell clipping.
 - - -
 
-#### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None)` {#GridLSTMCell.__init__}
+#### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None, num_frequency_blocks=1, couple_input_forget_gates=False, state_is_tuple=False)` {#GridLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
 
@@ -291,6 +371,14 @@ Initialize the parameters for an LSTM cell.
 *  <b>`feature_size`</b>: int, The size of the input feature the LSTM spans over.
 *  <b>`frequency_skip`</b>: int, The amount the LSTM filter is shifted by in
     frequency.
+*  <b>`num_frequency_blocks`</b>: int, The total number of frequency blocks needed to
+    cover the whole input feature.
+*  <b>`couple_input_forget_gates`</b>: bool, Whether to couple the input and forget
+    gates, i.e. f_gate = 1.0 - i_gate, to reduce model parameters and
+    computation cost.
+*  <b>`state_is_tuple`</b>: If True, accepted and returned states are 2-tuples of
+    the `c_state` and `m_state`.  By default (False), they are concatenated
+    along the column axis.  This default behavior will soon be deprecated.
 
 
 - - -
@@ -303,6 +391,13 @@ Initialize the parameters for an LSTM cell.
 - - -
 
 #### `tf.contrib.rnn.GridLSTMCell.state_size` {#GridLSTMCell.state_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.GridLSTMCell.state_tuple_type` {#GridLSTMCell.state_tuple_type}
 
 
 

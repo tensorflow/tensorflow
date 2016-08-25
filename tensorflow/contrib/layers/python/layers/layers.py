@@ -52,6 +52,7 @@ __all__ = ['avg_pool2d',
            'dropout',
            'flatten',
            'fully_connected',
+           'layer_norm',
            'linear',
            'max_pool2d',
            'one_hot_encoding',
@@ -89,12 +90,12 @@ def avg_pool2d(inputs,
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
     outputs_collections: The collections to which the outputs are added.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     A `Tensor` representing the results of the pooling operation.
   """
-  with ops.op_scope([inputs], scope, 'AvgPool2D') as sc:
+  with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -129,8 +130,8 @@ def batch_norm(inputs,
   Can be used as a normalizer function for conv2d and fully_connected.
 
   Args:
-    inputs: a tensor of size `[batch_size, height, width, channels]`
-            or `[batch_size, channels]`.
+    inputs: a tensor with 2 or more dimensions, where the first dimension has
+      `batch_size`. The normalization is over all but the last dimension.
     decay: decay for the moving average.
     center: If True, subtract `beta`. If False, `beta` is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -152,7 +153,7 @@ def batch_norm(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -160,8 +161,8 @@ def batch_norm(inputs,
   Raises:
     ValueError: if rank or last dimension of `inputs` is undefined.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'BatchNorm', reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'BatchNorm', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
@@ -220,7 +221,7 @@ def batch_norm(inputs,
     is_training_value = utils.constant_value(is_training)
     need_moments = is_training_value is None or is_training_value
     if need_moments:
-    # Calculate the moments based on the individual batch.
+      # Calculate the moments based on the individual batch.
       mean, variance = nn.moments(inputs, axis, shift=moving_mean)
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
@@ -261,7 +262,8 @@ def batch_norm(inputs,
     outputs.set_shape(inputs_shape)
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -291,13 +293,13 @@ def bias_add(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     a tensor representing the result of adding biases to the inputs.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'BiasAdd', reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'BiasAdd', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     num_features = utils.last_dimension(inputs.get_shape(), min_rank=2)
@@ -313,7 +315,8 @@ def bias_add(inputs,
     outputs = nn.bias_add(inputs, biases)
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -376,7 +379,7 @@ def convolution2d(inputs,
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     a tensor representing the output of the operation.
@@ -384,8 +387,8 @@ def convolution2d(inputs,
   Raises:
     ValueError: if both 'rate' and `stride` are larger than one.
   """
-  with variable_scope.variable_op_scope([inputs],
-                                        scope, 'Conv', reuse=reuse) as sc:
+  with variable_scope.variable_scope(scope, 'Conv', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
@@ -426,7 +429,8 @@ def convolution2d(inputs,
         outputs = nn.bias_add(outputs, biases)
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -484,13 +488,13 @@ def convolution2d_in_plane(
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for `variable_op_scope`.
+    scope: Optional scope for `variable_scope`.
 
   Returns:
     A `Tensor` representing the output of the operation.
   """
-  with variable_scope.variable_op_scope(
-      [inputs], scope, 'ConvInPlane', reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'ConvInPlane', [inputs], reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -526,7 +530,8 @@ def convolution2d_in_plane(
 
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -578,7 +583,7 @@ def convolution2d_transpose(
       a dictionay containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: whether or not the variables should be trainable or not.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     a tensor representing the output of the operation.
@@ -586,8 +591,8 @@ def convolution2d_transpose(
   Raises:
     ValueError: if 'kernel_size' is not a list of length 2.
   """
-  with variable_scope.variable_op_scope(
-      [inputs], scope, 'Conv2d_transpose', reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'Conv2d_transpose', [inputs], reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -653,7 +658,8 @@ def convolution2d_transpose(
 
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -679,12 +685,12 @@ def dropout(inputs,
       is in training mode. If so, dropout is applied and values scaled.
       Otherwise, inputs is returned.
     outputs_collections: collection to add the outputs.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     a tensor representing the output of the operation.
   """
-  with ops.op_scope([inputs], scope, 'Dropout') as sc:
+  with ops.name_scope(scope, 'Dropout', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
     id_fn = lambda: inputs
@@ -703,14 +709,14 @@ def flatten(inputs,
   Args:
     inputs: a tensor of size [batch_size, ...].
     outputs_collections: collection to add the outputs.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     a flattened tensor with shape [batch_size, k].
   Raises:
     ValueError: if inputs.shape is wrong.
   """
-  with ops.op_scope([inputs], scope, 'Flatten') as sc:
+  with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
@@ -755,7 +761,7 @@ def fully_connected(inputs,
   Args:
     inputs: A tensor of with at least rank 2 and value for the last dimension,
       i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
-    num_outputs: Integer, the number of output units in the layer.
+    num_outputs: Integer or long, the number of output units in the layer.
     activation_fn: activation function.
     normalizer_fn: normalization function to use instead of `biases`. If
       `normalize_fn` is provided then `biases_initializer` and
@@ -772,7 +778,7 @@ def fully_connected(inputs,
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
      the tensor variable representing the result of the series of operations.
@@ -780,12 +786,10 @@ def fully_connected(inputs,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  if not isinstance(num_outputs, int):
-    raise ValueError('num_outputs should be integer, got %s.', num_outputs)
-  with variable_scope.variable_op_scope([inputs],
-                                        scope,
-                                        'fully_connected',
-                                        reuse=reuse) as sc:
+  if not (isinstance(num_outputs, int) or isinstance(num_outputs, long)):
+    raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
+  with variable_scope.variable_scope(scope, 'fully_connected', [inputs],
+                                     reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     inputs_shape = inputs.get_shape()
@@ -832,7 +836,95 @@ def fully_connected(inputs,
       # Reshape back outputs
       outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
       outputs.set_shape(static_shape)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
+
+
+@add_arg_scope
+def layer_norm(inputs,
+               center=True,
+               scale=True,
+               activation_fn=None,
+               reuse=None,
+               variables_collections=None,
+               outputs_collections=None,
+               trainable=True,
+               scope=None):
+  """Adds a Layer Normalization layer from https://arxiv.org/abs/1607.06450.
+
+    "Layer Normalization"
+
+    Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+
+  Can be used as a normalizer function for conv2d and fully_connected.
+
+  Args:
+    inputs: a tensor with 2 or more dimensions. The normalization
+            occurs over all but the first dimension.
+    center: If True, subtract `beta`. If False, `beta` is ignored.
+    scale: If True, multiply by `gamma`. If False, `gamma` is
+      not used. When the next layer is linear (also e.g. `nn.relu`), this can be
+      disabled since the scaling can be done by the next layer.
+    activation_fn: Optional activation function.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional collections for the variables.
+    outputs_collections: collections to add the outputs.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    scope: Optional scope for `variable_op_scope`.
+
+  Returns:
+    A `Tensor` representing the output of the operation.
+
+  Raises:
+    ValueError: if rank or last dimension of `inputs` is undefined.
+  """
+  with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
+                                     reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Inputs %s has undefined rank.' % inputs.name)
+    dtype = inputs.dtype.base_dtype
+    axis = list(range(1, inputs_rank))
+    params_shape = inputs_shape[-1:]
+    if not params_shape.is_fully_defined():
+      raise ValueError('Inputs %s has undefined last dimension %s.' % (
+          inputs.name, params_shape))
+    # Allocate parameters for the beta and gamma of the normalization.
+    beta, gamma = None, None
+    if center:
+      beta_collections = utils.get_variable_collections(variables_collections,
+                                                        'beta')
+      beta = variables.model_variable('beta',
+                                      shape=params_shape,
+                                      dtype=dtype,
+                                      initializer=init_ops.zeros_initializer,
+                                      collections=beta_collections,
+                                      trainable=trainable)
+    if scale:
+      gamma_collections = utils.get_variable_collections(variables_collections,
+                                                         'gamma')
+      gamma = variables.model_variable('gamma',
+                                       shape=params_shape,
+                                       dtype=dtype,
+                                       initializer=init_ops.ones_initializer,
+                                       collections=gamma_collections,
+                                       trainable=trainable)
+    # Calculate the moments on the last axis (layer activations).
+    mean, variance = nn.moments(inputs, axis, keep_dims=True)
+    # Compute layer normalization using the batch_normalization function.
+    variance_epsilon = 1E-12
+    outputs = nn.batch_normalization(
+        inputs, mean, variance, beta, gamma, variance_epsilon)
+    outputs.set_shape(inputs_shape)
+    if activation_fn:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope,
+                                       outputs)
 
 
 @add_arg_scope
@@ -856,7 +948,7 @@ def max_pool2d(inputs,
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
     outputs_collections: The collections to which the outputs are added.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     A `Tensor` representing the results of the pooling operation.
@@ -864,7 +956,7 @@ def max_pool2d(inputs,
   Raises:
     ValueError: If 'kernel_size' is not a 2-D list
   """
-  with ops.op_scope([inputs], scope, 'MaxPool2D') as sc:
+  with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -890,12 +982,12 @@ def one_hot_encoding(labels,
     on_value: A scalar defining the on-value.
     off_value: A scalar defining the off-value.
     outputs_collections: collection to add the outputs.
-    scope: Optional scope for op_scope.
+    scope: Optional scope for name_scope.
 
   Returns:
     one hot encoding of the labels.
   """
-  with ops.op_scope([labels, num_classes], scope, 'OneHotEncoding') as sc:
+  with ops.name_scope(scope, 'OneHotEncoding', [labels, num_classes]) as sc:
     labels = ops.convert_to_tensor(labels)
     if labels.dtype == dtypes.int32:
       labels = standard_ops.to_int64(labels)
@@ -944,7 +1036,7 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
     ValueError: if the op is unknown or wrong.
   """
   scope = kwargs.pop('scope', None)
-  with variable_scope.variable_op_scope([inputs], scope, 'Repeat'):
+  with variable_scope.variable_scope(scope, 'Repeat', [inputs]):
     inputs = ops.convert_to_tensor(inputs)
     if scope is None:
       if hasattr(layer, '__name__'):
@@ -1017,13 +1109,13 @@ def separable_convolution2d(
       a dictionay containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: whether or not the variables should be trainable or not.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     A `Tensor` representing the output of the operation.
   """
-  with variable_scope.variable_op_scope(
-      [inputs], scope, 'SeparableConv2d', reuse=reuse) as sc:
+  with variable_scope.variable_scope(
+      scope, 'SeparableConv2d', [inputs], reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -1081,7 +1173,8 @@ def separable_convolution2d(
 
     if activation_fn:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -1093,13 +1186,13 @@ def softmax(logits, scope=None):
 
   Args:
     logits: N-dimensional `Tensor` with logits, where N > 1.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     a `Tensor` with same shape and type as logits.
   """
   # TODO(jrru): Add axis argument which defaults to last dimension.
-  with variable_scope.variable_op_scope([logits], scope, 'softmax'):
+  with variable_scope.variable_scope(scope, 'softmax', [logits]):
     num_logits = utils.last_dimension(logits.get_shape(), min_rank=2)
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
@@ -1144,7 +1237,7 @@ def stack(inputs, layer, stack_args, **kwargs):
   scope = kwargs.pop('scope', None)
   if not isinstance(stack_args, (list, tuple)):
     raise ValueError('stack_args need to be a list or tuple')
-  with variable_scope.variable_op_scope([inputs], scope, 'Stack'):
+  with variable_scope.variable_scope(scope, 'Stack', [inputs]):
     inputs = ops.convert_to_tensor(inputs)
     if scope is None:
       if hasattr(layer, '__name__'):
@@ -1173,7 +1266,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
     inputs: A `Tensor` of arbitrary size.
     dim: The dimension along which the input is normalized.
     epsilon: A small value to add to the inputs to avoid dividing by zero.
-    scope: Optional scope for variable_op_scope.
+    scope: Optional scope for variable_scope.
 
   Returns:
     The normalized `Tensor`.
@@ -1181,7 +1274,7 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
   Raises:
     ValueError: If dim is smaller than the number of dimensions in 'inputs'.
   """
-  with variable_scope.variable_op_scope([inputs], scope, 'UnitNorm'):
+  with variable_scope.variable_scope(scope, 'UnitNorm', [inputs]):
     if not inputs.get_shape():
       raise ValueError('The input rank must be known.')
     input_rank = len(inputs.get_shape().as_list())
@@ -1263,7 +1356,7 @@ def legacy_fully_connected(x,
     name: The name for this operation is used to name operations and to find
       variables. If specified it must be unique for this scope, otherwise a
       unique name starting with "fully_connected" will be created.  See
-      `tf.variable_op_scope` for details.
+      `tf.variable_scope` for details.
     weight_collections: List of graph collections to which weights are added.
     bias_collections: List of graph collections to which biases are added.
     output_collections: List of graph collections to which outputs are added.
@@ -1280,7 +1373,7 @@ def legacy_fully_connected(x,
   Raises:
     ValueError: if x has rank less than 2 or if its last dimension is not set.
   """
-  with variable_scope.variable_op_scope([x], name, 'fully_connected'):
+  with variable_scope.variable_scope(name, 'fully_connected', [x]):
     x = ops.convert_to_tensor(x)
     dims = x.get_shape().dims
     if dims is None:

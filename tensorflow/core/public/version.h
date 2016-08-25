@@ -65,9 +65,10 @@ limitations under the License.
 // 9. Deprecate batch_norm_with_global_normalization (16feb2016).
 // 10. Deprecate conv3d_backprop_{filter,input} (10jun2016).
 // 11. Deprecate {batch}_self_adjoint_eig (3aug2016).
+// 12. Graph consumers understand the node_def field of FunctionDef (22aug2016).
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 11
+#define TF_GRAPH_DEF_VERSION 12
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

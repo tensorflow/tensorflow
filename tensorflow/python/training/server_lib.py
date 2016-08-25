@@ -181,7 +181,7 @@ class Server(object):
     """Returns the `tf.train.ServerDef` for this server.
 
     Returns:
-      A `tf.train.ServerDef` prototocol buffer that describes the configuration
+      A `tf.train.ServerDef` protocol buffer that describes the configuration
       of this server.
     """
     return self._server_def
@@ -281,6 +281,18 @@ class ClusterSpec(object):
       raise TypeError("`cluster` must be a dictionary mapping one or more "
                       "job names to lists of network addresses, or a "
                       "`ClusterDef` protocol buffer")
+
+  def __nonzero__(self):
+    return bool(self._cluster_spec)
+
+  # Python 3.x
+  __bool__ = __nonzero__
+
+  def __eq__(self, other):
+    return self._cluster_spec == other
+
+  def __ne__(self, other):
+    return self._cluster_spec != other
 
   def as_dict(self):
     """Returns a dictionary from job names to lists of network addresses."""

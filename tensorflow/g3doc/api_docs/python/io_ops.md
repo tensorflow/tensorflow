@@ -1570,6 +1570,27 @@ single element vector).
 
 - - -
 
+### `tf.parse_tensor(serialized, out_type, name=None)` {#parse_tensor}
+
+Transforms a serialized tensorflow.TensorProto proto into a Tensor.
+
+##### Args:
+
+
+*  <b>`serialized`</b>: A `Tensor` of type `string`.
+    A scalar string containing a serialized TensorProto proto.
+*  <b>`out_type`</b>: A `tf.DType`.
+    The type of the serialized tensor.  The provided type must match the
+    type of the serialized tensor and no implicit conversion will take place.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `out_type`. A Tensor of type `out_type`.
+
+
+- - -
+
 ### `tf.decode_json_example(json_examples, name=None)` {#decode_json_example}
 
 Convert JSON-encoded Example records to binary protocol buffer strings.
@@ -1913,12 +1934,19 @@ The list of names for each component of a queue element.
 The underlying queue reference.
 
 
+- - -
+
+#### `tf.QueueBase.shapes` {#QueueBase.shapes}
+
+The list of shapes for each component of a queue element.
+
+
 
 - - -
 
 ### `class tf.FIFOQueue` {#FIFOQueue}
 
-A queue implementation that dequeues elements in first-in-first out order.
+A queue implementation that dequeues elements in first-in first-out order.
 
 See [`tf.QueueBase`](#QueueBase) for a description of the methods on
 this class.
@@ -2191,7 +2219,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
     `OutOfRange` error. If not specified, `input_producer` can cycle through
     the rows of `input_tensor` an unlimited number of times.
 *  <b>`shuffle`</b>: (Optional.) A boolean. If true, the rows are randomly shuffled
-    within each eopch.
+    within each epoch.
 *  <b>`seed`</b>: (Optional.) An integer. The seed to use if `shuffle` is true.
 *  <b>`capacity`</b>: (Optional.) The capacity of the queue to be used for buffering
     the input.
@@ -2422,7 +2450,7 @@ operations that depend on fixed batch_size would fail.
 Runs a list of tensors to fill a queue to create batches of examples.
 
 The `tensors_list` argument is a list of tuples of tensors, or a list of
-dictionaries of tensors.  Each element in the list is treated similarily
+dictionaries of tensors.  Each element in the list is treated similarly
 to the `tensors` argument of `tf.train.batch()`.
 
 Enqueues a different list of tensors in different threads.
@@ -2599,7 +2627,7 @@ operations that depend on fixed batch_size would fail.
 Create batches by randomly shuffling tensors.
 
 The `tensors_list` argument is a list of tuples of tensors, or a list of
-dictionaries of tensors.  Each element in the list is treated similarily
+dictionaries of tensors.  Each element in the list is treated similarly
 to the `tensors` argument of `tf.train.shuffle_batch()`.
 
 This version enqueues a different list of tensors in different threads.

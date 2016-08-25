@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -116,10 +117,10 @@ TEST(LinalgOpsTest, BatchSelfAdjointEig_ShapeFn) {
 TEST(LinalgOpsTest, SelfAdjointEigV2_ShapeFn) {
   ShapeInferenceTestOp op("SelfAdjointEigV2");
   auto set_compute_v = [&op](bool compute_v) {
-    TF_CHECK_OK(NodeDefBuilder("test", "Pack")
-                    .Input({{"input", 0, DT_FLOAT}})
-                    .Attr("compute_v", compute_v)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
+                     .Input({{"input", 0, DT_FLOAT}})
+                     .Attr("compute_v", compute_v)
+                     .Finalize(&op.node_def));
   };
   set_compute_v(false);
   INFER_OK(op, "?", "[?];[0]");
@@ -141,10 +142,10 @@ TEST(LinalgOpsTest, SelfAdjointEigV2_ShapeFn) {
 TEST(LinalgOpsTest, BatchSelfAdjointEigV2_ShapeFn) {
   ShapeInferenceTestOp op("BatchSelfAdjointEigV2");
   auto set_compute_v = [&op](bool compute_v) {
-    TF_CHECK_OK(NodeDefBuilder("test", "Pack")
-                    .Input({{"input", 0, DT_FLOAT}})
-                    .Attr("compute_v", compute_v)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
+                     .Input({{"input", 0, DT_FLOAT}})
+                     .Attr("compute_v", compute_v)
+                     .Finalize(&op.node_def));
   };
 
   set_compute_v(false);
@@ -268,11 +269,11 @@ TEST(LinalgOpsTest, BatchMatrixSolveLs_ShapeFn) {
 TEST(LinalgOpsTest, Svd_ShapeFn) {
   ShapeInferenceTestOp op("Svd");
   auto set_attrs = [&op](bool compute_uv, bool full_matrices) {
-    TF_CHECK_OK(NodeDefBuilder("test", "Svd")
-                    .Input({"input", 0, DT_FLOAT})
-                    .Attr("compute_uv", compute_uv)
-                    .Attr("full_matrices", full_matrices)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "Svd")
+                     .Input({"input", 0, DT_FLOAT})
+                     .Attr("compute_uv", compute_uv)
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
   };
 
   set_attrs(false, false);
@@ -312,11 +313,11 @@ TEST(LinalgOpsTest, Svd_ShapeFn) {
 TEST(LinalgOpsTest, BatchSvd_ShapeFn) {
   ShapeInferenceTestOp op("BatchSvd");
   auto set_attrs = [&op](bool compute_uv, bool full_matrices) {
-    TF_CHECK_OK(NodeDefBuilder("test", "BatchSvd")
-                    .Input({"input", 0, DT_FLOAT})
-                    .Attr("compute_uv", compute_uv)
-                    .Attr("full_matrices", full_matrices)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "BatchSvd")
+                     .Input({"input", 0, DT_FLOAT})
+                     .Attr("compute_uv", compute_uv)
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
   };
   set_attrs(false, false);
   INFER_OK(op, "?", "?;[0];[0]");

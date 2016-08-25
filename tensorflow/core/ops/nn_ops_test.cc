@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -25,10 +26,10 @@ namespace tensorflow {
 TEST(NNOpsTest, TopK_ShapeFn) {
   ShapeInferenceTestOp op("TopK");
   auto set_k = [&op](int k) {
-    TF_CHECK_OK(NodeDefBuilder("test", "Pack")
-                    .Input({{"a", 0, DT_FLOAT}})
-                    .Attr("k", k)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
+                     .Input({{"a", 0, DT_FLOAT}})
+                     .Attr("k", k)
+                     .Finalize(&op.node_def));
   };
 
   set_k(20);
@@ -316,13 +317,13 @@ TEST(NNOpsTest, Dilation2DShapeTest) {
   ShapeInferenceTestOp op("Dilation2D");
   auto set_op = [&op](const std::vector<int32>& strides,
                       const std::vector<int32>& rates, const string& padding) {
-    TF_CHECK_OK(NodeDefBuilder("test", "Dilation2D")
-                    .Input("input", 0, DT_FLOAT)
-                    .Input("filter", 0, DT_FLOAT)
-                    .Attr("strides", strides)
-                    .Attr("rates", rates)
-                    .Attr("padding", padding)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "Dilation2D")
+                     .Input("input", 0, DT_FLOAT)
+                     .Input("filter", 0, DT_FLOAT)
+                     .Attr("strides", strides)
+                     .Attr("rates", rates)
+                     .Attr("padding", padding)
+                     .Finalize(&op.node_def));
   };
 
   // rate rows and cols is 1, so filter_rows and cols are unchanged.

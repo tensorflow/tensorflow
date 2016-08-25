@@ -40,7 +40,7 @@ tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 
 - - -
 
-### `tf.zeros_like(tensor, dtype=None, name=None)` {#zeros_like}
+### `tf.zeros_like(tensor, dtype=None, name=None, optimize=True)` {#zeros_like}
 
 Creates a tensor with all elements set to zero.
 
@@ -63,6 +63,8 @@ tf.zeros_like(tensor) ==> [[0, 0, 0], [0, 0, 0]]
   `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`optimize`</b>: if true, attempt to statically determine the shape of 'tensor'
+  and encode it as a constant.
 
 ##### Returns:
 
@@ -99,7 +101,7 @@ tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
 
 - - -
 
-### `tf.ones_like(tensor, dtype=None, name=None)` {#ones_like}
+### `tf.ones_like(tensor, dtype=None, name=None, optimize=True)` {#ones_like}
 
 Creates a tensor with all elements set to 1.
 
@@ -122,6 +124,8 @@ tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
   `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
 
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`optimize`</b>: if true, attempt to statically determine the shape of 'tensor'
+  and encode it as a constant.
 
 ##### Returns:
 
@@ -682,40 +686,5 @@ with tf.Session() as sess2:
 
 
 *  <b>`seed`</b>: integer.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.contrib.graph_editor.ops(*args, **kwargs)` {#ops}
-
-Helper to select operations.
-
-##### Args:
-
-
-*  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Operation. tf.Tensor instances are silently ignored.
-*  <b>`**kwargs`</b>: 'graph': tf.Graph in which to perform the regex query.This is
-    required when using regex.
-    'positive_filter': an elem if selected only if positive_filter(elem) is
-      True. This is optional.
-    'restrict_ops_regex': a regular expression is ignored if it doesn't start
-      with the substring "(?#ops)".
-
-##### Returns:
-
-  list of tf.Operation
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Operation
-    or an (array of) tf.Tensor (silently ignored) or a string
-    or a regular expression.
-*  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular
-    expression is used without passing a graph as a keyword argument.
 
 

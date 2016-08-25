@@ -1,3 +1,20 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-imports/plottable.html">
 <link rel="import" href="../tf-imports/lodash.html">
@@ -36,10 +53,11 @@
         selectedRuns: Array,
         xType: String,
         dataProvider: Function,
-        _initialized: Boolean,
+        _attached: Boolean,
+        _makeChartAsyncCallbackId: { type: Number, value: null }
       },
       observers: [
-        "_makeChart(tag, dataProvider, xType, colorScale, _initialized)",
+        "_makeChart(tag, dataProvider, xType, colorScale, _attached)",
         "_changeRuns(_chart, selectedRuns.*)"
       ],
       _changeRuns: function(chart) {
@@ -55,23 +73,26 @@
       reload: function() {
         this._chart.reload();
       },
-      _makeChart: function(tag, dataProvider, xType, colorScale, _initialized) {
-        if (!_initialized) {
-          return;
+      _makeChart: function(tag, dataProvider, xType, colorScale, _attached) {
+        if (this._makeChartAsyncCallbackId === null) {
+          this.cancelAsync(this._makeChartAsyncCallbackId);
         }
-        if (this._chart) this._chart.destroy();
-        var chart = new TF.DistributionChart(tag, dataProvider, xType, colorScale);
-        var svg = d3.select(this.$.chartsvg);
-        this.async(function() {
+
+        this._makeChartAsyncCallbackId = this.async(function() {
+          this._makeChartAsyncCallbackId = null;
+          if (!_attached) return;
+          if (this._chart) this._chart.destroy();
+          var chart = new TF.DistributionChart(tag, dataProvider, xType, colorScale);
+          var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
           this._chart = chart;
         }, 350);
       },
       attached: function() {
-        this._initialized = true;
+        this._attached = true;
       },
       detached: function() {
-        this._initialized = false;
+        this._attached = false;
       }
     });
   </script>

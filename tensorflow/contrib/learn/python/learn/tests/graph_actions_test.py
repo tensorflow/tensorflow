@@ -298,30 +298,30 @@ class GraphActionsTest(tf.test.TestCase):
       train_op = tf.constant(1.0)
       loss_op = tf.constant(2.0)
       with self.assertRaisesRegexp(ValueError, 'utput directory'):
-        learn.graph_actions._supervised_train(g,  # pylint: disable=protected-access
-                                              output_dir=None,
-                                              train_op=train_op,
-                                              loss_op=loss_op)
+        learn.graph_actions._monitored_train(g,  # pylint: disable=protected-access
+                                             output_dir=None,
+                                             train_op=train_op,
+                                             loss_op=loss_op)
       with self.assertRaisesRegexp(ValueError, 'utput directory'):
-        learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
             g,
             output_dir='',
             train_op=tf.constant(1.0),
             loss_op=tf.constant(2.0))
       with self.assertRaisesRegexp(ValueError, 'train_op'):
-        learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
             g,
             output_dir=self._output_dir,
             train_op=None,
             loss_op=loss_op)
       with self.assertRaisesRegexp(ValueError, 'loss_op'):
-        learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
             g,
             output_dir=self._output_dir,
             train_op=tf.constant(1.0),
             loss_op=None)
       with self.assertRaisesRegexp(ValueError, 'global_step'):
-        learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
             g,
             output_dir=self._output_dir,
             train_op=tf.constant(1.0),
@@ -338,7 +338,7 @@ class GraphActionsTest(tf.test.TestCase):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
       self._assert_summaries(self._output_dir)
       self._assert_ckpt(self._output_dir, False)
-      loss = learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -352,7 +352,7 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -365,7 +365,7 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -379,7 +379,7 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -392,7 +392,7 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -406,7 +406,7 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -419,7 +419,7 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       with tf.control_dependencies(self._build_inference_graph()):
         train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -438,7 +438,7 @@ class GraphActionsTest(tf.test.TestCase):
           tf.assign_add(loss_var, -1.0))
       self._assert_summaries(self._output_dir)
       self._assert_ckpt(self._output_dir, False)
-      loss = learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -456,7 +456,7 @@ class GraphActionsTest(tf.test.TestCase):
       tf.scalar_summary('loss', loss_op)
       self._assert_summaries(self._output_dir)
       self._assert_ckpt(self._output_dir, False)
-      loss = learn.graph_actions._supervised_train(  # pylint: disable=protected-access
+      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
           g,
           output_dir=self._output_dir,
           train_op=train_op,
@@ -467,64 +467,6 @@ class GraphActionsTest(tf.test.TestCase):
                              expected_graphs=[g],
                              expected_summaries={1: {'loss': 2.0}})
       self._assert_ckpt(self._output_dir, True)
-
-  def test_train_chief_monitor(self):
-    with tf.Graph().as_default() as g, self.test_session(g):
-      with tf.control_dependencies(self._build_inference_graph()):
-        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
-      loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
-      chief_exclusive_monitor = _BaseMonitorWrapper(False)
-      all_workers_monitor = _BaseMonitorWrapper(True)
-      loss = learn.graph_actions._supervised_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=loss_op,
-          supervisor_is_chief=True,
-          steps=1,
-          monitors=[chief_exclusive_monitor, all_workers_monitor])
-      self.assertEqual(2.0, loss)
-      self.assertTrue(chief_exclusive_monitor.is_active and
-                      all_workers_monitor.is_active,
-                      'All monitors must have been active.')
-      self.assertTrue(chief_exclusive_monitor.has_step and
-                      all_workers_monitor.has_step,
-                      'All monitors must have a step.')
-
-  def test_train_worker_monitor(self):
-    # We need to explicitly set device due to check on non-chief workers
-    # requiring all variables to have a device assigned.
-    with tf.Graph().as_default() as g, g.device('/cpu:0'):
-      global_step = tf.contrib.framework.create_global_step(g)
-      train_op = tf.assign_add(global_step, 1)
-      loss_op = tf.constant(2.0)
-      tf.scalar_summary('loss', loss_op)
-      # Add explicit "local" init op to initialize all variables
-      # as there's no chief to init here.
-      init_op = variables.initialize_all_variables()
-      ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, init_op)
-      # Create worker monitors where one should be active on the worker
-      # and the other chief exclusive.
-      chief_exclusive_monitor = _BaseMonitorWrapper(False)
-      all_workers_monitor = _BaseMonitorWrapper(True)
-      with self.test_session(g):
-        loss = learn.graph_actions._supervised_train(  # pylint: disable=protected-access
-            g,
-            output_dir=self._output_dir,
-            global_step_tensor=global_step,
-            train_op=train_op,
-            loss_op=loss_op,
-            supervisor_is_chief=False,
-            steps=1,
-            monitors=[chief_exclusive_monitor, all_workers_monitor])
-      self.assertEqual(2.0, loss)
-      self.assertTrue(not chief_exclusive_monitor.is_active and
-                      all_workers_monitor.is_active,
-                      'Only non-chief runnable monitor must have been active.')
-      self.assertTrue(not chief_exclusive_monitor.has_step and
-                      all_workers_monitor.has_step,
-                      'Only non-chief runnable monitor must have a step.')
 
 
 # TODO(ispir): remove following tests after deprecated train.

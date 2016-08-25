@@ -36,6 +36,10 @@ class CastOpTest(tf.test.TestCase):
       return tf.int64
     elif dtype == np.bool:
       return tf.bool
+    elif dtype == np.complex64:
+      return tf.complex64
+    elif dtype == np.complex128:
+      return tf.complex128
     else:
       return None
 
@@ -53,9 +57,11 @@ class CastOpTest(tf.test.TestCase):
   def _testTypes(self, x, use_gpu=False):
     """Tests cast(x) to different tf."""
     if use_gpu:
-      type_list = [np.float32, np.float64, np.int64]
+      type_list = [np.float32, np.float64, np.int64,
+                   np.complex64, np.complex128]
     else:
-      type_list = [np.float32, np.float64, np.int32, np.int64]
+      type_list = [np.float32, np.float64, np.int32,
+                   np.int64, np.complex64, np.complex128]
     for from_type in type_list:
       for to_type in type_list:
         self._test(x.astype(from_type), to_type, use_gpu)
@@ -157,7 +163,7 @@ class CastOpTest(tf.test.TestCase):
       self.assertEqual(1.0, sess.run(cast))
 
   def testGradients(self):
-    t = [tf.float32, tf.float64]
+    t = [tf.float32, tf.float64, tf.complex64, tf.complex128]
     for src_t in t:
       for dst_t in t:
         with self.test_session():

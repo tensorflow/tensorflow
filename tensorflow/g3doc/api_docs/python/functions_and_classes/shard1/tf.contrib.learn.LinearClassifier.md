@@ -61,7 +61,7 @@ Input of `fit` and `evaluate` should have following features,
     valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns=None, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -103,6 +103,13 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.config` {#LinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -127,6 +134,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -255,48 +282,54 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict}
+#### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
 
-Returns predicted classes for given features.
+Returns predicted classes for given features. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
+    Args:
+      x: features.
+      input_fn: Input function. If set, x must be None.
+      batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x must be None.
-*  <b>`batch_size`</b>: Override default batch size.
-*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-    for each example until inputs are exhausted. Note: The inputs must
-    terminate if you want the iterable to terminate (e.g. be sure to pass
-    num_epochs=1 if you are using something like read_batch_features).
-
-##### Returns:
-
-  Numpy array of predicted classes (or an iterable of predicted classes if
-  as_iterable is True).
+    Returns:
+      Numpy array of predicted classes (or an iterable of predicted classes if
+      as_iterable is True).
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict_proba}
+#### `tf.contrib.learn.LinearClassifier.predict_proba(*args, **kwargs)` {#LinearClassifier.predict_proba}
 
-Returns prediction probabilities for given features.
+Returns prediction probabilities for given features. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
+    Args:
+      x: features.
+      input_fn: Input function. If set, x and y must be None.
+      batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
-*  <b>`x`</b>: features.
-*  <b>`input_fn`</b>: Input function. If set, x and y must be None.
-*  <b>`batch_size`</b>: Override default batch size.
-*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-    for each example until inputs are exhausted. Note: The inputs must
-    terminate if you want the iterable to terminate (e.g. be sure to pass
-    num_epochs=1 if you are using something like read_batch_features).
-
-##### Returns:
-
-  Numpy array of predicted probabilities (or an iterable of predicted
-  probabilities if as_iterable is True).
+    Returns:
+      Numpy array of predicted probabilities (or an iterable of predicted
+      probabilities if as_iterable is True).
 
 
 - - -

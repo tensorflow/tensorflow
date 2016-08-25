@@ -168,14 +168,15 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import variables
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -183,7 +184,6 @@ from tensorflow.python.ops.gen_image_ops import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import make_all
-from tensorflow.contrib.framework.python.framework import is_tensor
 
 
 ops.NoGradient('RandomCrop')
@@ -211,13 +211,25 @@ def _assert(cond, ex_type, msg):
   Returns:
     A list, containing at most one assert op.
   """
-  if is_tensor(cond):
+  if _is_tensor(cond):
     return [logging_ops.Assert(cond, [msg])]
   else:
     if not cond:
       raise ex_type(msg)
     else:
       return []
+
+
+def _is_tensor(x):
+  """Returns `True` if `x` is a symbolic tensor-like object.
+
+  Args:
+    x: A python object to check.
+
+  Returns:
+    `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
+  """
+  return isinstance(x, (ops.Tensor, variables.Variable))
 
 
 def _ImageDimensions(images, static_only=True):
@@ -534,7 +546,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     [3, 2])
   padded = array_ops.pad(image, paddings)
 
-  padded_shape = [None if is_tensor(i) else i
+  padded_shape = [None if _is_tensor(i) else i
                   for i in [target_height, target_width, depth]]
   padded.set_shape(padded_shape)
 
@@ -593,7 +605,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     array_ops.pack([offset_height, offset_width, 0]),
     array_ops.pack([target_height, target_width, -1]))
 
-  cropped_shape = [None if is_tensor(i) else i
+  cropped_shape = [None if _is_tensor(i) else i
                    for i in [target_height, target_width, depth]]
   cropped.set_shape(cropped_shape)
 
@@ -636,26 +648,26 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   image = control_flow_ops.with_dependencies(assert_ops, image)
   # `crop_to_bounding_box` and `pad_to_bounding_box` have their own checks.
   # Make sure our checks come first, so that error messages are clearer.
-  if is_tensor(target_height):
+  if _is_tensor(target_height):
     target_height = control_flow_ops.with_dependencies(
       assert_ops, target_height)
-  if is_tensor(target_width):
+  if _is_tensor(target_width):
     target_width = control_flow_ops.with_dependencies(assert_ops, target_width)
 
   def max_(x, y):
-    if is_tensor(x) or is_tensor(y):
+    if _is_tensor(x) or _is_tensor(y):
       return math_ops.maximum(x, y)
     else:
       return max(x, y)
 
   def min_(x, y):
-    if is_tensor(x) or is_tensor(y):
+    if _is_tensor(x) or _is_tensor(y):
       return math_ops.minimum(x, y)
     else:
       return min(x, y)
 
   def equal_(x, y):
-    if is_tensor(x) or is_tensor(y):
+    if _is_tensor(x) or _is_tensor(y):
       return math_ops.equal(x, y)
     else:
       return x == y
@@ -933,7 +945,7 @@ def adjust_brightness(image, delta):
   Returns:
     A brightness-adjusted tensor of the same shape and type as `image`.
   """
-  with ops.op_scope([image, delta], None, 'adjust_brightness') as name:
+  with ops.name_scope(None, 'adjust_brightness', [image, delta]) as name:
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
@@ -971,7 +983,8 @@ def adjust_contrast(images, contrast_factor):
   Returns:
     The contrast-adjusted image or images.
   """
-  with ops.op_scope([images, contrast_factor], None, 'adjust_contrast') as name:
+  with ops.name_scope(None, 'adjust_contrast',
+                      [images, contrast_factor]) as name:
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
@@ -1077,7 +1090,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
-  with ops.op_scope([image], name, 'convert_image') as name:
+  with ops.name_scope(name, 'convert_image', [image]) as name:
     # Both integer: use integer multiplication in the larger range
     if image.dtype.is_integer and dtype.is_integer:
       scale_in = image.dtype.max
@@ -1138,7 +1151,7 @@ def rgb_to_grayscale(images, name=None):
   Returns:
     The converted grayscale image(s).
   """
-  with ops.op_scope([images], name, 'rgb_to_grayscale') as name:
+  with ops.name_scope(name, 'rgb_to_grayscale', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
@@ -1168,7 +1181,7 @@ def grayscale_to_rgb(images, name=None):
   Returns:
     The converted grayscale image(s).
   """
-  with ops.op_scope([images], name, 'grayscale_to_rgb') as name:
+  with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
     images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = (
@@ -1247,7 +1260,7 @@ def adjust_hue(image, delta, name=None):
   Returns:
     Adjusted image(s), same shape and DType as `image`.
   """
-  with ops.op_scope([image], name, 'adjust_hue') as name:
+  with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
@@ -1322,7 +1335,7 @@ def adjust_saturation(image, saturation_factor, name=None):
   Returns:
     Adjusted image(s), same shape and DType as `image`.
   """
-  with ops.op_scope([image], name, 'adjust_saturation') as name:
+  with ops.name_scope(name, 'adjust_saturation', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype

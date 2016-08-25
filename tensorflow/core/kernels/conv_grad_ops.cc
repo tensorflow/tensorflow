@@ -1077,17 +1077,20 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
 
     Tensor transformed_out_backprop;
     if (data_format_ == FORMAT_NHWC) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         ShapeFromFormat(FORMAT_NCHW, dims.batch_size,
-                                         dims.rows.output_size,
-                                         dims.cols.output_size, dims.out_depth),
-                         &transformed_out_backprop));
-
-      functor::NHWCToNCHW<Device, T, 4>()(
-          context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
-          transformed_out_backprop.tensor<T, 4>());
+      TensorShape nchw_shape =
+          ShapeFromFormat(FORMAT_NCHW, dims.batch_size, dims.rows.output_size,
+                          dims.cols.output_size, dims.out_depth);
+      if (dims.out_depth > 1) {
+        OP_REQUIRES_OK(context, context->allocate_temp(
+                                    DataTypeToEnum<T>::value, nchw_shape,
+                                    &transformed_out_backprop));
+        functor::NHWCToNCHW<Device, T, 4>()(
+            context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
+            transformed_out_backprop.tensor<T, 4>());
+      } else {
+        // If depth <= 1, then just reshape.
+        CHECK(transformed_out_backprop.CopyFrom(out_backprop, nchw_shape));
+      }
     } else {
       transformed_out_backprop = out_backprop;
     }
@@ -1435,36 +1438,43 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
 
     Tensor transformed_out_backprop;
     if (data_format_ == FORMAT_NHWC) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         ShapeFromFormat(FORMAT_NCHW, dims.batch_size,
-                                         dims.rows.output_size,
-                                         dims.cols.output_size, dims.out_depth),
-                         &transformed_out_backprop));
-      functor::NHWCToNCHW<Device, T, 4>()(
-          context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
-          transformed_out_backprop.tensor<T, 4>());
+      TensorShape nchw_shape =
+          ShapeFromFormat(FORMAT_NCHW, dims.batch_size, dims.rows.output_size,
+                          dims.cols.output_size, dims.out_depth);
+      if (dims.out_depth > 1) {
+        OP_REQUIRES_OK(context, context->allocate_temp(
+                                    DataTypeToEnum<T>::value, nchw_shape,
+                                    &transformed_out_backprop));
+        functor::NHWCToNCHW<Device, T, 4>()(
+            context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
+            transformed_out_backprop.tensor<T, 4>());
+      } else {
+        // If depth <= 1, just reshape.
+        CHECK(transformed_out_backprop.CopyFrom(out_backprop, nchw_shape));
+      }
     } else {
       transformed_out_backprop = out_backprop;
     }
 
     Tensor transformed_input;
     if (data_format_ == FORMAT_NHWC) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         ShapeFromFormat(
-                             FORMAT_NCHW,
-                             GetTensorDim(compatible_input, data_format_, 'N'),
-                             GetTensorDim(compatible_input, data_format_, 'H'),
-                             GetTensorDim(compatible_input, data_format_, 'W'),
-                             GetTensorDim(compatible_input, data_format_, 'C')),
-                         &transformed_input));
-      functor::NHWCToNCHW<Device, T, 4>()(
-          context->eigen_device<Device>(),
-          const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
-          transformed_input.tensor<T, 4>());
+      TensorShape nchw_shape = ShapeFromFormat(
+          FORMAT_NCHW, GetTensorDim(compatible_input, data_format_, 'N'),
+          GetTensorDim(compatible_input, data_format_, 'H'),
+          GetTensorDim(compatible_input, data_format_, 'W'),
+          GetTensorDim(compatible_input, data_format_, 'C'));
+      if (nchw_shape.dim_size(1) > 1) {
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(DataTypeToEnum<T>::value,
+                                              nchw_shape, &transformed_input));
+        functor::NHWCToNCHW<Device, T, 4>()(
+            context->eigen_device<Device>(),
+            const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
+            transformed_input.tensor<T, 4>());
+      } else {
+        // If depth <= 1, just reshape.
+        CHECK(transformed_input.CopyFrom(compatible_input, nchw_shape));
+      }
     } else {
       transformed_input = compatible_input;
     }

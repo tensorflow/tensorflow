@@ -21,22 +21,69 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/kernels/tile_ops.h"
-
 #include <vector>
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+// Forward declarations of functors that will be defined in
+// tile_ops_cpu_impl*.cc and tile_ops_gpu.cu.cc.
+namespace functor {
+template <typename Device, typename T, int NDIM>
+struct Tile {
+  void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
+                  typename TTypes<T, NDIM>::ConstTensor in,
+                  const Eigen::array<int32, NDIM>& broadcast_array) const;
+};
+
+template <typename Device, typename T>
+struct Tile<Device, T, 0> {
+  void operator()(const Device& d, typename TTypes<T, 0>::Tensor out,
+                  typename TTypes<T, 0>::ConstTensor in,
+                  const Eigen::array<int32, 0>&) const;
+};
+
+template <typename Device, typename T, int NDIM>
+struct TileGrad {
+  void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
+                  typename TTypes<T, NDIM>::ConstTensor in,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes,
+                  bool first) const;
+};
+
+template <typename Device, typename T>
+struct TileGrad<Device, T, 0> {
+  void operator()(const Device& d, typename TTypes<T, 0>::Tensor out,
+                  typename TTypes<T, 0>::ConstTensor in,
+                  const Eigen::DSizes<Eigen::DenseIndex, 0>&,
+                  const Eigen::DSizes<Eigen::DenseIndex, 0>&, bool first) const;
+};
+
+template <typename Device, typename T, int NDIM, int REDUCEDNDIM>
+struct ReduceAndReshape {
+  void operator()(
+      const Device& d, typename TTypes<T, NDIM>::Tensor out,
+      typename TTypes<T, NDIM>::ConstTensor in,
+      const Eigen::DSizes<Eigen::DenseIndex, REDUCEDNDIM>& reduce_dim,
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& reshape_dim) const;
+};
+}  // namespace functor
 
 // --------------------------------------------------------------------------
 template <typename Device>
@@ -91,7 +138,8 @@ class TileOp : public OpKernel {
   HANDLE_DIM(T, 2)     \
   HANDLE_DIM(T, 3)     \
   HANDLE_DIM(T, 4)     \
-  HANDLE_DIM(T, 5)
+  HANDLE_DIM(T, 5)     \
+  HANDLE_DIM(T, 6)
 
 #define HANDLE_TYPE_NAME(T) HANDLE_TYPE(DataTypeToEnum<T>::value)
 
@@ -153,7 +201,7 @@ inline void TileOp<Device>::HandleCase(
              << DataTypeString(DT) << ", " << NDIM;
 }
 
-#define HANDLE_CASE(device, dtype, ndim)                               \
+#define HANDLE_CASE(device, T, dtype, ndim)                            \
   template <>                                                          \
   template <>                                                          \
   void TileOp<device>::HandleCase<dtype, ndim>(                        \
@@ -163,15 +211,19 @@ inline void TileOp<Device>::HandleCase(
   }
 
 // 0-D handled above
-#define HANDLE_CASE_DIM(device, dtype) \
-  HANDLE_CASE(device, dtype, 1);       \
-  HANDLE_CASE(device, dtype, 2);       \
-  HANDLE_CASE(device, dtype, 3);       \
-  HANDLE_CASE(device, dtype, 4);       \
-  HANDLE_CASE(device, dtype, 5);
+#define HANDLE_CASE_DIM(device, T, dtype) \
+  HANDLE_CASE(device, T, dtype, 1);       \
+  HANDLE_CASE(device, T, dtype, 2);       \
+  HANDLE_CASE(device, T, dtype, 3);       \
+  HANDLE_CASE(device, T, dtype, 4);       \
+  HANDLE_CASE(device, T, dtype, 5);       \
+  HANDLE_CASE(device, T, dtype, 6);
 
 #define HANDLE_TYPE_NAME_CPU(T) \
-  HANDLE_CASE_DIM(CPUDevice, DataTypeToEnum<T>::value);
+  HANDLE_CASE_DIM(CPUDevice, T, DataTypeToEnum<T>::value);
+
+#define HANDLE_TYPE_NAME_GPU(T) \
+  HANDLE_CASE_DIM(GPUDevice, T, DataTypeToEnum<T>::value);
 
 TF_CALL_bool(HANDLE_TYPE_NAME_CPU);
 TF_CALL_float(HANDLE_TYPE_NAME_CPU);
@@ -186,15 +238,16 @@ TF_CALL_complex128(HANDLE_TYPE_NAME_CPU);
 TF_CALL_string(HANDLE_TYPE_NAME_CPU);
 
 #if GOOGLE_CUDA
-HANDLE_CASE_DIM(GPUDevice, DT_FLOAT);
-HANDLE_CASE_DIM(GPUDevice, DT_DOUBLE);
-HANDLE_CASE_DIM(GPUDevice, DT_INT16);
-HANDLE_CASE_DIM(GPUDevice, DT_INT32);
-HANDLE_CASE_DIM(GPUDevice, DT_INT64);
-HANDLE_CASE_DIM(GPUDevice, DT_HALF);
+TF_CALL_float(HANDLE_TYPE_NAME_GPU);
+TF_CALL_double(HANDLE_TYPE_NAME_GPU);
+TF_CALL_int16(HANDLE_TYPE_NAME_GPU);
+TF_CALL_int32(HANDLE_TYPE_NAME_GPU);
+TF_CALL_int64(HANDLE_TYPE_NAME_GPU);
+TF_CALL_half(HANDLE_TYPE_NAME_GPU);
 #endif  // GOOGLE_CUDA
 
 #undef HANDLE_TYPE_NAME_CPU
+#undef HANDLE_TYPE_NAME_GPU
 #undef HANDLE_CASE_DIM
 #undef HANDLE_CASE
 
@@ -256,7 +309,8 @@ class TileGradientOp : public OpKernel {
   HANDLE_DIM(T, 2)     \
   HANDLE_DIM(T, 3)     \
   HANDLE_DIM(T, 4)     \
-  HANDLE_DIM(T, 5)
+  HANDLE_DIM(T, 5)     \
+  HANDLE_DIM(T, 6)
 
 #define HANDLE_TYPE_NAME(T) HANDLE_TYPE(DataTypeToEnum<T>::value)
 
@@ -385,7 +439,7 @@ inline void TileGradientOp<Device>::HandleCase(
              << ", " << NDIM;
 }
 
-#define HANDLE_CASE(device, dtype, ndim)                                       \
+#define HANDLE_CASE(device, T, dtype, ndim)                                    \
   template <>                                                                  \
   template <>                                                                  \
   void TileGradientOp<device>::HandleCase<dtype, ndim>(                        \
@@ -395,15 +449,19 @@ inline void TileGradientOp<Device>::HandleCase(
   }
 
 // 0-D handled specially above
-#define HANDLE_CASE_DIM(device, dtype) \
-  HANDLE_CASE(device, dtype, 1);       \
-  HANDLE_CASE(device, dtype, 2);       \
-  HANDLE_CASE(device, dtype, 3);       \
-  HANDLE_CASE(device, dtype, 4);       \
-  HANDLE_CASE(device, dtype, 5);
+#define HANDLE_CASE_DIM(device, T, dtype) \
+  HANDLE_CASE(device, T, dtype, 1);       \
+  HANDLE_CASE(device, T, dtype, 2);       \
+  HANDLE_CASE(device, T, dtype, 3);       \
+  HANDLE_CASE(device, T, dtype, 4);       \
+  HANDLE_CASE(device, T, dtype, 5);       \
+  HANDLE_CASE(device, T, dtype, 6);
 
 #define HANDLE_TYPE_NAME_CPU(T) \
-  HANDLE_CASE_DIM(CPUDevice, DataTypeToEnum<T>::value);
+  HANDLE_CASE_DIM(CPUDevice, T, DataTypeToEnum<T>::value);
+
+#define HANDLE_TYPE_NAME_GPU(T) \
+  HANDLE_CASE_DIM(GPUDevice, T, DataTypeToEnum<T>::value);
 
 TF_CALL_float(HANDLE_TYPE_NAME_CPU);
 TF_CALL_double(HANDLE_TYPE_NAME_CPU);
@@ -415,16 +473,16 @@ TF_CALL_complex64(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_CPU);
 
 #if GOOGLE_CUDA
-HANDLE_CASE_DIM(GPUDevice, DT_FLOAT);
-HANDLE_CASE_DIM(GPUDevice, DT_DOUBLE);
-HANDLE_CASE_DIM(GPUDevice, DT_INT16);
-HANDLE_CASE_DIM(GPUDevice, DT_INT32);
-HANDLE_CASE_DIM(GPUDevice, DT_INT64);
-HANDLE_CASE_DIM(GPUDevice, DT_HALF);
-
+TF_CALL_float(HANDLE_TYPE_NAME_GPU);
+TF_CALL_double(HANDLE_TYPE_NAME_GPU);
+TF_CALL_int16(HANDLE_TYPE_NAME_GPU);
+TF_CALL_int32(HANDLE_TYPE_NAME_GPU);
+TF_CALL_int64(HANDLE_TYPE_NAME_GPU);
+TF_CALL_half(HANDLE_TYPE_NAME_GPU);
 #endif  // GOOGLE_CUDA
 
 #undef HANDLE_TYPE_NAME_CPU
+#undef HANDLE_TYPE_NAME_GPU
 #undef HANDLE_CASE_DIM
 #undef HANDLE_CASE
 
@@ -436,46 +494,6 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
                         TileGradientOp<CPUDevice>);
 
 #if GOOGLE_CUDA
-#define DEFINE_GPU_TYPE(T) \
-  DEFINE_GPU_DIM(T, 1)     \
-  DEFINE_GPU_DIM(T, 2)     \
-  DEFINE_GPU_DIM(T, 3)     \
-  DEFINE_GPU_DIM(T, 4)     \
-  DEFINE_GPU_DIM(T, 5)
-
-#define DEFINE_GPU_DIM(T, NDIM)                                               \
-  template <>                                                                 \
-  void Tile<GPUDevice, T, NDIM>::operator()(                                  \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,               \
-      typename TTypes<T, NDIM>::ConstTensor in,                               \
-      const Eigen::array<int32, NDIM>& broadcast_array) const;                \
-  extern template struct Tile<GPUDevice, T, NDIM>;                            \
-  template <>                                                                 \
-  void TileGrad<GPUDevice, T, NDIM>::operator()(                              \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,               \
-      typename TTypes<T, NDIM>::ConstTensor in,                               \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,                  \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes, bool first) const; \
-  extern template struct TileGrad<GPUDevice, T, NDIM>;                        \
-  template <>                                                                 \
-  void ReduceAndReshape<GPUDevice, T, NDIM, 1>::operator()(                   \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,               \
-      typename TTypes<T, NDIM>::ConstTensor in,                               \
-      const Eigen::DSizes<Eigen::DenseIndex, 1>& reduce_dim,                  \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& reshape_dim) const;       \
-  extern template struct ReduceAndReshape<GPUDevice, T, NDIM, 1>;
-
-namespace functor {
-DEFINE_GPU_TYPE(float);
-DEFINE_GPU_TYPE(double);
-DEFINE_GPU_TYPE(int64);
-DEFINE_GPU_TYPE(int32);
-DEFINE_GPU_TYPE(int16);
-DEFINE_GPU_TYPE(Eigen::half);
-}  // end namespace functor
-
-#undef DEFINE_GPU_DIM
-#undef DEFINE_GPU_TYPE
 
 REGISTER_KERNEL_BUILDER(Name("Tile")
                             .Device(DEVICE_GPU)

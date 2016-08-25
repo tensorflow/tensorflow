@@ -59,15 +59,15 @@ def confusion_matrix(predictions, labels, num_classes=None,
     name: Scope name.
 
   Returns:
-    A l X l matrix represeting the confusion matrix, where l in the number of
+    A k X k matrix represeting the confusion matrix, where k is the number of
     possible labels in the classification task.
 
   Raises:
     ValueError: If both predictions and labels are not 1-D vectors and do not
                 have the same size.
   """
-  with ops.op_scope([predictions, labels, num_classes], name,
-                    'confusion_matrix') as name:
+  with ops.name_scope(name, 'confusion_matrix',
+                      [predictions, labels, num_classes]) as name:
     predictions, labels = metric_ops_util.remove_squeezable_dimensions(
         ops.convert_to_tensor(
             predictions, name='predictions', dtype=dtypes.int64),

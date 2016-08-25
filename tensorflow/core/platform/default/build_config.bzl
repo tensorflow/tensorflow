@@ -89,11 +89,15 @@ def tf_proto_library(name, srcs = [], has_services = None,
       visibility = visibility,
   )
 
-def tf_additional_lib_srcs():
+def tf_additional_lib_hdrs():
   return [
       "platform/default/*.h",
-      "platform/default/*.cc",
       "platform/posix/*.h",
+  ]
+
+def tf_additional_lib_srcs():
+  return [
+      "platform/default/*.cc",
       "platform/posix/*.cc",
   ]
 

@@ -65,6 +65,7 @@ here](https://www.tensorflow.org/code/tensorflow/core/example/feature.proto).
 @@FixedLenSequenceFeature
 @@parse_example
 @@parse_single_example
+@@parse_tensor
 @@decode_json_example
 
 ## Queues
@@ -79,6 +80,7 @@ Queues](../../how_tos/threading_and_queues/index.md).
 @@FIFOQueue
 @@PaddingFIFOQueue
 @@RandomShuffleQueue
+@@PriorityQueue
 
 ## Dealing with the filesystem
 

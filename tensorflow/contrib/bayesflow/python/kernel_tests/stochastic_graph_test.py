@@ -22,6 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 sg = tf.contrib.bayesflow.stochastic_graph
+sge = tf.contrib.bayesflow.stochastic_gradient_estimators
 distributions = tf.contrib.distributions
 
 
@@ -177,7 +178,7 @@ class DistributionTensorTest(tf.test.TestCase):
           mu=mu,
           sigma=sigma,
           dist_value_type=sg.MeanValue(stop_gradient=True),
-          loss_fn=sg.get_score_function_with_baseline(
+          loss_fn=sge.get_score_function_with_constant_baseline(
               baseline=tf.constant(8.0)))
       loss = dt.loss([tf.constant(2.0)])
       self.assertTrue(loss is not None)
@@ -351,6 +352,48 @@ class TestSurrogateLosses(tf.test.TestCase):
             [sl_all, sum([loss, dt1_term, dt2_term])]))
         self.assertAllClose(*sess.run([sl_dt1, sum([loss, dt1_term])]))
         self.assertAllClose(*sess.run([sl_dt2, sum([loss, dt2_term])]))
+
+
+class StochasticDependenciesMapTest(tf.test.TestCase):
+
+  def testBuildsMapOfUpstreamNodes(self):
+    dt1 = sg.DistributionTensor(distributions.Normal, mu=0., sigma=1.)
+    dt2 = sg.DistributionTensor(distributions.Normal, mu=0., sigma=1.)
+    out1 = dt1.value() + 1.
+    out2 = dt2.value() + 2.
+    x = out1 + out2
+    y = out2 * 3.
+    dep_map = sg._stochastic_dependencies_map([x, y])
+    self.assertEqual(dep_map[dt1], set([x]))
+    self.assertEqual(dep_map[dt2], set([x, y]))
+
+  def testHandlesStackedStochasticNodes(self):
+    dt1 = sg.DistributionTensor(distributions.Normal, mu=0., sigma=1.)
+    out1 = dt1.value() + 1.
+    dt2 = sg.DistributionTensor(distributions.Normal, mu=out1, sigma=1.)
+    x = dt2.value() + 2.
+    dt3 = sg.DistributionTensor(distributions.Normal, mu=0., sigma=1.)
+    y = dt3.value() * 3.
+    dep_map = sg._stochastic_dependencies_map([x, y])
+    self.assertEqual(dep_map[dt1], set([x]))
+    self.assertEqual(dep_map[dt2], set([x]))
+    self.assertEqual(dep_map[dt3], set([y]))
+
+  def testTraversesControlInputs(self):
+    dt1 = sg.DistributionTensor(distributions.Normal, mu=0., sigma=1.)
+    logits = dt1.value() * 3.
+    dt2 = sg.DistributionTensor(distributions.Bernoulli, logits=logits)
+    dt3 = sg.DistributionTensor(distributions.Normal, mu=0., sigma=1.)
+    x = dt3.value()
+    y = tf.ones((2, 2)) * 4.
+    z = tf.ones((2, 2)) * 3.
+    out = tf.cond(
+        tf.cast(dt2, tf.bool), lambda: tf.add(x, y), lambda: tf.square(z))
+    out += 5.
+    dep_map = sg._stochastic_dependencies_map([out])
+    self.assertEqual(dep_map[dt1], set([out]))
+    self.assertEqual(dep_map[dt2], set([out]))
+    self.assertEqual(dep_map[dt3], set([out]))
 
 
 if __name__ == "__main__":

@@ -640,11 +640,14 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
                                      Factory factory) {
-  const string key =
-      Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
-          kernel_def->label());
-  GlobalKernelRegistryTyped()->insert(std::make_pair(
-      key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+  // See comments in register_kernel::Name in header for info on _no_register.
+  if (kernel_def->op() != "_no_register") {
+    const string key =
+        Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
+            kernel_def->label());
+    GlobalKernelRegistryTyped()->insert(std::make_pair(
+        key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+  }
   delete kernel_def;
 }
 
@@ -758,6 +761,8 @@ Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
+    errors::AppendToMessage(&s, ".  Registered:",
+                            KernelsRegisteredForOp(node_def.op()));
     return s;
   }
   if (def != nullptr) *def = &reg->def;
@@ -796,6 +801,27 @@ void LogAllRegisteredKernels() {
     const KernelDef& kernel_def(key_registration.second.def);
     LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
   }
+}
+
+string KernelsRegisteredForOp(StringPiece op_name) {
+  string ret;
+  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
+    const KernelDef& kernel_def(key_registration.second.def);
+    if (kernel_def.op() == op_name) {
+      strings::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
+      if (!kernel_def.label().empty()) {
+        strings::StrAppend(&ret, "; label='", kernel_def.label(), "'");
+      }
+      for (int i = 0; i < kernel_def.constraint_size(); ++i) {
+        strings::StrAppend(
+            &ret, "; ", kernel_def.constraint(i).name(), " in ",
+            SummarizeAttrValue(kernel_def.constraint(i).allowed_values()));
+      }
+      strings::StrAppend(&ret, "\n");
+    }
+  }
+  if (ret.empty()) return "  <no registered kernels>\n";
+  return ret;
 }
 
 std::unique_ptr<OpKernel> CreateOpKernel(
@@ -840,6 +866,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
     }
+    errors::AppendToMessage(&s, ".  Registered:",
+                            KernelsRegisteredForOp(node_def.op()));
     return s;
   }
 

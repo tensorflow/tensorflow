@@ -24,6 +24,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.training.saver import BaseSaverBuilder
 
 
 class LookupInterface(object):
@@ -218,7 +219,7 @@ class HashTable(InitializableLookupTableBase):
     Returns:
       A `HashTable` object.
     """
-    with ops.op_scope([initializer], name, "hash_table"):
+    with ops.name_scope(name, "hash_table", [initializer]):
       # pylint: disable=protected-access
       table_ref = gen_data_flow_ops._hash_table(
           shared_name=shared_name,
@@ -271,7 +272,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    with ops.op_scope([keys, values], name, "key_value_init") as scope:
+    with ops.name_scope(name, "key_value_init", [keys, values]) as scope:
       self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
       self._values = ops.convert_to_tensor(values,
                                            dtype=value_dtype,
@@ -296,7 +297,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
     """
     # pylint: disable=protected-access
     table._check_table_dtypes(self._keys.dtype, self._values.dtype)
-    with ops.op_scope([table], self._name) as scope:
+    with ops.name_scope(self._name, values=[table]) as scope:
       init_op = gen_data_flow_ops._initialize_table(table.table_ref,
                                                     self._keys,
                                                     self._values,
@@ -456,7 +457,7 @@ class TextFileInitializer(TableInitializerBase):
     """
     # pylint: disable=protected-access
     table._check_table_dtypes(self.key_dtype, self.value_dtype)
-    with ops.op_scope([table], self._name, "text_file_init") as scope:
+    with ops.name_scope(self._name, "text_file_init", [table]) as scope:
       filename = ops.convert_to_tensor(self._filename,
                                        dtypes.string,
                                        name="asset_filepath")
@@ -615,7 +616,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
     The mapped indices. It has the same shape and tensor type (dense or sparse)
     as `tensor`.
   """
-  with ops.op_scope([tensor], name, "string_to_index") as scope:
+  with ops.name_scope(name, "string_to_index", [tensor]) as scope:
     shared_name = ""
     keys = ops.convert_to_tensor(mapping, dtypes.string)
     vocab_size = array_ops.size(keys)
@@ -670,7 +671,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
     The strings values associated to the indices. The resultant dense
     feature value tensor has the same shape as the corresponding `indices`.
   """
-  with ops.op_scope([tensor], name, "index_to_string") as scope:
+  with ops.name_scope(name, "index_to_string", [tensor]) as scope:
     shared_name = ""
     values = ops.convert_to_tensor(mapping, dtypes.string)
     vocab_size = array_ops.size(values)
@@ -710,7 +711,8 @@ class MutableHashTable(LookupInterface):
                value_dtype,
                default_value,
                shared_name=None,
-               name=None):
+               name="MutableHashTable",
+               checkpoint=True):
     """Creates an empty `MutableHashTable` object.
 
     Creates a table, the type of its keys and values are specified by key_dtype
@@ -723,33 +725,47 @@ class MutableHashTable(LookupInterface):
       shared_name: If non-empty, this table will be shared under
         the given name across multiple sessions.
       name: A name for the operation (optional).
+      checkpoint: if True, the contents of the table are saved to and restored
+        from checkpoints. If `shared_name` is empty, the table is shared using
+        the table node name.
 
     Returns:
       A `MutableHashTable` object.
+
+    Raises:
+      ValueError: If checkpoint is True and no name was specified.
     """
     self._default_value = ops.convert_to_tensor(default_value,
                                                 dtype=value_dtype)
     self._value_shape = self._default_value.get_shape()
 
+    # The table must be shared if checkpointing is requested. Use the node name
+    # if no shared_name has been explicitly specified.
+    use_node_name_sharing = checkpoint and shared_name is None
     # pylint: disable=protected-access
     if self._default_value.get_shape().ndims == 0:
       self._table_ref = gen_data_flow_ops._mutable_hash_table(
           shared_name=shared_name,
+          use_node_name_sharing=use_node_name_sharing,
           key_dtype=key_dtype,
           value_dtype=value_dtype,
           name=name)
     else:
       self._table_ref = gen_data_flow_ops._mutable_hash_table_of_tensors(
           shared_name=shared_name,
+          use_node_name_sharing=use_node_name_sharing,
           key_dtype=key_dtype,
           value_dtype=value_dtype,
           value_shape=self._default_value.get_shape(),
           name=name)
     # pylint: enable=protected-access
-
     super(MutableHashTable, self).__init__(key_dtype, value_dtype,
                                            self._table_ref.op.name.split(
                                                "/")[-1])
+
+    if checkpoint:
+      saveable = MutableHashTable.MutableHashTableSaveable(self, name)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
   def size(self, name=None):
     """Compute the number of elements in this table.
@@ -760,7 +776,8 @@ class MutableHashTable(LookupInterface):
     Returns:
       A scalar tensor containing the number of elements in this table.
     """
-    with ops.op_scope([self._table_ref], name, "%s_Size" % self._name) as name:
+    with ops.name_scope(name, "%s_Size" % self._name,
+                        [self._table_ref]) as name:
       # pylint: disable=protected-access
       return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
       # pylint: enable=protected-access
@@ -786,8 +803,8 @@ class MutableHashTable(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
-    with ops.op_scope([self._table_ref, keys], name,
-                      "%s_lookup_table_find" % self._name) as name:
+    with ops.name_scope(name, "%s_lookup_table_find" % self._name,
+                        [self._table_ref, keys]) as name:
       # pylint: disable=protected-access
       values = gen_data_flow_ops._lookup_table_find(self._table_ref,
                                                     keys,
@@ -816,8 +833,8 @@ class MutableHashTable(LookupInterface):
         types.
     """
     self._check_table_dtypes(keys.dtype, values.dtype)
-    with ops.op_scope([self._table_ref, keys, values], name,
-                      "%s_lookup_table_insert" % self._name) as name:
+    with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
+                        [self._table_ref, keys, values]) as name:
       # pylint: disable=protected-access
       op = gen_data_flow_ops._lookup_table_insert(
           self._table_ref, keys, values, name=name)
@@ -835,8 +852,8 @@ class MutableHashTable(LookupInterface):
       A pair of tensors with the first tensor containing all keys and the
         second tensors containing all values in the table.
     """
-    with ops.op_scope([self._table_ref], name,
-                      "%s_lookup_table_export_values" % self._name) as name:
+    with ops.name_scope(name, "%s_lookup_table_export_values" % self._name,
+                        [self._table_ref]) as name:
       # pylint: disable=protected-access
       exported_keys, exported_values = gen_data_flow_ops._lookup_table_export(
           self._table_ref,
@@ -848,3 +865,21 @@ class MutableHashTable(LookupInterface):
     exported_values.set_shape(exported_keys.get_shape().concatenate(
         self._value_shape))
     return exported_keys, exported_values
+
+  class MutableHashTableSaveable(BaseSaverBuilder.SaveableObject):
+    """SaveableObject implementation for MutableHashTable."""
+
+    def __init__(self, table, name):
+      tensors = table.export()
+      specs = [
+          BaseSaverBuilder.SaveSpec(tensors[0], "", name + "-keys"),
+          BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
+      ]
+      super(MutableHashTable.MutableHashTableSaveable, self).__init__(table,
+                                                                      specs,
+                                                                      name)
+
+    def restore(self, restored_tensors, unused_restored_shapes):
+      # pylint: disable=protected-access
+      return gen_data_flow_ops._lookup_table_import(
+          self.op._table_ref, restored_tensors[0], restored_tensors[1])

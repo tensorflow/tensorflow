@@ -51,6 +51,18 @@ class DynamicStitchTest(tf.test.TestCase):
       # length.
       self.assertEqual([None], stitched_t.get_shape().as_list())
 
+  def testOneListOneDimensional(self):
+    with self.test_session():
+      indices = [tf.constant([1, 6, 2, 3, 5, 0, 4, 7])]
+      data = [tf.constant([10, 60, 20, 30, 50, 0, 40, 70])]
+      stitched_t = tf.dynamic_stitch(indices, data)
+      stitched_val = stitched_t.eval()
+      self.assertAllEqual([0, 10, 20, 30, 40, 50, 60, 70], stitched_val)
+      # Dimension 0 is determined by the max index in indices, so we
+      # can only infer that the output is a vector of some unknown
+      # length.
+      self.assertEqual([None], stitched_t.get_shape().as_list())
+
   def testSimpleTwoDimensional(self):
     with self.test_session():
       indices = [tf.constant([0, 4, 7]),

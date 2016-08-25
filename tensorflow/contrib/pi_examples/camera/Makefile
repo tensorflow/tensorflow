@@ -53,7 +53,8 @@ LIBS := \
 -ldl \
 -lpthread \
 -lm \
--ljpeg
+-ljpeg \
+-lz
 LIBFLAGS :=
 
 EXECUTABLE_SRCS := tensorflow/contrib/pi_examples/camera/camera.cc

@@ -49,12 +49,12 @@ class GPUDevice : public BaseGPUDevice {
 
 class GPUDeviceFactory : public BaseGPUDeviceFactory {
  private:
-  LocalDevice* CreateGPUDevice(const SessionOptions& options,
-                               const string& name, Bytes memory_limit,
-                               BusAdjacency bus_adjacency, int gpu_id,
-                               const string& physical_device_desc,
-                               Allocator* gpu_allocator,
-                               Allocator* cpu_allocator) override {
+  BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
+                                 const string& name, Bytes memory_limit,
+                                 BusAdjacency bus_adjacency, int gpu_id,
+                                 const string& physical_device_desc,
+                                 Allocator* gpu_allocator,
+                                 Allocator* cpu_allocator) override {
     return new GPUDevice(options, name, memory_limit, bus_adjacency, gpu_id,
                          physical_device_desc, gpu_allocator, cpu_allocator);
   }
@@ -89,8 +89,8 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
 // The associated factory.
 class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
  public:
-  void CreateDevices(const SessionOptions& options, const string& name_prefix,
-                     std::vector<Device*>* devices) override {
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<Device*>* devices) override {
     int n = 1;
     auto iter = options.config.device_count().find("CPU");
     if (iter != options.config.device_count().end()) {
@@ -101,6 +101,8 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
       devices->push_back(new GPUCompatibleCPUDevice(
           options, name, Bytes(256 << 20), BUS_ANY, cpu_allocator()));
     }
+
+    return Status::OK();
   }
 };
 REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 50);

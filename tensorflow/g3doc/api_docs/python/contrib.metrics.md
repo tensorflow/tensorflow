@@ -128,7 +128,7 @@ the reduced sum of `weights`. In addition to performing the updates,
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -176,7 +176,7 @@ In addition to performing the updates, `update_op` also returns the
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op`
     should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -227,7 +227,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -280,7 +280,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -302,7 +302,7 @@ values in `ignore_mask` are `False`. In addition to performing the updates,
 
 - - -
 
-### `tf.contrib.metrics.streaming_auc(predictions, labels, ignore_mask=None, num_thresholds=200, metrics_collections=None, updates_collections=None, curve='ROC', name=None)` {#streaming_auc}
+### `tf.contrib.metrics.streaming_auc(predictions, labels, weights=None, num_thresholds=200, metrics_collections=None, updates_collections=None, curve='ROC', name=None)` {#streaming_auc}
 
 Computes the approximate AUC via a Riemann sum.
 
@@ -321,13 +321,12 @@ recall values (computed using the afformentioned variables). The
 numbers of thresholds more closely approximating the true AUC.
 
 To faciliate the estimation of the AUC over a stream of data, the function
-creates an `update_op` operation whose behavior is dependent on the value of
-`ignore_mask`. If `ignore_mask` is None, then `update_op` increments the
+creates an `update_op` operation. `update_op` increments the
 `true_positives`, `true_negatives`, `false_positives` and `false_negatives`
-counts with the number of each found in the current `predictions` and `labels`
-`Tensors`. If `ignore_mask` is not `None`, then the increment is performed
-using only the elements of `predictions` and `labels` whose corresponding
-value in `ignore_mask` is `False`. In addition to performing the updates,
+counts with the weighted number of each found in the current `predictions`
+and `labels` `Tensors`. If `weights` is `None`, it is assumed that all
+entries have weight 1. Note that a weight of 0 can be used to effectively
+mask out and ignore specific entries. In addition to performing the updates,
 `update_op` also returns the `auc`.
 
 ##### Args:
@@ -336,7 +335,8 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 *  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A binary `Tensor` whose shape matches `predictions`.
-*  <b>`ignore_mask`</b>: An optional, binary tensor whose size matches `predictions`.
+*  <b>`weights`</b>: An optional, floating point `Tensor` of same shape as
+    `predictions`.
 *  <b>`num_thresholds`</b>: The number of thresholds to use when discretizing the roc
     curve.
 *  <b>`metrics_collections`</b>: An optional list of collections that `auc` should be
@@ -346,7 +346,7 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 *  <b>`curve`</b>: Specifies the name of the curve to be computed, 'ROC' [default] or
   'PR' for the Precision-Recall-curve.
 
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -360,7 +360,7 @@ value in `ignore_mask` is `False`. In addition to performing the updates,
 
 
 *  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
-    `ignore_mask` is not `None` and its shape doesn't match `predictions` or
+    `weights` is not `None` and its shape doesn't match `predictions` or
     if either `metrics_collections` or `updates_collections` are not a list or
     tuple.
 
@@ -401,7 +401,7 @@ recall value.
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
     added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -453,7 +453,7 @@ value.
     `mean_absolute_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -505,7 +505,7 @@ calculated from it.
     should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
     added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -556,7 +556,7 @@ addition to performing the updates, `update_op` also returns the
     `mean_relative_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -607,7 +607,7 @@ addition to performing the updates, `update_op` also returns the
     `mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -658,7 +658,7 @@ also returns the `root_mean_squared_error` value.
     `root_mean_squared_error` should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
     be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -709,7 +709,7 @@ and `weights` and increments `count` with the reduced sum of weights.
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
     ops should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -759,7 +759,7 @@ with the number of elements of `ignore_mask` that are False.
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
     ops should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 
@@ -775,6 +775,65 @@ with the number of elements of `ignore_mask` that are False.
 *  <b>`ValueError`</b>: If `ignore_mask` is not None and its shape doesn't match `values
     or if either `metrics_collections` or `updates_collections` are supplied
     but are not a list or tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_sensitivity_at_specificity(predictions, labels, specificity, weights=None, num_thresholds=200, metrics_collections=None, updates_collections=None, name=None)` {#streaming_sensitivity_at_specificity}
+
+Computes the the specificity at a given sensitivity.
+
+The `streaming_sensitivity_at_specificity` function creates four local
+variables, `true_positives`, `true_negatives`, `false_positives` and
+`false_negatives` that are used to compute the sensitivity at the given
+specificity value. The threshold for the given specificity value is computed
+and used to evaluate the corresponding sensitivity.
+
+To faciliate the estimation of the metric over a stream of data, the function
+creates an `update_op` operation. `update_op` increments the
+`true_positives`, `true_negatives`, `false_positives` and `false_negatives`
+counts with the weighted number of each found in the current `predictions`
+and `labels` `Tensors`. If `weights` is `None`, it is assumed that all
+entries have weight 1. Note that a weight of 0 can be used to effectively
+mask out and ignore specific entries. In addition to performing the updates,
+`update_op` also returns the `sensitivity`.
+
+For additional information about specificity and sensitivity, see the
+following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+
+##### Args:
+
+
+*  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
+    are in the range `[0, 1]`.
+*  <b>`labels`</b>: A binary `Tensor` whose shape matches `predictions`.
+*  <b>`specificity`</b>: A scalar value in range `[0, 1]`.
+*  <b>`weights`</b>: An optional, floating point `Tensor` of same shape as
+    `predictions`.
+*  <b>`num_thresholds`</b>: The number of thresholds to use for matching the given
+    specificity.
+*  <b>`metrics_collections`</b>: An optional list of collections that `sensitivity`
+    should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
+    be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`sensitivity`</b>: A scalar tensor representing the sensitivity at the given
+    `specificity` value.
+*  <b>`update_op`</b>: An operation that increments the `true_positives`,
+    `true_negatives`, `false_positives` and `false_negatives` variables
+    appropriately and whose value matches `sensitivity`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
+    `weights` is not `None` and its shape doesn't match `predictions` or
+    `specificity` is not between 0 and 1 or if either `metrics_collections` or
+    `updates_collections` are not a list or tuple.
 
 
 - - -
@@ -901,6 +960,66 @@ utilizes three steps.
 *  <b>`update_op`</b>: `Operation` that increments `true_positives` and
     `false_negatives` variables appropriately, and whose value matches
     `recall`.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_specificity_at_sensitivity(predictions, labels, sensitivity, weights=None, num_thresholds=200, metrics_collections=None, updates_collections=None, name=None)` {#streaming_specificity_at_sensitivity}
+
+Computes the the specificity at a given sensitivity.
+
+The `streaming_specificity_at_sensitivity` function creates four local
+variables, `true_positives`, `true_negatives`, `false_positives` and
+`false_negatives` that are used to compute the specificity at the given
+sensitivity value. The threshold for the given sensitivity value is computed
+and used to evaluate the corresponding specificity.
+
+To faciliate the estimation of the metric over a stream of data, the function
+creates an `update_op` operation. `update_op` increments the
+`true_positives`, `true_negatives`, `false_positives` and `false_negatives`
+counts with the weighted number of each found in the current `predictions`
+and `labels` `Tensors`. If `weights` is `None`, it is assumed that all
+entries have weight 1. Note that a weight of 0 can be used to effectively
+mask out and ignore specific entries. In addition to performing the updates,
+`update_op` also returns the `specificity`.
+
+For additional information about specificity and sensitivity, see the
+following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+
+##### Args:
+
+
+*  <b>`predictions`</b>: A floating point `Tensor` of arbitrary shape and whose values
+    are in the range `[0, 1]`.
+*  <b>`labels`</b>: A binary `Tensor` whose shape matches `predictions`.
+*  <b>`sensitivity`</b>: A scalar value in range `[0, 1]`.
+*  <b>`weights`</b>: An optional, floating point `Tensor` of same shape as
+    `predictions`.
+*  <b>`num_thresholds`</b>: The number of thresholds to use for matching the given
+    sensitivity.
+*  <b>`metrics_collections`</b>: An optional list of collections that `specificity`
+    should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections that `update_op` should
+    be added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`specificity`</b>: A scalar tensor representing the specificity at the given
+    `specificity` value.
+*  <b>`update_op`</b>: An operation that increments the `true_positives`,
+    `true_negatives`, `false_positives` and `false_negatives` variables
+    appropriately and whose value matches `specificity`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the shape of `predictions` and `labels` do not match or if
+    `weights` is not `None` and its shape doesn't match `predictions` or
+    `sensitivity` is not between 0 and 1 or if either `metrics_collections` or
+    `updates_collections` are not a list or tuple.
+
 
 
 - - -

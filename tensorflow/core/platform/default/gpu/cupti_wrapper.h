@@ -21,7 +21,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "cuda/extras/CUPTI/include/cupti.h"
 
 namespace perftools {
 namespace gputools {

@@ -37,6 +37,7 @@ from tensorflow.python.ops.gen_parsing_ops import *
 
 
 ops.NoGradient("DecodeRaw")
+ops.NoGradient("ParseTensor")
 ops.NoGradient("StringToNumber")
 
 
@@ -348,7 +349,7 @@ def _parse_example_raw(serialized,
     ValueError: If sparse and dense key sets intersect, or input lengths do not
       match up.
   """
-  with ops.op_scope([serialized, names], name, "ParseExample"):
+  with ops.name_scope(name, "ParseExample", [serialized, names]):
     names = [] if names is None else names
     dense_defaults = {} if dense_defaults is None else dense_defaults
     sparse_keys = [] if sparse_keys is None else sparse_keys
@@ -483,7 +484,7 @@ def _parse_single_example_raw(serialized,
   Raises:
     ValueError: if any feature is invalid.
   """
-  with ops.op_scope([serialized, names], name, "ParseSingleExample"):
+  with ops.name_scope(name, "ParseSingleExample", [serialized, names]):
     serialized = ops.convert_to_tensor(serialized)
     serialized_shape = serialized.get_shape()
     if serialized_shape.ndims is not None:
@@ -727,7 +728,7 @@ def _parse_single_sequence_example_raw(serialized,
       feature_list_dense_defaults is not None.
     TypeError: if feature_list_dense_defaults is not either None or a dict.
   """
-  with ops.op_scope([serialized], name, "ParseSingleSequenceExample"):
+  with ops.name_scope(name, "ParseSingleSequenceExample", [serialized]):
     context_dense_defaults = (
         {} if context_dense_defaults is None else context_dense_defaults)
     context_sparse_keys = (
@@ -920,6 +921,7 @@ def _ParseSingleSequenceExampleShape(op):  # pylint: disable=invalid-name
 
 
 ops.RegisterShape("DecodeJSONExample")(common_shapes.unchanged_shape)
+ops.RegisterShape("ParseTensor")(common_shapes.unknown_shape)
 ops.RegisterShape("StringToNumber")(common_shapes.unchanged_shape)
 
 

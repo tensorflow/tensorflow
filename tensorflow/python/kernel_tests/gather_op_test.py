@@ -57,26 +57,29 @@ class GatherTest(tf.test.TestCase):
 
   def testHigherRank(self):
     np.random.seed(1)
-    shape = (4, 3, 2)
-    params = np.random.randn(*shape)
-    indices = np.random.randint(shape[0], size=15).reshape(3, 5)
-    with self.test_session(use_gpu=self.use_gpu):
-      tf_params = tf.constant(params)
-      tf_indices = tf.constant(indices)
-      gather = tf.gather(tf_params, tf_indices)
-      self.assertAllEqual(params[indices], gather.eval())
-      self.assertEqual(indices.shape + params.shape[1:], gather.get_shape())
-      # Test gradients
-      gather_grad = np.random.randn(*gather.get_shape().as_list())
-      params_grad, indices_grad = tf.gradients(gather, [tf_params, tf_indices],
-                                               gather_grad)
-      self.assertEqual(indices_grad, None)
-      self.assertEqual(type(params_grad), tf.IndexedSlices)
-      params_grad = tf.convert_to_tensor(params_grad)
-      correct_params_grad = np.zeros(shape)
-      for i, g in zip(indices.ravel(), gather_grad.reshape((15,) + shape[1:])):
-        correct_params_grad[i] += g
-      self.assertAllEqual(correct_params_grad, params_grad.eval())
+    # We check that scalar and empty shapes work as well
+    for shape in (7, 0), (4, 3, 2):
+      for indices_shape in (), (0,), (3, 0), (3, 5):
+        params = np.random.randn(*shape)
+        indices = np.random.randint(shape[0], size=indices_shape)
+        with self.test_session(use_gpu=self.use_gpu):
+          tf_params = tf.constant(params)
+          tf_indices = tf.constant(indices)
+          gather = tf.gather(tf_params, tf_indices)
+          self.assertAllEqual(params[indices], gather.eval())
+          self.assertEqual(indices.shape + params.shape[1:], gather.get_shape())
+          # Test gradients
+          gather_grad = np.random.randn(*gather.get_shape().as_list())
+          params_grad, indices_grad = tf.gradients(
+              gather, [tf_params, tf_indices], gather_grad)
+          self.assertEqual(indices_grad, None)
+          self.assertEqual(type(params_grad), tf.IndexedSlices)
+          params_grad = tf.convert_to_tensor(params_grad)
+          correct_params_grad = np.zeros(shape)
+          for i, g in zip(indices.flat,
+                          gather_grad.reshape((indices.size,) + shape[1:])):
+            correct_params_grad[i] += g
+          self.assertAllClose(correct_params_grad, params_grad.eval())
 
   def testUnknownIndices(self):
     params = tf.constant([[0, 1, 2]])
@@ -91,6 +94,15 @@ class GatherTest(tf.test.TestCase):
       gather = tf.gather(params, indices)
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
         gather.eval()
+
+  def testEmptySlices(self):
+    with self.test_session(use_gpu=self.use_gpu):
+      for dtype in np.float32, np.float64:
+        for itype in np.int32, np.int64:
+          params = np.zeros((7, 0), dtype=dtype)
+          indices = np.array([3, 4], dtype=itype)
+          gather = tf.gather(params, indices)
+          self.assertAllEqual(gather.eval(), np.zeros((2, 0)))
 
 
 class GatherGpuTest(GatherTest):

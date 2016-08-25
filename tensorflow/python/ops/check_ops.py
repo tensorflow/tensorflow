@@ -129,7 +129,7 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):
     Op raising `InvalidArgumentError` unless `x` is all negative.
   """
   message = message or ''
-  with ops.op_scope([x, data], name, 'assert_negative'):
+  with ops.name_scope(name, 'assert_negative', [x, data]):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
       data = [
@@ -169,7 +169,7 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):
     Op raising `InvalidArgumentError` unless `x` is all positive.
   """
   message = message or ''
-  with ops.op_scope([x, data], name, 'assert_positive'):
+  with ops.name_scope(name, 'assert_positive', [x, data]):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
       data = [
@@ -210,7 +210,7 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
     Op raising `InvalidArgumentError` unless `x` is all non-negative.
   """
   message = message or ''
-  with ops.op_scope([x, data], name, 'assert_non_negative'):
+  with ops.name_scope(name, 'assert_non_negative', [x, data]):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
       data = [
@@ -252,7 +252,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
     Op raising `InvalidArgumentError` unless `x` is all non-positive.
   """
   message = message or ''
-  with ops.op_scope([x, data], name, 'assert_non_positive'):
+  with ops.name_scope(name, 'assert_non_positive', [x, data]):
     x = ops.convert_to_tensor(x, name='x')
     if data is None:
       data = [
@@ -295,7 +295,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     Op that raises `InvalidArgumentError` if `x == y` is False.
   """
   message = message or ''
-  with ops.op_scope([x, y, data], name, 'assert_equal'):
+  with ops.name_scope(name, 'assert_equal', [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
     if data is None:
@@ -341,7 +341,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
     Op that raises `InvalidArgumentError` if `x < y` is False.
   """
   message = message or ''
-  with ops.op_scope([x, y, data], name, 'assert_less'):
+  with ops.name_scope(name, 'assert_less', [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
     if data is None:
@@ -387,7 +387,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
     Op that raises `InvalidArgumentError` if `x <= y` is False.
   """
   message = message or ''
-  with ops.op_scope([x, y, data], name, 'assert_less_equal'):
+  with ops.name_scope(name, 'assert_less_equal', [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
     if data is None:
@@ -423,7 +423,7 @@ def _assert_rank_condition(x, rank, static_condition, dynamic_condition, data,
   Raises:
     ValueError:  If static checks determine `x` fails static_condition.
   """
-  with ops.op_scope([x], name, 'assert_rank'):
+  with ops.name_scope(name, 'assert_rank', [x]):
     x = ops.convert_to_tensor(x, name='x')
     rank = ops.convert_to_tensor(rank, name='rank')
 
@@ -602,7 +602,7 @@ def assert_integer(x, message=None, name=None):
     A `no_op` that does nothing.  Type can be determined statically.
   """
   message = message or ''
-  with ops.op_scope([x], name, 'assert_integer'):
+  with ops.name_scope(name, 'assert_integer', [x]):
     x = ops.convert_to_tensor(x, name='x')
     if not x.dtype.is_integer:
       err_msg = (
@@ -629,7 +629,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
     A `no_op` that does nothing.  Type can be determined statically.
   """
   message = message or ''
-  with ops.op_scope([tensor], name, 'assert_type'):
+  with ops.name_scope(name, 'assert_type', [tensor]):
     tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
       raise TypeError(
@@ -677,7 +677,7 @@ def is_non_decreasing(x, name=None):
   Raises:
     TypeError: if `x` is not a numeric tensor.
   """
-  with ops.op_scope([x], name, 'is_non_decreasing'):
+  with ops.name_scope(name, 'is_non_decreasing', [x]):
     diff = _get_diff_for_monotonic_comparison(x)
     # When len(x) = 1, diff = [], less_equal = [], and reduce_all([]) = True.
     zero = ops.convert_to_tensor(0, dtype=diff.dtype)
@@ -704,7 +704,7 @@ def is_strictly_increasing(x, name=None):
   Raises:
     TypeError: if `x` is not a numeric tensor.
   """
-  with ops.op_scope([x], name, 'is_strictly_increasing'):
+  with ops.name_scope(name, 'is_strictly_increasing', [x]):
     diff = _get_diff_for_monotonic_comparison(x)
     # When len(x) = 1, diff = [], less = [], and reduce_all([]) = True.
     zero = ops.convert_to_tensor(0, dtype=diff.dtype)

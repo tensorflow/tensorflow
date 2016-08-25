@@ -1153,17 +1153,18 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testStringFeedWithUnicode(self):
     with session.Session():
-      c_list = [u'\n\x01\x00', u'\n\x00\x01']
-      feed_t = array_ops.placeholder(dtype=dtypes.string, shape=[2])
+      c_list = [u'\n\x01\x00', u'\n\x00\x01',
+                u'\u26a3 unicode', u'\U0001f60e deal with it']
+      feed_t = array_ops.placeholder(dtype=dtypes.string, shape=[len(c_list)])
       c = array_ops.identity(feed_t)
 
       out = c.eval(feed_dict={feed_t: c_list})
-      self.assertEqual(c_list[0], out[0].decode('utf-8'))
-      self.assertEqual(c_list[1], out[1].decode('utf-8'))
+      for i in range(len(c_list)):
+        self.assertEqual(c_list[i], out[i].decode('utf-8'))
 
       out = c.eval(feed_dict={feed_t: np.array(c_list, dtype=np.object)})
-      self.assertEqual(c_list[0], out[0].decode('utf-8'))
-      self.assertEqual(c_list[1], out[1].decode('utf-8'))
+      for i in range(len(c_list)):
+        self.assertEqual(c_list[i], out[i].decode('utf-8'))
 
   def testInvalidTargetFails(self):
     with self.assertRaisesRegexp(

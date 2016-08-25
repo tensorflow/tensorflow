@@ -78,6 +78,10 @@ struct CompositeOpScopes;
 // will be used to indicate errors by Op-constructor functions called on any
 // child scope. The Op-constructor functions have to check the scope's status by
 // calling the ok() method before proceeding to construct the op.
+//
+// Thread safety:
+// A `Scope` object is NOT thread-safe. Threads cannot concurrently call
+// op-constructor functions on the same `Scope` object.
 class Scope {
  public:
   // The following functions are for users making graphs. They return brand new
@@ -157,6 +161,8 @@ class Scope {
   bool ok() const { return status_->ok(); }
 
   Graph* graph() const { return graph_.get(); }
+
+  std::shared_ptr<Graph> graph_as_shared_ptr() const { return graph_; }
 
   Status status() const { return *status_; }
 

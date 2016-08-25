@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=line-too-long
-
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
@@ -26,8 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-
-# pylint: enable=line-too-long
 
 
 class Multinomial(distribution.Distribution):
@@ -140,13 +136,13 @@ class Multinomial(distribution.Distribution):
     self._logits, self._p = distribution_util.get_logits_and_prob(
         name=name, logits=logits, p=p, validate_args=validate_args,
         multidimensional=True)
-    with ops.op_scope([n, self._p], name):
+    with ops.name_scope(name, values=[n, self._p]):
       with ops.control_dependencies([
           check_ops.assert_non_negative(
               n, message="n has negative components."),
           distribution_util.assert_integer_form(
-              n, message="n has non-integer components."
-          )] if validate_args else []):
+              n, message="n has non-integer components.")
+      ] if validate_args else []):
         self._n = array_ops.identity(n, name="convert_n")
         self._name = name
 
@@ -211,7 +207,7 @@ class Multinomial(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._broadcast_shape], name):
+      with ops.name_scope(name, values=[self._broadcast_shape]):
         return array_ops.shape(self._broadcast_shape)
 
   def get_batch_shape(self):
@@ -234,7 +230,7 @@ class Multinomial(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._mean], name):
+      with ops.name_scope(name, values=[self._mean]):
         return array_ops.gather(array_ops.shape(self._mean),
                                 [array_ops.rank(self._mean) - 1])
 
@@ -256,7 +252,7 @@ class Multinomial(distribution.Distribution):
   def variance(self, name="variance"):
     """Variance of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p, self._mean], name):
+      with ops.name_scope(name, values=[self._n, self._p, self._mean]):
         p = array_ops.expand_dims(
             self._p * array_ops.expand_dims(
                 array_ops.ones_like(self._n), -1), -1)
@@ -288,7 +284,7 @@ class Multinomial(distribution.Distribution):
     n = self._n
     p = self._p
     with ops.name_scope(self.name):
-      with ops.op_scope([n, p, counts], name):
+      with ops.name_scope(name, values=[n, p, counts]):
         counts = self._check_counts(counts)
 
         prob_prob = math_ops.reduce_sum(counts * math_ops.log(self._p),

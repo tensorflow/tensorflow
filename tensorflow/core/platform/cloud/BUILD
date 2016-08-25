@@ -38,6 +38,7 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":retrying_file_system",
+        ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
@@ -83,10 +84,10 @@ cc_library(
         "google_auth_provider.h",
     ],
     deps = [
-        ":base64",
         ":http_request",
         ":oauth_client",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -100,24 +101,11 @@ cc_library(
         "oauth_client.h",
     ],
     deps = [
-        ":base64",
         ":http_request",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "@boringssl_git//:crypto",
         "@jsoncpp_git//:jsoncpp",
-    ],
-)
-
-cc_library(
-    name = "base64",
-    srcs = [
-        "base64.cc",
-    ],
-    hdrs = [
-        "base64.h",
-    ],
-    deps = [
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -128,6 +116,20 @@ cc_library(
     ],
     hdrs = [
         "retrying_file_system.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "time_util",
+    srcs = [
+        "time_util.cc",
+    ],
+    hdrs = [
+        "time_util.h",
     ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
@@ -165,7 +167,6 @@ tf_cc_test(
         "testdata/service_account_public_key.txt",
     ],
     deps = [
-        ":base64",
         ":http_request_fake",
         ":oauth_client",
         "//tensorflow/core:lib",
@@ -177,18 +178,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "base64_test",
-    size = "small",
-    deps = [
-        ":base64",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "google_auth_provider_test",
     size = "small",
     data = [
@@ -196,7 +185,6 @@ tf_cc_test(
         "testdata/service_account_credentials.json",
     ],
     deps = [
-        ":base64",
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
@@ -214,6 +202,16 @@ tf_cc_test(
         ":retrying_file_system",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "time_util_test",
+    size = "small",
+    deps = [
+        ":time_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

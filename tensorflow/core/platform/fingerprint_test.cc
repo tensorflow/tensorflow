@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/fingerprint.h"
 
 #include <unordered_set>
-#include "tensorflow/core/platform/fingerprint.h"
+
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -44,6 +45,28 @@ TEST(Fingerprint128, IsForeverFrozen) {
 TEST(Fingerprint128, Fprint128Hasher) {
   // Tests that this compiles:
   const std::unordered_set<Fprint128, Fprint128Hasher> map = {{1, 2}, {3, 4}};
+}
+
+TEST(FingerprintCat64, IsForeverFrozen) {
+  EXPECT_EQ(16877292868973613377ULL,
+            FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World")));
+  // Do not expect commutativity.
+  EXPECT_EQ(7158413233176775252ULL,
+            FingerprintCat64(Fingerprint64("World"), Fingerprint64("Hello")));
+}
+
+// Hashes don't change.
+TEST(FingerprintCat64, Idempotence) {
+  const uint64 orig =
+      FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World"));
+  EXPECT_EQ(orig,
+            FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World")));
+  EXPECT_NE(FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("Hi")),
+            FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World")));
+
+  // Go back to the first test data ('orig') and make sure it hasn't changed.
+  EXPECT_EQ(orig,
+            FingerprintCat64(Fingerprint64("Hello"), Fingerprint64("World")));
 }
 
 }  // namespace

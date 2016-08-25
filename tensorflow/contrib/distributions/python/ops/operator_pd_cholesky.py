@@ -26,8 +26,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
-__all__ = ['OperatorPDCholesky', 'batch_matrix_diag_transform']
-
 
 class OperatorPDCholesky(operator_pd.OperatorPDBase):
   """Class representing a (batch) of positive definite matrices `A`.
@@ -84,7 +82,7 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     self._verify_pd = verify_pd
     self._name = name
     with ops.name_scope(name):
-      with ops.op_scope([chol], 'init'):
+      with ops.name_scope('init', values=[chol]):
         self._chol = self._check_chol(chol)
 
   @property
@@ -190,64 +188,3 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
   def _to_dense(self):
     chol = array_ops.batch_matrix_band_part(self._chol, -1, 0)
     return math_ops.batch_matmul(chol, chol, adj_y=True)
-
-
-def batch_matrix_diag_transform(matrix, transform=None, name=None):
-  """Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
-
-  Create a trainable covariance defined by a Cholesky factor:
-
-  ```python
-  # Transform network layer into 2 x 2 array.
-  matrix_values = tf.contrib.layers.fully_connected(activations, 4)
-  matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
-
-  # Make the diagonal positive.  If the upper triangle was zero, this would be a
-  # valid Cholesky factor.
-  chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
-
-  # OperatorPDCholesky ignores the upper triangle.
-  operator = OperatorPDCholesky(chol)
-  ```
-
-  Example of heteroskedastic 2-D linear regression.
-
-  ```python
-  # Get a trainable Cholesky factor.
-  matrix_values = tf.contrib.layers.fully_connected(activations, 4)
-  matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
-  chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
-
-  # Get a trainable mean.
-  mu = tf.contrib.layers.fully_connected(activations, 2)
-
-  # This is a fully trainable multivariate normal!
-  dist = tf.contrib.distributions.MVNCholesky(mu, chol)
-
-  # Standard log loss.  Minimizing this will "train" mu and chol, and then dist
-  # will be a distribution predicting labels as multivariate Gaussians.
-  loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
-  ```
-
-  Args:
-    matrix:  Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
-      equal.
-    transform:  Element-wise function mapping `Tensors` to `Tensors`.  To
-      be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
-      unchanged.  Defaults to `None`.
-    name:  A name to give created ops.
-      Defaults to "batch_matrix_diag_transform".
-
-  Returns:
-    A `Tensor` with same shape and `dtype` as `matrix`.
-  """
-  with ops.op_scope([matrix], name, 'batch_matrix_diag_transform'):
-    matrix = ops.convert_to_tensor(matrix, name='matrix')
-    if transform is None:
-      return matrix
-    # Replace the diag with transformed diag.
-    diag = array_ops.batch_matrix_diag_part(matrix)
-    transformed_diag = transform(diag)
-    transformed_mat = array_ops.batch_matrix_set_diag(matrix, transformed_diag)
-
-  return transformed_mat

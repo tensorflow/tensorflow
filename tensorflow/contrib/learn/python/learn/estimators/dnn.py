@@ -19,25 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import layers
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixin
 from tensorflow.python.ops import nn
-from tensorflow.python.platform import tf_logging as logging
-
-
-# TODO(b/29580537): Replace with @changing decorator.
-def _changing(feature_columns):
-  if feature_columns is not None:
-    return
-  logging.warn(
-      "Change warning: `feature_columns` will be required after 2016-08-01.\n"
-      "Instructions for updating:\n"
-      "Pass `tf.contrib.learn.infer_real_valued_columns_from_input(x)` or"
-      " `tf.contrib.learn.infer_real_valued_columns_from_input_fn(input_fn)`"
-      " as `feature_columns`, where `x` or `input_fn` is your argument to"
-      " `fit`, `evaluate`, or `predict`.")
 
 
 class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
@@ -100,7 +85,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 
   def __init__(self,
                hidden_units,
-               feature_columns=None,
+               feature_columns,
                model_dir=None,
                n_classes=2,
                weight_column_name=None,
@@ -144,7 +129,6 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     Returns:
       A `DNNClassifier` estimator.
     """
-    _changing(feature_columns)
     super(DNNClassifier, self).__init__(
         model_dir=model_dir,
         n_classes=n_classes,
@@ -163,34 +147,6 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     self.dropout = dropout
     self.hidden_units = hidden_units
     self._feature_columns_inferred = False
-
-  # TODO(b/29580537): Remove feature_columns inference.
-  def _validate_dnn_feature_columns(self, features):
-    if self._dnn_feature_columns is None:
-      self._dnn_feature_columns = layers.infer_real_valued_columns(features)
-      self._feature_columns_inferred = True
-    elif self._feature_columns_inferred:
-      this_dict = {c.name: c for c in self._dnn_feature_columns}
-      that_dict = {
-          c.name: c for c in layers.infer_real_valued_columns(features)
-      }
-      if this_dict != that_dict:
-        raise ValueError(
-            "Feature columns, expected %s, got %s.", (this_dict, that_dict))
-
-  def _get_train_ops(self, features, targets):
-    """See base class."""
-    self._validate_dnn_feature_columns(features)
-    return super(DNNClassifier, self)._get_train_ops(features, targets)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    self._validate_dnn_feature_columns(features)
-    return super(DNNClassifier, self)._get_eval_ops(features, targets, metrics)
-
-  def _get_predict_ops(self, features):
-    """See base class."""
-    self._validate_dnn_feature_columns(features)
-    return super(DNNClassifier, self)._get_predict_ops(features)
 
   @property
   def weights_(self):
@@ -261,7 +217,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
 
   def __init__(self,
                hidden_units,
-               feature_columns=None,
+               feature_columns,
                model_dir=None,
                weight_column_name=None,
                optimizer=None,
@@ -302,7 +258,6 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `DNNRegressor` estimator.
     """
-    _changing(feature_columns)
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
@@ -320,34 +275,6 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     self.dropout = dropout
     self.hidden_units = hidden_units
     self._feature_columns_inferred = False
-
-  # TODO(b/29580537): Remove feature_columns inference.
-  def _validate_dnn_feature_columns(self, features):
-    if self._dnn_feature_columns is None:
-      self._dnn_feature_columns = layers.infer_real_valued_columns(features)
-      self._feature_columns_inferred = True
-    elif self._feature_columns_inferred:
-      this_dict = {c.name: c for c in self._dnn_feature_columns}
-      that_dict = {
-          c.name: c for c in layers.infer_real_valued_columns(features)
-      }
-      if this_dict != that_dict:
-        raise ValueError(
-            "Feature columns, expected %s, got %s.", (this_dict, that_dict))
-
-  def _get_train_ops(self, features, targets):
-    """See base class."""
-    self._validate_dnn_feature_columns(features)
-    return super(DNNRegressor, self)._get_train_ops(features, targets)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    self._validate_dnn_feature_columns(features)
-    return super(DNNRegressor, self)._get_eval_ops(features, targets, metrics)
-
-  def _get_predict_ops(self, features):
-    """See base class."""
-    self._validate_dnn_feature_columns(features)
-    return super(DNNRegressor, self)._get_predict_ops(features)
 
   @property
   def weights_(self):

@@ -80,6 +80,7 @@ Status DoTranspose<Device>(const Device& d, const Tensor& in,
       break;
 
     case DT_BFLOAT16:
+    case DT_HALF:
     case DT_INT16:
     case DT_QINT16:
     case DT_QUINT16:

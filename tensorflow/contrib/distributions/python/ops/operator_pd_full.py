@@ -18,13 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import math_ops
 
 
 __all__ = [
@@ -82,25 +79,13 @@ class OperatorPDFull(operator_pd_cholesky.OperatorPDCholesky):
       name:  A name to prepend to all ops created by this class.
     """
     with ops.name_scope(name):
-      with ops.op_scope([matrix], 'init'):
+      with ops.name_scope('init', values=[matrix]):
         matrix = ops.convert_to_tensor(matrix)
         # Check symmetric here.  Positivity will be verified by checking the
         # diagonal of the Cholesky factor inside the parent class.  The Cholesky
         # factorization .batch_cholesky() does not always fail for non PSD
         # matrices, so don't rely on that.
         if verify_pd:
-          matrix = _check_symmetric(matrix)
+          matrix = distribution_util.assert_symmetric(matrix)
         chol = linalg_ops.batch_cholesky(matrix)
         super(OperatorPDFull, self).__init__(chol, verify_pd=verify_pd)
-
-
-def _check_symmetric(matrix):
-  rank = array_ops.rank(matrix)
-  # Create permutation to permute last two dimensions
-  first_dims = math_ops.range(0, rank - 2)
-  flipped_last_dims = array_ops.pack([rank - 1, rank - 2])
-  perm = array_ops.concat(0, (first_dims, flipped_last_dims))
-  matrix_t = array_ops.transpose(matrix, perm=perm)
-
-  return control_flow_ops.with_dependencies(
-      [check_ops.assert_equal(matrix, matrix_t)], matrix)

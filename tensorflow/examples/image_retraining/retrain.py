@@ -80,7 +80,10 @@ import tensorflow as tf
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import compat
 
+
+import struct
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -224,7 +227,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
       # To do that, we need a stable way of deciding based on just the file name
       # itself, so we do a hash of that and then use that to generate a
       # probability value that we use to assign it.
-      hash_name_hashed = hashlib.sha1(hash_name.encode('utf-8')).hexdigest()
+      hash_name_hashed = hashlib.sha1(compat.as_bytes(hash_name)).hexdigest()
       percentage_hash = (int(hash_name_hashed, 16) % (65536)) * (100 / 65535.0)
       if percentage_hash < validation_percentage:
         validation_images.append(base_name)
@@ -369,6 +372,38 @@ def ensure_dir_exists(dir_name):
   """
   if not os.path.exists(dir_name):
     os.makedirs(dir_name)
+
+
+def write_list_of_floats_to_file(list_of_floats , file_path):
+  """Writes a given list of floats to a binary file.
+
+  Args:
+    list_of_floats: List of floats we want to write to a file.
+    file_path: Path to a file where list of floats will be stored.
+
+  """
+
+  s = struct.pack('d' * BOTTLENECK_TENSOR_SIZE, *list_of_floats)
+  with open(file_path, 'wb') as f:
+    f.write(s)
+
+
+def read_list_of_floats_from_file(file_path):
+  """Reads list of floats from a given file.
+
+  Args:
+    file_path: Path to a file where list of floats was stored.
+  Returns:
+    Array of bottleneck values (list of floats).
+
+  """
+
+  with open(file_path, 'rb') as f:
+    s = struct.unpack('d' * BOTTLENECK_TENSOR_SIZE, f.read())
+    return list(s)
+
+
+bottleneck_path_2_bottleneck_values = {}
 
 
 def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
@@ -818,7 +853,7 @@ def main(_):
 
   # Run the training for as many cycles as requested on the command line.
   for i in range(FLAGS.how_many_training_steps):
-    # Get a catch of input bottleneck values, either calculated fresh every time
+    # Get a batch of input bottleneck values, either calculated fresh every time
     # with distortions applied, or from the cache stored on disk.
     if do_distort_images:
       train_bottlenecks, train_ground_truth = get_random_distorted_bottlenecks(

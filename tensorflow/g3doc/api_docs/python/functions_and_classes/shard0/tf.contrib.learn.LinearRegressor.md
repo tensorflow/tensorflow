@@ -44,7 +44,7 @@ Input of `fit` and `evaluate` should have following features,
       input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns=None, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -85,6 +85,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.config` {#LinearRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -109,6 +116,26 @@ See `Evaluable`.
 *  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
       `input_fn` or `feed_fn` is provided.
       Or if `metrics` is not `None` or `dict`.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
+
+Exports inference graph into given dir.
+
+##### Args:
+
+
+*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
+    and checkpoints.
+*  <b>`signature_fn`</b>: Function that returns a default signature and a named
+    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+    for features and `Tensor` or `dict` of `Tensor`s for predictions.
+*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
+    into features that are then passed to the model.
+*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+*  <b>`exports_to_keep`</b>: Number of exports to keep.
 
 
 - - -
@@ -237,37 +264,38 @@ to converge, and you want to split up training into subparts.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#LinearRegressor.predict}
+#### `tf.contrib.learn.LinearRegressor.predict(*args, **kwargs)` {#LinearRegressor.predict}
 
-Returns predictions for given features.
+Returns predictions for given features. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
+Instructions for updating:
+The default behavior of predict() is changing. The default value for
+as_iterable will change to True, and then the flag will be removed
+altogether. The behavior of this flag is described below.
 
+    Args:
+      x: Matrix of shape [n_samples, n_features...]. Can be iterator that
+         returns arrays of features. The training input samples for fitting the
+         model. If set, `input_fn` must be `None`.
+      input_fn: Input function. If set, `x` and 'batch_size' must be `None`.
+      batch_size: Override default batch size. If set, 'input_fn' must be
+        'None'.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns all.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x` and 'batch_size' must be `None`.
-*  <b>`batch_size`</b>: Override default batch size. If set, 'input_fn' must be
-    'None'.
-*  <b>`outputs`</b>: list of `str`, name of the output to predict.
-    If `None`, returns all.
-*  <b>`as_iterable`</b>: If True, return an iterable which keeps yielding predictions
-    for each example until inputs are exhausted. Note: The inputs must
-    terminate if you want the iterable to terminate (e.g. be sure to pass
-    num_epochs=1 if you are using something like read_batch_features).
+    Returns:
+      A numpy array of predicted classes or regression values if the
+      constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
+      of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
+      predictions if as_iterable is True.
 
-##### Returns:
-
-  A numpy array of predicted classes or regression values if the
-  constructor's `model_fn` returns a `Tensor` for `predictions` or a `dict`
-  of numpy arrays if `model_fn` returns a `dict`. Returns an iterable of
-  predictions if as_iterable is True.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If x and input_fn are both provided or both `None`.
+    Raises:
+      ValueError: If x and input_fn are both provided or both `None`.
 
 
 - - -

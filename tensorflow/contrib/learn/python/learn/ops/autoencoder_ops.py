@@ -44,7 +44,7 @@ def dnn_autoencoder(
   Returns:
     Tensors for encoder and decoder.
   """
-  with vs.variable_op_scope([tensor_in], scope, "autoencoder"):
+  with vs.variable_scope(scope, "autoencoder", [tensor_in]):
     if add_noise is not None:
       tensor_in = add_noise(tensor_in)
     with vs.variable_scope("encoder"):

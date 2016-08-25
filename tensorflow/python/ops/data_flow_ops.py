@@ -22,6 +22,8 @@ from __future__ import print_function
 import collections
 import re
 
+import six
+
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
@@ -86,6 +88,18 @@ def _as_name_list(names, dtypes):
     raise ValueError("List of names must have the same length as the list "
                      "of dtypes")
   return list(names)
+
+
+def _shape_common(s1, s2):
+  """The greatest lower bound (ordered by specificity) TensorShape."""
+  s1 = tensor_shape.TensorShape(s1)
+  s2 = tensor_shape.TensorShape(s2)
+  if s1.ndims is None or s2.ndims is None or s1.ndims != s2.ndims:
+    return tensor_shape.unknown_shape()
+  d = [
+      d1 if d1 is not None and d1 == d2 else None
+      for (d1, d2) in zip(s1.as_list(), s2.as_list())]
+  return tensor_shape.TensorShape(d)
 
 
 # pylint: disable=protected-access
@@ -186,10 +200,13 @@ class QueueBase(object):
     if not all([names == q.names for q in queues[1:]]):
       raise TypeError("Queues do not have matching component names.")
 
+    queue_shapes = [q.shapes for q in queues]
+    reduced_shapes = [
+        six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)]
+
     queue_refs = [x.queue_ref for x in queues]
     selected_queue = control_flow_ops.ref_select(index, queue_refs)
-    # TODO(josh11b): Unify the shapes of the queues too?
-    return QueueBase(dtypes=dtypes, shapes=None, names=names,
+    return QueueBase(dtypes=dtypes, shapes=reduced_shapes, names=names,
                      queue_ref=selected_queue)
 
   @property
@@ -206,6 +223,11 @@ class QueueBase(object):
   def dtypes(self):
     """The list of dtypes for each component of a queue element."""
     return self._dtypes
+
+  @property
+  def shapes(self):
+    """The list of shapes for each component of a queue element."""
+    return self._shapes
 
   @property
   def names(self):
@@ -256,7 +278,7 @@ class QueueBase(object):
     return tensors
 
   def _scope_vals(self, vals):
-    """Return a list of values to pass to `op_scope()`.
+    """Return a list of values to pass to `name_scope()`.
 
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary.
@@ -294,8 +316,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a new tuple of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_enqueue" % self._name) as scope:
+    with ops.name_scope(name, "%s_enqueue" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -332,8 +354,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a batch of tuples of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_EnqueueMany" % self._name) as scope:
+    with ops.name_scope(name, "%s_EnqueueMany" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -595,7 +617,7 @@ class RandomShuffleQueue(QueueBase):
 
 
 class FIFOQueue(QueueBase):
-  """A queue implementation that dequeues elements in first-in-first out order.
+  """A queue implementation that dequeues elements in first-in first-out order.
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.
@@ -1130,6 +1152,7 @@ def _LookupTableFindShape(op):
 
 
 @ops.RegisterShape("LookupTableInsert")
+@ops.RegisterShape("LookupTableImport")
 def _LookupTableInsertShape(op):
   """Shape function for data_flow_ops._lookup_table_insert."""
   op.inputs[0].get_shape().merge_with(tensor_shape.scalar())

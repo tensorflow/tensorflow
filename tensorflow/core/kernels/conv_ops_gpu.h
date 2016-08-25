@@ -19,6 +19,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include <tuple>
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -26,8 +27,8 @@ namespace tensorflow {
 // TODO(zhengxq): move this to gpu_util.h. The use of such wrappers is wide
 // spread.
 template <typename T>
-perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
-                                                    uint64 size) {
+inline perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
+                                                           uint64 size) {
   perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory),
                                                 size * sizeof(T));
   perftools::gputools::DeviceMemory<T> typed(wrapped);

@@ -90,7 +90,7 @@ collection `GraphKeys.VARIABLES`. The convenience function
 `all_variables()` returns the contents of that collection.
 
 When building a machine learning model it is often convenient to distinguish
-betwen variables holding the trainable model parameters and other variables
+between variables holding the trainable model parameters and other variables
 such as a `global step` variable used to count training steps. To make this
 easier, the variable constructor supports a `trainable=<bool>` parameter. If
 `True`, the new variable is also added to the graph collection
@@ -147,10 +147,6 @@ variable to its initial value.
 *  <b>`dtype`</b>: If set, initial_value will be converted to the given type.
     If `None`, either the datatype will be kept (if `initial_value` is
     a Tensor), or `convert_to_tensor` will decide.
-
-##### Returns:
-
-  A Variable.
 
 ##### Raises:
 
@@ -627,7 +623,8 @@ variables if there are any, or an empty array if there are none.
 
 ##### Returns:
 
-  A 1-D tensor containing names of the unintialized variables, or an empty 1-D
+  A 1-D tensor containing names of the uninitialized variables, or an empty
+  1-D
   tensor if there are no variables or no uninitialized variables.
 
 
@@ -739,7 +736,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -780,8 +777,9 @@ checkpoints per device.
 ##### Args:
 
 
-*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names to
-    variables.  If `None`, defaults to the list of all variables.
+*  <b>`var_list`</b>: A list of `Variable`/`SaveableObject`, or a dictionary mapping
+    names to `SaveableObject`s. If `None`, defaults to the list of all
+    saveable objects.
 *  <b>`reshape`</b>: If `True`, allows restoring parameters from a checkpoint
     where the variables have a different shape.
 *  <b>`sharded`</b>: If `True`, shard the checkpoints, one per device.
@@ -800,6 +798,9 @@ checkpoints per device.
     `as_saver_def()` call of the `Saver` that was created for that `Graph`.
 *  <b>`builder`</b>: Optional `SaverBuilder` to use if a `saver_def` was not provided.
     Defaults to `BaseSaverBuilder()`.
+*  <b>`defer_build`</b>: If `True`, defer adding the save and restore ops to the
+    `build()` call. In that case `build()` should be called before
+    finalizing the graph or using the saver.
 
 ##### Raises:
 
@@ -851,6 +852,7 @@ path can be passed directly to a call to `restore()`.
 *  <b>`TypeError`</b>: If `sess` is not a `Session`.
 *  <b>`ValueError`</b>: If `latest_filename` contains path components, or if it
     collides with `save_path`.
+*  <b>`RuntimeError`</b>: If save and restore ops weren't built.
 
 
 - - -
@@ -897,21 +899,37 @@ You can pass any of the returned values to `restore()`.
 
 - - -
 
-#### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
+#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
 
-DEPRECATED: Use set_last_checkpoints_with_time.
-
-Sets the list of old checkpoint filenames.
+Sets the list of old checkpoint filenames and timestamps.
 
 ##### Args:
 
 
-*  <b>`last_checkpoints`</b>: A list of checkpoint filenames.
+*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
+    timestamps.
 
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: If last_checkpoints is not a list.
+*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+
+
+- - -
+
+#### `tf.train.Saver.recover_last_checkpoints(checkpoint_paths)` {#Saver.recover_last_checkpoints}
+
+Recovers the internal saver state after a crash.
+
+This method is useful for recovering the "self._last_checkpoints" state.
+
+Globs for the checkpoints pointed to by `checkpoint_paths`.  If the files
+exist, use their mtime as the checkpoint timestamp.
+
+##### Args:
+
+
+*  <b>`checkpoint_paths`</b>: a list of checkpoint paths.
 
 
 - - -
@@ -927,6 +945,13 @@ Generates a `SaverDef` representation of this saver.
 
 
 #### Other Methods
+- - -
+
+#### `tf.train.Saver.build()` {#Saver.build}
+
+Builds saver_def.
+
+
 - - -
 
 #### `tf.train.Saver.export_meta_graph(filename=None, collection_list=None, as_text=False)` {#Saver.export_meta_graph}
@@ -954,20 +979,21 @@ Returns a `Saver` object created from `saver_def`.
 
 - - -
 
-#### `tf.train.Saver.set_last_checkpoints_with_time(last_checkpoints_with_time)` {#Saver.set_last_checkpoints_with_time}
+#### `tf.train.Saver.set_last_checkpoints(last_checkpoints)` {#Saver.set_last_checkpoints}
 
-Sets the list of old checkpoint filenames and timestamps.
+DEPRECATED: Use set_last_checkpoints_with_time.
+
+Sets the list of old checkpoint filenames.
 
 ##### Args:
 
 
-*  <b>`last_checkpoints_with_time`</b>: A list of tuples of checkpoint filenames and
-    timestamps.
+*  <b>`last_checkpoints`</b>: A list of checkpoint filenames.
 
 ##### Raises:
 
 
-*  <b>`AssertionError`</b>: If last_checkpoints_with_time is not a list.
+*  <b>`AssertionError`</b>: If last_checkpoints is not a list.
 
 
 - - -
@@ -1297,9 +1323,17 @@ Set regularizer for this scope.
 
 - - -
 
-### `tf.variable_scope(name_or_scope, reuse=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, dtype=None)` {#variable_scope}
+### `tf.variable_scope(name_or_scope, default_name=None, values=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_scope}
 
-Returns a context for variable scope.
+Returns a context manager for defining ops that creates variables (layers).
+
+This context manager validates that the (optional) `values` are from
+the same graph, ensures that graph is the default graph, and pushes a
+name scope and a variable scope.
+
+If `name_or_scope` is not None, it is used as is. If `scope` is None, then
+`default_name` is used.  In that case, if the same name has been previously
+used in the same scope, it will made unique be appending `_N` to it.
 
 Variable scope allows to create new variables and to share already created
 ones while providing checks to not create or share by accident. For details,
@@ -1361,13 +1395,17 @@ then all its sub-scopes become reusing as well.
 
 
 *  <b>`name_or_scope`</b>: `string` or `VariableScope`: the scope to open.
-*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
-    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
+*  <b>`default_name`</b>: The default name to use if the `name_or_scope` argument is
+    `None`, this name will be uniquified. If name_or_scope is provided it
+    won't be used and therefore it is not required and can be None.
+*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
 *  <b>`initializer`</b>: default initializer for variables within this scope.
 *  <b>`regularizer`</b>: default regularizer for variables within this scope.
 *  <b>`caching_device`</b>: default caching device for variables within this scope.
 *  <b>`partitioner`</b>: default partitioner for variables within this scope.
 *  <b>`custom_getter`</b>: default custom getter for variables within this scope.
+*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
+    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
 *  <b>`dtype`</b>: type of variables created in this scope (defaults to the type
     in the passed scope, or inherited from parent scope).
 
@@ -1387,61 +1425,7 @@ then all its sub-scopes become reusing as well.
 
 ### `tf.variable_op_scope(values, name_or_scope, default_name=None, initializer=None, regularizer=None, caching_device=None, partitioner=None, custom_getter=None, reuse=None, dtype=None)` {#variable_op_scope}
 
-Returns a context manager for defining an op that creates variables.
-
-This context manager validates that the given `values` are from the
-same graph, ensures that graph is the default graph, and pushes a
-name scope and a variable scope.
-
-If `name_or_scope` is not None, it is used as is in the variable scope. If
-`scope` is None, then `default_name` is used.  In that case, if the same name
-has been previously used in the same scope, it will made unique be appending
-`_N` to it.
-
-This is intended to be used when defining generic ops and so reuse is always
-inherited.
-
-For example, to define a new Python op called `my_op_with_vars`:
-
-```python
-def my_op_with_vars(a, b, scope=None):
-  with tf.variable_op_scope([a, b], scope, "MyOp") as scope:
-    a = tf.convert_to_tensor(a, name="a")
-    b = tf.convert_to_tensor(b, name="b")
-    c = tf.get_variable('c')
-    # Define some computation that uses `a`, `b`, and `c`.
-    return foo_op(..., name=scope)
-```
-
-##### Args:
-
-
-*  <b>`values`</b>: The list of `Tensor` arguments that are passed to the op function.
-*  <b>`name_or_scope`</b>: The name argument that is passed to the op function,
-    this name_or_scope is not uniquified in the variable scope.
-*  <b>`default_name`</b>: The default name to use if the `name_or_scope` argument is
-    `None`, this name will be uniquified. If name_or_scope is provided it
-    won't be used and therefore it is not required and can be None.
-*  <b>`initializer`</b>: The default initializer to pass to variable scope.
-*  <b>`regularizer`</b>: The default regularizer for variables within this scope.
-*  <b>`caching_device`</b>: The default caching device for variables within this scope.
-*  <b>`partitioner`</b>: The default partitioner for variables within this scope.
-*  <b>`custom_getter`</b>: The default custom getter for variables within this scope.
-*  <b>`reuse`</b>: `True` or `None`; if `True`, we go into reuse mode for this scope as
-    well as all sub-scopes; if `None`, we just inherit the parent scope reuse.
-*  <b>`dtype`</b>: The default type of variables created in this scope, defaults to the
-    type of the parent scope.
-
-##### Returns:
-
-  A context manager for use in defining a Python op.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: when trying to reuse within a create scope, or create within
-    a reuse scope, or if reuse is not `None` or `True`.
-*  <b>`TypeError`</b>: when the types of some arguments are not appropriate.
+Deprecated: context manager for defining an op that creates variables.
 
 
 - - -
@@ -1573,25 +1557,81 @@ Use this function to prevent regularization of variables.
 
 - - -
 
-### `tf.constant_initializer(value=0.0, dtype=tf.float32)` {#constant_initializer}
+### `tf.constant_initializer(value=0, dtype=tf.float32)` {#constant_initializer}
 
-Returns an initializer that generates tensors with a single value.
+Returns an initializer that generates tensors with constant values.
+
+The resulting tensor is populated with values of type `dtype`, as
+specified by arguments `value` following the desired `shape` of the
+new tensor (see examples below).
+
+The argument `value` can be a constant value, or a list of values of type
+`dtype`. If `value` is a list, then the length of the list must be less
+than or equal to the number of elements implied by the desired shape of the
+tensor. In the case where the total number of elements in `value` is less
+than the number of elements required by the tensor shape, the last element
+in `value` will be used to fill the remaining entries. If the total number of
+elements in `value` is greater than the number of elements required by the
+tensor shape, the initializer will raise a `ValueError`.
 
 ##### Args:
 
 
-*  <b>`value`</b>: A Python scalar. All elements of the initialized variable
-    will be set to this value.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+*  <b>`value`</b>: A Python scalar, list of values, or a N-dimensional numpy array. All
+    elements of the initialized variable will be set to the corresponding
+    value in the `value` argument.
+*  <b>`dtype`</b>: The data type.
 
 ##### Returns:
 
-  An initializer that generates tensors with a single value.
+  An initializer that generates tensors with constant values.
 
-##### Raises:
+##### Examples:
+
+  The following example can be rewritten using a numpy.ndarray instead
+  of the `value` list, even reshaped, as shown in the two commented lines
+  below the `value` list initialization.
+
+```python
+  >>> import numpy as np
+  >>> import tensorflow as tf
+
+  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
+  >>> # value = np.array(value)
+  >>> # value = value.reshape([2, 4])
+  >>> init = tf.constant_initializer(value)
+
+  >>> print('fitting shape:')
+  >>> tf.reset_default_graph()
+  >>> with tf.Session():
+  >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
+  >>>   x.initializer.run()
+  >>>   print(x.eval())
+
+  fitting shape:
+  [[ 0.  1.  2.  3.]
+   [ 4.  5.  6.  7.]]
+
+  >>> print('larger shape:')
+  >>> tf.reset_default_graph()
+  >>> with tf.Session():
+  >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
+  >>>   x.initializer.run()
+  >>>   print(x.eval())
+
+  larger shape:
+  [[ 0.  1.  2.  3.]
+   [ 4.  5.  6.  7.]
+   [ 7.  7.  7.  7.]]
+
+  >>> print('smaller shape:')
+  >>> tf.reset_default_graph()
+  >>> with tf.Session():
+  >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
 
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
+*  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
+  ```
 
 
 - - -
@@ -1658,35 +1698,30 @@ neural network weights and filters.
 
 - - -
 
-### `tf.random_uniform_initializer(minval=0.0, maxval=1.0, seed=None, dtype=tf.float32)` {#random_uniform_initializer}
+### `tf.random_uniform_initializer(minval=0, maxval=None, seed=None, dtype=tf.float32)` {#random_uniform_initializer}
 
 Returns an initializer that generates tensors with a uniform distribution.
 
 ##### Args:
 
 
-*  <b>`minval`</b>: a python scalar or a scalar tensor. lower bound of the range
+*  <b>`minval`</b>: A python scalar or a scalar tensor. Lower bound of the range
     of random values to generate.
-*  <b>`maxval`</b>: a python scalar or a scalar tensor. upper bound of the range
-    of random values to generate.
+*  <b>`maxval`</b>: A python scalar or a scalar tensor. Upper bound of the range
+    of random values to generate.  Defaults to 1 for float types.
 *  <b>`seed`</b>: A Python integer. Used to create random seeds. See
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
-*  <b>`dtype`</b>: The data type. Only floating point types are supported.
+*  <b>`dtype`</b>: The data type.
 
 ##### Returns:
 
   An initializer that generates tensors with a uniform distribution.
 
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if `dtype` is not a floating point type.
-
 
 - - -
 
-### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32, full_shape=None)` {#uniform_unit_scaling_initializer}
+### `tf.uniform_unit_scaling_initializer(factor=1.0, seed=None, dtype=tf.float32)` {#uniform_unit_scaling_initializer}
 
 Returns an initializer that generates tensors without scaling variance.
 
@@ -1706,12 +1741,6 @@ See [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
 and the calculation of constants. In section 2.3 there, the constants were
 numerically computed: for a linear layer it's 1.0, relu: ~1.43, tanh: ~1.15.
 
-If the shape tuple `full_shape` is provided, the scale will be calculated from
-this predefined shape.  This is useful when a `Variable` is being partitioned
-across several shards, and each shard has a smaller shape than the whole.
-Since the shards are usually concatenated when used, the scale should be
-based on the shape of the whole.
-
 ##### Args:
 
 
@@ -1720,9 +1749,6 @@ based on the shape of the whole.
     [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
     for behavior.
 *  <b>`dtype`</b>: The data type. Only floating point types are supported.
-*  <b>`full_shape`</b>: Tuple or list of integers.  The shape used for calculating
-    scale normalization (instead of the shape passed at creation time).
-    Useful when creating sharded variables via partitioning.
 
 ##### Returns:
 
@@ -1736,14 +1762,14 @@ based on the shape of the whole.
 
 - - -
 
-### `tf.zeros_initializer(shape, dtype=tf.float32)` {#zeros_initializer}
+### `tf.zeros_initializer(shape, dtype=tf.float32, partition_info=None)` {#zeros_initializer}
 
 An adaptor for zeros() to match the Initializer spec.
 
 
 - - -
 
-### `tf.ones_initializer(shape, dtype=tf.float32)` {#ones_initializer}
+### `tf.ones_initializer(shape, dtype=tf.float32, partition_info=None)` {#ones_initializer}
 
 An adaptor for ones() to match the Initializer spec.
 
@@ -2129,7 +2155,7 @@ The `Graph` that contains the values, indices, and shape tensors.
 Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
 This function exports the graph, saver, and collection objects into
-`MetaGraphDef` protocol buffer with the intension of it being imported
+`MetaGraphDef` protocol buffer with the intention of it being imported
 at a later time or location to restart training, run inference, or be
 a subgraph.
 
@@ -2151,7 +2177,7 @@ a subgraph.
 
 - - -
 
-### `tf.train.import_meta_graph(meta_graph_or_file)` {#import_meta_graph}
+### `tf.train.import_meta_graph(meta_graph_or_file, clear_devices=False)` {#import_meta_graph}
 
 Recreates a Graph saved in a `MetaGraphDef` proto.
 
@@ -2208,6 +2234,8 @@ device assignments have not changed.
 
 *  <b>`meta_graph_or_file`</b>: `MetaGraphDef` protocol buffer or filename (including
     the path) containing a `MetaGraphDef`.
+*  <b>`clear_devices`</b>: Boolean which controls whether to clear device information
+    from graph_def. Default false.
 
 ##### Returns:
 

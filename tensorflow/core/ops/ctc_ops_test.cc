@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -66,11 +67,11 @@ TEST(CtcOpsTest, CTCGreedyDecoder_ShapeFn) {
 TEST(CtcOpsTest, CTCBeamSearchDecoder_ShapeFn) {
   ShapeInferenceTestOp op("CTCBeamSearchDecoder");
   auto set_top_paths = [&op](int top_paths) {
-    TF_CHECK_OK(NodeDefBuilder("test", "CTCBeamSearchDecoder")
-                    .Input({"a", 0, DT_FLOAT})
-                    .Input({"b", 0, DT_INT32})
-                    .Attr("top_paths", top_paths)
-                    .Finalize(&op.node_def));
+    TF_ASSERT_OK(NodeDefBuilder("test", "CTCBeamSearchDecoder")
+                     .Input({"a", 0, DT_FLOAT})
+                     .Input({"b", 0, DT_INT32})
+                     .Attr("top_paths", top_paths)
+                     .Finalize(&op.node_def));
   };
   set_top_paths(1);
 

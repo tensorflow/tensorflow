@@ -22,6 +22,18 @@ from __future__ import print_function
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops as tf_array_ops
 
+__all__ = [
+    "make_list_of_op",
+    "get_tensors",
+    "make_list_of_t",
+    "get_generating_ops",
+    "get_consuming_ops",
+    "ControlOutputs",
+    "placeholder_name",
+    "make_placeholder_from_tensor",
+    "make_placeholder_from_dtype_and_shape",
+]
+
 
 def concatenate_unique(la, lb):
   """Add all the elements of lb in la if they are not there already."""
@@ -57,6 +69,11 @@ class ListView(object):
 
   def __getitem__(self, i):
     return self._list[i]
+
+  def __add__(self, other):
+    if not isinstance(other, list):
+      other = list(other)
+    return list(self) + other
 
 
 # TODO(fkp): very generic code, it should be moved in a more generic place.
@@ -107,10 +124,13 @@ def get_unique_graph(tops, check_types=None, none_if_empty=False):
     raise TypeError("{} is not iterable".format(type(tops)))
   if check_types is None:
     check_types = (tf_ops.Operation, tf_ops.Tensor)
+  elif not is_iterable(check_types):
+    check_types = (check_types,)
   g = None
   for op in tops:
     if not isinstance(op, check_types):
-      raise TypeError("Expected a tf.Operation, got: {}".format(type(op)))
+      raise TypeError("Expected a type in ({}), got: {}".format(", ".join([str(
+          t) for t in check_types]), type(op)))
     if g is None:
       g = op.graph
     elif g is not op.graph:
@@ -129,7 +149,7 @@ def make_list_of_op(ops, check_graph=True, allow_graph=True, ignore_ts=False):
     allow_graph: if False a tf.Graph cannot be converted.
     ignore_ts: if True, silently ignore tf.Tensor.
   Returns:
-    a newly created list of tf.Operation.
+    A newly created list of tf.Operation.
   Raises:
     TypeError: if ops cannot be converted to a list of tf.Operation or,
      if check_graph is True, if all the ops do not belong to the same graph.
@@ -140,8 +160,10 @@ def make_list_of_op(ops, check_graph=True, allow_graph=True, ignore_ts=False):
     else:
       raise TypeError("allow_graph is False: cannot convert a tf.Graph.")
   else:
-    if not is_iterable(ops): ops = [ops]
-    if not ops: return []
+    if not is_iterable(ops):
+      ops = [ops]
+    if not ops:
+      return []
     if check_graph:
       check_types = None if ignore_ts else tf_ops.Operation
       get_unique_graph(ops, check_types=check_types)
@@ -177,7 +199,7 @@ def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
     allow_graph: if False a tf.Graph cannot be converted.
     ignore_ops: if True, silently ignore tf.Operation.
   Returns:
-    a newly created list of tf.Tensor.
+    A newly created list of tf.Tensor.
   Raises:
     TypeError: if ts cannot be converted to a list of tf.Tensor or,
      if check_graph is True, if all the ops do not belong to the same graph.
@@ -188,8 +210,10 @@ def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
     else:
       raise TypeError("allow_graph is False: cannot convert a tf.Graph.")
   else:
-    if not is_iterable(ts): ts = [ts]
-    if not ts: return []
+    if not is_iterable(ts):
+      ts = [ts]
+    if not ts:
+      return []
     if check_graph:
       check_types = None if ignore_ops else tf_ops.Tensor
       get_unique_graph(ts, check_types=check_types)
@@ -239,8 +263,8 @@ class ControlOutputs(object):
       graph: a tf.Graph.
     Returns:
       A dictionary where a key is a tf.Operation instance and the corresponding
-      value is a list of all the ops which have the key as one of their
-      control-input dependencies.
+        value is a list of all the ops which have the key as one of their
+        control-input dependencies.
     Raises:
       TypeError: graph is not a tf.Graph.
     """
@@ -292,14 +316,16 @@ def scope_finalize(scope):
 
 def scope_dirname(scope):
   slash = scope.rfind("/")
-  if slash == -1: return ""
-  return scope[:slash+1]
+  if slash == -1:
+    return ""
+  return scope[:slash + 1]
 
 
 def scope_basename(scope):
   slash = scope.rfind("/")
-  if slash == -1: return scope
-  return scope[slash+1:]
+  if slash == -1:
+    return scope
+  return scope[slash + 1:]
 
 
 def placeholder_name(t=None, scope=None):
@@ -354,8 +380,7 @@ def make_placeholder_from_tensor(t, scope=None):
   Raises:
     TypeError: if t is not None or a tf.Tensor.
   """
-  return tf_array_ops.placeholder(dtype=t.dtype,
-                                  shape=t.get_shape(),
+  return tf_array_ops.placeholder(dtype=t.dtype, shape=t.get_shape(),
                                   name=placeholder_name(t, scope=scope))
 
 
@@ -374,6 +399,5 @@ def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
   Returns:
     A newly created tf.placeholder.
   """
-  return tf_array_ops.placeholder(dtype=dtype,
-                                  shape=shape,
+  return tf_array_ops.placeholder(dtype=dtype, shape=shape,
                                   name=placeholder_name(scope=scope))

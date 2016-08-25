@@ -19,6 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import numbers
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -26,6 +29,7 @@ import tensorflow as tf
 from tensorflow.contrib.factorization.python.ops.gen_factorization_ops import *
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.load_library import load_op_library
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.platform import resource_loader
 
 _factorization_ops = load_op_library(resource_loader.get_path_to_datafile(
@@ -51,8 +55,102 @@ class WALSModel(object):
   \\(R_i)\\: row_weights,
   \\(C_j)\\: col_weights.
 
-  Note that the current implementation assumes that row_factors and col_factors
-  can individually fit into the memory of each worker.
+  Note that the current implementation supports two operation modes: The default
+  mode is for the condition where row_factors and col_factors can individually
+  fit into the memory of each worker and these will be cached. When this
+  condition can't be met, setting use_factors_weights_cache to False allows the
+  larger problem sizes with slight performance penalty as this will avoid
+  creating the worker caches and instead the relevant weight and factor values
+  are looked up from parameter servers at each step.
+
+  A typical usage example (pseudocode):
+
+    with tf.Graph().as_default():
+      # Set up the model object.
+      model = tf.contrib.factorization.WALSModel(....)
+
+      # To be run only once as part of session initialization. In distributed
+      # training setting, this should only be run by the chief trainer and all
+      # other trainers should block until this is done.
+      model_init_op = model.initialize_op
+
+      # To be run once per worker after session is available, prior to
+      # the gramian_prep_ops for row(column) can be run.
+      worker_init_op = model.worker_init
+
+      # To be run once per interation sweep before the row(column) update
+      # initialize ops can be run. Note that in the distributed training
+      # situations, this should only be run by the chief trainer. All other
+      # trainers need to block until this is done.
+      row_update_gramian_prep_op = model.row_update_prep_gramian_op
+      col_update_gramian_prep_op = model.col_update_prep_gramian_op
+
+      # To be run once per worker per iteration sweep. Must be run before
+      # any actual update ops can be run.
+      init_row_update_op = model.initialize_row_update_op
+      init_col_update_op = model.initialize_col_update_op
+
+      # Ops to upate row(column). This can either take the entire sparse tensor
+      # or slices of sparse tensor. For distributed trainer, each trainer
+      # handles just part of the matrix.
+      row_update_op = model.update_row_factors(
+           sp_input=matrix_slices_from_queue_for_worker_shard)[1]
+      col_update_op = model.update_col_factors(
+           sp_input=transposed_matrix_slices_from_queue_for_worker_shard,
+           transpose_input=True)[1]
+
+      ...
+
+      # model_init_op is passed to Supervisor. Chief trainer runs it. Other
+      # trainers wait.
+      sv = tf.Supervisor(is_chief=is_chief,
+                         ...,
+                         init_op=tf.group(..., model_init_op, ...), ...)
+      ...
+
+      with sv.managed_session(...) as sess:
+        # All workers/trainers run it after session becomes available.
+        worker_init_op.run(session=sess)
+
+        ...
+
+        while i in iterations:
+
+          # All trainers need to sync up here.
+          while not_all_ready:
+            wait
+
+          # Row update sweep.
+          if is_chief:
+            row_update_gramian_prep_op.run(session=sess)
+          else:
+            wait_for_chief
+
+          # All workers run upate initialization.
+          init_row_update_op.run(session=sess)
+
+          # Go through the matrix.
+          reset_matrix_slices_queue_for_worker_shard
+          while_matrix_slices:
+            row_update_op.run(session=sess)
+
+          # All trainers need to sync up here.
+          while not_all_ready:
+            wait
+
+          # Column update sweep.
+          if is_chief:
+            col_update_gramian_prep_op.run(session=sess)
+          else:
+            wait_for_chief
+
+          # All workers run upate initialization.
+          init_col_update_op.run(session=sess)
+
+          # Go through the matrix.
+          reset_transposed_matrix_slices_queue_for_worker_shard
+          while_transposed_matrix_slices:
+            col_update_op.run(session=sess)
   """
 
   def __init__(self,
@@ -65,8 +163,9 @@ class WALSModel(object):
                col_init="random",
                num_row_shards=1,
                num_col_shards=1,
-               row_weights=None,
-               col_weights=None):
+               row_weights=1,
+               col_weights=1,
+               use_factors_weights_cache=True):
     """Creates model for WALS matrix factorization.
 
     Args:
@@ -81,11 +180,25 @@ class WALSModel(object):
       col_init: initializer for column factor. See row_init for details.
       num_row_shards: number of shards to use for row factors.
       num_col_shards: number of shards to use for column factors.
-      row_weights: If not None, along with col_weights, used to compute the
-        weight of an observed entry. w_ij = unobserved_weight + row_weights[i] *
-        col_weights[j]. If None, then w_ij = unobserved_weight, which simplifies
-        to ALS.
-      col_weights: See row_weights
+      row_weights: Must be in one of the following three formats: None, a list
+        of lists of non-negative real numbers (or equivalent iterables) or a
+        single non-negative real number.
+        - When set to None, w_ij = unobserved_weight, which simplifies to ALS.
+        Note that col_weights must also be set to "None" in this case.
+        - If it is a list of lists of non-negative real numbers, it needs to be
+        in the form of [[w_0, w_1, ...], [w_k, ... ], [...]], with the number of
+        inner lists matching the number of row factor shards and the elements in
+        each inner list are the weights for the rows of the corresponding row
+        factor shard. In this case,  w_ij = unonbserved_weight +
+                                            row_weights[i] * col_weights[j].
+        - If this is a single non-negative real number, this value is used for
+        all row weights and w_ij = unobserved_weight + row_weights *
+                                   col_weights[j].
+        Note that it is allowed to have row_weights as a list while col_weights
+        a single number or vice versa.
+      col_weights: See row_weights.
+      use_factors_weights_cache: When True, the factors and weights will be
+        cached on the workers before the updates start. Defaults to True.
     """
     self._input_rows = input_rows
     self._input_cols = input_cols
@@ -106,6 +219,7 @@ class WALSModel(object):
                                                   self._input_cols,
                                                   self._num_col_shards,
                                                   "col_weights")
+    self._use_factors_weights_cache = use_factors_weights_cache
     self._row_factors = self._create_factors(self._input_rows,
                                              self._n_components,
                                              self._num_row_shards,
@@ -116,6 +230,14 @@ class WALSModel(object):
                                              self._num_col_shards,
                                              col_init,
                                              "col_factors")
+    self._row_gramian = self._create_gramian(self._n_components,
+                                             "row_gramian")
+    self._col_gramian = self._create_gramian(self._n_components,
+                                             "col_gramian")
+    self._row_update_prep_gramian = self._prepare_gramian(self._col_factors,
+                                                          self._col_gramian)
+    self._col_update_prep_gramian = self._prepare_gramian(self._row_factors,
+                                                          self._row_gramian)
     self._create_transient_vars()
 
   @property
@@ -129,9 +251,20 @@ class WALSModel(object):
     return self._col_factors
 
   @property
+  def row_weights(self):
+    """Returns a list of tensors corresponding to row weight shards."""
+    return self._row_weights
+
+  @property
+  def col_weights(self):
+    """Returns a list of tensors corresponding to col weight shards."""
+    return self._col_weights
+
+  @property
   def initialize_op(self):
     """Returns an op for initializing tensorflow variables."""
     all_vars = self._row_factors + self._col_factors
+    all_vars.extend([self._row_gramian, self._col_gramian])
     if self._row_weights is not None:
       assert self._col_weights is not None
       all_vars.extend(self._row_weights + self._col_weights)
@@ -176,28 +309,79 @@ class WALSModel(object):
 
     return sharded_matrix
 
-  @staticmethod
-  def _create_weights(wt_init, num_wts, num_shards, name):
-    """Helper functions to create sharded weight vector.
+  @classmethod
+  def _create_weights(cls, wt_init, num_wts, num_shards, name):
+    """Helper function to create sharded weight vector.
 
     Args:
-      wt_init: init value for the weight. If None, weights are not created.
+      wt_init: init value for the weight. If None, weights are not created. This
+        can be one of the None, a list of non-negative real numbers or a single
+        non-negative real number (or equivalent iterables).
       num_wts: total size of all the weight shards
       num_shards: number of shards for the weights
       name: name for the new Variables.
 
     Returns:
       A list of weight shard Tensors.
+
+    Raises:
+      ValueError: If wt_init is not the right format.
     """
+
     if wt_init is None:
       return None
-    if num_shards == 1 and len(wt_init) == num_wts:
-      wt_init = [wt_init]
-    assert len(wt_init) == num_shards
-    return [tf.Variable(wt_init[i],
-                        dtype=tf.float32,
-                        name="%s_shard_%d" % (name, i))
-            for i in xrange(num_shards)]
+
+    init_mode = "list"
+    if isinstance(wt_init, collections.Iterable):
+      if num_shards == 1 and len(wt_init) == num_wts:
+        wt_init = [wt_init]
+      assert len(wt_init) == num_shards
+    elif isinstance(wt_init, numbers.Real) and wt_init >= 0:
+      init_mode = "scalar"
+    else:
+      raise ValueError(
+          "Invalid weight initialization argument. Must be one of these: "
+          "None, a real non-negative real number, or a list of lists of "
+          "non-negative real numbers (or equivalent iterables) corresponding "
+          "to sharded factors.")
+
+    sizes = cls._shard_sizes(num_wts, num_shards)
+    assert len(sizes) == num_shards
+
+    def make_wt_initializer(i, size):
+      def initializer():
+        if init_mode == "scalar":
+          return wt_init * tf.ones([size])
+        else:
+          return wt_init[i]
+      return initializer
+
+    sharded_weight = []
+    for i, size in enumerate(sizes):
+      var_name = "%s_shard_%d" % (name, i)
+      var_init = make_wt_initializer(i, size)
+      sharded_weight.append(tf.Variable(
+          var_init,
+          dtype=tf.float32,
+          name=var_name))
+
+    return sharded_weight
+
+  @staticmethod
+  def _create_gramian(n_components, name):
+    """Helper function to create the gramian variable.
+
+    Args:
+      n_components: number of dimensions of the factors from which the gramian
+        will be calculated.
+      name: name for the new Variables.
+
+    Returns:
+      A gramian Tensor with shape of [n_components, n_components].
+    """
+    return tf.Variable(tf.zeros([n_components, n_components]),
+                       dtype=tf.float32,
+                       name=name)
 
   @staticmethod
   def _transient_var(name):
@@ -208,60 +392,132 @@ class WALSModel(object):
                        validate_shape=False,
                        name=name)
 
-  def _cached_copy(self, var, name):
-    """Helper function to create a worker cached copy of a Variable.
+  def _prepare_gramian(self, factors, gramian):
+    """Helper function to create ops to prepare/calculate gramian.
 
     Args:
-      var: Variable or list of Variable to cache. If a list, the items are
-        concatenated along dimension 0 to get the cached entry.
-      name: name of cached variable.
+      factors: Variable or list of Variable representing (sharded) factors.
+        Used to compute the updated corresponding gramian value.
+      gramian: Variable storing the gramian calculated from the factors.
+
+    Returns:
+      A op that updates the gramian with the calcuated value from the factors.
+    """
+    partial_gramians = []
+    for f in factors:
+      with ops.colocate_with(f):
+        partial_gramians.append(tf.matmul(f, f, transpose_a=True))
+
+    with ops.colocate_with(gramian):
+      prep_gramian = tf.assign(gramian, tf.add_n(partial_gramians)).op
+
+    return prep_gramian
+
+  def _cached_copy(self, var, name, pass_through=False):
+    """Helper function to create a worker cached copy of a Variable.
+
+    This assigns the var (either a single Variable or a list of Variables) to
+    local transient cache Variable(s). Note that if var is a list of Variables,
+    the assignment is done sequentially to minimize the memory overheads.
+    Also note that if pass_through is set to True, this does not create new
+    Variables but simply return the input back.
+
+    Args:
+      var: A Variable or a list of Variables to cache.
+      name: name of cached Variable.
+      pass_through: when set to True, this simply pass through the var back
+        through identity operator and does not actually creates a cache.
 
     Returns:
       Tuple consisting of following three entries:
-      cache: the new transient Variable.
-      cache_init: op to initialize the Variable
-      cache_reset: op to reset the Variable to some default value
+      cache: the new transient Variable or list of transient Variables
+        corresponding one-to-one with var.
+      cache_init: op to initialize the Variable or the list of Variables.
+      cache_reset: op to reset the Variable or the list of Variables to some
+        default value.
     """
     if var is None:
       return None, None, None
-    else:
-      cache = WALSModel._transient_var(name)
+    elif pass_through:
+      cache = var
+      cache_init = tf.no_op()
+      cache_reset = tf.no_op()
+    elif isinstance(var, tf.Variable):
+      cache = WALSModel._transient_var(name=name)
       with ops.colocate_with(cache):
-        if isinstance(var, list):
-          assert var
-          if len(var) == 1:
-            var = var[0]
+        cache_init = tf.assign(cache, var, validate_shape=False)
+        cache_reset = tf.assign(cache, 1.0, validate_shape=False)
+    else:
+      assert isinstance(var, list)
+      assert var
+      cache = [WALSModel._transient_var(name='%s_shard_%d' % (name, i))
+               for i in xrange(len(var))]
+      reset_ops = []
+      for i, c in enumerate(cache):
+        with ops.colocate_with(c):
+          if i == 0:
+            cache_init = tf.assign(c, var[i], validate_shape=False)
           else:
-            var = tf.concat(0, var)
+            with ops.control_dependencies([cache_init]):
+              cache_init = tf.assign(c, var[i], validate_shape=False)
+          reset_ops.append(tf.assign(c, 1.0, validate_shape=False))
+      cache_reset = tf.group(*reset_ops)
 
-      cache_init = tf.assign(cache, var, validate_shape=False)
-      cache_reset = tf.assign(cache, 1.0, validate_shape=False)
-      return cache, cache_init, cache_reset
+    return cache, cache_init, cache_reset
 
   def _create_transient_vars(self):
-    """Creates local cache of row and column factors and weights.
+    """Creates local cache of factors, weights and gramian for rows and columns.
 
     Note that currently the caching strategy is as follows:
-    When initiating a row update, column factors are cached while row factors
-    cache is reset.  Similarly when initiating a column update, row factors are
-    cached while cached column factors are flushed.
-    Column and row weights are always cached. If memory becomes a bottleneck,
-    they could be similarly flushed.
+    When initiating a row(column) update, the column(row) gramian is computed
+    and cached while the row gramian is reset; optionally, column(row) factors
+    and weights are cached and row(column) factors and weights are reset when
+    use_factors_weights_cache is True.
     """
+
     (self._row_factors_cache,
      row_factors_cache_init,
-     row_factors_cache_reset) = self._cached_copy(self._row_factors,
-                                                  "row_factors_cache")
+     row_factors_cache_reset) = self._cached_copy(
+         self._row_factors,
+         "row_factors_cache",
+         pass_through=not self._use_factors_weights_cache)
     (self._col_factors_cache,
      col_factors_cache_init,
-     col_factors_cache_reset) = self._cached_copy(self._col_factors,
-                                                  "col_factors_cache")
+     col_factors_cache_reset) = self._cached_copy(
+         self._col_factors,
+         "col_factors_cache",
+         pass_through=not self._use_factors_weights_cache)
     (self._row_wt_cache,
      row_wt_cache_init,
-     _) = self._cached_copy(self._row_weights, "row_wt_cache")
+     _) = self._cached_copy(self._row_weights,
+                            "row_wt_cache",
+                            pass_through=not self._use_factors_weights_cache)
+
     (self._col_wt_cache,
      col_wt_cache_init,
-     _) = self._cached_copy(self._col_weights, "col_wt_cache")
+     _) = self._cached_copy(self._col_weights,
+                            "col_wt_cache",
+                            pass_through=not self._use_factors_weights_cache)
+
+    (self._row_gramian_cache,
+     row_gramian_cache_init,
+     row_gramian_cache_reset) = self._cached_copy(self._row_gramian,
+                                                  "row_gramian_cache",
+                                                  pass_through=False)
+    (self._col_gramian_cache,
+     col_gramian_cache_init,
+     col_gramian_cache_reset) = self._cached_copy(self._col_gramian,
+                                                  "col_gramian_cache",
+                                                  pass_through=False)
+
+    self._row_updates_init = tf.group(col_factors_cache_init,
+                                      row_factors_cache_reset,
+                                      col_gramian_cache_init,
+                                      row_gramian_cache_reset)
+    self._col_updates_init = tf.group(row_factors_cache_init,
+                                      col_factors_cache_reset,
+                                      row_gramian_cache_init,
+                                      col_gramian_cache_reset)
 
     if self._row_wt_cache is not None:
       assert self._col_wt_cache is not None
@@ -271,15 +527,29 @@ class WALSModel(object):
     else:
       self._worker_init = tf.no_op(name="worker_init")
 
-    self._row_updates_init = tf.group(col_factors_cache_init,
-                                      row_factors_cache_reset)
-    self._col_updates_init = tf.group(row_factors_cache_init,
-                                      col_factors_cache_reset)
-
   @property
   def worker_init(self):
     """Op to initialize worker state once before starting any updates."""
     return self._worker_init
+
+  @property
+  def row_update_prep_gramian_op(self):
+    """Op to form the gramian before starting row updates.
+
+    Must be run before initialize_row_update_op and should only be run by one
+    trainer (usually the chief) when doing distributed training.
+    """
+    return self._row_update_prep_gramian
+
+  @property
+  def col_update_prep_gramian_op(self):
+    """Op to form the gramian before starting col updates.
+
+    Must be run before initialize_col_update_op and should only be run by one
+    trainer (usually the chief) when doing distributed training.
+    """
+    return self._col_update_prep_gramian
+
 
   @property
   def initialize_row_update_op(self):
@@ -335,9 +605,10 @@ class WALSModel(object):
 
     Args:
       sp_input: A SparseTensor representing a subset of rows of the full input
-       in any order. Please note that this SparseTensor must retain the
-       indexing as the original input.
-      transpose_input: If true, logically transposes the input.
+        in any order. Please note that this SparseTensor must retain the
+        indexing as the original input.
+      transpose_input: If true, the input will be logically transposed and the
+        rows corresponding to the transposed input are updated.
 
     Returns:
       A tuple consisting of the following two elements:
@@ -355,7 +626,8 @@ class WALSModel(object):
       sp_input: A SparseTensor representing a subset of columns of the full
         input. Please refer to comments for update_row_factors for
         restrictions.
-      transpose_input: If true, logically transposes the input.
+      transpose_input: If true, the input will be logically transposed and the
+        columns corresponding to the transposed input are updated.
 
     Returns:
       A tuple consisting of the following two elements:
@@ -375,7 +647,8 @@ class WALSModel(object):
         column factors.
       sp_input: Please refer to comments for update_row_factors and
         update_col_factors.
-      transpose_input: If true, logically transpose the input.
+      transpose_input: If true, the input is logically transposed and then the
+        corresponding rows/columns of the transposed input are updated.
 
     Returns:
       A tuple consisting of the following two elements:
@@ -387,20 +660,20 @@ class WALSModel(object):
 
     if update_row_factors:
       left = self._row_factors
-      right = self._col_factors_cache
-      row_weights = self._row_wt_cache
-      col_weights = self._col_wt_cache
+      right_factors = self._col_factors_cache
+      row_wt = self._row_wt_cache
+      col_wt = self._col_wt_cache
       sharding_func = WALSModel._get_sharding_func(self._input_rows,
                                                    self._num_row_shards)
-      right_length = self._input_cols
+      gramian = self._col_gramian_cache
     else:
       left = self._col_factors
-      right = self._row_factors_cache
-      row_weights = self._col_wt_cache
-      col_weights = self._row_wt_cache
+      right_factors = self._row_factors_cache
+      row_wt = self._col_wt_cache
+      col_wt = self._row_wt_cache
       sharding_func = WALSModel._get_sharding_func(self._input_cols,
                                                    self._num_col_shards)
-      right_length = self._input_rows
+      gramian = self._row_gramian_cache
       transpose_input = not transpose_input
 
     # Note that the row indices of sp_input are based on the original full input
@@ -409,18 +682,24 @@ class WALSModel(object):
     # that the downstream kernel can assume that the input is "dense" along the
     # row dimension.
     row_ids, col_ids = tf.split(1, 2, sp_input.indices)
+    update_row_indices, all_row_ids = tf.unique(row_ids[:, 0])
+    update_col_indices, all_col_ids = tf.unique(col_ids[:, 0])
+    col_ids = tf.expand_dims(tf.cast(all_col_ids, tf.int64), 1)
+    row_ids = tf.expand_dims(tf.cast(all_row_ids, tf.int64), 1)
 
     if transpose_input:
-      update_indices, all_ids = tf.unique(col_ids[:, 0])
-      col_ids = tf.expand_dims(tf.cast(all_ids, tf.int64), 1)
+      update_indices = update_col_indices
+      row_shape = [tf.cast(tf.shape(update_row_indices)[0], tf.int64)]
+      gather_indices = update_row_indices
     else:
-      update_indices, all_ids = tf.unique(row_ids[:, 0])
-      row_ids = tf.expand_dims(tf.cast(all_ids, tf.int64), 1)
+      update_indices = update_row_indices
+      row_shape = [tf.cast(tf.shape(update_col_indices)[0], tf.int64)]
+      gather_indices = update_col_indices
 
     num_rows = tf.cast(tf.shape(update_indices)[0], tf.int64)
-    row_shape = tf.constant([right_length], tf.int64)
     col_shape = [num_rows]
-
+    right = embedding_ops.embedding_lookup(right_factors, gather_indices,
+                                           partition_strategy='div')
     new_sp_indices = tf.concat(1, [row_ids, col_ids])
     new_sp_shape = (tf.concat(0, [row_shape, col_shape]) if transpose_input
                     else tf.concat(0, [col_shape, row_shape]))
@@ -428,8 +707,7 @@ class WALSModel(object):
                                    values=sp_input.values, shape=new_sp_shape)
 
     # Compute lhs and rhs of the normal equations
-    total_lhs = (self._unobserved_weight *
-                 tf.matmul(right, right, transpose_a=True))
+    total_lhs = (self._unobserved_weight * gramian)
     if self._regularization is not None:
       total_lhs += self._regularization
     if self._row_weights is None:
@@ -443,7 +721,12 @@ class WALSModel(object):
       new_left_values = tf.transpose(tf.matrix_solve(total_lhs,
                                                      tf.transpose(total_rhs)))
     else:
-      row_weights_slice = tf.gather(row_weights, update_indices)
+      # TODO(yifanchen): Add special handling for single shard without using
+      # embedding_lookup and perform benchmarks for those cases.
+      row_weights_slice = embedding_ops.embedding_lookup(
+          row_wt, update_indices, partition_strategy='div')
+      col_weights = embedding_ops.embedding_lookup(
+          col_wt, gather_indices, partition_strategy='div')
       partial_lhs, total_rhs = wals_compute_partial_lhs_and_rhs(
           right,
           col_weights,

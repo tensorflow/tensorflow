@@ -12,10 +12,10 @@ Examples of initialization of one or a batch of distributions.
 
 ```python
 # Define a single scalar Normal distribution.
-dist = tf.contrib.distributions.Normal(mu=0, sigma=3)
+dist = tf.contrib.distributions.Normal(mu=0., sigma=3.)
 
 # Evaluate the cdf at 1, returning a scalar.
-dist.cdf(1)
+dist.cdf(1.)
 
 # Define a batch of two scalar valued Normals.
 # The first has mean 1 and standard deviation 11, the second 2 and 22.
@@ -26,7 +26,7 @@ dist = tf.contrib.distributions.Normal(mu=[1, 2.], sigma=[11, 22.])
 dist.pdf([0, 1.5])
 
 # Get 3 samples, returning a 3 x 2 tensor.
-dist.sample(3)
+dist.sample([3])
 ```
 
 Arguments are broadcast when possible.
@@ -34,7 +34,7 @@ Arguments are broadcast when possible.
 ```python
 # Define a batch of two scalar valued Normals.
 # Both have mean 1, but different standard deviations.
-dist = tf.contrib.distributions.Normal(mu=1, sigma=[11, 22.])
+dist = tf.contrib.distributions.Normal(mu=1., sigma=[11, 22.])
 
 # Evaluate the pdf of both distributions on the same point, 3.0,
 # returning a length 2 tensor.
@@ -151,6 +151,63 @@ Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 ##### Returns:
 
   `Tensor` `event_shape`
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.from_params(cls, make_safe=True, **kwargs)` {#Normal.from_params}
+
+Given (unconstrained) parameters, return an instantiated distribution.
+
+Subclasses should implement a static method `_safe_transforms` that returns
+a dict of parameter transforms, which will be used if `make_safe = True`.
+
+Example usage:
+
+```
+# Let's say we want a sample of size (batch_size, 10)
+shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
+
+# shapes has a Tensor shape for mu and sigma
+# shapes == {
+#   'mu': tf.constant([batch_size, 10]),
+#   'sigma': tf.constant([batch_size, 10]),
+# }
+
+# Here we parameterize mu and sigma with the output of a linear
+# layer. Note that sigma is unconstrained.
+params = {}
+for name, shape in shapes.items():
+  params[name] = linear(x, shape[1])
+
+# Note that you can forward other kwargs to the `Distribution`, like
+# `allow_nan_stats` or `name`.
+mvn = MultiVariateNormalDiag.from_params(**params, allow_nan_stats=True)
+```
+
+Distribution parameters may have constraints (e.g. `sigma` must be positive
+for a `Normal` distribution) and the `from_params` method will apply default
+parameter transforms. If a user wants to use their own transform, they can
+apply it externally and set `make_safe=False`.
+
+##### Args:
+
+
+*  <b>`make_safe`</b>: Whether the `params` should be constrained. If True,
+    `from_params` will apply default parameter transforms. If False, no
+    parameter transforms will be applied.
+*  <b>`**kwargs`</b>: dict of parameters for the distribution.
+
+##### Returns:
+
+  A distribution parameterized by possibly transformed parameters in
+  `kwargs`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `make_safe` is `True` but `_safe_transforms` is not
+    implemented directly for `cls`.
 
 
 - - -
@@ -273,6 +330,48 @@ Distribution parameter for the mean.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.param_shapes(cls, sample_shape, name='DistributionParamShapes')` {#Normal.param_shapes}
+
+Shapes of parameters given the desired shape of a call to `sample()`.
+
+Subclasses should override static method `_param_shapes`.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `Tensor` or python list/tuple. Desired shape of a call to
+    `sample()`.
+*  <b>`name`</b>: name to prepend ops with.
+
+##### Returns:
+
+  `dict` of parameter name to `Tensor` shapes.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.param_static_shapes(cls, sample_shape)` {#Normal.param_static_shapes}
+
+param_shapes with static (i.e. TensorShape) shapes.
+
+##### Args:
+
+
+*  <b>`sample_shape`</b>: `TensorShape` or python list/tuple. Desired shape of a call
+    to `sample()`.
+
+##### Returns:
+
+  `dict` of parameter name to `TensorShape`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `sample_shape` is a `TensorShape` and is not fully defined.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.pdf(value, name='pdf')` {#Normal.pdf}
 
 The probability density function.
@@ -315,8 +414,7 @@ sample per batched distribution.
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: `int32` `Tensor` or tuple or list. Shape of the generated
-    samples.
+*  <b>`sample_shape`</b>: Rank 1 `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
@@ -336,7 +434,8 @@ Sample `n` observations from the Normal Distributions.
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
 *  <b>`seed`</b>: Python integer, the random seed.
 *  <b>`name`</b>: The name to give this op.
 

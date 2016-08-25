@@ -157,7 +157,7 @@ In more detail, the Input Builder function returns the following as a pair:
     `SparseTensors`.
 2.  `label`: A `Tensor` containing the label column.
 
-The keys of the `feature_cols` will be used to when construct columns in the
+The keys of the `feature_cols` will be used to construct columns in the
 next section. Because we want to call the `fit` and `evaluate` methods with
 different data, we define two different input builder functions,
 `train_input_fn` and `test_input_fn` which are identical except that they pass

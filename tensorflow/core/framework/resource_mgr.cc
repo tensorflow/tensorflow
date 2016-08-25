@@ -136,7 +136,8 @@ Status ResourceMgr::Cleanup(const string& container) {
     mutex_lock l(mu_);
     auto iter = containers_.find(container);
     if (iter == containers_.end()) {
-      return errors::NotFound("Container ", container, " does not exist.");
+      // Nothing to cleanup, it's OK.
+      return Status::OK();
     }
     b = iter->second;
     containers_.erase(iter);

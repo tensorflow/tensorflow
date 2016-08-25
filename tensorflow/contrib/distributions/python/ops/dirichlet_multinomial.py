@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=line-too-long
-
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
@@ -28,8 +26,6 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
-
-# pylint: enable=line-too-long
 
 
 class DirichletMultinomial(distribution.Distribution):
@@ -146,7 +142,7 @@ class DirichletMultinomial(distribution.Distribution):
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
     self._name = name
-    with ops.op_scope([n, alpha], name):
+    with ops.name_scope(name, values=[n, alpha]):
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
       #   we use the last dimension for the distribution, wherease
@@ -203,7 +199,7 @@ class DirichletMultinomial(distribution.Distribution):
     alpha_sum = self._alpha_sum
     n = self._n
     with ops.name_scope(self.name):
-      with ops.op_scope([alpha, alpha_sum, n], name):
+      with ops.name_scope(name, values=[alpha, alpha_sum, n]):
         mean_no_n = alpha / array_ops.expand_dims(alpha_sum, -1)
         return array_ops.expand_dims(n, -1) * mean_no_n
 
@@ -236,7 +232,7 @@ class DirichletMultinomial(distribution.Distribution):
     alpha_sum = self._alpha_sum
     n = self._n
     with ops.name_scope(self.name):
-      with ops.op_scope([alpha, alpha_sum, n], name):
+      with ops.name_scope(name, values=[alpha, alpha_sum, n]):
         expanded_alpha_sum = array_ops.expand_dims(alpha_sum, -1)
         shared_factor = n * (expanded_alpha_sum + n) / (
             expanded_alpha_sum + 1) * array_ops.ones_like(alpha)
@@ -262,7 +258,7 @@ class DirichletMultinomial(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha_sum], name):
+      with ops.name_scope(name, values=[self._alpha_sum]):
         return array_ops.shape(self._alpha_sum)
 
   def get_batch_shape(self):
@@ -285,7 +281,7 @@ class DirichletMultinomial(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha], name):
+      with ops.name_scope(name, values=[self._alpha]):
         return array_ops.reverse(array_ops.shape(self._alpha), [True])[0]
 
   def get_event_shape(self):
@@ -329,7 +325,7 @@ class DirichletMultinomial(distribution.Distribution):
     n = self._n
     alpha = self._alpha
     with ops.name_scope(self.name):
-      with ops.op_scope([n, alpha, counts], name):
+      with ops.name_scope(name, values=[n, alpha, counts]):
         counts = self._check_counts(counts)
 
         ordered_prob = (special_math_ops.lbeta(alpha + counts) -
@@ -371,8 +367,7 @@ class DirichletMultinomial(distribution.Distribution):
         check_ops.assert_non_negative(counts),
         check_ops.assert_equal(
             self._n, candidate_n,
-            message="counts do not sum to n"
-        ),
+            message="counts do not sum to n"),
         distribution_util.assert_integer_form(counts)], counts)
 
   def _check_alpha(self, alpha):

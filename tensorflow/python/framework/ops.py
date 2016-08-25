@@ -32,6 +32,7 @@ import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -49,7 +50,7 @@ def _override_helper(clazz_object, operator, func):
   Args:
     clazz_object: the class to override for; either Tensor or SparseTensor.
     operator: the string name of the operator to override.
-    func: the function that replaces the overriden operator.
+    func: the function that replaces the overridden operator.
 
   Raises:
     ValueError: If operator has already been overwritten,
@@ -908,16 +909,29 @@ class SparseTensor(object):
   `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
   object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(indices, values, shape)` is
+  Concretely, the sparse tensor `SparseTensor(indices, values, shape)`
+  comprises the following components, where `N` and `ndims` are the number
+  of values and number of dimensions in the `SparseTensor`, respectively:
 
-  * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
-  * `values`: A 1-D tensor of any type and shape `[N]`.
-  * `shape`: A 1-D int64 tensor of shape `[ndims]`.
+  * `indices`: A 2-D int64 tensor of shape `[N, ndims]`, which specifies
+    the indices of the elements in the sparse tensor that contain nonzero
+    values (elements are zero-indexed). For example, `indices=[[1,3], [2,4]]`
+    specifies that the elements with indexes of [1,3] and [2,4] have
+    nonzero values.
 
-  where `N` and `ndims` are the number of values, and number of dimensions in
-  the `SparseTensor` respectively.
+  * `values`: A 1-D tensor of any type and shape `[N]`, which supplies the
+    values for each element in `indices`. For example, given
+    `indices=[[1,3], [2,4]]`, the parameter `values=[18, 3.6]` specifies
+    that element [1,3] of the sparse tensor has a value of 18, and element
+    [2,4] of the tensor has a value of 3.6.
 
-  The corresponding dense tensor satisfies
+  * `shape`: A 1-D int64 tensor of shape `[ndims]`, which specifies the shape
+    of the sparse tensor. Takes a list indicating the number of elements in
+    each dimension. For example, `shape=[3,6]` specifies a two-dimensional 3x6
+    tensor, `shape=[2,3,4]` specifies a three-dimensional 2x3x4 tensor, and
+    `shape=[9]` specifies a one-dimensional tensor with 9 elements.
+
+  The corresponding dense tensor satisfies:
 
   ```python
   dense.shape = shape
@@ -925,7 +939,7 @@ class SparseTensor(object):
   ```
 
   By convention, `indices` should be sorted in row-major order (or equivalently
-  lexicographic order on the tuples `indices[i]`).  This is not enforced when
+  lexicographic order on the tuples `indices[i]`). This is not enforced when
   `SparseTensor` objects are constructed, but most ops assume correct ordering.
   If the ordering of sparse tensor `st` is wrong, a fixed version can be
   obtained by calling `tf.sparse_reorder(st)`.
@@ -971,7 +985,7 @@ class SparseTensor(object):
     Returns:
       A `SparseTensor`
     """
-    with op_scope([indices, values, shape], None, "SparseTensor"):
+    with name_scope(None, "SparseTensor", [indices, values, shape]):
       indices = convert_to_tensor(indices, name="indices", dtype=dtypes.int64)
       # Always pass as_ref=True because we want to be able to update
       # values later if it is a VariableOp.
@@ -1090,9 +1104,9 @@ def _NodeDef(op_type, name, device=None, attrs=None):
       AttrValue).
 
   Returns:
-    A graph_pb2.NodeDef protocol buffer.
+    A node_def_pb2.NodeDef protocol buffer.
   """
-  node_def = graph_pb2.NodeDef()
+  node_def = node_def_pb2.NodeDef()
   node_def.op = compat.as_bytes(op_type)
   node_def.name = compat.as_bytes(name)
   if attrs is not None:
@@ -1157,8 +1171,8 @@ class Operation(object):
         [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
     Args:
-      node_def: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-        Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+      node_def: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+        Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
         `op`, and `device`.  The `input` attribute is irrelevant here
         as it will be computed when generating the model.
       g: `Graph`. The parent graph.
@@ -1186,7 +1200,7 @@ class Operation(object):
         or if `inputs` and `input_types` are incompatible.
       ValueError: if the `node_def` name is not valid.
     """
-    if not isinstance(node_def, graph_pb2.NodeDef):
+    if not isinstance(node_def, node_def_pb2.NodeDef):
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
     if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
       raise ValueError(
@@ -1488,7 +1502,7 @@ class Operation(object):
 
     Returns:
       A
-      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
       protocol buffer.
     """
     return self._node_def
@@ -2040,6 +2054,9 @@ class Graph(object):
     Note that this is unrelated to the
     [GraphDef version](#Graph.graph_def_version).
     """
+    if self._finalized:
+      return self._version
+
     with self._lock:
       return self._version
 
@@ -2388,6 +2405,9 @@ class Graph(object):
         example, an invalid string.
       KeyError: If `obj` is not an object in the graph.
     """
+    if self._finalized:
+      return self._as_graph_element_locked(obj, allow_tensor, allow_operation)
+
     with self._lock:
       return self._as_graph_element_locked(obj, allow_tensor, allow_operation)
 
@@ -2492,6 +2512,9 @@ class Graph(object):
     Returns:
       A list of Operations.
     """
+    if self._finalized:
+      return list(self._nodes_by_id.values())
+
     with self._lock:
       return list(self._nodes_by_id.values())
 
@@ -3051,7 +3074,7 @@ class Graph(object):
         q3 = tf.FIFOQueue(30, tf.float32)
 
     # Resets container "experiment0", after which the state of v1, v2, v4, q1
-    # will become undefined (such as unitialized).
+    # will become undefined (such as uninitialized).
     tf.Session.reset(target, ["experiment0"])
     ```
 
@@ -3170,7 +3193,7 @@ class Graph(object):
     for controller in self._control_dependencies_stack:
       # If any of the input_ops already depends on the inputs from controller,
       # we say that the new op is dominated (by that input), and we therefore
-      # do not need to add control dependences for this controller's inputs.
+      # do not need to add control dependencies for this controller's inputs.
       dominated = False
       for op in input_ops:
         if controller.op_in_group(op):
@@ -3462,23 +3485,6 @@ def container(container_name):
 
 def colocate_with(op, ignore_existing=False):
   return get_default_graph().colocate_with(op, ignore_existing)
-
-
-def name_scope(name):
-  """Wrapper for `Graph.name_scope()` using the default graph.
-
-  See
-  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
-  for more details.
-
-  Args:
-    name: A name for the scope.
-
-  Returns:
-    A context manager that installs `name` as a new name scope in the
-    default graph.
-  """
-  return get_default_graph().name_scope(name)
 
 
 def control_dependencies(control_inputs):
@@ -3903,11 +3909,14 @@ class GraphKeys(object):
   UPDATE_OPS = "update_ops"
   # Key to collect losses
   LOSSES = "losses"
+  # Key to collect BaseSaverBuilder.SaveableObject instances for checkpointing.
+  SAVEABLE_OBJECTS = "saveable_objects"
 
   # Key to indicate various ops.
   INIT_OP = "init_op"
   LOCAL_INIT_OP = "local_init_op"
   READY_OP = "ready_op"
+  READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
 
@@ -3990,18 +3999,20 @@ def get_all_collection_keys():
 
 # pylint: disable=g-doc-return-or-yield
 @contextlib.contextmanager
-def op_scope(values, name, default_name=None):
+def name_scope(name, default_name=None, values=None):
   """Returns a context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
-  same graph, ensures that graph is the default graph, and pushes a
-  name scope.
+  same graph, makes that graph the default graph, and pushes a
+  name scope in that graph (see
+  [`Graph.name_scope()`](../../api_docs/python/framework.md#Graph.name_scope)
+  for more details on that).
 
   For example, to define a new Python op called `my_op`:
 
   ```python
   def my_op(a, b, c, name=None):
-    with tf.op_scope([a, b, c], name, "MyOp") as scope:
+    with tf.name_scope(name, "MyOp", [a, b, c]) as scope:
       a = tf.convert_to_tensor(a, name="a")
       b = tf.convert_to_tensor(b, name="b")
       c = tf.convert_to_tensor(c, name="c")
@@ -4010,25 +4021,41 @@ def op_scope(values, name, default_name=None):
   ```
 
   Args:
-    values: The list of `Tensor` arguments that are passed to the op function.
     name: The name argument that is passed to the op function.
     default_name: The default name to use if the `name` argument is `None`.
+    values: The list of `Tensor` arguments that are passed to the op function.
 
   Returns:
     A context manager for use in defining Python ops. Yields the name scope.
 
   Raises:
-    ValueError: if neither `name` nor `default_name` is provided.
+    ValueError: if neither `name` nor `default_name` is provided
+      but `values` are.
   """
-  g = _get_graph_from_inputs(values)
   n = default_name if name is None else name
-  if n is None:
+  if n is None and values is not None:
+    # We only raise an error if values is not None (provided) because currently
+    # tf.name_scope(None) (values=None then) is sometimes used as an idiom
+    # to reset to top scope.
     raise ValueError(
         "At least one of name (%s) and default_name (%s) must be provided." % (
             name, default_name))
+  if values is None:
+    values = []
+  g = _get_graph_from_inputs(values)
   with g.as_default(), g.name_scope(n) as scope:
     yield scope
 # pylint: enable=g-doc-return-or-yield
+
+
+# pylint: disable=g-doc-return-or-yield
+@contextlib.contextmanager
+def op_scope(values, name, default_name=None):
+  """DEPRECATED. Same as name_scope above, just different argument order."""
+  logging.warn("tf.op_scope(values, name, default_name) is deprecated,"
+               " use tf.name_scope(name, default_name, values)")
+  with name_scope(name, default_name=default_name, values=values) as scope:
+    yield scope
 
 
 _proto_function_registry = registry.Registry("proto functions")

@@ -20,9 +20,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("AddN")
     .Input("inputs: N * T")
@@ -32,7 +32,7 @@ REGISTER_OP("AddN")
     .SetIsCommutative()
     .SetIsAggregate()
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* cur = c->input(c->num_inputs() - 1);
+      ShapeHandle cur = c->input(c->num_inputs() - 1);
       for (int i = c->num_inputs() - 2; i >= 0; --i) {
         TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
                                         "From merging shape ", i,
@@ -51,8 +51,8 @@ namespace {
 
 // Shape inference function for binary operators that broadcast their inputs.
 Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
-  const Shape* shape_x = c->input(0);
-  const Shape* shape_y = c->input(1);
+  ShapeHandle shape_x = c->input(0);
+  ShapeHandle shape_y = c->input(1);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
     c->set_output(0, c->UnknownShape());
     return Status::OK();
@@ -64,15 +64,16 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   // To compute the broadcast dimensions, we zip together shape_x and shape_y
   // and
   // pad with 1 to make them the same length.
-  std::vector<const Dimension*> dims;
-  const Dimension* dim_one = rank_x == rank_y ? nullptr : c->MakeDim(1);
+  std::vector<DimensionHandle> dims;
+  DimensionHandle dim_one;
+  if (rank_x != rank_y) dim_one = c->MakeDim(1);
   for (int i = 0; i < rank_out; ++i) {
-    const auto* dim_x = i < (rank_out - rank_x)
-                            ? dim_one
-                            : c->Dim(shape_x, i - (rank_out - rank_x));
-    const auto* dim_y = i < (rank_out - rank_y)
-                            ? dim_one
-                            : c->Dim(shape_y, i - (rank_out - rank_y));
+    const auto dim_x = i < (rank_out - rank_x)
+                           ? dim_one
+                           : c->Dim(shape_x, i - (rank_out - rank_x));
+    const bool dim_y_is_one = (i < (rank_out - rank_y));
+    const auto dim_y =
+        dim_y_is_one ? dim_one : c->Dim(shape_y, i - (rank_out - rank_y));
     if (!c->ValueKnown(dim_x) || !c->ValueKnown(dim_y)) {
       // One or both dimensions is unknown.
       //
@@ -94,7 +95,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
         dims.push_back(c->UnknownDim());
       }
     } else if (c->Value(dim_x) == 1 || c->Value(dim_y) == 1) {
-      if (c->Value(dim_x) == 1 && dim_y != dim_one) {
+      if (c->Value(dim_x) == 1 && !dim_y_is_one) {
         // We will broadcast dim_x to dim_y.
         dims.push_back(dim_y);
       } else {
@@ -103,7 +104,7 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
         dims.push_back(dim_x);
       }
     } else {
-      const Dimension* dim;
+      DimensionHandle dim;
       TF_RETURN_IF_ERROR(c->Merge(dim_x, dim_y, &dim));
       dims.push_back(dim);
     }
@@ -125,8 +126,8 @@ REGISTER_OP("BatchMatMul")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* a_shape;
-      const Shape* b_shape;
+      ShapeHandle a_shape;
+      ShapeHandle b_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &a_shape));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 3, &b_shape));
 
@@ -135,23 +136,23 @@ REGISTER_OP("BatchMatMul")
       bool adj_y;
       TF_RETURN_IF_ERROR(c->GetAttr("adj_x", &adj_x));
       TF_RETURN_IF_ERROR(c->GetAttr("adj_y", &adj_y));
-      const Dimension* output_rows = c->Dim(a_shape, adj_x ? -1 : -2);
-      const Dimension* output_cols = c->Dim(b_shape, adj_y ? -2 : -1);
+      DimensionHandle output_rows = c->Dim(a_shape, adj_x ? -1 : -2);
+      DimensionHandle output_cols = c->Dim(b_shape, adj_y ? -2 : -1);
 
       // Batch dims match between inputs.
-      const Shape* a_batch_dims;
-      const Shape* b_batch_dims;
-      const Shape* batch_dims;
+      ShapeHandle a_batch_dims;
+      ShapeHandle b_batch_dims;
+      ShapeHandle batch_dims;
       TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_dims));
       TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_dims));
       TF_RETURN_IF_ERROR(c->Merge(a_batch_dims, b_batch_dims, &batch_dims));
 
       // Assert inner dims match.
-      const Dimension* unused;
+      DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, adj_x ? -2 : -1),
                                   c->Dim(b_shape, adj_y ? -1 : -2), &unused));
 
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(
           batch_dims, c->Matrix(output_rows, output_cols), &out));
       c->set_output(0, out);
@@ -617,7 +618,7 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 The upper regularized incomplete Gamma function is defined as:
 
 ```
-Q(a, x) = Gamma(a, x) / Gamma(x) = 1 - P(a, x)
+Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
 ```
 where
 ```
@@ -641,7 +642,7 @@ Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 The lower regularized incomplete Gamma function is defined as:
 
 ```
-P(a, x) = gamma(a, x) / Gamma(x) = 1 - Q(a, x)
+P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
 ```
 where
 ```
@@ -814,8 +815,8 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* cond = c->input(0);
-      const Shape* data = c->input(1);
+      ShapeHandle cond = c->input(0);
+      ShapeHandle data = c->input(1);
       TF_RETURN_IF_ERROR(c->Merge(data, c->input(2), &data));
 
       // Validate condition's shape if possible.
@@ -830,12 +831,12 @@ REGISTER_OP("Select")
             if (c->Rank(cond) == 1) {
               // Must be a vector whose first dimension matches first dimension
               // of the data vectors.
-              const Dimension* merged_dim;
+              DimensionHandle merged_dim;
               TF_RETURN_IF_ERROR(
                   c->Merge(c->Dim(data, 0), c->Dim(cond, 0), &merged_dim));
-              if (merged_dim != c->Dim(data, 0)) {
+              if (c->Value(merged_dim) != c->Value(c->Dim(data, 0))) {
                 // Merging used the cond dim.  Update data to refer to it.
-                std::vector<const Dimension*> dims{merged_dim};
+                std::vector<DimensionHandle> dims{merged_dim};
                 for (int i = 1; i < data_rank; ++i) {
                   dims.push_back(c->Dim(data, i));
                 }
@@ -973,6 +974,7 @@ REGISTER_OP("Sum")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the sum of elements across dimensions of a tensor.
 
@@ -993,6 +995,7 @@ REGISTER_OP("Mean")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the mean of elements across dimensions of a tensor.
 
@@ -1013,6 +1016,7 @@ REGISTER_OP("Prod")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the product of elements across dimensions of a tensor.
 
@@ -1033,6 +1037,7 @@ REGISTER_OP("Min")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the minimum of elements across dimensions of a tensor.
 
@@ -1053,6 +1058,7 @@ REGISTER_OP("Max")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the maximum of elements across dimensions of a tensor.
 
@@ -1067,11 +1073,64 @@ keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
 
+namespace {
+
+Status ArgOpShape(shape_inference::InferenceContext* c) {
+  ShapeHandle dimension_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &dimension_shape));
+
+  ShapeHandle input_shape = c->input(0);
+  if (!c->RankKnown(input_shape)) {
+    return shape_inference::UnknownShape(c);
+  }
+
+  const int32 input_rank = c->Rank(input_shape);
+  if (input_rank <= 1) {
+    // Reducing a scalar/vector must return a scalar.
+    return shape_inference::ScalarShape(c);
+  }
+
+  const Tensor* dim_t = c->input_tensor(1);
+  if (dim_t == nullptr) {
+    // We don't know the value of the dimension, but we
+    // know the rank of the input, so return the correct
+    // rank with unknown dimensions.
+    std::vector<DimensionHandle> dims(input_rank - 1);
+    for (int i = 0; i < dims.size(); ++i) {
+      dims[i] = c->UnknownDim();
+    }
+
+    c->set_output(0, c->MakeShape(dims));
+    return Status::OK();
+  }
+
+  const int32 dimension_val = dim_t->scalar<int32>()();
+  if (dimension_val < 0 || dimension_val >= input_rank) {
+    return errors::InvalidArgument("Dimension (", dimension_val,
+                                   ") must be in the range [0, ", input_rank,
+                                   "), where ", input_rank, " is the ",
+                                   "number of dimensions in the input.");
+  }
+
+  // Return the input shape without the dimension being reduced.
+  std::vector<DimensionHandle> dims;
+  for (int i = 0; i < input_rank; ++i) {
+    if (dimension_val != i) {
+      dims.emplace_back(c->Dim(input_shape, i));
+    }
+  }
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: int32")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
@@ -1084,6 +1143,7 @@ REGISTER_OP("ArgMin")
     .Input("dimension: int32")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
 
@@ -1094,17 +1154,79 @@ dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
 namespace {
 
 Status SegmentReductionShapeFn(InferenceContext* c) {
-  const Shape* data_shape;
-  const Shape* segment_ids_shape;
+  ShapeHandle data_shape;
+  ShapeHandle segment_ids_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &segment_ids_shape));
 
-  const Shape* subshape;
+  ShapeHandle subshape;
   TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
 
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(
       c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+Status SparseSegmentReductionShapeFn(InferenceContext* c) {
+  ShapeHandle data_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices_shape));
+
+  ShapeHandle segment_ids_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &segment_ids_shape));
+
+  // indices and segment_ids should merge cleanly.
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->Merge(indices_shape, segment_ids_shape, &unused));
+
+  ShapeHandle subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
+
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(c->Vector(InferenceContext::kUnknownDim), subshape, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+  ShapeHandle data_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
+
+  ShapeHandle indices_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &indices_shape));
+
+  // indices and segment_ids should merge cleanly.
+  ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->Merge(c->input(2), indices_shape, &unused));
+
+  // output_dim0 should be a scalar
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+
+  ShapeHandle subshape;
+  TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
+
+  const Tensor* dim0 = c->input_tensor(3);
+  ShapeHandle dim0_shape;
+  if (dim0 == nullptr) {
+    // We don't have the value at inference time, so the output
+    // shape is unknown.
+    dim0_shape = c->Vector(InferenceContext::kUnknownDim);
+  } else {
+    auto dim0_value = dim0->scalar<int32>()();
+    if (dim0_value < 0) {
+      return errors::InvalidArgument(
+          "Cannot specify a negative value for output_dim0");
+    }
+    dim0_shape = c->Vector(dim0_value);
+  }
+
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->Concatenate(dim0_shape, subshape, &out));
   c->set_output(0, out);
   return Status::OK();
 }
@@ -1263,12 +1385,12 @@ REGISTER_OP("UnsortedSegmentSum")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* s_data = c->input(0);
-      const Shape* s_segment_ids = c->input(1);
-      const Shape* s_num_segments = c->input(2);
+      ShapeHandle s_data = c->input(0);
+      ShapeHandle s_segment_ids = c->input(1);
+      ShapeHandle s_num_segments = c->input(2);
       TF_RETURN_IF_ERROR(c->WithRank(s_num_segments, 0, &s_num_segments));
 
-      const Shape* out;
+      ShapeHandle out;
 
       // Leading dimensions of data must be compatible with dimensions of
       // <s_segment_ids>.
@@ -1277,11 +1399,11 @@ REGISTER_OP("UnsortedSegmentSum")
             c->MergePrefix(s_data, s_segment_ids, &s_data, &s_segment_ids));
 
         // Get the value of the num_segments input tensor.
-        const Dimension* num_segments_dim;
+        DimensionHandle num_segments_dim;
         TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &num_segments_dim));
 
         // Output is {segment_id_rank} + s_data[segment_id_rank:].
-        const Shape* s_data_suffix;
+        ShapeHandle s_data_suffix;
         TF_RETURN_IF_ERROR(
             c->Subshape(s_data, c->Rank(s_segment_ids), &s_data_suffix));
         TF_RETURN_IF_ERROR(
@@ -1327,6 +1449,7 @@ REGISTER_OP("SparseSegmentSum")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor.
 
@@ -1374,6 +1497,7 @@ REGISTER_OP("SparseSegmentMean")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the mean along sparse segments of a tensor.
 
@@ -1400,6 +1524,7 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentMean.
 
@@ -1418,6 +1543,7 @@ REGISTER_OP("SparseSegmentSqrtN")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor divided by the sqrt of N.
 
@@ -1443,6 +1569,7 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentSqrtN.
 
@@ -1460,6 +1587,7 @@ REGISTER_OP("All")
     .Input("reduction_indices: int32")
     .Output("output: bool")
     .Attr("keep_dims: bool = false")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical and" of elements across dimensions of a tensor.
 
@@ -1479,6 +1607,7 @@ REGISTER_OP("Any")
     .Input("reduction_indices: int32")
     .Attr("keep_dims: bool = false")
     .Output("output: bool")
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical or" of elements across dimensions of a tensor.
 
@@ -1501,7 +1630,7 @@ REGISTER_OP("Range")
     .Input("delta: int32")
     .Output("output: int32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
                                       " for 'start'");
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(1), 0, &unused),
@@ -1557,7 +1686,7 @@ REGISTER_OP("LinSpace")
     .Output("output: T")
     .Attr("T: {float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
                                       " for 'start'");
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(1), 0, &unused),

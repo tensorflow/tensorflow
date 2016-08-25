@@ -218,7 +218,6 @@ PROTO_TRAITS(uint8, int32, int);
 PROTO_TRAITS(uint16, int32, int);
 PROTO_TRAITS(int16, int32, int);
 PROTO_TRAITS(int8, int32, int);
-PROTO_TRAITS(int64, int64, int64);
 PROTO_TRAITS(bool, bool, bool);
 PROTO_TRAITS(string, string, string);
 PROTO_TRAITS(qint8, int32, int);
@@ -226,6 +225,20 @@ PROTO_TRAITS(quint8, int32, int);
 PROTO_TRAITS(qint16, int32, int);
 PROTO_TRAITS(quint16, int32, int);
 #undef PROTO_TRAITS
+
+template <>
+struct ProtoHelper<int64> {
+  static const int64* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const int64*>(proto.int64_val().begin());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.int64_val().size();
+  }
+  static void Fill(const int64* data, size_t n, TensorProto* proto) {
+    protobuf::RepeatedField<protobuf_int64> copy(data, data + n);
+    proto->mutable_int64_val()->Swap(&copy);
+  }
+};
 
 template <>
 struct ProtoHelper<complex64> {
@@ -438,8 +451,11 @@ Tensor::~Tensor() { UnrefIfNonNull(buf_); }
 
 void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   CHECK_EQ(shape.num_elements(), other.NumElements());
+  // Data type will be overwritten if this == &other, since dtype is part of
+  // shape.
+  DataType other_dtype = other.dtype();
   shape_ = shape;
-  set_dtype(other.dtype());
+  set_dtype(other_dtype);
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
     buf_ = other.buf_;
@@ -447,15 +463,16 @@ void Tensor::CopyFromInternal(const Tensor& other, const TensorShape& shape) {
   }
 }
 
-void Tensor::UnsafeCopyFromInternal(const Tensor& other,
+void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
                                     const TensorShape& shape) {
   int in_size = DataTypeSize(other.dtype());
-  int out_size = DataTypeSize(shape.data_type());
+  int out_size = DataTypeSize(dtype);
   CHECK_NE(in_size, 0);
   CHECK_NE(out_size, 0);
   CHECK_EQ(shape.num_elements() * out_size,
            other.shape().num_elements() * in_size);
   shape_ = shape;
+  shape_.set_data_type(dtype);
   if (buf_ != other.buf_) {
     UnrefIfNonNull(buf_);
     buf_ = other.buf_;
@@ -723,7 +740,7 @@ string Tensor::SummarizeValue(int64 max_entries) const {
       string ret;
       // TODO(irving): Don't call flat every time around this
       // loop.
-      for (int64 i = 0; i < limit; ++i) {
+      for (size_t i = 0; i < limit; ++i) {
         if (i > 0) strings::StrAppend(&ret, " ");
         switch (dtype()) {
           case DT_STRING:
@@ -750,11 +767,6 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
   CHECK_NE(nullptr, buf_);
   CHECK_NE(nullptr, b.buf_);
   return buf_->root_buffer() == b.buf_->root_buffer();
-}
-
-size_t Tensor::BufferHash() const {
-  CHECK_NE(nullptr, buf_);
-  return std::hash<TensorBuffer*>()(buf_->root_buffer());
 }
 
 string Tensor::DebugString() const {

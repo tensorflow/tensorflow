@@ -68,7 +68,7 @@ class TensorArray(object):
 
     The name of the `TensorArray` (even if passed in) is uniquified: each time
     a new `TensorArray` is created at runtime it is assigned its own name for
-    the duration of the run.  This avoids name collissions if a `TensorArray`
+    the duration of the run.  This avoids name collisions if a `TensorArray`
     is created within a `while_loop`.
 
     Args:
@@ -122,7 +122,7 @@ class TensorArray(object):
     # write adds the shape of the tensor it writes, and all subsequent
     # writes checks for shape equality.
     self._elem_shape = []
-    with ops.op_scope([handle, size, flow], name, "TensorArray") as scope:
+    with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
         self._handle = handle
       else:
@@ -165,7 +165,7 @@ class TensorArray(object):
     # is fixed.
     if flow is None:
       flow = self.flow
-    with ops.op_scope([self._handle], name, "TensorArrayGrad"):
+    with ops.name_scope(name, "TensorArrayGrad", [self._handle]):
       with ops.colocate_with(self._handle):
         g_handle = gen_data_flow_ops._tensor_array_grad(
             handle=self._handle, source=source, flow_in=flow, name=name)
@@ -333,8 +333,8 @@ class TensorArray(object):
       ValueError: if the shape inference fails.
     """
     with ops.colocate_with(self._handle):
-      with ops.op_scope(
-          [self._handle, value, lengths], name, "TensorArraySplit"):
+      with ops.name_scope(name, "TensorArraySplit",
+                          [self._handle, value, lengths]):
         lengths_64 = math_ops.to_int64(lengths)
       flow_out = gen_data_flow_ops._tensor_array_split(
           handle=self._handle, value=value, lengths=lengths_64,

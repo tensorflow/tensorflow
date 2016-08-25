@@ -19,6 +19,7 @@ tensorflow/core/framework/tensor.pb.cc
 tensorflow/core/framework/summary.pb.cc
 tensorflow/core/framework/step_stats.pb.cc
 tensorflow/core/framework/op_def.pb.cc
+tensorflow/core/framework/node_def.pb.cc
 tensorflow/core/framework/log_memory.pb.cc
 tensorflow/core/framework/kernel_def.pb.cc
 tensorflow/core/framework/graph.pb.cc

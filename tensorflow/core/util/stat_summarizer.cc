@@ -40,7 +40,7 @@ StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph) {
 
 void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
   int64 curr_total = 0;
-  if (timing_details_.empty() && !step_stats.dev_stats().empty() &&
+  if (details_.empty() && !step_stats.dev_stats().empty() &&
       !step_stats.dev_stats(0).node_stats().empty()) {
     first_node_start_micros_ =
         step_stats.dev_stats(0).node_stats(0).all_start_micros();
@@ -50,14 +50,57 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
     for (const auto& ns : ds.node_stats()) {
       const int64 curr_time = ns.all_end_rel_micros();
       curr_total += curr_time;
-      auto result = timing_details_.emplace(ns.node_name(), Detail());
+      auto result = details_.emplace(ns.node_name(), Detail());
+      Detail* detail = &(result.first->second);
       if (result.second) {
-        result.first->second.first_rel_end_micros = curr_time;
-        result.first->second.first_start_micros =
+        detail->first_rel_end_micros = curr_time;
+        detail->first_start_micros =
             ns.all_start_micros() - first_node_start_micros_;
-        result.first->second.total_micros = curr_time;
+        detail->total_micros = curr_time;
+        detail->outputs.resize(ns.output_size());
+        for (const auto& output : ns.output()) {
+          const int32 slot = output.slot();
+          if ((slot < 0) || (slot >= ns.output_size())) {
+            LOG(ERROR) << "Bad output slot '" << slot << "' for '"
+                       << ns.node_name() << "'";
+            continue;
+          }
+          detail->outputs[slot] = output.tensor_description();
+        }
       } else {
-        result.first->second.total_micros += curr_time;
+        detail->total_micros += curr_time;
+        if (detail->outputs.size() != ns.output_size()) {
+          LOG(WARNING) << "Number of outputs changed between runs for '"
+                       << ns.node_name() << "' - was " << detail->outputs.size()
+                       << ", now " << ns.output_size();
+        } else {
+          for (const auto& output : ns.output()) {
+            const int32 slot = output.slot();
+            if ((slot < 0) || (slot >= ns.output_size())) {
+              LOG(ERROR) << "Bad output slot '" << slot << "' for '"
+                         << ns.node_name() << "'";
+              continue;
+            }
+            const auto& stored = detail->outputs[slot];
+            const auto& current = output.tensor_description();
+            bool do_shapes_match = true;
+            if (stored.shape().dim_size() != current.shape().dim_size()) {
+              do_shapes_match = false;
+            } else {
+              for (int i = 0; i < stored.shape().dim_size(); ++i) {
+                if (stored.shape().dim(i).size() !=
+                    current.shape().dim(i).size()) {
+                  do_shapes_match = false;
+                }
+              }
+
+              if ((stored.dtype() != current.dtype()) || !do_shapes_match) {
+                LOG(WARNING) << "Output tensor changed between runs for '"
+                             << ns.node_name();
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -68,7 +111,7 @@ std::string StatSummarizer::ShortSummary() const {
   std::stringstream stream;
   stream << run_total_micros_.count() << " runs, avg " << std::setprecision(4)
          << run_total_micros_.avg() / 1000.0 << " ms, " << node_types_.size()
-         << " nodes defined " << timing_details_.size() << " nodes observed";
+         << " nodes defined " << details_.size() << " nodes observed";
   return stream.str();
 }
 
@@ -124,7 +167,7 @@ std::string StatSummarizer::GetStatsBySorting(
     SortingMetric sorting_metric, double cdf_cutoff_ratio,
     int num_max_nodes_to_print) const {
   num_max_nodes_to_print =
-      std::min<int>(num_max_nodes_to_print, timing_details_.size());
+      std::min<int>(num_max_nodes_to_print, details_.size());
 
   std::stringstream stream;
   stream << ShortSummary() << std::endl;
@@ -137,9 +180,9 @@ std::string StatSummarizer::GetStatsBySorting(
   stream << HeaderString() << std::endl;
 
   std::priority_queue<
-      std::pair<int64, const std::pair<const std::string, Detail>*> >
+      std::pair<int64, const std::pair<const std::string, Detail>*>>
       timings;
-  for (const auto& entry : timing_details_) {
+  for (const auto& entry : details_) {
     timings.emplace(sorting_metric == SortingMetric::BY_TOTAL_DURATION
                         ? entry.second.total_micros
                         : -entry.second.first_start_micros,
@@ -183,25 +226,25 @@ std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions() const {
 
   int64 accumulated_us = 0;
 
-  auto timing_details_us_copy = timing_details_;
+  auto details_us_copy = details_;
 
   for (const auto& node_name_op : nodes_in_def_order_) {
-    auto detail_it = timing_details_us_copy.find(node_name_op);
-    if (detail_it == timing_details_us_copy.end()) {
+    auto detail_it = details_us_copy.find(node_name_op);
+    if (detail_it == details_us_copy.end()) {
       continue;
     }
     accumulated_us += detail_it->second.total_micros;
     stream << ColumnString(detail_it->first, detail_it->second, accumulated_us)
            << std::endl;
-    timing_details_us_copy.erase(detail_it);
+    details_us_copy.erase(detail_it);
   }
 
-  if (!timing_details_us_copy.empty()) {
+  if (!details_us_copy.empty()) {
     stream << "============ "
            << "The rest have different names between NodeExecStats and GraphDef"
            << "============ " << std::endl;
 
-    for (const auto& entry : timing_details_us_copy) {
+    for (const auto& entry : details_us_copy) {
       // Prints the remaining nodes whose names are different from the name in
       // graph definition.
       accumulated_us += entry.second.total_micros;
@@ -218,6 +261,32 @@ void StatSummarizer::PrintStepStats() const {
   LOG(INFO) << GetStatsByRunOrder();
   LOG(INFO) << GetStatsByTopDurations();
   LOG(INFO);
+}
+
+void StatSummarizer::PrintOutputs() const {
+  std::priority_queue<
+      std::pair<int64, const std::pair<const std::string, Detail>*>>
+      timings;
+  for (const auto& entry : details_) {
+    timings.emplace(-entry.second.first_start_micros, &entry);
+  }
+
+  LOG(INFO) << "============ Node output tensor sizes in run order ========";
+  while (!timings.empty()) {
+    auto entry = timings.top();
+    timings.pop();
+    const Detail& detail = entry.second->second;
+    std::stringstream stream;
+    stream << entry.second->first << "\t" << detail.outputs.size();
+    for (const auto& tensor : detail.outputs) {
+      stream << "\t" << DataTypeString(tensor.dtype());
+      stream << "\t" << tensor.shape().dim_size();
+      for (const auto& d : tensor.shape().dim()) {
+        stream << "\t" << d.size();
+      }
+    }
+    LOG(INFO) << stream.str();
+  }
 }
 
 }  // namespace tensorflow

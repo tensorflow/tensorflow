@@ -45,6 +45,51 @@ function main {
   esac
 }
 
+function python_path {
+  python - <<END
+from __future__ import print_function
+import site
+import os
+
+try:
+  input = raw_input
+except NameError:
+  pass
+
+python_paths = []
+if os.getenv('PYTHONPATH') is not None:
+  python_paths = os.getenv('PYTHONPATH').split(':')
+try:
+  library_paths =  site.getsitepackages()
+except AttributeError:
+ from distutils.sysconfig import get_python_lib
+ library_paths = get_python_lib()
+all_paths = set(python_paths + library_paths)
+
+paths = []
+for path in all_paths:
+  if os.path.isdir(path):
+    paths.append(path)
+
+if len(paths) == 1:
+  print(paths[0])
+else:
+  ret_paths = " ".join(paths)
+  print(ret_paths)
+END
+}
+
+function default_python_path {
+  PYTHON_ARG="$1" python - <<END
+from __future__ import print_function
+import os
+
+default = os.getenv('PYTHON_ARG')
+default = str(default)
+print(default)
+END
+}
+
 function setup_python {
   PYTHON_BIN_PATH="$1";
 
@@ -68,11 +113,27 @@ function setup_python {
     echo -e "\n\nERROR: Problem getting python include path.  Is distutils installed?"
     exit 1
   fi
-  local python_lib=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; from distutils import sysconfig; print(sysconfig.get_python_lib());')
-  if [ "$python_lib" == "" ]; then
-    echo -e "\n\nERROR: Problem getting python lib path.  Is distutils installed?"
-    exit 1
+
+  local python_lib_path=$(python_path)
+  echo "Found possible Python library paths:"
+  for x in $python_lib_path; do
+    echo "  $x"
+  done
+  set -- $python_lib_path
+  echo "Please input the desired Python library path to use.  Default is ["$1"]"
+  read b || true
+  if [ "$b" == "" ]; then
+   python_lib="$(default_python_path $python_lib_path)"
+   echo $python_lib
+  else
+    if test -d $b -a -x $b; then
+      python_lib=$b
+    else
+      echo -e "\n\nERROR: The path you have entered does not exist."
+      exit 1
+    fi
   fi
+
   local numpy_include=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import numpy; print(numpy.get_include());')
   if [ "$numpy_include" == "" ]; then
     echo -e "\n\nERROR: Problem getting numpy include path.  Is numpy installed?"

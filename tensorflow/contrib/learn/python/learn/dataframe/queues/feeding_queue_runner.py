@@ -73,6 +73,8 @@ class FeedingQueueRunner(qr.QueueRunner):
 
     """
     # TODO(jamieas): Reduce code duplication with `QueueRunner`.
+    if coord:
+      coord.register_thread(threading.current_thread())
     decremented = False
     try:
       while True:

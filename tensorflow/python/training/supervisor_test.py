@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for supervisor.py."""
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +21,7 @@ import glob
 import os
 import shutil
 import time
+import uuid
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -48,6 +48,20 @@ def _test_dir(test_name):
 
 
 class SupervisorTest(tf.test.TestCase):
+
+  def _wait_for_glob(self, pattern, timeout_secs):
+    """Wait for a checkpoint file to appear.
+
+    Args:
+      pattern: A string.
+      timeout_secs: How long to wait for in seconds.
+    """
+    end_time = time.time() + timeout_secs
+    while time.time() < end_time:
+      if len(tf.gfile.Glob(pattern)) >= 1:
+        return
+      time.sleep(0.05)
+    self.assertFalse(True, "Glob never matched any file: %s" % pattern)
 
   # This test does not test much.
   def testBasics(self):
@@ -450,6 +464,103 @@ class SupervisorTest(tf.test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
+  def testReadyForLocalInitOp(self):
+    server = tf.train.Server.create_local_server()
+    logdir = _test_dir("default_ready_for_local_init_op")
+
+    uid = uuid.uuid4().hex
+
+    def get_session(is_chief):
+      g = tf.Graph()
+      with g.as_default():
+        with tf.device("/job:local"):
+          v = tf.Variable(
+              1, name="default_ready_for_local_init_op_v_" + str(uid))
+          vadd = v.assign_add(1)
+          w = tf.Variable(
+              v,
+              trainable=False,
+              collections=[tf.GraphKeys.LOCAL_VARIABLES],
+              name="default_ready_for_local_init_op_w_" + str(uid))
+          ready_for_local_init_op = tf.report_uninitialized_variables(
+              tf.all_variables())
+      sv = tf.train.Supervisor(
+          logdir=logdir,
+          is_chief=is_chief,
+          graph=g,
+          recovery_wait_secs=1,
+          init_op=v.initializer,
+          ready_for_local_init_op=ready_for_local_init_op)
+      sess = sv.prepare_or_wait_for_session(server.target)
+
+      return sv, sess, v, vadd, w
+
+    sv0, sess0, v0, _, w0 = get_session(True)
+    sv1, sess1, _, vadd1, w1 = get_session(False)
+
+    self.assertEqual(1, sess0.run(w0))
+    self.assertEqual(2, sess1.run(vadd1))
+    self.assertEqual(1, sess1.run(w1))
+    self.assertEqual(2, sess0.run(v0))
+
+    sv0.stop()
+    sv1.stop()
+
+  def testReadyForLocalInitOpRestoreFromCheckpoint(self):
+    server = tf.train.Server.create_local_server()
+    logdir = _test_dir("ready_for_local_init_op_restore")
+
+    uid = uuid.uuid4().hex
+
+    # Create a checkpoint.
+    with tf.Graph().as_default():
+      v = tf.Variable(
+          10.0, name="ready_for_local_init_op_restore_v_" + str(uid))
+      tf.scalar_summary("ready_for_local_init_op_restore_v_" + str(uid), v)
+      sv = tf.train.Supervisor(logdir=logdir)
+      sv.prepare_or_wait_for_session(server.target)
+      save_path = sv.save_path
+      self._wait_for_glob(save_path, 3.0)
+      self._wait_for_glob(os.path.join(logdir, "*events*"), 3.0)
+      # Wait to make sure everything is written to file before stopping.
+      time.sleep(1)
+      sv.stop()
+
+    def get_session(is_chief):
+      g = tf.Graph()
+      with g.as_default():
+        with tf.device("/job:local"):
+          v = tf.Variable(
+              1.0, name="ready_for_local_init_op_restore_v_" + str(uid))
+          vadd = v.assign_add(1)
+          w = tf.Variable(
+              v,
+              trainable=False,
+              collections=[tf.GraphKeys.LOCAL_VARIABLES],
+              name="ready_for_local_init_op_restore_w_" + str(uid))
+          ready_for_local_init_op = tf.report_uninitialized_variables(
+              tf.all_variables())
+      sv = tf.train.Supervisor(
+          logdir=logdir,
+          is_chief=is_chief,
+          graph=g,
+          recovery_wait_secs=1,
+          ready_for_local_init_op=ready_for_local_init_op)
+      sess = sv.prepare_or_wait_for_session(server.target)
+
+      return sv, sess, v, vadd, w
+
+    sv0, sess0, v0, _, w0 = get_session(True)
+    sv1, sess1, _, vadd1, w1 = get_session(False)
+
+    self.assertEqual(10, sess0.run(w0))
+    self.assertEqual(11, sess1.run(vadd1))
+    self.assertEqual(10, sess1.run(w1))
+    self.assertEqual(11, sess0.run(v0))
+
+    sv0.stop()
+    sv1.stop()
+
   def testLocalInitOp(self):
     logdir = _test_dir("default_local_init_op")
     with tf.Graph().as_default():
@@ -478,7 +589,7 @@ class SupervisorTest(tf.test.TestCase):
     logdir = _test_dir("default_local_init_op_non_chief")
     with tf.Graph().as_default():
       with tf.device("/job:localhost"):
-              # A local variable.
+        # A local variable.
         v = tf.Variable([1.0, 2.0, 3.0],
                         trainable=False,
                         collections=[tf.GraphKeys.LOCAL_VARIABLES])
@@ -555,20 +666,6 @@ class SupervisorTest(tf.test.TestCase):
       self.assertEquals(1, sess.run("v0:0"))
       sv2.saver.save(sess, sv2.save_path)
       sv2.stop()
-
-  def _wait_for_glob(self, pattern, timeout_secs):
-    """Wait for a checkpoint file to appear.
-
-    Args:
-      pattern: A string.
-      timeout_secs: How long to wait for in seconds.
-    """
-    end_time = time.time() + timeout_secs
-    while time.time() < end_time:
-      if len(tf.gfile.Glob(pattern)) >= 1:
-        return
-      time.sleep(0.05)
-    self.assertFalse(True, "Glob never matched any file: %s" % pattern)
 
   # This test is based on the fact that the standard services start
   # right away and get to run once before sv.stop() returns.

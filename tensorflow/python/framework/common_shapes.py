@@ -17,6 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six.moves
+
+from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 
 
@@ -528,3 +533,90 @@ def no_outputs(unused_op):
 def unknown_shape(op):
   """Shape function for use with ops whose output shapes are unknown."""
   return [tensor_shape.unknown_shape() for _ in op.outputs]
+
+
+def broadcast_shape(shape_x, shape_y):
+  """Returns the broadcasted shape between `shape_x` and `shape_y`.
+
+  Args:
+    shape_x: A `TensorShape`
+    shape_y: A `TensorShape`
+
+  Returns:
+    A `TensorShape` representing the broadcasted shape.
+
+  Raises:
+    ValueError: If the two shapes can not be broadcasted.
+  """
+  if shape_x.ndims is None or shape_y.ndims is None:
+    return tensor_shape.unknown_shape()
+
+  # To compute the broadcasted dimensions, we zip together shape_x and shape_y,
+  # and pad with 1 to make them the same length.
+  broadcasted_dims = reversed(list(six.moves.zip_longest(
+      reversed(shape_x.dims),
+      reversed(shape_y.dims),
+      fillvalue=tensor_shape.Dimension(1))))
+  # Next we combine the dimensions according to the numpy broadcasting rules.
+  # http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html
+  return_dims = []
+  for (dim_x, dim_y) in broadcasted_dims:
+    if dim_x.value is None or dim_y.value is None:
+      # One or both dimensions is unknown. If either dimension is greater than
+      # 1, we assume that the program is correct, and the other dimension will
+      # be broadcast to match it.
+      # TODO(mrry): If we eliminate the shape checks in C++, we must still
+      # assert that the unknown dim is either 1 or the same as the known dim.
+      if dim_x.value is not None and dim_x.value > 1:
+        return_dims.append(dim_x)
+      elif dim_y.value is not None and dim_y.value > 1:
+        return_dims.append(dim_y)
+      else:
+        return_dims.append(None)
+    elif dim_x.value == 1:
+      # We will broadcast dim_x to dim_y.
+      return_dims.append(dim_y)
+    elif dim_y.value == 1:
+      # We will broadcast dim_y to dim_x.
+      return_dims.append(dim_x)
+    elif dim_x.value == dim_y.value:
+      # The dimensions are compatible, so output is the same size in that
+      # dimension.
+      return_dims.append(dim_x.merge_with(dim_y))
+    else:
+      raise ValueError("Incompatible shapes for broadcasting: %s and %s"
+                       % (shape_x, shape_y))
+  return tensor_shape.TensorShape(return_dims)
+
+
+def call_cpp_shape_fn(op):
+  """A shape function that delegates to the registered C++ shape function.
+
+  Args:
+    op: the node in the graph for which to compute output shapes.
+
+  Returns:
+    A TensorShape list of the output shapes of the op, as computed using the
+    C++ shape inference function registered for the op.
+
+  Raises:
+    ValueError: If the C++ shape function returned an error (e.g. because the
+    shapes of the inputs are of the wrong rank or otherwise incompatible
+    according to the shape function).
+  """
+  node_def_str = op.node_def.SerializeToString()
+  input_shapes = [i.get_shape().as_proto().SerializeToString() for i in
+                  op.inputs]
+
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      output_shapes = pywrap_tensorflow.RunCppShapeInference(
+          node_def_str, input_shapes, status)
+  except errors.InvalidArgumentError as err:
+    raise ValueError(err.message)
+
+  # Convert TensorShapeProto values in output_shapes.
+  return [
+      tensor_shape.TensorShape(tensor_shape_pb2.TensorShapeProto.FromString(s))
+      for s in output_shapes
+  ]

@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=line-too-long
-
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
@@ -31,8 +29,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
-
-# pylint: enable=line-too-long
 
 
 class Dirichlet(distribution.Distribution):
@@ -132,7 +128,7 @@ class Dirichlet(distribution.Distribution):
     ```
 
     """
-    with ops.op_scope([alpha], name):
+    with ops.name_scope(name, values=[alpha]):
       alpha = ops.convert_to_tensor(alpha, name="alpha_before_deps")
       with ops.control_dependencies([
           check_ops.assert_positive(alpha), check_ops.assert_rank_at_least(
@@ -191,7 +187,7 @@ class Dirichlet(distribution.Distribution):
       `Tensor` `batch_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha], name):
+      with ops.name_scope(name, values=[self._alpha]):
         return array_ops.shape(self._alpha_0)
 
   def get_batch_shape(self):
@@ -214,7 +210,7 @@ class Dirichlet(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha], name):
+      with ops.name_scope(name, values=[self._alpha]):
         return array_ops.gather(array_ops.shape(self._alpha),
                                 [array_ops.rank(self._alpha) - 1])
 
@@ -231,13 +227,13 @@ class Dirichlet(distribution.Distribution):
   def mean(self, name="mean"):
     """Mean of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._alpha_0], name):
+      with ops.name_scope(name, values=[self._alpha, self._alpha_0]):
         return self._alpha / array_ops.expand_dims(self._alpha_0, -1)
 
   def variance(self, name="variance"):
     """Variance of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._alpha_0], name):
+      with ops.name_scope(name, values=[self._alpha, self._alpha_0]):
         alpha = array_ops.expand_dims(self._alpha, -1)
         alpha_0 = array_ops.expand_dims(self._alpha_0, -1)
 
@@ -252,7 +248,7 @@ class Dirichlet(distribution.Distribution):
   def std(self, name="std"):
     """Standard deviation of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return math_ops.sqrt(self.variance())
 
   def mode(self, name="mode"):
@@ -270,7 +266,7 @@ class Dirichlet(distribution.Distribution):
       Mode of the Dirichlet distribution.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._alpha_0], name):
+      with ops.name_scope(name, values=[self._alpha, self._alpha_0]):
         one = constant_op.constant(1, self.dtype)
         mode = (self._alpha - 1)/ (
             array_ops.expand_dims(self._alpha_0, -1) - math_ops.cast(
@@ -292,7 +288,7 @@ class Dirichlet(distribution.Distribution):
   def entropy(self, name="entropy"):
     """Entropy of the distribution in nats."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._alpha, self._alpha_0], name):
+      with ops.name_scope(name, values=[self._alpha, self._alpha_0]):
         alpha = self._alpha
         alpha_0 = self._alpha_0
 
@@ -329,7 +325,7 @@ class Dirichlet(distribution.Distribution):
     """
     alpha = self._alpha
     with ops.name_scope(self.name):
-      with ops.op_scope([alpha, x], name):
+      with ops.name_scope(name, values=[alpha, x]):
         x = self._check_x(x)
 
         unnorm_prob = (alpha - 1) * math_ops.log(x)
@@ -358,7 +354,8 @@ class Dirichlet(distribution.Distribution):
     """Sample `n` observations from the distributions.
 
     Args:
-      n: `Scalar`, type int32, the number of observations to sample.
+      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+        observations to sample.
       seed: Python integer, the random seed.
       name: The name to give this op.
 
@@ -367,7 +364,7 @@ class Dirichlet(distribution.Distribution):
         of the distributions determined by broadcasting the hyperparameters.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self.alpha, n], name):
+      with ops.name_scope(name, values=[self.alpha, n]):
         gamma_sample = random_ops.random_gamma(
             [n,], self.alpha, dtype=self.dtype, seed=seed)
         n_val = tensor_util.constant_value(n)

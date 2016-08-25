@@ -58,14 +58,14 @@ TEST(CommonShapeFnsTest, ScalarShapeTest) {
   {
     InferenceContext c(&def, op_def, {"[]"}, {});
     TF_EXPECT_OK(ScalarShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(0, c.Rank(output));
   }
 
   {
     InferenceContext c(&def, op_def, {"[1,23,4,4,2]"}, {});
     TF_EXPECT_OK(ScalarShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(0, c.Rank(output));
   }
 }
@@ -92,7 +92,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
   {
     InferenceContext c(&def, op_def, {"[2,3]", "[3,4]"}, {});
     TF_EXPECT_OK(MatMulShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_EQ(4, c.Value(c.Dim(output, 1)));
   }
@@ -101,7 +101,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     // Unknown inner dimension for one
     InferenceContext c(&def, op_def, {"[2,?]", "[3,4]"}, {});
     TF_EXPECT_OK(MatMulShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_EQ(4, c.Value(c.Dim(output, 1)));
   }
@@ -119,7 +119,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     // Unknown outer dimension
     InferenceContext c(&def, op_def, {"[2,3]", "[3,?]"}, {});
     TF_EXPECT_OK(MatMulShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_FALSE(c.ValueKnown(c.Dim(output, 1)));
   }
@@ -154,7 +154,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
 
     InferenceContext c(&def, op_def, {"[3,2]", "[3,4]"}, {});
     auto s = MatMulShape(&c);
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_EQ(4, c.Value(c.Dim(output, 1)));
   }
@@ -171,7 +171,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
 
     InferenceContext c(&def, op_def, {"[2,3]", "[4,3]"}, {});
     auto s = MatMulShape(&c);
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_EQ(4, c.Value(c.Dim(output, 1)));
   }
@@ -195,7 +195,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
   {
     InferenceContext c(&def, op_def, {"[2,10]", "[10]"}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
     EXPECT_EQ(10, c.Value(c.Dim(output, 1)));
   }
@@ -204,7 +204,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
     // Unknown ranks.
     InferenceContext c(&def, op_def, {"?", "?"}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_FALSE(c.RankKnown(output));
   }
 
@@ -212,7 +212,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
     // Rank > 2
     InferenceContext c(&def, op_def, {"[4,3,4,2,15]", "[15]"}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ("[4,3,4,2,15]", c.DebugString(output));
   }
 
@@ -225,7 +225,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Finalize(&def));
     InferenceContext c(&def, op_def, {"[2,3,4,5]", "[3]"}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ("[2,3,4,5]", c.DebugString(output));
   }
 
@@ -238,7 +238,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Finalize(&def));
     InferenceContext c(&def, op_def, {"[8,6,4,2,3,4,5]", "[3]"}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ("[8,6,4,2,3,4,5]", c.DebugString(output));
   }
 
@@ -277,7 +277,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
   {
     InferenceContext c(&def, op_def, {"[2,10]"}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
   }
 
@@ -285,7 +285,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
     // Rank > 2
     InferenceContext c(&def, op_def, {"[5,7,2,10]"}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
   }
 
@@ -297,7 +297,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                     .Finalize(&def));
     InferenceContext c(&def, op_def, {"[2,3,4,5]"}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(3, c.Value(c.Dim(output, 0)));
   }
 
@@ -309,7 +309,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                     .Finalize(&def));
     InferenceContext c(&def, op_def, {"[8,6,4,2,3,4,5]"}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
-    const Shape* output = c.output(0);
+    ShapeHandle output = c.output(0);
     EXPECT_EQ(3, c.Value(c.Dim(output, 0)));
   }
 
@@ -601,6 +601,63 @@ TEST(CommonShapeFnsTest, UnknownShapeTest) {
                     .Finalize(&op.node_def));
     INFER_OK(op, "[1]", "?;?;?");
   }
+}
+
+TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
+  ShapeInferenceTestOp op("Sum");
+  op.input_tensors.resize(2);
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "Sum")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("reduction_indices", 1, DT_INT32)
+                   .Attr("keep_dims", false)
+                   .Finalize(&op.node_def));
+
+  // Reduction indices not available, so output is unknown.
+  INFER_OK(op, "[2,4,5];[2]", "?");
+
+  Tensor indices = test::AsTensor<int32>({1, 2});
+  op.input_tensors[1] = &indices;
+
+  // Reduction indices available
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
+
+  // Unknown input rank
+  INFER_OK(op, "?;[2]", "?");
+
+  // Wrapped indices
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
+
+  // Scalar
+  indices = test::AsScalar<int32>(0);
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
+
+  // Cannot reduce 0 dimension
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_ERROR("Cannot reduce dimension -2 with size 0", op, "[2,0,5];[2]");
+
+  indices = test::AsScalar<int32>(-4);
+  op.input_tensors[1] = &indices;
+  INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
+
+  // Empty reduction indices
+  indices = test::AsTensor<int32>({});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[0]", "[]");
+
+  // Keep dims = true
+  TF_ASSERT_OK(NodeDefBuilder("test", "Sum")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("reduction_indices", 1, DT_INT32)
+                   .Attr("keep_dims", true)
+                   .Finalize(&op.node_def));
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
 }
 
 }  // namespace shape_inference

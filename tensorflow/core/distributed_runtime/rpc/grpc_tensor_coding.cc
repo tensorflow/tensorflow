@@ -78,6 +78,66 @@ static int VarLengthEncodingSize(uint32 tag, size_t bytes) {
   return core::VarintLength(tag << 3) + core::VarintLength(bytes) + bytes;
 }
 
+// Returns an upper bound in bytes of the protocol buffer encoding of
+// the "skeleton" of "val" (all the data needed for dtype and the shape,
+// but not the actual contents of "val").
+static int SkeletonEncodingSizeUpperBound(const Tensor& val) {
+  static const int kVarintMax64 = 10;  // Max length of varint64 encoding
+  const int ndims = val.shape().dims();
+  return (2 * kVarintMax64) +           // dtype
+         (ndims * (4 * kVarintMax64));  // Shape: 4 varints per dim
+}
+
+// Encode the skeleton for "val" (the encoded TensorProto contents
+// (dtype and shape, but not the actual data) into "*e".  The backing
+// store for "*e" must be of appropriate size to hold this encoding.
+static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
+  // Encode val.dtype()
+  e->WriteUint64(TensorProto::kDtypeFieldNumber, val.dtype());
+
+  // Compute length of val.shape() proto encoding
+  const int ndims = val.shape().dims();
+  int tensor_shape_bytes = 0;
+  for (int d = 0; d < ndims; d++) {
+    int64 dim_size = val.shape().dim_size(d);
+    tensor_shape_bytes +=
+        2 +  // TensorShapeProto dim tag + varintlength of submessage
+        1 +  // TensorShapeProto_Dim::kSizeFieldNumber
+        core::VarintLength(dim_size);
+  }
+
+  if (tensor_shape_bytes > 0) {
+    e->WriteVarlengthBeginning(TensorProto::kTensorShapeFieldNumber,
+                               tensor_shape_bytes);
+    // Encode val.shape()
+    for (int d = 0; d < ndims; d++) {
+      int64 dim_size = val.shape().dim_size(d);
+      int64 dim_varlen = 1 +  // TensorShapeProto_Dim::kSizeFieldNumber
+                         core::VarintLength(dim_size);
+      e->WriteVarlengthBeginning(TensorShapeProto::kDimFieldNumber, dim_varlen);
+      e->WriteUint64(TensorShapeProto_Dim::kSizeFieldNumber, dim_size);
+    }
+  }
+
+#ifndef NDEBUG
+  {
+    // Debug-mode only check to make sure the encoding above is
+    // identical to the auto-generated protocol buffer encoding.
+    TensorProto skeleton;
+    skeleton.set_dtype(val.dtype());
+    val.shape().AsProto(skeleton.mutable_tensor_shape());
+    string tensor_except_contents;  // tensor() field except contents
+    skeleton.AppendToString(&tensor_except_contents);
+    TensorProto skeleton2;
+    skeleton2.ParseFromString(string(e->data(), e->size()));
+    string out;
+    skeleton.AppendToString(&out);
+    DCHECK_EQ(tensor_except_contents, out) << skeleton.DebugString() << " vs\n"
+                                           << skeleton2.DebugString();
+  }
+#endif
+}
+
 void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
                               ::grpc::ByteBuffer* result) {
   const int kLargeTensorBytes = 1024;
@@ -95,23 +155,19 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     // Encode full protocol buffer to a ByteBuffer
     EncodeRecvTensorResponseToByteBuffer(response, result);
   } else {
-    TensorProto skeleton;
-    skeleton.set_dtype(val.dtype());
-    // TODO(jeff): Encode val.shape() directly to protocol buffer rather than
-    // going through TensorShapeProto.
-    val.shape().AsProto(skeleton.mutable_tensor_shape());
+    // skeleton is the encoded TensorProto contents (dtype and shape), but
+    // not the actual data
+    gtl::InlinedVector<char, 128> skeleton(SkeletonEncodingSizeUpperBound(val));
+    io::ProtoEncodeHelper e_skeleton(skeleton.data(), skeleton.size());
+    EncodeSkeleton(val, &e_skeleton);
 
     StringPiece tdata = val.tensor_data();
     uint32 overall_tensor_proto_bytesize =
-        (skeleton.ByteSize() +
+        (e_skeleton.size() +
          VarLengthEncodingSize(TensorProto::kTensorContentFieldNumber,
                                tdata.size()));
-
     string header;  // All of RecvTensorRequest except the tensor() field
     response.AppendToString(&header);
-
-    string tensor_except_contents;  // tensor() field except contents
-    skeleton.AppendToString(&tensor_except_contents);
 
     size_t expected_size =
         (header.size() +
@@ -139,7 +195,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     e.WriteVarlengthBeginning(RecvTensorResponse::kTensorFieldNumber,
                               overall_tensor_proto_bytesize);
     // (C)
-    e.WriteRawBytes(tensor_except_contents);
+    e.WriteRawBytes(StringPiece(e_skeleton.data(), e_skeleton.size()));
     // (D1) & (D2)
     e.WriteVarlengthBeginning(TensorProto::kTensorContentFieldNumber,
                               tdata.size());

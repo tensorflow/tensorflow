@@ -359,7 +359,7 @@ def gradients(ys,
   else:
     grad_ys = _AsList(grad_ys)
 
-  with ops.op_scope(ys + xs + grad_ys, name, "gradients"):
+  with ops.name_scope(name, "gradients", ys + xs + grad_ys):
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
     xs = ops.convert_n_to_tensor_or_indexed_slices(xs, name="x")
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)

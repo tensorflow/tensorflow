@@ -30,7 +30,6 @@ from tensorflow.contrib.factorization.python.ops import gmm_ops
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import TransformerMixin
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 
 
@@ -124,7 +123,9 @@ class GMM(estimator.Estimator, TransformerMixin):
     Returns:
       Array with same number of rows as x, containing cluster ids.
     """
-    return super(GMM, self).predict(x=x, batch_size=batch_size)[GMM.ASSIGNMENTS]
+    return np.array([
+        prediction[GMM.ASSIGNMENTS] for prediction in
+        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
 
   def score(self, x, batch_size=None):
     """Predict total sum of distances to nearest clusters.
@@ -149,17 +150,19 @@ class GMM(estimator.Estimator, TransformerMixin):
       Array with same number of rows as x, and num_clusters columns, containing
       distances to the cluster centers.
     """
-    return super(GMM, self).predict(x=x, batch_size=batch_size)[GMM.ALL_SCORES]
+    return np.array([
+        prediction[GMM.ALL_SCORES] for prediction in
+        super(GMM, self).predict(x=x, batch_size=batch_size, as_iterable=True)])
 
   def clusters(self):
     """Returns cluster centers."""
-    clusters = checkpoints.load_variable(self.model_dir,
-                                         gmm_ops.GmmAlgorithm.CLUSTERS_VARIABLE)
+    clusters = tf.contrib.framework.load_variable(
+        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_VARIABLE)
     return np.squeeze(clusters, 1)
 
   def covariances(self):
     """Returns the covariances."""
-    return checkpoints.load_variable(
+    return tf.contrib.framework.load_variable(
         self.model_dir,
         gmm_ops.GmmAlgorithm.CLUSTERS_COVS_VARIABLE)
 
@@ -192,7 +195,7 @@ class GMM(estimator.Estimator, TransformerMixin):
          self._params)
     return {
         GMM.ALL_SCORES: all_scores[0],
-        GMM.ASSIGNMENTS: model_predictions[0]
+        GMM.ASSIGNMENTS: model_predictions[0][0],
     }
 
   def _get_eval_ops(self, features, _, unused_metrics):

@@ -35,16 +35,14 @@ class HingeLossUpdater : public DualLossUpdater {
   // within SDCA procedure (see http://arxiv.org/pdf/1209.1873v2.pdf, page 5)
   // and the particular form of conjugate function for hinge loss.
   //
+  // The CoCoA+ modification is detailed in readme.md.
+  //
   // TODO(sibyl-vie3Poto): Write up a doc with concrete derivation and point to it from
   // here.
-  // TODO(vgodet): Changes to support unused_num_paritions and the derivation
-  // for hinge loss.
-  double ComputeUpdatedDual(const int unused_num_paritions, const double label,
+  double ComputeUpdatedDual(const int num_partitions, const double label,
                             const double example_weight,
                             const double current_dual, const double wx,
-                            const double weighted_example_norm,
-                            const double unused_primal_loss,
-                            const double unused_dual_loss) const final {
+                            const double weighted_example_norm) const final {
     // Intutitvely there are 3 cases:
     // a. new optimal value of the dual variable falls withing the admissible
     // range [0, 1]. In this case we set new dual to this value.
@@ -52,7 +50,9 @@ class HingeLossUpdater : public DualLossUpdater {
     // valid value for new dual = 0
     // c. new optimal value > 1.0. Then new optimal value should be set to 1.0.
     const double candidate_optimal_dual =
-        current_dual + (label - wx) / (example_weight * weighted_example_norm);
+        current_dual +
+        (label - wx) /
+            (num_partitions * example_weight * weighted_example_norm);
     if (label * candidate_optimal_dual < 0) {
       return 0.0;
     }

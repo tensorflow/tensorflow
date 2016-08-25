@@ -93,11 +93,11 @@ class GrpcServerTest(tf.test.TestCase):
       self.assertAllEqual([[4]], sess_2.run(v2))
 
     # Connects to the same target. Device memory for the variables would have
-    # been released, so they will be unitialized.
+    # been released, so they will be uninitialized.
     sess_2 = tf.Session(server.target)
     with self.assertRaises(tf.errors.FailedPreconditionError):
       sess_2.run(v2)
-    # Reinitialzes the variables.
+    # Reinitializes the variables.
     sess_2.run(tf.initialize_all_variables())
     self.assertAllEqual([[4]], sess_2.run(v2))
     sess_2.close()
@@ -163,7 +163,7 @@ class GrpcServerTest(tf.test.TestCase):
       sess.run(v1)
 
     # Connects to the same target. Device memory for the v0 would have
-    # been released, so it will be unitialized. But v1 should still
+    # been released, so it will be uninitialized. But v1 should still
     # be valid.
     sess = tf.Session(server.target)
     with self.assertRaises(tf.errors.FailedPreconditionError):
@@ -356,7 +356,10 @@ class ServerDefTest(tf.test.TestCase):
     cluster_spec = tf.train.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
-  def testClusterSpec(self):
+
+class ClusterSpecTest(tf.test.TestCase):
+
+  def testProtoDictDefEquivalences(self):
     cluster_spec = tf.train.ClusterSpec(
         {"ps": ["ps0:2222", "ps1:2222"],
          "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]})
@@ -378,6 +381,32 @@ class ServerDefTest(tf.test.TestCase):
     self.assertProtoEquals(
         expected_proto,
         tf.train.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+
+  def testEmptyClusterSpecIsFalse(self):
+    self.assertFalse(tf.train.ClusterSpec({}))
+
+  def testNonEmptyClusterSpecIsTrue(self):
+    self.assertTrue(tf.train.ClusterSpec({"job": ["host:port"]}))
+
+  def testEq(self):
+    self.assertEquals(tf.train.ClusterSpec({}), tf.train.ClusterSpec({}))
+    self.assertEquals(
+        tf.train.ClusterSpec({"job": ["host:2222"]}),
+        tf.train.ClusterSpec({"job": ["host:2222"]}),)
+
+  def testNe(self):
+    self.assertNotEquals(
+        tf.train.ClusterSpec({}),
+        tf.train.ClusterSpec({"job": ["host:2223"]}),)
+    self.assertNotEquals(
+        tf.train.ClusterSpec({"job1": ["host:2222"]}),
+        tf.train.ClusterSpec({"job2": ["host:2222"]}),)
+    self.assertNotEquals(
+        tf.train.ClusterSpec({"job": ["host:2222"]}),
+        tf.train.ClusterSpec({"job": ["host:2223"]}),)
+    self.assertNotEquals(
+        tf.train.ClusterSpec({"job": ["host:2222", "host:2223"]}),
+        tf.train.ClusterSpec({"job": ["host:2223", "host:2222"]}),)
 
 
 if __name__ == "__main__":

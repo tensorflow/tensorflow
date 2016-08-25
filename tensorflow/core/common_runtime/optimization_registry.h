@@ -35,10 +35,10 @@ struct SessionOptions;
 // calls.
 struct GraphOptimizationPassOptions {
   string session_handle;
-  const SessionOptions* session_options;
-  const CostModel* cost_model;
+  const SessionOptions* session_options = nullptr;
+  const CostModel* cost_model = nullptr;
 
-  FunctionLibraryDefinition* flib_def;  // Not owned.
+  FunctionLibraryDefinition* flib_def = nullptr;  // Not owned.
   // An optimization pass may replace *graph with a new graph object.
   std::unique_ptr<Graph>* graph;
 };

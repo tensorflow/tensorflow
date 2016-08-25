@@ -120,7 +120,7 @@ def histogram_summary(tag, values, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tag, values], name, "HistogramSummary") as scope:
+  with ops.name_scope(name, "HistogramSummary", [tag, values]) as scope:
     val = gen_logging_ops._histogram_summary(
         tag=tag, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
@@ -171,7 +171,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tag, tensor], name, "ImageSummary") as scope:
+  with ops.name_scope(name, "ImageSummary", [tag, tensor]) as scope:
     val = gen_logging_ops._image_summary(
         tag=tag, tensor=tensor, max_images=max_images, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
@@ -214,7 +214,7 @@ def audio_summary(tag,
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tag, tensor], name, "AudioSummary") as scope:
+  with ops.name_scope(name, "AudioSummary", [tag, tensor]) as scope:
     val = gen_logging_ops._audio_summary(tag=tag,
                                          tensor=tensor,
                                          max_outputs=max_outputs,
@@ -225,6 +225,7 @@ def audio_summary(tag,
 
 
 def merge_summary(inputs, collections=None, name=None):
+  # pylint: disable=line-too-long
   """Merges summaries.
 
   This op creates a
@@ -246,7 +247,7 @@ def merge_summary(inputs, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer resulting from the merging.
   """
-  with ops.op_scope(inputs, name, "MergeSummary") as scope:
+  with ops.name_scope(name, "MergeSummary", inputs):
     val = gen_logging_ops._merge_summary(inputs=inputs, name=name)
     _Collect(val, collections, [])
   return val
@@ -312,7 +313,7 @@ def scalar_summary(tags, values, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tags, values], name, "ScalarSummary") as scope:
+  with ops.name_scope(name, "ScalarSummary", [tags, values]) as scope:
     val = gen_logging_ops._scalar_summary(tags=tags, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val

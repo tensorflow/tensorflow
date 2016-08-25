@@ -35,7 +35,7 @@ For example:
 
     export TF_DIST_GCLOUD_PROJECT="tensorflow-testing"
     export TF_DIST_GCLOUD_COMPUTE_ZONE="us-central1-f"
-    export CONTAINER_CLUSTER="test-cluster-1"
+    export TF_DIST_CONTAINER_CLUSTER="test-cluster-1"
     export TF_DIST_GCLOUD_KEY_FILE_DIR="/tmp/gcloud-secrets"
     ./remote_test.sh
 

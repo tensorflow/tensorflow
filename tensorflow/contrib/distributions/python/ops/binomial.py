@@ -17,10 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=line-too-long
-
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -29,8 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-
-# pylint: enable=line-too-long
 
 
 class Binomial(distribution.Distribution):
@@ -132,7 +129,7 @@ class Binomial(distribution.Distribution):
     self._logits, self._p = distribution_util.get_logits_and_prob(
         name=name, logits=logits, p=p, validate_args=validate_args)
 
-    with ops.op_scope([n], name):
+    with ops.name_scope(name, values=[n]):
       with ops.control_dependencies([
           check_ops.assert_non_negative(
               n, message="n has negative components."),
@@ -145,8 +142,8 @@ class Binomial(distribution.Distribution):
         self._validate_args = validate_args
         self._allow_nan_stats = allow_nan_stats
 
-        self._mean = self._n * self._p
-        self._get_batch_shape = self._mean.get_shape()
+        self._get_batch_shape = common_shapes.broadcast_shape(
+            self._n.get_shape(), self._p.get_shape())
         self._get_event_shape = tensor_shape.TensorShape([])
 
   @property
@@ -181,7 +178,7 @@ class Binomial(distribution.Distribution):
     Returns:
       `Tensor` `batch_shape`
     """
-    return array_ops.shape(self._mean)
+    return array_ops.shape(self._n + self._p)
 
   def get_batch_shape(self):
     """`TensorShape` available at graph construction time.
@@ -203,7 +200,7 @@ class Binomial(distribution.Distribution):
       `Tensor` `event_shape`
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([], name):
+      with ops.name_scope(name):
         return constant_op.constant([], name=name, dtype=dtypes.int32)
 
   def get_event_shape(self):
@@ -234,18 +231,19 @@ class Binomial(distribution.Distribution):
   def mean(self, name="mean"):
     """Mean of the distribution."""
     with ops.name_scope(self.name):
-      return array_ops.identity(self._mean, name=name)
+      with ops.name_scope(name, values=[self._n, self._p]):
+        return self._n * self._p
 
   def variance(self, name="variance"):
     """Variance of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p], name):
+      with ops.name_scope(name, values=[self._n, self._p]):
         return self._n * self._p * (1 - self._p)
 
   def std(self, name="std"):
     """Standard deviation of the distribution."""
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p], name):
+      with ops.name_scope(name, values=[self._n, self._p]):
         return math_ops.sqrt(self.variance())
 
   def mode(self, name="mode"):
@@ -262,7 +260,7 @@ class Binomial(distribution.Distribution):
       The mode of the Binomial distribution.
     """
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p], name):
+      with ops.name_scope(name, values=[self._n, self._p]):
         return math_ops.floor((self._n + 1) * self._p)
 
   def log_prob(self, counts, name="log_prob"):
@@ -286,7 +284,7 @@ class Binomial(distribution.Distribution):
     n = self._n
     p = self._p
     with ops.name_scope(self.name):
-      with ops.op_scope([self._n, self._p, counts], name):
+      with ops.name_scope(name, values=[self._n, self._p, counts]):
         counts = self._check_counts(counts)
 
         prob_prob = counts * math_ops.log(p) + (
